@@ -1,0 +1,21 @@
+{
+  "name": "pufu-lens",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.1.1",
+  "scripts": {
+    "build": "turbo run build",
+    "format": "biome check --write . && prettier --write \"**/*.{md,yml,yaml}\"",
+    "format:check": "biome check . && prettier --check \"**/*.{md,yml,yaml}\"",
+    "lint": "biome ci . && markdownlint-cli2",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.4",
+    "markdownlint-cli2": "^0.18.1",
+    "prettier": "^3.6.2",
+    "turbo": "^2.6.1",
+    "typescript": "^5.9.3"
+  }
+}

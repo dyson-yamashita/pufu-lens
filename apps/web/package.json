@@ -1,0 +1,11 @@
+{
+  "name": "@pufu-lens/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node -e \"console.log('web tests: no tests yet')\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

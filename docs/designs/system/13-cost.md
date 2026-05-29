@@ -4,18 +4,18 @@
 
 ### 1. GCE VM + Firebase App Hosting + Cloud Run 構成（推奨）
 
-| コンポーネント | スペック | 月額 |
-|---|---|---|
-| Firebase App Hosting（Next.js） | Cloud Run / Cloud CDN / Cloud Build / Artifact Registry を含む利用量ベース | $0〜20 |
-| Cloud Run（Mastra Server） | リクエストベース | $5〜30 |
-| Cloud Run Jobs（Ingestion / Report） | 日次実行 | $1〜5 |
-| GCE VM（e2-medium） | 業務時間のみ | $13〜33 |
-| Persistent Disk SSD 50GB | $0.17/GB | $9 |
-| GCS（元データ + parsed + レポート） | 5GB 程度 | $0.15 |
-| VPC コネクタ | $0.01/GB + $6 | $6〜 |
-| Secret Manager | 数バージョン | $1 |
-| Cloud Scheduler | 数ジョブ | 無料枠内 |
-| **合計** | | **$35〜105** |
+| コンポーネント                       | スペック                                                                   | 月額         |
+| ------------------------------------ | -------------------------------------------------------------------------- | ------------ |
+| Firebase App Hosting（Next.js）      | Cloud Run / Cloud CDN / Cloud Build / Artifact Registry を含む利用量ベース | $0〜20       |
+| Cloud Run（Mastra Server）           | リクエストベース                                                           | $5〜30       |
+| Cloud Run Jobs（Ingestion / Report） | 日次実行                                                                   | $1〜5        |
+| GCE VM（e2-medium）                  | 業務時間のみ                                                               | $13〜33      |
+| Persistent Disk SSD 50GB             | $0.17/GB                                                                   | $9           |
+| GCS（元データ + parsed + レポート）  | 5GB 程度                                                                   | $0.15        |
+| VPC コネクタ                         | $0.01/GB + $6                                                              | $6〜         |
+| Secret Manager                       | 数バージョン                                                               | $1           |
+| Cloud Scheduler                      | 数ジョブ                                                                   | 無料枠内     |
+| **合計**                             |                                                                            | **$35〜105** |
 
 LLM / embedding コストは利用量連動のため、上表には固定費として含めない。通常のデータ収集・parse は source 別の決定的な scanner / parser / validator で処理し、Agent に全候補を都度判定させない。これにより、取り込み件数に比例してチャットモデルのトークンを消費する経路を避ける。
 

@@ -1,1 +1,23 @@
 .DS_Store
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Build outputs
+dist/
+build/
+.next/
+.turbo/
+coverage/
+*.tsbuildinfo
+
+# Local data and generated artifacts
+infra/volumes/
+tmp/
+*.log
