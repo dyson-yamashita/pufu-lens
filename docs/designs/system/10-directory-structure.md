@@ -16,8 +16,8 @@ project-root/
 │   │   │       │   └── report-agent.ts
 │   │   │       ├── workflows/
 │   │   │       │   ├── curate-workflow.ts
-    │   │   │       │   ├── ingest-workflow.ts
-    │   │   │       │   └── generate-report-workflow.ts
+│   │   │       │   ├── ingest-workflow.ts
+│   │   │       │   └── generate-report-workflow.ts
 │   │   │       ├── tools/
 │   │   │       │   ├── vector-search.ts
 │   │   │       │   ├── graph-query.ts
@@ -53,10 +53,10 @@ project-root/
 │       │   │       └── admin/
 │       │   │           ├── data-sources/
 │       │   │           └── members/
-    │       │   ├── reports/
-    │       │   │   └── public/
-    │       │   │       └── [projectSlug]/
-    │       │   │           └── [reportId]/page.tsx # 公開用 JSON を fetch して描画
+│       │   ├── reports/
+│       │   │   └── public/
+│       │   │       └── [projectSlug]/
+│       │   │           └── [reportId]/page.tsx # 公開用 JSON を fetch して描画
 │       │   ├── admin/
 │       │   │   ├── projects/
 │       │   │   │   ├── page.tsx               # プロジェクト管理
@@ -72,7 +72,7 @@ project-root/
 │       │       │       └── [reportId]/
 │       │       │           ├── route.ts        # redaction 済み public report JSON 配信
 │       │       │           └── chat/route.ts   # Public Chat Agent へ stream proxy
-    │       │       └── projects/[projectSlug]/
+│       │       └── projects/[projectSlug]/
 │       │           ├── chat/route.ts
 │       │           ├── data-sources/route.ts
 │       │           └── reports/
@@ -104,15 +104,15 @@ project-root/
 │       ├── ingest-daily.json
 │       └── report-weekly.json
 │
-    ├── scripts/
-    │   ├── deploy-mastra.sh
-    │   ├── deploy-web.sh
-    │   ├── setup-secrets.sh
-    │   └── create-project.ts          # projects 行作成 + create_graph(graph_name) + ストレージ prefix 用意
-    │
-    ├── docs/
-    │   └── operations/
-    │       └── deploy-checklist.md    # 初回手動作業と staging / production 検証記録
+├── scripts/
+│   ├── deploy-mastra.sh
+│   ├── deploy-web.sh
+│   ├── setup-secrets.sh
+│   └── create-project.ts          # projects 行作成 + create_graph(graph_name) + ストレージ prefix 用意
+│
+├── docs/
+│   └── operations/
+│       └── deploy-checklist.md    # 初回手動作業と staging / production 検証記録
 │
 ├── .env.local
 ├── .env.example

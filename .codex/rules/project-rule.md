@@ -24,6 +24,6 @@
 - API 通信、状態管理、UI 表示の責務を分ける。
 - 画面上のテキストがモバイル・デスクトップで重ならないよう確認する。
 
-## 11. Git ルール
+## 4. Git ルール
 
 Git / branch / PR / commit の運用は `.codex/rules/git-rule.md` に従う。

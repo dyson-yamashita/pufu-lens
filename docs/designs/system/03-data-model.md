@@ -114,11 +114,11 @@ CREATE TABLE raw_documents (
   created_at      TIMESTAMPTZ DEFAULT now(),
   updated_at      TIMESTAMPTZ DEFAULT now(),
   -- 外部システム上の同一ドキュメントは 1 行に統合
-  UNIQUE (project_id, source_type, source_id),
-  -- content_hash は更新検知と SAME_AS 候補抽出に使う。
-  -- 同一本文でも別エンティティとして扱う source があるため、DB の UNIQUE にはしない。
+  UNIQUE (project_id, source_type, source_id)
 );
 CREATE INDEX ON raw_documents (project_id, ingest_status, fetched_at DESC);
+-- content_hash は更新検知と SAME_AS 候補抽出に使う。同一本文でも別エンティティとして扱う
+-- source があるため、DB の UNIQUE にはしない。
 CREATE INDEX ON raw_documents (project_id, source_type, content_hash);
 
 -- Ingestion 実行キュー
@@ -188,7 +188,7 @@ CREATE TABLE document_chunks (
   content         TEXT NOT NULL,
   content_hash    TEXT NOT NULL,
   embedding       vector(1536),
-  embedding_model TEXT NOT NULL DEFAULT 'gemini-embedding-001',
+  embedding_model TEXT NOT NULL DEFAULT 'text-embedding-004',
   metadata        JSONB NOT NULL DEFAULT '{}',
   created_at      TIMESTAMPTZ DEFAULT now(),
   UNIQUE (project_id, document_id, chunk_index),
