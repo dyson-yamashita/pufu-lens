@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./apps/mastra"
+    },
+    {
+      "path": "./apps/web"
+    },
+    {
+      "path": "./packages/storage"
+    }
+  ]
+}

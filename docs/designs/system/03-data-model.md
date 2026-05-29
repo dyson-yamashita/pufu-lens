@@ -507,12 +507,12 @@ erDiagram
 
 `data_sources` は「プロジェクト内の収集対象の単位」を表す。同じプロジェクト内で Gmail の「顧客 A スレッド」と「障害通知ラベル」を別ソースとして登録し、それぞれ異なる期間・条件・優先度を持たせる。
 
-| 種別 | 必要な連携 | `config` キー |
-|---|---|---|
-| `gmail` | Google OAuth | `labels`, `from` / `to` / `cc` |
-| `drive` | Google OAuth | `folder_url` / `folder_id` |
-| `github` | GitHub App | `repositories` |
-| `web` | 不要（公開 URL） | `urls` |
+| 種別     | 必要な連携       | `config` キー                  |
+| -------- | ---------------- | ------------------------------ |
+| `gmail`  | Google OAuth     | `labels`, `from` / `to` / `cc` |
+| `drive`  | Google OAuth     | `folder_url` / `folder_id`     |
+| `github` | GitHub App       | `repositories`                 |
+| `web`    | 不要（公開 URL） | `urls`                         |
 
 初期実装では `config` を上記キーに限定し、Gmail query・Drive の MIME フィルタ・GitHub の include/labels/states・Web のクロール深度などは段階的に追加する（[将来の拡張](15-future.md) 参照）。
 
@@ -578,10 +578,7 @@ erDiagram
   "source_type": "web",
   "name": "Product docs",
   "config": {
-    "urls": [
-      "https://example.com/docs",
-      "https://example.com/changelog"
-    ]
+    "urls": ["https://example.com/docs", "https://example.com/changelog"]
   },
   "ingest_window": {
     "mode": "recrawl"
@@ -604,20 +601,20 @@ erDiagram
 
 **フィールド一覧**：
 
-| キー | 型 | 必須 | 意味 |
-|---|---|---|---|
-| `mode` | `"incremental" \| "backfill" \| "recrawl"` | 必須 | 後述のモード |
-| `initial_since` | ISO 8601 文字列 | 任意 | 初回 backfill / incremental の最古日。これより古いデータは対象外 |
-| `lookback_days` | 整数 | 任意 | `incremental` で毎回 `last_checked_at` から N 日遡って再確認する保険的 window |
-| `until` | ISO 8601 文字列 | 任意 | この日以降は取り込まない（期限付き取り込み用） |
+| キー            | 型                                         | 必須 | 意味                                                                          |
+| --------------- | ------------------------------------------ | ---- | ----------------------------------------------------------------------------- |
+| `mode`          | `"incremental" \| "backfill" \| "recrawl"` | 必須 | 後述のモード                                                                  |
+| `initial_since` | ISO 8601 文字列                            | 任意 | 初回 backfill / incremental の最古日。これより古いデータは対象外              |
+| `lookback_days` | 整数                                       | 任意 | `incremental` で毎回 `last_checked_at` から N 日遡って再確認する保険的 window |
+| `until`         | ISO 8601 文字列                            | 任意 | この日以降は取り込まない（期限付き取り込み用）                                |
 
 **モードの挙動**：
 
-| mode | 列挙範囲 | 想定用途 |
-|---|---|---|
-| `incremental` | `last_checked_at - lookback_days` 以降 | Gmail / GitHub Issue・PR / Drive の通常運用 |
-| `backfill` | `initial_since` 以降を全件（時間制限なし） | 初回セットアップ・過去データの一括取り込み |
-| `recrawl` | 登録された URL / フォルダ / リポジトリを毎回全件再走査 | Web ページ等、同じ URL で内容が更新される対象 |
+| mode          | 列挙範囲                                               | 想定用途                                      |
+| ------------- | ------------------------------------------------------ | --------------------------------------------- |
+| `incremental` | `last_checked_at - lookback_days` 以降                 | Gmail / GitHub Issue・PR / Drive の通常運用   |
+| `backfill`    | `initial_since` 以降を全件（時間制限なし）             | 初回セットアップ・過去データの一括取り込み    |
+| `recrawl`     | 登録された URL / フォルダ / リポジトリを毎回全件再走査 | Web ページ等、同じ URL で内容が更新される対象 |
 
 **スキップ・更新検知ポリシー**（モード共通）：
 
@@ -676,10 +673,10 @@ erDiagram
 - `actors` は **プロジェクト内で一意な人物・組織を表現** する。
 - 1 つの Actor は `actor_aliases` で複数の識別子（メール、GitHub login、表示名、Slack ID 等）を持てる。
 - 取り込み時のリゾルバはおおむね次の順で名寄せを試みる。
-
   1. 完全一致のエイリアスがある → 既存 Actor を使う。
   2. 同じドメインの会社メール + GitHub login の組み合わせ等の弱いシグナル → 確信度を計算し、しきい値以上なら自動マージ。
   3. しきい値未満 → 新規 Actor を作成し、`actor_aliases` に「未マージ候補」フラグを付ける。
+
 - マージ結果は `actor_aliases.confidence` と `metadata.merge_history` に履歴を残し、管理 UI から手動修正できるようにする。
 - グラフ上の Actor ノードは `graph_node_id = actors.id` で 1:1 紐付ける。エイリアス情報は `actors.metadata.aliases` にスナップショットを置く（高速参照用）。
 

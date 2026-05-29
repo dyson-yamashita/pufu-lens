@@ -1,0 +1,21 @@
+{
+  "config": {
+    "MD001": false,
+    "MD012": false,
+    "MD013": false,
+    "MD022": false,
+    "MD024": {
+      "siblings_only": true
+    },
+    "MD030": false,
+    "MD032": false,
+    "MD033": false,
+    "MD034": false,
+    "MD036": false,
+    "MD040": false,
+    "MD041": false,
+    "MD058": false
+  },
+  "globs": ["**/*.md"],
+  "ignores": ["node_modules/**", ".turbo/**", ".next/**", "dist/**", "build/**"]
+}

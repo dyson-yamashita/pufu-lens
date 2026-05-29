@@ -65,11 +65,11 @@ for each candidate in scanned:
 ```typescript
 // src/mastra/workflows/curate-workflow.ts
 export const curateWorkflow = createWorkflow({
-  id: "curate-workflow",
+  id: 'curate-workflow',
   inputSchema: z.object({
-    projectId: z.string().uuid().optional(),     // 指定なしなら全プロジェクト
+    projectId: z.string().uuid().optional(), // 指定なしなら全プロジェクト
     sourceTypes: z.array(z.string()).optional(),
-    dataSourceIds: z.array(z.string()).optional(),
+    dataSourceIds: z.array(z.string()).optional()
   }),
   execute: async ({ inputData }) => {
     const projects = await loadEnabledProjects(inputData.projectId);
@@ -78,7 +78,7 @@ export const curateWorkflow = createWorkflow({
       const dataSources = await loadEnabledDataSources({
         projectId: project.id,
         sourceTypes: inputData.sourceTypes,
-        dataSourceIds: inputData.dataSourceIds,
+        dataSourceIds: inputData.dataSourceIds
       });
       for (const dataSource of dataSources) {
         const connection = await loadConnection(dataSource.connectionId);
@@ -91,12 +91,13 @@ export const curateWorkflow = createWorkflow({
           const existing = await lookupRawDocument({
             projectId: project.id,
             sourceType: candidate.sourceType,
-            sourceId: normalizeSourceId(candidate),
+            sourceId: normalizeSourceId(candidate)
           });
 
           if (existing) {
             await linkDataSource({ rawDocumentId: existing.id, dataSourceId: dataSource.id });
-            if (existing.ingestStatus === "failed") await queueCandidate({ rawDocumentId: existing.id });
+            if (existing.ingestStatus === 'failed')
+              await queueCandidate({ rawDocumentId: existing.id });
             continue;
           }
 
@@ -107,7 +108,7 @@ export const curateWorkflow = createWorkflow({
         await markDataSourceChecked(dataSource.id);
       }
     }
-  },
+  }
 });
 ```
 
@@ -167,10 +168,10 @@ Collection Pipeline / Agent と Ingestion Workflow の責務を整理すると�
 ```typescript
 // src/mastra/workflows/ingest-workflow.ts
 export const ingestWorkflow = createWorkflow({
-  id: "ingest-workflow",
+  id: 'ingest-workflow',
   inputSchema: z.object({
     projectId: z.string().uuid().optional(), // 指定なしなら全プロジェクト
-    since: z.string().optional(),
+    since: z.string().optional()
   }),
   execute: async ({ inputData }) => {
     const projects = await loadEnabledProjects(inputData.projectId);
@@ -180,15 +181,17 @@ export const ingestWorkflow = createWorkflow({
     // ここでは raw_documents.storage_uri を起点に parse 以降のみを実行する。
     for (const project of projects) {
       const ctx = { projectId: project.id, since: inputData.since };
-      const targets  = await dequeueTargetsStep.execute({ inputData: ctx });
-      const parsed   = await parseRawStep.execute({ inputData: { ...ctx, targets } });
+      const targets = await dequeueTargetsStep.execute({ inputData: ctx });
+      const parsed = await parseRawStep.execute({ inputData: { ...ctx, targets } });
       const resolved = await resolveActorsStep.execute({ inputData: { ...ctx, parsed } });
-      const chunked  = await chunkAndEmbedStep.execute({ inputData: { ...ctx, parsed: resolved } });
-      const stored   = await storeGraphStep.execute({ inputData: { ...ctx, parsed: resolved, chunked } });
+      const chunked = await chunkAndEmbedStep.execute({ inputData: { ...ctx, parsed: resolved } });
+      const stored = await storeGraphStep.execute({
+        inputData: { ...ctx, parsed: resolved, chunked }
+      });
       results.push({ projectId: project.id, stored });
     }
     return results;
-  },
+  }
 });
 ```
 

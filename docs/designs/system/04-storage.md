@@ -9,7 +9,11 @@
 ```typescript
 // packages/storage/src/object-storage.ts
 export interface ObjectStorage {
-  put(uri: string, body: Buffer | NodeJS.ReadableStream, opts?: PutOptions): Promise<{ uri: string; etag?: string }>;
+  put(
+    uri: string,
+    body: Buffer | NodeJS.ReadableStream,
+    opts?: PutOptions
+  ): Promise<{ uri: string; etag?: string }>;
   get(uri: string): Promise<NodeJS.ReadableStream>;
   getText(uri: string): Promise<string>;
   exists(uri: string): Promise<boolean>;
@@ -26,11 +30,11 @@ export interface PutOptions {
 
 ### 2. 実装
 
-| 環境 | 実装 | URI スキーム | 設定 |
-|---|---|---|---|
-| ローカル開発 / オンプレ Docker | `LocalFsObjectStorage` | `file://` | `STORAGE_ROOT=/data` を Docker volume にマウント |
-| GCP デプロイ | `GcsObjectStorage` | `gs://` | `STORAGE_BUCKET=pufu-lens-prod` |
-| 将来: S3 / Azure | `S3ObjectStorage` 等 | `s3://` / `az://` | 各 SDK で実装 |
+| 環境                           | 実装                   | URI スキーム      | 設定                                             |
+| ------------------------------ | ---------------------- | ----------------- | ------------------------------------------------ |
+| ローカル開発 / オンプレ Docker | `LocalFsObjectStorage` | `file://`         | `STORAGE_ROOT=/data` を Docker volume にマウント |
+| GCP デプロイ                   | `GcsObjectStorage`     | `gs://`           | `STORAGE_BUCKET=pufu-lens-prod`                  |
+| 将来: S3 / Azure               | `S3ObjectStorage` 等   | `s3://` / `az://` | 各 SDK で実装                                    |
 
 `StorageFactory.fromEnv()` が `STORAGE_DRIVER`（`local` / `gcs` / …）と `STORAGE_ROOT` / `STORAGE_BUCKET` を読んで適切な実装を返す。Ingestion・Report・Chat いずれも同じ抽象を使う。
 
@@ -44,4 +48,5 @@ export interface PutOptions {
 - GCS バケット `pufu-lens-prod` を 1 個作成し、プロジェクトごとにプレフィックスで分ける。
 - バケットは Private のままにし、Web からの直接ダウンロードは Next.js 経由（権限チェック + signed URL）に限定する。
 - Lifecycle で 30 日超の `raw/web/...` を Nearline、180 日超を Coldline に降格させてコスト最適化する。
+
 ---
