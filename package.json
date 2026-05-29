@@ -5,8 +5,8 @@
   "packageManager": "pnpm@11.1.1",
   "scripts": {
     "build": "turbo run build",
-    "format": "biome check --write . && prettier --write \"**/*.{md,json,jsonc,yml,yaml}\"",
-    "format:check": "biome check . && prettier --check \"**/*.{md,json,jsonc,yml,yaml}\"",
+    "format": "biome check --write . && prettier --write \"**/*.{md,yml,yaml}\"",
+    "format:check": "biome check . && prettier --check \"**/*.{md,yml,yaml}\"",
     "lint": "biome ci . && markdownlint-cli2",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck"

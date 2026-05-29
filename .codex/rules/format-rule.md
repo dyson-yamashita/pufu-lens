@@ -9,7 +9,7 @@
 ## 2. ドキュメント中心の段階
 
 - `.editorconfig` で改行、文字コード、末尾改行、インデントの基本方針を固定する。
-- Markdown / YAML / JSON の整形は Prettier を使う。
+- Markdown / YAML の整形は Prettier、JSON / JSONC の整形は Biome を使う。
 - Markdown の構文検査は `markdownlint-cli2` を使う。
 - 想定 script は以下とする。
   - `pnpm format`: Prettier で対象ファイルを書き換える。
@@ -20,7 +20,7 @@
 
 - TypeScript / TSX / JavaScript / JSX の lint と formatter は Biome を第一候補にする。
 - 型検査は TypeScript `tsc --noEmit` を使う。
-- Prettier は Markdown / YAML / JSON など、Biome の対象外または Markdown 整形のために使う。
+- Prettier は Markdown / YAML など、Biome の対象外または Markdown 整形のために使う。
 - ESLint は、Biome で足りない framework 固有ルールが必要になった場合だけ追加する。
 - 想定 script は以下とする。
   - `pnpm lint`: `biome check .` と `markdownlint-cli2` を実行する。
@@ -31,7 +31,7 @@
 
 ## 4. 運用ルール
 
-- 実装 scaffold を追加する Step 1 で、`package.json`、Biome、Prettier、markdownlint、TypeScript の設定を同時に入れる。
+- 実装 scaffold を追加する Step 0 で、`package.json`、Biome、Prettier、markdownlint、TypeScript の設定を同時に入れる。
 - CI では `format:check`、`lint`、`typecheck`、`test`、`build` を段階的に必須化する。
 - formatter と lint の設定変更は、既存ファイルの大規模な機械整形と機能変更を同じ commit に混ぜない。
 - 自動生成物、外部出力、`node_modules`、coverage、build artifact は lint / format 対象から除外する。
