@@ -197,6 +197,29 @@ CREATE TABLE document_chunks (
 CREATE INDEX ON document_chunks USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX ON document_chunks (project_id, document_id);
 
+-- チャンク更新履歴
+-- document_chunks は検索対象の最新版だけを保持する。更新検知で再チャンク化する場合は、
+-- 削除前の旧チャンクをこのテーブルへ退避してから document_chunks を削除し、新しいチャンクを挿入する。
+CREATE TABLE document_chunk_history (
+  id                         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id                 UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  document_id                UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  raw_document_id            UUID NOT NULL REFERENCES raw_documents(id) ON DELETE CASCADE,
+  previous_chunk_id          UUID NOT NULL,
+  chunk_index                INTEGER NOT NULL,
+  content                    TEXT NOT NULL,
+  content_hash               TEXT NOT NULL,
+  embedding                  vector(1536),
+  embedding_model            TEXT NOT NULL,
+  metadata                   JSONB NOT NULL DEFAULT '{}',
+  archived_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
+  archive_reason             TEXT NOT NULL DEFAULT 'document_updated', -- document_updated | parser_changed | manual_reindex
+  superseded_by_raw_document_id UUID REFERENCES raw_documents(id),
+  superseded_by_content_hash TEXT
+);
+CREATE INDEX ON document_chunk_history (project_id, document_id, archived_at DESC);
+CREATE INDEX ON document_chunk_history (project_id, raw_document_id);
+
 -- Actor（人物・組織。メール送信者・PR 作成者・PR レビュアー等を一意に表現）
 CREATE TABLE actors (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -311,6 +334,9 @@ erDiagram
     projects ||--o{ documents         : "contains"
     documents ||--o{ document_chunks  : "split into"
     projects ||--o{ document_chunks   : "scopes"
+    documents ||--o{ document_chunk_history : "archives old chunks"
+    raw_documents ||--o{ document_chunk_history : "created from"
+    projects ||--o{ document_chunk_history : "scopes"
 
     projects ||--o{ actors            : "contains"
     actors ||--o{ actor_aliases       : "has"
@@ -409,6 +435,19 @@ erDiagram
         text content_hash
         vector embedding
     }
+    document_chunk_history {
+        uuid id PK
+        uuid project_id FK
+        uuid document_id FK
+        uuid raw_document_id FK
+        uuid previous_chunk_id
+        int  chunk_index
+        text content
+        text content_hash
+        vector embedding
+        text archive_reason
+        timestamptz archived_at
+    }
     actors {
         uuid id PK
         uuid project_id FK
@@ -460,6 +499,7 @@ erDiagram
 - `project_id` はほぼ全テーブルが持ち、テナント分離のキーになる。
 - `raw_documents` と `data_sources` は **n:m**（中間 `raw_document_data_sources`）。同じ実体が複数 data_source で見つかるケースを表現する（「複数データソース・重複データの扱い」参照）。
 - `raw_documents` → `documents` は **1:1**（`UNIQUE (documents.raw_document_id)` 相当の運用）。ただしソースをまたぐ意味的同一は AGE グラフ上で `(Document)-[:SAME_AS]->(Document)` として表現するため、リレーショナル上は 1:1 を保つ。
+- `document_chunks` は現在の検索対象だけを持つ。ドキュメント更新、parser 変更、手動 reindex でチャンクが変わる場合は、旧 `document_chunks` を `document_chunk_history` に退避してから削除し、新しいチャンクを挿入する。
 - `email_quotes` は `prev_quote_id` で自己参照のリスト構造をとり、引用チェーンを表す。
 - ナレッジグラフ（AGE）上のノード／エッジはこの図には含めない。`documents.graph_node_id` / `actors.graph_node_id` から AGE 側のノードに対応する。
 
@@ -585,6 +625,7 @@ erDiagram
 - 既存ヒットでも次の条件で再処理する：
   - `ingest_status = 'failed'` の場合は再キュー投入。
   - `recrawl` または `incremental` で `updatedAt` / `revisionId` / `content_hash` の変化を検知した場合は、`raw_documents` を更新（同じ ID で `parsed_uri` を再生成）→ 再 parse → 再 index。
+- 再 index では、旧 `document_chunks` を同一 transaction 内で `document_chunk_history` に退避し、旧チャンクを `document_chunks` から削除してから新しいチャンクを挿入する。これにより通常検索は最新版だけを対象にしつつ、過去チャンクは監査・差分確認・再現性確認に使える。
 - モードは「列挙範囲」の制御。重複判定と更新検知は全モードに共通して適用される。
 
 **頻度制御**：
