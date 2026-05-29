@@ -1,0 +1,24 @@
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: infra/docker/postgres/Dockerfile
+    environment:
+      POSTGRES_DB: pufu_lens
+      POSTGRES_PASSWORD: pufu_lens
+      POSTGRES_USER: pufu_lens
+    ports:
+      - '5432:5432'
+    volumes:
+      - pufu-lens-postgres:/var/lib/postgresql
+      - pufu-lens-data:/data
+      - ./infra/docker/postgres/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U pufu_lens -d pufu_lens']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  pufu-lens-data:
+  pufu-lens-postgres:
