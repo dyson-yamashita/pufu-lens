@@ -5,8 +5,10 @@
 ### 1. マルチプロジェクト方針
 
 - **`projects` テーブル**で論理プロジェクトを定義する。`slug` でストレージプレフィックスや AGE グラフ名を組み立てる。
+- `slug` は local storage prefix と同じ validation を使い、2 文字以上、英小文字・数字・中間の hyphen のみを許可する。1 文字 slug は storage prefix 初期化との不整合を避けるため許可しない。
 - ほぼ全てのテーブルに `project_id` カラムを持たせ、`(project_id, …)` のユニーク制約・インデックスで分離する。
 - ナレッジグラフは **プロジェクトごとに専用の AGE グラフ**（`graph_<project_slug>` 例: `graph_project_a`）を作成する。Cypher クエリは現在の `project_id` をもとにグラフ名を解決する。
+- AGE graph name は slug の hyphen を underscore に置き換え、`graph_` prefix を付けて生成する。PostgreSQL identifier truncation による idempotency 破壊を避けるため、生成後の `graph_name` は 63 文字以下に制限する。
 - オブジェクトストレージは **プロジェクトごとに専用プレフィックス**（`<project_slug>/raw/...`, `<project_slug>/parsed/...`, `<project_slug>/reports/...`）で分離する。
 - 取り込み時の安全のため、Mastra のツール / ワークフローはすべて `project_id` 必須引数を持ち、テナント越境クエリを禁止する。
 - データベース運用そのものは単一の PostgreSQL クラスタを使い、プロジェクト分離は **スキーマ / グラフ / プレフィックスのレイヤ** で実現する。物理的に DB を分けたいケース（規制要件・大型プロジェクト）に備え、後述のように `DATABASE_URL` をプロジェクト単位で切り替える運用パスも残す。
@@ -273,7 +275,8 @@ CREATE INDEX ON email_quotes (project_id, document_id, quote_index);
 -- AGE グラフはプロジェクトごとに作成
 -- 例: SELECT create_graph('graph_project_a');
 -- プロジェクト作成時に create-project.ts が projects 行作成と同じトランザクション境界で作成する。
--- graph_name は slug から生成し、英数字と underscore のみを許可する。
+-- graph_name は slug から生成し、英小文字・数字・underscore のみ、かつ 63 文字以下を許可する。
+-- slug は storage prefix と同じく 2 文字以上、英小文字・数字・中間の hyphen のみを許可する。
 
 -- AGE を使う接続では、接続プールの接続確立時に毎回以下を実行する。
 -- LOAD 'age';

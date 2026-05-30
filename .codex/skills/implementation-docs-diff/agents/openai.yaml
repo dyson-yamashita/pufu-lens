@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Implementation Docs Diff'
+  short_description: 'Check implementation and documentation drift.'
+  default_prompt: 'Check whether recent implementation changes are reflected in the project documentation, plans, and rules.'

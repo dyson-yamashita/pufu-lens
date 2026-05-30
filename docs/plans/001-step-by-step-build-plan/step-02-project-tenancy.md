@@ -9,6 +9,8 @@
   - storage prefix を作成
 - seed 用のサンプル project を 2 件作成できる script
 - project slug / graph name の validation
+  - project slug は local storage prefix と同じく 2 文字以上、英小文字・数字・中間の hyphen のみを許可
+  - graph name は `graph_` prefix、英小文字・数字・underscore のみ、PostgreSQL identifier truncation を避けるため 63 文字以下
 
 ### 確認できること
 
@@ -19,8 +21,9 @@
 ### 確認方法
 
 ```bash
-pnpm tsx scripts/create-project.ts --slug sample-a --name "Sample A"
-pnpm tsx scripts/create-project.ts --slug sample-b --name "Sample B"
+pnpm create-project --slug sample-a --name "Sample A"
+pnpm create-project --slug sample-b --name "Sample B"
+pnpm seed:projects
 psql "$DATABASE_URL" -c "SELECT slug, graph_name, storage_prefix FROM projects ORDER BY slug;"
 find "$STORAGE_ROOT" -maxdepth 2 -type d | sort
 ```
@@ -48,7 +51,7 @@ find "$STORAGE_ROOT" -maxdepth 2 -type d | sort
   - `psql "$DATABASE_URL" -c "SELECT name FROM ag_catalog.ag_graph WHERE name IN ('graph_sample_a', 'graph_sample_b') ORDER BY name;"`
   - `find /private/tmp/pufu-lens-storage -maxdepth 2 -type d`
 - 自動テスト結果: `pnpm format:check`、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` が成功。
-- 補助的な手動確認: `pnpm create-project --slug bad_slug --name "Bad"` が不正 slug を拒否することを確認。
+- 補助的な手動確認: `pnpm create-project --slug bad_slug --name "Bad"` が不正 slug を拒否すること、1 文字 slug を拒否すること、63 文字を超える graph name を拒否することを確認。
 - DB 確認: `sample-a` / `sample-b` の `slug`、`graph_name`、`storage_prefix` が分離して登録されることを確認。
 - Storage 確認: `/private/tmp/pufu-lens-storage/sample-a/{raw,parsed,reports}` と `/private/tmp/pufu-lens-storage/sample-b/{raw,parsed,reports}` が作成されることを確認。
 - ログ / secret 確認: CLI 出力は project slug、graph name、storage prefix URI のみで、token / secret / PII は出力しない。
