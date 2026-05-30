@@ -9,6 +9,9 @@
     },
     {
       "path": "./packages/storage"
+    },
+    {
+      "path": "./packages/project-tenancy"
     }
   ]
 }

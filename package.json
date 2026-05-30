@@ -5,9 +5,11 @@
   "packageManager": "pnpm@11.1.1",
   "scripts": {
     "build": "turbo run build",
+    "create-project": "node --import tsx scripts/create-project.ts",
     "format": "biome check --write . && prettier --write \"**/*.{md,yml,yaml}\"",
     "format:check": "biome check . && prettier --check \"**/*.{md,yml,yaml}\"",
     "lint": "biome ci . && markdownlint-cli2",
+    "seed:projects": "node --import tsx scripts/create-project.ts --seed-samples",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck"
   },
@@ -16,6 +18,7 @@
     "@types/node": "^25.9.1",
     "markdownlint-cli2": "^0.18.1",
     "prettier": "^3.6.2",
+    "tsx": "^4.22.3",
     "turbo": "^2.6.1",
     "typescript": "^5.9.3"
   }
