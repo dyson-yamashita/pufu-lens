@@ -113,7 +113,7 @@ CREATE TABLE raw_documents (
   fetched_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   parsed_at       TIMESTAMPTZ,
   indexed_at      TIMESTAMPTZ,
-  ingest_status   TEXT NOT NULL DEFAULT 'fetched', -- fetched | held | parsed | indexed | failed
+  ingest_status   TEXT NOT NULL DEFAULT 'fetched' CHECK (ingest_status IN ('fetched', 'held', 'parsed', 'indexed', 'failed')), -- fetched | held | parsed | indexed | failed
   ingest_error    TEXT,
   hold_reason     TEXT,                 -- parser_approval_required | parser_contract_mismatch 等
   metadata        JSONB NOT NULL DEFAULT '{}',
@@ -139,7 +139,7 @@ CREATE TABLE ingestion_queue (
   target_id       TEXT NOT NULL,      -- 外部システム上の ID（メール ID、ファイル ID、Issue URL 等）
   target_uri      TEXT,
   priority        INTEGER DEFAULT 0,
-  status          TEXT NOT NULL DEFAULT 'pending', -- pending | held | parsing | parsed | indexed | failed | skipped
+  status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'held', 'parsing', 'parsed', 'indexed', 'failed', 'skipped')), -- pending | held | parsing | parsed | indexed | failed | skipped
   reason          TEXT,
   hold_reason     TEXT,                 -- parser_approval_required | parser_contract_mismatch 等
   parser_version_id UUID,               -- retry 時に固定した parser version（FK は後述）
@@ -152,6 +152,15 @@ CREATE TABLE ingestion_queue (
   UNIQUE (project_id, data_source_id, target_id)
 );
 CREATE INDEX ON ingestion_queue (project_id, status, priority DESC, scheduled_at);
+
+-- 既存 init.sql から更新する場合は、held status を許可するため CHECK 制約を再作成する。
+ALTER TABLE raw_documents
+  DROP CONSTRAINT raw_documents_ingest_status_check,
+  ADD CONSTRAINT raw_documents_ingest_status_check CHECK (ingest_status IN ('fetched', 'held', 'parsed', 'indexed', 'failed'));
+
+ALTER TABLE ingestion_queue
+  DROP CONSTRAINT ingestion_queue_status_check,
+  ADD CONSTRAINT ingestion_queue_status_check CHECK (status IN ('pending', 'held', 'parsing', 'parsed', 'indexed', 'failed', 'skipped'));
 
 -- Parser Registry
 -- project / data_source / source_type ごとの parser 選択と、version 承認履歴を管理する。
@@ -170,6 +179,7 @@ CREATE TABLE parser_profiles (
   enabled         BOOLEAN NOT NULL DEFAULT true,
   created_at      TIMESTAMPTZ DEFAULT now(),
   updated_at      TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (project_id, id),
   UNIQUE (project_id, data_source_id, source_type, name),
   FOREIGN KEY (project_id, data_source_id)
     REFERENCES data_sources(project_id, id) ON DELETE CASCADE
@@ -208,9 +218,9 @@ ALTER TABLE parser_profiles
 
 ALTER TABLE raw_documents
   ADD CONSTRAINT raw_documents_parser_profile_fk
-  FOREIGN KEY (parser_profile_id) REFERENCES parser_profiles(id) ON DELETE SET NULL,
+  FOREIGN KEY (project_id, parser_profile_id) REFERENCES parser_profiles(project_id, id),
   ADD CONSTRAINT raw_documents_parser_version_fk
-  FOREIGN KEY (parser_version_id) REFERENCES parser_versions(id) ON DELETE SET NULL;
+  FOREIGN KEY (parser_profile_id, parser_version_id) REFERENCES parser_versions(parser_profile_id, id);
 
 ALTER TABLE ingestion_queue
   ADD CONSTRAINT ingestion_queue_parser_version_fk
