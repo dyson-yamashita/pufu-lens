@@ -37,7 +37,7 @@ function sanitizeRaw(raw: string): string {
       const local = email.split('@')[0] ?? 'sample';
       return `${local.replace(/[^a-z0-9._+-]/gi, 'sample')}@example.test`;
     })
-    .replace(/https?:\/\/[^\s"'<>]+/gi, 'https://example.test/redacted')
+    .replace(/https?:\/\/[^\s"'<>]+/gi, (url) => sanitizeUrl(url))
     .replace(/gh[pousr]_[A-Za-z0-9_]+/g, 'ghp_example_redacted')
     .replace(/ya29\.[A-Za-z0-9_-]+/g, 'ya29.example-redacted')
     .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer example-redacted')
@@ -47,4 +47,33 @@ function sanitizeRaw(raw: string): string {
     .replace(/"client_secret"\s*:\s*"[^"]+"/gi, '"client_secret": "example-redacted"')
     .replace(/"api_key"\s*:\s*"[^"]+"/gi, '"api_key": "example-redacted"')
     .replace(/"secret"\s*:\s*"[^"]+"/gi, '"secret": "example-redacted"');
+}
+
+function sanitizeUrl(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return 'https://example.test/redacted';
+  }
+
+  if (url.hostname === 'example.test') {
+    return redactSensitiveQueryParams(url).toString();
+  }
+
+  if (url.hostname === 'github.com' && url.pathname.startsWith('/example-org/')) {
+    return redactSensitiveQueryParams(url).toString();
+  }
+
+  return 'https://example.test/redacted';
+}
+
+function redactSensitiveQueryParams(url: URL): URL {
+  const sanitized = new URL(url.toString());
+  for (const key of sanitized.searchParams.keys()) {
+    if (/token|secret|password|key|code/i.test(key)) {
+      sanitized.searchParams.set(key, 'example-redacted');
+    }
+  }
+  return sanitized;
 }

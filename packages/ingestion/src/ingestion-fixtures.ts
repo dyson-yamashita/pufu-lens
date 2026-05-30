@@ -149,9 +149,6 @@ export function validateParsedDocument(parsed: ParsedDocument): ParsedDocument {
   if (parsed.title.trim() === '') {
     throw new Error('Parsed document title is required');
   }
-  if (parsed.bodyText.trim() === '') {
-    throw new Error(`Parsed document bodyText is required: ${parsed.sourceId}`);
-  }
   if (Number.isNaN(Date.parse(parsed.occurredAt))) {
     throw new Error(`Parsed document occurredAt must be ISO date: ${parsed.sourceId}`);
   }
@@ -308,7 +305,7 @@ function parseDrive(fixtureCase: IngestionFixtureCase, raw: DriveRaw): ParsedDoc
 
 function textFromHtml(value: string): string {
   return value
-    .replace(/<[^>]+>/g, ' ')
+    .replace(/<(?:[^"'>]|"[^"]*"|'[^']*')*>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
@@ -327,8 +324,12 @@ function extractLinks(html: string): string[] {
 }
 
 function getHtmlAttribute(tag: string, attributeName: string): string | undefined {
-  const pattern = new RegExp(`\\s${attributeName}=["'](?<value>[^"']+)["']`, 'i');
-  return tag.match(pattern)?.groups?.value;
+  const pattern = new RegExp(
+    `\\s${attributeName}\\s*=\\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<unquoted>[^\\s>]+))`,
+    'i',
+  );
+  const match = tag.match(pattern);
+  return match?.groups?.double ?? match?.groups?.single ?? match?.groups?.unquoted;
 }
 
 export function sha256Hex(value: string): string {

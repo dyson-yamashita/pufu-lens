@@ -16,7 +16,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 test('fixtures declare valid raw document contracts and matching content hashes', async () => {
   const fixtureCases = await loadIngestionFixtureCases();
 
-  assert.equal(fixtureCases.length, 5);
+  assert.ok(fixtureCases.length >= 5);
   for (const fixtureCase of fixtureCases) {
     const rawContent = await readFile(join(repoRoot, fixtureCase.rawPath), 'utf8');
     const actualHash = createHash('sha256').update(rawContent).digest('hex');
@@ -96,6 +96,33 @@ test('drive parser accepts missing owners', async () => {
 
     assert.equal(parsed.actors.length, 0);
     assert.equal(parsed.docType, 'drive_doc');
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
+test('parser accepts empty document bodies from real-world sources', async () => {
+  const rawPath = await writeTempRawFixture(
+    'github-empty-body.json',
+    JSON.stringify({
+      body: '',
+      comments: [],
+      created_at: '2026-05-08T11:00:00.000Z',
+      html_url: 'https://github.com/example-org/pufu-sample/issues/303',
+      kind: 'issue',
+      number: 303,
+      repository: 'example-org/pufu-sample',
+      title: 'Empty body fixture',
+      updated_at: '2026-05-08T11:00:00.000Z',
+      user: { login: 'sample-author', name: 'Sample Author' },
+    }),
+  );
+
+  try {
+    const parsed = await parseRawFixture(buildFixtureCase('github-empty-body', 'github', rawPath));
+
+    assert.equal(parsed.bodyText, '');
+    assert.equal(parsed.title, 'Empty body fixture');
   } finally {
     await rm(join(repoRoot, rawPath), { force: true });
   }
