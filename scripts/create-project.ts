@@ -3,8 +3,8 @@ import {
   buildCreateProjectSql,
   type CreateProjectInput,
   deriveProjectIdentifiers,
-} from '../packages/project-tenancy/src/index.ts';
-import { createObjectStorageFromEnv } from '../packages/storage/src/factory.ts';
+} from '../packages/project-tenancy/src/project-tenancy.ts';
+import { LocalFsObjectStorage } from '../packages/storage/src/local-fs.ts';
 
 interface CliOptions {
   description?: string;
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
     throw new Error('DATABASE_URL is required.');
   }
 
-  const storage = createObjectStorageFromEnv();
+  const storage = createLocalObjectStorageFromEnv();
 
   for (const { identifiers, project } of projectPlans) {
     await runPsql(databaseUrl, buildCreateProjectSql(project));
@@ -62,6 +62,20 @@ async function main(): Promise<void> {
       }),
     );
   }
+}
+
+function createLocalObjectStorageFromEnv(env = process.env): LocalFsObjectStorage {
+  const driver = env.STORAGE_DRIVER ?? env.OBJECT_STORAGE_DRIVER ?? 'local';
+  if (driver !== 'local') {
+    throw new Error(`Unsupported object storage driver for create-project CLI: ${driver}`);
+  }
+
+  const root = env.STORAGE_ROOT ?? env.LOCAL_STORAGE_ROOT;
+  if (!root) {
+    throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required for local object storage.');
+  }
+
+  return new LocalFsObjectStorage(root);
 }
 
 function parseArgs(args: string[]): CliOptions {
@@ -123,7 +137,14 @@ function requiredOption(value: string | undefined, optionName: string): string {
 
 async function runPsql(databaseUrl: string, sql: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const child = spawn('psql', [databaseUrl, '--set=ON_ERROR_STOP=1', '--quiet'], {
+    const env = {
+      ...process.env,
+      ...databaseUrlToPsqlEnv(databaseUrl),
+    };
+    delete env.DATABASE_URL;
+
+    const child = spawn('psql', ['--set=ON_ERROR_STOP=1', '--quiet'], {
+      env,
       stdio: ['pipe', 'inherit', 'inherit'],
     });
 
@@ -139,6 +160,45 @@ async function runPsql(databaseUrl: string, sql: string): Promise<void> {
       reject(new Error(`psql exited with code ${code}`));
     });
   });
+}
+
+function databaseUrlToPsqlEnv(databaseUrl: string): NodeJS.ProcessEnv {
+  const url = new URL(databaseUrl);
+  if (url.protocol !== 'postgresql:' && url.protocol !== 'postgres:') {
+    throw new Error('DATABASE_URL must use postgres:// or postgresql://.');
+  }
+
+  const database = url.pathname.replace(/^\//, '');
+  if (!database) {
+    throw new Error('DATABASE_URL must include a database name.');
+  }
+
+  const env: NodeJS.ProcessEnv = {
+    PGDATABASE: decodeURIComponent(database),
+  };
+
+  if (url.hostname) {
+    env.PGHOST = url.hostname;
+  }
+
+  if (url.port) {
+    env.PGPORT = url.port;
+  }
+
+  if (url.username) {
+    env.PGUSER = decodeURIComponent(url.username);
+  }
+
+  if (url.password) {
+    env.PGPASSWORD = decodeURIComponent(url.password);
+  }
+
+  const sslMode = url.searchParams.get('sslmode');
+  if (sslMode) {
+    env.PGSSLMODE = sslMode;
+  }
+
+  return env;
 }
 
 main().catch((error: unknown) => {

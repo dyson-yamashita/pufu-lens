@@ -2,7 +2,7 @@ const PROJECT_SLUG_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 const GRAPH_NAME_PATTERN = /^graph_[a-z0-9_]+$/;
 
 export interface CreateProjectInput {
-  description?: string;
+  description?: string | null;
   name: string;
   slug: string;
 }
@@ -69,6 +69,6 @@ export function escapeSqlLiteral(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
-function escapeOptionalSqlLiteral(value: string | undefined): string {
-  return value === undefined ? 'NULL' : escapeSqlLiteral(value);
+function escapeOptionalSqlLiteral(value: string | null | undefined): string {
+  return value == null ? 'NULL' : escapeSqlLiteral(value);
 }

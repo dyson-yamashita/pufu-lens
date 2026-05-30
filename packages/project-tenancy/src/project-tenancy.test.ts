@@ -49,3 +49,13 @@ test('buildCreateProjectSql is idempotent for project row and graph creation', (
   assert.match(sql, /graph_sample_a/);
   assert.match(sql, /'Bob''s fixture'/);
 });
+
+test('buildCreateProjectSql treats null description as SQL NULL', () => {
+  const sql = buildCreateProjectSql({
+    description: null,
+    name: 'Sample A',
+    slug: 'sample-a',
+  });
+
+  assert.match(sql, /VALUES \('sample-a', 'Sample A', NULL,/);
+});
