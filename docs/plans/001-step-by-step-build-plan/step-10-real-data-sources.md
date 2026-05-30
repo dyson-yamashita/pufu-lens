@@ -15,6 +15,7 @@
 - `sourceScannerTool`
 - 実 API から fixture と同じ raw contract へ変換する adapter
 - source 別 parser / validator の実データ fixture
+- source / project / data_source ごとの parser profile と approved parser version
 - rate limit / pagination / incremental window
 - source ごとの skip / dedup 判定
 - 失敗 raw をマスクして fixture 化し、parser 修正後に retry する運用手順
@@ -23,6 +24,7 @@
 
 - 外部 API の差分を raw contract に閉じ込められる。
 - 実データでも Step 4 から Step 9 の確認方法を流用できる。
+- project / data_source 固有の format 差分を Parser Registry の version として管理できる。
 - scope、PII、API コスト、レート制限を source ごとに確認できる。
 - 実データ接続時も全候補を Agent に渡さず、固定スクリプトで収集・parse できる。
 
@@ -37,6 +39,7 @@ pnpm ingest:run --project sample-a --source <source> --limit 5 --embedding-provi
 pnpm ingest:status --project sample-a
 pnpm ingest:inspect --project sample-a --source <source> --limit 5 --format json
 pnpm ingest:fixture:add-failed --project sample-a --source <source> --limit 3 --dry-run
+pnpm parser:version:validate --project sample-a --source <source> --held --dry-run
 pnpm test -- --run "source:<source>"
 ```
 
@@ -55,3 +58,4 @@ source 別に `ingest:inspect` と source contract test で次を検査する。
 - 同じ source を再実行しても重複しない。
 - `ingest:inspect` の JSON が source contract に合い、source 別の必須項目が自動検査で通る。
 - 実データ `--limit 5` の範囲で Agent / chat model を使わずに collect → parse が通る。
+- source 固有 parser の変更は draft → validation → approve を通り、未承認データは `held` のまま保留される。
