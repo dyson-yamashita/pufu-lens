@@ -43,7 +43,7 @@ Step の詳細を参照する前に、この表で status を確認する。
 | step     | plan                                                                                   | status      | 更新日     | メモ                                                 |
 | -------- | -------------------------------------------------------------------------------------- | ----------- | ---------- | ---------------------------------------------------- |
 | Step 0   | [開発基盤と品質ゲート](step-00-foundation.md)                                          | `completed` | 2026-05-29 | pnpm workspaces / Turborepo と品質ゲートを追加済み。 |
-| Step 1   | [ローカル DB / Storage の最小起動](step-01-local-db-storage.md)                        | `planned`   | 2026-05-29 | 未着手。                                             |
+| Step 1   | [ローカル DB / Storage の最小起動](step-01-local-db-storage.md)                        | `active`    | 2026-05-30 | Issue #5 で着手。                                    |
 | Step 2   | [Project 作成とテナント分離の確認](step-02-project-tenancy.md)                         | `planned`   | 2026-05-29 | 未着手。                                             |
 | Step 3   | [Ingestion Fixture とデータ契約](step-03-ingestion-fixtures.md)                        | `planned`   | 2026-05-29 | 未着手。                                             |
 | Step 4   | [Collection Pipeline のローカル収集パイプライン](step-04-local-collection-pipeline.md) | `planned`   | 2026-05-29 | 未着手。                                             |

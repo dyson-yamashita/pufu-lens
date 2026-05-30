@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "node -e \"console.log('storage tests: no tests yet')\"",
+    "test": "tsc -p tsconfig.json && node --test \"dist/**/*.test.js\"",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   }
 }
