@@ -1,4 +1,4 @@
-const PROJECT_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/;
+const PROJECT_SLUG_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 const GRAPH_NAME_PATTERN = /^graph_[a-z0-9_]+$/;
 
 export interface CreateProjectInput {
@@ -48,6 +48,7 @@ export function buildCreateProjectSql(input: CreateProjectInput): string {
 
   return [
     "LOAD 'age';",
+    'SET standard_conforming_strings = on;',
     'SET search_path = ag_catalog, "$user", public;',
     'BEGIN;',
     `INSERT INTO public.projects (slug, name, description, graph_name, storage_prefix)`,

@@ -127,6 +127,7 @@ async function runPsql(databaseUrl: string, sql: string): Promise<void> {
       stdio: ['pipe', 'inherit', 'inherit'],
     });
 
+    child.stdin.on('error', () => {});
     child.stdin.end(sql);
     child.on('error', reject);
     child.on('close', (code) => {

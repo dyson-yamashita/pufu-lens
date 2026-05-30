@@ -15,6 +15,11 @@ test('deriveProjectIdentifiers creates graph name and storage prefix from slug',
   });
 });
 
+test('validateProjectSlug accepts single-character slugs', () => {
+  assert.equal(validateProjectSlug('a'), 'a');
+  assert.equal(validateProjectSlug('1'), '1');
+});
+
 test('validateProjectSlug rejects unsafe or ambiguous slugs', () => {
   for (const slug of ['Sample', '-sample', 'sample-', 'sample_project', '../sample', '']) {
     assert.throws(() => validateProjectSlug(slug), /Invalid project slug/);
@@ -39,6 +44,7 @@ test('buildCreateProjectSql is idempotent for project row and graph creation', (
   });
 
   assert.match(sql, /ON CONFLICT \(slug\) DO NOTHING/);
+  assert.match(sql, /SET standard_conforming_strings = on/);
   assert.match(sql, /WHERE NOT EXISTS/);
   assert.match(sql, /graph_sample_a/);
   assert.match(sql, /'Bob''s fixture'/);
