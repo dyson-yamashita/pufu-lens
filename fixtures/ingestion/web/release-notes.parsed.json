@@ -1,0 +1,20 @@
+{
+  "actors": [],
+  "bodyText": "Pufu Sample Release Notes Pufu Sample Release Notes Version 0.3 documents the \"local ingestion\" contract and parser snapshots. Parser keeps quoted attributes out of text. See the contract page for details.",
+  "canonicalUri": "https://example.test/pufu/release-notes",
+  "docType": "web_page",
+  "metadata": {
+    "fetchedAt": "2026-05-07T10:00:00.000Z"
+  },
+  "occurredAt": "2026-05-07T10:00:00.000Z",
+  "relations": [
+    {
+      "target": "https://example.test/pufu/contract",
+      "type": "LINKS_TO"
+    }
+  ],
+  "schemaVersion": 1,
+  "sourceId": "https://example.test/pufu/release-notes",
+  "sourceType": "web",
+  "title": "Pufu Sample Release Notes"
+}

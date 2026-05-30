@@ -1,0 +1,15 @@
+{
+  "fileId": "drive-file-alpha",
+  "revisionId": "rev-0003",
+  "title": "Fixture Parser Contract Draft",
+  "mimeType": "application/vnd.google-apps.document",
+  "owners": [
+    {
+      "name": "Sample Owner",
+      "email": "owner@example.test"
+    }
+  ],
+  "modifiedTime": "2026-05-06T11:10:00.000Z",
+  "webViewLink": "https://docs.example.test/document/d/drive-file-alpha/edit",
+  "bodyText": "The parser contract defines raw metadata, parsed JSON fields, actor mentions, and relations."
+}

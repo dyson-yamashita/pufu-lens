@@ -1,0 +1,28 @@
+{
+  "threadId": "thread-alpha",
+  "messageId": "msg-alpha-002",
+  "subject": "Fixture ingestion review",
+  "from": {
+    "name": "Sample Sender",
+    "email": "sender@example.test"
+  },
+  "to": [
+    {
+      "name": "Sample Reviewer",
+      "email": "reviewer@example.test"
+    }
+  ],
+  "sentAt": "2026-05-05T15:20:00.000Z",
+  "bodyText": "Latest update: fixture ingestion now separates the current mail from quoted history.",
+  "quotedMessages": [
+    {
+      "messageId": "msg-alpha-001",
+      "from": {
+        "name": "Sample Reviewer",
+        "email": "reviewer@example.test"
+      },
+      "sentAt": "2026-05-05T14:50:00.000Z",
+      "bodyText": "Please keep quoted text out of the primary document body."
+    }
+  ]
+}

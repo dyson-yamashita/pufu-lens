@@ -31,6 +31,8 @@ importers:
 
   apps/web: {}
 
+  packages/ingestion: {}
+
   packages/project-tenancy: {}
 
   packages/storage: {}

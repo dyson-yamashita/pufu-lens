@@ -1,0 +1,36 @@
+{
+  "actors": [
+    {
+      "displayName": "Sample Contributor",
+      "githubLogin": "sample-contributor",
+      "role": "author"
+    },
+    {
+      "displayName": "Sample Reviewer",
+      "githubLogin": "sample-reviewer",
+      "role": "reviewer"
+    }
+  ],
+  "bodyText": "This pull request adds local fixture coverage for parser contract checks.",
+  "canonicalUri": "https://github.com/example-org/pufu-sample/pull/202",
+  "docType": "pull_request",
+  "metadata": {
+    "repository": "example-org/pufu-sample",
+    "updatedAt": "2026-05-04T08:15:00.000Z"
+  },
+  "occurredAt": "2026-05-03T12:00:00.000Z",
+  "relations": [
+    {
+      "metadata": {
+        "reviewId": 7001,
+        "state": "APPROVED"
+      },
+      "target": "example-org/pufu-sample#202",
+      "type": "REVIEWED"
+    }
+  ],
+  "schemaVersion": 1,
+  "sourceId": "example-org/pufu-sample/pulls/202",
+  "sourceType": "github",
+  "title": "Add deterministic parser fixtures"
+}

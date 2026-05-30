@@ -1,0 +1,40 @@
+{
+  "actors": [
+    {
+      "displayName": "Sample Sender",
+      "email": "sender@example.test",
+      "role": "sender"
+    },
+    {
+      "displayName": "Sample Reviewer",
+      "email": "reviewer@example.test",
+      "role": "commenter"
+    }
+  ],
+  "bodyText": "Latest update: fixture ingestion now separates the current mail from quoted history.",
+  "canonicalUri": "gmail://thread-alpha/msg-alpha-002",
+  "docType": "email",
+  "emailQuotes": [
+    {
+      "bodyText": "Please keep quoted text out of the primary document body.",
+      "from": "Sample Reviewer <reviewer@example.test>",
+      "messageId": "msg-alpha-001",
+      "sentAt": "2026-05-05T14:50:00.000Z"
+    }
+  ],
+  "metadata": {
+    "threadId": "thread-alpha",
+    "toCount": 1
+  },
+  "occurredAt": "2026-05-05T15:20:00.000Z",
+  "relations": [
+    {
+      "target": "msg-alpha-001",
+      "type": "REPLY_TO"
+    }
+  ],
+  "schemaVersion": 1,
+  "sourceId": "thread-alpha:msg-alpha-002",
+  "sourceType": "gmail",
+  "title": "Fixture ingestion review"
+}

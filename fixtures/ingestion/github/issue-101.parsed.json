@@ -1,0 +1,35 @@
+{
+  "actors": [
+    {
+      "displayName": "Sample Author",
+      "githubLogin": "sample-author",
+      "role": "author"
+    },
+    {
+      "displayName": "Sample Maintainer",
+      "githubLogin": "sample-maintainer",
+      "role": "commenter"
+    }
+  ],
+  "bodyText": "The local indexer should ignore notes marked archived in the sample workspace.\n\nConfirmed with the local fixture set. Archived notes should remain raw only.",
+  "canonicalUri": "https://github.com/example-org/pufu-sample/issues/101",
+  "docType": "issue",
+  "metadata": {
+    "repository": "example-org/pufu-sample",
+    "updatedAt": "2026-05-02T10:30:00.000Z"
+  },
+  "occurredAt": "2026-05-01T09:00:00.000Z",
+  "relations": [
+    {
+      "metadata": {
+        "commentId": 5001
+      },
+      "target": "example-org/pufu-sample#101",
+      "type": "COMMENTED_ON"
+    }
+  ],
+  "schemaVersion": 1,
+  "sourceId": "example-org/pufu-sample/issues/101",
+  "sourceType": "github",
+  "title": "Indexer should skip archived notes"
+}
