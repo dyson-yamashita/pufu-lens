@@ -83,6 +83,8 @@ export class LocalFsObjectStorage implements ObjectStorage {
 
   async *list(prefix: string): AsyncIterable<ObjectInfo> {
     const prefixPath = this.pathForUri(prefix);
+    let walkRootPath = prefixPath;
+    let filterPrefixPath: string | undefined;
 
     try {
       const prefixStat = await stat(prefixPath);
@@ -96,13 +98,26 @@ export class LocalFsObjectStorage implements ObjectStorage {
       }
     } catch (error) {
       if (isNotFound(error)) {
-        return;
-      }
+        walkRootPath = dirname(prefixPath);
+        filterPrefixPath = prefixPath;
+        try {
+          const walkRootStat = await stat(walkRootPath);
+          if (!walkRootStat.isDirectory()) {
+            return;
+          }
+        } catch (walkRootError) {
+          if (isNotFound(walkRootError)) {
+            return;
+          }
 
-      throw error;
+          throw walkRootError;
+        }
+      } else {
+        throw error;
+      }
     }
 
-    for await (const item of this.walk(prefixPath)) {
+    for await (const item of this.walk(walkRootPath, filterPrefixPath)) {
       yield item;
     }
   }
@@ -129,15 +144,19 @@ export class LocalFsObjectStorage implements ObjectStorage {
     return this.uriForPath(this.safeJoin(path));
   }
 
-  private async *walk(directoryPath: string): AsyncIterable<ObjectInfo> {
+  private async *walk(directoryPath: string, filterPrefixPath?: string): AsyncIterable<ObjectInfo> {
     for (const entry of await readdir(directoryPath, { withFileTypes: true })) {
       const entryPath = join(directoryPath, entry.name);
       if (entry.isDirectory()) {
-        yield* this.walk(entryPath);
+        yield* this.walk(entryPath, filterPrefixPath);
         continue;
       }
 
       if (!entry.isFile()) {
+        continue;
+      }
+
+      if (filterPrefixPath && !entryPath.startsWith(filterPrefixPath)) {
         continue;
       }
 

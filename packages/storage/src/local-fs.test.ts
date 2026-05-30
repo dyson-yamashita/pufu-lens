@@ -39,6 +39,33 @@ test('LocalFsObjectStorage lists only objects under the requested project prefix
   }
 });
 
+test('LocalFsObjectStorage lists objects by key prefix when the prefix path does not exist', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pufu-lens-storage-'));
+  try {
+    const storage = new LocalFsObjectStorage(root);
+    await storage.put('project-a/raw/a.txt', 'a');
+    await storage.put('project-a/raw/ab.txt', 'ab');
+    await storage.put('project-a/raw/b.txt', 'b');
+
+    const listed = [];
+    for await (const item of storage.list('project-a/raw/a')) {
+      listed.push(item.uri);
+    }
+
+    assert.equal(listed.length, 2);
+    assert.equal(
+      listed.some((uri) => /project-a\/raw\/a\.txt$/.test(uri)),
+      true,
+    );
+    assert.equal(
+      listed.some((uri) => /project-a\/raw\/ab\.txt$/.test(uri)),
+      true,
+    );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test('LocalFsObjectStorage creates project storage prefixes', async () => {
   const root = await mkdtemp(join(tmpdir(), 'pufu-lens-storage-'));
   try {
