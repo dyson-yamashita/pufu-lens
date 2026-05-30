@@ -207,6 +207,49 @@ CREATE TABLE public.email_quotes (
 );
 CREATE INDEX email_quotes_project_document_idx ON public.email_quotes (project_id, document_id, quote_index);
 
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER projects_set_updated_at
+  BEFORE UPDATE ON public.projects
+  FOR EACH ROW
+  EXECUTE FUNCTION public.set_updated_at();
+
+CREATE TRIGGER oauth_connections_set_updated_at
+  BEFORE UPDATE ON public.oauth_connections
+  FOR EACH ROW
+  EXECUTE FUNCTION public.set_updated_at();
+
+CREATE TRIGGER data_sources_set_updated_at
+  BEFORE UPDATE ON public.data_sources
+  FOR EACH ROW
+  EXECUTE FUNCTION public.set_updated_at();
+
+CREATE TRIGGER raw_documents_set_updated_at
+  BEFORE UPDATE ON public.raw_documents
+  FOR EACH ROW
+  EXECUTE FUNCTION public.set_updated_at();
+
+CREATE TRIGGER ingestion_queue_set_updated_at
+  BEFORE UPDATE ON public.ingestion_queue
+  FOR EACH ROW
+  EXECUTE FUNCTION public.set_updated_at();
+
+CREATE TRIGGER documents_set_updated_at
+  BEFORE UPDATE ON public.documents
+  FOR EACH ROW
+  EXECUTE FUNCTION public.set_updated_at();
+
+CREATE TRIGGER actors_set_updated_at
+  BEFORE UPDATE ON public.actors
+  FOR EACH ROW
+  EXECUTE FUNCTION public.set_updated_at();
+
 INSERT INTO public.users (id, email, name, role)
 VALUES ('00000000-0000-0000-0000-000000000001', 'system@pufu-lens.local', 'Pufu Lens System', 'system')
 ON CONFLICT (email) DO NOTHING;
