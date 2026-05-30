@@ -33,9 +33,9 @@
 
 ```bash
 pnpm parser:profile:create --project sample-a --source web --name sample-web
-pnpm parser:version:create --profile sample-web --artifact fixtures/ingestion/web-parser.json
-pnpm parser:version:validate --profile sample-web --version 1 --fixture
-pnpm parser:version:approve --profile sample-web --version 1
+pnpm parser:version:create --project sample-a --profile sample-web --artifact fixtures/ingestion/web-parser.json
+pnpm parser:version:validate --project sample-a --profile sample-web --version 1 --fixture
+pnpm parser:version:approve --project sample-a --profile sample-web --version 1
 pnpm ingest:parse --project sample-a --limit 10
 pnpm ingest:status --project sample-a
 psql "$DATABASE_URL" -c "SELECT status, hold_reason, parser_version_id FROM ingestion_queue ORDER BY updated_at DESC;"
@@ -45,7 +45,7 @@ psql "$DATABASE_URL" -c "SELECT ingest_status, hold_reason, parser_version_id, p
 未承認 parser の確認:
 
 ```bash
-pnpm parser:version:create --profile sample-web --artifact fixtures/ingestion/web-parser-draft.json
+pnpm parser:version:create --project sample-a --profile sample-web --artifact fixtures/ingestion/web-parser-draft.json
 pnpm ingest:parse --project sample-a --limit 10 --parser-version draft
 psql "$DATABASE_URL" -c "SELECT status, hold_reason FROM ingestion_queue WHERE status = 'held';"
 ```

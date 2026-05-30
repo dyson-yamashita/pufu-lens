@@ -17,7 +17,7 @@
 - `raw_documents.parsed_uri`、`parsed_at`、`ingest_status='parsed'` を更新
 - 成功時は `ingestion_queue.status='parsed'` を更新
 - 失敗時は `raw_documents.ingest_status='failed'`、`ingestion_queue.status='failed'`、error code / parser version / sanitized sample path を保存
-- 承認済み parser が無い、または raw が active parser contract に合わない場合は `raw_documents.ingest_status='held'`、`ingestion_queue.status='held'`、`hold_reason='parser_approval_required'` を保存
+- 承認済み parser が無い場合は `hold_reason='parser_approval_required'`、raw が active parser contract に合わない場合は `hold_reason='parser_contract_mismatch'` として `raw_documents.ingest_status='held'`、`ingestion_queue.status='held'` を保存
 - `pnpm ingest:fixture:add-failed --raw-document-id <id>` のような失敗 raw の fixture 化 CLI
 
 ### 確認できること

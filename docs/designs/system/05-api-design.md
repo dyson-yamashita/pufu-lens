@@ -159,7 +159,9 @@ public report は公開用 manifest または storage metadata で `is_public=tr
 
 Internal API は public ingress から直接使わせない。Mastra Server 側で OIDC issuer / audience / service account を検証し、body を workflow input schema で validate してから Cloud Run Jobs API に渡す。
 
-parser approval API は project admin だけが実行できる。承認 API は artifact hash、validation report URI、対象 parser profile、対象 source type を監査ログに残し、承認済み version だけを Ingestion Workflow の parser selection 対象にする。未承認 parser version は validation / dry-run にだけ使い、本番 `ingest-workflow` では使用しない。
+parser approval API は project admin だけが実行できる。API は `projectSlug` から解決した `project_id` を認可済み project として扱い、request の `profileId` / `versionId` は必ずその `project_id` で scope した query で取得する。`versionId` が指定された場合も、`parser_versions.parser_profile_id` が対象 project の `parser_profiles.id` に属することを backend で検証し、一致しない場合は存在有無を漏らさない `404` を返す。raw ID を直接信頼せず、project をまたいだ parser profile / version の参照や承認を防ぐ。
+
+承認 API は artifact hash、validation report URI、対象 parser profile、対象 source type を監査ログに残し、承認済み version だけを Ingestion Workflow の parser selection 対象にする。未承認 parser version は validation / dry-run にだけ使い、本番 `ingest-workflow` では使用しない。
 
 ### 9. Mastra Agent / Tool API
 

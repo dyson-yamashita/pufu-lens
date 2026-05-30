@@ -104,8 +104,8 @@ CREATE TABLE raw_documents (
   source_uri      TEXT,                 -- 取得元 URI（gmail://..., https://...）
   storage_uri     TEXT NOT NULL,        -- 原本の Object Storage URI（後述）
   parsed_uri      TEXT,                 -- 解析済み JSON の Object Storage URI（任意）
-  parser_profile_id UUID,               -- parse に使う parser profile（承認待ち時の要求先）
-  parser_version_id UUID,               -- parse に使った parser version
+  parser_profile_id UUID,               -- parse に使う parser profile（承認待ち時の要求先。FK は後述）
+  parser_version_id UUID,               -- parse に使った parser version（FK は後述）
   parser_artifact_hash TEXT,            -- parse 実行時に検証した artifact hash
   mime_type       TEXT,
   byte_size       BIGINT,
@@ -142,7 +142,7 @@ CREATE TABLE ingestion_queue (
   status          TEXT NOT NULL DEFAULT 'pending', -- pending | held | parsing | parsed | indexed | failed | skipped
   reason          TEXT,
   hold_reason     TEXT,                 -- parser_approval_required | parser_contract_mismatch 等
-  parser_version_id UUID,               -- retry 時に固定した parser version
+  parser_version_id UUID,               -- retry 時に固定した parser version（FK は後述）
   attempts        INTEGER NOT NULL DEFAULT 0,
   last_error      TEXT,
   scheduled_at    TIMESTAMPTZ DEFAULT now(),
@@ -156,20 +156,28 @@ CREATE INDEX ON ingestion_queue (project_id, status, priority DESC, scheduled_at
 -- Parser Registry
 -- project / data_source / source_type ごとの parser 選択と、version 承認履歴を管理する。
 -- parser artifact は Object Storage に immutable に保存し、DB には URI と hash だけを保持する。
+ALTER TABLE data_sources
+  ADD CONSTRAINT data_sources_project_id_id_key UNIQUE (project_id, id);
+
 CREATE TABLE parser_profiles (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id      UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  data_source_id  UUID REFERENCES data_sources(id) ON DELETE CASCADE,
-  source_type     TEXT NOT NULL,
+  data_source_id  UUID,
+  source_type     TEXT NOT NULL CHECK (source_type IN ('gmail', 'drive', 'github', 'web')),
   name            TEXT NOT NULL,
-  parser_kind     TEXT NOT NULL DEFAULT 'built_in_config', -- built_in_config | declarative_bundle
+  parser_kind     TEXT NOT NULL DEFAULT 'built_in_config' CHECK (parser_kind IN ('built_in_config', 'declarative_bundle')), -- built_in_config | declarative_bundle
   active_version_id UUID,
   enabled         BOOLEAN NOT NULL DEFAULT true,
   created_at      TIMESTAMPTZ DEFAULT now(),
   updated_at      TIMESTAMPTZ DEFAULT now(),
-  UNIQUE (project_id, data_source_id, source_type, name)
+  UNIQUE (project_id, data_source_id, source_type, name),
+  FOREIGN KEY (project_id, data_source_id)
+    REFERENCES data_sources(project_id, id) ON DELETE CASCADE
 );
 CREATE INDEX ON parser_profiles (project_id, source_type, enabled);
+CREATE UNIQUE INDEX parser_profiles_project_source_type_name_null_idx
+  ON parser_profiles (project_id, source_type, name)
+  WHERE data_source_id IS NULL;
 
 CREATE TABLE parser_versions (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -179,7 +187,7 @@ CREATE TABLE parser_versions (
   artifact_uri           TEXT NOT NULL,
   artifact_hash          TEXT NOT NULL,
   validation_report_uri  TEXT,
-  status                 TEXT NOT NULL DEFAULT 'draft', -- draft | review_requested | approved | rejected | retired
+  status                 TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'review_requested', 'approved', 'rejected', 'retired')), -- draft | review_requested | approved | rejected | retired
   created_by_user_id     UUID REFERENCES users(id),
   approved_by_user_id    UUID REFERENCES users(id),
   approved_at            TIMESTAMPTZ,
@@ -187,13 +195,26 @@ CREATE TABLE parser_versions (
   created_at             TIMESTAMPTZ DEFAULT now(),
   updated_at             TIMESTAMPTZ DEFAULT now(),
   UNIQUE (parser_profile_id, version),
-  UNIQUE (artifact_hash)
+  UNIQUE (parser_profile_id, artifact_hash)
 );
 CREATE INDEX ON parser_versions (parser_profile_id, status, created_at DESC);
 
+ALTER TABLE parser_versions
+  ADD CONSTRAINT parser_versions_profile_id_id_key UNIQUE (parser_profile_id, id);
+
 ALTER TABLE parser_profiles
   ADD CONSTRAINT parser_profiles_active_version_fk
-  FOREIGN KEY (active_version_id) REFERENCES parser_versions(id);
+  FOREIGN KEY (id, active_version_id) REFERENCES parser_versions(parser_profile_id, id);
+
+ALTER TABLE raw_documents
+  ADD CONSTRAINT raw_documents_parser_profile_fk
+  FOREIGN KEY (parser_profile_id) REFERENCES parser_profiles(id) ON DELETE SET NULL,
+  ADD CONSTRAINT raw_documents_parser_version_fk
+  FOREIGN KEY (parser_version_id) REFERENCES parser_versions(id) ON DELETE SET NULL;
+
+ALTER TABLE ingestion_queue
+  ADD CONSTRAINT ingestion_queue_parser_version_fk
+  FOREIGN KEY (parser_version_id) REFERENCES parser_versions(id) ON DELETE SET NULL;
 
 -- どの data_source 経由で取り込まれたかの履歴（n:m）。
 -- 同じメールが複数のラベル data_source にマッチしたケース等を保持する。
