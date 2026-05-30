@@ -15,9 +15,9 @@ test('deriveProjectIdentifiers creates graph name and storage prefix from slug',
   });
 });
 
-test('validateProjectSlug accepts single-character slugs', () => {
-  assert.equal(validateProjectSlug('a'), 'a');
-  assert.equal(validateProjectSlug('1'), '1');
+test('validateProjectSlug rejects single-character slugs', () => {
+  assert.throws(() => validateProjectSlug('a'), /Invalid project slug/);
+  assert.throws(() => validateProjectSlug('1'), /Invalid project slug/);
 });
 
 test('validateProjectSlug rejects unsafe or ambiguous slugs', () => {
@@ -30,6 +30,12 @@ test('validateGraphName rejects names that cannot be used as AGE graph names', (
   for (const graphName of ['sample', 'graph-sample', 'graph_Sample', 'graph_../sample']) {
     assert.throws(() => validateGraphName(graphName), /Invalid graph name/);
   }
+});
+
+test('validateGraphName rejects names longer than PostgreSQL identifiers', () => {
+  assert.equal(validateGraphName(`graph_${'a'.repeat(57)}`), `graph_${'a'.repeat(57)}`);
+  assert.throws(() => validateGraphName(`graph_${'a'.repeat(58)}`), /63 characters or less/);
+  assert.throws(() => deriveProjectIdentifiers('a'.repeat(58)), /63 characters or less/);
 });
 
 test('escapeSqlLiteral escapes quotes', () => {

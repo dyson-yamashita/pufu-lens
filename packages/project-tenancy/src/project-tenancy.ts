@@ -1,5 +1,6 @@
-const PROJECT_SLUG_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+const PROJECT_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/;
 const GRAPH_NAME_PATTERN = /^graph_[a-z0-9_]+$/;
+const POSTGRES_IDENTIFIER_MAX_LENGTH = 63;
 
 export interface CreateProjectInput {
   description?: string | null;
@@ -15,7 +16,7 @@ export interface ProjectIdentifiers {
 export function validateProjectSlug(slug: string): string {
   if (!PROJECT_SLUG_PATTERN.test(slug)) {
     throw new Error(
-      `Invalid project slug: ${slug}. Use lowercase letters, numbers, and hyphens, with no leading or trailing hyphen.`,
+      `Invalid project slug: ${slug}. Use at least two lowercase letters or numbers, with optional hyphens in the middle.`,
     );
   }
 
@@ -23,6 +24,12 @@ export function validateProjectSlug(slug: string): string {
 }
 
 export function validateGraphName(graphName: string): string {
+  if (graphName.length > POSTGRES_IDENTIFIER_MAX_LENGTH) {
+    throw new Error(
+      `Invalid graph name: ${graphName}. Graph names must be ${POSTGRES_IDENTIFIER_MAX_LENGTH} characters or less to prevent PostgreSQL identifier truncation.`,
+    );
+  }
+
   if (!GRAPH_NAME_PATTERN.test(graphName)) {
     throw new Error(
       `Invalid graph name: ${graphName}. Graph names must start with graph_ and use lowercase letters, numbers, or underscores.`,
