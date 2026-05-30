@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { createReadStream, type ReadStream } from 'node:fs';
+import { createReadStream, createWriteStream, type ReadStream } from 'node:fs';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { dirname, join, relative, resolve, sep } from 'node:path';
-import { Readable } from 'node:stream';
-import { pathToFileURL } from 'node:url';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { pipeline } from 'node:stream/promises';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type {
   ObjectInfo,
   ObjectStorage,
@@ -32,11 +32,28 @@ export class LocalFsObjectStorage implements ObjectStorage {
     const filePath = this.pathForUri(uri);
     await mkdir(dirname(filePath), { recursive: true });
 
-    const buffer = await toBuffer(body);
-    await writeFile(filePath, buffer);
+    let etag: string;
+    if (typeof body === 'string' || Buffer.isBuffer(body)) {
+      const buffer = Buffer.from(body);
+      await writeFile(filePath, buffer);
+      etag = createHash('sha256').update(buffer).digest('hex');
+    } else {
+      const hash = createHash('sha256');
+      await pipeline(
+        body,
+        async function* (source) {
+          for await (const chunk of source) {
+            hash.update(chunk);
+            yield chunk;
+          }
+        },
+        createWriteStream(filePath),
+      );
+      etag = hash.digest('hex');
+    }
 
     return {
-      etag: createHash('sha256').update(buffer).digest('hex'),
+      etag,
       uri: this.uriForPath(filePath),
     };
   }
@@ -124,18 +141,26 @@ export class LocalFsObjectStorage implements ObjectStorage {
         continue;
       }
 
-      const entryStat = await stat(entryPath);
-      yield {
-        size: entryStat.size,
-        updatedAt: entryStat.mtime,
-        uri: this.uriForPath(entryPath),
-      };
+      try {
+        const entryStat = await stat(entryPath);
+        yield {
+          size: entryStat.size,
+          updatedAt: entryStat.mtime,
+          uri: this.uriForPath(entryPath),
+        };
+      } catch (error) {
+        if (isNotFound(error)) {
+          continue;
+        }
+
+        throw error;
+      }
     }
   }
 
   private pathForUri(uri: string): string {
     if (uri.startsWith('file://')) {
-      return this.assertInsideRoot(new URL(uri).pathname);
+      return this.assertInsideRoot(fileURLToPath(uri));
     }
 
     return this.safeJoin(uri);
@@ -151,11 +176,9 @@ export class LocalFsObjectStorage implements ObjectStorage {
     if (
       rootRelativePath === '..' ||
       rootRelativePath.startsWith(`..${sep}`) ||
-      rootRelativePath === ''
+      isAbsolute(rootRelativePath)
     ) {
-      if (absolutePath !== this.root) {
-        throw new Error(`Storage path escapes root: ${path}`);
-      }
+      throw new Error(`Storage path escapes root: ${path}`);
     }
 
     return absolutePath;
@@ -165,19 +188,6 @@ export class LocalFsObjectStorage implements ObjectStorage {
     const absolutePath = this.assertInsideRoot(path);
     return pathToFileURL(absolutePath).toString();
   }
-}
-
-async function toBuffer(body: Buffer | NodeJS.ReadableStream | string): Promise<Buffer> {
-  if (typeof body === 'string' || Buffer.isBuffer(body)) {
-    return Buffer.from(body);
-  }
-
-  const chunks: Buffer[] = [];
-  for await (const chunk of Readable.from(body)) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-
-  return Buffer.concat(chunks);
 }
 
 function isNotFound(error: unknown): boolean {

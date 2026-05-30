@@ -4,6 +4,7 @@ CREATE EXTENSION IF NOT EXISTS age;
 
 LOAD 'age';
 SET search_path = ag_catalog, "$user", public;
+ALTER DATABASE pufu_lens SET search_path = ag_catalog, "$user", public;
 
 CREATE TABLE public.users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -54,7 +55,7 @@ CREATE TABLE public.oauth_connections (
 CREATE TABLE public.data_sources (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
-  owner_user_id UUID NOT NULL REFERENCES public.users(id),
+  owner_user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   connection_id UUID,
   source_type TEXT NOT NULL CHECK (source_type IN ('gmail', 'drive', 'github', 'web')),
   name TEXT NOT NULL,
@@ -65,7 +66,7 @@ CREATE TABLE public.data_sources (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (project_id, source_type, name),
-  FOREIGN KEY (connection_id, owner_user_id) REFERENCES public.oauth_connections(id, user_id)
+  FOREIGN KEY (connection_id, owner_user_id) REFERENCES public.oauth_connections(id, user_id) ON DELETE CASCADE
 );
 CREATE INDEX data_sources_project_enabled_idx ON public.data_sources (project_id, enabled);
 
@@ -195,9 +196,9 @@ CREATE TABLE public.email_quotes (
   document_id UUID NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
   quote_index INTEGER NOT NULL CHECK (quote_index >= 0),
   quoted_message_id TEXT,
-  prev_quote_id UUID REFERENCES public.email_quotes(id),
+  prev_quote_id UUID REFERENCES public.email_quotes(id) ON DELETE SET NULL,
   sender_alias TEXT,
-  sender_actor_id UUID REFERENCES public.actors(id),
+  sender_actor_id UUID REFERENCES public.actors(id) ON DELETE SET NULL,
   sent_at TIMESTAMPTZ,
   body TEXT NOT NULL,
   metadata JSONB NOT NULL DEFAULT '{}',
