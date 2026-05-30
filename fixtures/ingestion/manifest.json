@@ -49,7 +49,7 @@
       "sourceUri": "https://example.test/pufu/release-notes",
       "storageUri": "sample-project/raw/web/release-notes.html",
       "mimeType": "text/html",
-      "contentHash": "938fb3c2a6a31386974aa422727665ebc54853d70d5fa9af25c8154dc414a2e2",
+      "contentHash": "218211a8bbc7df33c13d62eed1286a9dac10129523423128e4d722a21d6f5d10",
       "metadata": {
         "fetchedAt": "2026-05-07T10:00:00.000Z"
       }

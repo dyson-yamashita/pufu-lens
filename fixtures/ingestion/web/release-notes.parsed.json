@@ -1,6 +1,6 @@
 {
   "actors": [],
-  "bodyText": "Pufu Sample Release Notes Pufu Sample Release Notes Version 0.3 documents the local ingestion contract and parser snapshots. See the contract page for details.",
+  "bodyText": "Pufu Sample Release Notes Pufu Sample Release Notes Version 0.3 documents the \"local ingestion\" contract and parser snapshots. See the contract page for details.",
   "canonicalUri": "https://example.test/pufu/release-notes",
   "docType": "web_page",
   "metadata": {

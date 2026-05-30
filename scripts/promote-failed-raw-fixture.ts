@@ -43,5 +43,8 @@ function sanitizeRaw(raw: string): string {
     .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer example-redacted')
     .replace(/"access_token"\s*:\s*"[^"]+"/gi, '"access_token": "example-redacted"')
     .replace(/"refresh_token"\s*:\s*"[^"]+"/gi, '"refresh_token": "example-redacted"')
-    .replace(/"password"\s*:\s*"[^"]+"/gi, '"password": "example-redacted"');
+    .replace(/"password"\s*:\s*"[^"]+"/gi, '"password": "example-redacted"')
+    .replace(/"client_secret"\s*:\s*"[^"]+"/gi, '"client_secret": "example-redacted"')
+    .replace(/"api_key"\s*:\s*"[^"]+"/gi, '"api_key": "example-redacted"')
+    .replace(/"secret"\s*:\s*"[^"]+"/gi, '"secret": "example-redacted"');
 }

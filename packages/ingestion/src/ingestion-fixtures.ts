@@ -78,16 +78,16 @@ interface GmailRaw {
   messageId: string;
   subject: string;
   from: { name: string; email: string };
-  to: Array<{ name: string; email: string }>;
+  to?: Array<{ name: string; email: string }> | null;
   sentAt: string;
   bodyText: string;
-  quotedMessages: Array<{
+  quotedMessages?: Array<{
     messageId: string;
     from: { name: string; email: string };
     sentAt: string;
     bodyText: string;
     prevMessageId?: string;
-  }>;
+  }> | null;
 }
 
 interface DriveRaw {
@@ -95,7 +95,7 @@ interface DriveRaw {
   revisionId: string;
   title: string;
   mimeType: string;
-  owners: Array<{ name: string; email: string }>;
+  owners?: Array<{ name: string; email: string }> | null;
   modifiedTime: string;
   webViewLink: string;
   bodyText: string;
@@ -213,10 +213,16 @@ function parseGitHub(fixtureCase: IngestionFixtureCase, raw: GitHubRaw): ParsedD
 
 function parseWeb(fixtureCase: IngestionFixtureCase, html: string): ParsedDocument {
   const title = textFromHtml(html.match(/<title>(?<title>.*?)<\/title>/is)?.groups?.title ?? '');
+  const canonicalLink = [...html.matchAll(/<link\s+[^>]*>/gi)]
+    .map((match) => match[0])
+    .find((link) => getHtmlAttribute(link, 'rel')?.toLowerCase() === 'canonical');
   const canonicalUri =
-    html.match(/<link\s+rel="canonical"\s+href="(?<href>[^"]+)"/i)?.groups?.href ??
-    fixtureCase.raw.sourceUri;
-  const bodyText = textFromHtml(html.replace(/<script[\s\S]*?<\/script>/gi, ''));
+    canonicalLink === undefined
+      ? fixtureCase.raw.sourceUri
+      : (getHtmlAttribute(canonicalLink, 'href') ?? fixtureCase.raw.sourceUri);
+  const bodyText = textFromHtml(
+    html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, ''),
+  );
 
   return validateParsedDocument({
     actors: [],
@@ -234,6 +240,9 @@ function parseWeb(fixtureCase: IngestionFixtureCase, html: string): ParsedDocume
 }
 
 function parseGmail(fixtureCase: IngestionFixtureCase, raw: GmailRaw): ParsedDocument {
+  const recipients = raw.to ?? [];
+  const quotedMessages = raw.quotedMessages ?? [];
+
   return validateParsedDocument({
     actors: [
       {
@@ -241,7 +250,7 @@ function parseGmail(fixtureCase: IngestionFixtureCase, raw: GmailRaw): ParsedDoc
         email: raw.from.email,
         role: 'sender',
       },
-      ...raw.to.map((recipient) => ({
+      ...recipients.map((recipient) => ({
         displayName: recipient.name,
         email: recipient.email,
         role: 'commenter' as const,
@@ -250,7 +259,7 @@ function parseGmail(fixtureCase: IngestionFixtureCase, raw: GmailRaw): ParsedDoc
     bodyText: raw.bodyText,
     canonicalUri: fixtureCase.raw.sourceUri,
     docType: 'email',
-    emailQuotes: raw.quotedMessages.map((quote) => ({
+    emailQuotes: quotedMessages.map((quote) => ({
       bodyText: quote.bodyText,
       from: `${quote.from.name} <${quote.from.email}>`,
       messageId: quote.messageId,
@@ -259,10 +268,10 @@ function parseGmail(fixtureCase: IngestionFixtureCase, raw: GmailRaw): ParsedDoc
     })),
     metadata: {
       threadId: raw.threadId,
-      toCount: raw.to.length,
+      toCount: recipients.length,
     },
     occurredAt: raw.sentAt,
-    relations: raw.quotedMessages.map((quote) => ({
+    relations: quotedMessages.map((quote) => ({
       target: quote.messageId,
       type: 'REPLY_TO',
     })),
@@ -275,7 +284,7 @@ function parseGmail(fixtureCase: IngestionFixtureCase, raw: GmailRaw): ParsedDoc
 
 function parseDrive(fixtureCase: IngestionFixtureCase, raw: DriveRaw): ParsedDocument {
   return validateParsedDocument({
-    actors: raw.owners.map((owner) => ({
+    actors: (raw.owners ?? []).map((owner) => ({
       displayName: owner.name,
       email: owner.email,
       role: 'owner',
@@ -300,18 +309,26 @@ function parseDrive(fixtureCase: IngestionFixtureCase, raw: DriveRaw): ParsedDoc
 function textFromHtml(value: string): string {
   return value
     .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&(apos|#39);/g, "'")
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 function extractLinks(html: string): string[] {
-  const links = [...html.matchAll(/<a\s+[^>]*href="(?<href>[^"]+)"/gi)].map(
+  const links = [...html.matchAll(/<a\s+[^>]*href=["'](?<href>[^"']+)["']/gi)].map(
     (match) => match.groups?.href ?? '',
   );
   return [...new Set(links.filter((href) => href.startsWith('http')))];
+}
+
+function getHtmlAttribute(tag: string, attributeName: string): string | undefined {
+  const pattern = new RegExp(`\\s${attributeName}=["'](?<value>[^"']+)["']`, 'i');
+  return tag.match(pattern)?.groups?.value;
 }
 
 export function sha256Hex(value: string): string {
