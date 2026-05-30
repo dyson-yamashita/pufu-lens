@@ -1,0 +1,96 @@
+[
+  {
+    "id": "github-issue-101",
+    "sourceType": "github",
+    "rawPath": "fixtures/ingestion/github/issue-101.json",
+    "snapshotPath": "fixtures/ingestion/github/issue-101.parsed.json",
+    "raw": {
+      "projectSlug": "sample-project",
+      "sourceType": "github",
+      "sourceId": "example-org/pufu-sample/issues/101",
+      "sourceUri": "https://github.com/example-org/pufu-sample/issues/101",
+      "storageUri": "sample-project/raw/github/issue-101.json",
+      "mimeType": "application/json",
+      "contentHash": "a520787087fd81957f68befab9e97c458019a38ed8fd97b2ce7eb76db2a098e3",
+      "metadata": {
+        "repository": "example-org/pufu-sample",
+        "number": 101
+      }
+    }
+  },
+  {
+    "id": "github-pull-202",
+    "sourceType": "github",
+    "rawPath": "fixtures/ingestion/github/pull-202.json",
+    "snapshotPath": "fixtures/ingestion/github/pull-202.parsed.json",
+    "raw": {
+      "projectSlug": "sample-project",
+      "sourceType": "github",
+      "sourceId": "example-org/pufu-sample/pulls/202",
+      "sourceUri": "https://github.com/example-org/pufu-sample/pull/202",
+      "storageUri": "sample-project/raw/github/pull-202.json",
+      "mimeType": "application/json",
+      "contentHash": "84cdcb728703e4a90654b0241f6ba27770f57f95e2f5ac42f369a6e5c41f7d9f",
+      "metadata": {
+        "repository": "example-org/pufu-sample",
+        "number": 202
+      }
+    }
+  },
+  {
+    "id": "web-release-notes",
+    "sourceType": "web",
+    "rawPath": "fixtures/ingestion/web/release-notes.html",
+    "snapshotPath": "fixtures/ingestion/web/release-notes.parsed.json",
+    "raw": {
+      "projectSlug": "sample-project",
+      "sourceType": "web",
+      "sourceId": "https://example.test/pufu/release-notes",
+      "sourceUri": "https://example.test/pufu/release-notes",
+      "storageUri": "sample-project/raw/web/release-notes.html",
+      "mimeType": "text/html",
+      "contentHash": "938fb3c2a6a31386974aa422727665ebc54853d70d5fa9af25c8154dc414a2e2",
+      "metadata": {
+        "fetchedAt": "2026-05-07T10:00:00.000Z"
+      }
+    }
+  },
+  {
+    "id": "gmail-thread-alpha",
+    "sourceType": "gmail",
+    "rawPath": "fixtures/ingestion/gmail/thread-alpha.json",
+    "snapshotPath": "fixtures/ingestion/gmail/thread-alpha.parsed.json",
+    "raw": {
+      "projectSlug": "sample-project",
+      "sourceType": "gmail",
+      "sourceId": "thread-alpha:msg-alpha-002",
+      "sourceUri": "gmail://thread-alpha/msg-alpha-002",
+      "storageUri": "sample-project/raw/gmail/thread-alpha.json",
+      "mimeType": "application/json",
+      "contentHash": "7e86e3f7b3e88f335bf21d9fb2133959026716aabc31671ce5faf048d14a35de",
+      "metadata": {
+        "threadId": "thread-alpha",
+        "messageId": "msg-alpha-002"
+      }
+    }
+  },
+  {
+    "id": "drive-spec-draft",
+    "sourceType": "drive",
+    "rawPath": "fixtures/ingestion/drive/spec-draft.json",
+    "snapshotPath": "fixtures/ingestion/drive/spec-draft.parsed.json",
+    "raw": {
+      "projectSlug": "sample-project",
+      "sourceType": "drive",
+      "sourceId": "drive-file-alpha:rev-0003",
+      "sourceUri": "drive://drive-file-alpha/revisions/rev-0003",
+      "storageUri": "sample-project/raw/drive/spec-draft.json",
+      "mimeType": "application/json",
+      "contentHash": "15ebcd4ac43b64b4773acfd0f2dc681ed4bd4383de39d87882fd470fb75bb9ac",
+      "metadata": {
+        "fileId": "drive-file-alpha",
+        "revisionId": "rev-0003"
+      }
+    }
+  }
+]

@@ -1,0 +1,11 @@
+{
+  "name": "@pufu-lens/ingestion",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.json && node --test \"dist/**/*.test.js\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

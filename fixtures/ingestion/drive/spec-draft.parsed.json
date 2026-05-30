@@ -1,0 +1,23 @@
+{
+  "actors": [
+    {
+      "displayName": "Sample Owner",
+      "email": "owner@example.test",
+      "role": "owner"
+    }
+  ],
+  "bodyText": "The parser contract defines raw metadata, parsed JSON fields, actor mentions, and relations.",
+  "canonicalUri": "https://docs.example.test/document/d/drive-file-alpha/edit",
+  "docType": "drive_doc",
+  "metadata": {
+    "fileId": "drive-file-alpha",
+    "mimeType": "application/vnd.google-apps.document",
+    "revisionId": "rev-0003"
+  },
+  "occurredAt": "2026-05-06T11:10:00.000Z",
+  "relations": [],
+  "schemaVersion": 1,
+  "sourceId": "drive-file-alpha:rev-0003",
+  "sourceType": "drive",
+  "title": "Fixture Parser Contract Draft"
+}

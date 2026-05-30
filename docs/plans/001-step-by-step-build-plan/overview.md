@@ -45,7 +45,7 @@ Step の詳細を参照する前に、この表で status を確認する。
 | Step 0   | [開発基盤と品質ゲート](step-00-foundation.md)                                          | `completed` | 2026-05-29 | pnpm workspaces / Turborepo と品質ゲートを追加済み。 |
 | Step 1   | [ローカル DB / Storage の最小起動](step-01-local-db-storage.md)                        | `completed` | 2026-05-30 | PR #6 で merge 済み。                                |
 | Step 2   | [Project 作成とテナント分離の確認](step-02-project-tenancy.md)                         | `completed` | 2026-05-30 | Issue #7 で完了確認済み。                            |
-| Step 3   | [Ingestion Fixture とデータ契約](step-03-ingestion-fixtures.md)                        | `planned`   | 2026-05-29 | 未着手。                                             |
+| Step 3   | [Ingestion Fixture とデータ契約](step-03-ingestion-fixtures.md)                        | `completed` | 2026-05-30 | Issue #9 で完了確認済み。                            |
 | Step 4   | [Collection Pipeline のローカル収集パイプライン](step-04-local-collection-pipeline.md) | `planned`   | 2026-05-29 | 未着手。                                             |
 | Step 5   | [Raw Parse と parsed JSON 保存](step-05-raw-parse.md)                                  | `planned`   | 2026-05-29 | 未着手。                                             |
 | Step 6   | [Actor 名寄せと引用チェーン](step-06-actor-resolution.md)                              | `planned`   | 2026-05-29 | 未着手。                                             |
