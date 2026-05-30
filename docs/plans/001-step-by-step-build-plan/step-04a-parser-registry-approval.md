@@ -5,7 +5,8 @@
 - Parser Registry の DB schema / repository
   - `parser_profiles`
   - `parser_versions`
-  - `raw_documents.parser_version_id` / `ingestion_queue.parser_version_id`
+  - `raw_documents.parser_profile_id` / `raw_documents.parser_version_id`
+  - `ingestion_queue.parser_profile_id` / `ingestion_queue.parser_version_id`
   - `held` status / `hold_reason`
 - project / data_source / source_type ごとの parser profile 作成
 - draft parser version の artifact 保存
@@ -38,7 +39,7 @@ pnpm parser:version:validate --project sample-a --profile sample-web --version 1
 pnpm parser:version:approve --project sample-a --profile sample-web --version 1
 pnpm ingest:parse --project sample-a --limit 10
 pnpm ingest:status --project sample-a
-psql "$DATABASE_URL" -c "SELECT status, hold_reason, parser_version_id FROM ingestion_queue ORDER BY updated_at DESC;"
+psql "$DATABASE_URL" -c "SELECT status, hold_reason, parser_profile_id, parser_version_id FROM ingestion_queue ORDER BY updated_at DESC;"
 psql "$DATABASE_URL" -c "SELECT ingest_status, hold_reason, parser_version_id, parser_artifact_hash FROM raw_documents ORDER BY updated_at DESC;"
 ```
 

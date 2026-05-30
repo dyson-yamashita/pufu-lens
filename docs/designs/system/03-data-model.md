@@ -142,6 +142,7 @@ CREATE TABLE ingestion_queue (
   status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'held', 'parsing', 'parsed', 'indexed', 'failed', 'skipped')), -- pending | held | parsing | parsed | indexed | failed | skipped
   reason          TEXT,
   hold_reason     TEXT,                 -- parser_approval_required | parser_contract_mismatch 等
+  parser_profile_id UUID,               -- 承認待ち時の要求先、または解決された parser profile（FK は後述）
   parser_version_id UUID,               -- retry 時に固定した parser version（FK は後述）
   attempts        INTEGER NOT NULL DEFAULT 0,
   last_error      TEXT,
@@ -214,17 +215,19 @@ ALTER TABLE parser_versions
 
 ALTER TABLE parser_profiles
   ADD CONSTRAINT parser_profiles_active_version_fk
-  FOREIGN KEY (id, active_version_id) REFERENCES parser_versions(parser_profile_id, id);
+  FOREIGN KEY (id, active_version_id) REFERENCES parser_versions(parser_profile_id, id) ON DELETE SET NULL (active_version_id);
 
 ALTER TABLE raw_documents
   ADD CONSTRAINT raw_documents_parser_profile_fk
-  FOREIGN KEY (project_id, parser_profile_id) REFERENCES parser_profiles(project_id, id),
+  FOREIGN KEY (project_id, parser_profile_id) REFERENCES parser_profiles(project_id, id) ON DELETE SET NULL (parser_profile_id),
   ADD CONSTRAINT raw_documents_parser_version_fk
-  FOREIGN KEY (parser_profile_id, parser_version_id) REFERENCES parser_versions(parser_profile_id, id);
+  FOREIGN KEY (parser_profile_id, parser_version_id) REFERENCES parser_versions(parser_profile_id, id) ON DELETE SET NULL (parser_version_id);
 
 ALTER TABLE ingestion_queue
+  ADD CONSTRAINT ingestion_queue_parser_profile_fk
+  FOREIGN KEY (project_id, parser_profile_id) REFERENCES parser_profiles(project_id, id) ON DELETE SET NULL (parser_profile_id),
   ADD CONSTRAINT ingestion_queue_parser_version_fk
-  FOREIGN KEY (parser_version_id) REFERENCES parser_versions(id) ON DELETE SET NULL;
+  FOREIGN KEY (parser_profile_id, parser_version_id) REFERENCES parser_versions(parser_profile_id, id) ON DELETE SET NULL (parser_version_id);
 
 -- どの data_source 経由で取り込まれたかの履歴（n:m）。
 -- 同じメールが複数のラベル data_source にマッチしたケース等を保持する。

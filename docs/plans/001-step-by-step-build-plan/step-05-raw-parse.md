@@ -35,7 +35,7 @@
 ```bash
 pnpm ingest:parse --project sample-a --limit 10
 psql "$DATABASE_URL" -c "SELECT ingest_status, parsed_uri, ingest_error FROM raw_documents ORDER BY updated_at DESC;"
-psql "$DATABASE_URL" -c "SELECT status, raw_document_id, parser_version_id, hold_reason, last_error FROM ingestion_queue ORDER BY updated_at DESC;"
+psql "$DATABASE_URL" -c "SELECT status, raw_document_id, parser_profile_id, parser_version_id, hold_reason, last_error FROM ingestion_queue ORDER BY updated_at DESC;"
 find "$STORAGE_ROOT/sample-a/parsed" -type f | sort
 pnpm ingest:fixture:add-failed --project sample-a --limit 3 --dry-run
 pnpm test -- --run parse
