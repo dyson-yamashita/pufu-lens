@@ -9,7 +9,7 @@
 docker compose up
 
 # プロジェクトを 1 つ作成（AGE グラフとストレージ prefix を初期化）
-pnpm create-project -- --slug project-a --name "Project A"
+pnpm create-project --slug project-a --name "Project A"
 
 # Mastra のみ
 cd apps/mastra && pnpm dev
