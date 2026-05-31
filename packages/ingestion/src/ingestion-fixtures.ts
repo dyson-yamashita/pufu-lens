@@ -129,7 +129,13 @@ export function validateRawFixtureCase(fixtureCase: IngestionFixtureCase): Inges
 
 export async function parseRawFixture(fixtureCase: IngestionFixtureCase): Promise<ParsedDocument> {
   const rawText = await readFile(join(repoRoot, fixtureCase.rawPath), 'utf8');
+  return parseRawContent(fixtureCase, rawText);
+}
 
+export function parseRawContent(
+  fixtureCase: Pick<IngestionFixtureCase, 'raw' | 'sourceType'>,
+  rawText: string,
+): ParsedDocument {
   switch (fixtureCase.sourceType) {
     case 'github':
       return parseGitHub(fixtureCase, JSON.parse(rawText) as GitHubRaw);
@@ -158,7 +164,10 @@ export function validateParsedDocument(parsed: ParsedDocument): ParsedDocument {
   return parsed;
 }
 
-function parseGitHub(fixtureCase: IngestionFixtureCase, raw: GitHubRaw): ParsedDocument {
+function parseGitHub(
+  fixtureCase: Pick<IngestionFixtureCase, 'raw' | 'sourceType'>,
+  raw: GitHubRaw,
+): ParsedDocument {
   const actors: ActorMention[] = [
     { displayName: raw.user.name, githubLogin: raw.user.login, role: 'author' },
   ];
@@ -208,7 +217,10 @@ function parseGitHub(fixtureCase: IngestionFixtureCase, raw: GitHubRaw): ParsedD
   });
 }
 
-function parseWeb(fixtureCase: IngestionFixtureCase, html: string): ParsedDocument {
+function parseWeb(
+  fixtureCase: Pick<IngestionFixtureCase, 'raw' | 'sourceType'>,
+  html: string,
+): ParsedDocument {
   const title = textFromHtml(html.match(/<title>(?<title>.*?)<\/title>/is)?.groups?.title ?? '');
   const canonicalLink = [...html.matchAll(/<link\s+[^>]*>/gi)]
     .map((match) => match[0])
@@ -236,7 +248,10 @@ function parseWeb(fixtureCase: IngestionFixtureCase, html: string): ParsedDocume
   });
 }
 
-function parseGmail(fixtureCase: IngestionFixtureCase, raw: GmailRaw): ParsedDocument {
+function parseGmail(
+  fixtureCase: Pick<IngestionFixtureCase, 'raw' | 'sourceType'>,
+  raw: GmailRaw,
+): ParsedDocument {
   const recipients = raw.to ?? [];
   const quotedMessages = raw.quotedMessages ?? [];
 
@@ -279,7 +294,10 @@ function parseGmail(fixtureCase: IngestionFixtureCase, raw: GmailRaw): ParsedDoc
   });
 }
 
-function parseDrive(fixtureCase: IngestionFixtureCase, raw: DriveRaw): ParsedDocument {
+function parseDrive(
+  fixtureCase: Pick<IngestionFixtureCase, 'raw' | 'sourceType'>,
+  raw: DriveRaw,
+): ParsedDocument {
   return validateParsedDocument({
     actors: (raw.owners ?? []).map((owner) => ({
       displayName: owner.name,

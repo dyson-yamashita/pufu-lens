@@ -70,6 +70,41 @@ CREATE TABLE public.data_sources (
 );
 CREATE INDEX data_sources_project_enabled_idx ON public.data_sources (project_id, enabled);
 
+CREATE TABLE public.parser_profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  data_source_id UUID REFERENCES public.data_sources(id) ON DELETE CASCADE,
+  source_type TEXT NOT NULL CHECK (source_type IN ('gmail', 'drive', 'github', 'web')),
+  name TEXT NOT NULL,
+  active_version_id UUID,
+  metadata JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (project_id, data_source_id, source_type, name)
+);
+CREATE INDEX parser_profiles_project_source_idx ON public.parser_profiles (project_id, source_type);
+
+CREATE TABLE public.parser_versions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  parser_profile_id UUID NOT NULL REFERENCES public.parser_profiles(id) ON DELETE CASCADE,
+  version TEXT NOT NULL,
+  schema_version INTEGER NOT NULL,
+  artifact_uri TEXT,
+  artifact_hash TEXT NOT NULL,
+  contract JSONB NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'review_requested', 'approved', 'retired')),
+  validation_report_uri TEXT,
+  approved_by_user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  approved_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (parser_profile_id, version)
+);
+CREATE INDEX parser_versions_profile_status_idx ON public.parser_versions (parser_profile_id, status);
+ALTER TABLE public.parser_profiles
+  ADD CONSTRAINT parser_profiles_active_version_fk
+  FOREIGN KEY (active_version_id) REFERENCES public.parser_versions(id) ON DELETE SET NULL;
+
 CREATE TABLE public.raw_documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
@@ -84,8 +119,14 @@ CREATE TABLE public.raw_documents (
   fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   parsed_at TIMESTAMPTZ,
   indexed_at TIMESTAMPTZ,
-  ingest_status TEXT NOT NULL DEFAULT 'fetched' CHECK (ingest_status IN ('fetched', 'parsed', 'indexed', 'failed')),
+  ingest_status TEXT NOT NULL DEFAULT 'fetched' CHECK (ingest_status IN ('fetched', 'held', 'parsed', 'indexed', 'failed')),
   ingest_error TEXT,
+  hold_reason TEXT CHECK (hold_reason IN ('parser_approval_required', 'parser_contract_mismatch')),
+  parser_profile_id UUID REFERENCES public.parser_profiles(id) ON DELETE SET NULL,
+  parser_version_id UUID REFERENCES public.parser_versions(id) ON DELETE SET NULL,
+  parser_artifact_hash TEXT,
+  parsed_schema_version INTEGER,
+  sanitized_sample_uri TEXT,
   metadata JSONB NOT NULL DEFAULT '{}',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -115,10 +156,14 @@ CREATE TABLE public.ingestion_queue (
   target_id TEXT NOT NULL,
   target_uri TEXT,
   priority INTEGER NOT NULL DEFAULT 0,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'parsing', 'parsed', 'indexed', 'failed', 'skipped')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'parsing', 'parsed', 'indexed', 'failed', 'held', 'skipped')),
   reason TEXT,
   attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
   last_error TEXT,
+  hold_reason TEXT CHECK (hold_reason IN ('parser_approval_required', 'parser_contract_mismatch')),
+  parser_profile_id UUID REFERENCES public.parser_profiles(id) ON DELETE SET NULL,
+  parser_version_id UUID REFERENCES public.parser_versions(id) ON DELETE SET NULL,
+  sanitized_sample_uri TEXT,
   scheduled_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -227,6 +272,16 @@ CREATE TRIGGER oauth_connections_set_updated_at
 
 CREATE TRIGGER data_sources_set_updated_at
   BEFORE UPDATE ON public.data_sources
+  FOR EACH ROW
+  EXECUTE FUNCTION public.set_updated_at();
+
+CREATE TRIGGER parser_profiles_set_updated_at
+  BEFORE UPDATE ON public.parser_profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION public.set_updated_at();
+
+CREATE TRIGGER parser_versions_set_updated_at
+  BEFORE UPDATE ON public.parser_versions
   FOR EACH ROW
   EXECUTE FUNCTION public.set_updated_at();
 

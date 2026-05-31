@@ -29,7 +29,36 @@ export type {
 } from './ingestion-fixtures.js';
 export {
   loadIngestionFixtureCases,
+  parseRawContent,
   parseRawFixture,
   validateParsedDocument,
   validateRawFixtureCase,
 } from './ingestion-fixtures.js';
+export type {
+  HoldReason,
+  IngestionQueueStatus,
+  MarkFailedInput,
+  MarkHeldInput,
+  MarkParsedInput,
+  ParseObjectStorage,
+  ParseProjectRecord,
+  ParseQueueTarget,
+  ParseRawDecision,
+  ParseRawDocumentRecord,
+  ParseRawOptions,
+  ParseRawResult,
+  ParserVersionContract,
+  ParserVersionRecord,
+  RawIngestStatus,
+  RawParseRepository,
+} from './raw-parse.js';
+export {
+  BUILT_IN_PARSER_ARTIFACT,
+  BUILT_IN_PARSER_ARTIFACT_HASH,
+  defaultBuiltInParserVersion,
+  defaultParserContract,
+  PARSED_SCHEMA_VERSION,
+  parsedStorageUri,
+  parseRawDocuments,
+  validateParserContract,
+} from './raw-parse.js';
