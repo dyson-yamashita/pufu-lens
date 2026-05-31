@@ -299,13 +299,17 @@ export function normalizeSourceId(sourceType: SourceType, sourceId: string): str
 }
 
 function normalizeWebSourceId(sourceId: string): string {
-  const url = new URL(sourceId);
-  url.hash = '';
-  url.hostname = url.hostname.toLowerCase();
-  if (url.pathname !== '/') {
-    url.pathname = url.pathname.replace(/\/+$/, '');
+  try {
+    const url = new URL(sourceId);
+    url.hash = '';
+    url.hostname = url.hostname.toLowerCase();
+    if (url.pathname !== '/') {
+      url.pathname = url.pathname.replace(/\/+$/, '');
+    }
+    return url.toString();
+  } catch {
+    throw new Error(`Invalid web source_id URL: ${sourceId}`);
   }
-  return url.toString();
 }
 
 function readString(value: unknown): string | undefined {

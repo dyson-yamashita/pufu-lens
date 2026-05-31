@@ -8,6 +8,7 @@ import {
   collectFixtureSource,
   type DataSourceRecord,
   type LinkDataSourceInput,
+  normalizeSourceId,
   type ProjectRecord,
   type QueueCandidateInput,
   type RawDocumentInput,
@@ -58,6 +59,13 @@ test('shouldCollectCandidate filters by source type, fixture id, and source id',
       dataSource: dataSource({ config: { sourceIds: [candidate.raw.sourceId] } }),
     }),
     true,
+  );
+});
+
+test('normalizeSourceId reports invalid web URLs with source context', () => {
+  assert.throws(
+    () => normalizeSourceId('web', 'not-a-url'),
+    /Invalid web source_id URL: not-a-url/,
   );
 });
 

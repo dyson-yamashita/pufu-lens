@@ -421,7 +421,11 @@ function sqlJson(value) {
 }
 
 function sqlString(value) {
-  return `'${value.replaceAll("'", "''")}'`;
+  if (value === null || value === undefined) {
+    return 'NULL';
+  }
+
+  return `'${String(value).replaceAll("'", "''")}'`;
 }
 
 main().catch((error) => {
