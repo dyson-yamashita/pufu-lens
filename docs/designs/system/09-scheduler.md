@@ -15,6 +15,8 @@ PostgreSQL VM はコスト削減のため業務時間のみ起動する方針だ
 3. Mastra Server → Cloud Run Jobs API: `run` request の container overrides に `WORKFLOW_INPUT_JSON=<validated json>` を設定する。
 4. Job entrypoint: `WORKFLOW_INPUT_JSON` を parse して対象 Mastra Workflow の `inputData` として渡す。
 
+Ingestion Job は Cloud Run のローカルファイルシステムに parser や中間成果物を永続化しない。parser は Parser Registry で承認済みの version を DB から解決し、Object Storage 上の artifact を hash 検証して使用する。Job 実行中に active parser version が変わっても、dequeue 時に queue item へ固定した `parser_version_id` を使い続ける。承認済み parser が無い raw は `held` にして、Scheduler の通常実行では graph / vector へ進めない。
+
 ```bash
 # 1 時間ごとに全プロジェクトのデータソースを確認
 gcloud scheduler jobs create http curate-hourly \

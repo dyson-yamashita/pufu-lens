@@ -85,17 +85,23 @@ data source 作成時は次を検証する。
 
 ### 5. Ingestion 管理 API
 
-| Method | Path                                                                | 認可           | 用途                                              |
-| ------ | ------------------------------------------------------------------- | -------------- | ------------------------------------------------- |
-| `GET`  | `/api/projects/[projectSlug]/ingestion/status`                      | project member | raw / queue / failed / indexed 件数と最終実行時刻 |
-| `GET`  | `/api/projects/[projectSlug]/ingestion/queue`                       | project member | queue 一覧                                        |
-| `POST` | `/api/projects/[projectSlug]/ingestion/collect`                     | project admin  | 手動 collect 起動                                 |
-| `POST` | `/api/projects/[projectSlug]/ingestion/run`                         | project admin  | collect 済み対象の ingestion 起動                 |
-| `POST` | `/api/projects/[projectSlug]/ingestion/retry`                       | project admin  | failed queue の再試行                             |
-| `GET`  | `/api/projects/[projectSlug]/raw-documents/[rawDocumentId]`         | project member | raw document metadata                             |
-| `GET`  | `/api/projects/[projectSlug]/raw-documents/[rawDocumentId]/content` | project member | サイズ上限内の原本取得                            |
-| `GET`  | `/api/projects/[projectSlug]/documents/[documentId]`                | project member | document metadata / summary                       |
-| `GET`  | `/api/projects/[projectSlug]/documents/[documentId]/parsed`         | project member | parsed JSON 取得                                  |
+| Method | Path                                                                | 認可           | 用途                                               |
+| ------ | ------------------------------------------------------------------- | -------------- | -------------------------------------------------- |
+| `GET`  | `/api/projects/[projectSlug]/ingestion/status`                      | project member | raw / queue / failed / indexed 件数と最終実行時刻  |
+| `GET`  | `/api/projects/[projectSlug]/ingestion/queue`                       | project member | queue 一覧                                         |
+| `POST` | `/api/projects/[projectSlug]/ingestion/collect`                     | project admin  | 手動 collect 起動                                  |
+| `POST` | `/api/projects/[projectSlug]/ingestion/run`                         | project admin  | collect 済み対象の ingestion 起動                  |
+| `POST` | `/api/projects/[projectSlug]/ingestion/retry`                       | project admin  | failed queue の再試行                              |
+| `GET`  | `/api/projects/[projectSlug]/parser-profiles`                       | project member | parser profile / active version 一覧               |
+| `POST` | `/api/projects/[projectSlug]/parser-profiles`                       | project admin  | parser profile 作成                                |
+| `POST` | `/api/projects/[projectSlug]/parser-profiles/[profileId]/versions`  | project admin  | draft parser version 作成                          |
+| `POST` | `/api/projects/[projectSlug]/parser-versions/[versionId]/validate`  | project admin  | held raw / fixture に対する validation report 作成 |
+| `POST` | `/api/projects/[projectSlug]/parser-versions/[versionId]/approve`   | project admin  | parser version 承認と active 化                    |
+| `POST` | `/api/projects/[projectSlug]/parser-versions/[versionId]/reject`    | project admin  | parser version 却下                                |
+| `GET`  | `/api/projects/[projectSlug]/raw-documents/[rawDocumentId]`         | project member | raw document metadata                              |
+| `GET`  | `/api/projects/[projectSlug]/raw-documents/[rawDocumentId]/content` | project member | サイズ上限内の原本取得                             |
+| `GET`  | `/api/projects/[projectSlug]/documents/[documentId]`                | project member | document metadata / summary                        |
+| `GET`  | `/api/projects/[projectSlug]/documents/[documentId]/parsed`         | project member | parsed JSON 取得                                   |
 
 `raw-documents/.../content` と `documents/.../parsed` は、通常ログに本文全文を出さない。PII を含む可能性があるため、監査ログには user id、project id、document id、byte size、結果 status のみを残す。
 
@@ -152,6 +158,10 @@ public report は公開用 manifest または storage metadata で `is_public=tr
 | `POST` | `/internal/jobs/[workflowId]:run`      | internal service account OIDC  | 管理 UI / job runner から workflow 起動 |
 
 Internal API は public ingress から直接使わせない。Mastra Server 側で OIDC issuer / audience / service account を検証し、body を workflow input schema で validate してから Cloud Run Jobs API に渡す。
+
+parser approval API は project admin だけが実行できる。API は `projectSlug` から解決した `project_id` を認可済み project として扱い、request の `profileId` / `versionId` は必ずその `project_id` で scope した query で取得する。`versionId` が指定された場合も、`parser_versions.parser_profile_id` が対象 project の `parser_profiles.id` に属することを backend で検証し、一致しない場合は存在有無を漏らさない `404` を返す。raw ID を直接信頼せず、project をまたいだ parser profile / version の参照や承認を防ぐ。
+
+承認 API は artifact hash、validation report URI、対象 parser profile、対象 source type を監査ログに残し、承認済み version だけを Ingestion Workflow の parser selection 対象にする。未承認 parser version は validation / dry-run にだけ使い、本番 `ingest-workflow` では使用しない。
 
 ### 9. Mastra Agent / Tool API
 

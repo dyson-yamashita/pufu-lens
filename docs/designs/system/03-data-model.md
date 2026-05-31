@@ -104,14 +104,18 @@ CREATE TABLE raw_documents (
   source_uri      TEXT,                 -- 取得元 URI（gmail://..., https://...）
   storage_uri     TEXT NOT NULL,        -- 原本の Object Storage URI（後述）
   parsed_uri      TEXT,                 -- 解析済み JSON の Object Storage URI（任意）
+  parser_profile_id UUID,               -- parse に使う parser profile（承認待ち時の要求先。FK は後述）
+  parser_version_id UUID,               -- parse に使った parser version（FK は後述）
+  parser_artifact_hash TEXT,            -- parse 実行時に検証した artifact hash
   mime_type       TEXT,
   byte_size       BIGINT,
   content_hash    TEXT NOT NULL,        -- 更新検知 / SAME_AS 候補抽出用
   fetched_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   parsed_at       TIMESTAMPTZ,
   indexed_at      TIMESTAMPTZ,
-  ingest_status   TEXT NOT NULL DEFAULT 'fetched', -- fetched | parsed | indexed | failed
+  ingest_status   TEXT NOT NULL DEFAULT 'fetched' CHECK (ingest_status IN ('fetched', 'held', 'parsed', 'indexed', 'failed')), -- fetched | held | parsed | indexed | failed
   ingest_error    TEXT,
+  hold_reason     TEXT,                 -- parser_approval_required | parser_contract_mismatch 等
   metadata        JSONB NOT NULL DEFAULT '{}',
   created_at      TIMESTAMPTZ DEFAULT now(),
   updated_at      TIMESTAMPTZ DEFAULT now(),
@@ -135,8 +139,11 @@ CREATE TABLE ingestion_queue (
   target_id       TEXT NOT NULL,      -- 外部システム上の ID（メール ID、ファイル ID、Issue URL 等）
   target_uri      TEXT,
   priority        INTEGER DEFAULT 0,
-  status          TEXT NOT NULL DEFAULT 'pending', -- pending | parsing | parsed | indexed | failed | skipped
+  status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'held', 'parsing', 'parsed', 'indexed', 'failed', 'skipped')), -- pending | held | parsing | parsed | indexed | failed | skipped
   reason          TEXT,
+  hold_reason     TEXT,                 -- parser_approval_required | parser_contract_mismatch 等
+  parser_profile_id UUID,               -- 承認待ち時の要求先、または解決された parser profile（FK は後述）
+  parser_version_id UUID,               -- retry 時に固定した parser version（FK は後述）
   attempts        INTEGER NOT NULL DEFAULT 0,
   last_error      TEXT,
   scheduled_at    TIMESTAMPTZ DEFAULT now(),
@@ -146,6 +153,81 @@ CREATE TABLE ingestion_queue (
   UNIQUE (project_id, data_source_id, target_id)
 );
 CREATE INDEX ON ingestion_queue (project_id, status, priority DESC, scheduled_at);
+
+-- 既存 init.sql から更新する場合は、held status を許可するため CHECK 制約を再作成する。
+ALTER TABLE raw_documents
+  DROP CONSTRAINT raw_documents_ingest_status_check,
+  ADD CONSTRAINT raw_documents_ingest_status_check CHECK (ingest_status IN ('fetched', 'held', 'parsed', 'indexed', 'failed'));
+
+ALTER TABLE ingestion_queue
+  DROP CONSTRAINT ingestion_queue_status_check,
+  ADD CONSTRAINT ingestion_queue_status_check CHECK (status IN ('pending', 'held', 'parsing', 'parsed', 'indexed', 'failed', 'skipped'));
+
+-- Parser Registry
+-- project / data_source / source_type ごとの parser 選択と、version 承認履歴を管理する。
+-- parser artifact は Object Storage に immutable に保存し、DB には URI と hash だけを保持する。
+ALTER TABLE data_sources
+  ADD CONSTRAINT data_sources_project_id_id_key UNIQUE (project_id, id);
+
+CREATE TABLE parser_profiles (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id      UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  data_source_id  UUID,
+  source_type     TEXT NOT NULL CHECK (source_type IN ('gmail', 'drive', 'github', 'web')),
+  name            TEXT NOT NULL,
+  parser_kind     TEXT NOT NULL DEFAULT 'built_in_config' CHECK (parser_kind IN ('built_in_config', 'declarative_bundle')), -- built_in_config | declarative_bundle
+  active_version_id UUID,
+  enabled         BOOLEAN NOT NULL DEFAULT true,
+  created_at      TIMESTAMPTZ DEFAULT now(),
+  updated_at      TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (project_id, id),
+  UNIQUE (project_id, data_source_id, source_type, name),
+  FOREIGN KEY (project_id, data_source_id)
+    REFERENCES data_sources(project_id, id) ON DELETE CASCADE
+);
+CREATE INDEX ON parser_profiles (project_id, source_type, enabled);
+CREATE UNIQUE INDEX parser_profiles_project_source_type_name_null_idx
+  ON parser_profiles (project_id, source_type, name)
+  WHERE data_source_id IS NULL;
+
+CREATE TABLE parser_versions (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  parser_profile_id      UUID NOT NULL REFERENCES parser_profiles(id) ON DELETE CASCADE,
+  version               TEXT NOT NULL,
+  schema_version         TEXT NOT NULL,
+  artifact_uri           TEXT NOT NULL,
+  artifact_hash          TEXT NOT NULL,
+  validation_report_uri  TEXT,
+  status                 TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'review_requested', 'approved', 'rejected', 'retired')), -- draft | review_requested | approved | rejected | retired
+  created_by_user_id     UUID REFERENCES users(id),
+  approved_by_user_id    UUID REFERENCES users(id),
+  approved_at            TIMESTAMPTZ,
+  rejection_reason       TEXT,
+  created_at             TIMESTAMPTZ DEFAULT now(),
+  updated_at             TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (parser_profile_id, version),
+  UNIQUE (parser_profile_id, artifact_hash)
+);
+CREATE INDEX ON parser_versions (parser_profile_id, status, created_at DESC);
+
+ALTER TABLE parser_versions
+  ADD CONSTRAINT parser_versions_profile_id_id_key UNIQUE (parser_profile_id, id);
+
+ALTER TABLE parser_profiles
+  ADD CONSTRAINT parser_profiles_active_version_fk
+  FOREIGN KEY (id, active_version_id) REFERENCES parser_versions(parser_profile_id, id) ON DELETE SET NULL (active_version_id);
+
+ALTER TABLE raw_documents
+  ADD CONSTRAINT raw_documents_parser_profile_fk
+  FOREIGN KEY (project_id, parser_profile_id) REFERENCES parser_profiles(project_id, id) ON DELETE SET NULL (parser_profile_id),
+  ADD CONSTRAINT raw_documents_parser_version_fk
+  FOREIGN KEY (parser_profile_id, parser_version_id) REFERENCES parser_versions(parser_profile_id, id) ON DELETE SET NULL (parser_version_id);
+
+ALTER TABLE ingestion_queue
+  ADD CONSTRAINT ingestion_queue_parser_profile_fk
+  FOREIGN KEY (project_id, parser_profile_id) REFERENCES parser_profiles(project_id, id) ON DELETE SET NULL (parser_profile_id),
+  ADD CONSTRAINT ingestion_queue_parser_version_fk
+  FOREIGN KEY (parser_profile_id, parser_version_id) REFERENCES parser_versions(parser_profile_id, id) ON DELETE SET NULL (parser_version_id);
 
 -- どの data_source 経由で取り込まれたかの履歴（n:m）。
 -- 同じメールが複数のラベル data_source にマッチしたケース等を保持する。
