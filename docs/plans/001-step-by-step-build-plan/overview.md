@@ -100,7 +100,7 @@ Step の詳細を参照する前に、この表で status を確認する。
 - Drive は revision を metadata に残し、最新版だけ `documents` にする。
 - Web は canonical URL と content hash を保存する。
 - GitHub は issue / PR / comment / diff の関係を graph で辿れるようにする。
-- Actor は email / GitHub login / display name を alias として扱い、確信度を記録する。
+- Actor は email / GitHub login を strong alias として扱い、display name は低 confidence 候補として扱う。
 
 ### セキュリティ確認
 

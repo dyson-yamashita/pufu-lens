@@ -20,14 +20,14 @@
 pnpm ingest:resolve-actors --project sample-a --limit 10
 psql "$DATABASE_URL" -c "SELECT display_name, primary_email, primary_login, graph_node_id FROM actors ORDER BY display_name;"
 psql "$DATABASE_URL" -c "SELECT alias_type, alias_value, confidence, source FROM actor_aliases ORDER BY alias_type, alias_value;"
-pnpm test -- --run actor
+pnpm --filter @pufu-lens/ingestion test
 ```
 
 ### 完了条件
 
 - fixture 上の既知 Actor 数と DB 件数が一致する。
 - alias の重複投入で件数が増えない。
-- Gmail quote の順序が parsed JSON / resolve output 上の `quote_index` で再現できる。
+- Gmail quote の順序が resolve output 上の `quoteIndex` で再現できる。
 
 ## Step 6 確認記録
 
@@ -42,10 +42,10 @@ pnpm test -- --run actor
   - `DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step6-storage pnpm ingest:collect:fixture --project sample-b`
   - `DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step6-storage pnpm ingest:parse --project sample-b --limit 10`
   - `DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step6-storage pnpm ingest:resolve-actors --project sample-b --limit 10` を 2 回
-- 自動テスト結果: `pnpm test` で 5 package 成功。`@pufu-lens/ingestion` は 22 tests pass。
+- 自動テスト結果: `pnpm test` で 5 package 成功。`@pufu-lens/ingestion` は 25 tests pass。
 - 補助的な手動確認: `sample-b` で Gmail / Drive / Web parsed JSON を対象に Actor resolve CLI が成功。Gmail quote は `quoteIndex: 1`、`senderActorId` が `Sample Reviewer` の Actor に解決されることを確認。
 - DB 確認: `sample-b` の `actors` は 3 件、`actor_aliases` は 3 件。CLI 再実行後も件数は不変。
 - Storage 確認: `/private/tmp/pufu-lens-step6-storage/sample-b/parsed/...` の parsed JSON を CLI が読み込み。
 - ログ / secret 確認: CLI 出力に OAuth token / API key / DB password / raw 本文全文は出ていない。quote output は fixture 本文のみを含む。
 - 未確認リスク: `documents` / `email_quotes` テーブルへの永続化は Step 7 以降の Document / Graph 構築側で扱うため、この Step では resolve output まで。
-- 次 step に進む判断: strong alias の統合、display name 単体の非統合、Gmail quote 順序、alias 冪等性を確認できたため Step 7 に進める。
+- 次 step に進む判断: strong alias の統合、display name 単体の非統合、display name のみの quote sender 分離、Gmail quote 順序、alias 冪等性を確認できたため Step 7 に進める。
