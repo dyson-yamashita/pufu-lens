@@ -155,6 +155,9 @@ function sanitizeUrl(value: string): string {
     return 'https://example.test/redacted';
   }
 
+  url.username = '';
+  url.password = '';
+
   if (url.hostname === 'example.test') {
     return redactSensitiveQueryParams(url).toString();
   }

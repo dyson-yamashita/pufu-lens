@@ -117,7 +117,7 @@ class PostgresRawParseRepository {
           AND pp.source_type = ${input.sourceType}
           AND pv.status = 'approved'
           AND (pp.data_source_id = ${input.dataSourceId} OR pp.data_source_id IS NULL)
-        ORDER BY pp.data_source_id IS NULL
+        ORDER BY pp.data_source_id IS NULL, pp.created_at DESC, pp.id DESC
         LIMIT 1
       `,
     );

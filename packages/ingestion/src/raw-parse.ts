@@ -129,6 +129,10 @@ export interface ParseRawResult {
   projectSlug: string;
 }
 
+interface ParseBatchContext {
+  artifactHashCache: Map<string, string>;
+}
+
 export type ParseRawDecision =
   | {
       decision: 'parsed';
@@ -166,15 +170,19 @@ export async function parseRawDocuments(options: ParseRawOptions): Promise<Parse
     projectId: project.id,
   });
   const decisions: ParseRawDecision[] = [];
+  const batchContext: ParseBatchContext = {
+    artifactHashCache: new Map(),
+  };
 
   for (const target of targets) {
-    decisions.push(await parseQueueTarget({ ...options, project, target }));
+    decisions.push(await parseQueueTarget({ ...options, batchContext, project, target }));
   }
 
   return { decisions, projectSlug: project.slug };
 }
 
 async function parseQueueTarget(input: {
+  batchContext: ParseBatchContext;
   project: ParseProjectRecord;
   repository: RawParseRepository;
   storage: ParseObjectStorage;
@@ -200,7 +208,11 @@ async function parseQueueTarget(input: {
   let artifactHash: string;
   let rawText: string;
   try {
-    artifactHash = await resolveAndVerifyArtifactHash(input.storage, parserVersion);
+    artifactHash = await resolveAndVerifyArtifactHash({
+      cache: input.batchContext.artifactHashCache,
+      parserVersion,
+      storage: input.storage,
+    });
     rawText = await input.storage.getText(rawDocument.storageUri);
   } catch (error) {
     await input.repository.markFailed({
@@ -389,16 +401,22 @@ export function parsedStorageUri(projectSlug: string, rawDocument: ParseRawDocum
   )}.json`;
 }
 
-async function resolveAndVerifyArtifactHash(
-  storage: ParseObjectStorage,
-  parserVersion: ParserVersionRecord,
-): Promise<string> {
-  const actualHash = parserVersion.artifactUri
-    ? sha256Hex(await storage.getText(parserVersion.artifactUri))
-    : BUILT_IN_PARSER_ARTIFACT_HASH;
+async function resolveAndVerifyArtifactHash(input: {
+  cache: Map<string, string>;
+  parserVersion: ParserVersionRecord;
+  storage: ParseObjectStorage;
+}): Promise<string> {
+  const cacheKey = input.parserVersion.artifactUri ?? `built-in:${input.parserVersion.id}`;
+  const cachedHash = input.cache.get(cacheKey);
+  const actualHash =
+    cachedHash ??
+    (input.parserVersion.artifactUri
+      ? sha256Hex(await input.storage.getText(input.parserVersion.artifactUri))
+      : BUILT_IN_PARSER_ARTIFACT_HASH);
+  input.cache.set(cacheKey, actualHash);
 
-  if (actualHash !== parserVersion.artifactHash) {
-    throw new Error(`Parser artifact hash mismatch: ${parserVersion.id}`);
+  if (actualHash !== input.parserVersion.artifactHash) {
+    throw new Error(`Parser artifact hash mismatch: ${input.parserVersion.id}`);
   }
 
   return actualHash;
@@ -407,7 +425,7 @@ async function resolveAndVerifyArtifactHash(
 function hasJsonPath(value: unknown, path: string): boolean {
   let current = value;
   for (const segment of path.split('.')) {
-    if (typeof current !== 'object' || current === null || !(segment in current)) {
+    if (typeof current !== 'object' || current === null || !Object.hasOwn(current, segment)) {
       return false;
     }
     current = (current as Record<string, unknown>)[segment];
