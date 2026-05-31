@@ -68,3 +68,22 @@ pnpm parse:inspect --project sample-a --limit 10
 - parser version / artifact hash / schema version が parsed JSON metadata と DB に残る。
 - 未承認 parser が必要な raw は `held` になり、承認後の retry まで parsed / indexed へ進まない。
 - 失敗 raw をマスク済み fixture として保存し、parser 修正後に同じ fixture が通る。
+
+## Step 5 確認記録
+
+- 実施日: 2026-05-31
+- 対象 commit: PR 作成時の `feature/issue-15-raw-parse-storage`
+- 実装範囲: `parseRawDocuments`、source type 別 parser 呼び出し、parser registry 選択、parsed JSON 保存、`held` / `failed` / `parsed` 状態更新、失敗 raw fixture 化 CLI、DB 初期 schema 更新。
+- 実行コマンド:
+  - `pnpm --filter @pufu-lens/ingestion test`
+  - `pnpm format:check`
+  - `pnpm typecheck`
+  - `pnpm test`
+  - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step4-storage pnpm ingest:parse --project sample-a --limit 10`
+- 自動テスト結果: ingestion package 16 tests pass、repo 全体 test / typecheck / format:check pass。
+- 補助的な手動確認: `--no-seed-built-in-parsers` 相当の状態で approved active parser が無い raw が `parser_approval_required` の `held` になることを確認。
+- DB 確認: GitHub fixture 2 件で `raw_documents.ingest_status='parsed'`、`ingestion_queue.status='parsed'`、`parser_artifact_hash` 非 null、`parsed_schema_version=1` を確認。
+- Storage 確認: `/private/tmp/pufu-lens-step4-storage/sample-a/parsed/github/` に issue / pull request の parsed JSON 2 件を確認。
+- ログ / secret 確認: parse error は `sanitizeError` で URL / secret 断片をマスクする単体テストを追加。
+- 未確認リスク: 実データソースの malformed raw からの `pnpm ingest:fixture:add-failed` 実ファイル生成は失敗 raw が無いため dry-run / script 実装確認に留まる。
+- 次 step に進む判断: fixture ベースで raw から parsed JSON までの保存と DB 状態遷移を確認できたため、Step 6 の Actor 名寄せと引用チェーンへ進める。

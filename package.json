@@ -10,6 +10,8 @@
     "format": "biome check --write . && prettier --write \"**/*.{md,yml,yaml}\"",
     "format:check": "biome check . && prettier --check \"**/*.{md,yml,yaml}\"",
     "ingest:collect:fixture": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node scripts/collect-fixture-source.mjs",
+    "ingest:fixture:add-failed": "pnpm --filter @pufu-lens/storage build && node --experimental-strip-types scripts/add-failed-raw-fixture.ts",
+    "ingest:parse": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node scripts/parse-raw-documents.mjs",
     "lint": "biome ci . && markdownlint-cli2",
     "seed:projects": "node --experimental-strip-types scripts/create-project.ts --seed-samples",
     "test": "turbo run test",
