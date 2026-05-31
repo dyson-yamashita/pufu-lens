@@ -206,7 +206,12 @@ async function resolveEmailQuotes(
       email: sender.email,
       role: 'sender',
     };
-    const resolved = await resolveMention(context, senderMention, parsed);
+    const resolved = await resolveMention(
+      context,
+      senderMention,
+      parsed,
+      parsed.actors.length + index,
+    );
     const prevQuoteIndex =
       quote.prevMessageId === undefined ? undefined : messageToIndex.get(quote.prevMessageId);
 
@@ -310,7 +315,7 @@ async function persistAliases(
     context.aliasCache.set(actorAliasCacheKey(persisted.aliasType, persisted.aliasValue), {
       displayName: '',
       graphNodeId: '',
-      id: actorId,
+      id: persisted.actorId,
       projectId: context.projectId,
     });
     resolved.push({ ...alias, persisted: true });

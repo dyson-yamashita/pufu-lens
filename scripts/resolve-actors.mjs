@@ -144,6 +144,7 @@ class PostgresActorResolutionRepository {
         )
         ON CONFLICT (project_id, alias_type, alias_value)
         DO UPDATE SET
+          actor_id = EXCLUDED.actor_id,
           confidence = GREATEST(public.actor_aliases.confidence, EXCLUDED.confidence),
           source = (
             SELECT string_agg(DISTINCT val, ',' ORDER BY val)

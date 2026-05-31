@@ -134,6 +134,43 @@ test('resolveActors preserves Gmail quote order and previous quote index', async
   );
 });
 
+test('resolveActors keeps display-only quote senders distinct', async () => {
+  const repository = new InMemoryActorResolutionRepository([
+    {
+      parsed: gmailParsed({
+        actors: [{ displayName: 'Unknown Sender', role: 'sender' }],
+        emailQuotes: [
+          {
+            bodyText: 'Display-only first quote',
+            from: 'Unknown Sender',
+            messageId: 'msg-alpha-002',
+            sentAt: '2026-05-05T14:50:00.000Z',
+          },
+          {
+            bodyText: 'Display-only second quote',
+            from: 'Unknown Sender',
+            messageId: 'msg-alpha-001',
+            sentAt: '2026-05-05T14:10:00.000Z',
+          },
+        ],
+      }),
+      rawDocumentId: 'raw-gmail-1',
+    },
+  ]);
+
+  const result = await resolveActors({
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  });
+
+  const senderActorIds = [
+    result.decisions[0]?.actors[0]?.actorId,
+    ...(result.decisions[0]?.emailQuotes.map((quote) => quote.senderActorId) ?? []),
+  ];
+  assert.equal(new Set(senderActorIds).size, 3);
+});
+
 test('parseSenderAlias accepts display-only sender aliases', () => {
   assert.deepEqual(parseSenderAlias('Unknown Sender'), { displayName: 'Unknown Sender' });
 });
@@ -276,6 +313,11 @@ class InMemoryActorResolutionRepository implements ActorResolutionRepository {
         alias.aliasValue === input.aliasValue,
     );
     if (existing) {
+      existing.actorId = input.actorId;
+      existing.confidence = Math.max(existing.confidence, input.confidence);
+      existing.source = [...new Set([...existing.source.split(','), input.source])]
+        .sort()
+        .join(',');
       return existing;
     }
 
@@ -309,9 +351,11 @@ function githubParsed(input: Partial<Pick<ParsedDocument, 'actors'>> = {}): Pars
   };
 }
 
-function gmailParsed(input: Partial<Pick<ParsedDocument, 'emailQuotes'>> = {}): ParsedDocument {
+function gmailParsed(
+  input: Partial<Pick<ParsedDocument, 'actors' | 'emailQuotes'>> = {},
+): ParsedDocument {
   return {
-    actors: [
+    actors: input.actors ?? [
       {
         displayName: 'Sample Sender',
         email: 'sender@example.test',
