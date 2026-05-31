@@ -58,12 +58,14 @@ psql "$DATABASE_URL" -c "SELECT source_type, content_hash, count(*) FROM raw_doc
   - `pnpm test`
   - `pnpm build`
   - `pnpm ingest:collect:fixture --project sample-b --source github`
+  - `psql ... UPDATE public.raw_documents / public.ingestion_queue ... SET failed ...`
+  - `psql ... SELECT status, attempts, COALESCE(last_error, '<null>') FROM public.ingestion_queue ...`
   - `psql ... SELECT source_type, source_id, ingest_status, storage_uri FROM public.raw_documents ...`
   - `psql ... SELECT status, target_id, raw_document_id FROM public.ingestion_queue ...`
   - `find /private/tmp/pufu-lens-step4-storage-postgres-client/sample-b/raw -type f`
   - `rg -n "token|secret|password|Bearer|refresh_token" fixtures .env.example`
-- 自動テスト結果: `packages/ingestion` の 11 tests が pass。全体の `typecheck` / `format:check` / `lint` / `test` / `build` が pass。
-- 補助的な手動確認: collect 1 回目は GitHub fixture 2 件が `collected`、2 回目は同じ 2 件が `skipped_existing`。
+- 自動テスト結果: `packages/ingestion` の 12 tests が pass。全体の `typecheck` / `format:check` / `lint` / `test` / `build` が pass。
+- 補助的な手動確認: collect 1 回目は GitHub fixture 2 件が `collected`、2 回目は同じ 2 件が `skipped_existing`。failed raw / queue の既存候補は `queued_failed` になり、queue が `pending|0|<null>` に戻ることを確認。
 - DB 確認: `raw_documents` は GitHub 2 件で `ingest_status='fetched'`、`ingestion_queue` は 2 件で `status='pending'`、2 回実行後の raw 件数は 2。
 - Storage 確認: `/private/tmp/pufu-lens-step4-storage-postgres-client/sample-b/raw/github/issue-101.json` と `pull-202.json` の実体ファイルを確認。
 - ログ / secret 確認: collect 実行ログに LLM call / token usage は出力されない。fixture / `.env.example` の secret pattern 検索は該当なし。

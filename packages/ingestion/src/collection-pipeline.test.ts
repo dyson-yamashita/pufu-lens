@@ -62,6 +62,46 @@ test('shouldCollectCandidate filters by source type, fixture id, and source id',
   );
 });
 
+test('shouldCollectCandidate applies valid ingest window dates and ignores invalid date strings', async () => {
+  const [candidate] = await scanFixtureSource({
+    projectId: 'project-1',
+    projectSlug: 'sample-a',
+    sourceType: 'github',
+  });
+  assert.ok(candidate);
+
+  assert.equal(
+    shouldCollectCandidate({
+      candidate: {
+        ...candidate,
+        raw: {
+          ...candidate.raw,
+          metadata: { ...candidate.raw.metadata, fetchedAt: '2026-01-01T00:00:00.000Z' },
+        },
+      },
+      dataSource: dataSource({ ingestWindow: { since: '2100-01-01T00:00:00.000Z' } }),
+    }),
+    false,
+  );
+  assert.equal(
+    shouldCollectCandidate({
+      candidate,
+      dataSource: dataSource({ ingestWindow: { since: 'not-a-date' } }),
+    }),
+    true,
+  );
+  assert.equal(
+    shouldCollectCandidate({
+      candidate: {
+        ...candidate,
+        raw: { ...candidate.raw, metadata: { ...candidate.raw.metadata, fetchedAt: 'not-a-date' } },
+      },
+      dataSource: dataSource({ ingestWindow: { since: '2026-01-01T00:00:00.000Z' } }),
+    }),
+    true,
+  );
+});
+
 test('normalizeSourceId reports invalid web URLs with source context', () => {
   assert.throws(
     () => normalizeSourceId('web', 'not-a-url'),

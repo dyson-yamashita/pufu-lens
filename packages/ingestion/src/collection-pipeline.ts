@@ -280,9 +280,13 @@ export function shouldCollectCandidate(input: {
 
   const since = readString(dataSource.ingestWindow.since);
   if (since) {
+    const sinceTime = Date.parse(since);
     const candidateDate = readString(candidate.raw.metadata.fetchedAt);
-    if (candidateDate && Date.parse(candidateDate) < Date.parse(since)) {
-      return false;
+    if (candidateDate && !Number.isNaN(sinceTime)) {
+      const candidateTime = Date.parse(candidateDate);
+      if (!Number.isNaN(candidateTime) && candidateTime < sinceTime) {
+        return false;
+      }
     }
   }
 

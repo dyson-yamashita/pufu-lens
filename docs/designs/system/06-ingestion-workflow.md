@@ -50,7 +50,7 @@ for each candidate in scanned:
       ON CONFLICT (raw_document_id, data_source_id)
       DO UPDATE SET last_seen_at = now(), match_reason = EXCLUDED.match_reason
     if existing.ingest_status = 'failed':
-      enqueue(existing.id)                    # 再試行のみ
+      enqueue(existing.id)                    # status=pending、attempts=0、last_error=NULL で再試行
     else:
       skip                                    # 既に indexed / parsed なら何もしない
   else:

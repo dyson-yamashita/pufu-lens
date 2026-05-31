@@ -208,6 +208,9 @@ class PostgresCollectionRepository {
         data_source_id = EXCLUDED.data_source_id,
         target_id = EXCLUDED.target_id,
         target_uri = EXCLUDED.target_uri,
+        status = EXCLUDED.status,
+        attempts = 0,
+        last_error = null,
         reason = EXCLUDED.reason
     `;
   }
