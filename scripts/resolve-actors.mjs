@@ -1,0 +1,216 @@
+import postgres from 'postgres';
+import { resolveActors } from '../packages/ingestion/dist/index.js';
+import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
+
+async function main() {
+  const options = parseArgs(process.argv.slice(2));
+  const projectSlug = requiredOption(options.project, '--project');
+  const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
+  const storage = createLocalObjectStorageFromEnv();
+  const repository = new PostgresActorResolutionRepository(sql, storage);
+
+  try {
+    const result = await resolveActors({
+      limit: options.limit ?? 10,
+      projectSlug,
+      repository,
+    });
+
+    console.log(JSON.stringify(result, null, 2));
+  } finally {
+    await sql.end();
+  }
+}
+
+class PostgresActorResolutionRepository {
+  constructor(sql, storage) {
+    this.sql = sql;
+    this.storage = storage;
+  }
+
+  async lookupProjectBySlug(slug) {
+    return singleJson(
+      await this.sql`
+        SELECT id::text AS id, slug
+        FROM public.projects
+        WHERE slug = ${slug}
+      `,
+    );
+  }
+
+  async readParsedDocuments(input) {
+    const rows = await this.sql`
+      SELECT
+        id::text AS "rawDocumentId",
+        parsed_uri AS "parsedUri"
+      FROM public.raw_documents
+      WHERE project_id = ${input.projectId}
+        AND ingest_status = 'parsed'
+        AND parsed_uri IS NOT NULL
+      ORDER BY parsed_at NULLS LAST, fetched_at, id
+      LIMIT ${input.limit}
+    `;
+
+    return Promise.all(
+      rows.map(async (row) => ({
+        parsed: await this.storage.getText(row.parsedUri),
+        parsedUri: row.parsedUri,
+        rawDocumentId: row.rawDocumentId,
+      })),
+    );
+  }
+
+  async findActorByAlias(input) {
+    return singleJson(
+      await this.sql`
+        SELECT
+          a.display_name AS "displayName",
+          a.graph_node_id AS "graphNodeId",
+          a.id::text AS id,
+          a.primary_email AS "primaryEmail",
+          a.primary_login AS "primaryLogin",
+          a.project_id::text AS "projectId"
+        FROM public.actor_aliases aa
+        JOIN public.actors a ON a.id = aa.actor_id
+        WHERE aa.project_id = ${input.projectId}
+          AND aa.alias_type = ${input.aliasType}
+          AND aa.alias_value = ${input.aliasValue}
+        LIMIT 1
+      `,
+    );
+  }
+
+  async createActor(input) {
+    const actor = singleJson(
+      await this.sql`
+        INSERT INTO public.actors (
+          project_id,
+          actor_type,
+          display_name,
+          primary_email,
+          primary_login,
+          metadata,
+          graph_node_id
+        )
+        VALUES (
+          ${input.projectId},
+          ${input.actorType},
+          ${input.displayName},
+          ${input.primaryEmail ?? null},
+          ${input.primaryLogin ?? null},
+          ${this.sql.json(input.metadata)},
+          ${input.graphNodeId}
+        )
+        ON CONFLICT (project_id, graph_node_id)
+        DO UPDATE SET
+          display_name = public.actors.display_name,
+          primary_email = COALESCE(public.actors.primary_email, EXCLUDED.primary_email),
+          primary_login = COALESCE(public.actors.primary_login, EXCLUDED.primary_login),
+          metadata = public.actors.metadata || EXCLUDED.metadata
+        RETURNING
+          display_name AS "displayName",
+          graph_node_id AS "graphNodeId",
+          id::text AS id,
+          primary_email AS "primaryEmail",
+          primary_login AS "primaryLogin",
+          project_id::text AS "projectId"
+      `,
+    );
+
+    if (!actor) {
+      throw new Error(`Failed to create actor: ${input.graphNodeId}`);
+    }
+    return actor;
+  }
+
+  async upsertActorAlias(input) {
+    const alias = singleJson(
+      await this.sql`
+        INSERT INTO public.actor_aliases (
+          project_id,
+          actor_id,
+          alias_type,
+          alias_value,
+          confidence,
+          source
+        )
+        VALUES (
+          ${input.projectId},
+          ${input.actorId},
+          ${input.aliasType},
+          ${input.aliasValue},
+          ${input.confidence},
+          ${input.source}
+        )
+        ON CONFLICT (project_id, alias_type, alias_value)
+        DO UPDATE SET
+          confidence = GREATEST(public.actor_aliases.confidence, EXCLUDED.confidence),
+          source = CASE
+            WHEN public.actor_aliases.source IS NULL OR public.actor_aliases.source = '' THEN EXCLUDED.source
+            WHEN EXCLUDED.source IS NULL OR EXCLUDED.source = '' THEN public.actor_aliases.source
+            WHEN position(EXCLUDED.source in public.actor_aliases.source) > 0 THEN public.actor_aliases.source
+            ELSE public.actor_aliases.source || ',' || EXCLUDED.source
+          END
+        RETURNING
+          actor_id::text AS "actorId",
+          alias_type AS "aliasType",
+          alias_value AS "aliasValue",
+          confidence,
+          project_id::text AS "projectId",
+          source
+      `,
+    );
+
+    if (!alias) {
+      throw new Error(`Failed to upsert actor alias: ${input.aliasType}:${input.aliasValue}`);
+    }
+    return alias;
+  }
+}
+
+function createLocalObjectStorageFromEnv(env = process.env) {
+  const root = env.STORAGE_ROOT ?? env.LOCAL_STORAGE_ROOT;
+  if (!root) {
+    throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
+  }
+  return new LocalFsObjectStorage(root);
+}
+
+function parseArgs(argv) {
+  const options = {};
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === '--project') {
+      options.project = argv[++index];
+    } else if (arg === '--limit') {
+      options.limit = Number(argv[++index]);
+    } else {
+      throw new Error(`Unknown option: ${arg}`);
+    }
+  }
+  return options;
+}
+
+function requiredEnv(name) {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} is required.`);
+  }
+  return value;
+}
+
+function requiredOption(value, name) {
+  if (!value) {
+    throw new Error(`${name} is required.`);
+  }
+  return value;
+}
+
+function singleJson(rows) {
+  return rows[0];
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});
