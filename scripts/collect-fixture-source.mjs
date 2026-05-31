@@ -1,6 +1,6 @@
-import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import postgres from 'postgres';
 import { collectFixtureSource } from '../packages/ingestion/dist/collection-pipeline.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
@@ -10,92 +10,108 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
-  const databaseUrl = requiredEnv('DATABASE_URL');
+  const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   const storage = createLocalObjectStorageFromEnv();
-  const repository = new PsqlCollectionRepository(databaseUrl);
+  const repository = new PostgresCollectionRepository(sql);
 
-  await ensureFixtureDataSources({
-    databaseUrl,
-    projectSlug,
-    sourceType: options.source,
-  });
+  try {
+    await ensureFixtureDataSources({
+      projectSlug,
+      sourceType: options.source,
+      sql,
+    });
 
-  const result = await collectFixtureSource({
-    projectSlug,
-    repoRoot,
-    repository,
-    sourceType: options.source,
-    storage,
-  });
+    const result = await collectFixtureSource({
+      projectSlug,
+      repoRoot,
+      repository,
+      sourceType: options.source,
+      storage,
+    });
 
-  console.log(JSON.stringify(result, null, 2));
+    console.log(JSON.stringify(result, null, 2));
+  } finally {
+    await sql.end();
+  }
 }
 
-class PsqlCollectionRepository {
-  constructor(databaseUrl) {
-    this.databaseUrl = databaseUrl;
+class PostgresCollectionRepository {
+  constructor(sql) {
+    this.sql = sql;
   }
 
   async lookupProjectBySlug(slug) {
     return singleJson(
-      await this.queryJsonLines(`
-        SELECT json_build_object('id', id, 'slug', slug)
+      await this.sql`
+        SELECT id::text AS id, slug
         FROM public.projects
-        WHERE slug = ${sqlString(slug)}
-      `),
+        WHERE slug = ${slug}
+      `,
     );
   }
 
   async findDataSources(projectId, sourceType) {
-    const sourceFilter = sourceType ? `AND source_type = ${sqlString(sourceType)}` : '';
-    return this.queryJsonLines(`
-      SELECT json_build_object(
-        'config', config,
-        'enabled', enabled,
-        'id', id,
-        'ingestWindow', ingest_window,
-        'projectId', project_id,
-        'sourceType', source_type
-      )
+    if (sourceType) {
+      return this.sql`
+        SELECT
+          config,
+          enabled,
+          id::text AS id,
+          ingest_window AS "ingestWindow",
+          project_id::text AS "projectId",
+          source_type AS "sourceType"
+        FROM public.data_sources
+        WHERE project_id = ${projectId}
+          AND enabled = true
+          AND source_type = ${sourceType}
+        ORDER BY source_type, name
+      `;
+    }
+
+    return this.sql`
+      SELECT
+        config,
+        enabled,
+        id::text AS id,
+        ingest_window AS "ingestWindow",
+        project_id::text AS "projectId",
+        source_type AS "sourceType"
       FROM public.data_sources
-      WHERE project_id = ${sqlString(projectId)}
+      WHERE project_id = ${projectId}
         AND enabled = true
-        ${sourceFilter}
       ORDER BY source_type, name
-    `);
+    `;
   }
 
   async lookupRawDocument(input) {
     return singleJson(
-      await this.queryJsonLines(`
-        SELECT json_build_object(
-          'id', id,
-          'ingestStatus', ingest_status,
-          'sourceId', source_id,
-          'sourceType', source_type
-        )
+      await this.sql`
+        SELECT
+          id::text AS id,
+          ingest_status AS "ingestStatus",
+          source_id AS "sourceId",
+          source_type AS "sourceType"
         FROM public.raw_documents
-        WHERE project_id = ${sqlString(input.projectId)}
-          AND source_type = ${sqlString(input.sourceType)}
-          AND source_id = ${sqlString(input.sourceId)}
-      `),
+        WHERE project_id = ${input.projectId}
+          AND source_type = ${input.sourceType}
+          AND source_id = ${input.sourceId}
+      `,
     );
   }
 
   async findSameHashCandidates(input) {
-    return this.queryJsonLines(`
-      SELECT json_build_object('id', id, 'sourceId', source_id, 'sourceType', source_type)
+    return this.sql`
+      SELECT id::text AS id, source_id AS "sourceId", source_type AS "sourceType"
       FROM public.raw_documents
-      WHERE project_id = ${sqlString(input.projectId)}
-        AND content_hash = ${sqlString(input.contentHash)}
-        AND source_type <> ${sqlString(input.sourceType)}
+      WHERE project_id = ${input.projectId}
+        AND content_hash = ${input.contentHash}
       ORDER BY created_at
-    `);
+    `;
   }
 
   async upsertRawDocument(input) {
     const rawDocument = singleJson(
-      await this.queryJsonLines(`
+      await this.sql`
         INSERT INTO public.raw_documents (
           project_id,
           source_type,
@@ -109,16 +125,16 @@ class PsqlCollectionRepository {
           metadata
         )
         VALUES (
-          ${sqlString(input.projectId)},
-          ${sqlString(input.sourceType)},
-          ${sqlString(input.sourceId)},
-          ${sqlString(input.sourceUri)},
-          ${sqlString(input.storageUri)},
-          ${sqlString(input.mimeType)},
+          ${input.projectId},
+          ${input.sourceType},
+          ${input.sourceId},
+          ${input.sourceUri},
+          ${input.storageUri},
+          ${input.mimeType},
           ${input.byteSize},
-          ${sqlString(input.contentHash)},
+          ${input.contentHash},
           'fetched',
-          ${sqlJson(input.metadata)}
+          ${this.sql.json(input.metadata)}
         )
         ON CONFLICT (project_id, source_type, source_id)
         DO UPDATE SET
@@ -128,13 +144,12 @@ class PsqlCollectionRepository {
           byte_size = EXCLUDED.byte_size,
           content_hash = EXCLUDED.content_hash,
           metadata = EXCLUDED.metadata
-        RETURNING json_build_object(
-          'id', id,
-          'ingestStatus', ingest_status,
-          'sourceId', source_id,
-          'sourceType', source_type
-        )
-      `),
+        RETURNING
+          id::text AS id,
+          ingest_status AS "ingestStatus",
+          source_id AS "sourceId",
+          source_type AS "sourceType"
+      `,
     );
 
     if (!rawDocument) {
@@ -145,7 +160,7 @@ class PsqlCollectionRepository {
   }
 
   async linkDataSource(input) {
-    await this.exec(`
+    await this.sql`
       INSERT INTO public.raw_document_data_sources (
         raw_document_id,
         data_source_id,
@@ -154,22 +169,22 @@ class PsqlCollectionRepository {
         metadata
       )
       VALUES (
-        ${sqlString(input.rawDocumentId)},
-        ${sqlString(input.dataSourceId)},
-        ${sqlString(input.projectId)},
-        ${sqlString(input.matchReason)},
-        ${sqlJson(input.metadata)}
+        ${input.rawDocumentId},
+        ${input.dataSourceId},
+        ${input.projectId},
+        ${input.matchReason},
+        ${this.sql.json(input.metadata)}
       )
       ON CONFLICT (raw_document_id, data_source_id)
       DO UPDATE SET
         last_seen_at = now(),
         match_reason = EXCLUDED.match_reason,
         metadata = EXCLUDED.metadata
-    `);
+    `;
   }
 
   async queueCandidate(input) {
-    await this.exec(`
+    await this.sql`
       INSERT INTO public.ingestion_queue (
         project_id,
         data_source_id,
@@ -180,11 +195,11 @@ class PsqlCollectionRepository {
         reason
       )
       VALUES (
-        ${sqlString(input.projectId)},
-        ${sqlString(input.dataSourceId)},
-        ${sqlString(input.rawDocumentId)},
-        ${sqlString(input.targetId)},
-        ${sqlString(input.targetUri)},
+        ${input.projectId},
+        ${input.dataSourceId},
+        ${input.rawDocumentId},
+        ${input.targetId},
+        ${input.targetUri},
         'pending',
         'fixture-collection'
       )
@@ -194,49 +209,25 @@ class PsqlCollectionRepository {
         target_id = EXCLUDED.target_id,
         target_uri = EXCLUDED.target_uri,
         reason = EXCLUDED.reason
-    `);
+    `;
   }
 
   async markDataSourceChecked(dataSourceId) {
-    await this.exec(`
+    await this.sql`
       UPDATE public.data_sources
       SET last_checked_at = now()
-      WHERE id = ${sqlString(dataSourceId)}
-    `);
-  }
-
-  async exec(sql) {
-    await runPsql(this.databaseUrl, sql, { captureStdout: false });
-  }
-
-  async queryJsonLines(sql) {
-    const output = await runPsql(this.databaseUrl, sql, { captureStdout: true });
-    return output
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => JSON.parse(line));
+      WHERE id = ${dataSourceId}
+    `;
   }
 }
 
 async function ensureFixtureDataSources(input) {
   const sourceTypes = input.sourceType ? [input.sourceType] : SOURCE_TYPES;
-  const values = sourceTypes
-    .map(
-      (sourceType) => `(
-        ${sqlString(sourceType)},
-        ${sqlString(`Fixture ${sourceType}`)},
-        ${sqlJson({ source: 'fixtures/ingestion' })},
-        ${sqlJson({})}
-      )`,
-    )
-    .join(',\n');
 
-  await runPsql(
-    input.databaseUrl,
-    `
+  for (const sourceType of sourceTypes) {
+    await input.sql`
       WITH project AS (
-        SELECT id FROM public.projects WHERE slug = ${sqlString(input.projectSlug)}
+        SELECT id FROM public.projects WHERE slug = ${input.projectSlug}
       )
       INSERT INTO public.data_sources (
         project_id,
@@ -249,25 +240,18 @@ async function ensureFixtureDataSources(input) {
       SELECT
         project.id,
         '00000000-0000-0000-0000-000000000001',
-        source_rows.source_type,
-        source_rows.name,
-        source_rows.config,
-        source_rows.ingest_window
+        ${sourceType},
+        ${`Fixture ${sourceType}`},
+        ${input.sql.json({ source: 'fixtures/ingestion' })},
+        ${input.sql.json({})}
       FROM project
-      CROSS JOIN (VALUES ${values}) AS source_rows(
-        source_type,
-        name,
-        config,
-        ingest_window
-      )
       ON CONFLICT (project_id, source_type, name)
       DO UPDATE SET
         enabled = true,
         config = EXCLUDED.config,
         ingest_window = EXCLUDED.ingest_window
-    `,
-    { captureStdout: false },
-  );
+    `;
+  }
 }
 
 function createLocalObjectStorageFromEnv(env = process.env) {
@@ -339,93 +323,6 @@ function requiredOption(value, optionName) {
 
 function singleJson(rows) {
   return rows[0];
-}
-
-async function runPsql(databaseUrl, sql, options) {
-  return await new Promise((resolve, reject) => {
-    const env = {
-      ...process.env,
-      ...databaseUrlToPsqlEnv(databaseUrl),
-    };
-    delete env.DATABASE_URL;
-
-    const stdout = [];
-    const child = spawn(
-      'psql',
-      ['--set=ON_ERROR_STOP=1', '--quiet', '--tuples-only', '--no-align'],
-      {
-        env,
-        stdio: ['pipe', options.captureStdout ? 'pipe' : 'inherit', 'inherit'],
-      },
-    );
-
-    if (options.captureStdout && child.stdout) {
-      child.stdout.on('data', (chunk) => stdout.push(chunk));
-    }
-
-    child.stdin.on('error', () => {});
-    child.stdin.end(sql);
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve(Buffer.concat(stdout).toString('utf8'));
-        return;
-      }
-
-      reject(new Error(`psql exited with code ${code}`));
-    });
-  });
-}
-
-function databaseUrlToPsqlEnv(databaseUrl) {
-  const url = new URL(databaseUrl);
-  if (url.protocol !== 'postgresql:' && url.protocol !== 'postgres:') {
-    throw new Error('DATABASE_URL must use postgres:// or postgresql://.');
-  }
-
-  const database = url.pathname.replace(/^\//, '');
-  if (!database) {
-    throw new Error('DATABASE_URL must include a database name.');
-  }
-
-  const env = {
-    PGDATABASE: decodeURIComponent(database),
-  };
-
-  if (url.hostname) {
-    env.PGHOST = url.hostname;
-  }
-
-  if (url.port) {
-    env.PGPORT = url.port;
-  }
-
-  if (url.username) {
-    env.PGUSER = decodeURIComponent(url.username);
-  }
-
-  if (url.password) {
-    env.PGPASSWORD = decodeURIComponent(url.password);
-  }
-
-  const sslMode = url.searchParams.get('sslmode');
-  if (sslMode) {
-    env.PGSSLMODE = sslMode;
-  }
-
-  return env;
-}
-
-function sqlJson(value) {
-  return `${sqlString(JSON.stringify(value))}::jsonb`;
-}
-
-function sqlString(value) {
-  if (value === null || value === undefined) {
-    return 'NULL';
-  }
-
-  return `'${String(value).replaceAll("'", "''")}'`;
 }
 
 main().catch((error) => {
