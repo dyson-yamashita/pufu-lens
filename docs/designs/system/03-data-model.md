@@ -763,7 +763,8 @@ erDiagram
   3. しきい値未満 → 新規 Actor を作成し、`actor_aliases` に「未マージ候補」フラグを付ける。
 
 - マージ結果は `actor_aliases.confidence` と `metadata.merge_history` に履歴を残し、管理 UI から手動修正できるようにする。
-- グラフ上の Actor ノードは `graph_node_id = actors.id` で 1:1 紐付ける。エイリアス情報は `actors.metadata.aliases` にスナップショットを置く（高速参照用）。
+- Step 6 の初期実装では email / GitHub login を strong alias として `actor_aliases` に永続化し、display name は低 confidence の resolve output に留める。display name だけでは自動統合しない。
+- Step 6 の初期実装では `actors.graph_node_id` は `actor:<alias_type>:<encoded alias>` または `actor:unresolved:<encoded sourceId>:<encoded occurrenceKey>:<encoded displayName>` の安定 ID として保存する。AGE グラフ構築時は `actors.id` と `graph_node_id` の両方を辿れるようにし、最終的な graph materialization 方針は Step 8 で確定する。
 
 #### 4.2. メールの引用と取り込み単位
 

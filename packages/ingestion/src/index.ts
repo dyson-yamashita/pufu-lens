@@ -1,4 +1,21 @@
 export type {
+  ActorAliasRecord,
+  ActorAliasType,
+  ActorRecord,
+  ActorResolutionRepository,
+  ActorType,
+  CreateActorInput,
+  ResolveActorsDecision,
+  ResolveActorsOptions,
+  ResolveActorsResult,
+  ResolvedActorMention,
+  ResolvedAlias,
+  ResolvedEmailQuote,
+  ResolveParsedDocumentTarget,
+  UpsertActorAliasInput,
+} from './actor-resolution.js';
+export { parseSenderAlias, resolveActors } from './actor-resolution.js';
+export type {
   CollectDecision,
   CollectFixtureOptions,
   CollectFixtureResult,

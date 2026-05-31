@@ -49,7 +49,7 @@ Step の詳細を参照する前に、この表で status を確認する。
 | Step 4   | [Collection Pipeline のローカル収集パイプライン](step-04-local-collection-pipeline.md) | `completed` | 2026-05-31 | Issue #13 で完了確認済み。                           |
 | Step 4a  | [Parser Registry と承認制保留フロー](step-04a-parser-registry-approval.md)             | `completed` | 2026-05-31 | Issue #11 / PR #12 で設計反映済み。                  |
 | Step 5   | [Raw Parse と parsed JSON 保存](step-05-raw-parse.md)                                  | `completed` | 2026-05-31 | Issue #15 で完了確認済み。                           |
-| Step 6   | [Actor 名寄せと引用チェーン](step-06-actor-resolution.md)                              | `planned`   | 2026-05-29 | 未着手。                                             |
+| Step 6   | [Actor 名寄せと引用チェーン](step-06-actor-resolution.md)                              | `completed` | 2026-05-31 | Issue #17 で完了確認済み。                           |
 | Step 7   | [Document / Chunk / Embedding の決定的検証](step-07-chunk-embedding.md)                | `planned`   | 2026-05-29 | 未着手。                                             |
 | Step 8   | [Graph / Relation 構築](step-08-graph-relations.md)                                    | `planned`   | 2026-05-29 | 未着手。                                             |
 | Step 9   | [Ingestion Workflow の通し実行](step-09-ingestion-workflow.md)                         | `planned`   | 2026-05-29 | 未着手。                                             |
@@ -100,7 +100,7 @@ Step の詳細を参照する前に、この表で status を確認する。
 - Drive は revision を metadata に残し、最新版だけ `documents` にする。
 - Web は canonical URL と content hash を保存する。
 - GitHub は issue / PR / comment / diff の関係を graph で辿れるようにする。
-- Actor は email / GitHub login / display name を alias として扱い、確信度を記録する。
+- Actor は email / GitHub login を strong alias として扱い、display name は低 confidence 候補として扱う。
 
 ### セキュリティ確認
 
