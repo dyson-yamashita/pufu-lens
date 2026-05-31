@@ -46,8 +46,8 @@ Step の詳細を参照する前に、この表で status を確認する。
 | Step 1   | [ローカル DB / Storage の最小起動](step-01-local-db-storage.md)                        | `completed` | 2026-05-30 | PR #6 で merge 済み。                                |
 | Step 2   | [Project 作成とテナント分離の確認](step-02-project-tenancy.md)                         | `completed` | 2026-05-30 | Issue #7 で完了確認済み。                            |
 | Step 3   | [Ingestion Fixture とデータ契約](step-03-ingestion-fixtures.md)                        | `completed` | 2026-05-30 | Issue #9 で完了確認済み。                            |
-| Step 4   | [Collection Pipeline のローカル収集パイプライン](step-04-local-collection-pipeline.md) | `planned`   | 2026-05-29 | 未着手。                                             |
-| Step 4a  | [Parser Registry と承認制保留フロー](step-04a-parser-registry-approval.md)             | `planned`   | 2026-05-30 | Issue #11 で追加。                                   |
+| Step 4   | [Collection Pipeline のローカル収集パイプライン](step-04-local-collection-pipeline.md) | `completed` | 2026-05-31 | Issue #13 で完了確認済み。                           |
+| Step 4a  | [Parser Registry と承認制保留フロー](step-04a-parser-registry-approval.md)             | `completed` | 2026-05-31 | Issue #11 / PR #12 で設計反映済み。                  |
 | Step 5   | [Raw Parse と parsed JSON 保存](step-05-raw-parse.md)                                  | `planned`   | 2026-05-29 | 未着手。                                             |
 | Step 6   | [Actor 名寄せと引用チェーン](step-06-actor-resolution.md)                              | `planned`   | 2026-05-29 | 未着手。                                             |
 | Step 7   | [Document / Chunk / Embedding の決定的検証](step-07-chunk-embedding.md)                | `planned`   | 2026-05-29 | 未着手。                                             |
