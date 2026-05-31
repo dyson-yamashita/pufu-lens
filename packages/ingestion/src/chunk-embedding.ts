@@ -10,6 +10,7 @@ export const DEFAULT_CHUNK_CONFIG: ChunkConfig = {
 export const DEFAULT_EMBEDDING_DIMENSIONS = 1536;
 export const DEFAULT_DETERMINISTIC_EMBEDDING_MODEL = 'deterministic-sha256-v1';
 export const DEFAULT_GEMINI_EMBEDDING_MODEL = 'gemini-embedding-001';
+export const GEMINI_EMBEDDING_BATCH_SIZE = 100;
 
 export interface ChunkConfig {
   maxCharacters: number;
@@ -208,25 +209,31 @@ export function createGeminiEmbeddingProvider(input: {
     model: input.model,
     provider: 'gemini',
     async embedTexts(texts) {
-      const response = await fetchImpl(`${endpoint}?key=${encodeURIComponent(input.apiKey)}`, {
-        body: JSON.stringify({
-          requests: texts.map((text) => ({
-            content: { parts: [{ text }] },
-            model: geminiModelPath(input.model),
-            outputDimensionality: input.dimensions,
-          })),
-        }),
-        headers: { 'content-type': 'application/json' },
-        method: 'POST',
-      });
-      if (!response.ok) {
-        throw new Error(`Gemini embedding request failed: HTTP ${response.status}`);
+      const vectors: number[][] = [];
+      for (let start = 0; start < texts.length; start += GEMINI_EMBEDDING_BATCH_SIZE) {
+        const batch = texts.slice(start, start + GEMINI_EMBEDDING_BATCH_SIZE);
+        const response = await fetchImpl(`${endpoint}?key=${encodeURIComponent(input.apiKey)}`, {
+          body: JSON.stringify({
+            requests: batch.map((text) => ({
+              content: { parts: [{ text }] },
+              model: geminiModelPath(input.model),
+              outputDimensionality: input.dimensions,
+            })),
+          }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        });
+        if (!response.ok) {
+          throw new Error(`Gemini embedding request failed: HTTP ${response.status}`);
+        }
+        const body = (await response.json()) as {
+          embeddings?: Array<{ values?: number[] }>;
+        };
+        const batchVectors = body.embeddings?.map((embedding) => embedding.values ?? []) ?? [];
+        validateEmbeddingCount(batchVectors, batch.length, input.model);
+        validateEmbeddingVectors(batchVectors, input.dimensions, input.model);
+        vectors.push(...batchVectors);
       }
-      const body = (await response.json()) as {
-        embeddings?: Array<{ values?: number[] }>;
-      };
-      const vectors = body.embeddings?.map((embedding) => embedding.values ?? []) ?? [];
-      validateEmbeddingVectors(vectors, input.dimensions, input.model);
       return vectors;
     },
   };
@@ -411,6 +418,9 @@ function splitTextIntoChunks(text: string, config: ChunkConfig): string[] {
     .replace(/\r\n?/g, '\n')
     .replace(/[ \t]+\n/g, '\n')
     .trim();
+  if (normalized === '') {
+    return [];
+  }
   if (normalized.length <= config.maxCharacters) {
     return [normalized];
   }
@@ -441,21 +451,22 @@ function softBreakIndex(
   hardEnd: number,
   maxCharacters: number,
 ): number {
-  const minimumBreak = start + Math.floor(maxCharacters / 2);
-  const paragraphBreak = text.lastIndexOf('\n\n', hardEnd);
-  if (paragraphBreak >= minimumBreak) {
-    return paragraphBreak;
+  const chunkText = text.slice(start, hardEnd);
+  const relativeMinimumBreak = Math.floor(maxCharacters / 2);
+  const paragraphBreak = chunkText.lastIndexOf('\n\n');
+  if (paragraphBreak >= relativeMinimumBreak) {
+    return start + paragraphBreak;
   }
   const sentenceBreak = Math.max(
-    text.lastIndexOf('. ', hardEnd),
-    text.lastIndexOf('。', hardEnd),
-    text.lastIndexOf('\n', hardEnd),
+    chunkText.lastIndexOf('. '),
+    chunkText.lastIndexOf('。'),
+    chunkText.lastIndexOf('\n'),
   );
-  if (sentenceBreak >= minimumBreak) {
-    return sentenceBreak + 1;
+  if (sentenceBreak >= relativeMinimumBreak) {
+    return start + sentenceBreak + 1;
   }
-  const spaceBreak = text.lastIndexOf(' ', hardEnd);
-  return spaceBreak >= minimumBreak ? spaceBreak : hardEnd;
+  const spaceBreak = chunkText.lastIndexOf(' ');
+  return spaceBreak >= relativeMinimumBreak ? start + spaceBreak : hardEnd;
 }
 
 function normalizeChunkConfig(config: ChunkConfig): ChunkConfig {
@@ -483,6 +494,14 @@ function validateEmbeddingVectors(vectors: number[][], dimensions: number, model
         `Embedding dimension mismatch for ${model} at index ${index}: expected ${dimensions}, got ${vector.length}`,
       );
     }
+  }
+}
+
+function validateEmbeddingCount(vectors: number[][], expected: number, model: string): void {
+  if (vectors.length !== expected) {
+    throw new Error(
+      `Embedding count mismatch for ${model}: expected ${expected}, got ${vectors.length}`,
+    );
   }
 }
 

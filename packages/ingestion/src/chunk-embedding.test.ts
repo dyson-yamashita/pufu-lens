@@ -5,6 +5,7 @@ import {
   type ChunkEmbeddingTarget,
   chunkAndEmbed,
   createDeterministicEmbeddingProvider,
+  createGeminiEmbeddingProvider,
   type PreparedDocumentChunk,
   prepareDocumentChunks,
   type ReplaceDocumentChunksInput,
@@ -75,6 +76,62 @@ test('prepareDocumentChunks creates stable chunk order and hashes', async () => 
       },
     ],
   );
+});
+
+test('prepareDocumentChunks skips empty normalized document text', () => {
+  const chunks = prepareDocumentChunks({
+    chunkConfig: { maxCharacters: 34, overlapCharacters: 6, version: 'test-chunk-v1' },
+    embeddingModel: 'deterministic-sha256-v1',
+    embeddings: [],
+    parsed: parsedDocument({ bodyText: '  \n\t ', title: '   ' }),
+    rawContentHash: 'raw-hash-1',
+  });
+
+  assert.deepEqual(chunks, []);
+});
+
+test('Gemini embedding provider batches requests and preserves vector order', async () => {
+  const requestSizes: number[] = [];
+  const provider = createGeminiEmbeddingProvider({
+    apiKey: 'secret',
+    dimensions: 1536,
+    fetchImpl: async (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as { requests: Array<unknown> };
+      requestSizes.push(body.requests.length);
+      const offset = requestSizes.slice(0, -1).reduce((sum, size) => sum + size, 0);
+
+      return Response.json({
+        embeddings: body.requests.map((_request, index) => ({
+          values: testVector(1536, offset + index),
+        })),
+      });
+    },
+    model: 'gemini-embedding-001',
+  });
+
+  const texts = Array.from({ length: 205 }, (_value, index) => `text-${index}`);
+  const vectors = await provider.embedTexts(texts);
+
+  assert.deepEqual(requestSizes, [100, 100, 5]);
+  assert.equal(vectors.length, 205);
+  assert.equal(vectors[0]?.[0], 0);
+  assert.equal(vectors[204]?.[0], 204);
+});
+
+test('Gemini embedding provider does not call API for an empty text list', async () => {
+  let fetchCalls = 0;
+  const provider = createGeminiEmbeddingProvider({
+    apiKey: 'secret',
+    dimensions: 1536,
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      return Response.json({ embeddings: [] });
+    },
+    model: 'gemini-embedding-001',
+  });
+
+  assert.deepEqual(await provider.embedTexts([]), []);
+  assert.equal(fetchCalls, 0);
 });
 
 test('chunkAndEmbed upserts a document and does not duplicate unchanged chunks', async () => {
@@ -258,4 +315,8 @@ function parsedDocument(input: Partial<ParsedDocument> = {}): ParsedDocument {
     title: 'Fixture title',
     ...input,
   };
+}
+
+function testVector(dimensions: number, firstValue: number): number[] {
+  return [firstValue, ...Array.from({ length: dimensions - 1 }, () => 0)];
 }
