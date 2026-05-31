@@ -11,6 +11,9 @@
       "path": "./packages/storage"
     },
     {
+      "path": "./packages/ingestion"
+    },
+    {
       "path": "./packages/project-tenancy"
     }
   ]

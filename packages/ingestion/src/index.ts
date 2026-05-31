@@ -1,4 +1,24 @@
 export type {
+  CollectDecision,
+  CollectFixtureOptions,
+  CollectFixtureResult,
+  CollectionObjectStorage,
+  CollectionRepository,
+  DataSourceRecord,
+  FixtureCandidate,
+  LinkDataSourceInput,
+  ProjectRecord,
+  QueueCandidateInput,
+  RawDocumentInput,
+  RawDocumentRecord,
+} from './collection-pipeline.js';
+export {
+  collectFixtureSource,
+  normalizeSourceId,
+  scanFixtureSource,
+  shouldCollectCandidate,
+} from './collection-pipeline.js';
+export type {
   ActorMention,
   IngestionFixtureCase,
   ParsedDocument,

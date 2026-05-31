@@ -50,7 +50,7 @@ for each candidate in scanned:
       ON CONFLICT (raw_document_id, data_source_id)
       DO UPDATE SET last_seen_at = now(), match_reason = EXCLUDED.match_reason
     if existing.ingest_status = 'failed':
-      enqueue(existing.id)                    # 再試行のみ
+      enqueue(existing.id)                    # status=pending、attempts=0、last_error=NULL で再試行
     else:
       skip                                    # 既に indexed / parsed なら何もしない
   else:
@@ -58,8 +58,8 @@ for each candidate in scanned:
     sameHashCandidates = SELECT id FROM raw_documents
                          WHERE project_id = $1
                            AND content_hash = raw.contentHash
-                           AND source_type <> raw.sourceType
-    # sameHashCandidates は raw を統合せず、SAME_AS 候補として metadata / graph 構築時に使う
+    # sameHashCandidates は同一 source_type / 別 source_type のどちらも raw を統合せず、
+    # SAME_AS 候補として metadata / graph 構築時に使う
     INSERT INTO raw_documents (...)            # ingest_status = 'fetched'
     INSERT INTO raw_document_data_sources ...
     enqueue(raw.id)
