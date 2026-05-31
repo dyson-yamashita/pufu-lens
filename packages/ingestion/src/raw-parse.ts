@@ -250,6 +250,7 @@ async function parseQueueTarget(input: {
   try {
     const parsed = buildParsedDocument({
       parserVersion,
+      projectSlug: input.project.slug,
       rawDocument,
       rawText,
     });
@@ -308,6 +309,7 @@ async function parseQueueTarget(input: {
 
 function buildParsedDocument(input: {
   parserVersion: ParserVersionRecord;
+  projectSlug: string;
   rawDocument: ParseRawDocumentRecord;
   rawText: string;
 }): ParsedDocument {
@@ -315,7 +317,7 @@ function buildParsedDocument(input: {
     contentHash: input.rawDocument.contentHash,
     metadata: input.rawDocument.metadata,
     mimeType: input.rawDocument.mimeType,
-    projectSlug: input.rawDocument.projectId,
+    projectSlug: input.projectSlug,
     sourceId: input.rawDocument.sourceId,
     sourceType: input.rawDocument.sourceType,
     sourceUri: input.rawDocument.sourceUri,

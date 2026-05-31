@@ -162,7 +162,7 @@ function sanitizeUrl(value: string): string {
     return redactSensitiveQueryParams(url).toString();
   }
 
-  if (url.hostname === 'github.com' && url.pathname.startsWith('/example-org/')) {
+  if (url.hostname === 'github.com') {
     return redactSensitiveQueryParams(url).toString();
   }
 
