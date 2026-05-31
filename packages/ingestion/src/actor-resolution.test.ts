@@ -4,6 +4,7 @@ import {
   type ActorAliasRecord,
   type ActorRecord,
   type ActorResolutionRepository,
+  type CreateActorInput,
   parseSenderAlias,
   type ResolveParsedDocumentTarget,
   resolveActors,
@@ -137,9 +138,81 @@ test('parseSenderAlias accepts display-only sender aliases', () => {
   assert.deepEqual(parseSenderAlias('Unknown Sender'), { displayName: 'Unknown Sender' });
 });
 
+test('resolveActors encodes graph node id components', async () => {
+  const repository = new InMemoryActorResolutionRepository([
+    {
+      parsed: githubParsed({
+        actors: [{ displayName: 'Alex Kim: Docs', role: 'author' }],
+      }),
+      rawDocumentId: 'raw-github-1',
+    },
+  ]);
+
+  await resolveActors({
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  });
+
+  assert.equal(
+    repository.actors[0]?.graphNodeId,
+    'actor:unresolved:example-org%2Fpufu-sample%2Fissues%2F101:author%3A0:Alex%20Kim%3A%20Docs',
+  );
+});
+
+test('resolveActors caches all strong aliases after a partial alias hit', async () => {
+  const repository = new InMemoryActorResolutionRepository([
+    {
+      parsed: githubParsed({
+        actors: [
+          {
+            displayName: 'Sample Hybrid',
+            email: 'hybrid@example.test',
+            githubLogin: 'sample-hybrid',
+            role: 'author',
+          },
+          {
+            displayName: 'Sample Hybrid',
+            email: 'hybrid@example.test',
+            githubLogin: 'sample-hybrid',
+            role: 'commenter',
+          },
+        ],
+      }),
+      rawDocumentId: 'raw-github-1',
+    },
+  ]);
+  const actor = await repository.createActor({
+    actorType: 'person',
+    displayName: 'Sample Hybrid',
+    graphNodeId: 'actor:email:hybrid%40example.test',
+    metadata: {},
+    primaryEmail: 'hybrid@example.test',
+    projectId: repository.project.id,
+  });
+  await repository.upsertActorAlias({
+    actorId: actor.id,
+    aliasType: 'email',
+    aliasValue: 'hybrid@example.test',
+    confidence: 1,
+    projectId: repository.project.id,
+    source: 'fixture',
+  });
+
+  await resolveActors({
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  });
+
+  assert.equal(repository.findAliasCalls.length, 1);
+});
+
 class InMemoryActorResolutionRepository implements ActorResolutionRepository {
   readonly actors: ActorRecord[] = [];
   readonly aliases: ActorAliasRecord[] = [];
+  readonly findAliasCalls: Array<{ aliasType: ActorAliasRecord['aliasType']; aliasValue: string }> =
+    [];
   readonly project = { id: 'project-1', slug: 'sample-a' };
 
   constructor(private readonly targets: ResolveParsedDocumentTarget[]) {}
@@ -163,6 +236,7 @@ class InMemoryActorResolutionRepository implements ActorResolutionRepository {
     aliasValue: string;
     projectId: string;
   }): Promise<ActorRecord | undefined> {
+    this.findAliasCalls.push({ aliasType: input.aliasType, aliasValue: input.aliasValue });
     const alias = this.aliases.find(
       (candidate) =>
         candidate.projectId === input.projectId &&
@@ -174,13 +248,7 @@ class InMemoryActorResolutionRepository implements ActorResolutionRepository {
       : this.actors.find((actor) => actor.id === alias.actorId);
   }
 
-  async createActor(input: {
-    displayName: string;
-    graphNodeId: string;
-    primaryEmail?: string;
-    primaryLogin?: string;
-    projectId: string;
-  }): Promise<ActorRecord> {
+  async createActor(input: CreateActorInput): Promise<ActorRecord> {
     const existing = this.actors.find(
       (actor) => actor.projectId === input.projectId && actor.graphNodeId === input.graphNodeId,
     );

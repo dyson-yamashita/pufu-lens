@@ -234,6 +234,7 @@ async function findOrCreateActor(
     const cacheKey = actorAliasCacheKey(alias.aliasType, alias.aliasValue);
     const cached = context.aliasCache.get(cacheKey);
     if (cached) {
+      cacheAliases(context, input.aliases, cached);
       return cached;
     }
 
@@ -243,7 +244,7 @@ async function findOrCreateActor(
       projectId: context.projectId,
     });
     if (actor) {
-      context.aliasCache.set(cacheKey, actor);
+      cacheAliases(context, input.aliases, actor);
       return actor;
     }
   }
@@ -273,6 +274,16 @@ async function findOrCreateActor(
   }
 
   return actor;
+}
+
+function cacheAliases(
+  context: ResolveContext,
+  aliases: Pick<ResolvedAlias, 'aliasType' | 'aliasValue'>[],
+  actor: ActorRecord,
+): void {
+  for (const alias of aliases) {
+    context.aliasCache.set(actorAliasCacheKey(alias.aliasType, alias.aliasValue), actor);
+  }
 }
 
 async function persistAliases(
@@ -351,19 +362,20 @@ function parseTargetDocument(value: ParsedDocument | string): ParsedDocument {
 }
 
 export function parseSenderAlias(value: string): { displayName: string; email?: string } {
-  const match = value.match(/^\s*(?<name>.*?)\s*<(?<email>[^<>@\s]+@[^<>@\s]+)>\s*$/);
-  if (!match?.groups) {
-    return { displayName: value.trim() };
-  }
-  const email = match.groups.email;
-  if (!email) {
-    return { displayName: value.trim() };
+  const ltIndex = value.lastIndexOf('<');
+  const gtIndex = value.lastIndexOf('>');
+  if (ltIndex !== -1 && gtIndex > ltIndex) {
+    const email = value.slice(ltIndex + 1, gtIndex).trim();
+    const name = value.slice(0, ltIndex).trim();
+    if (email.includes('@')) {
+      return {
+        displayName: name || email,
+        email: normalizeEmail(email),
+      };
+    }
   }
 
-  return {
-    displayName: match.groups.name?.trim() || email,
-    email: normalizeEmail(email),
-  };
+  return { displayName: value.trim() };
 }
 
 function normalizeEmail(value: string | undefined): string | undefined {
@@ -401,8 +413,11 @@ function actorGraphNodeId(input: {
 }): string {
   const strongAlias = input.aliases.find((alias) => isStrongAlias(alias.aliasType));
   if (strongAlias) {
-    return `actor:${strongAlias.aliasType}:${strongAlias.aliasValue}`;
+    return `actor:${strongAlias.aliasType}:${encodeURIComponent(strongAlias.aliasValue)}`;
   }
 
-  return `actor:unresolved:${input.sourceId}:${input.occurrenceKey}:${input.displayName}`;
+  const safeSourceId = encodeURIComponent(input.sourceId);
+  const safeOccurrenceKey = encodeURIComponent(input.occurrenceKey);
+  const safeDisplayName = encodeURIComponent(input.displayName);
+  return `actor:unresolved:${safeSourceId}:${safeOccurrenceKey}:${safeDisplayName}`;
 }

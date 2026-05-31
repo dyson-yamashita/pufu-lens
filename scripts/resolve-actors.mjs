@@ -106,7 +106,7 @@ class PostgresActorResolutionRepository {
           display_name = public.actors.display_name,
           primary_email = COALESCE(public.actors.primary_email, EXCLUDED.primary_email),
           primary_login = COALESCE(public.actors.primary_login, EXCLUDED.primary_login),
-          metadata = public.actors.metadata || EXCLUDED.metadata
+          metadata = COALESCE(public.actors.metadata, '{}'::jsonb) || EXCLUDED.metadata
         RETURNING
           display_name AS "displayName",
           graph_node_id AS "graphNodeId",
@@ -145,12 +145,16 @@ class PostgresActorResolutionRepository {
         ON CONFLICT (project_id, alias_type, alias_value)
         DO UPDATE SET
           confidence = GREATEST(public.actor_aliases.confidence, EXCLUDED.confidence),
-          source = CASE
-            WHEN public.actor_aliases.source IS NULL OR public.actor_aliases.source = '' THEN EXCLUDED.source
-            WHEN EXCLUDED.source IS NULL OR EXCLUDED.source = '' THEN public.actor_aliases.source
-            WHEN position(EXCLUDED.source in public.actor_aliases.source) > 0 THEN public.actor_aliases.source
-            ELSE public.actor_aliases.source || ',' || EXCLUDED.source
-          END
+          source = (
+            SELECT string_agg(DISTINCT val, ',' ORDER BY val)
+            FROM unnest(
+              string_to_array(
+                COALESCE(public.actor_aliases.source, '') || ',' || COALESCE(EXCLUDED.source, ''),
+                ','
+              )
+            ) AS val
+            WHERE val <> ''
+          )
         RETURNING
           actor_id::text AS "actorId",
           alias_type AS "aliasType",
@@ -181,14 +185,27 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {
-      options.project = argv[++index];
+      options.project = readOptionValue(argv, ++index, arg);
     } else if (arg === '--limit') {
-      options.limit = Number(argv[++index]);
+      const value = readOptionValue(argv, ++index, arg);
+      const limit = Number(value);
+      if (!Number.isInteger(limit) || limit <= 0) {
+        throw new Error(`Invalid --limit value: ${value}`);
+      }
+      options.limit = limit;
     } else {
       throw new Error(`Unknown option: ${arg}`);
     }
   }
   return options;
+}
+
+function readOptionValue(argv, index, optionName) {
+  const value = argv[index];
+  if (!value || value.startsWith('--')) {
+    throw new Error(`${optionName} requires a value.`);
+  }
+  return value;
 }
 
 function requiredEnv(name) {
