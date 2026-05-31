@@ -207,6 +207,41 @@ CREATE TABLE public.document_chunks (
 CREATE INDEX document_chunks_embedding_idx ON public.document_chunks USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX document_chunks_project_document_idx ON public.document_chunks (project_id, document_id);
 
+CREATE TABLE public.document_chunk_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  document_id UUID NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
+  raw_document_id UUID NOT NULL REFERENCES public.raw_documents(id) ON DELETE CASCADE,
+  previous_chunk_id UUID NOT NULL,
+  chunk_index INTEGER NOT NULL CHECK (chunk_index >= 0),
+  content TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  embedding vector(1536),
+  embedding_model TEXT NOT NULL,
+  metadata JSONB NOT NULL DEFAULT '{}',
+  archived_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  archive_reason TEXT NOT NULL DEFAULT 'document_updated' CHECK (
+    archive_reason IN (
+      'chunk_config_changed',
+      'document_updated',
+      'embedding_model_changed',
+      'manual_reindex',
+      'parser_changed'
+    )
+  ),
+  superseded_by_raw_document_id UUID REFERENCES public.raw_documents(id) ON DELETE SET NULL,
+  superseded_by_content_hash TEXT
+);
+CREATE INDEX document_chunk_history_project_document_idx ON public.document_chunk_history (
+  project_id,
+  document_id,
+  archived_at DESC
+);
+CREATE INDEX document_chunk_history_project_raw_idx ON public.document_chunk_history (
+  project_id,
+  raw_document_id
+);
+
 CREATE TABLE public.actors (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,

@@ -297,7 +297,7 @@ CREATE TABLE document_chunk_history (
   embedding_model            TEXT NOT NULL,
   metadata                   JSONB NOT NULL DEFAULT '{}',
   archived_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
-  archive_reason             TEXT NOT NULL DEFAULT 'document_updated', -- document_updated | parser_changed | manual_reindex
+  archive_reason             TEXT NOT NULL DEFAULT 'document_updated', -- document_updated | parser_changed | embedding_model_changed | chunk_config_changed | manual_reindex
   superseded_by_raw_document_id UUID REFERENCES raw_documents(id),
   superseded_by_content_hash TEXT
 );

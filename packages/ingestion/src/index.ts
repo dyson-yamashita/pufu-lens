@@ -16,6 +16,33 @@ export type {
 } from './actor-resolution.js';
 export { parseSenderAlias, resolveActors } from './actor-resolution.js';
 export type {
+  ChunkAndEmbedDecision,
+  ChunkAndEmbedOptions,
+  ChunkAndEmbedResult,
+  ChunkArchiveReason,
+  ChunkConfig,
+  ChunkEmbeddingRepository,
+  ChunkEmbeddingTarget,
+  DocumentChunkRecord,
+  DocumentRecord,
+  EmbeddingProvider,
+  PreparedDocumentChunk,
+  ReplaceDocumentChunksInput,
+  UpsertDocumentInput,
+} from './chunk-embedding.js';
+export {
+  checkEmbeddingProvider,
+  chunkAndEmbed,
+  createDeterministicEmbeddingProvider,
+  createGeminiEmbeddingProvider,
+  DEFAULT_CHUNK_CONFIG,
+  DEFAULT_DETERMINISTIC_EMBEDDING_MODEL,
+  DEFAULT_EMBEDDING_DIMENSIONS,
+  DEFAULT_GEMINI_EMBEDDING_MODEL,
+  prepareDocumentChunks,
+  validateGeminiEmbeddingConfig,
+} from './chunk-embedding.js';
+export type {
   CollectDecision,
   CollectFixtureOptions,
   CollectFixtureResult,

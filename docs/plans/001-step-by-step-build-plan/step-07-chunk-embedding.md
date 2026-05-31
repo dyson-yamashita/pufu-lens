@@ -47,3 +47,45 @@ pnpm test -- --run chunk
 - embedding provider を deterministic / Gemini で切り替えられる。
 - Gemini 利用時の embedding 次元と `document_chunks.embedding` の次元が一致する。
 - DB schema と異なる embedding 次元では validation error になる。
+
+## Step 7 確認記録
+
+- 実施日: 2026-05-31
+- 対象 commit: PR 作成前の `feature/issue-19-chunk-embedding`
+- 実装範囲:
+  - `chunkAndEmbed`、deterministic embedding provider、Gemini embedding provider interface
+  - `documents` upsert と `document_chunks` 最新版保存
+  - `document_chunk_history` への退避 schema / repository 実装
+  - `pnpm ingest:chunk` と `pnpm embedding:check`
+- 実行コマンド:
+  - `pnpm --filter @pufu-lens/ingestion test`
+  - `pnpm test`
+  - `pnpm typecheck`
+  - `pnpm format:check`
+  - `pnpm embedding:check --provider deterministic --dimensions 1536`
+  - `pnpm ingest:collect:fixture --project step7-smoke`
+  - `pnpm ingest:parse --project step7-smoke --limit 10`
+  - `pnpm ingest:chunk --project step7-smoke --limit 10 --embedding-provider deterministic`
+  - `pnpm ingest:chunk --project step7-smoke --limit 10 --embedding-provider deterministic`（再実行）
+- 自動テスト結果:
+  - ingestion package: 30 tests passed
+  - 全体 `pnpm test`: 5 packages successful
+  - `pnpm typecheck`: 5 packages successful
+  - `pnpm format:check`: passed
+- 補助的な手動確認:
+  - deterministic embedding check は `dimensions=1536`、`model=deterministic-sha256-v1`、`ok=true`
+  - `step7-smoke` 初回 chunk は 5 documents / 5 chunks を `indexed`
+  - 同一条件の再実行は 5 件すべて `unchanged`
+- DB 確認:
+  - `documents=5`
+  - `document_chunks=5`
+  - `document_chunk_history=0`（再実行は unchanged のため履歴なし。履歴退避は unit test で確認）
+- Storage 確認:
+  - `step7-smoke/parsed/...` の parsed JSON を入力に chunk 実行
+- ログ / secret 確認:
+  - deterministic provider のみ実行し、Gemini API key / OAuth token / raw 本文全文はログ出力なし
+- 未確認リスク:
+  - Gemini 実 API の dry-run は `GEMINI_API_KEY` 未設定のため未実行。1536 次元 validation は unit test と `embedding:check` 実装で確認
+  - 既存 Docker volume は Step 7 前の schema だったため、smoke test 前に `document_chunk_history` をローカル DB へ非破壊追加した。fresh DB では `infra/docker/postgres/init.sql` から作成される
+- 次 step に進む判断:
+  - fixture ベースの deterministic chunk / embedding、冪等性、DB 件数確認が通ったため Step 8 に進める
