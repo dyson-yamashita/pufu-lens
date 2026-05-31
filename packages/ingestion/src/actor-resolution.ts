@@ -179,7 +179,7 @@ async function resolveMention(
     occurrenceKey: `${mention.role}:${mentionIndex}`,
     sourceId: parsed.sourceId,
   });
-  const persistedAliases = await persistAliases(context, actor.id, aliases);
+  const persistedAliases = await persistAliases(context, actor, aliases);
 
   return {
     actorId: actor.id,
@@ -293,7 +293,7 @@ function cacheAliases(
 
 async function persistAliases(
   context: ResolveContext,
-  actorId: string,
+  actor: ActorRecord,
   aliases: ResolvedAlias[],
 ): Promise<ResolvedAlias[]> {
   const resolved: ResolvedAlias[] = [];
@@ -305,19 +305,14 @@ async function persistAliases(
     }
 
     const persisted = await context.repository.upsertActorAlias({
-      actorId,
+      actorId: actor.id,
       aliasType: alias.aliasType,
       aliasValue: alias.aliasValue,
       confidence: alias.confidence,
       projectId: context.projectId,
       source: alias.source,
     });
-    context.aliasCache.set(actorAliasCacheKey(persisted.aliasType, persisted.aliasValue), {
-      displayName: '',
-      graphNodeId: '',
-      id: persisted.actorId,
-      projectId: context.projectId,
-    });
+    context.aliasCache.set(actorAliasCacheKey(persisted.aliasType, persisted.aliasValue), actor);
     resolved.push({ ...alias, persisted: true });
   }
 
