@@ -11,7 +11,8 @@
       "!**/dist",
       "!**/build",
       "!**/coverage",
-      "!infra/volumes"
+      "!infra/volumes",
+      "!.infisical.json"
     ]
   },
   "formatter": {

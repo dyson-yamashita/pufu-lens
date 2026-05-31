@@ -20,7 +20,7 @@ Gemini embedding を使う場合は次を設定する。
 
 ```bash
 GEMINI_API_KEY=... \
-GEMINI_EMBEDDING_MODEL=text-embedding-004 \
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001 \
 GEMINI_EMBEDDING_DIMENSIONS=1536 \
 pnpm ingest:chunk --project sample-a --limit 3 --embedding-provider gemini --dry-run
 ```

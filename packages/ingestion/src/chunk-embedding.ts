@@ -9,7 +9,7 @@ export const DEFAULT_CHUNK_CONFIG: ChunkConfig = {
 };
 export const DEFAULT_EMBEDDING_DIMENSIONS = 1536;
 export const DEFAULT_DETERMINISTIC_EMBEDDING_MODEL = 'deterministic-sha256-v1';
-export const DEFAULT_GEMINI_EMBEDDING_MODEL = 'text-embedding-004';
+export const DEFAULT_GEMINI_EMBEDDING_MODEL = 'gemini-embedding-001';
 
 export interface ChunkConfig {
   maxCharacters: number;

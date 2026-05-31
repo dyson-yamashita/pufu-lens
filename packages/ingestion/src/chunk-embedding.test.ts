@@ -141,7 +141,7 @@ test('validateGeminiEmbeddingConfig requires a 1536-dimensional Gemini configura
       validateGeminiEmbeddingConfig({
         apiKey: 'secret',
         dimensions: 768,
-        model: 'text-embedding-004',
+        model: 'gemini-embedding-001',
       }),
     /GEMINI_EMBEDDING_DIMENSIONS must be 1536/,
   );
@@ -149,7 +149,7 @@ test('validateGeminiEmbeddingConfig requires a 1536-dimensional Gemini configura
     validateGeminiEmbeddingConfig({
       apiKey: 'secret',
       dimensions: 1536,
-      model: 'text-embedding-004',
+      model: 'gemini-embedding-001',
     }),
   );
 });
