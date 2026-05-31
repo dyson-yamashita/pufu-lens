@@ -808,7 +808,7 @@ erDiagram
 
 - 例: 同じテンプレートメール（差出人は別人）が複数回送られる、Web で同じ HTML が複数 URL で配信される。
 - 判定: `(project_id, source_type, source_id)` が異なる限り、別の `raw_documents` 行として保存する。
-- 動作: Collection Pipeline は同じ `content_hash` の既存行を検索し、`metadata.same_hash_raw_document_ids` や graph の `SAME_AS` 候補として記録する。再 index のスキップ可否は source type ごとに決める。
+- 動作: Collection Pipeline は同じ `content_hash` の既存行を検索し、`metadata.sameAsCandidateRawDocumentIds` や graph の `SAME_AS` 候補として記録する。再 index のスキップ可否は source type ごとに決める。
 - source type 別の既定方針:
   - `gmail`: `source_id = threadId:messageId` とし、同一本文でも別メールとして保存する。
   - `drive`: `source_id = fileId:revisionId` とし、同一本文でも revision 単位で保存する。最新版だけを `documents` に昇格する。

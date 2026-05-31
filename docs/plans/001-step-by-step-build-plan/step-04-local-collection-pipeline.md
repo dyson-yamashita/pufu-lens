@@ -49,18 +49,23 @@ psql "$DATABASE_URL" -c "SELECT source_type, content_hash, count(*) FROM raw_doc
 
 - 実施日: 2026-05-31
 - 対象 commit: PR head commit
-- 実装範囲: fixture scanner、candidate filter、source_id 正規化、raw storage 保存、`raw_documents` / `raw_document_data_sources` / `ingestion_queue` upsert、`pnpm ingest:collect:fixture` CLI
+- 実装範囲: fixture scanner、candidate filter、source_id 正規化、raw storage 保存、`raw_documents` / `raw_document_data_sources` / `ingestion_queue` upsert、`postgres` client を使う `pnpm ingest:collect:fixture` CLI
 - 実行コマンド:
   - `pnpm --filter @pufu-lens/ingestion test`
-  - `pnpm ingest:collect:fixture --project sample-a --source github`
+  - `pnpm typecheck`
+  - `pnpm format:check`
+  - `pnpm lint`
+  - `pnpm test`
+  - `pnpm build`
+  - `pnpm ingest:collect:fixture --project sample-b --source github`
   - `psql ... SELECT source_type, source_id, ingest_status, storage_uri FROM public.raw_documents ...`
   - `psql ... SELECT status, target_id, raw_document_id FROM public.ingestion_queue ...`
-  - `find /private/tmp/pufu-lens-step4-storage/sample-a/raw -type f`
+  - `find /private/tmp/pufu-lens-step4-storage-postgres-client/sample-b/raw -type f`
   - `rg -n "token|secret|password|Bearer|refresh_token" fixtures .env.example`
-- 自動テスト結果: `packages/ingestion` の 10 tests が pass。
+- 自動テスト結果: `packages/ingestion` の 11 tests が pass。全体の `typecheck` / `format:check` / `lint` / `test` / `build` が pass。
 - 補助的な手動確認: collect 1 回目は GitHub fixture 2 件が `collected`、2 回目は同じ 2 件が `skipped_existing`。
 - DB 確認: `raw_documents` は GitHub 2 件で `ingest_status='fetched'`、`ingestion_queue` は 2 件で `status='pending'`、2 回実行後の raw 件数は 2。
-- Storage 確認: `/private/tmp/pufu-lens-step4-storage/sample-a/raw/github/issue-101.json` と `pull-202.json` の実体ファイルを確認。
+- Storage 確認: `/private/tmp/pufu-lens-step4-storage-postgres-client/sample-b/raw/github/issue-101.json` と `pull-202.json` の実体ファイルを確認。
 - ログ / secret 確認: collect 実行ログに LLM call / token usage は出力されない。fixture / `.env.example` の secret pattern 検索は該当なし。
 - 未確認リスク: real data source API 連携、実 parser approval flow との接続、実運用 DB migration は後続 Step で確認する。
 - 次 step に進む判断: fixture ベースの Collection Pipeline は外部 API / LLM なしで再実行性を確認できたため、Step 5 の raw parse へ進める。

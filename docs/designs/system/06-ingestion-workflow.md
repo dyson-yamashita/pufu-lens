@@ -58,8 +58,8 @@ for each candidate in scanned:
     sameHashCandidates = SELECT id FROM raw_documents
                          WHERE project_id = $1
                            AND content_hash = raw.contentHash
-                           AND source_type <> raw.sourceType
-    # sameHashCandidates は raw を統合せず、SAME_AS 候補として metadata / graph 構築時に使う
+    # sameHashCandidates は同一 source_type / 別 source_type のどちらも raw を統合せず、
+    # SAME_AS 候補として metadata / graph 構築時に使う
     INSERT INTO raw_documents (...)            # ingest_status = 'fetched'
     INSERT INTO raw_document_data_sources ...
     enqueue(raw.id)
