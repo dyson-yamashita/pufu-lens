@@ -113,17 +113,78 @@ test('storeGraphRelations rejects stale document graph keys before writing graph
     },
   ]);
 
-  await assert.rejects(
-    () =>
-      storeGraphRelations({
-        limit: 10,
-        projectSlug: 'sample-a',
-        repository,
-      }),
-    /Document graph key mismatch/,
-  );
+  const result = await storeGraphRelations({
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  });
+
+  assert.equal(result.decisions[0]?.decision, 'failed');
+  assert.match(result.decisions[0]?.errorMessage ?? '', /Document graph key mismatch/);
+  assert.deepEqual(repository.failureUpdates, [
+    {
+      errorMessage:
+        'Document graph key mismatch for example-org/pufu-sample/issues/101: expected document:issue:example-org%2Fpufu-sample%2Fissues%2F101, got document:issue:stale',
+      projectId: 'project-a',
+      rawDocumentId: 'raw-github-1',
+    },
+  ]);
   assert.equal(repository.nodes.size, 0);
   assert.equal(repository.edges.size, 0);
+});
+
+test('storeGraphRelations continues after a failed document', async () => {
+  const repository = new InMemoryGraphRelationsRepository([
+    {
+      document: documentRecord({ graphNodeId: 'document:issue:stale', id: 'document-bad' }),
+      parsed: githubParsed(),
+      rawContentHash: 'hash-1',
+      rawDocumentId: 'raw-github-1',
+    },
+    {
+      document: documentRecord(),
+      parsed: gmailParsed(),
+      rawContentHash: 'same-hash',
+      rawDocumentId: 'raw-email-1',
+    },
+  ]);
+  repository.actors.push({
+    displayName: 'Sample Sender',
+    graphNodeId: 'actor:email:sender%40example.test',
+    id: 'actor-sender',
+  });
+  repository.aliases.set(
+    'email:sender@example.test',
+    repository.actors.at(-1) as GraphRelationActorRecord,
+  );
+  repository.actors.push({
+    displayName: 'Sample Reviewer',
+    graphNodeId: 'actor:email:reviewer%40example.test',
+    id: 'actor-reviewer',
+  });
+  repository.aliases.set(
+    'email:reviewer@example.test',
+    repository.actors.at(-1) as GraphRelationActorRecord,
+  );
+
+  const result = await storeGraphRelations({
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  });
+
+  assert.deepEqual(
+    result.decisions.map((decision) => decision.decision),
+    ['failed', 'indexed'],
+  );
+  assert.deepEqual(
+    repository.failureUpdates.map((update) => update.rawDocumentId),
+    ['raw-github-1'],
+  );
+  assert.deepEqual(
+    repository.statusUpdates.map((update) => update.rawDocumentId),
+    ['raw-email-1'],
+  );
 });
 
 test('storeGraphRelations keeps project slug isolation at repository boundary', async () => {
@@ -148,6 +209,11 @@ class InMemoryGraphRelationsRepository implements GraphRelationsRepository {
   readonly nodes = new Map<string, GraphNodeInput>();
   readonly project = { graphName: 'graph_sample_a', id: 'project-a', slug: 'sample-a' };
   readonly sameAsDocuments: GraphRelationDocumentRecord[] = [];
+  readonly failureUpdates: Array<{
+    errorMessage: string;
+    projectId: string;
+    rawDocumentId: string;
+  }> = [];
   readonly statusUpdates: Array<{ projectId: string; rawDocumentId: string }> = [];
 
   constructor(private readonly targets: GraphRelationTarget[]) {}
@@ -201,6 +267,10 @@ class InMemoryGraphRelationsRepository implements GraphRelationsRepository {
   async replaceEmailQuotes(input: ReplaceEmailQuotesInput) {
     assert.equal(input.projectId, this.project.id);
     this.emailQuotes.set(input.documentId, input.quotes);
+  }
+
+  async markFailed(input: { errorMessage: string; projectId: string; rawDocumentId: string }) {
+    this.failureUpdates.push(input);
   }
 
   async markIndexed(input: { projectId: string; rawDocumentId: string }) {

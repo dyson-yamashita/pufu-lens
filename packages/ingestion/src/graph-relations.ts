@@ -84,6 +84,11 @@ export interface GraphRelationsRepository {
     sourceType: ParsedDocument['sourceType'];
   }): Promise<GraphRelationDocumentRecord[]>;
   lookupProjectBySlug(slug: string): Promise<GraphRelationProjectRecord | undefined>;
+  markFailed(input: {
+    errorMessage: string;
+    projectId: string;
+    rawDocumentId: string;
+  }): Promise<void>;
   markIndexed(input: { projectId: string; rawDocumentId: string }): Promise<void>;
   readGraphTargets(input: { limit: number; projectId: string }): Promise<GraphRelationTarget[]>;
   replaceEmailQuotes(input: ReplaceEmailQuotesInput): Promise<void>;
@@ -104,9 +109,10 @@ export interface StoreGraphRelationsResult {
 
 export interface StoreGraphRelationDecision {
   actorEdgeCount: number;
-  decision: 'indexed';
+  decision: 'failed' | 'indexed';
   documentId: string;
   emailQuoteCount: number;
+  errorMessage?: string;
   graphEdgeCount: number;
   graphNodeCount: number;
   rawDocumentId: string;
@@ -136,10 +142,38 @@ export async function storeGraphRelations(
   const decisions: StoreGraphRelationDecision[] = [];
 
   for (const target of targets) {
-    decisions.push(await storeGraphTarget(context, target));
+    decisions.push(await storeGraphTargetSafely(context, target));
   }
 
   return { decisions, projectSlug: project.slug };
+}
+
+async function storeGraphTargetSafely(
+  context: GraphRelationContext,
+  target: GraphRelationTarget,
+): Promise<StoreGraphRelationDecision> {
+  try {
+    return await storeGraphTarget(context, target);
+  } catch (error) {
+    const errorMessage = safeErrorMessage(error);
+    await context.repository.markFailed({
+      errorMessage,
+      projectId: context.project.id,
+      rawDocumentId: target.rawDocumentId,
+    });
+    return {
+      actorEdgeCount: 0,
+      decision: 'failed',
+      documentId: target.document.id,
+      emailQuoteCount: 0,
+      errorMessage,
+      graphEdgeCount: 0,
+      graphNodeCount: 0,
+      rawDocumentId: target.rawDocumentId,
+      sameAsCount: 0,
+      sourceId: sourceIdForFailure(target),
+    };
+  }
 }
 
 async function storeGraphTarget(
@@ -468,4 +502,17 @@ function actorEdgeType(role: ActorMention['role']): GraphEdgeType {
 function parseTargetDocument(value: ParsedDocument | string): ParsedDocument {
   const parsed = typeof value === 'string' ? (JSON.parse(value) as ParsedDocument) : value;
   return validateParsedDocument(parsed);
+}
+
+function safeErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/\s+/g, ' ').slice(0, 500);
+}
+
+function sourceIdForFailure(target: GraphRelationTarget): string {
+  try {
+    return parseTargetDocument(target.parsed).sourceId;
+  } catch {
+    return target.document.graphNodeId;
+  }
 }

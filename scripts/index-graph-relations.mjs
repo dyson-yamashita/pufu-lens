@@ -132,35 +132,39 @@ class PostgresGraphRelationsRepository {
   async upsertGraphNode(input) {
     const graphName = requiredGraphName(this.graphName);
     const label = validateLabel(input.labels[0] ?? 'Document');
-    const graphNodeId = cypherString(input.graphNodeId);
-    const properties = cypherMap({
+    const properties = {
       ...input.properties,
       graphLabels: input.labels,
       graphNodeId: input.graphNodeId,
-    });
+    };
+    const setClause = parameterizedSetClause('n', properties, 'node');
     await executeCypher(
       this.sql,
       graphName,
-      `MERGE (n:${label} {graphNodeId: ${graphNodeId}}) SET n += ${properties} RETURN n`,
+      `MERGE (n:${label} {graphNodeId: $graphNodeId}) ${setClause.cypher} RETURN n`,
+      { graphNodeId: input.graphNodeId, ...setClause.params },
     );
   }
 
   async upsertGraphEdge(input) {
     const graphName = requiredGraphName(this.graphName);
-    const fromGraphNodeId = cypherString(input.fromGraphNodeId);
-    const toGraphNodeId = cypherString(input.toGraphNodeId);
-    const properties = cypherMap(input.properties);
     const edgeType = validateLabel(input.type);
+    const setClause = parameterizedSetClause('r', input.properties, 'edge');
     await executeCypher(
       this.sql,
       graphName,
       [
-        `MATCH (from {graphNodeId: ${fromGraphNodeId}})`,
-        `MATCH (to {graphNodeId: ${toGraphNodeId}})`,
+        'MATCH (from {graphNodeId: $fromGraphNodeId})',
+        'MATCH (to {graphNodeId: $toGraphNodeId})',
         `MERGE (from)-[r:${edgeType}]->(to)`,
-        `SET r += ${properties}`,
+        setClause.cypher,
         'RETURN r',
       ].join(' '),
+      {
+        fromGraphNodeId: input.fromGraphNodeId,
+        ...setClause.params,
+        toGraphNodeId: input.toGraphNodeId,
+      },
     );
   }
 
@@ -223,6 +227,23 @@ class PostgresGraphRelationsRepository {
       `;
     });
   }
+
+  async markFailed(input) {
+    await this.sql.begin(async (transaction) => {
+      await transaction`
+        UPDATE public.raw_documents
+        SET ingest_status = 'failed', ingest_error = ${input.errorMessage}
+        WHERE project_id = ${input.projectId}
+          AND id = ${input.rawDocumentId}
+      `;
+      await transaction`
+        UPDATE public.ingestion_queue
+        SET status = 'failed', last_error = ${input.errorMessage}
+        WHERE project_id = ${input.projectId}
+          AND raw_document_id = ${input.rawDocumentId}
+      `;
+    });
+  }
 }
 
 async function ensureAgeSession(sql) {
@@ -236,9 +257,10 @@ async function ensureGraph(sql, graphName) {
   )`);
 }
 
-async function executeCypher(sql, graphName, cypher) {
+async function executeCypher(sql, graphName, cypher, params = {}) {
   await sql.unsafe(
-    `SELECT * FROM cypher(${sqlString(graphName)}, ${dollarQuote(cypher)}) AS (value agtype)`,
+    `SELECT * FROM cypher(${sqlString(graphName)}, ${dollarQuote(cypher)}, $1::agtype) AS (value agtype)`,
+    [JSON.stringify(params)],
   );
 }
 
@@ -263,28 +285,6 @@ function createLocalObjectStorageFromEnv(env = process.env) {
     throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
   }
   return new LocalFsObjectStorage(root);
-}
-
-function cypherMap(value) {
-  const entries = Object.entries(value).filter((entry) => entry[1] !== undefined);
-  return `{${entries.map(([key, item]) => `${validatePropertyName(key)}: ${cypherValue(item)}`).join(', ')}}`;
-}
-
-function cypherValue(value) {
-  if (value === null) {
-    return 'null';
-  }
-  if (typeof value === 'string') {
-    return cypherString(value);
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-  return cypherString(JSON.stringify(value));
-}
-
-function cypherString(value) {
-  return JSON.stringify(value).replace(/\$/g, '\\u0024');
 }
 
 function readOptionValue(argv, index, optionName) {
@@ -333,16 +333,6 @@ function sqlString(value) {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-function dollarQuote(value) {
-  for (let index = 0; index < 100; index += 1) {
-    const tag = `$pufu_${index}$`;
-    if (!value.includes(tag)) {
-      return `${tag}${value}${tag}`;
-    }
-  }
-  throw new Error('Unable to quote Cypher string safely.');
-}
-
 function validateGraphName(graphName) {
   if (!/^graph_[a-z0-9_]+$/.test(graphName) || graphName.length > 63) {
     throw new Error(`Invalid AGE graph name: ${graphName}`);
@@ -355,6 +345,41 @@ function validateLabel(label) {
     throw new Error(`Invalid graph label or edge type: ${label}`);
   }
   return label;
+}
+
+function parameterizedSetClause(variableName, properties, paramPrefix) {
+  const assignments = [];
+  const params = {};
+  let index = 0;
+  for (const [propertyName, value] of Object.entries(properties)) {
+    if (value === undefined) {
+      continue;
+    }
+    const paramName = `${paramPrefix}${index}`;
+    assignments.push(`${variableName}.${validatePropertyName(propertyName)} = $${paramName}`);
+    params[paramName] = graphPropertyValue(value);
+    index += 1;
+  }
+  return {
+    cypher: assignments.length === 0 ? '' : `SET ${assignments.join(', ')}`,
+    params,
+  };
+}
+
+function graphPropertyValue(value) {
+  if (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    return value;
+  }
+  return JSON.stringify(value);
+}
+
+function dollarQuote(value) {
+  return `$pufu_static$${value}$pufu_static$`;
 }
 
 function validatePropertyName(name) {

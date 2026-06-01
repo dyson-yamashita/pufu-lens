@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import postgres from 'postgres';
 
 async function main() {
@@ -80,13 +81,8 @@ function sqlString(value) {
 }
 
 function dollarQuote(value) {
-  for (let index = 0; index < 100; index += 1) {
-    const tag = `$pufu_${index}$`;
-    if (!value.includes(tag)) {
-      return `${tag}${value}${tag}`;
-    }
-  }
-  throw new Error('Unable to quote Cypher string safely.');
+  const tag = `$pufu_${createHash('sha256').update(value).digest('hex')}$`;
+  return `${tag}${value}${tag}`;
 }
 
 function validateGraphName(graphName) {
