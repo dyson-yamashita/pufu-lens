@@ -9,7 +9,7 @@ Step 8 では、`documents` と `actors` を AGE graph に materialize し、`em
 - 対象 project で collection、parse、actor resolution、chunk / embedding が完了している。
 
 ```bash
-export DATABASE_URL=postgres://pufu:pufu@localhost:5432/pufu_lens
+export DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens
 export STORAGE_ROOT=./infra/volumes/pufu-lens-data
 ```
 
@@ -28,6 +28,8 @@ pnpm ingest:index --project sample-a --limit 10
 - `email_quotes` の置き換え保存
 - `content_hash` が一致する別 source type の Document への `SAME_AS` edge の MERGE
 - `raw_documents.ingest_status` と `ingestion_queue.status` の `indexed` 更新
+
+`SAME_AS` は Step 8 時点では `content_hash` が一致する別 source type の Document だけを対象にする。埋め込み類似度による同一性判定は未実装である。
 
 ## 確認
 

@@ -61,7 +61,7 @@ pnpm graph:query --project sample-b --cypher "MATCH (d:Document) RETURN d LIMIT 
   - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens pnpm graph:query --project step8-smoke --cypher "MATCH (d:Document) RETURN d LIMIT 5"`
   - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens pnpm graph:query --project sample-b --cypher "MATCH (d:Document) RETURN d LIMIT 5"`
 - 自動テスト結果:
-  - `pnpm --filter @pufu-lens/ingestion test -- --run graph`: 37 tests passed
+  - `pnpm --filter @pufu-lens/ingestion test -- --run graph`: 40 tests passed
   - `pnpm test`: 5 packages passed
   - `pnpm typecheck`: 5 packages passed
   - `pnpm lint`: 0 errors
@@ -80,5 +80,6 @@ pnpm graph:query --project sample-b --cypher "MATCH (d:Document) RETURN d LIMIT 
   - CLI 出力は decision、ID、件数のみで、raw 本文全文、OAuth token、Gemini API key は出力していない。
 - 未確認リスク:
   - AGE の node label は互換性のため `Document` / `Actor` / `Topic` の主ラベルにし、詳細種別は `graphLabels` property に保存した。複数ラベル利用の可否は将来の AGE バージョン差を見て再検討する。
+  - `SAME_AS` は `content_hash` が一致する別 source type の Document に限定しており、埋め込み類似度による同一性判定は未実装。
 - 次 step に進む判断:
   - relational / vector / graph の三層保存、project graph 分離、再実行時の MERGE idempotency を確認できたため、Step 9 に進める。
