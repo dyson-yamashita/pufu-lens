@@ -65,13 +65,23 @@ export async function collectWebUrlSource(
     const candidates = scanWebUrlDataSource(dataSource, options.limit);
 
     for (const candidate of candidates) {
-      const rawCandidate = await buildWebUrlRawCandidate({
-        candidate,
-        dataSource,
-        fetcher,
-        projectId: project.id,
-        projectSlug: project.slug,
-      });
+      let rawCandidate: WebUrlRawCandidate;
+      try {
+        rawCandidate = await buildWebUrlRawCandidate({
+          candidate,
+          dataSource,
+          fetcher,
+          projectId: project.id,
+          projectSlug: project.slug,
+        });
+      } catch (error) {
+        console.error(
+          `Failed to build raw web candidate for ${redactUrl(candidate.sourceUri)}: ${sanitizeError(
+            error,
+          )}`,
+        );
+        continue;
+      }
       const sourceId = rawCandidate.raw.sourceId;
       const existing = await options.repository.lookupRawDocument({
         projectId: project.id,
@@ -187,7 +197,13 @@ export function scanWebUrlDataSource(
     ...readStringArray(dataSource.config.sourceUris),
     ...readStringArray(dataSource.config.sourceUrls),
   ];
-  const uniqueUrls = [...new Set(urls.map((url) => normalizeHttpUrl(url)))];
+  const normalizedUrls: string[] = [];
+  for (const url of urls) {
+    try {
+      normalizedUrls.push(normalizeHttpUrl(url));
+    } catch {}
+  }
+  const uniqueUrls = [...new Set(normalizedUrls)];
   return uniqueUrls.slice(0, limit ?? uniqueUrls.length).map((sourceUri) => ({ sourceUri }));
 }
 
@@ -256,7 +272,11 @@ function extractCanonicalUrl(html: string, baseUrl: string): string {
   if (!href) {
     return baseUrl;
   }
-  return new URL(href, baseUrl).toString();
+  try {
+    return normalizeHttpUrl(new URL(href, baseUrl).toString());
+  } catch {
+    return baseUrl;
+  }
 }
 
 function extractTitle(html: string): string | undefined {
@@ -308,6 +328,24 @@ function safeStorageSegment(value: string): string {
     .replace(/[^a-zA-Z0-9._-]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 120);
+}
+
+function redactUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    if (url.search) {
+      url.search = '?<redacted>';
+    }
+    return url.toString();
+  } catch {
+    return '<invalid-url>';
+  }
+}
+
+function sanitizeError(error: unknown): string {
+  return String(error instanceof Error ? error.message : error)
+    .replace(/(token|secret|api[_-]?key)=\S+/gi, '$1=<redacted>')
+    .slice(0, 500);
 }
 
 function sha256Hex(value: string): string {
