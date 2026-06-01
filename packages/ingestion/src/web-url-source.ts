@@ -60,11 +60,23 @@ export async function collectWebUrlSource(
   const fetcher = options.fetcher ?? fetchWebUrl;
   const dataSources = await options.repository.findDataSources(project.id, 'web');
   const decisions: CollectWebUrlSourceResult['decisions'] = [];
+  let remainingLimit = options.limit;
 
   for (const dataSource of dataSources.filter((source) => source.enabled)) {
-    const candidates = scanWebUrlDataSource(dataSource, options.limit);
+    if (remainingLimit !== undefined && remainingLimit <= 0) {
+      break;
+    }
+
+    const candidates = scanWebUrlDataSource(dataSource, remainingLimit);
 
     for (const candidate of candidates) {
+      if (remainingLimit !== undefined && remainingLimit <= 0) {
+        break;
+      }
+      if (remainingLimit !== undefined) {
+        remainingLimit -= 1;
+      }
+
       let rawCandidate: WebUrlRawCandidate;
       try {
         rawCandidate = await buildWebUrlRawCandidate({
@@ -256,9 +268,12 @@ export async function fetchWebUrl(url: string): Promise<WebUrlFetchResponse> {
     headers: { 'user-agent': DEFAULT_USER_AGENT },
     redirect: 'follow',
   });
+  const contentType = response.headers.get('content-type') ?? undefined;
+  const buffer = await response.arrayBuffer();
+
   return {
-    body: await response.text(),
-    contentType: response.headers.get('content-type') ?? undefined,
+    body: decodeWebResponse(buffer, contentType),
+    contentType,
     finalUrl: response.url,
     status: response.status,
   };
@@ -280,7 +295,7 @@ function extractCanonicalUrl(html: string, baseUrl: string): string {
 }
 
 function extractTitle(html: string): string | undefined {
-  const title = html.match(/<title>(?<title>.*?)<\/title>/is)?.groups?.title;
+  const title = html.match(/<title(?:\s[^>]*)?>(?<title>.*?)<\/title>/is)?.groups?.title;
   return title?.replace(/\s+/g, ' ').trim();
 }
 
@@ -323,11 +338,27 @@ function readStringArray(value: unknown): string[] {
 }
 
 function safeStorageSegment(value: string): string {
-  return value
+  const hash = sha256Hex(value).slice(0, 12);
+  const clean = value
     .replace(/^https?:\/\//, '')
     .replace(/[^a-zA-Z0-9._-]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 120);
+    .slice(0, 107);
+  return clean ? `${clean}-${hash}` : hash;
+}
+
+function decodeWebResponse(buffer: ArrayBuffer, contentType: string | undefined): string {
+  const charset = readCharset(contentType);
+  try {
+    return new TextDecoder(charset).decode(buffer);
+  } catch {
+    return new TextDecoder('utf-8').decode(buffer);
+  }
+}
+
+function readCharset(contentType: string | undefined): string {
+  const charset = contentType?.match(/charset\s*=\s*["']?(?<charset>[\w-]+)/i)?.groups?.charset;
+  return charset ?? 'utf-8';
 }
 
 function redactUrl(value: string): string {

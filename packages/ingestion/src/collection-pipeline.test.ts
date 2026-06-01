@@ -19,6 +19,7 @@ import {
 import {
   buildWebUrlRawCandidate,
   collectWebUrlSource,
+  fetchWebUrl,
   scanWebUrlDataSource,
   type WebUrlFetchResponse,
 } from './web-url-source.js';
@@ -207,7 +208,7 @@ test('buildWebUrlRawCandidate falls back to final URL for invalid canonical link
 
 test('buildWebUrlRawCandidate uses canonical URL as source id and never stores body in metadata', async () => {
   const html =
-    '<html><head><title> Release Notes </title><link rel="canonical" href="/release"></head><body>Body</body></html>';
+    '<html><head><title lang="ja"> Release Notes </title><link rel="canonical" href="/release"></head><body>Body</body></html>';
 
   const candidate = await buildWebUrlRawCandidate({
     candidate: { sourceUri: 'https://example.test/release?utm=1' },
@@ -228,6 +229,53 @@ test('buildWebUrlRawCandidate uses canonical URL as source id and never stores b
   assert.match(candidate.raw.contentHash, /^[a-f0-9]{64}$/);
   assert.equal(candidate.raw.metadata.title, 'Release Notes');
   assert.equal(candidate.raw.metadata.body, undefined);
+});
+
+test('buildWebUrlRawCandidate appends a source id hash to avoid storage URI collisions', async () => {
+  const fetcher = async (url: string): Promise<WebUrlFetchResponse> => ({
+    body: '<html><head><title>Release</title></head><body>Body</body></html>',
+    contentType: 'text/html',
+    finalUrl: url,
+    status: 200,
+  });
+  const first = await buildWebUrlRawCandidate({
+    candidate: { sourceUri: 'https://example.test/foo/bar' },
+    dataSource: dataSource({ id: 'data-source-web', sourceType: 'web' }),
+    fetcher,
+    projectId: 'project-1',
+    projectSlug: 'sample-a',
+  });
+  const second = await buildWebUrlRawCandidate({
+    candidate: { sourceUri: 'https://example.test/foo*bar' },
+    dataSource: dataSource({ id: 'data-source-web', sourceType: 'web' }),
+    fetcher,
+    projectId: 'project-1',
+    projectSlug: 'sample-a',
+  });
+
+  assert.notEqual(first.raw.storageUri, second.raw.storageUri);
+  assert.match(first.raw.storageUri, /-[a-f0-9]{12}\.html$/);
+  assert.match(second.raw.storageUri, /-[a-f0-9]{12}\.html$/);
+});
+
+test('fetchWebUrl decodes response bytes with the declared charset', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    ({
+      arrayBuffer: async () => Uint8Array.from([0x82, 0xa0]).buffer,
+      headers: { get: () => 'text/html; charset=shift_jis' },
+      status: 200,
+      url: 'https://example.test/sjis',
+    }) as unknown as Response) as typeof fetch;
+
+  try {
+    const response = await fetchWebUrl('https://example.test/sjis');
+
+    assert.equal(response.body, 'あ');
+    assert.equal(response.contentType, 'text/html; charset=shift_jis');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('collectWebUrlSource supports dry-run and duplicate skip without writing storage', async () => {
@@ -276,6 +324,46 @@ test('collectWebUrlSource supports dry-run and duplicate skip without writing st
   assert.equal(repository.queue.size, 1);
   assert.equal(repository.links.size, 1);
   assert.equal(storage.objects.size, 1);
+});
+
+test('collectWebUrlSource applies limit across all enabled web data sources', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { urls: ['https://example.test/first'] },
+      id: 'data-source-web-1',
+      sourceType: 'web',
+    }),
+    dataSource({
+      config: { urls: ['https://example.test/second'] },
+      id: 'data-source-web-2',
+      sourceType: 'web',
+    }),
+  );
+  const storage = new InMemoryObjectStorage();
+  const fetchedUrls: string[] = [];
+
+  const result = await collectWebUrlSource({
+    fetcher: async (url): Promise<WebUrlFetchResponse> => {
+      fetchedUrls.push(url);
+      return {
+        body: '<html><head><title>Release</title></head><body>Body</body></html>',
+        contentType: 'text/html',
+        finalUrl: url,
+        status: 200,
+      };
+    },
+    limit: 1,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+  });
+
+  assert.deepEqual(fetchedUrls, ['https://example.test/first']);
+  assert.equal(result.decisions.length, 1);
+  assert.equal(repository.rawDocuments.size, 1);
 });
 
 test('collectWebUrlSource continues after a candidate fetch failure', async () => {
