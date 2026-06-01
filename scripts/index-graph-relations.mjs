@@ -196,7 +196,7 @@ class PostgresGraphRelationsRepository {
               ${input.documentId},
               ${quote.quoteIndex},
               ${quote.quotedMessageId},
-              ${quote.prevQuoteIndex === undefined ? null : insertedByIndex.get(quote.prevQuoteIndex)},
+              ${quote.prevQuoteIndex === undefined ? null : (insertedByIndex.get(quote.prevQuoteIndex) ?? null)},
               ${quote.senderAlias},
               ${quote.senderActorId ?? null},
               ${quote.sentAt},

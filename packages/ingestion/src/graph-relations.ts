@@ -1,3 +1,4 @@
+import { parseSenderAlias } from './actor-resolution.js';
 import type { ActorMention, ParsedDocument, ParsedDocumentType } from './ingestion-fixtures.js';
 import { validateParsedDocument } from './ingestion-fixtures.js';
 
@@ -278,34 +279,35 @@ async function actorEdges(
   parsed: ParsedDocument,
   documentGraphNodeId: string,
 ): Promise<Array<{ edge: GraphEdgeInput; node: GraphNodeInput }>> {
-  const result: Array<{ edge: GraphEdgeInput; node: GraphNodeInput }> = [];
-  for (const [index, mention] of parsed.actors.entries()) {
-    const actor = await findResolvedActor(context, parsed, mention, `${mention.role}:${index}`);
-    if (!actor) {
-      continue;
-    }
-    result.push({
-      edge: {
-        fromGraphNodeId: actor.graphNodeId,
-        properties: {
-          actorId: actor.id,
-          role: mention.role,
+  const edges = await Promise.all(
+    parsed.actors.map(async (mention, index) => {
+      const actor = await findResolvedActor(context, parsed, mention, `${mention.role}:${index}`);
+      if (!actor) {
+        return undefined;
+      }
+      return {
+        edge: {
+          fromGraphNodeId: actor.graphNodeId,
+          properties: {
+            actorId: actor.id,
+            role: mention.role,
+          },
+          toGraphNodeId: documentGraphNodeId,
+          type: actorEdgeType(mention.role),
         },
-        toGraphNodeId: documentGraphNodeId,
-        type: actorEdgeType(mention.role),
-      },
-      node: {
-        graphNodeId: actor.graphNodeId,
-        labels: ['Actor'],
-        properties: {
-          actorId: actor.id,
-          displayName: actor.displayName,
-          projectId: context.project.id,
+        node: {
+          graphNodeId: actor.graphNodeId,
+          labels: ['Actor'],
+          properties: {
+            actorId: actor.id,
+            displayName: actor.displayName,
+            projectId: context.project.id,
+          },
         },
-      },
-    });
-  }
-  return result;
+      };
+    }),
+  );
+  return edges.filter((edge) => edge !== undefined);
 }
 
 function relationNodesAndEdges(
@@ -350,18 +352,23 @@ async function resolvedEmailQuotes(
   parsed: ParsedDocument,
 ): Promise<GraphEmailQuoteInput[]> {
   const quotes = parsed.emailQuotes ?? [];
+  const resolvedActors = await Promise.all(
+    quotes.map((quote, index) => {
+      const sender = parseSenderAlias(quote.from);
+      return findResolvedActor(
+        context,
+        parsed,
+        { displayName: sender.displayName, email: sender.email, role: 'sender' },
+        `quote:${index}`,
+      );
+    }),
+  );
   const messageToIndex = new Map<string, number>();
   const result: GraphEmailQuoteInput[] = [];
 
   for (const [index, quote] of quotes.entries()) {
     const quoteIndex = index + 1;
-    const sender = parseSenderAlias(quote.from);
-    const senderActor = await findResolvedActor(
-      context,
-      parsed,
-      { displayName: sender.displayName, email: sender.email, role: 'sender' },
-      `quote:${index}`,
-    );
+    const senderActor = resolvedActors[index];
     const prevQuoteIndex =
       quote.prevMessageId === undefined ? undefined : messageToIndex.get(quote.prevMessageId);
     messageToIndex.set(quote.messageId, quoteIndex);
@@ -419,22 +426,6 @@ function strongAliases(
     aliases.push({ aliasType: 'github_login', aliasValue: githubLogin });
   }
   return aliases;
-}
-
-function parseSenderAlias(value: string): { displayName: string; email?: string } {
-  const ltIndex = value.lastIndexOf('<');
-  const gtIndex = value.lastIndexOf('>');
-  if (ltIndex !== -1 && gtIndex > ltIndex) {
-    const email = value
-      .slice(ltIndex + 1, gtIndex)
-      .trim()
-      .toLowerCase();
-    const name = value.slice(0, ltIndex).trim();
-    if (email.includes('@')) {
-      return { displayName: name || email, email };
-    }
-  }
-  return { displayName: value.trim() };
 }
 
 function validateDocumentGraphKey(
