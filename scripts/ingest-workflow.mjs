@@ -136,14 +136,25 @@ async function executeWorkflowStep(input) {
     return;
   }
 
-  const childResult = await runNodeScript(command.args);
-  logEvent(input.run, {
-    durationMs: Date.now() - startedAt.getTime(),
-    event: 'step_completed',
-    llm: noLlmUsage(),
-    result: childResult,
-    step: input.step,
-  });
+  try {
+    const childResult = await runNodeScript(command.args);
+    logEvent(input.run, {
+      durationMs: Date.now() - startedAt.getTime(),
+      event: 'step_completed',
+      llm: noLlmUsage(),
+      result: childResult,
+      step: input.step,
+    });
+  } catch (error) {
+    logEvent(input.run, {
+      durationMs: Date.now() - startedAt.getTime(),
+      error: safeErrorMessage(error instanceof Error ? error.message : String(error)),
+      event: 'step_failed',
+      llm: noLlmUsage(),
+      step: input.step,
+    });
+    throw error;
+  }
 }
 
 function buildStepCommand(step, projectSlug, options) {
@@ -222,6 +233,17 @@ function parseScriptOutput(stdout) {
   const trimmed = stdout.trim();
   if (!trimmed) {
     return {};
+  }
+
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+  if (start !== -1 && end !== -1 && end > start) {
+    const jsonCandidate = trimmed.slice(start, end + 1);
+    try {
+      return summarizeScriptResult(JSON.parse(jsonCandidate));
+    } catch {
+      // Fall through to parsing the full output.
+    }
   }
 
   try {
@@ -324,17 +346,39 @@ async function lookupProject(sql, slug) {
 }
 
 async function countBy(sql, tableName, columnName, projectId) {
-  const rows = await sql.unsafe(
-    `
-      SELECT ${columnName} AS name, count(*)::int AS count
-      FROM public.${tableName}
-      WHERE project_id = $1
-      GROUP BY ${columnName}
-      ORDER BY ${columnName}
-    `,
-    [projectId],
-  );
+  const rows = await selectCountRows(sql, tableName, columnName, projectId);
   return Object.fromEntries(rows.map((row) => [row.name, row.count]));
+}
+
+async function selectCountRows(sql, tableName, columnName, projectId) {
+  if (tableName === 'documents' && columnName === 'doc_type') {
+    return sql`
+      SELECT doc_type AS name, count(*)::int AS count
+      FROM public.documents
+      WHERE project_id = ${projectId}
+      GROUP BY doc_type
+      ORDER BY doc_type
+    `;
+  }
+  if (tableName === 'ingestion_queue' && columnName === 'status') {
+    return sql`
+      SELECT status AS name, count(*)::int AS count
+      FROM public.ingestion_queue
+      WHERE project_id = ${projectId}
+      GROUP BY status
+      ORDER BY status
+    `;
+  }
+  if (tableName === 'raw_documents' && columnName === 'ingest_status') {
+    return sql`
+      SELECT ingest_status AS name, count(*)::int AS count
+      FROM public.raw_documents
+      WHERE project_id = ${projectId}
+      GROUP BY ingest_status
+      ORDER BY ingest_status
+    `;
+  }
+  throw new Error(`Unsupported status count: ${tableName}.${columnName}`);
 }
 
 async function readTotals(sql, projectId) {
@@ -472,7 +516,7 @@ function redactArgv(args) {
 
 function safeErrorMessage(value) {
   return String(value)
-    .replace(/(token|secret|api[_-]?key)=\\S+/gi, '$1=<redacted>')
+    .replace(/(token|secret|api[_-]?key)=\S+/gi, '$1=<redacted>')
     .slice(0, 1000);
 }
 
