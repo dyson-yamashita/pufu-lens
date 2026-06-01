@@ -1,16 +1,17 @@
 import { parseSenderAlias } from './actor-resolution.js';
-import type { ActorMention, ParsedDocument, ParsedRelation } from './ingestion-fixtures.js';
+import type { ActorMention, ParsedDocument, ParsedDocumentType } from './ingestion-fixtures.js';
 import { validateParsedDocument } from './ingestion-fixtures.js';
 
-export type GraphNodeLabel = 'Actor' | 'Document' | 'Topic';
-
+export type GraphActorAliasType = 'email' | 'github_login';
 export type GraphEdgeType =
+  | 'AUTHORED'
   | 'COMMENTED_ON'
-  | 'LINKS_TO'
   | 'MENTIONS'
+  | 'OWNS'
   | 'REPLY_TO'
   | 'REVIEWED'
-  | 'SAME_AS';
+  | 'SAME_AS'
+  | 'SENT';
 
 export interface GraphRelationProjectRecord {
   graphName: string;
@@ -18,31 +19,48 @@ export interface GraphRelationProjectRecord {
   slug: string;
 }
 
-export interface GraphRelationDocumentTarget {
-  canonicalUri?: string;
-  docType: ParsedDocument['docType'];
-  documentId: string;
+export interface GraphRelationDocumentRecord {
+  docType: ParsedDocumentType;
   graphNodeId: string;
-  occurredAt?: string;
-  parsed: ParsedDocument | string;
+  id: string;
   rawDocumentId: string;
-  title?: string;
 }
 
-export interface GraphActorRecord {
+export interface GraphRelationActorRecord {
   displayName: string;
   graphNodeId: string;
   id: string;
-  primaryEmail?: string;
-  primaryLogin?: string;
+}
+
+export interface GraphRelationTarget {
+  document: GraphRelationDocumentRecord;
+  parsed: ParsedDocument | string;
+  rawContentHash: string;
+  rawDocumentId: string;
+}
+
+export interface GraphNodeInput {
+  graphNodeId: string;
+  labels: string[];
+  properties: Record<string, unknown>;
+}
+
+export interface GraphEdgeInput {
+  fromGraphNodeId: string;
+  properties: Record<string, unknown>;
+  toGraphNodeId: string;
+  type: GraphEdgeType;
+}
+
+export interface ReplaceEmailQuotesInput {
+  documentId: string;
+  projectId: string;
+  quotes: GraphEmailQuoteInput[];
 }
 
 export interface GraphEmailQuoteInput {
-  body: string;
-  documentId: string;
-  metadata: Record<string, unknown>;
+  bodyText: string;
   prevQuoteIndex?: number;
-  projectId: string;
   quoteIndex: number;
   quotedMessageId: string;
   senderActorId?: string;
@@ -50,315 +68,435 @@ export interface GraphEmailQuoteInput {
   sentAt: string;
 }
 
-export interface GraphNodeInput {
-  graphName: string;
-  key: string;
-  label: GraphNodeLabel;
-  properties: Record<string, unknown>;
-}
-
-export interface GraphEdgeInput {
-  fromKey: string;
-  graphName: string;
-  key: string;
-  properties: Record<string, unknown>;
-  toKey: string;
-  type: GraphEdgeType;
-}
-
-export interface GraphRelationRepository {
+export interface GraphRelationsRepository {
   findActorByAlias(input: {
-    aliasType: 'email' | 'github_login';
+    aliasType: GraphActorAliasType;
     aliasValue: string;
     projectId: string;
-  }): Promise<GraphActorRecord | undefined>;
-  listDocumentsForGraph(input: {
-    limit: number;
+  }): Promise<GraphRelationActorRecord | undefined>;
+  findActorByGraphNodeId(input: {
+    graphNodeId: string;
     projectId: string;
-  }): Promise<GraphRelationDocumentTarget[]>;
+  }): Promise<GraphRelationActorRecord | undefined>;
+  findSameAsDocuments(input: {
+    projectId: string;
+    rawContentHash: string;
+    rawDocumentId: string;
+    sourceType: ParsedDocument['sourceType'];
+  }): Promise<GraphRelationDocumentRecord[]>;
   lookupProjectBySlug(slug: string): Promise<GraphRelationProjectRecord | undefined>;
-  markIndexed(input: { projectId: string; rawDocumentId: string }): Promise<void>;
-  mergeGraphEdge(input: GraphEdgeInput): Promise<void>;
-  mergeGraphNode(input: GraphNodeInput): Promise<void>;
-  replaceEmailQuotes(input: {
-    documentId: string;
+  markFailed(input: {
+    errorMessage: string;
     projectId: string;
-    quotes: GraphEmailQuoteInput[];
+    rawDocumentId: string;
   }): Promise<void>;
+  markIndexed(input: { projectId: string; rawDocumentId: string }): Promise<void>;
+  readGraphTargets(input: { limit: number; projectId: string }): Promise<GraphRelationTarget[]>;
+  replaceEmailQuotes(input: ReplaceEmailQuotesInput): Promise<void>;
+  upsertGraphEdge(input: GraphEdgeInput): Promise<void>;
+  upsertGraphNode(input: GraphNodeInput): Promise<void>;
 }
 
-export interface IndexGraphRelationsOptions {
+export interface StoreGraphRelationsOptions {
   limit: number;
   projectSlug: string;
-  repository: GraphRelationRepository;
+  repository: GraphRelationsRepository;
 }
 
-export interface IndexGraphRelationsResult {
-  decisions: IndexGraphRelationsDecision[];
+export interface StoreGraphRelationsResult {
+  decisions: StoreGraphRelationDecision[];
   projectSlug: string;
 }
 
-export interface IndexGraphRelationsDecision {
-  actorEdges: number;
+export interface StoreGraphRelationDecision {
+  actorEdgeCount: number;
+  decision: 'failed' | 'indexed';
   documentId: string;
-  emailQuotes: number;
-  graphEdges: number;
-  graphNodes: number;
+  emailQuoteCount: number;
+  errorMessage?: string;
+  graphEdgeCount: number;
+  graphNodeCount: number;
   rawDocumentId: string;
-  relationEdges: number;
+  sameAsCount: number;
   sourceId: string;
 }
 
-interface GraphBuildContext {
-  actorCache: Map<string, GraphActorRecord | undefined>;
-  graphName: string;
-  projectId: string;
-  repository: GraphRelationRepository;
+interface GraphRelationContext {
+  project: GraphRelationProjectRecord;
+  repository: GraphRelationsRepository;
 }
 
-export async function indexGraphRelations(
-  options: IndexGraphRelationsOptions,
-): Promise<IndexGraphRelationsResult> {
+type GraphNodeEdge = { edge: GraphEdgeInput; node: GraphNodeInput };
+
+export async function storeGraphRelations(
+  options: StoreGraphRelationsOptions,
+): Promise<StoreGraphRelationsResult> {
   const project = await options.repository.lookupProjectBySlug(options.projectSlug);
   if (!project) {
     throw new Error(`Project not found: ${options.projectSlug}`);
   }
+  validateGraphName(project.graphName);
 
-  const targets = await options.repository.listDocumentsForGraph({
+  const targets = await options.repository.readGraphTargets({
     limit: options.limit,
     projectId: project.id,
   });
-  const context: GraphBuildContext = {
-    actorCache: new Map(),
-    graphName: project.graphName,
-    projectId: project.id,
-    repository: options.repository,
-  };
-  const decisions: IndexGraphRelationsDecision[] = [];
+  const context = { project, repository: options.repository };
+  const decisions: StoreGraphRelationDecision[] = [];
 
   for (const target of targets) {
-    decisions.push(await indexDocumentGraph(context, target));
+    decisions.push(await storeGraphTargetSafely(context, target));
   }
 
   return { decisions, projectSlug: project.slug };
 }
 
-async function indexDocumentGraph(
-  context: GraphBuildContext,
-  target: GraphRelationDocumentTarget,
-): Promise<IndexGraphRelationsDecision> {
-  const parsed = parseTargetDocument(target.parsed);
-  if (target.graphNodeId !== documentGraphNodeId(parsed)) {
-    throw new Error(
-      `Document graph_node_id mismatch for ${target.documentId}: expected ${documentGraphNodeId(
-        parsed,
-      )}, got ${target.graphNodeId}`,
-    );
-  }
-
-  let graphNodes = 0;
-  let graphEdges = 0;
-  let actorEdges = 0;
-  let relationEdges = 0;
-
-  await context.repository.mergeGraphNode({
-    graphName: context.graphName,
-    key: target.graphNodeId,
-    label: 'Document',
-    properties: {
-      canonicalUri: target.canonicalUri ?? parsed.canonicalUri,
-      documentId: target.documentId,
-      docType: target.docType,
-      occurredAt: target.occurredAt ?? parsed.occurredAt,
+async function storeGraphTargetSafely(
+  context: GraphRelationContext,
+  target: GraphRelationTarget,
+): Promise<StoreGraphRelationDecision> {
+  try {
+    return await storeGraphTarget(context, target);
+  } catch (error) {
+    const errorMessage = safeErrorMessage(error);
+    await context.repository.markFailed({
+      errorMessage,
+      projectId: context.project.id,
       rawDocumentId: target.rawDocumentId,
-      sourceId: parsed.sourceId,
-      sourceType: parsed.sourceType,
-      title: target.title ?? parsed.title,
-    },
-  });
-  graphNodes += 1;
+    });
+    return {
+      actorEdgeCount: 0,
+      decision: 'failed',
+      documentId: target.document.id,
+      emailQuoteCount: 0,
+      errorMessage,
+      graphEdgeCount: 0,
+      graphNodeCount: 0,
+      rawDocumentId: target.rawDocumentId,
+      sameAsCount: 0,
+      sourceId: sourceIdForFailure(target),
+    };
+  }
+}
 
-  for (const [index, mention] of parsed.actors.entries()) {
-    const actor = await findActorForMention(context, mention);
-    if (!actor) {
-      continue;
-    }
-    await context.repository.mergeGraphNode({
-      graphName: context.graphName,
-      key: actor.graphNodeId,
-      label: 'Actor',
-      properties: {
-        actorId: actor.id,
-        displayName: actor.displayName,
-        primaryEmail: actor.primaryEmail,
-        primaryLogin: actor.primaryLogin,
-      },
-    });
-    graphNodes += 1;
-    await context.repository.mergeGraphEdge({
-      fromKey: actor.graphNodeId,
-      graphName: context.graphName,
-      key: graphEdgeKey('MENTIONS', actor.graphNodeId, target.graphNodeId, mention.role, index),
-      properties: {
-        actorId: actor.id,
-        documentId: target.documentId,
-        role: mention.role,
-      },
-      toKey: target.graphNodeId,
-      type: 'MENTIONS',
-    });
-    graphEdges += 1;
-    actorEdges += 1;
+async function storeGraphTarget(
+  context: GraphRelationContext,
+  target: GraphRelationTarget,
+): Promise<StoreGraphRelationDecision> {
+  const parsed = parseTargetDocument(target.parsed);
+  validateDocumentGraphKey(target.document, parsed);
+
+  let graphNodeCount = 0;
+  let graphEdgeCount = 0;
+  let actorEdgeCount = 0;
+  let sameAsCount = 0;
+
+  await context.repository.upsertGraphNode(documentGraphNode(context.project, target, parsed));
+  graphNodeCount += 1;
+
+  for (const actorEdge of await actorEdges(context, parsed, target.document.graphNodeId)) {
+    await context.repository.upsertGraphNode(actorEdge.node);
+    await context.repository.upsertGraphEdge(actorEdge.edge);
+    graphNodeCount += 1;
+    graphEdgeCount += 1;
+    actorEdgeCount += 1;
   }
 
-  for (const [index, relation] of parsed.relations.entries()) {
-    const edge = graphEdgeForParsedRelation(target.graphNodeId, relation, index);
-    await context.repository.mergeGraphNode({
-      graphName: context.graphName,
-      key: edge.topicKey,
-      label: 'Topic',
-      properties: {
-        relationType: relation.type,
-        target: relation.target,
-      },
-    });
-    graphNodes += 1;
-    await context.repository.mergeGraphEdge({
-      fromKey: target.graphNodeId,
-      graphName: context.graphName,
-      key: edge.key,
-      properties: {
-        ...relation.metadata,
-        target: relation.target,
-      },
-      toKey: edge.topicKey,
-      type: edge.type,
-    });
-    graphEdges += 1;
-    relationEdges += 1;
+  for (const relationNodeEdge of relationNodesAndEdges(context.project, parsed, target)) {
+    await context.repository.upsertGraphNode(relationNodeEdge.node);
+    await context.repository.upsertGraphEdge(relationNodeEdge.edge);
+    graphNodeCount += 1;
+    graphEdgeCount += 1;
   }
 
-  const emailQuotes = await buildEmailQuotes(context, target, parsed);
+  const emailQuotes = await resolvedEmailQuotes(context, parsed);
   await context.repository.replaceEmailQuotes({
-    documentId: target.documentId,
-    projectId: context.projectId,
+    documentId: target.document.id,
+    projectId: context.project.id,
     quotes: emailQuotes,
   });
+
+  for (const sameAsDocument of await context.repository.findSameAsDocuments({
+    projectId: context.project.id,
+    rawContentHash: target.rawContentHash,
+    rawDocumentId: target.rawDocumentId,
+    sourceType: parsed.sourceType,
+  })) {
+    await context.repository.upsertGraphEdge({
+      fromGraphNodeId: target.document.graphNodeId,
+      properties: {
+        confidence: 1,
+        projectId: context.project.id,
+        reason: 'content_hash_match',
+      },
+      toGraphNodeId: sameAsDocument.graphNodeId,
+      type: 'SAME_AS',
+    });
+    graphEdgeCount += 1;
+    sameAsCount += 1;
+  }
+
   await context.repository.markIndexed({
-    projectId: context.projectId,
+    projectId: context.project.id,
     rawDocumentId: target.rawDocumentId,
   });
 
   return {
-    actorEdges,
-    documentId: target.documentId,
-    emailQuotes: emailQuotes.length,
-    graphEdges,
-    graphNodes,
+    actorEdgeCount,
+    decision: 'indexed',
+    documentId: target.document.id,
+    emailQuoteCount: emailQuotes.length,
+    graphEdgeCount,
+    graphNodeCount,
     rawDocumentId: target.rawDocumentId,
-    relationEdges,
+    sameAsCount,
     sourceId: parsed.sourceId,
   };
 }
 
-async function buildEmailQuotes(
-  context: GraphBuildContext,
-  target: GraphRelationDocumentTarget,
+function documentGraphNode(
+  project: GraphRelationProjectRecord,
+  target: GraphRelationTarget,
+  parsed: ParsedDocument,
+): GraphNodeInput {
+  return {
+    graphNodeId: target.document.graphNodeId,
+    labels: ['Document', documentLabel(parsed.docType)],
+    properties: {
+      canonicalUri: parsed.canonicalUri,
+      docType: parsed.docType,
+      documentId: target.document.id,
+      occurredAt: parsed.occurredAt,
+      projectId: project.id,
+      rawDocumentId: target.rawDocumentId,
+      sourceId: parsed.sourceId,
+      sourceType: parsed.sourceType,
+      title: parsed.title,
+    },
+  };
+}
+
+async function actorEdges(
+  context: GraphRelationContext,
+  parsed: ParsedDocument,
+  documentGraphNodeId: string,
+): Promise<GraphNodeEdge[]> {
+  const edges: Array<GraphNodeEdge | undefined> = await Promise.all(
+    parsed.actors.map(async (mention, index) => {
+      const actor = await findResolvedActor(context, parsed, mention, `${mention.role}:${index}`);
+      if (!actor) {
+        return undefined;
+      }
+      return {
+        edge: {
+          fromGraphNodeId: actor.graphNodeId,
+          properties: {
+            actorId: actor.id,
+            role: mention.role,
+          },
+          toGraphNodeId: documentGraphNodeId,
+          type: actorEdgeType(mention.role),
+        },
+        node: {
+          graphNodeId: actor.graphNodeId,
+          labels: ['Actor'],
+          properties: {
+            actorId: actor.id,
+            displayName: actor.displayName,
+            projectId: context.project.id,
+          },
+        },
+      };
+    }),
+  );
+  return edges.filter(isGraphNodeEdge);
+}
+
+function relationNodesAndEdges(
+  project: GraphRelationProjectRecord,
+  parsed: ParsedDocument,
+  target: GraphRelationTarget,
+): Array<{ edge: GraphEdgeInput; node: GraphNodeInput }> {
+  return parsed.relations
+    .filter(
+      (relation) =>
+        (relation.type === 'LINKS_TO' || relation.type === 'REPLY_TO') &&
+        relation.target.trim() !== '',
+    )
+    .map((relation) => {
+      const topicGraphNodeId =
+        relation.type === 'REPLY_TO'
+          ? `topic:message:${encodeURIComponent(relation.target)}`
+          : `topic:uri:${encodeURIComponent(relation.target)}`;
+      return {
+        edge: {
+          fromGraphNodeId: target.document.graphNodeId,
+          properties: {
+            ...relation.metadata,
+            projectId: project.id,
+            relationTarget: relation.target,
+            relationType: relation.type,
+          },
+          toGraphNodeId: topicGraphNodeId,
+          type: relation.type === 'REPLY_TO' ? 'REPLY_TO' : 'MENTIONS',
+        },
+        node: {
+          graphNodeId: topicGraphNodeId,
+          labels: ['Topic'],
+          properties: {
+            projectId: project.id,
+            target: relation.target,
+            topicType: relation.type === 'REPLY_TO' ? 'message' : 'uri',
+          },
+        },
+      };
+    });
+}
+
+async function resolvedEmailQuotes(
+  context: GraphRelationContext,
   parsed: ParsedDocument,
 ): Promise<GraphEmailQuoteInput[]> {
-  const quotes: GraphEmailQuoteInput[] = [];
+  const quotes = parsed.emailQuotes ?? [];
+  const resolvedActors = await Promise.all(
+    quotes.map((quote, index) => {
+      const sender = parseSenderAlias(quote.from);
+      return findResolvedActor(
+        context,
+        parsed,
+        { displayName: sender.displayName, email: sender.email, role: 'sender' },
+        `quote:${index}`,
+      );
+    }),
+  );
   const messageToIndex = new Map<string, number>();
+  for (const [index, quote] of quotes.entries()) {
+    messageToIndex.set(quote.messageId, index + 1);
+  }
 
-  for (const [index, quote] of (parsed.emailQuotes ?? []).entries()) {
+  return quotes.map((quote, index) => {
     const quoteIndex = index + 1;
-    const sender = parseSenderAlias(quote.from);
-    const senderActor = await findActorForMention(context, {
-      email: sender.email,
-    });
+    const senderActor = resolvedActors[index];
     const prevQuoteIndex =
       quote.prevMessageId === undefined ? undefined : messageToIndex.get(quote.prevMessageId);
-
-    messageToIndex.set(quote.messageId, quoteIndex);
-    quotes.push({
-      body: quote.bodyText,
-      documentId: target.documentId,
-      metadata: { sourceId: parsed.sourceId },
+    return {
+      bodyText: quote.bodyText,
       prevQuoteIndex,
-      projectId: context.projectId,
       quoteIndex,
       quotedMessageId: quote.messageId,
       senderActorId: senderActor?.id,
       senderAlias: quote.from,
       sentAt: quote.sentAt,
-    });
-  }
-
-  return quotes;
-}
-
-async function findActorForMention(
-  context: GraphBuildContext,
-  mention: Pick<ActorMention, 'email' | 'githubLogin'>,
-): Promise<GraphActorRecord | undefined> {
-  const email = normalizeAliasValue(mention.email);
-  if (email) {
-    return findActorByAliasCached(context, 'email', email);
-  }
-
-  const githubLogin = normalizeAliasValue(mention.githubLogin);
-  if (githubLogin) {
-    return findActorByAliasCached(context, 'github_login', githubLogin);
-  }
-
-  return undefined;
-}
-
-async function findActorByAliasCached(
-  context: GraphBuildContext,
-  aliasType: 'email' | 'github_login',
-  aliasValue: string,
-): Promise<GraphActorRecord | undefined> {
-  const cacheKey = `${aliasType}:${aliasValue}`;
-  if (context.actorCache.has(cacheKey)) {
-    return context.actorCache.get(cacheKey);
-  }
-  const actor = await context.repository.findActorByAlias({
-    aliasType,
-    aliasValue,
-    projectId: context.projectId,
+    };
   });
-  context.actorCache.set(cacheKey, actor);
-  return actor;
 }
 
-function graphEdgeForParsedRelation(
-  documentGraphNodeId: string,
-  relation: ParsedRelation,
-  index: number,
-): { key: string; topicKey: string; type: GraphEdgeType } {
-  const type = relation.type === 'SAME_AS_CANDIDATE' ? 'SAME_AS' : relation.type;
-  const topicKey = `topic:${type.toLowerCase()}:${encodeURIComponent(relation.target)}`;
-  return {
-    key: graphEdgeKey(type, documentGraphNodeId, topicKey, relation.target, index),
-    topicKey,
-    type,
-  };
+async function findResolvedActor(
+  context: GraphRelationContext,
+  parsed: ParsedDocument,
+  mention: ActorMention,
+  occurrenceKey: string,
+): Promise<GraphRelationActorRecord | undefined> {
+  for (const alias of strongAliases(mention)) {
+    const actor = await context.repository.findActorByAlias({
+      aliasType: alias.aliasType,
+      aliasValue: alias.aliasValue,
+      projectId: context.project.id,
+    });
+    if (actor) {
+      return actor;
+    }
+  }
+
+  return context.repository.findActorByGraphNodeId({
+    graphNodeId: unresolvedActorGraphNodeId({
+      displayName: mention.displayName,
+      occurrenceKey,
+      sourceId: parsed.sourceId,
+    }),
+    projectId: context.project.id,
+  });
 }
 
-function graphEdgeKey(
-  type: GraphEdgeType,
-  fromKey: string,
-  toKey: string,
-  discriminator: string,
-  index: number,
-): string {
-  return `edge:${type}:${encodeURIComponent(fromKey)}:${encodeURIComponent(
-    toKey,
-  )}:${encodeURIComponent(discriminator)}:${index}`;
+function strongAliases(
+  mention: ActorMention,
+): Array<{ aliasType: GraphActorAliasType; aliasValue: string }> {
+  const aliases: Array<{ aliasType: GraphActorAliasType; aliasValue: string }> = [];
+  const email = mention.email?.trim().toLowerCase();
+  const githubLogin = mention.githubLogin?.trim().toLowerCase();
+  if (email) {
+    aliases.push({ aliasType: 'email', aliasValue: email });
+  }
+  if (githubLogin) {
+    aliases.push({ aliasType: 'github_login', aliasValue: githubLogin });
+  }
+  return aliases;
+}
+
+function isGraphNodeEdge(value: GraphNodeEdge | undefined): value is GraphNodeEdge {
+  return value !== undefined;
+}
+
+function validateDocumentGraphKey(
+  document: GraphRelationDocumentRecord,
+  parsed: ParsedDocument,
+): void {
+  const expected = documentGraphNodeId(parsed);
+  if (document.graphNodeId !== expected) {
+    throw new Error(
+      `Document graph key mismatch for ${parsed.sourceId}: expected ${expected}, got ${document.graphNodeId}`,
+    );
+  }
+}
+
+function validateGraphName(graphName: string): void {
+  if (!/^graph_[a-z0-9_]+$/.test(graphName) || graphName.length > 63) {
+    throw new Error(`Invalid AGE graph name: ${graphName}`);
+  }
 }
 
 function documentGraphNodeId(parsed: ParsedDocument): string {
   return `document:${parsed.docType}:${encodeURIComponent(parsed.sourceId)}`;
+}
+
+function unresolvedActorGraphNodeId(input: {
+  displayName: string;
+  occurrenceKey: string;
+  sourceId: string;
+}): string {
+  return `actor:unresolved:${encodeURIComponent(input.sourceId)}:${encodeURIComponent(
+    input.occurrenceKey,
+  )}:${encodeURIComponent(input.displayName)}`;
+}
+
+function documentLabel(docType: ParsedDocumentType): string {
+  switch (docType) {
+    case 'drive_doc':
+      return 'DriveDoc';
+    case 'email':
+      return 'Email';
+    case 'issue':
+      return 'Issue';
+    case 'pull_request':
+      return 'PullRequest';
+    case 'web_page':
+      return 'WebPage';
+  }
+}
+
+function actorEdgeType(role: ActorMention['role']): GraphEdgeType {
+  switch (role) {
+    case 'author':
+      return 'AUTHORED';
+    case 'commenter':
+      return 'COMMENTED_ON';
+    case 'owner':
+      return 'OWNS';
+    case 'reviewer':
+      return 'REVIEWED';
+    case 'sender':
+      return 'SENT';
+  }
 }
 
 function parseTargetDocument(value: ParsedDocument | string): ParsedDocument {
@@ -366,7 +504,15 @@ function parseTargetDocument(value: ParsedDocument | string): ParsedDocument {
   return validateParsedDocument(parsed);
 }
 
-function normalizeAliasValue(value: string | undefined): string | undefined {
-  const normalized = value?.trim().toLowerCase();
-  return normalized === '' ? undefined : normalized;
+function safeErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/\s+/g, ' ').slice(0, 500);
+}
+
+function sourceIdForFailure(target: GraphRelationTarget): string {
+  try {
+    return parseTargetDocument(target.parsed).sourceId;
+  } catch {
+    return target.document.graphNodeId;
+  }
 }

@@ -63,20 +63,22 @@ export {
   shouldCollectCandidate,
 } from './collection-pipeline.js';
 export type {
-  GraphActorRecord,
+  GraphActorAliasType,
   GraphEdgeInput,
   GraphEdgeType,
   GraphEmailQuoteInput,
   GraphNodeInput,
-  GraphNodeLabel,
-  GraphRelationDocumentTarget,
+  GraphRelationActorRecord,
+  GraphRelationDocumentRecord,
   GraphRelationProjectRecord,
-  GraphRelationRepository,
-  IndexGraphRelationsDecision,
-  IndexGraphRelationsOptions,
-  IndexGraphRelationsResult,
+  GraphRelationsRepository,
+  GraphRelationTarget,
+  ReplaceEmailQuotesInput,
+  StoreGraphRelationDecision,
+  StoreGraphRelationsOptions,
+  StoreGraphRelationsResult,
 } from './graph-relations.js';
-export { indexGraphRelations } from './graph-relations.js';
+export { storeGraphRelations } from './graph-relations.js';
 export type {
   ActorMention,
   IngestionFixtureCase,

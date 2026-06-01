@@ -41,45 +41,45 @@ pnpm graph:query --project sample-b --cypher "MATCH (d:Document) RETURN d LIMIT 
 ## Step 8 確認記録
 
 - 実施日: 2026-06-01
-- 対象 commit: PR 作成前の `feature/issue-23-graph-relations`
+- 対象 commit: PR 作成前の `feature/issue-21-graph-relations`
 - 実装範囲:
-  - `indexGraphRelations` による Document / Actor / Topic node と relation edge の stable key `MERGE`
-  - `documents.graph_node_id` の検証
-  - Gmail quote の `email_quotes` 保存
-  - `raw_documents.ingest_status` / `ingestion_queue.status` の `indexed` 更新
-  - `pnpm ingest:index` と `pnpm graph:query`
+  - `storeGraphRelations` による Document / Actor / Topic node と最小 edge の materialize
+  - `email_quotes` の置き換え保存
+  - `SAME_AS` 候補 edge 作成
+  - `ingest:index` と `graph:query` CLI
+  - plan Step 着手時に最新 `main` からブランチを作成するルール追記
 - 実行コマンド:
-  - `pnpm --filter @pufu-lens/ingestion test`
+  - `git pull --ff-only origin main`
+  - `pnpm --filter @pufu-lens/ingestion test -- --run graph`
   - `pnpm test`
   - `pnpm typecheck`
-  - `pnpm format:check`
-  - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step8-storage pnpm create-project --slug step8-smoke-a --name "Step 8 Smoke A"`
-  - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step8-storage pnpm create-project --slug step8-smoke-b --name "Step 8 Smoke B"`
-  - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step8-storage pnpm ingest:collect:fixture --project step8-smoke-a`
-  - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step8-storage pnpm ingest:parse --project step8-smoke-a --limit 10`
-  - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step8-storage pnpm ingest:resolve-actors --project step8-smoke-a --limit 10`
-  - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step8-storage pnpm ingest:chunk --project step8-smoke-a --limit 10 --embedding-provider deterministic`
-  - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step8-storage pnpm ingest:index --project step8-smoke-a --limit 10`
-  - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens pnpm graph:query --project step8-smoke-a --cypher "MATCH (d:Document) RETURN count(d)"`
-  - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens pnpm graph:query --project step8-smoke-b --cypher "MATCH (d:Document) RETURN count(d)"`
+  - `pnpm lint`
+  - `pnpm build`
+  - `node --check scripts/index-graph-relations.mjs`
+  - `node --check scripts/query-graph.mjs`
+  - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/tmp/pufu-lens-step8-storage pnpm ingest:index --project step8-smoke --limit 10`
+  - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens pnpm graph:query --project step8-smoke --cypher "MATCH (d:Document) RETURN d LIMIT 5"`
+  - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens pnpm graph:query --project sample-b --cypher "MATCH (d:Document) RETURN d LIMIT 5"`
 - 自動テスト結果:
-  - ingestion package: 36 tests passed
-  - 全体 `pnpm test`: 5 packages successful
-  - `pnpm typecheck`: 5 packages successful
-  - `pnpm format:check`: passed
+  - `pnpm --filter @pufu-lens/ingestion test -- --run graph`: 40 tests passed
+  - `pnpm test`: 5 packages passed
+  - `pnpm typecheck`: 5 packages passed
+  - `pnpm lint`: 0 errors
+  - `pnpm build`: 5 packages passed
 - 補助的な手動確認:
-  - `step8-smoke-a` の `ingest:index` は 5 documents を処理し、graph edge は合計 11、Gmail quote は 1 件
-  - 同一条件で `ingest:index` を再実行後、graph node は 16、edge は 11 のまま増殖しないことを確認
+  - `step8-smoke` project で fixture collection、parse、actor resolution、chunk / embedding、graph index を通し実行した。
+  - `graph:query --project step8-smoke` で 5 件の `Document` node を確認した。
+  - `graph:query --project sample-b` は空配列で、別 project の graph に document が混入していないことを確認した。
 - DB 確認:
-  - `step8-smoke-a`: `raw_documents.indexed=5`、`ingestion_queue.indexed=5`、`documents=5`、`document_chunks=5`、`email_quotes=1`
+  - `step8-smoke` の `raw_documents.ingest_status`: `indexed = 5`
+  - `step8-smoke` の `ingestion_queue.status`: `indexed = 5`
+  - `step8-smoke` の `email_quotes`: `1`
 - Storage 確認:
-  - `step8-smoke-a/parsed/...` の parsed JSON を入力に graph indexing を実行
-- Graph 確認:
-  - `step8-smoke-a`: `MATCH (d:Document) RETURN count(d)` は `5`
-  - `step8-smoke-b`: `MATCH (d:Document) RETURN count(d)` は `0`
+  - `/tmp/pufu-lens-step8-storage/step8-smoke/parsed` を使用し、parsed JSON から graph index まで通した。
 - ログ / secret 確認:
-  - CLI 出力は document / raw / source id と件数のみで、OAuth token、Gemini API key、本文全文は出力しない
+  - CLI 出力は decision、ID、件数のみで、raw 本文全文、OAuth token、Gemini API key は出力していない。
 - 未確認リスク:
-  - Graph query helper は 1 列の `RETURN` を想定する。複数列返却や可視化 UI は Step 11 以降で拡張する
+  - AGE の node label は互換性のため `Document` / `Actor` / `Topic` の主ラベルにし、詳細種別は `graphLabels` property に保存した。複数ラベル利用の可否は将来の AGE バージョン差を見て再検討する。
+  - `SAME_AS` は `content_hash` が一致する別 source type の Document に限定しており、埋め込み類似度による同一性判定は未実装。
 - 次 step に進む判断:
-  - relational / vector / graph の件数整合、project graph 分離、再実行時の graph 重複防止を fixture ベースで確認できたため Step 9 に進める
+  - relational / vector / graph の三層保存、project graph 分離、再実行時の MERGE idempotency を確認できたため、Step 9 に進める。

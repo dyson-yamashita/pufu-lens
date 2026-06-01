@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import postgres from 'postgres';
 
 async function main() {
@@ -7,7 +8,7 @@ async function main() {
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
 
   try {
-    await setupAgeConnection(sql);
+    await ensureAgeSession(sql);
     const project = singleJson(
       await sql`
         SELECT graph_name AS "graphName"
@@ -18,13 +19,9 @@ async function main() {
     if (!project) {
       throw new Error(`Project not found: ${projectSlug}`);
     }
-    validateGraphName(project.graphName);
-
+    const graphName = validateGraphName(project.graphName);
     const rows = await sql.unsafe(
-      `SELECT * FROM cypher(${sqlLiteral(project.graphName)}, $$${cypher.replaceAll(
-        '$$',
-        '$ $',
-      )}$$) AS (result agtype)`,
+      `SELECT * FROM cypher(${sqlString(graphName)}, ${dollarQuote(cypher)}) AS (value agtype)`,
     );
     console.log(JSON.stringify(rows, null, 2));
   } finally {
@@ -32,7 +29,7 @@ async function main() {
   }
 }
 
-async function setupAgeConnection(sql) {
+async function ensureAgeSession(sql) {
   await sql.unsafe("LOAD 'age'");
   await sql.unsafe('SET search_path = ag_catalog, "$user", public');
 }
@@ -75,18 +72,24 @@ function requiredOption(value, name) {
   return value;
 }
 
-function validateGraphName(value) {
-  if (!/^graph_[a-z0-9_]+$/.test(value) || value.length > 63) {
-    throw new Error(`Invalid graph name: ${value}`);
-  }
-}
-
-function sqlLiteral(value) {
-  return `'${String(value).replaceAll("'", "''")}'`;
-}
-
 function singleJson(rows) {
   return rows[0];
+}
+
+function sqlString(value) {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function dollarQuote(value) {
+  const tag = `$pufu_${createHash('sha256').update(value).digest('hex')}$`;
+  return `${tag}${value}${tag}`;
+}
+
+function validateGraphName(graphName) {
+  if (!/^graph_[a-z0-9_]+$/.test(graphName) || graphName.length > 63) {
+    throw new Error(`Invalid AGE graph name: ${graphName}`);
+  }
+  return graphName;
 }
 
 main().catch((error) => {
