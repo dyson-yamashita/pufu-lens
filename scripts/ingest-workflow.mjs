@@ -94,8 +94,7 @@ async function withSql(callback) {
 
 async function statusCommand(options) {
   const projectSlug = requiredOption(options.project, '--project');
-  const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
-  try {
+  await withSql(async (sql) => {
     const project = await lookupProject(sql, projectSlug);
     if (!project) {
       throw new Error(`Project not found: ${projectSlug}`);
@@ -110,9 +109,7 @@ async function statusCommand(options) {
       totals: await readTotals(sql, project.id),
     };
     console.log(JSON.stringify(status, null, 2));
-  } finally {
-    await sql.end();
-  }
+  });
 }
 
 async function executeWorkflowStep(input) {
@@ -141,7 +138,7 @@ async function executeWorkflowStep(input) {
     logEvent(input.run, {
       durationMs: Date.now() - startedAt.getTime(),
       event: 'step_completed',
-      llm: noLlmUsage(),
+      llm: childResult.llm ?? noLlmUsage(),
       result: childResult,
       step: input.step,
     });
@@ -235,14 +232,27 @@ function parseScriptOutput(stdout) {
     return {};
   }
 
-  const start = trimmed.indexOf('{');
-  const end = trimmed.lastIndexOf('}');
-  if (start !== -1 && end !== -1 && end > start) {
-    const jsonCandidate = trimmed.slice(start, end + 1);
+  for (const line of trimmed.split('\n').reverse()) {
+    const jsonCandidate = line.trim();
+    if (!jsonCandidate.startsWith('{') || !jsonCandidate.endsWith('}')) {
+      continue;
+    }
     try {
       return summarizeScriptResult(JSON.parse(jsonCandidate));
     } catch {
-      // Fall through to parsing the full output.
+      // Continue scanning earlier lines.
+    }
+  }
+
+  for (
+    let index = trimmed.lastIndexOf('{');
+    index >= 0;
+    index = trimmed.lastIndexOf('{', index - 1)
+  ) {
+    try {
+      return summarizeScriptResult(JSON.parse(trimmed.slice(index)));
+    } catch {
+      // Continue scanning earlier JSON object starts.
     }
   }
 
@@ -264,6 +274,7 @@ function summarizeScriptResult(result) {
   return {
     ...(result.projectSlug ? { projectSlug: result.projectSlug } : {}),
     ...(result.embeddingModel ? { embeddingModel: result.embeddingModel } : {}),
+    ...(result.llm ? { llm: result.llm } : {}),
     ...(decisions ? { decisionCount: decisions.length, decisions } : {}),
   };
 }
@@ -412,6 +423,9 @@ async function listFailedQueue(sql, projectId) {
 }
 
 function selectSteps(options) {
+  if (options.step && options.resumeFrom) {
+    throw new Error('Cannot specify both --step and --resume-from.');
+  }
   if (options.step) {
     return [options.step];
   }
@@ -517,6 +531,7 @@ function redactArgv(args) {
 function safeErrorMessage(value) {
   return String(value)
     .replace(/(token|secret|api[_-]?key)=\S+/gi, '$1=<redacted>')
+    .replace(/(postgres(?:ql)?:\/\/[^:]+:)[^@]+@/gi, '$1<redacted>@')
     .slice(0, 1000);
 }
 
