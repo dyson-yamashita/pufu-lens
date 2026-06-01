@@ -16,6 +16,13 @@ import {
   scanFixtureSource,
   shouldCollectCandidate,
 } from './collection-pipeline.js';
+import {
+  buildWebUrlRawCandidate,
+  collectWebUrlSource,
+  fetchWebUrl,
+  scanWebUrlDataSource,
+  type WebUrlFetchResponse,
+} from './web-url-source.js';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -158,6 +165,252 @@ test('collectFixtureSource records same hash candidates without merging raw docu
   assert.ok(rawDocument);
   assert.deepEqual(rawDocument.metadata.sameAsCandidateRawDocumentIds, ['raw-existing-web']);
   assert.equal(repository.rawDocuments.size, 2);
+});
+
+test('scanWebUrlDataSource reads configured URLs, normalizes fragments, and applies limit', () => {
+  const candidates = scanWebUrlDataSource(
+    dataSource({
+      config: {
+        url: 'https://Example.test/a#section',
+        urls: ['not-a-url', 'https://example.test/b/', 'https://example.test/b/#other'],
+      },
+      sourceType: 'web',
+    }),
+    2,
+  );
+
+  assert.deepEqual(candidates, [
+    { sourceUri: 'https://example.test/a' },
+    { sourceUri: 'https://example.test/b' },
+  ]);
+});
+
+test('buildWebUrlRawCandidate falls back to final URL for invalid canonical links', async () => {
+  const html =
+    '<html><head><title>Release</title><link rel="canonical" href="javascript:void(0)"></head><body>Body</body></html>';
+
+  const candidate = await buildWebUrlRawCandidate({
+    candidate: { sourceUri: 'https://example.test/release' },
+    dataSource: dataSource({ id: 'data-source-web', sourceType: 'web' }),
+    fetcher: async (): Promise<WebUrlFetchResponse> => ({
+      body: html,
+      contentType: 'text/html',
+      finalUrl: 'https://example.test/release',
+      status: 200,
+    }),
+    projectId: 'project-1',
+    projectSlug: 'sample-a',
+  });
+
+  assert.equal(candidate.raw.sourceId, 'https://example.test/release');
+  assert.equal(candidate.raw.metadata.canonicalUrl, 'https://example.test/release');
+});
+
+test('buildWebUrlRawCandidate uses canonical URL as source id and never stores body in metadata', async () => {
+  const html =
+    '<html><head><title lang="ja"> Release Notes </title><link rel="canonical" href="/release"></head><body>Body</body></html>';
+
+  const candidate = await buildWebUrlRawCandidate({
+    candidate: { sourceUri: 'https://example.test/release?utm=1' },
+    dataSource: dataSource({ id: 'data-source-web', sourceType: 'web' }),
+    fetcher: async (): Promise<WebUrlFetchResponse> => ({
+      body: html,
+      contentType: 'text/html; charset=utf-8',
+      finalUrl: 'https://example.test/release?utm=1',
+      status: 200,
+    }),
+    projectId: 'project-1',
+    projectSlug: 'sample-a',
+  });
+
+  assert.equal(candidate.raw.sourceId, 'https://example.test/release');
+  assert.equal(candidate.raw.sourceUri, 'https://example.test/release?utm=1');
+  assert.equal(candidate.raw.mimeType, 'text/html');
+  assert.match(candidate.raw.contentHash, /^[a-f0-9]{64}$/);
+  assert.equal(candidate.raw.metadata.title, 'Release Notes');
+  assert.equal(candidate.raw.metadata.body, undefined);
+});
+
+test('buildWebUrlRawCandidate appends a source id hash to avoid storage URI collisions', async () => {
+  const fetcher = async (url: string): Promise<WebUrlFetchResponse> => ({
+    body: '<html><head><title>Release</title></head><body>Body</body></html>',
+    contentType: 'text/html',
+    finalUrl: url,
+    status: 200,
+  });
+  const first = await buildWebUrlRawCandidate({
+    candidate: { sourceUri: 'https://example.test/foo/bar' },
+    dataSource: dataSource({ id: 'data-source-web', sourceType: 'web' }),
+    fetcher,
+    projectId: 'project-1',
+    projectSlug: 'sample-a',
+  });
+  const second = await buildWebUrlRawCandidate({
+    candidate: { sourceUri: 'https://example.test/foo*bar' },
+    dataSource: dataSource({ id: 'data-source-web', sourceType: 'web' }),
+    fetcher,
+    projectId: 'project-1',
+    projectSlug: 'sample-a',
+  });
+
+  assert.notEqual(first.raw.storageUri, second.raw.storageUri);
+  assert.match(first.raw.storageUri, /-[a-f0-9]{12}\.html$/);
+  assert.match(second.raw.storageUri, /-[a-f0-9]{12}\.html$/);
+});
+
+test('fetchWebUrl decodes response bytes with the declared charset', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    ({
+      arrayBuffer: async () => Uint8Array.from([0x82, 0xa0]).buffer,
+      headers: { get: () => 'text/html; charset=shift_jis' },
+      status: 200,
+      url: 'https://example.test/sjis',
+    }) as unknown as Response) as typeof fetch;
+
+  try {
+    const response = await fetchWebUrl('https://example.test/sjis');
+
+    assert.equal(response.body, 'あ');
+    assert.equal(response.contentType, 'text/html; charset=shift_jis');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('collectWebUrlSource supports dry-run and duplicate skip without writing storage', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { urls: ['https://example.test/release'] },
+      id: 'data-source-web',
+      sourceType: 'web',
+    }),
+  );
+  const storage = new InMemoryObjectStorage();
+  const fetcher = async (): Promise<WebUrlFetchResponse> => ({
+    body: '<html><head><title>Release</title></head><body>Body</body></html>',
+    contentType: 'text/html',
+    finalUrl: 'https://example.test/release',
+    status: 200,
+  });
+
+  const dryRun = await collectWebUrlSource({
+    dryRun: true,
+    fetcher,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+  });
+  const collected = await collectWebUrlSource({
+    fetcher,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+  });
+  const duplicate = await collectWebUrlSource({
+    fetcher,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+  });
+
+  assert.equal(dryRun.decisions[0]?.decision, 'would_collect');
+  assert.equal(collected.decisions[0]?.decision, 'collected');
+  assert.equal(duplicate.decisions[0]?.decision, 'skipped_existing');
+  assert.equal(repository.rawDocuments.size, 1);
+  assert.equal(repository.queue.size, 1);
+  assert.equal(repository.links.size, 1);
+  assert.equal(storage.objects.size, 1);
+});
+
+test('collectWebUrlSource applies limit across all enabled web data sources', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { urls: ['https://example.test/first'] },
+      id: 'data-source-web-1',
+      sourceType: 'web',
+    }),
+    dataSource({
+      config: { urls: ['https://example.test/second'] },
+      id: 'data-source-web-2',
+      sourceType: 'web',
+    }),
+  );
+  const storage = new InMemoryObjectStorage();
+  const fetchedUrls: string[] = [];
+
+  const result = await collectWebUrlSource({
+    fetcher: async (url): Promise<WebUrlFetchResponse> => {
+      fetchedUrls.push(url);
+      return {
+        body: '<html><head><title>Release</title></head><body>Body</body></html>',
+        contentType: 'text/html',
+        finalUrl: url,
+        status: 200,
+      };
+    },
+    limit: 1,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+  });
+
+  assert.deepEqual(fetchedUrls, ['https://example.test/first']);
+  assert.equal(result.decisions.length, 1);
+  assert.equal(repository.rawDocuments.size, 1);
+});
+
+test('collectWebUrlSource continues after a candidate fetch failure', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { urls: ['https://example.test/fail', 'https://example.test/release'] },
+      id: 'data-source-web',
+      sourceType: 'web',
+    }),
+  );
+  const storage = new InMemoryObjectStorage();
+  const originalConsoleError = console.error;
+  const errors: unknown[] = [];
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
+  };
+
+  try {
+    const result = await collectWebUrlSource({
+      fetcher: async (url): Promise<WebUrlFetchResponse> => {
+        if (url.endsWith('/fail')) {
+          throw new Error('temporary network failure token=secret');
+        }
+        return {
+          body: '<html><head><title>Release</title></head><body>Body</body></html>',
+          contentType: 'text/html',
+          finalUrl: url,
+          status: 200,
+        };
+      },
+      projectSlug: 'sample-a',
+      repository,
+      storage,
+    });
+
+    assert.equal(result.decisions.length, 1);
+    assert.equal(result.decisions[0]?.decision, 'collected');
+    assert.equal(repository.rawDocuments.size, 1);
+    assert.equal(storage.objects.size, 1);
+    assert.match(String(errors[0]), /Failed to build raw web candidate/);
+    assert.doesNotMatch(JSON.stringify(errors), /token=secret/);
+  } finally {
+    console.error = originalConsoleError;
+  }
 });
 
 function dataSource(input: Partial<DataSourceRecord> = {}): DataSourceRecord {

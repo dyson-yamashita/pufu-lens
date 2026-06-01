@@ -59,3 +59,20 @@ source 別に `ingest:inspect` と source contract test で次を検査する。
 - `ingest:inspect` の JSON が source contract に合い、source 別の必須項目が自動検査で通る。
 - 実データ `--limit 5` の範囲で Agent / chat model を使わずに collect → parse が通る。
 - source 固有 parser の変更は draft → validation → approve を通り、未承認データは `held` のまま保留される。
+
+## Step 10 確認記録
+
+- 実施日: 2026-06-01
+- 対象 Issue: #27
+- 実装範囲: Web URL source scanner / raw adapter / `pnpm ingest:collect` CLI / `ingest:run --source web` の collect step 接続。
+- 実行コマンド:
+  - `pnpm --filter @pufu-lens/ingestion test`
+  - `pnpm format:check`
+  - `pnpm test`
+- 自動テスト結果: Web URL の URL 正規化、canonical URL source id、本文全文を metadata に入れないこと、dry-run、重複 skip を unit test で確認。全 package test と format check も通過。
+- 補助的な手動確認: 未実施。
+- DB 確認: 未実施。
+- Storage 確認: 未実施。
+- ログ / secret 確認: unit test で raw body を metadata に保存しないことを確認。実 URL でのログ検査は未実施。
+- 未確認リスク: ローカル DB / storage を使った実 URL `--limit 5` の indexed 到達、`ingest:inspect`、失敗 raw の fixture 化、parser version validation CLI は未実装 / 未検証。
+- 次 step に進む判断: Web URL の最小 scanner / adapter は追加したが、Step 10 全体は継続。次は実 URL smoke test と inspect / failed fixture / parser validation CLI を整備する。

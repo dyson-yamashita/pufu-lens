@@ -9,6 +9,7 @@
     "create-project": "node --experimental-strip-types scripts/create-project.ts",
     "format": "biome check --write . && prettier --write \"**/*.{md,yml,yaml}\"",
     "format:check": "biome check . && prettier --check \"**/*.{md,yml,yaml}\"",
+    "ingest:collect": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node scripts/collect-source.mjs",
     "ingest:collect:fixture": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node scripts/collect-fixture-source.mjs",
     "ingest:chunk": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node scripts/chunk-and-embed.mjs",
     "ingest:index": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node scripts/index-graph-relations.mjs",

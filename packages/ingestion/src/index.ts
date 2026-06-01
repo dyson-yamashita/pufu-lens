@@ -123,3 +123,17 @@ export {
   parseRawDocuments,
   validateParserContract,
 } from './raw-parse.js';
+export type {
+  CollectWebUrlSourceOptions,
+  CollectWebUrlSourceResult,
+  WebUrlCandidate,
+  WebUrlFetcher,
+  WebUrlFetchResponse,
+  WebUrlRawCandidate,
+} from './web-url-source.js';
+export {
+  buildWebUrlRawCandidate,
+  collectWebUrlSource,
+  fetchWebUrl,
+  scanWebUrlDataSource,
+} from './web-url-source.js';
