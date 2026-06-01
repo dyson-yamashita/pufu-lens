@@ -50,7 +50,7 @@ Step の詳細を参照する前に、この表で status を確認する。
 | Step 4a  | [Parser Registry と承認制保留フロー](step-04a-parser-registry-approval.md)             | `completed` | 2026-05-31 | Issue #11 / PR #12 で設計反映済み。                  |
 | Step 5   | [Raw Parse と parsed JSON 保存](step-05-raw-parse.md)                                  | `completed` | 2026-05-31 | Issue #15 で完了確認済み。                           |
 | Step 6   | [Actor 名寄せと引用チェーン](step-06-actor-resolution.md)                              | `completed` | 2026-05-31 | Issue #17 で完了確認済み。                           |
-| Step 7   | [Document / Chunk / Embedding の決定的検証](step-07-chunk-embedding.md)                | `planned`   | 2026-05-29 | 未着手。                                             |
+| Step 7   | [Document / Chunk / Embedding の決定的検証](step-07-chunk-embedding.md)                | `completed` | 2026-05-31 | Issue #19 で完了確認済み。                           |
 | Step 8   | [Graph / Relation 構築](step-08-graph-relations.md)                                    | `planned`   | 2026-05-29 | 未着手。                                             |
 | Step 9   | [Ingestion Workflow の通し実行](step-09-ingestion-workflow.md)                         | `planned`   | 2026-05-29 | 未着手。                                             |
 | Step 10  | [実データソース接続を 1 種類ずつ追加](step-10-real-data-sources.md)                    | `planned`   | 2026-05-29 | 未着手。                                             |

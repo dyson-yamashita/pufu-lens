@@ -10,6 +10,8 @@
     "format": "biome check --write . && prettier --write \"**/*.{md,yml,yaml}\"",
     "format:check": "biome check . && prettier --check \"**/*.{md,yml,yaml}\"",
     "ingest:collect:fixture": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node scripts/collect-fixture-source.mjs",
+    "ingest:chunk": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node scripts/chunk-and-embed.mjs",
+    "embedding:check": "pnpm --filter @pufu-lens/ingestion build && node scripts/check-embedding.mjs",
     "ingest:fixture:add-failed": "pnpm --filter @pufu-lens/storage build && node --experimental-strip-types scripts/add-failed-raw-fixture.ts",
     "ingest:parse": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node scripts/parse-raw-documents.mjs",
     "ingest:resolve-actors": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node scripts/resolve-actors.mjs",

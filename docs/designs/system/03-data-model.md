@@ -272,7 +272,7 @@ CREATE TABLE document_chunks (
   content         TEXT NOT NULL,
   content_hash    TEXT NOT NULL,
   embedding       vector(1536),
-  embedding_model TEXT NOT NULL DEFAULT 'text-embedding-004',
+  embedding_model TEXT NOT NULL DEFAULT 'gemini-embedding-2',
   metadata        JSONB NOT NULL DEFAULT '{}',
   created_at      TIMESTAMPTZ DEFAULT now(),
   UNIQUE (project_id, document_id, chunk_index),
@@ -297,7 +297,7 @@ CREATE TABLE document_chunk_history (
   embedding_model            TEXT NOT NULL,
   metadata                   JSONB NOT NULL DEFAULT '{}',
   archived_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
-  archive_reason             TEXT NOT NULL DEFAULT 'document_updated', -- document_updated | parser_changed | manual_reindex
+  archive_reason             TEXT NOT NULL DEFAULT 'document_updated', -- document_updated | parser_changed | embedding_model_changed | chunk_config_changed | manual_reindex
   superseded_by_raw_document_id UUID REFERENCES raw_documents(id),
   superseded_by_content_hash TEXT
 );
