@@ -37,3 +37,48 @@ pnpm graph:query --project sample-b --cypher "MATCH (d:Document) RETURN d LIMIT 
 - `sample-a` の graph にだけ `sample-a` のデータが存在する。
 - `sample-b` から `sample-a` の document を参照できない。
 - raw / queue / document / chunk / graph の件数が fixture 期待値と一致する。
+
+## Step 8 確認記録
+
+- 実施日: 2026-06-01
+- 対象 commit: PR 作成前の `feature/issue-21-graph-relations`
+- 実装範囲:
+  - `storeGraphRelations` による Document / Actor / Topic node と最小 edge の materialize
+  - `email_quotes` の置き換え保存
+  - `SAME_AS` 候補 edge 作成
+  - `ingest:index` と `graph:query` CLI
+  - plan Step 着手時に最新 `main` からブランチを作成するルール追記
+- 実行コマンド:
+  - `git pull --ff-only origin main`
+  - `pnpm --filter @pufu-lens/ingestion test -- --run graph`
+  - `pnpm test`
+  - `pnpm typecheck`
+  - `pnpm lint`
+  - `pnpm build`
+  - `node --check scripts/index-graph-relations.mjs`
+  - `node --check scripts/query-graph.mjs`
+  - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/tmp/pufu-lens-step8-storage pnpm ingest:index --project step8-smoke --limit 10`
+  - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens pnpm graph:query --project step8-smoke --cypher "MATCH (d:Document) RETURN d LIMIT 5"`
+  - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens pnpm graph:query --project sample-b --cypher "MATCH (d:Document) RETURN d LIMIT 5"`
+- 自動テスト結果:
+  - `pnpm --filter @pufu-lens/ingestion test -- --run graph`: 37 tests passed
+  - `pnpm test`: 5 packages passed
+  - `pnpm typecheck`: 5 packages passed
+  - `pnpm lint`: 0 errors
+  - `pnpm build`: 5 packages passed
+- 補助的な手動確認:
+  - `step8-smoke` project で fixture collection、parse、actor resolution、chunk / embedding、graph index を通し実行した。
+  - `graph:query --project step8-smoke` で 5 件の `Document` node を確認した。
+  - `graph:query --project sample-b` は空配列で、別 project の graph に document が混入していないことを確認した。
+- DB 確認:
+  - `step8-smoke` の `raw_documents.ingest_status`: `indexed = 5`
+  - `step8-smoke` の `ingestion_queue.status`: `indexed = 5`
+  - `step8-smoke` の `email_quotes`: `1`
+- Storage 確認:
+  - `/tmp/pufu-lens-step8-storage/step8-smoke/parsed` を使用し、parsed JSON から graph index まで通した。
+- ログ / secret 確認:
+  - CLI 出力は decision、ID、件数のみで、raw 本文全文、OAuth token、Gemini API key は出力していない。
+- 未確認リスク:
+  - AGE の node label は互換性のため `Document` / `Actor` / `Topic` の主ラベルにし、詳細種別は `graphLabels` property に保存した。複数ラベル利用の可否は将来の AGE バージョン差を見て再検討する。
+- 次 step に進む判断:
+  - relational / vector / graph の三層保存、project graph 分離、再実行時の MERGE idempotency を確認できたため、Step 9 に進める。
