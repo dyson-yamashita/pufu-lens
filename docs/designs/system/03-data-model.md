@@ -341,7 +341,7 @@ CREATE TABLE email_quotes (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id      UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   document_id     UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE, -- 「最新メール」の Document
-  quote_index     INTEGER NOT NULL,       -- 0 = 最新メール本文、1, 2, ... が引用部
+  quote_index     INTEGER NOT NULL,       -- 1, 2, ... が引用部。最新メール本文は documents 側に保持する
   quoted_message_id TEXT,                 -- RFC 822 Message-ID（判明する場合）
   prev_quote_id   UUID REFERENCES email_quotes(id), -- 引用チェーン上の 1 つ古い要素
   sender_alias    TEXT,                   -- 引用ヘッダから抽出した送信者表示
@@ -731,8 +731,8 @@ erDiagram
 「**1 ドキュメント = 1 グラフノード**」を基本ルールにする。ベクトル検索用のチャンクは別テーブル `document_chunks` に格納し、`document_id` で親ドキュメント＝グラフノードへ追跡できるようにする。1 つの Document に対し N 個のチャンクが紐づく（N=1 もあり得る）。
 
 ```
-(Actor)-[:SENT]->(Email)-[:MENTIONS]->(Issue)
-(Email)-[:REPLY_TO]->(Email)                       // 引用チェーン上の直近の親
+(Actor)-[:SENT]->(Document)-[:MENTIONS]->(Topic)
+(Document)-[:REPLY_TO]->(Topic)                    // parsed relation の message target
 (Issue)-[:LINKED_TO]->(PullRequest)
 (Actor)-[:AUTHORED]->(PullRequest)-[:CLOSES]->(Issue)
 (Actor)-[:OWNS]->(DriveDoc)-[:REFERENCES]->(Issue)
@@ -746,12 +746,10 @@ erDiagram
 
 主要ノードラベル：
 
+- Step 8 の実装では AGE 互換性を優先し、実際の primary label は `Document` / `Actor` / `Topic` に寄せる。
+- `Email` / `Issue` / `PullRequest` / `DriveDoc` / `WebPage` などの詳細種別は `graphLabels` property と `documents.doc_type` に保持する。
 - `Actor` — 人物・組織・Bot（メール送信者、PR 作成者、PR レビュアー等）。`actors.id` と 1:1。
-- `Email` — メール（最新メール 1 通 = 1 Document = 1 ノード）。引用チェーンは `REPLY_TO` で繋ぐ。
-- `Issue` / `PullRequest` — GitHub エンティティ。
-- `DriveDoc` — Drive ドキュメント。
-- `WebPage` — 取り込んだ Web ページ。
-- `Topic` / `Feature` — 抽出された抽象トピック。
+- `Topic` — parsed relation の target。`LINKS_TO` は `topic:uri:<encoded target>`、`REPLY_TO` は `topic:message:<encoded target>` として作成する。
 
 #### 4.1. Actor と名寄せ
 
@@ -769,9 +767,9 @@ erDiagram
 #### 4.2. メールの引用と取り込み単位
 
 - スレッドの取り込みは **最新メール 1 通** だけを `documents` ＋ AGE ノードに登録する。
-- 過去メール（引用部分）は同じ Document に紐づく `email_quotes` 行として保存する。`quote_index = 0` がそのメール本文、`1, 2, ...` が古い引用ブロック。
-- `prev_quote_id` で 1 つ古い引用要素を指し、スレッド全体が **リスト構造**（最新メール → 1 つ前の発言 → … → 最古の発言）として辿れる。
-- `quoted_message_id` が判明する引用は別スレッドの Document と突き合わせ、AGE 上で `(Email)-[:REPLY_TO]->(Email)` を張る。判明しない場合は `email_quotes` 内のリストだけで前後関係を表現する。
+- 過去メール（引用部分）は同じ Document に紐づく `email_quotes` 行として保存する。最新メール本文は `documents` / parsed body 側に保持し、引用ブロックだけを `quote_index = 1, 2, ...` で保存する。
+- `prev_quote_id` で 1 つ前の引用要素を指し、引用同士を **リスト構造**（1 つ前の発言 → … → 最古の発言）として辿れる。
+- Step 8 の実装では、parsed relation の `REPLY_TO` は AGE 上で `(Document)-[:REPLY_TO]->(Topic {topicType: "message"})` として materialize する。`quoted_message_id` が判明する引用の Document 突き合わせと `(Document)-[:REPLY_TO]->(Document)` 化は未実装で、`email_quotes.prev_quote_id` による引用チェーン保存に留める。
 - 引用ヘッダから検出される送信者は **`sender_alias` として保存し、Actor リゾルバ経由で `sender_actor_id` に正規化** する。これにより「最新メールの送信者だけでなく、引用に出てきた人」もグラフに反映できる。
 
 #### 4.3. Document ⇔ Chunk の追跡
@@ -800,10 +798,12 @@ erDiagram
 - 例: Drive にある仕様書 PDF と Web 公開ページが同じ内容、PR の説明文と Issue の本文が同一など。
 - 判定: `source_type` をまたぐと `source_id` で同一視できないため、別の `raw_documents` 行になる。`content_hash` は同一候補の検索に使うが、raw 行は統合しない。
 - 動作:
-  1. parse 後、Ingestion Workflow は `content_hash` または埋め込み類似度を使って **他 source_type の Document との同一性を判定** する（しきい値はデータ種別ごとに設定）。
-  2. 同一と判定したら AGE 上に `(Document)-[:SAME_AS]->(Document)` 関係を MERGE。確信度を `metadata.confidence` に持たせる。
+  1. Step 8 の実装では `content_hash` が一致する **他 source_type** の Document を同一候補として扱う。
+  2. 同一候補と判定したら AGE 上に `(Document)-[:SAME_AS]->(Document)` 関係を MERGE。確信度は edge property の `confidence` に持たせる。
   3. Chat Agent は片方の Document をヒットさせた際、`SAME_AS` を 1 ホップ辿って関連 Document も提示できる。
   4. レポートでも `sources[]` に `same_as` を含めて、出典の冗長性を明示する。
+
+埋め込み類似度による `SAME_AS` 判定は Step 8 時点では未実装である。将来の Step で導入する場合は、しきい値、データ種別ごとの除外条件、手動確認フローを追加してから有効化する。
 
 **(C) 同じ content_hash の偶然一致（同 source_type 内）**
 

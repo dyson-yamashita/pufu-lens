@@ -35,6 +35,7 @@
 - 順序は固定: `type` → `issue-number` → `description`
 - description は kebab-case のみ（`a-z` `0-9` `-`）。60 文字以内・3〜6 語程度
 - 必ず Issue 番号を含める
+- plan の Step 用ブランチは、作成前に `main` を最新化し、最新の `main` から作成する
 - 禁止: ユーザー名・日付・日本語・camelCase / snake_case・曖昧名（`fix-stuff` 等）
 
 CI / hook 用 regex:
