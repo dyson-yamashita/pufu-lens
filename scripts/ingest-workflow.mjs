@@ -30,8 +30,8 @@ async function main() {
 
 async function runCommand(options) {
   const projectSlug = requiredOption(options.project, '--project');
-  if (!options.fixture) {
-    throw new Error('--fixture is required until real data source collection is implemented.');
+  if (!options.fixture && options.source !== 'web') {
+    throw new Error('--fixture is required unless --source web is used.');
   }
 
   const run = createRunLogger({ command: 'run', projectSlug, sourceType: options.source });
@@ -157,9 +157,23 @@ async function executeWorkflowStep(input) {
 function buildStepCommand(step, projectSlug, options) {
   const args = [];
   if (step === 'collect') {
-    args.push(join(repoRoot, 'scripts/collect-fixture-source.mjs'), '--project', projectSlug);
-    if (options.source) {
-      args.push('--source', options.source);
+    if (options.fixture) {
+      args.push(join(repoRoot, 'scripts/collect-fixture-source.mjs'), '--project', projectSlug);
+      if (options.source) {
+        args.push('--source', options.source);
+      }
+    } else {
+      args.push(
+        join(repoRoot, 'scripts/collect-source.mjs'),
+        '--project',
+        projectSlug,
+        '--source',
+        options.source,
+      );
+      for (const url of options.urls ?? []) {
+        args.push('--url', url);
+      }
+      appendLimit(args, options.limit);
     }
     return { args };
   }
@@ -482,6 +496,9 @@ function parseArgs(argv) {
       options.source = sourceType;
     } else if (arg === '--fixture') {
       options.fixture = true;
+    } else if (arg === '--url') {
+      options.urls = options.urls ?? [];
+      options.urls.push(readOptionValue(argv, ++index, arg));
     } else if (arg === '--failed-only') {
       options.failedOnly = true;
     } else if (arg === '--dry-run') {

@@ -16,6 +16,12 @@ import {
   scanFixtureSource,
   shouldCollectCandidate,
 } from './collection-pipeline.js';
+import {
+  buildWebUrlRawCandidate,
+  collectWebUrlSource,
+  scanWebUrlDataSource,
+  type WebUrlFetchResponse,
+} from './web-url-source.js';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -158,6 +164,97 @@ test('collectFixtureSource records same hash candidates without merging raw docu
   assert.ok(rawDocument);
   assert.deepEqual(rawDocument.metadata.sameAsCandidateRawDocumentIds, ['raw-existing-web']);
   assert.equal(repository.rawDocuments.size, 2);
+});
+
+test('scanWebUrlDataSource reads configured URLs, normalizes fragments, and applies limit', () => {
+  const candidates = scanWebUrlDataSource(
+    dataSource({
+      config: {
+        url: 'https://Example.test/a#section',
+        urls: ['https://example.test/b/', 'https://example.test/b/#other'],
+      },
+      sourceType: 'web',
+    }),
+    2,
+  );
+
+  assert.deepEqual(candidates, [
+    { sourceUri: 'https://example.test/a' },
+    { sourceUri: 'https://example.test/b' },
+  ]);
+});
+
+test('buildWebUrlRawCandidate uses canonical URL as source id and never stores body in metadata', async () => {
+  const html =
+    '<html><head><title> Release Notes </title><link rel="canonical" href="/release"></head><body>Body</body></html>';
+
+  const candidate = await buildWebUrlRawCandidate({
+    candidate: { sourceUri: 'https://example.test/release?utm=1' },
+    dataSource: dataSource({ id: 'data-source-web', sourceType: 'web' }),
+    fetcher: async (): Promise<WebUrlFetchResponse> => ({
+      body: html,
+      contentType: 'text/html; charset=utf-8',
+      finalUrl: 'https://example.test/release?utm=1',
+      status: 200,
+    }),
+    projectId: 'project-1',
+    projectSlug: 'sample-a',
+  });
+
+  assert.equal(candidate.raw.sourceId, 'https://example.test/release');
+  assert.equal(candidate.raw.sourceUri, 'https://example.test/release?utm=1');
+  assert.equal(candidate.raw.mimeType, 'text/html');
+  assert.match(candidate.raw.contentHash, /^[a-f0-9]{64}$/);
+  assert.equal(candidate.raw.metadata.title, 'Release Notes');
+  assert.equal(candidate.raw.metadata.body, undefined);
+});
+
+test('collectWebUrlSource supports dry-run and duplicate skip without writing storage', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { urls: ['https://example.test/release'] },
+      id: 'data-source-web',
+      sourceType: 'web',
+    }),
+  );
+  const storage = new InMemoryObjectStorage();
+  const fetcher = async (): Promise<WebUrlFetchResponse> => ({
+    body: '<html><head><title>Release</title></head><body>Body</body></html>',
+    contentType: 'text/html',
+    finalUrl: 'https://example.test/release',
+    status: 200,
+  });
+
+  const dryRun = await collectWebUrlSource({
+    dryRun: true,
+    fetcher,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+  });
+  const collected = await collectWebUrlSource({
+    fetcher,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+  });
+  const duplicate = await collectWebUrlSource({
+    fetcher,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+  });
+
+  assert.equal(dryRun.decisions[0]?.decision, 'would_collect');
+  assert.equal(collected.decisions[0]?.decision, 'collected');
+  assert.equal(duplicate.decisions[0]?.decision, 'skipped_existing');
+  assert.equal(repository.rawDocuments.size, 1);
+  assert.equal(repository.queue.size, 1);
+  assert.equal(repository.links.size, 1);
+  assert.equal(storage.objects.size, 1);
 });
 
 function dataSource(input: Partial<DataSourceRecord> = {}): DataSourceRecord {
