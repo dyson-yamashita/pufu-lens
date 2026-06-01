@@ -106,7 +106,7 @@ test('Gemini embedding provider batches requests and preserves vector order', as
         })),
       });
     },
-    model: 'gemini-embedding-001',
+    model: 'gemini-embedding-2',
   });
 
   const texts = Array.from({ length: 205 }, (_value, index) => `text-${index}`);
@@ -127,7 +127,7 @@ test('Gemini embedding provider does not call API for an empty text list', async
       fetchCalls += 1;
       return Response.json({ embeddings: [] });
     },
-    model: 'gemini-embedding-001',
+    model: 'gemini-embedding-2',
   });
 
   assert.deepEqual(await provider.embedTexts([]), []);
@@ -198,7 +198,7 @@ test('validateGeminiEmbeddingConfig requires a 1536-dimensional Gemini configura
       validateGeminiEmbeddingConfig({
         apiKey: 'secret',
         dimensions: 768,
-        model: 'gemini-embedding-001',
+        model: 'gemini-embedding-2',
       }),
     /GEMINI_EMBEDDING_DIMENSIONS must be 1536/,
   );
@@ -206,7 +206,7 @@ test('validateGeminiEmbeddingConfig requires a 1536-dimensional Gemini configura
     validateGeminiEmbeddingConfig({
       apiKey: 'secret',
       dimensions: 1536,
-      model: 'gemini-embedding-001',
+      model: 'gemini-embedding-2',
     }),
   );
 });

@@ -20,18 +20,20 @@ Gemini embedding を使う場合は次を設定する。
 
 ```bash
 GEMINI_API_KEY=... \
-GEMINI_EMBEDDING_MODEL=gemini-embedding-001 \
+GEMINI_EMBEDDING_MODEL=gemini-embedding-2 \
 GEMINI_EMBEDDING_DIMENSIONS=1536 \
 pnpm ingest:chunk --project sample-a --limit 3 --embedding-provider gemini --dry-run
 ```
 
 `GEMINI_EMBEDDING_DIMENSIONS` は `1536` 必須。DB の `vector(1536)` と異なる値は起動時 validation error にする。
+`gemini-embedding-001` は 2026-07-14 に提供終了予定のため、既定の Gemini embedding model は `gemini-embedding-2` とする。
 
 ## 挙動
 
 - `raw_documents.ingest_status IN ('parsed', 'indexed')` かつ `parsed_uri` がある行を対象にする。
 - `documents.raw_document_id` をキーに document を upsert し、その後で chunk を保存する。
 - deterministic provider は入力テキストとモデル名から hash ベースの固定長 vector を生成する。検索品質ではなく DB 書き込み、chunk hash、冪等性の検証用。
+- Gemini provider は `batchEmbedContents` の request 数を 100 件ずつに分割し、空の chunk list では API を呼び出さない。
 - 同じ chunk hash / embedding model / chunk index の再実行では `document_chunks` を変更しない。
 - chunk set が変わった場合は既存 `document_chunks` を `document_chunk_history` に退避してから削除し、新しい chunk set を挿入する。
 - chunk 保存後は `raw_documents.ingest_status` と `ingestion_queue.status` を `indexed` にする。

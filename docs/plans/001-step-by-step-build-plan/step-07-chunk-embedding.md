@@ -70,13 +70,13 @@ pnpm test -- --run chunk
   - `pnpm ingest:chunk --project step7-smoke --limit 10 --embedding-provider deterministic`（再実行）
   - `infisical run --env=dev --path=/ -- pnpm ingest:chunk --project step7-smoke --limit 3 --embedding-provider gemini --dry-run`
 - 自動テスト結果:
-  - ingestion package: 30 tests passed
+  - ingestion package: 33 tests passed
   - 全体 `pnpm test`: 5 packages successful
   - `pnpm typecheck`: 5 packages successful
   - `pnpm format:check`: passed
 - 補助的な手動確認:
   - deterministic embedding check は `dimensions=1536`、`model=deterministic-sha256-v1`、`ok=true`
-  - Gemini embedding check は `dimensions=1536`、`model=gemini-embedding-001`、`ok=true`
+  - Gemini embedding check は `dimensions=1536`、`model=gemini-embedding-2`、`ok=true`
   - Gemini dry-run は 3 件すべて `dry_run`
   - `step7-smoke` 初回 chunk は 5 documents / 5 chunks を `indexed`
   - 同一条件の再実行は 5 件すべて `unchanged`
@@ -89,7 +89,7 @@ pnpm test -- --run chunk
 - ログ / secret 確認:
   - Infisical から `GEMINI_API_KEY` を注入し、secret 値はログ出力なし
 - 未確認リスク:
-  - Gemini 実 API の dry-run は `gemini-embedding-001` で確認済み。`text-embedding-004` は現行 API で 404 だったため既定値から外した
+  - Gemini 実 API の dry-run は `gemini-embedding-2` で確認済み。`text-embedding-004` は現行 API で 404 だったため既定値から外した。`gemini-embedding-001` は 2026-07-14 に提供終了予定のため、既定値から外した
   - 既存 Docker volume は Step 7 前の schema だったため、smoke test 前に `document_chunk_history` をローカル DB へ非破壊追加した。fresh DB では `infra/docker/postgres/init.sql` から作成される
 - 次 step に進む判断:
   - fixture ベースの deterministic chunk / embedding、冪等性、DB 件数確認が通ったため Step 8 に進める

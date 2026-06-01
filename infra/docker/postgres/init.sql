@@ -198,7 +198,7 @@ CREATE TABLE public.document_chunks (
   content TEXT NOT NULL,
   content_hash TEXT NOT NULL,
   embedding vector(1536),
-  embedding_model TEXT NOT NULL DEFAULT 'gemini-embedding-001',
+  embedding_model TEXT NOT NULL DEFAULT 'gemini-embedding-2',
   metadata JSONB NOT NULL DEFAULT '{}',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (project_id, document_id, chunk_index),
