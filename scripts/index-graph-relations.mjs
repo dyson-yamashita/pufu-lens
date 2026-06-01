@@ -176,7 +176,8 @@ class PostgresGraphRelationsRepository {
           AND document_id = ${input.documentId}
       `;
       const insertedByIndex = new Map();
-      for (const quote of input.quotes) {
+      const sortedQuotes = [...input.quotes].sort((a, b) => a.quoteIndex - b.quoteIndex);
+      for (const quote of sortedQuotes) {
         const inserted = singleJson(
           await transaction`
             INSERT INTO public.email_quotes (

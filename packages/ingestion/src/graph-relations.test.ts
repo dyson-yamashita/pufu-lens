@@ -66,6 +66,69 @@ test('storeGraphRelations materializes document, actor, topic, quote, and status
   assert.equal(repository.edges.size, 3);
 });
 
+test('storeGraphRelations resolves quote chains without depending on quote order', async () => {
+  const repository = new InMemoryGraphRelationsRepository([
+    {
+      document: documentRecord(),
+      parsed: gmailParsed({
+        emailQuotes: [
+          {
+            bodyText: 'Newest quoted message.',
+            from: 'Sample Reviewer <reviewer@example.test>',
+            messageId: 'msg-alpha-002',
+            prevMessageId: 'msg-alpha-001',
+            sentAt: '2026-05-05T14:50:00.000Z',
+          },
+          {
+            bodyText: 'Older quoted message.',
+            from: 'Sample Sender <sender@example.test>',
+            messageId: 'msg-alpha-001',
+            sentAt: '2026-05-05T14:10:00.000Z',
+          },
+        ],
+      }),
+      rawContentHash: 'same-hash',
+      rawDocumentId: 'raw-email-1',
+    },
+  ]);
+  repository.actors.push({
+    displayName: 'Sample Sender',
+    graphNodeId: 'actor:email:sender%40example.test',
+    id: 'actor-sender',
+  });
+  repository.aliases.set(
+    'email:sender@example.test',
+    repository.actors.at(-1) as GraphRelationActorRecord,
+  );
+  repository.actors.push({
+    displayName: 'Sample Reviewer',
+    graphNodeId: 'actor:email:reviewer%40example.test',
+    id: 'actor-reviewer',
+  });
+  repository.aliases.set(
+    'email:reviewer@example.test',
+    repository.actors.at(-1) as GraphRelationActorRecord,
+  );
+
+  await storeGraphRelations({
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  });
+
+  assert.deepEqual(
+    repository.emailQuotes.get('document-email-1')?.map((quote) => ({
+      prevQuoteIndex: quote.prevQuoteIndex,
+      quoteIndex: quote.quoteIndex,
+      quotedMessageId: quote.quotedMessageId,
+    })),
+    [
+      { prevQuoteIndex: 2, quoteIndex: 1, quotedMessageId: 'msg-alpha-002' },
+      { prevQuoteIndex: undefined, quoteIndex: 2, quotedMessageId: 'msg-alpha-001' },
+    ],
+  );
+});
+
 test('storeGraphRelations creates SAME_AS only for another source type in the same project', async () => {
   const repository = new InMemoryGraphRelationsRepository([
     {
@@ -101,6 +164,31 @@ test('storeGraphRelations creates SAME_AS only for another source type in the sa
       'document:web_page:https%3A%2F%2Fexample.test%2Fspec',
     ),
   );
+});
+
+test('storeGraphRelations skips blank relation targets', async () => {
+  const repository = new InMemoryGraphRelationsRepository([
+    {
+      document: documentRecord(),
+      parsed: gmailParsed({
+        relations: [
+          { target: '   ', type: 'REPLY_TO' },
+          { target: 'https://example.test/valid', type: 'LINKS_TO' },
+        ],
+      }),
+      rawContentHash: 'same-hash',
+      rawDocumentId: 'raw-email-1',
+    },
+  ]);
+
+  await storeGraphRelations({
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  });
+
+  assert.equal([...repository.nodes.keys()].filter((key) => key.startsWith('topic:')).length, 1);
+  assert.ok(repository.nodes.has('topic:uri:https%3A%2F%2Fexample.test%2Fvalid'));
 });
 
 test('storeGraphRelations rejects stale document graph keys before writing graph data', async () => {
@@ -298,7 +386,9 @@ function documentRecord(
   };
 }
 
-function gmailParsed(): ParsedDocument {
+function gmailParsed(
+  input: Partial<Pick<ParsedDocument, 'emailQuotes' | 'relations'>> = {},
+): ParsedDocument {
   return {
     actors: [
       { displayName: 'Sample Sender', email: 'sender@example.test', role: 'sender' },
@@ -307,7 +397,7 @@ function gmailParsed(): ParsedDocument {
     bodyText: 'Latest update.',
     canonicalUri: 'gmail://thread-alpha/msg-alpha-003',
     docType: 'email',
-    emailQuotes: [
+    emailQuotes: input.emailQuotes ?? [
       {
         bodyText: 'Previous update.',
         from: 'Sample Reviewer <reviewer@example.test>',
@@ -317,7 +407,7 @@ function gmailParsed(): ParsedDocument {
     ],
     metadata: {},
     occurredAt: '2026-05-05T15:20:00.000Z',
-    relations: [{ target: 'msg-alpha-002', type: 'REPLY_TO' }],
+    relations: input.relations ?? [{ target: 'msg-alpha-002', type: 'REPLY_TO' }],
     schemaVersion: 1,
     sourceId: 'thread-alpha:msg-alpha-003',
     sourceType: 'gmail',

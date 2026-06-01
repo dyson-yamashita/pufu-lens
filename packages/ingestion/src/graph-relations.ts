@@ -126,6 +126,8 @@ interface GraphRelationContext {
   repository: GraphRelationsRepository;
 }
 
+type GraphNodeEdge = { edge: GraphEdgeInput; node: GraphNodeInput };
+
 export async function storeGraphRelations(
   options: StoreGraphRelationsOptions,
 ): Promise<StoreGraphRelationsResult> {
@@ -278,8 +280,8 @@ async function actorEdges(
   context: GraphRelationContext,
   parsed: ParsedDocument,
   documentGraphNodeId: string,
-): Promise<Array<{ edge: GraphEdgeInput; node: GraphNodeInput }>> {
-  const edges = await Promise.all(
+): Promise<GraphNodeEdge[]> {
+  const edges: Array<GraphNodeEdge | undefined> = await Promise.all(
     parsed.actors.map(async (mention, index) => {
       const actor = await findResolvedActor(context, parsed, mention, `${mention.role}:${index}`);
       if (!actor) {
@@ -307,7 +309,7 @@ async function actorEdges(
       };
     }),
   );
-  return edges.filter((edge) => edge !== undefined);
+  return edges.filter(isGraphNodeEdge);
 }
 
 function relationNodesAndEdges(
@@ -316,7 +318,11 @@ function relationNodesAndEdges(
   target: GraphRelationTarget,
 ): Array<{ edge: GraphEdgeInput; node: GraphNodeInput }> {
   return parsed.relations
-    .filter((relation) => relation.type === 'LINKS_TO' || relation.type === 'REPLY_TO')
+    .filter(
+      (relation) =>
+        (relation.type === 'LINKS_TO' || relation.type === 'REPLY_TO') &&
+        relation.target.trim() !== '',
+    )
     .map((relation) => {
       const topicGraphNodeId =
         relation.type === 'REPLY_TO'
@@ -364,15 +370,16 @@ async function resolvedEmailQuotes(
     }),
   );
   const messageToIndex = new Map<string, number>();
-  const result: GraphEmailQuoteInput[] = [];
-
   for (const [index, quote] of quotes.entries()) {
+    messageToIndex.set(quote.messageId, index + 1);
+  }
+
+  return quotes.map((quote, index) => {
     const quoteIndex = index + 1;
     const senderActor = resolvedActors[index];
     const prevQuoteIndex =
       quote.prevMessageId === undefined ? undefined : messageToIndex.get(quote.prevMessageId);
-    messageToIndex.set(quote.messageId, quoteIndex);
-    result.push({
+    return {
       bodyText: quote.bodyText,
       prevQuoteIndex,
       quoteIndex,
@@ -380,10 +387,8 @@ async function resolvedEmailQuotes(
       senderActorId: senderActor?.id,
       senderAlias: quote.from,
       sentAt: quote.sentAt,
-    });
-  }
-
-  return result;
+    };
+  });
 }
 
 async function findResolvedActor(
@@ -426,6 +431,10 @@ function strongAliases(
     aliases.push({ aliasType: 'github_login', aliasValue: githubLogin });
   }
   return aliases;
+}
+
+function isGraphNodeEdge(value: GraphNodeEdge | undefined): value is GraphNodeEdge {
+  return value !== undefined;
 }
 
 function validateDocumentGraphKey(
