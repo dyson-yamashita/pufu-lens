@@ -19,6 +19,8 @@
 - Step 8: [Graph / Relation 構築](001-step-by-step-build-plan/step-08-graph-relations.md)
 - Step 9: [Ingestion Workflow の通し実行](001-step-by-step-build-plan/step-09-ingestion-workflow.md)
 - Step 10: [実データソース接続を 1 種類ずつ追加](001-step-by-step-build-plan/step-10-real-data-sources.md)
+- Step 10a: [scripts 実行形式の `.ts` 統一](001-step-by-step-build-plan/step-10a-scripts-ts-execution.md)
+- Step 10b: [scripts strict typecheck 対応](001-step-by-step-build-plan/step-10b-scripts-strict-typecheck.md)
 - Step 11: [管理 UI と取り込み状況の可視化](001-step-by-step-build-plan/step-11-admin-ui.md)
 - Step 12: [Chat Agent の最小確認](001-step-by-step-build-plan/step-12-chat-agent.md)
 - Step 13a: [Private Report 生成と閲覧](001-step-by-step-build-plan/step-13a-private-report.md)

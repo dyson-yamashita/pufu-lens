@@ -54,6 +54,8 @@ Step の詳細を参照する前に、この表で status を確認する。
 | Step 8   | [Graph / Relation 構築](step-08-graph-relations.md)                                    | `completed` | 2026-06-01 | Issue #21 で完了確認済み。                           |
 | Step 9   | [Ingestion Workflow の通し実行](step-09-ingestion-workflow.md)                         | `completed` | 2026-06-01 | Issue #25 で完了確認済み。                           |
 | Step 10  | [実データソース接続を 1 種類ずつ追加](step-10-real-data-sources.md)                    | `active`    | 2026-06-01 | Issue #27 で Web URL から着手。                      |
+| Step 10a | [scripts 実行形式の `.ts` 統一](step-10a-scripts-ts-execution.md)                      | `planned`   | 2026-06-02 | 実行形式だけを `.ts` に寄せる。                      |
+| Step 10b | [scripts strict typecheck 対応](step-10b-scripts-strict-typecheck.md)                  | `planned`   | 2026-06-02 | scripts 用 typecheck を段階導入する。                |
 | Step 11  | [管理 UI と取り込み状況の可視化](step-11-admin-ui.md)                                  | `planned`   | 2026-05-29 | 未着手。                                             |
 | Step 12  | [Chat Agent の最小確認](step-12-chat-agent.md)                                         | `planned`   | 2026-05-29 | 未着手。                                             |
 | Step 13a | [Private Report 生成と閲覧](step-13a-private-report.md)                                | `planned`   | 2026-05-29 | 未着手。                                             |
