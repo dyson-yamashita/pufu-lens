@@ -352,7 +352,7 @@ function sha256Hex(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function singleJson(rows: any): any {
+function singleJson<T>(rows: T[]): T | undefined {
   return rows[0];
 }
 

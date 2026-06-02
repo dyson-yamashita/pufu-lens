@@ -28,7 +28,7 @@ async function main(): Promise<void> {
   throw new Error(`Unknown workflow command: ${command ?? '<missing>'}`);
 }
 
-async function runCommand(options: any): Promise<any> {
+async function runCommand(options: any): Promise<void> {
   const projectSlug = requiredOption(options.project, '--project');
   if (!options.fixture && options.source !== 'web') {
     throw new Error('--fixture is required unless --source web is used.');
@@ -51,7 +51,7 @@ async function runCommand(options: any): Promise<any> {
   logEvent(run, { event: 'workflow_completed', llm: noLlmUsage() });
 }
 
-async function retryCommand(options: any): Promise<any> {
+async function retryCommand(options: any): Promise<void> {
   const projectSlug = requiredOption(options.project, '--project');
   if (!options.failedOnly) {
     throw new Error('--failed-only is required for ingest:retry.');
@@ -60,8 +60,9 @@ async function retryCommand(options: any): Promise<any> {
   const run = createRunLogger({ command: 'retry', projectSlug, sourceType: options.source });
   const reset = options.dryRun
     ? { planned: true, queueItems: 0, rawDocuments: 0 }
-    : await withSql((sql: postgres.Sql): any =>
-        resetFailedQueue({ projectSlug, sourceType: options.source, sql }),
+    : await withSql(
+        (sql: postgres.Sql): Promise<any> =>
+          resetFailedQueue({ projectSlug, sourceType: options.source, sql }),
       );
   logEvent(run, {
     event: 'failed_queue_reset',
@@ -85,7 +86,7 @@ async function retryCommand(options: any): Promise<any> {
   logEvent(run, { event: 'workflow_completed', llm: noLlmUsage() });
 }
 
-async function withSql(callback: any): Promise<any> {
+async function withSql<T>(callback: (sql: postgres.Sql) => Promise<T> | T): Promise<T> {
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   try {
     return await callback(sql);
@@ -94,9 +95,9 @@ async function withSql(callback: any): Promise<any> {
   }
 }
 
-async function statusCommand(options: any): Promise<any> {
+async function statusCommand(options: any): Promise<void> {
   const projectSlug = requiredOption(options.project, '--project');
-  await withSql(async (sql: postgres.Sql): Promise<any> => {
+  await withSql(async (sql: postgres.Sql): Promise<void> => {
     const project = await lookupProject(sql, projectSlug);
     if (!project) {
       throw new Error(`Project not found: ${projectSlug}`);
@@ -114,7 +115,7 @@ async function statusCommand(options: any): Promise<any> {
   });
 }
 
-async function executeWorkflowStep(input: any): Promise<any> {
+async function executeWorkflowStep(input: any): Promise<void> {
   const startedAt = new Date();
   const command = buildStepCommand(input.step, input.projectSlug, input.options);
   logEvent(input.run, {
@@ -476,7 +477,7 @@ function createRunLogger(input: any): any {
   };
 }
 
-function logEvent(run: any, event: any): any {
+function logEvent(run: any, event: any): void {
   console.log(
     JSON.stringify({
       command: run.command,
@@ -489,7 +490,12 @@ function logEvent(run: any, event: any): any {
   );
 }
 
-function noLlmUsage(): any {
+function noLlmUsage(): {
+  agentCalls: number;
+  chatModelCalls: number;
+  embeddingModelCalls: number;
+  tokenUsage: number;
+} {
   return {
     agentCalls: 0,
     chatModelCalls: 0,

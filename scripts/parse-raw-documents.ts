@@ -209,7 +209,7 @@ class PostgresRawParseRepository {
   }
 }
 
-async function ensureBuiltInParserVersions(input: any): Promise<any> {
+async function ensureBuiltInParserVersions(input: any): Promise<void> {
   const sourceTypes = input.sourceType ? [input.sourceType] : SOURCE_TYPES;
 
   for (const sourceType of sourceTypes) {
@@ -361,7 +361,7 @@ function requiredOption(value: string | undefined, name: string): string {
   return value;
 }
 
-function singleJson(rows: any): any {
+function singleJson<T>(rows: T[]): T | undefined {
   return rows[0];
 }
 

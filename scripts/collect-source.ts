@@ -209,7 +209,7 @@ class PostgresCollectionRepository {
   }
 }
 
-async function ensureWebUrlDataSource(input: any): Promise<any> {
+async function ensureWebUrlDataSource(input: any): Promise<void> {
   await input.sql`
     WITH project AS (
       SELECT id FROM public.projects WHERE slug = ${input.projectSlug}
@@ -325,7 +325,7 @@ function requiredOption(value: string | undefined, optionName: string): string {
   return value;
 }
 
-function singleJson(rows: any): any {
+function singleJson<T>(rows: T[]): T | undefined {
   return rows[0];
 }
 

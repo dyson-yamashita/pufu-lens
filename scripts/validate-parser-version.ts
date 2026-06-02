@@ -277,7 +277,7 @@ function sanitizeError(error: unknown): string {
     .slice(0, 500);
 }
 
-function singleJson(rows: any): any {
+function singleJson<T>(rows: T[]): T | undefined {
   return rows[0];
 }
 

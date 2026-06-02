@@ -78,7 +78,7 @@ function requiredOption(value: string | undefined, name: string): string {
   return value;
 }
 
-function singleJson(rows: any): any {
+function singleJson<T>(rows: T[]): T | undefined {
   return rows[0];
 }
 

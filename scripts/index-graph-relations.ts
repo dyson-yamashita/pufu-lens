@@ -219,6 +219,9 @@ class PostgresGraphRelationsRepository {
             RETURNING id::text AS id, quote_index AS "quoteIndex"
           `,
         );
+        if (!inserted) {
+          throw new Error('Failed to insert email quote.');
+        }
         insertedByIndex.set(inserted.quoteIndex, inserted.id);
       }
     });
@@ -362,7 +365,7 @@ function requiredOption(value: string | undefined, name: string): string {
   return value;
 }
 
-function singleJson(rows: any): any {
+function singleJson<T>(rows: T[]): T | undefined {
   return rows[0];
 }
 
