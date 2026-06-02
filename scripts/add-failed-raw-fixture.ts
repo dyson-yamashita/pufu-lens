@@ -101,13 +101,13 @@ function parseArgs(argv: string[]): Args {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--raw-document-id') {
-      args.rawDocumentId = argv[++index];
+      args.rawDocumentId = readOptionValue(argv[++index], arg);
     } else if (arg === '--project') {
-      args.project = argv[++index];
+      args.project = readOptionValue(argv[++index], arg);
     } else if (arg === '--source') {
       args.source = readSourceType(argv[++index], arg);
     } else if (arg === '--limit') {
-      args.limit = Number(argv[++index]);
+      args.limit = Number(readOptionValue(argv[++index], arg));
     } else if (arg === '--dry-run') {
       args.dryRun = true;
     } else {
@@ -117,14 +117,19 @@ function parseArgs(argv: string[]): Args {
   return args;
 }
 
-function readSourceType(value: string | undefined, optionName: string): string {
+function readOptionValue(value: string | undefined, optionName: string): string {
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
   }
-  if (!['github', 'web', 'gmail', 'drive'].includes(value)) {
-    throw new Error(`Unsupported ${optionName} value: ${value}`);
-  }
   return value;
+}
+
+function readSourceType(value: string | undefined, optionName: string): string {
+  const sourceType = readOptionValue(value, optionName);
+  if (!['github', 'web', 'gmail', 'drive'].includes(sourceType)) {
+    throw new Error(`Unsupported ${optionName} value: ${sourceType}`);
+  }
+  return sourceType;
 }
 
 function createLocalObjectStorageFromEnv(env = process.env): LocalFsObjectStorage {

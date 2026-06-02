@@ -295,11 +295,11 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {
-      options.project = argv[++index];
+      options.project = readOptionValue(argv[++index], arg);
     } else if (arg === '--source') {
       options.source = readSourceType(argv[++index], arg);
     } else if (arg === '--limit') {
-      options.limit = Number(argv[++index]);
+      options.limit = Number(readOptionValue(argv[++index], arg));
     } else if (arg === '--no-seed-built-in-parsers') {
       options.seedBuiltInParsers = false;
     } else {
@@ -309,14 +309,19 @@ function parseArgs(argv) {
   return options;
 }
 
-function readSourceType(value, optionName) {
+function readOptionValue(value, optionName) {
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
   }
-  if (!SOURCE_TYPES.includes(value)) {
-    throw new Error(`Unsupported ${optionName} value: ${value}`);
-  }
   return value;
+}
+
+function readSourceType(value, optionName) {
+  const sourceType = readOptionValue(value, optionName);
+  if (!SOURCE_TYPES.includes(sourceType)) {
+    throw new Error(`Unsupported ${optionName} value: ${sourceType}`);
+  }
+  return sourceType;
 }
 
 function createLocalObjectStorageFromEnv(env = process.env) {
