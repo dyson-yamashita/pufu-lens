@@ -41,7 +41,7 @@ class PostgresCollectionRepository {
     this.sql = sql;
   }
 
-  async lookupProjectBySlug(slug: any): Promise<any> {
+  async lookupProjectBySlug(slug: string): Promise<any> {
     return singleJson(
       await this.sql`
         SELECT id::text AS id, slug
@@ -254,7 +254,7 @@ function createLocalObjectStorageFromEnv(
   return new LocalFsObjectStorage(root);
 }
 
-function parseArgs(args: any): any {
+function parseArgs(args: string[]): any {
   const options: any = { urls: [] };
 
   for (let index = 0; index < args.length; index += 1) {

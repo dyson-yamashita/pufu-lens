@@ -42,7 +42,7 @@ class PostgresChunkEmbeddingRepository {
     this.sourceType = sourceType;
   }
 
-  async lookupProjectBySlug(slug: any): Promise<any> {
+  async lookupProjectBySlug(slug: string): Promise<any> {
     return singleJson(
       await this.sql`
         SELECT id::text AS id, slug
@@ -147,7 +147,7 @@ class PostgresChunkEmbeddingRepository {
   }
 
   async replaceDocumentChunks(input: any): Promise<any> {
-    await this.sql.begin(async (transaction: any): Promise<any> => {
+    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<any> => {
       await transaction`
         INSERT INTO public.document_chunk_history (
           project_id,
@@ -239,7 +239,7 @@ function createEmbeddingProvider(options: any): any {
   throw new Error(`Unknown embedding provider: ${options.embeddingProvider}`);
 }
 
-function parseArgs(argv: any): any {
+function parseArgs(argv: string[]): any {
   const options: any = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];

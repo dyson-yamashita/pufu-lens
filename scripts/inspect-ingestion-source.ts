@@ -229,7 +229,7 @@ function countBy(values: any, keyFn: any): any {
   return counts;
 }
 
-async function lookupProject(sql: any, slug: any): Promise<any> {
+async function lookupProject(sql: postgres.Sql, slug: string): Promise<any> {
   return singleJson(
     await sql`
       SELECT id::text AS id, slug
@@ -264,7 +264,7 @@ function createLocalObjectStorageFromEnv(
   return new LocalFsObjectStorage(root);
 }
 
-function parseArgs(argv: any): any {
+function parseArgs(argv: string[]): any {
   const options: any = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];

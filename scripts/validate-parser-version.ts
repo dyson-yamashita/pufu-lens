@@ -179,7 +179,7 @@ async function selectActiveParserVersion(input: any): Promise<any> {
   );
 }
 
-async function lookupProject(sql: any, slug: any): Promise<any> {
+async function lookupProject(sql: postgres.Sql, slug: string): Promise<any> {
   return singleJson(
     await sql`
       SELECT id::text AS id, slug
@@ -189,7 +189,7 @@ async function lookupProject(sql: any, slug: any): Promise<any> {
   );
 }
 
-function parseArgs(argv: any): any {
+function parseArgs(argv: string[]): any {
   const options: any = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];

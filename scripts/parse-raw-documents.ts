@@ -41,7 +41,7 @@ class PostgresRawParseRepository {
     this.sourceType = sourceType;
   }
 
-  async lookupProjectBySlug(slug: any): Promise<any> {
+  async lookupProjectBySlug(slug: string): Promise<any> {
     return singleJson(
       await this.sql`
         SELECT id::text AS id, slug
@@ -128,7 +128,7 @@ class PostgresRawParseRepository {
   }
 
   async markParsed(input: any): Promise<any> {
-    await this.sql.begin(async (transaction: any): Promise<any> => {
+    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<any> => {
       await transaction`
         UPDATE public.raw_documents
         SET
@@ -157,7 +157,7 @@ class PostgresRawParseRepository {
   }
 
   async markFailed(input: any): Promise<any> {
-    await this.sql.begin(async (transaction: any): Promise<any> => {
+    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<any> => {
       await transaction`
         UPDATE public.raw_documents
         SET
@@ -184,7 +184,7 @@ class PostgresRawParseRepository {
   }
 
   async markHeld(input: any): Promise<any> {
-    await this.sql.begin(async (transaction: any): Promise<any> => {
+    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<any> => {
       await transaction`
         UPDATE public.raw_documents
         SET
@@ -292,7 +292,7 @@ async function ensureBuiltInParserVersions(input: any): Promise<any> {
   }
 }
 
-function parseArgs(argv: any): any {
+function parseArgs(argv: string[]): any {
   const options: any = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];

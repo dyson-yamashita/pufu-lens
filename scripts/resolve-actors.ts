@@ -34,7 +34,7 @@ class PostgresActorResolutionRepository {
     this.sourceType = sourceType;
   }
 
-  async lookupProjectBySlug(slug: any): Promise<any> {
+  async lookupProjectBySlug(slug: string): Promise<any> {
     return singleJson(
       await this.sql`
         SELECT id::text AS id, slug
@@ -192,7 +192,7 @@ function createLocalObjectStorageFromEnv(
   return new LocalFsObjectStorage(root);
 }
 
-function parseArgs(argv: any): any {
+function parseArgs(argv: string[]): any {
   const options: any = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];

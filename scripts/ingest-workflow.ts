@@ -60,7 +60,7 @@ async function retryCommand(options: any): Promise<any> {
   const run = createRunLogger({ command: 'retry', projectSlug, sourceType: options.source });
   const reset = options.dryRun
     ? { planned: true, queueItems: 0, rawDocuments: 0 }
-    : await withSql((sql: any): any =>
+    : await withSql((sql: postgres.Sql): any =>
         resetFailedQueue({ projectSlug, sourceType: options.source, sql }),
       );
   logEvent(run, {
@@ -96,7 +96,7 @@ async function withSql(callback: any): Promise<any> {
 
 async function statusCommand(options: any): Promise<any> {
   const projectSlug = requiredOption(options.project, '--project');
-  await withSql(async (sql: any): Promise<any> => {
+  await withSql(async (sql: postgres.Sql): Promise<any> => {
     const project = await lookupProject(sql, projectSlug);
     if (!project) {
       throw new Error(`Project not found: ${projectSlug}`);
@@ -372,7 +372,7 @@ async function resetFailedQueue(input: any): Promise<any> {
   return rows[0] ?? { queueItems: 0, rawDocuments: 0 };
 }
 
-async function lookupProject(sql: any, slug: any): Promise<any> {
+async function lookupProject(sql: postgres.Sql, slug: string): Promise<any> {
   const rows = await sql`
     SELECT id::text AS id, slug
     FROM public.projects
@@ -498,7 +498,7 @@ function noLlmUsage(): any {
   };
 }
 
-function parseArgs(argv: any): any {
+function parseArgs(argv: string[]): any {
   const options: any = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];

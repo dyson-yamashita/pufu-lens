@@ -36,7 +36,7 @@ class PostgresGraphRelationsRepository {
     this.graphName = undefined;
   }
 
-  async lookupProjectBySlug(slug: any): Promise<any> {
+  async lookupProjectBySlug(slug: string): Promise<any> {
     const project = singleJson(
       await this.sql`
         SELECT graph_name AS "graphName", id::text AS id, slug
@@ -179,7 +179,7 @@ class PostgresGraphRelationsRepository {
   }
 
   async replaceEmailQuotes(input: any): Promise<any> {
-    await this.sql.begin(async (transaction: any): Promise<any> => {
+    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<any> => {
       await transaction`
         DELETE FROM public.email_quotes
         WHERE project_id = ${input.projectId}
@@ -225,7 +225,7 @@ class PostgresGraphRelationsRepository {
   }
 
   async markIndexed(input: any): Promise<any> {
-    await this.sql.begin(async (transaction: any): Promise<any> => {
+    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<any> => {
       await transaction`
         UPDATE public.raw_documents
         SET ingest_status = 'indexed', indexed_at = now(), ingest_error = null
@@ -242,7 +242,7 @@ class PostgresGraphRelationsRepository {
   }
 
   async markFailed(input: any): Promise<any> {
-    await this.sql.begin(async (transaction: any): Promise<any> => {
+    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<any> => {
       await transaction`
         UPDATE public.raw_documents
         SET ingest_status = 'failed', ingest_error = ${input.errorMessage}
@@ -282,7 +282,7 @@ async function executeCypher(
   );
 }
 
-function parseArgs(argv: any): any {
+function parseArgs(argv: string[]): any {
   const options: any = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
