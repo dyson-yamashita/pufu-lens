@@ -27,7 +27,7 @@
 ### 確認方法
 
 ```bash
-node --experimental-strip-types --check scripts/*.ts
+for f in scripts/*.ts; do node --experimental-strip-types --check "$f"; done
 node --experimental-strip-types scripts/ingest-workflow.ts run --project sample-a --source web --limit 1 --dry-run
 pnpm format:check
 pnpm test
