@@ -8,6 +8,7 @@ interface Args {
   limit: number;
   project?: string;
   rawDocumentId?: string;
+  source?: string;
 }
 
 const args = parseArgs(process.argv.slice(2));
@@ -89,6 +90,7 @@ async function findFailedRawDocuments(
     JOIN public.projects p ON p.id = rd.project_id
     WHERE p.slug = ${args.project}
       AND rd.ingest_status = 'failed'
+      AND (${args.source ?? null}::text IS NULL OR rd.source_type = ${args.source ?? null})
     ORDER BY rd.updated_at DESC
     LIMIT ${args.limit}
   `;
@@ -99,11 +101,13 @@ function parseArgs(argv: string[]): Args {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--raw-document-id') {
-      args.rawDocumentId = argv[++index];
+      args.rawDocumentId = readOptionValue(argv[++index], arg);
     } else if (arg === '--project') {
-      args.project = argv[++index];
+      args.project = readOptionValue(argv[++index], arg);
+    } else if (arg === '--source') {
+      args.source = readSourceType(argv[++index], arg);
     } else if (arg === '--limit') {
-      args.limit = Number(argv[++index]);
+      args.limit = Number(readOptionValue(argv[++index], arg));
     } else if (arg === '--dry-run') {
       args.dryRun = true;
     } else {
@@ -111,6 +115,21 @@ function parseArgs(argv: string[]): Args {
     }
   }
   return args;
+}
+
+function readOptionValue(value: string | undefined, optionName: string): string {
+  if (!value || value.startsWith('--')) {
+    throw new Error(`${optionName} requires a value.`);
+  }
+  return value;
+}
+
+function readSourceType(value: string | undefined, optionName: string): string {
+  const sourceType = readOptionValue(value, optionName);
+  if (!['github', 'web', 'gmail', 'drive'].includes(sourceType)) {
+    throw new Error(`Unsupported ${optionName} value: ${sourceType}`);
+  }
+  return sourceType;
 }
 
 function createLocalObjectStorageFromEnv(env = process.env): LocalFsObjectStorage {

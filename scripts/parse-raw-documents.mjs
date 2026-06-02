@@ -13,7 +13,7 @@ async function main() {
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   const storage = createLocalObjectStorageFromEnv();
-  const repository = new PostgresRawParseRepository(sql);
+  const repository = new PostgresRawParseRepository(sql, options.source);
 
   try {
     if (options.seedBuiltInParsers !== false) {
@@ -34,8 +34,9 @@ async function main() {
 }
 
 class PostgresRawParseRepository {
-  constructor(sql) {
+  constructor(sql, sourceType) {
     this.sql = sql;
+    this.sourceType = sourceType;
   }
 
   async lookupProjectBySlug(slug) {
@@ -57,6 +58,7 @@ class PostgresRawParseRepository {
         WHERE q.project_id = ${input.projectId}
           AND q.status IN ('pending', 'failed')
           AND rd.ingest_status IN ('fetched', 'failed')
+          AND (${this.sourceType ?? null}::text IS NULL OR rd.source_type = ${this.sourceType ?? null})
         ORDER BY q.priority DESC, q.scheduled_at, q.created_at
         LIMIT ${input.limit}
         FOR UPDATE OF q SKIP LOCKED
@@ -293,11 +295,11 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {
-      options.project = argv[++index];
+      options.project = readOptionValue(argv[++index], arg);
     } else if (arg === '--source') {
-      options.source = argv[++index];
+      options.source = readSourceType(argv[++index], arg);
     } else if (arg === '--limit') {
-      options.limit = Number(argv[++index]);
+      options.limit = Number(readOptionValue(argv[++index], arg));
     } else if (arg === '--no-seed-built-in-parsers') {
       options.seedBuiltInParsers = false;
     } else {
@@ -305,6 +307,21 @@ function parseArgs(argv) {
     }
   }
   return options;
+}
+
+function readOptionValue(value, optionName) {
+  if (!value || value.startsWith('--')) {
+    throw new Error(`${optionName} requires a value.`);
+  }
+  return value;
+}
+
+function readSourceType(value, optionName) {
+  const sourceType = readOptionValue(value, optionName);
+  if (!SOURCE_TYPES.includes(sourceType)) {
+    throw new Error(`Unsupported ${optionName} value: ${sourceType}`);
+  }
+  return sourceType;
 }
 
 function createLocalObjectStorageFromEnv(env = process.env) {
