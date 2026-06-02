@@ -7,7 +7,7 @@ import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-async function main() {
+async function main(): Promise<any> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
@@ -36,11 +36,12 @@ async function main() {
 }
 
 class PostgresCollectionRepository {
-  constructor(sql) {
+  private sql: any;
+  constructor(sql: any) {
     this.sql = sql;
   }
 
-  async lookupProjectBySlug(slug) {
+  async lookupProjectBySlug(slug: any): Promise<any> {
     return singleJson(
       await this.sql`
         SELECT id::text AS id, slug
@@ -50,7 +51,7 @@ class PostgresCollectionRepository {
     );
   }
 
-  async findDataSources(projectId, sourceType) {
+  async findDataSources(projectId: any, sourceType: any): Promise<any> {
     if (sourceType) {
       return this.sql`
         SELECT
@@ -83,7 +84,7 @@ class PostgresCollectionRepository {
     `;
   }
 
-  async lookupRawDocument(input) {
+  async lookupRawDocument(input: any): Promise<any> {
     return singleJson(
       await this.sql`
         SELECT
@@ -99,7 +100,7 @@ class PostgresCollectionRepository {
     );
   }
 
-  async findSameHashCandidates(input) {
+  async findSameHashCandidates(input: any): Promise<any> {
     return this.sql`
       SELECT id::text AS id, source_id AS "sourceId", source_type AS "sourceType"
       FROM public.raw_documents
@@ -109,7 +110,7 @@ class PostgresCollectionRepository {
     `;
   }
 
-  async upsertRawDocument(input) {
+  async upsertRawDocument(input: any): Promise<any> {
     const rawDocument = singleJson(
       await this.sql`
         INSERT INTO public.raw_documents (
@@ -159,7 +160,7 @@ class PostgresCollectionRepository {
     return rawDocument;
   }
 
-  async linkDataSource(input) {
+  async linkDataSource(input: any): Promise<any> {
     await this.sql`
       INSERT INTO public.raw_document_data_sources (
         raw_document_id,
@@ -183,7 +184,7 @@ class PostgresCollectionRepository {
     `;
   }
 
-  async queueCandidate(input) {
+  async queueCandidate(input: any): Promise<any> {
     await this.sql`
       INSERT INTO public.ingestion_queue (
         project_id,
@@ -215,7 +216,7 @@ class PostgresCollectionRepository {
     `;
   }
 
-  async markDataSourceChecked(dataSourceId) {
+  async markDataSourceChecked(dataSourceId: any): Promise<any> {
     await this.sql`
       UPDATE public.data_sources
       SET last_checked_at = now()
@@ -224,7 +225,7 @@ class PostgresCollectionRepository {
   }
 }
 
-async function ensureFixtureDataSources(input) {
+async function ensureFixtureDataSources(input: any): Promise<any> {
   const sourceTypes = input.sourceType ? [input.sourceType] : SOURCE_TYPES;
 
   for (const sourceType of sourceTypes) {
@@ -257,7 +258,7 @@ async function ensureFixtureDataSources(input) {
   }
 }
 
-function createLocalObjectStorageFromEnv(env = process.env) {
+function createLocalObjectStorageFromEnv(env: any = process.env): any {
   const driver = env.STORAGE_DRIVER ?? env.OBJECT_STORAGE_DRIVER ?? 'local';
   if (driver !== 'local') {
     throw new Error(`Unsupported object storage driver for fixture collection CLI: ${driver}`);
@@ -271,8 +272,8 @@ function createLocalObjectStorageFromEnv(env = process.env) {
   return new LocalFsObjectStorage(root);
 }
 
-function parseArgs(args) {
-  const options = {};
+function parseArgs(args: any): any {
+  const options: any = {};
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -298,7 +299,7 @@ function parseArgs(args) {
   return options;
 }
 
-function readOptionValue(args, index, optionName) {
+function readOptionValue(args: any, index: any, optionName: any): any {
   const value = args[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
@@ -307,7 +308,7 @@ function readOptionValue(args, index, optionName) {
   return value;
 }
 
-function requiredEnv(name) {
+function requiredEnv(name: any): any {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -316,7 +317,7 @@ function requiredEnv(name) {
   return value;
 }
 
-function requiredOption(value, optionName) {
+function requiredOption(value: any, optionName: any): any {
   if (!value) {
     throw new Error(`${optionName} is required.`);
   }
@@ -324,11 +325,11 @@ function requiredOption(value, optionName) {
   return value;
 }
 
-function singleJson(rows) {
+function singleJson(rows: any): any {
   return rows[0];
 }
 
-main().catch((error) => {
+main().catch((error: any): any => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

@@ -5,7 +5,7 @@ import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 
-async function main() {
+async function main(): Promise<any> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sourceType = requiredOption(options.source, '--source');
@@ -43,7 +43,7 @@ async function main() {
   }
 }
 
-async function readRows(input) {
+async function readRows(input: any): Promise<any> {
   return input.sql`
     SELECT
       rd.byte_size AS "byteSize",
@@ -81,7 +81,7 @@ async function readRows(input) {
   `;
 }
 
-async function inspectRow(input) {
+async function inspectRow(input: any): Promise<any> {
   const rawText = await safeReadText(input.storage, input.row.storageUri);
   const actualContentHash = rawText === undefined ? null : sha256Hex(rawText);
   const parsed = input.row.parsedUri
@@ -140,7 +140,7 @@ async function inspectRow(input) {
   };
 }
 
-function validateSourceContract(input) {
+function validateSourceContract(input: any): any {
   if (input.row.sourceType === 'web') {
     const canonicalUrl = readString(input.row.metadata?.canonicalUrl);
     const title = readString(input.row.metadata?.title);
@@ -164,7 +164,7 @@ function validateSourceContract(input) {
   };
 }
 
-async function safeReadText(storage, uri) {
+async function safeReadText(storage: any, uri: any): Promise<any> {
   try {
     return await storage.getText(uri);
   } catch {
@@ -172,7 +172,7 @@ async function safeReadText(storage, uri) {
   }
 }
 
-async function safeReadParsed(storage, uri) {
+async function safeReadParsed(storage: any, uri: any): Promise<any> {
   try {
     return validateParsedDocument(JSON.parse(await storage.getText(uri)));
   } catch {
@@ -180,7 +180,7 @@ async function safeReadParsed(storage, uri) {
   }
 }
 
-function parseRawSafely(row, rawText) {
+function parseRawSafely(row: any, rawText: any): any {
   try {
     return validateParsedDocument(
       parseRawContent(
@@ -205,22 +205,23 @@ function parseRawSafely(row, rawText) {
   }
 }
 
-function summarize(documents) {
+function summarize(documents: any): any {
   return {
-    byIngestStatus: countBy(documents, (document) => document.raw.ingestStatus),
-    byQueueStatus: countBy(documents, (document) => document.queue.status ?? '<none>'),
-    failedContracts: documents.filter((document) => !isContractPassing(document.sourceContract))
-      .length,
+    byIngestStatus: countBy(documents, (document: any): any => document.raw.ingestStatus),
+    byQueueStatus: countBy(documents, (document: any): any => document.queue.status ?? '<none>'),
+    failedContracts: documents.filter(
+      (document: any): any => !isContractPassing(document.sourceContract),
+    ).length,
     total: documents.length,
   };
 }
 
-function isContractPassing(contract) {
-  return Object.entries(contract).every(([, value]) => typeof value !== 'boolean' || value);
+function isContractPassing(contract: any): any {
+  return Object.entries(contract).every(([, value]): any => typeof value !== 'boolean' || value);
 }
 
-function countBy(values, keyFn) {
-  const counts = {};
+function countBy(values: any, keyFn: any): any {
+  const counts: any = {};
   for (const value of values) {
     const key = keyFn(value);
     counts[key] = (counts[key] ?? 0) + 1;
@@ -228,7 +229,7 @@ function countBy(values, keyFn) {
   return counts;
 }
 
-async function lookupProject(sql, slug) {
+async function lookupProject(sql: any, slug: any): Promise<any> {
   return singleJson(
     await sql`
       SELECT id::text AS id, slug
@@ -238,7 +239,7 @@ async function lookupProject(sql, slug) {
   );
 }
 
-function sanitizeMetadata(metadata) {
+function sanitizeMetadata(metadata: any): any {
   if (!metadata || typeof metadata !== 'object') {
     return {};
   }
@@ -249,11 +250,11 @@ function sanitizeMetadata(metadata) {
   return sanitized;
 }
 
-function sanitizeNullable(value) {
+function sanitizeNullable(value: any): any {
   return typeof value === 'string' ? value.slice(0, 500) : value;
 }
 
-function createLocalObjectStorageFromEnv(env = process.env) {
+function createLocalObjectStorageFromEnv(env: any = process.env): any {
   const root = env.STORAGE_ROOT ?? env.LOCAL_STORAGE_ROOT;
   if (!root) {
     throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
@@ -261,8 +262,8 @@ function createLocalObjectStorageFromEnv(env = process.env) {
   return new LocalFsObjectStorage(root);
 }
 
-function parseArgs(argv) {
-  const options = {};
+function parseArgs(argv: any): any {
+  const options: any = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {
@@ -280,21 +281,21 @@ function parseArgs(argv) {
   return options;
 }
 
-function readSourceType(value) {
+function readSourceType(value: any): any {
   if (!SOURCE_TYPES.includes(value)) {
     throw new Error(`Unsupported --source value: ${value}`);
   }
   return value;
 }
 
-function readFormat(value) {
+function readFormat(value: any): any {
   if (value !== 'json') {
     throw new Error(`Unsupported --format value: ${value}`);
   }
   return value;
 }
 
-function readOptionValue(argv, index, optionName) {
+function readOptionValue(argv: any, index: any, optionName: any): any {
   const value = argv[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
@@ -302,7 +303,7 @@ function readOptionValue(argv, index, optionName) {
   return value;
 }
 
-function readPositiveInteger(value, name) {
+function readPositiveInteger(value: any, name: any): any {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`Invalid ${name} value: ${value}`);
@@ -310,11 +311,11 @@ function readPositiveInteger(value, name) {
   return parsed;
 }
 
-function readString(value) {
+function readString(value: any): any {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
-function requiredEnv(name) {
+function requiredEnv(name: any): any {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -322,22 +323,22 @@ function requiredEnv(name) {
   return value;
 }
 
-function requiredOption(value, name) {
+function requiredOption(value: any, name: any): any {
   if (!value) {
     throw new Error(`${name} is required.`);
   }
   return value;
 }
 
-function sha256Hex(value) {
+function sha256Hex(value: any): any {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function singleJson(rows) {
+function singleJson(rows: any): any {
   return rows[0];
 }
 
-main().catch((error) => {
+main().catch((error: any): any => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

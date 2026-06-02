@@ -4,7 +4,7 @@ import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 
-async function main() {
+async function main(): Promise<any> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
@@ -25,14 +25,18 @@ async function main() {
 }
 
 class PostgresGraphRelationsRepository {
-  constructor(sql, storage, sourceType) {
+  private sql: any;
+  private storage: any;
+  private sourceType: any;
+  private graphName: any;
+  constructor(sql: any, storage: any, sourceType: any) {
     this.sql = sql;
     this.storage = storage;
     this.sourceType = sourceType;
     this.graphName = undefined;
   }
 
-  async lookupProjectBySlug(slug) {
+  async lookupProjectBySlug(slug: any): Promise<any> {
     const project = singleJson(
       await this.sql`
         SELECT graph_name AS "graphName", id::text AS id, slug
@@ -48,7 +52,7 @@ class PostgresGraphRelationsRepository {
     return project;
   }
 
-  async readGraphTargets(input) {
+  async readGraphTargets(input: any): Promise<any> {
     const rows = await this.sql`
       SELECT
         d.doc_type AS "docType",
@@ -70,21 +74,23 @@ class PostgresGraphRelationsRepository {
     `;
 
     return Promise.all(
-      rows.map(async (row) => ({
-        document: {
-          docType: row.docType,
-          graphNodeId: row.graphNodeId,
-          id: row.documentId,
-          rawDocumentId: row.documentRawDocumentId,
-        },
-        parsed: await this.storage.getText(row.parsedUri),
-        rawContentHash: row.rawContentHash,
-        rawDocumentId: row.rawDocumentId,
-      })),
+      rows.map(
+        async (row: any): Promise<any> => ({
+          document: {
+            docType: row.docType,
+            graphNodeId: row.graphNodeId,
+            id: row.documentId,
+            rawDocumentId: row.documentRawDocumentId,
+          },
+          parsed: await this.storage.getText(row.parsedUri),
+          rawContentHash: row.rawContentHash,
+          rawDocumentId: row.rawDocumentId,
+        }),
+      ),
     );
   }
 
-  async findActorByAlias(input) {
+  async findActorByAlias(input: any): Promise<any> {
     return singleJson(
       await this.sql`
         SELECT
@@ -101,7 +107,7 @@ class PostgresGraphRelationsRepository {
     );
   }
 
-  async findActorByGraphNodeId(input) {
+  async findActorByGraphNodeId(input: any): Promise<any> {
     return singleJson(
       await this.sql`
         SELECT
@@ -116,7 +122,7 @@ class PostgresGraphRelationsRepository {
     );
   }
 
-  async findSameAsDocuments(input) {
+  async findSameAsDocuments(input: any): Promise<any> {
     return this.sql`
       SELECT
         d.doc_type AS "docType",
@@ -133,7 +139,7 @@ class PostgresGraphRelationsRepository {
     `;
   }
 
-  async upsertGraphNode(input) {
+  async upsertGraphNode(input: any): Promise<any> {
     const graphName = requiredGraphName(this.graphName);
     const label = validateLabel(input.labels[0] ?? 'Document');
     const properties = {
@@ -150,7 +156,7 @@ class PostgresGraphRelationsRepository {
     );
   }
 
-  async upsertGraphEdge(input) {
+  async upsertGraphEdge(input: any): Promise<any> {
     const graphName = requiredGraphName(this.graphName);
     const edgeType = validateLabel(input.type);
     const setClause = parameterizedSetClause('r', input.properties, 'edge');
@@ -172,15 +178,17 @@ class PostgresGraphRelationsRepository {
     );
   }
 
-  async replaceEmailQuotes(input) {
-    await this.sql.begin(async (transaction) => {
+  async replaceEmailQuotes(input: any): Promise<any> {
+    await this.sql.begin(async (transaction: any): Promise<any> => {
       await transaction`
         DELETE FROM public.email_quotes
         WHERE project_id = ${input.projectId}
           AND document_id = ${input.documentId}
       `;
-      const insertedByIndex = new Map();
-      const sortedQuotes = [...input.quotes].sort((a, b) => a.quoteIndex - b.quoteIndex);
+      const insertedByIndex = new Map<any, any>();
+      const sortedQuotes = [...input.quotes].sort(
+        (a: any, b: any): any => a.quoteIndex - b.quoteIndex,
+      );
       for (const quote of sortedQuotes) {
         const inserted = singleJson(
           await transaction`
@@ -216,8 +224,8 @@ class PostgresGraphRelationsRepository {
     });
   }
 
-  async markIndexed(input) {
-    await this.sql.begin(async (transaction) => {
+  async markIndexed(input: any): Promise<any> {
+    await this.sql.begin(async (transaction: any): Promise<any> => {
       await transaction`
         UPDATE public.raw_documents
         SET ingest_status = 'indexed', indexed_at = now(), ingest_error = null
@@ -233,8 +241,8 @@ class PostgresGraphRelationsRepository {
     });
   }
 
-  async markFailed(input) {
-    await this.sql.begin(async (transaction) => {
+  async markFailed(input: any): Promise<any> {
+    await this.sql.begin(async (transaction: any): Promise<any> => {
       await transaction`
         UPDATE public.raw_documents
         SET ingest_status = 'failed', ingest_error = ${input.errorMessage}
@@ -251,26 +259,31 @@ class PostgresGraphRelationsRepository {
   }
 }
 
-async function ensureAgeSession(sql) {
+async function ensureAgeSession(sql: any): Promise<any> {
   await sql.unsafe("LOAD 'age'");
   await sql.unsafe('SET search_path = ag_catalog, "$user", public');
 }
 
-async function ensureGraph(sql, graphName) {
+async function ensureGraph(sql: any, graphName: any): Promise<any> {
   await sql.unsafe(`SELECT create_graph(${sqlString(graphName)}) WHERE NOT EXISTS (
     SELECT 1 FROM ag_catalog.ag_graph WHERE name = ${sqlString(graphName)}
   )`);
 }
 
-async function executeCypher(sql, graphName, cypher, params = {}) {
+async function executeCypher(
+  sql: any,
+  graphName: any,
+  cypher: any,
+  params: any = {},
+): Promise<any> {
   await sql.unsafe(
     `SELECT * FROM cypher(${sqlString(graphName)}, ${dollarQuote(cypher)}, $1::agtype) AS (value agtype)`,
     [JSON.stringify(params)],
   );
 }
 
-function parseArgs(argv) {
-  const options = {};
+function parseArgs(argv: any): any {
+  const options: any = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {
@@ -286,14 +299,14 @@ function parseArgs(argv) {
   return options;
 }
 
-function readSourceType(value) {
+function readSourceType(value: any): any {
   if (!SOURCE_TYPES.includes(value)) {
     throw new Error(`Unsupported --source value: ${value}`);
   }
   return value;
 }
 
-function createLocalObjectStorageFromEnv(env = process.env) {
+function createLocalObjectStorageFromEnv(env: any = process.env): any {
   const root = env.STORAGE_ROOT ?? env.LOCAL_STORAGE_ROOT;
   if (!root) {
     throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
@@ -301,7 +314,7 @@ function createLocalObjectStorageFromEnv(env = process.env) {
   return new LocalFsObjectStorage(root);
 }
 
-function readOptionValue(argv, index, optionName) {
+function readOptionValue(argv: any, index: any, optionName: any): any {
   const value = argv[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
@@ -309,7 +322,7 @@ function readOptionValue(argv, index, optionName) {
   return value;
 }
 
-function readPositiveInteger(value, name) {
+function readPositiveInteger(value: any, name: any): any {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`Invalid ${name} value: ${value}`);
@@ -317,7 +330,7 @@ function readPositiveInteger(value, name) {
   return parsed;
 }
 
-function requiredEnv(name) {
+function requiredEnv(name: any): any {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -325,45 +338,45 @@ function requiredEnv(name) {
   return value;
 }
 
-function requiredGraphName(value) {
+function requiredGraphName(value: any): any {
   if (!value) {
     throw new Error('Graph name is not initialized.');
   }
   return value;
 }
 
-function requiredOption(value, name) {
+function requiredOption(value: any, name: any): any {
   if (!value) {
     throw new Error(`${name} is required.`);
   }
   return value;
 }
 
-function singleJson(rows) {
+function singleJson(rows: any): any {
   return rows[0];
 }
 
-function sqlString(value) {
+function sqlString(value: any): any {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-function validateGraphName(graphName) {
+function validateGraphName(graphName: any): any {
   if (!/^graph_[a-z0-9_]+$/.test(graphName) || graphName.length > 63) {
     throw new Error(`Invalid AGE graph name: ${graphName}`);
   }
   return graphName;
 }
 
-function validateLabel(label) {
+function validateLabel(label: any): any {
   if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(label)) {
     throw new Error(`Invalid graph label or edge type: ${label}`);
   }
   return label;
 }
 
-function parameterizedSetClause(variableName, properties, paramPrefix) {
+function parameterizedSetClause(variableName: any, properties: any, paramPrefix: any): any {
   const assignments = [];
-  const params = {};
+  const params: any = {};
   let index = 0;
   for (const [propertyName, value] of Object.entries(properties)) {
     if (value === undefined) {
@@ -380,7 +393,7 @@ function parameterizedSetClause(variableName, properties, paramPrefix) {
   };
 }
 
-function graphPropertyValue(value) {
+function graphPropertyValue(value: any): any {
   if (
     value === null ||
     typeof value === 'string' ||
@@ -392,18 +405,18 @@ function graphPropertyValue(value) {
   return JSON.stringify(value);
 }
 
-function dollarQuote(value) {
+function dollarQuote(value: any): any {
   return `$pufu_static$${value}$pufu_static$`;
 }
 
-function validatePropertyName(name) {
+function validatePropertyName(name: any): any {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
     throw new Error(`Invalid graph property name: ${name}`);
   }
   return name;
 }
 
-main().catch((error) => {
+main().catch((error: any): any => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

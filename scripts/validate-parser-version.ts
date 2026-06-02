@@ -8,7 +8,7 @@ import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 
-async function main() {
+async function main(): Promise<any> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sourceType = requiredOption(options.source, '--source');
@@ -47,9 +47,9 @@ async function main() {
       results,
       source: sourceType,
       summary: {
-        failed: results.filter((result) => !result.ok).length,
+        failed: results.filter((result: any): any => !result.ok).length,
         total: results.length,
-        valid: results.filter((result) => result.ok).length,
+        valid: results.filter((result: any): any => result.ok).length,
       },
     };
 
@@ -62,7 +62,7 @@ async function main() {
   }
 }
 
-async function validateRawDocument(input) {
+async function validateRawDocument(input: any): Promise<any> {
   if (!input.parserVersion) {
     return {
       error: 'No approved active parser version was found.',
@@ -135,7 +135,7 @@ async function validateRawDocument(input) {
   }
 }
 
-async function readRawDocuments(input) {
+async function readRawDocuments(input: any): Promise<any> {
   return input.sql`
     SELECT
       q.data_source_id::text AS "dataSourceId",
@@ -157,7 +157,7 @@ async function readRawDocuments(input) {
   `;
 }
 
-async function selectActiveParserVersion(input) {
+async function selectActiveParserVersion(input: any): Promise<any> {
   return singleJson(
     await input.sql`
       SELECT
@@ -179,7 +179,7 @@ async function selectActiveParserVersion(input) {
   );
 }
 
-async function lookupProject(sql, slug) {
+async function lookupProject(sql: any, slug: any): Promise<any> {
   return singleJson(
     await sql`
       SELECT id::text AS id, slug
@@ -189,8 +189,8 @@ async function lookupProject(sql, slug) {
   );
 }
 
-function parseArgs(argv) {
-  const options = {};
+function parseArgs(argv: any): any {
+  const options: any = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {
@@ -210,7 +210,7 @@ function parseArgs(argv) {
   return options;
 }
 
-function createLocalObjectStorageFromEnv(env = process.env) {
+function createLocalObjectStorageFromEnv(env: any = process.env): any {
   const root = env.STORAGE_ROOT ?? env.LOCAL_STORAGE_ROOT;
   if (!root) {
     throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
@@ -218,14 +218,14 @@ function createLocalObjectStorageFromEnv(env = process.env) {
   return new LocalFsObjectStorage(root);
 }
 
-function readSourceType(value) {
+function readSourceType(value: any): any {
   if (!SOURCE_TYPES.includes(value)) {
     throw new Error(`Unsupported --source value: ${value}`);
   }
   return value;
 }
 
-function readOptionValue(argv, index, optionName) {
+function readOptionValue(argv: any, index: any, optionName: any): any {
   const value = argv[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
@@ -233,7 +233,7 @@ function readOptionValue(argv, index, optionName) {
   return value;
 }
 
-function readPositiveInteger(value, name) {
+function readPositiveInteger(value: any, name: any): any {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`Invalid ${name} value: ${value}`);
@@ -241,7 +241,7 @@ function readPositiveInteger(value, name) {
   return parsed;
 }
 
-function requiredEnv(name) {
+function requiredEnv(name: any): any {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -249,25 +249,25 @@ function requiredEnv(name) {
   return value;
 }
 
-function requiredOption(value, name) {
+function requiredOption(value: any, name: any): any {
   if (!value) {
     throw new Error(`${name} is required.`);
   }
   return value;
 }
 
-function sanitizeError(error) {
+function sanitizeError(error: any): any {
   return String(error instanceof Error ? error.message : error)
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, 'redacted@example.test')
     .replace(/https?:\/\/[^\s"'<>]+/gi, 'https://example.test/redacted')
     .slice(0, 500);
 }
 
-function singleJson(rows) {
+function singleJson(rows: any): any {
   return rows[0];
 }
 
-main().catch((error) => {
+main().catch((error: any): any => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

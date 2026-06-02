@@ -8,7 +8,7 @@ import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 
-async function main() {
+async function main(): Promise<any> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
@@ -34,12 +34,14 @@ async function main() {
 }
 
 class PostgresRawParseRepository {
-  constructor(sql, sourceType) {
+  private sql: any;
+  private sourceType: any;
+  constructor(sql: any, sourceType: any) {
     this.sql = sql;
     this.sourceType = sourceType;
   }
 
-  async lookupProjectBySlug(slug) {
+  async lookupProjectBySlug(slug: any): Promise<any> {
     return singleJson(
       await this.sql`
         SELECT id::text AS id, slug
@@ -49,7 +51,7 @@ class PostgresRawParseRepository {
     );
   }
 
-  async dequeueTargets(input) {
+  async dequeueTargets(input: any): Promise<any> {
     return this.sql`
       WITH candidates AS (
         SELECT q.id AS queue_id
@@ -100,7 +102,7 @@ class PostgresRawParseRepository {
     `;
   }
 
-  async selectActiveParserVersion(input) {
+  async selectActiveParserVersion(input: any): Promise<any> {
     return singleJson(
       await this.sql`
         SELECT
@@ -125,8 +127,8 @@ class PostgresRawParseRepository {
     );
   }
 
-  async markParsed(input) {
-    await this.sql.begin(async (transaction) => {
+  async markParsed(input: any): Promise<any> {
+    await this.sql.begin(async (transaction: any): Promise<any> => {
       await transaction`
         UPDATE public.raw_documents
         SET
@@ -154,8 +156,8 @@ class PostgresRawParseRepository {
     });
   }
 
-  async markFailed(input) {
-    await this.sql.begin(async (transaction) => {
+  async markFailed(input: any): Promise<any> {
+    await this.sql.begin(async (transaction: any): Promise<any> => {
       await transaction`
         UPDATE public.raw_documents
         SET
@@ -181,8 +183,8 @@ class PostgresRawParseRepository {
     });
   }
 
-  async markHeld(input) {
-    await this.sql.begin(async (transaction) => {
+  async markHeld(input: any): Promise<any> {
+    await this.sql.begin(async (transaction: any): Promise<any> => {
       await transaction`
         UPDATE public.raw_documents
         SET
@@ -207,7 +209,7 @@ class PostgresRawParseRepository {
   }
 }
 
-async function ensureBuiltInParserVersions(input) {
+async function ensureBuiltInParserVersions(input: any): Promise<any> {
   const sourceTypes = input.sourceType ? [input.sourceType] : SOURCE_TYPES;
 
   for (const sourceType of sourceTypes) {
@@ -290,8 +292,8 @@ async function ensureBuiltInParserVersions(input) {
   }
 }
 
-function parseArgs(argv) {
-  const options = {};
+function parseArgs(argv: any): any {
+  const options: any = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {
@@ -309,14 +311,14 @@ function parseArgs(argv) {
   return options;
 }
 
-function readOptionValue(value, optionName) {
+function readOptionValue(value: any, optionName: any): any {
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
   }
   return value;
 }
 
-function readSourceType(value, optionName) {
+function readSourceType(value: any, optionName: any): any {
   const sourceType = readOptionValue(value, optionName);
   if (!SOURCE_TYPES.includes(sourceType)) {
     throw new Error(`Unsupported ${optionName} value: ${sourceType}`);
@@ -324,7 +326,7 @@ function readSourceType(value, optionName) {
   return sourceType;
 }
 
-function createLocalObjectStorageFromEnv(env = process.env) {
+function createLocalObjectStorageFromEnv(env: any = process.env): any {
   const root = env.STORAGE_ROOT ?? env.LOCAL_STORAGE_ROOT;
   if (!root) {
     throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
@@ -332,7 +334,7 @@ function createLocalObjectStorageFromEnv(env = process.env) {
   return new LocalFsObjectStorage(root);
 }
 
-function requiredEnv(name) {
+function requiredEnv(name: any): any {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -340,18 +342,18 @@ function requiredEnv(name) {
   return value;
 }
 
-function requiredOption(value, name) {
+function requiredOption(value: any, name: any): any {
   if (!value) {
     throw new Error(`${name} is required.`);
   }
   return value;
 }
 
-function singleJson(rows) {
+function singleJson(rows: any): any {
   return rows[0];
 }
 
-main().catch((error) => {
+main().catch((error: any): any => {
   console.error(error);
   process.exitCode = 1;
 });

@@ -132,7 +132,7 @@ function readSourceType(value: string | undefined, optionName: string): string {
   return sourceType;
 }
 
-function createLocalObjectStorageFromEnv(env = process.env): LocalFsObjectStorage {
+function createLocalObjectStorageFromEnv(env: any = process.env): LocalFsObjectStorage {
   const root = env.STORAGE_ROOT ?? env.LOCAL_STORAGE_ROOT;
   if (!root) {
     throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
@@ -150,11 +150,11 @@ function requiredEnv(name: string): string {
 
 function sanitizeRaw(raw: string): string {
   return raw
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, (email) => {
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, (email: any): any => {
       const local = email.split('@')[0] ?? 'sample';
       return `${local.replace(/[^a-z0-9._+-]/gi, 'sample')}@example.test`;
     })
-    .replace(/https?:\/\/[^\s"'<>]+/gi, (url) => sanitizeUrl(url))
+    .replace(/https?:\/\/[^\s"'<>]+/gi, (url: any): any => sanitizeUrl(url))
     .replace(/gh[pousr]_[A-Za-z0-9_]+/g, 'ghp_example_redacted')
     .replace(/ya29\.[A-Za-z0-9_-]+/g, 'ya29.example-redacted')
     .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer example-redacted')

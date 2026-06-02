@@ -37,7 +37,7 @@ async function main(): Promise<void> {
           slug: requiredOption(options.slug, '--slug'),
         },
       ];
-  const projectPlans = projects.map((project) => ({
+  const projectPlans = projects.map((project: any): any => ({
     identifiers: deriveProjectIdentifiers(project.slug),
     project,
   }));
@@ -64,7 +64,7 @@ async function main(): Promise<void> {
   }
 }
 
-function createLocalObjectStorageFromEnv(env = process.env): LocalFsObjectStorage {
+function createLocalObjectStorageFromEnv(env: any = process.env): LocalFsObjectStorage {
   const driver = env.STORAGE_DRIVER ?? env.OBJECT_STORAGE_DRIVER ?? 'local';
   if (driver !== 'local') {
     throw new Error(`Unsupported object storage driver for create-project CLI: ${driver}`);
@@ -136,7 +136,7 @@ function requiredOption(value: string | undefined, optionName: string): string {
 }
 
 async function runPsql(databaseUrl: string, sql: string): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
+  await new Promise<void>((resolve: any, reject: any): any => {
     const env = {
       ...process.env,
       ...databaseUrlToPsqlEnv(databaseUrl),
@@ -148,10 +148,10 @@ async function runPsql(databaseUrl: string, sql: string): Promise<void> {
       stdio: ['pipe', 'inherit', 'inherit'],
     });
 
-    child.stdin.on('error', () => {});
+    child.stdin.on('error', (): any => {});
     child.stdin.end(sql);
     child.on('error', reject);
-    child.on('close', (code) => {
+    child.on('close', (code: any): any => {
       if (code === 0) {
         resolve();
         return;
@@ -201,7 +201,7 @@ function databaseUrlToPsqlEnv(databaseUrl: string): NodeJS.ProcessEnv {
   return env;
 }
 
-main().catch((error: unknown) => {
+main().catch((error: unknown): any => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

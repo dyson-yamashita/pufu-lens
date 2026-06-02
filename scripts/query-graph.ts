@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import postgres from 'postgres';
 
-async function main() {
+async function main(): Promise<any> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const cypher = requiredOption(options.cypher, '--cypher');
@@ -29,13 +29,13 @@ async function main() {
   }
 }
 
-async function ensureAgeSession(sql) {
+async function ensureAgeSession(sql: any): Promise<any> {
   await sql.unsafe("LOAD 'age'");
   await sql.unsafe('SET search_path = ag_catalog, "$user", public');
 }
 
-function parseArgs(argv) {
-  const options = {};
+function parseArgs(argv: any): any {
+  const options: any = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {
@@ -49,7 +49,7 @@ function parseArgs(argv) {
   return options;
 }
 
-function readOptionValue(argv, index, optionName) {
+function readOptionValue(argv: any, index: any, optionName: any): any {
   const value = argv[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
@@ -57,7 +57,7 @@ function readOptionValue(argv, index, optionName) {
   return value;
 }
 
-function requiredEnv(name) {
+function requiredEnv(name: any): any {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -65,34 +65,34 @@ function requiredEnv(name) {
   return value;
 }
 
-function requiredOption(value, name) {
+function requiredOption(value: any, name: any): any {
   if (!value) {
     throw new Error(`${name} is required.`);
   }
   return value;
 }
 
-function singleJson(rows) {
+function singleJson(rows: any): any {
   return rows[0];
 }
 
-function sqlString(value) {
+function sqlString(value: any): any {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-function dollarQuote(value) {
+function dollarQuote(value: any): any {
   const tag = `$pufu_${createHash('sha256').update(value).digest('hex')}$`;
   return `${tag}${value}${tag}`;
 }
 
-function validateGraphName(graphName) {
+function validateGraphName(graphName: any): any {
   if (!/^graph_[a-z0-9_]+$/.test(graphName) || graphName.length > 63) {
     throw new Error(`Invalid AGE graph name: ${graphName}`);
   }
   return graphName;
 }
 
-main().catch((error) => {
+main().catch((error: any): any => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

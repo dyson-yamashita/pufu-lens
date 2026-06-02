@@ -8,7 +8,7 @@ const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 const STEP_ORDER = ['collect', 'parse', 'resolve', 'chunk', 'graph'];
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-async function main() {
+async function main(): Promise<any> {
   const [command, ...argv] = process.argv.slice(2);
   const options = parseArgs(argv);
 
@@ -28,7 +28,7 @@ async function main() {
   throw new Error(`Unknown workflow command: ${command ?? '<missing>'}`);
 }
 
-async function runCommand(options) {
+async function runCommand(options: any): Promise<any> {
   const projectSlug = requiredOption(options.project, '--project');
   if (!options.fixture && options.source !== 'web') {
     throw new Error('--fixture is required unless --source web is used.');
@@ -51,7 +51,7 @@ async function runCommand(options) {
   logEvent(run, { event: 'workflow_completed', llm: noLlmUsage() });
 }
 
-async function retryCommand(options) {
+async function retryCommand(options: any): Promise<any> {
   const projectSlug = requiredOption(options.project, '--project');
   if (!options.failedOnly) {
     throw new Error('--failed-only is required for ingest:retry.');
@@ -60,7 +60,9 @@ async function retryCommand(options) {
   const run = createRunLogger({ command: 'retry', projectSlug, sourceType: options.source });
   const reset = options.dryRun
     ? { planned: true, queueItems: 0, rawDocuments: 0 }
-    : await withSql((sql) => resetFailedQueue({ projectSlug, sourceType: options.source, sql }));
+    : await withSql((sql: any): any =>
+        resetFailedQueue({ projectSlug, sourceType: options.source, sql }),
+      );
   logEvent(run, {
     event: 'failed_queue_reset',
     llm: noLlmUsage(),
@@ -83,7 +85,7 @@ async function retryCommand(options) {
   logEvent(run, { event: 'workflow_completed', llm: noLlmUsage() });
 }
 
-async function withSql(callback) {
+async function withSql(callback: any): Promise<any> {
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   try {
     return await callback(sql);
@@ -92,9 +94,9 @@ async function withSql(callback) {
   }
 }
 
-async function statusCommand(options) {
+async function statusCommand(options: any): Promise<any> {
   const projectSlug = requiredOption(options.project, '--project');
-  await withSql(async (sql) => {
+  await withSql(async (sql: any): Promise<any> => {
     const project = await lookupProject(sql, projectSlug);
     if (!project) {
       throw new Error(`Project not found: ${projectSlug}`);
@@ -112,7 +114,7 @@ async function statusCommand(options) {
   });
 }
 
-async function executeWorkflowStep(input) {
+async function executeWorkflowStep(input: any): Promise<any> {
   const startedAt = new Date();
   const command = buildStepCommand(input.step, input.projectSlug, input.options);
   logEvent(input.run, {
@@ -154,7 +156,7 @@ async function executeWorkflowStep(input) {
   }
 }
 
-function buildStepCommand(step, projectSlug, options) {
+function buildStepCommand(step: any, projectSlug: any, options: any): any {
   const args = [];
   if (step === 'collect') {
     if (options.fixture) {
@@ -213,13 +215,13 @@ function buildStepCommand(step, projectSlug, options) {
   throw new Error(`Unknown workflow step: ${step}`);
 }
 
-function appendLimit(args, limit) {
+function appendLimit(args: any, limit: any): any {
   if (limit !== undefined) {
     args.push('--limit', String(limit));
   }
 }
 
-async function runNodeScript(args) {
+async function runNodeScript(args: any): Promise<any> {
   const child = spawn(process.execPath, [...process.execArgv, ...args], {
     cwd: repoRoot,
     env: process.env,
@@ -230,14 +232,14 @@ async function runNodeScript(args) {
   let stderr = '';
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
-  child.stdout.on('data', (chunk) => {
+  child.stdout.on('data', (chunk: any): any => {
     stdout += chunk;
   });
-  child.stderr.on('data', (chunk) => {
+  child.stderr.on('data', (chunk: any): any => {
     stderr += chunk;
   });
 
-  const exitCode = await new Promise((resolve, reject) => {
+  const exitCode = await new Promise((resolve: any, reject: any): any => {
     child.on('error', reject);
     child.on('close', resolve);
   });
@@ -249,7 +251,7 @@ async function runNodeScript(args) {
   return parseScriptOutput(stdout);
 }
 
-function parseScriptOutput(stdout) {
+function parseScriptOutput(stdout: any): any {
   const trimmed = stdout.trim();
   if (!trimmed) {
     return {};
@@ -286,7 +288,7 @@ function parseScriptOutput(stdout) {
   }
 }
 
-function summarizeScriptResult(result) {
+function summarizeScriptResult(result: any): any {
   if (!result || typeof result !== 'object') {
     return {};
   }
@@ -302,8 +304,8 @@ function summarizeScriptResult(result) {
   };
 }
 
-function summarizeDecision(decision) {
-  const summary = {};
+function summarizeDecision(decision: any): any {
+  const summary: any = {};
   for (const key of [
     'actorEdgeCount',
     'chunkCount',
@@ -325,7 +327,7 @@ function summarizeDecision(decision) {
   return summary;
 }
 
-async function resetFailedQueue(input) {
+async function resetFailedQueue(input: any): Promise<any> {
   const project = await lookupProject(input.sql, input.projectSlug);
   if (!project) {
     throw new Error(`Project not found: ${input.projectSlug}`);
@@ -370,7 +372,7 @@ async function resetFailedQueue(input) {
   return rows[0] ?? { queueItems: 0, rawDocuments: 0 };
 }
 
-async function lookupProject(sql, slug) {
+async function lookupProject(sql: any, slug: any): Promise<any> {
   const rows = await sql`
     SELECT id::text AS id, slug
     FROM public.projects
@@ -379,12 +381,17 @@ async function lookupProject(sql, slug) {
   return rows[0];
 }
 
-async function countBy(sql, tableName, columnName, projectId) {
+async function countBy(sql: any, tableName: any, columnName: any, projectId: any): Promise<any> {
   const rows = await selectCountRows(sql, tableName, columnName, projectId);
-  return Object.fromEntries(rows.map((row) => [row.name, row.count]));
+  return Object.fromEntries(rows.map((row: any): any => [row.name, row.count]));
 }
 
-async function selectCountRows(sql, tableName, columnName, projectId) {
+async function selectCountRows(
+  sql: any,
+  tableName: any,
+  columnName: any,
+  projectId: any,
+): Promise<any> {
   if (tableName === 'documents' && columnName === 'doc_type') {
     return sql`
       SELECT doc_type AS name, count(*)::int AS count
@@ -415,7 +422,7 @@ async function selectCountRows(sql, tableName, columnName, projectId) {
   throw new Error(`Unsupported status count: ${tableName}.${columnName}`);
 }
 
-async function readTotals(sql, projectId) {
+async function readTotals(sql: any, projectId: any): Promise<any> {
   const rows = await sql`
     SELECT
       (SELECT count(*)::int FROM public.raw_documents WHERE project_id = ${projectId}) AS "rawDocuments",
@@ -427,7 +434,7 @@ async function readTotals(sql, projectId) {
   return rows[0];
 }
 
-async function listFailedQueue(sql, projectId) {
+async function listFailedQueue(sql: any, projectId: any): Promise<any> {
   return sql`
     SELECT
       q.attempts,
@@ -445,7 +452,7 @@ async function listFailedQueue(sql, projectId) {
   `;
 }
 
-function selectSteps(options) {
+function selectSteps(options: any): any {
   if (options.step && options.resumeFrom) {
     throw new Error('Cannot specify both --step and --resume-from.');
   }
@@ -460,7 +467,7 @@ function selectSteps(options) {
   return STEP_ORDER.slice(startIndex);
 }
 
-function createRunLogger(input) {
+function createRunLogger(input: any): any {
   return {
     command: input.command,
     projectSlug: input.projectSlug,
@@ -469,7 +476,7 @@ function createRunLogger(input) {
   };
 }
 
-function logEvent(run, event) {
+function logEvent(run: any, event: any): any {
   console.log(
     JSON.stringify({
       command: run.command,
@@ -482,7 +489,7 @@ function logEvent(run, event) {
   );
 }
 
-function noLlmUsage() {
+function noLlmUsage(): any {
   return {
     agentCalls: 0,
     chatModelCalls: 0,
@@ -491,8 +498,8 @@ function noLlmUsage() {
   };
 }
 
-function parseArgs(argv) {
-  const options = {};
+function parseArgs(argv: any): any {
+  const options: any = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {
@@ -527,14 +534,14 @@ function parseArgs(argv) {
   return options;
 }
 
-function readStepOption(value, optionName) {
+function readStepOption(value: any, optionName: any): any {
   if (!STEP_ORDER.includes(value)) {
     throw new Error(`Invalid ${optionName} value: ${value}`);
   }
   return value;
 }
 
-function readOptionValue(argv, index, optionName) {
+function readOptionValue(argv: any, index: any, optionName: any): any {
   const value = argv[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
@@ -542,7 +549,7 @@ function readOptionValue(argv, index, optionName) {
   return value;
 }
 
-function readPositiveInteger(value, name) {
+function readPositiveInteger(value: any, name: any): any {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`Invalid ${name} value: ${value}`);
@@ -550,18 +557,20 @@ function readPositiveInteger(value, name) {
   return parsed;
 }
 
-function redactArgv(args) {
-  return args.map((arg) => (arg.includes(process.cwd()) ? arg.replace(process.cwd(), '.') : arg));
+function redactArgv(args: any): any {
+  return args.map((arg: any): any =>
+    arg.includes(process.cwd()) ? arg.replace(process.cwd(), '.') : arg,
+  );
 }
 
-function safeErrorMessage(value) {
+function safeErrorMessage(value: any): any {
   return String(value)
     .replace(/(token|secret|api[_-]?key)=\S+/gi, '$1=<redacted>')
     .replace(/(postgres(?:ql)?:\/\/[^:]+:)[^@]+@/gi, '$1<redacted>@')
     .slice(0, 1000);
 }
 
-function requiredEnv(name) {
+function requiredEnv(name: any): any {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -569,14 +578,14 @@ function requiredEnv(name) {
   return value;
 }
 
-function requiredOption(value, name) {
+function requiredOption(value: any, name: any): any {
   if (!value) {
     throw new Error(`${name} is required.`);
   }
   return value;
 }
 
-main().catch((error) => {
+main().catch((error: any): any => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

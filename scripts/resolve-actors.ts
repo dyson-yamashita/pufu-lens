@@ -4,7 +4,7 @@ import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 
-async function main() {
+async function main(): Promise<any> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
@@ -25,13 +25,16 @@ async function main() {
 }
 
 class PostgresActorResolutionRepository {
-  constructor(sql, storage, sourceType) {
+  private sql: any;
+  private storage: any;
+  private sourceType: any;
+  constructor(sql: any, storage: any, sourceType: any) {
     this.sql = sql;
     this.storage = storage;
     this.sourceType = sourceType;
   }
 
-  async lookupProjectBySlug(slug) {
+  async lookupProjectBySlug(slug: any): Promise<any> {
     return singleJson(
       await this.sql`
         SELECT id::text AS id, slug
@@ -41,7 +44,7 @@ class PostgresActorResolutionRepository {
     );
   }
 
-  async readParsedDocuments(input) {
+  async readParsedDocuments(input: any): Promise<any> {
     const rows = await this.sql`
       SELECT
         id::text AS "rawDocumentId",
@@ -56,15 +59,17 @@ class PostgresActorResolutionRepository {
     `;
 
     return Promise.all(
-      rows.map(async (row) => ({
-        parsed: await this.storage.getText(row.parsedUri),
-        parsedUri: row.parsedUri,
-        rawDocumentId: row.rawDocumentId,
-      })),
+      rows.map(
+        async (row: any): Promise<any> => ({
+          parsed: await this.storage.getText(row.parsedUri),
+          parsedUri: row.parsedUri,
+          rawDocumentId: row.rawDocumentId,
+        }),
+      ),
     );
   }
 
-  async findActorByAlias(input) {
+  async findActorByAlias(input: any): Promise<any> {
     return singleJson(
       await this.sql`
         SELECT
@@ -84,7 +89,7 @@ class PostgresActorResolutionRepository {
     );
   }
 
-  async createActor(input) {
+  async createActor(input: any): Promise<any> {
     const actor = singleJson(
       await this.sql`
         INSERT INTO public.actors (
@@ -127,7 +132,7 @@ class PostgresActorResolutionRepository {
     return actor;
   }
 
-  async upsertActorAlias(input) {
+  async upsertActorAlias(input: any): Promise<any> {
     const alias = singleJson(
       await this.sql`
         INSERT INTO public.actor_aliases (
@@ -177,7 +182,7 @@ class PostgresActorResolutionRepository {
   }
 }
 
-function createLocalObjectStorageFromEnv(env = process.env) {
+function createLocalObjectStorageFromEnv(env: any = process.env): any {
   const root = env.STORAGE_ROOT ?? env.LOCAL_STORAGE_ROOT;
   if (!root) {
     throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
@@ -185,8 +190,8 @@ function createLocalObjectStorageFromEnv(env = process.env) {
   return new LocalFsObjectStorage(root);
 }
 
-function parseArgs(argv) {
-  const options = {};
+function parseArgs(argv: any): any {
+  const options: any = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {
@@ -207,14 +212,14 @@ function parseArgs(argv) {
   return options;
 }
 
-function readSourceType(value) {
+function readSourceType(value: any): any {
   if (!SOURCE_TYPES.includes(value)) {
     throw new Error(`Unsupported --source value: ${value}`);
   }
   return value;
 }
 
-function readOptionValue(argv, index, optionName) {
+function readOptionValue(argv: any, index: any, optionName: any): any {
   const value = argv[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
@@ -222,7 +227,7 @@ function readOptionValue(argv, index, optionName) {
   return value;
 }
 
-function requiredEnv(name) {
+function requiredEnv(name: any): any {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -230,18 +235,18 @@ function requiredEnv(name) {
   return value;
 }
 
-function requiredOption(value, name) {
+function requiredOption(value: any, name: any): any {
   if (!value) {
     throw new Error(`${name} is required.`);
   }
   return value;
 }
 
-function singleJson(rows) {
+function singleJson(rows: any): any {
   return rows[0];
 }
 
-main().catch((error) => {
+main().catch((error: any): any => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });
