@@ -220,7 +220,7 @@ function appendLimit(args, limit) {
 }
 
 async function runNodeScript(args) {
-  const child = spawn(process.execPath, ['--experimental-strip-types', ...args], {
+  const child = spawn(process.execPath, [...process.execArgv, ...args], {
     cwd: repoRoot,
     env: process.env,
     stdio: ['ignore', 'pipe', 'pipe'],
