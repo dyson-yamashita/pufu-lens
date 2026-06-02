@@ -258,7 +258,7 @@ function requiredOption(value: string | undefined, name: string): string {
   return value;
 }
 
-function sanitizeError(error: any): any {
+function sanitizeError(error: unknown): string {
   return String(error instanceof Error ? error.message : error)
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, 'redacted@example.test')
     .replace(/https?:\/\/[^\s"'<>]+/gi, 'https://example.test/redacted')

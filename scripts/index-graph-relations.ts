@@ -376,11 +376,15 @@ function validateLabel(label: string): string {
   return label;
 }
 
-function parameterizedSetClause(variableName: any, properties: any, paramPrefix: any): any {
-  const assignments = [];
-  const params: any = {};
+function parameterizedSetClause(
+  variableName: string,
+  properties: Record<string, unknown> | null | undefined,
+  paramPrefix: string,
+): { cypher: string; params: Record<string, unknown> } {
+  const assignments: string[] = [];
+  const params: Record<string, unknown> = {};
   let index = 0;
-  for (const [propertyName, value] of Object.entries(properties)) {
+  for (const [propertyName, value] of Object.entries(properties ?? {})) {
     if (value === undefined) {
       continue;
     }

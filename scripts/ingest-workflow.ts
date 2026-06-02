@@ -239,7 +239,7 @@ async function runNodeScript(args: any): Promise<any> {
     stderr += chunk;
   });
 
-  const exitCode = await new Promise((resolve: any, reject: any): any => {
+  const exitCode = await new Promise<number | null>((resolve, reject) => {
     child.on('error', reject);
     child.on('close', resolve);
   });

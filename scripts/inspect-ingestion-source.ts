@@ -164,7 +164,10 @@ function validateSourceContract(input: any): any {
   };
 }
 
-async function safeReadText(storage: any, uri: any): Promise<any> {
+async function safeReadText(
+  storage: LocalFsObjectStorage,
+  uri: string,
+): Promise<string | undefined> {
   try {
     return await storage.getText(uri);
   } catch {
@@ -172,7 +175,7 @@ async function safeReadText(storage: any, uri: any): Promise<any> {
   }
 }
 
-async function safeReadParsed(storage: any, uri: any): Promise<any> {
+async function safeReadParsed(storage: LocalFsObjectStorage, uri: string): Promise<any> {
   try {
     return validateParsedDocument(JSON.parse(await storage.getText(uri)));
   } catch {
@@ -205,7 +208,7 @@ function parseRawSafely(row: any, rawText: any): any {
   }
 }
 
-function summarize(documents: any): any {
+function summarize(documents: any[]): any {
   return {
     byIngestStatus: countBy(documents, (document: any): any => document.raw.ingestStatus),
     byQueueStatus: countBy(documents, (document: any): any => document.queue.status ?? '<none>'),
@@ -216,12 +219,15 @@ function summarize(documents: any): any {
   };
 }
 
-function isContractPassing(contract: any): any {
-  return Object.entries(contract).every(([, value]): any => typeof value !== 'boolean' || value);
+function isContractPassing(contract: Record<string, unknown>): boolean {
+  return Object.entries(contract).every(([, value]) => typeof value !== 'boolean' || value);
 }
 
-function countBy(values: any, keyFn: any): any {
-  const counts: any = {};
+function countBy<T>(
+  values: T[],
+  keyFn: (value: T) => string | number,
+): Record<string | number, number> {
+  const counts: Record<string | number, number> = {};
   for (const value of values) {
     const key = keyFn(value);
     counts[key] = (counts[key] ?? 0) + 1;
