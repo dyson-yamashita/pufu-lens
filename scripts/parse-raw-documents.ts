@@ -321,14 +321,14 @@ function parseArgs(argv: string[]): {
   return options;
 }
 
-function readOptionValue(value: any, optionName: any): any {
+function readOptionValue(value: string | undefined, optionName: string): string {
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
   }
   return value;
 }
 
-function readSourceType(value: any, optionName: any): any {
+function readSourceType(value: string | undefined, optionName: string): string {
   const sourceType = readOptionValue(value, optionName);
   if (!SOURCE_TYPES.includes(sourceType)) {
     throw new Error(`Unsupported ${optionName} value: ${sourceType}`);

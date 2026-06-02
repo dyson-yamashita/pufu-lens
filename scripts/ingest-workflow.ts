@@ -8,6 +8,33 @@ const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 const STEP_ORDER = ['collect', 'parse', 'resolve', 'chunk', 'graph'];
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
+type CountRow = {
+  count: number;
+  name: string;
+};
+
+type FailedQueueItem = {
+  attempts: number;
+  holdReason: string | null;
+  lastError: string | null;
+  sourceId: string;
+  sourceType: string;
+  status: string;
+};
+
+type ProjectRecord = {
+  id: string;
+  slug: string;
+};
+
+type Totals = {
+  documentChunks: number;
+  documents: number;
+  emailQuotes: number;
+  queueItems: number;
+  rawDocuments: number;
+};
+
 async function main(): Promise<void> {
   const [command, ...argv] = process.argv.slice(2);
   const options = parseArgs(argv);
@@ -373,26 +400,31 @@ async function resetFailedQueue(input: any): Promise<any> {
   return rows[0] ?? { queueItems: 0, rawDocuments: 0 };
 }
 
-async function lookupProject(sql: postgres.Sql, slug: string): Promise<any> {
+async function lookupProject(sql: postgres.Sql, slug: string): Promise<ProjectRecord | undefined> {
   const rows = await sql`
     SELECT id::text AS id, slug
     FROM public.projects
     WHERE slug = ${slug}
   `;
-  return rows[0];
+  return rows[0] as ProjectRecord | undefined;
 }
 
-async function countBy(sql: any, tableName: any, columnName: any, projectId: any): Promise<any> {
+async function countBy(
+  sql: postgres.Sql,
+  tableName: string,
+  columnName: string,
+  projectId: string,
+): Promise<Record<string, number>> {
   const rows = await selectCountRows(sql, tableName, columnName, projectId);
-  return Object.fromEntries(rows.map((row: any): any => [row.name, row.count]));
+  return Object.fromEntries(rows.map((row) => [row.name, row.count]));
 }
 
 async function selectCountRows(
-  sql: any,
-  tableName: any,
-  columnName: any,
-  projectId: any,
-): Promise<any> {
+  sql: postgres.Sql,
+  tableName: string,
+  columnName: string,
+  projectId: string,
+): Promise<CountRow[]> {
   if (tableName === 'documents' && columnName === 'doc_type') {
     return sql`
       SELECT doc_type AS name, count(*)::int AS count
@@ -423,7 +455,7 @@ async function selectCountRows(
   throw new Error(`Unsupported status count: ${tableName}.${columnName}`);
 }
 
-async function readTotals(sql: any, projectId: any): Promise<any> {
+async function readTotals(sql: postgres.Sql, projectId: string): Promise<Totals | undefined> {
   const rows = await sql`
     SELECT
       (SELECT count(*)::int FROM public.raw_documents WHERE project_id = ${projectId}) AS "rawDocuments",
@@ -432,11 +464,11 @@ async function readTotals(sql: any, projectId: any): Promise<any> {
       (SELECT count(*)::int FROM public.document_chunks WHERE project_id = ${projectId}) AS "documentChunks",
       (SELECT count(*)::int FROM public.email_quotes WHERE project_id = ${projectId}) AS "emailQuotes"
   `;
-  return rows[0];
+  return rows[0] as Totals | undefined;
 }
 
-async function listFailedQueue(sql: any, projectId: any): Promise<any> {
-  return sql`
+async function listFailedQueue(sql: postgres.Sql, projectId: string): Promise<FailedQueueItem[]> {
+  return (await sql`
     SELECT
       q.attempts,
       q.hold_reason AS "holdReason",
@@ -450,10 +482,10 @@ async function listFailedQueue(sql: any, projectId: any): Promise<any> {
       AND q.status IN ('failed', 'held')
     ORDER BY q.updated_at DESC, q.created_at DESC
     LIMIT 20
-  `;
+  `) as FailedQueueItem[];
 }
 
-function selectSteps(options: any): any {
+function selectSteps(options: { resumeFrom?: string; step?: string }): string[] {
   if (options.step && options.resumeFrom) {
     throw new Error('Cannot specify both --step and --resume-from.');
   }

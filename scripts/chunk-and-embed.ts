@@ -1,4 +1,5 @@
 import postgres from 'postgres';
+import type { EmbeddingProvider } from '../packages/ingestion/dist/index.js';
 import {
   chunkAndEmbed,
   createDeterministicEmbeddingProvider,
@@ -225,7 +226,7 @@ class PostgresChunkEmbeddingRepository {
   }
 }
 
-function createEmbeddingProvider(options: any): any {
+function createEmbeddingProvider(options: { embeddingProvider?: string }): EmbeddingProvider {
   if ((options.embeddingProvider ?? 'deterministic') === 'deterministic') {
     return createDeterministicEmbeddingProvider();
   }

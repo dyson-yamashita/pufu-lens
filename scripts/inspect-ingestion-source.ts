@@ -183,7 +183,7 @@ async function safeReadParsed(storage: LocalFsObjectStorage, uri: string): Promi
   }
 }
 
-function parseRawSafely(row: any, rawText: any): any {
+function parseRawSafely(row: any, rawText: string): any {
   try {
     return validateParsedDocument(
       parseRawContent(
@@ -256,7 +256,7 @@ function sanitizeMetadata(metadata: any): any {
   return sanitized;
 }
 
-function sanitizeNullable(value: any): any {
+function sanitizeNullable(value: unknown): unknown {
   return typeof value === 'string' ? value.slice(0, 500) : value;
 }
 
