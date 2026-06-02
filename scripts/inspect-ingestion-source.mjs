@@ -144,6 +144,7 @@ function validateSourceContract(input) {
   if (input.row.sourceType === 'web') {
     const canonicalUrl = readString(input.row.metadata?.canonicalUrl);
     const title = readString(input.row.metadata?.title);
+    const bodyText = input.parsed?.bodyText ?? input.parsedFromRaw?.bodyText;
     return {
       canonicalUrlMatchesSourceId: canonicalUrl === input.row.sourceId,
       contentHashMatchesStorage: input.actualContentHash === input.row.contentHash,
@@ -151,8 +152,7 @@ function validateSourceContract(input) {
       hasExtractedTitle: Boolean(title),
       parsedCanonicalUri: input.parsed?.canonicalUri ?? input.parsedFromRaw?.canonicalUri ?? null,
       parsedDocType: input.parsed?.docType ?? input.parsedFromRaw?.docType ?? null,
-      parsedHasBodyText:
-        readString(input.parsed?.bodyText ?? input.parsedFromRaw?.bodyText)?.trim().length > 0,
+      parsedHasBodyText: typeof bodyText === 'string' && bodyText.trim().length > 0,
       sourceType: 'web',
     };
   }
