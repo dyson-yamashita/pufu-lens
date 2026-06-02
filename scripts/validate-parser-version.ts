@@ -72,7 +72,7 @@ async function validateRawDocument(input) {
     };
   }
 
-  let rawText;
+  let rawText = '';
   try {
     rawText = await input.storage.getText(input.row.storageUri);
   } catch (error) {
