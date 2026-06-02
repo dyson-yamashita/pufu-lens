@@ -4,7 +4,7 @@ import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 
-async function main(): Promise<any> {
+async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
@@ -25,11 +25,11 @@ async function main(): Promise<any> {
 }
 
 class PostgresGraphRelationsRepository {
-  private sql: any;
-  private storage: any;
-  private sourceType: any;
-  private graphName: any;
-  constructor(sql: any, storage: any, sourceType: any) {
+  private sql: postgres.Sql;
+  private storage: LocalFsObjectStorage;
+  private sourceType: string | undefined;
+  private graphName: string | undefined;
+  constructor(sql: postgres.Sql, storage: LocalFsObjectStorage, sourceType: string | undefined) {
     this.sql = sql;
     this.storage = storage;
     this.sourceType = sourceType;
@@ -259,23 +259,23 @@ class PostgresGraphRelationsRepository {
   }
 }
 
-async function ensureAgeSession(sql: any): Promise<any> {
+async function ensureAgeSession(sql: postgres.Sql): Promise<void> {
   await sql.unsafe("LOAD 'age'");
   await sql.unsafe('SET search_path = ag_catalog, "$user", public');
 }
 
-async function ensureGraph(sql: any, graphName: any): Promise<any> {
+async function ensureGraph(sql: postgres.Sql, graphName: string): Promise<void> {
   await sql.unsafe(`SELECT create_graph(${sqlString(graphName)}) WHERE NOT EXISTS (
     SELECT 1 FROM ag_catalog.ag_graph WHERE name = ${sqlString(graphName)}
   )`);
 }
 
 async function executeCypher(
-  sql: any,
-  graphName: any,
-  cypher: any,
-  params: any = {},
-): Promise<any> {
+  sql: postgres.Sql,
+  graphName: string,
+  cypher: string,
+  params: Record<string, unknown> = {},
+): Promise<void> {
   await sql.unsafe(
     `SELECT * FROM cypher(${sqlString(graphName)}, ${dollarQuote(cypher)}, $1::agtype) AS (value agtype)`,
     [JSON.stringify(params)],
@@ -299,14 +299,16 @@ function parseArgs(argv: any): any {
   return options;
 }
 
-function readSourceType(value: any): any {
+function readSourceType(value: string): string {
   if (!SOURCE_TYPES.includes(value)) {
     throw new Error(`Unsupported --source value: ${value}`);
   }
   return value;
 }
 
-function createLocalObjectStorageFromEnv(env: any = process.env): any {
+function createLocalObjectStorageFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): LocalFsObjectStorage {
   const root = env.STORAGE_ROOT ?? env.LOCAL_STORAGE_ROOT;
   if (!root) {
     throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
@@ -314,7 +316,7 @@ function createLocalObjectStorageFromEnv(env: any = process.env): any {
   return new LocalFsObjectStorage(root);
 }
 
-function readOptionValue(argv: any, index: any, optionName: any): any {
+function readOptionValue(argv: string[], index: number, optionName: string): string {
   const value = argv[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
@@ -322,7 +324,7 @@ function readOptionValue(argv: any, index: any, optionName: any): any {
   return value;
 }
 
-function readPositiveInteger(value: any, name: any): any {
+function readPositiveInteger(value: string, name: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`Invalid ${name} value: ${value}`);
@@ -330,7 +332,7 @@ function readPositiveInteger(value: any, name: any): any {
   return parsed;
 }
 
-function requiredEnv(name: any): any {
+function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -338,14 +340,14 @@ function requiredEnv(name: any): any {
   return value;
 }
 
-function requiredGraphName(value: any): any {
+function requiredGraphName(value: string | undefined): string {
   if (!value) {
     throw new Error('Graph name is not initialized.');
   }
   return value;
 }
 
-function requiredOption(value: any, name: any): any {
+function requiredOption(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(`${name} is required.`);
   }
@@ -356,18 +358,18 @@ function singleJson(rows: any): any {
   return rows[0];
 }
 
-function sqlString(value: any): any {
+function sqlString(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-function validateGraphName(graphName: any): any {
+function validateGraphName(graphName: string): string {
   if (!/^graph_[a-z0-9_]+$/.test(graphName) || graphName.length > 63) {
     throw new Error(`Invalid AGE graph name: ${graphName}`);
   }
   return graphName;
 }
 
-function validateLabel(label: any): any {
+function validateLabel(label: string): string {
   if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(label)) {
     throw new Error(`Invalid graph label or edge type: ${label}`);
   }
@@ -393,7 +395,7 @@ function parameterizedSetClause(variableName: any, properties: any, paramPrefix:
   };
 }
 
-function graphPropertyValue(value: any): any {
+function graphPropertyValue(value: unknown): unknown {
   if (
     value === null ||
     typeof value === 'string' ||
@@ -405,18 +407,18 @@ function graphPropertyValue(value: any): any {
   return JSON.stringify(value);
 }
 
-function dollarQuote(value: any): any {
+function dollarQuote(value: string): string {
   return `$pufu_static$${value}$pufu_static$`;
 }
 
-function validatePropertyName(name: any): any {
+function validatePropertyName(name: string): string {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
     throw new Error(`Invalid graph property name: ${name}`);
   }
   return name;
 }
 
-main().catch((error: any): any => {
+main().catch((error: unknown): void => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

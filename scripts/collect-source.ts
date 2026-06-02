@@ -4,7 +4,7 @@ import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
 const SOURCE_TYPES = ['web'];
 
-async function main(): Promise<any> {
+async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sourceType = requiredOption(options.source, '--source');
@@ -36,8 +36,8 @@ async function main(): Promise<any> {
 }
 
 class PostgresCollectionRepository {
-  private sql: any;
-  constructor(sql: any) {
+  private sql: postgres.Sql;
+  constructor(sql: postgres.Sql) {
     this.sql = sql;
   }
 
@@ -238,7 +238,9 @@ async function ensureWebUrlDataSource(input: any): Promise<any> {
   `;
 }
 
-function createLocalObjectStorageFromEnv(env: any = process.env): any {
+function createLocalObjectStorageFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): LocalFsObjectStorage {
   const driver = env.STORAGE_DRIVER ?? env.OBJECT_STORAGE_DRIVER ?? 'local';
   if (driver !== 'local') {
     throw new Error(`Unsupported object storage driver for real collection CLI: ${driver}`);
@@ -279,7 +281,7 @@ function parseArgs(args: any): any {
   return options;
 }
 
-function readOptionValue(args: any, index: any, optionName: any): any {
+function readOptionValue(args: string[], index: number, optionName: string): string {
   const value = args[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
@@ -288,7 +290,7 @@ function readOptionValue(args: any, index: any, optionName: any): any {
   return value;
 }
 
-function readPositiveInteger(value: any, name: any): any {
+function readPositiveInteger(value: string, name: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`Invalid ${name} value: ${value}`);
@@ -296,7 +298,7 @@ function readPositiveInteger(value: any, name: any): any {
   return parsed;
 }
 
-function requiredEnv(name: any): any {
+function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -304,7 +306,7 @@ function requiredEnv(name: any): any {
   return value;
 }
 
-function requiredOption(value: any, optionName: any): any {
+function requiredOption(value: string | undefined, optionName: string): string {
   if (!value) {
     throw new Error(`${optionName} is required.`);
   }
@@ -315,7 +317,7 @@ function singleJson(rows: any): any {
   return rows[0];
 }
 
-main().catch((error: any): any => {
+main().catch((error: unknown): void => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

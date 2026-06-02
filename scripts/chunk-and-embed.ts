@@ -9,7 +9,7 @@ import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 
-async function main(): Promise<any> {
+async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
@@ -33,10 +33,10 @@ async function main(): Promise<any> {
 }
 
 class PostgresChunkEmbeddingRepository {
-  private sql: any;
-  private storage: any;
-  private sourceType: any;
-  constructor(sql: any, storage: any, sourceType: any) {
+  private sql: postgres.Sql;
+  private storage: LocalFsObjectStorage;
+  private sourceType: string | undefined;
+  constructor(sql: postgres.Sql, storage: LocalFsObjectStorage, sourceType: string | undefined) {
     this.sql = sql;
     this.storage = storage;
     this.sourceType = sourceType;
@@ -260,14 +260,16 @@ function parseArgs(argv: any): any {
   return options;
 }
 
-function readSourceType(value: any): any {
+function readSourceType(value: string): string {
   if (!SOURCE_TYPES.includes(value)) {
     throw new Error(`Unsupported --source value: ${value}`);
   }
   return value;
 }
 
-function createLocalObjectStorageFromEnv(env: any = process.env): any {
+function createLocalObjectStorageFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): LocalFsObjectStorage {
   const root = env.STORAGE_ROOT ?? env.LOCAL_STORAGE_ROOT;
   if (!root) {
     throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
@@ -275,7 +277,7 @@ function createLocalObjectStorageFromEnv(env: any = process.env): any {
   return new LocalFsObjectStorage(root);
 }
 
-function readDimensionsEnv(): any {
+function readDimensionsEnv(): number {
   const value = process.env.GEMINI_EMBEDDING_DIMENSIONS;
   if (!value) {
     throw new Error('GEMINI_EMBEDDING_DIMENSIONS is required.');
@@ -283,7 +285,7 @@ function readDimensionsEnv(): any {
   return readPositiveInteger(value, 'GEMINI_EMBEDDING_DIMENSIONS');
 }
 
-function readOptionValue(argv: any, index: any, optionName: any): any {
+function readOptionValue(argv: string[], index: number, optionName: string): string {
   const value = argv[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
@@ -291,7 +293,7 @@ function readOptionValue(argv: any, index: any, optionName: any): any {
   return value;
 }
 
-function readPositiveInteger(value: any, name: any): any {
+function readPositiveInteger(value: string, name: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`Invalid ${name} value: ${value}`);
@@ -299,7 +301,7 @@ function readPositiveInteger(value: any, name: any): any {
   return parsed;
 }
 
-function requiredEnv(name: any): any {
+function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -307,7 +309,7 @@ function requiredEnv(name: any): any {
   return value;
 }
 
-function requiredOption(value: any, name: any): any {
+function requiredOption(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(`${name} is required.`);
   }
@@ -318,11 +320,11 @@ function singleJson(rows: any): any {
   return rows[0];
 }
 
-function vectorLiteral(vector: any): any {
+function vectorLiteral(vector: number[]): string {
   return `[${vector.join(',')}]`;
 }
 
-main().catch((error: any): any => {
+main().catch((error: unknown): void => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

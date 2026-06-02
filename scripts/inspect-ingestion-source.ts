@@ -5,7 +5,7 @@ import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 
-async function main(): Promise<any> {
+async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sourceType = requiredOption(options.source, '--source');
@@ -254,7 +254,9 @@ function sanitizeNullable(value: any): any {
   return typeof value === 'string' ? value.slice(0, 500) : value;
 }
 
-function createLocalObjectStorageFromEnv(env: any = process.env): any {
+function createLocalObjectStorageFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): LocalFsObjectStorage {
   const root = env.STORAGE_ROOT ?? env.LOCAL_STORAGE_ROOT;
   if (!root) {
     throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
@@ -281,21 +283,21 @@ function parseArgs(argv: any): any {
   return options;
 }
 
-function readSourceType(value: any): any {
+function readSourceType(value: string): string {
   if (!SOURCE_TYPES.includes(value)) {
     throw new Error(`Unsupported --source value: ${value}`);
   }
   return value;
 }
 
-function readFormat(value: any): any {
+function readFormat(value: string): string {
   if (value !== 'json') {
     throw new Error(`Unsupported --format value: ${value}`);
   }
   return value;
 }
 
-function readOptionValue(argv: any, index: any, optionName: any): any {
+function readOptionValue(argv: string[], index: number, optionName: string): string {
   const value = argv[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
@@ -303,7 +305,7 @@ function readOptionValue(argv: any, index: any, optionName: any): any {
   return value;
 }
 
-function readPositiveInteger(value: any, name: any): any {
+function readPositiveInteger(value: string, name: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`Invalid ${name} value: ${value}`);
@@ -311,11 +313,11 @@ function readPositiveInteger(value: any, name: any): any {
   return parsed;
 }
 
-function readString(value: any): any {
+function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
-function requiredEnv(name: any): any {
+function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -323,14 +325,14 @@ function requiredEnv(name: any): any {
   return value;
 }
 
-function requiredOption(value: any, name: any): any {
+function requiredOption(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(`${name} is required.`);
   }
   return value;
 }
 
-function sha256Hex(value: any): any {
+function sha256Hex(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
@@ -338,7 +340,7 @@ function singleJson(rows: any): any {
   return rows[0];
 }
 
-main().catch((error: any): any => {
+main().catch((error: unknown): void => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

@@ -8,7 +8,7 @@ import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 
-async function main(): Promise<any> {
+async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
@@ -34,9 +34,9 @@ async function main(): Promise<any> {
 }
 
 class PostgresRawParseRepository {
-  private sql: any;
-  private sourceType: any;
-  constructor(sql: any, sourceType: any) {
+  private sql: postgres.Sql;
+  private sourceType: string | undefined;
+  constructor(sql: postgres.Sql, sourceType: string | undefined) {
     this.sql = sql;
     this.sourceType = sourceType;
   }
@@ -326,7 +326,9 @@ function readSourceType(value: any, optionName: any): any {
   return sourceType;
 }
 
-function createLocalObjectStorageFromEnv(env: any = process.env): any {
+function createLocalObjectStorageFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): LocalFsObjectStorage {
   const root = env.STORAGE_ROOT ?? env.LOCAL_STORAGE_ROOT;
   if (!root) {
     throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
@@ -334,7 +336,7 @@ function createLocalObjectStorageFromEnv(env: any = process.env): any {
   return new LocalFsObjectStorage(root);
 }
 
-function requiredEnv(name: any): any {
+function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -342,7 +344,7 @@ function requiredEnv(name: any): any {
   return value;
 }
 
-function requiredOption(value: any, name: any): any {
+function requiredOption(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(`${name} is required.`);
   }
@@ -353,7 +355,7 @@ function singleJson(rows: any): any {
   return rows[0];
 }
 
-main().catch((error: any): any => {
+main().catch((error: unknown): void => {
   console.error(error);
   process.exitCode = 1;
 });

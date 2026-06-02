@@ -8,7 +8,7 @@ const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 const STEP_ORDER = ['collect', 'parse', 'resolve', 'chunk', 'graph'];
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-async function main(): Promise<any> {
+async function main(): Promise<void> {
   const [command, ...argv] = process.argv.slice(2);
   const options = parseArgs(argv);
 
@@ -534,14 +534,14 @@ function parseArgs(argv: any): any {
   return options;
 }
 
-function readStepOption(value: any, optionName: any): any {
+function readStepOption(value: string, optionName: string): string {
   if (!STEP_ORDER.includes(value)) {
     throw new Error(`Invalid ${optionName} value: ${value}`);
   }
   return value;
 }
 
-function readOptionValue(argv: any, index: any, optionName: any): any {
+function readOptionValue(argv: string[], index: number, optionName: string): string {
   const value = argv[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
@@ -549,7 +549,7 @@ function readOptionValue(argv: any, index: any, optionName: any): any {
   return value;
 }
 
-function readPositiveInteger(value: any, name: any): any {
+function readPositiveInteger(value: string, name: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`Invalid ${name} value: ${value}`);
@@ -557,20 +557,20 @@ function readPositiveInteger(value: any, name: any): any {
   return parsed;
 }
 
-function redactArgv(args: any): any {
-  return args.map((arg: any): any =>
+function redactArgv(args: string[]): string[] {
+  return args.map((arg: string): string =>
     arg.includes(process.cwd()) ? arg.replace(process.cwd(), '.') : arg,
   );
 }
 
-function safeErrorMessage(value: any): any {
+function safeErrorMessage(value: unknown): string {
   return String(value)
     .replace(/(token|secret|api[_-]?key)=\S+/gi, '$1=<redacted>')
     .replace(/(postgres(?:ql)?:\/\/[^:]+:)[^@]+@/gi, '$1<redacted>@')
     .slice(0, 1000);
 }
 
-function requiredEnv(name: any): any {
+function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -578,14 +578,14 @@ function requiredEnv(name: any): any {
   return value;
 }
 
-function requiredOption(value: any, name: any): any {
+function requiredOption(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(`${name} is required.`);
   }
   return value;
 }
 
-main().catch((error: any): any => {
+main().catch((error: unknown): void => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });
