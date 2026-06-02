@@ -1,4 +1,14 @@
 import postgres from 'postgres';
+import type {
+  MarkFailedInput,
+  MarkHeldInput,
+  MarkParsedInput,
+  ParseProjectRecord,
+  ParseQueueTarget,
+  ParserVersionRecord,
+  RawParseRepository,
+  SourceType,
+} from '../packages/ingestion/dist/index.js';
 import {
   BUILT_IN_PARSER_ARTIFACT_HASH,
   defaultParserContract,
@@ -6,7 +16,7 @@ import {
 } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
-const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
+const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
@@ -33,26 +43,26 @@ async function main(): Promise<void> {
   }
 }
 
-class PostgresRawParseRepository {
+class PostgresRawParseRepository implements RawParseRepository {
   private sql: postgres.Sql;
-  private sourceType: string | undefined;
-  constructor(sql: postgres.Sql, sourceType: string | undefined) {
+  private sourceType: SourceType | undefined;
+  constructor(sql: postgres.Sql, sourceType: SourceType | undefined) {
     this.sql = sql;
     this.sourceType = sourceType;
   }
 
-  async lookupProjectBySlug(slug: string): Promise<any> {
+  async lookupProjectBySlug(slug: string): Promise<ParseProjectRecord | undefined> {
     return singleJson(
-      await this.sql`
+      (await this.sql`
         SELECT id::text AS id, slug
         FROM public.projects
         WHERE slug = ${slug}
-      `,
+      `) as ParseProjectRecord[],
     );
   }
 
-  async dequeueTargets(input: any): Promise<any> {
-    return this.sql`
+  async dequeueTargets(input: { limit: number; projectId: string }): Promise<ParseQueueTarget[]> {
+    return (await this.sql`
       WITH candidates AS (
         SELECT q.id AS queue_id
         FROM public.ingestion_queue q
@@ -99,12 +109,16 @@ class PostgresRawParseRepository {
       FROM updated
       JOIN public.raw_documents rd ON rd.id = updated.raw_document_id
       ORDER BY updated.id
-    `;
+    `) as ParseQueueTarget[];
   }
 
-  async selectActiveParserVersion(input: any): Promise<any> {
+  async selectActiveParserVersion(input: {
+    dataSourceId: string;
+    projectId: string;
+    sourceType: SourceType;
+  }): Promise<ParserVersionRecord | undefined> {
     return singleJson(
-      await this.sql`
+      (await this.sql`
         SELECT
           pv.artifact_hash AS "artifactHash",
           pv.artifact_uri AS "artifactUri",
@@ -123,12 +137,12 @@ class PostgresRawParseRepository {
           AND (pp.data_source_id = ${input.dataSourceId} OR pp.data_source_id IS NULL)
         ORDER BY pp.data_source_id IS NULL, pp.created_at DESC, pp.id DESC
         LIMIT 1
-      `,
+      `) as ParserVersionRecord[],
     );
   }
 
-  async markParsed(input: any): Promise<any> {
-    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<any> => {
+  async markParsed(input: MarkParsedInput): Promise<void> {
+    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
       await transaction`
         UPDATE public.raw_documents
         SET
@@ -156,8 +170,8 @@ class PostgresRawParseRepository {
     });
   }
 
-  async markFailed(input: any): Promise<any> {
-    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<any> => {
+  async markFailed(input: MarkFailedInput): Promise<void> {
+    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
       await transaction`
         UPDATE public.raw_documents
         SET
@@ -183,8 +197,8 @@ class PostgresRawParseRepository {
     });
   }
 
-  async markHeld(input: any): Promise<any> {
-    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<any> => {
+  async markHeld(input: MarkHeldInput): Promise<void> {
+    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
       await transaction`
         UPDATE public.raw_documents
         SET
@@ -209,7 +223,11 @@ class PostgresRawParseRepository {
   }
 }
 
-async function ensureBuiltInParserVersions(input: any): Promise<void> {
+async function ensureBuiltInParserVersions(input: {
+  projectSlug: string;
+  sourceType?: SourceType;
+  sql: postgres.Sql;
+}): Promise<void> {
   const sourceTypes = input.sourceType ? [input.sourceType] : SOURCE_TYPES;
 
   for (const sourceType of sourceTypes) {
@@ -259,7 +277,7 @@ async function ensureBuiltInParserVersions(input: any): Promise<void> {
           'fixture-parser-v1',
           1,
           ${BUILT_IN_PARSER_ARTIFACT_HASH},
-          ${input.sql.json(defaultParserContract(sourceType))},
+          ${input.sql.json(defaultParserContract(sourceType) as postgres.JSONValue)},
           'approved',
           '00000000-0000-0000-0000-000000000001',
           now()
@@ -294,13 +312,13 @@ async function ensureBuiltInParserVersions(input: any): Promise<void> {
 
 function parseArgs(argv: string[]): {
   project?: string;
-  source?: string;
+  source?: SourceType;
   limit?: number;
   seedBuiltInParsers?: boolean;
 } {
   const options: {
     project?: string;
-    source?: string;
+    source?: SourceType;
     limit?: number;
     seedBuiltInParsers?: boolean;
   } = {};
@@ -328,12 +346,12 @@ function readOptionValue(value: string | undefined, optionName: string): string 
   return value;
 }
 
-function readSourceType(value: string | undefined, optionName: string): string {
+function readSourceType(value: string | undefined, optionName: string): SourceType {
   const sourceType = readOptionValue(value, optionName);
-  if (!SOURCE_TYPES.includes(sourceType)) {
+  if (!(SOURCE_TYPES as readonly string[]).includes(sourceType)) {
     throw new Error(`Unsupported ${optionName} value: ${sourceType}`);
   }
-  return sourceType;
+  return sourceType as SourceType;
 }
 
 function createLocalObjectStorageFromEnv(

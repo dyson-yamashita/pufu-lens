@@ -1,4 +1,14 @@
 import postgres from 'postgres';
+import type {
+  ActorAliasRecord,
+  ActorAliasType,
+  ActorRecord,
+  ActorResolutionRepository,
+  CreateActorInput,
+  ResolveParsedDocumentTarget,
+  SourceType,
+  UpsertActorAliasInput,
+} from '../packages/ingestion/dist/index.js';
 import { resolveActors } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
@@ -24,28 +34,35 @@ async function main(): Promise<void> {
   }
 }
 
-class PostgresActorResolutionRepository {
+class PostgresActorResolutionRepository implements ActorResolutionRepository {
   private sql: postgres.Sql;
   private storage: LocalFsObjectStorage;
-  private sourceType: string | undefined;
-  constructor(sql: postgres.Sql, storage: LocalFsObjectStorage, sourceType: string | undefined) {
+  private sourceType: SourceType | undefined;
+  constructor(
+    sql: postgres.Sql,
+    storage: LocalFsObjectStorage,
+    sourceType: SourceType | undefined,
+  ) {
     this.sql = sql;
     this.storage = storage;
     this.sourceType = sourceType;
   }
 
-  async lookupProjectBySlug(slug: string): Promise<any> {
+  async lookupProjectBySlug(slug: string): Promise<{ id: string; slug: string } | undefined> {
     return singleJson(
-      await this.sql`
+      (await this.sql`
         SELECT id::text AS id, slug
         FROM public.projects
         WHERE slug = ${slug}
-      `,
+      `) as Array<{ id: string; slug: string }>,
     );
   }
 
-  async readParsedDocuments(input: any): Promise<any> {
-    const rows = await this.sql`
+  async readParsedDocuments(input: {
+    limit: number;
+    projectId: string;
+  }): Promise<ResolveParsedDocumentTarget[]> {
+    const rows = (await this.sql`
       SELECT
         id::text AS "rawDocumentId",
         parsed_uri AS "parsedUri"
@@ -56,11 +73,11 @@ class PostgresActorResolutionRepository {
         AND (${this.sourceType ?? null}::text IS NULL OR source_type = ${this.sourceType ?? null})
       ORDER BY parsed_at NULLS LAST, fetched_at, id
       LIMIT ${input.limit}
-    `;
+    `) as Array<{ parsedUri: string; rawDocumentId: string }>;
 
     return Promise.all(
       rows.map(
-        async (row: any): Promise<any> => ({
+        async (row): Promise<ResolveParsedDocumentTarget> => ({
           parsed: await this.storage.getText(row.parsedUri),
           parsedUri: row.parsedUri,
           rawDocumentId: row.rawDocumentId,
@@ -69,9 +86,13 @@ class PostgresActorResolutionRepository {
     );
   }
 
-  async findActorByAlias(input: any): Promise<any> {
+  async findActorByAlias(input: {
+    aliasType: ActorAliasType;
+    aliasValue: string;
+    projectId: string;
+  }): Promise<ActorRecord | undefined> {
     return singleJson(
-      await this.sql`
+      (await this.sql`
         SELECT
           a.display_name AS "displayName",
           a.graph_node_id AS "graphNodeId",
@@ -85,13 +106,13 @@ class PostgresActorResolutionRepository {
           AND aa.alias_type = ${input.aliasType}
           AND aa.alias_value = ${input.aliasValue}
         LIMIT 1
-      `,
+      `) as ActorRecord[],
     );
   }
 
-  async createActor(input: any): Promise<any> {
+  async createActor(input: CreateActorInput): Promise<ActorRecord> {
     const actor = singleJson(
-      await this.sql`
+      (await this.sql`
         INSERT INTO public.actors (
           project_id,
           actor_type,
@@ -107,7 +128,7 @@ class PostgresActorResolutionRepository {
           ${input.displayName},
           ${input.primaryEmail ?? null},
           ${input.primaryLogin ?? null},
-          ${this.sql.json(input.metadata)},
+          ${this.sql.json(input.metadata as postgres.JSONValue)},
           ${input.graphNodeId}
         )
         ON CONFLICT (project_id, graph_node_id)
@@ -123,7 +144,7 @@ class PostgresActorResolutionRepository {
           primary_email AS "primaryEmail",
           primary_login AS "primaryLogin",
           project_id::text AS "projectId"
-      `,
+      `) as ActorRecord[],
     );
 
     if (!actor) {
@@ -132,9 +153,9 @@ class PostgresActorResolutionRepository {
     return actor;
   }
 
-  async upsertActorAlias(input: any): Promise<any> {
+  async upsertActorAlias(input: UpsertActorAliasInput): Promise<ActorAliasRecord> {
     const alias = singleJson(
-      await this.sql`
+      (await this.sql`
         INSERT INTO public.actor_aliases (
           project_id,
           actor_id,
@@ -172,7 +193,7 @@ class PostgresActorResolutionRepository {
           confidence,
           project_id::text AS "projectId",
           source
-      `,
+      `) as ActorAliasRecord[],
     );
 
     if (!alias) {
@@ -194,12 +215,12 @@ function createLocalObjectStorageFromEnv(
 
 function parseArgs(argv: string[]): {
   project?: string;
-  source?: string;
+  source?: SourceType;
   limit?: number;
 } {
   const options: {
     project?: string;
-    source?: string;
+    source?: SourceType;
     limit?: number;
   } = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -222,11 +243,11 @@ function parseArgs(argv: string[]): {
   return options;
 }
 
-function readSourceType(value: string): string {
-  if (!SOURCE_TYPES.includes(value)) {
+function readSourceType(value: string): SourceType {
+  if (!(SOURCE_TYPES as readonly string[]).includes(value)) {
     throw new Error(`Unsupported --source value: ${value}`);
   }
-  return value;
+  return value as SourceType;
 }
 
 function readOptionValue(argv: string[], index: number, optionName: string): string {

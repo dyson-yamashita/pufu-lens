@@ -1,5 +1,15 @@
 import postgres from 'postgres';
-import type { EmbeddingProvider } from '../packages/ingestion/dist/index.js';
+import type { ChunkEmbeddingProjectRecord } from '../packages/ingestion/dist/chunk-embedding.js';
+import type {
+  ChunkEmbeddingRepository,
+  ChunkEmbeddingTarget,
+  DocumentChunkRecord,
+  DocumentRecord,
+  EmbeddingProvider,
+  ReplaceDocumentChunksInput,
+  SourceType,
+  UpsertDocumentInput,
+} from '../packages/ingestion/dist/index.js';
 import {
   chunkAndEmbed,
   createDeterministicEmbeddingProvider,
@@ -33,28 +43,35 @@ async function main(): Promise<void> {
   }
 }
 
-class PostgresChunkEmbeddingRepository {
+class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
   private sql: postgres.Sql;
   private storage: LocalFsObjectStorage;
-  private sourceType: string | undefined;
-  constructor(sql: postgres.Sql, storage: LocalFsObjectStorage, sourceType: string | undefined) {
+  private sourceType: SourceType | undefined;
+  constructor(
+    sql: postgres.Sql,
+    storage: LocalFsObjectStorage,
+    sourceType: SourceType | undefined,
+  ) {
     this.sql = sql;
     this.storage = storage;
     this.sourceType = sourceType;
   }
 
-  async lookupProjectBySlug(slug: string): Promise<any> {
+  async lookupProjectBySlug(slug: string): Promise<ChunkEmbeddingProjectRecord | undefined> {
     return singleJson(
-      await this.sql`
+      (await this.sql`
         SELECT id::text AS id, slug
         FROM public.projects
         WHERE slug = ${slug}
-      `,
+      `) as ChunkEmbeddingProjectRecord[],
     );
   }
 
-  async readParsedDocuments(input: any): Promise<any> {
-    const rows = await this.sql`
+  async readParsedDocuments(input: {
+    limit: number;
+    projectId: string;
+  }): Promise<ChunkEmbeddingTarget[]> {
+    const rows = (await this.sql`
       SELECT
         rd.content_hash AS "rawContentHash",
         rd.id::text AS "rawDocumentId",
@@ -68,11 +85,11 @@ class PostgresChunkEmbeddingRepository {
         AND (${this.sourceType ?? null}::text IS NULL OR rd.source_type = ${this.sourceType ?? null})
       ORDER BY rd.parsed_at NULLS LAST, rd.fetched_at, rd.id
       LIMIT ${input.limit}
-    `;
+    `) as Array<Omit<ChunkEmbeddingTarget, 'parsed'> & { parsedUri: string }>;
 
     return Promise.all(
       rows.map(
-        async (row: any): Promise<any> => ({
+        async (row): Promise<ChunkEmbeddingTarget> => ({
           parsed: await this.storage.getText(row.parsedUri),
           parsedUri: row.parsedUri,
           parserArtifactHash: row.parserArtifactHash,
@@ -84,9 +101,9 @@ class PostgresChunkEmbeddingRepository {
     );
   }
 
-  async upsertDocument(input: any): Promise<any> {
+  async upsertDocument(input: UpsertDocumentInput): Promise<DocumentRecord> {
     const document = singleJson(
-      await this.sql`
+      (await this.sql`
         INSERT INTO public.documents (
           project_id,
           raw_document_id,
@@ -107,7 +124,7 @@ class PostgresChunkEmbeddingRepository {
           ${input.canonicalUri},
           ${input.occurredAt},
           ${input.graphNodeId},
-          ${this.sql.json(input.metadata)}
+          ${this.sql.json(input.metadata as postgres.JSONValue)}
         )
         ON CONFLICT (raw_document_id)
         DO UPDATE SET
@@ -124,7 +141,7 @@ class PostgresChunkEmbeddingRepository {
           id::text AS id,
           project_id::text AS "projectId",
           raw_document_id::text AS "rawDocumentId"
-      `,
+      `) as DocumentRecord[],
     );
 
     if (!document) {
@@ -133,8 +150,11 @@ class PostgresChunkEmbeddingRepository {
     return document;
   }
 
-  async listCurrentChunks(input: any): Promise<any> {
-    return this.sql`
+  async listCurrentChunks(input: {
+    documentId: string;
+    projectId: string;
+  }): Promise<DocumentChunkRecord[]> {
+    return (await this.sql`
       SELECT
         chunk_index AS "chunkIndex",
         content_hash AS "contentHash",
@@ -144,11 +164,11 @@ class PostgresChunkEmbeddingRepository {
       WHERE project_id = ${input.projectId}
         AND document_id = ${input.documentId}
       ORDER BY chunk_index
-    `;
+    `) as DocumentChunkRecord[];
   }
 
-  async replaceDocumentChunks(input: any): Promise<any> {
-    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<any> => {
+  async replaceDocumentChunks(input: ReplaceDocumentChunksInput): Promise<void> {
+    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
       await transaction`
         INSERT INTO public.document_chunk_history (
           project_id,
@@ -208,7 +228,7 @@ class PostgresChunkEmbeddingRepository {
             ${chunk.contentHash},
             ${vectorLiteral(chunk.embedding)},
             ${chunk.embeddingModel},
-            ${transaction.json(chunk.metadata)}
+            ${transaction.json(chunk.metadata as postgres.JSONValue)}
           )
         `;
       }
@@ -242,14 +262,14 @@ function createEmbeddingProvider(options: { embeddingProvider?: string }): Embed
 
 function parseArgs(argv: string[]): {
   project?: string;
-  source?: string;
+  source?: SourceType;
   limit?: number;
   embeddingProvider?: string;
   dryRun?: boolean;
 } {
   const options: {
     project?: string;
-    source?: string;
+    source?: SourceType;
     limit?: number;
     embeddingProvider?: string;
     dryRun?: boolean;
@@ -273,11 +293,11 @@ function parseArgs(argv: string[]): {
   return options;
 }
 
-function readSourceType(value: string): string {
-  if (!SOURCE_TYPES.includes(value)) {
+function readSourceType(value: string): SourceType {
+  if (!(SOURCE_TYPES as readonly string[]).includes(value)) {
     throw new Error(`Unsupported --source value: ${value}`);
   }
-  return value;
+  return value as SourceType;
 }
 
 function createLocalObjectStorageFromEnv(

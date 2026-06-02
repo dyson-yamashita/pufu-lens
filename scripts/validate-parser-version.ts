@@ -1,12 +1,65 @@
 import postgres from 'postgres';
 import {
+  type ParserVersionContract,
   parseRawContent,
+  type SourceType,
   validateParsedDocument,
   validateParserContract,
 } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
-const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
+const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
+
+type ValidateParserVersionOptions = {
+  dryRun?: boolean;
+  held?: boolean;
+  limit?: number;
+  project?: string;
+  source?: SourceType;
+};
+
+type ProjectRecord = {
+  id: string;
+  slug: string;
+};
+
+type RawValidationRow = {
+  contentHash: string;
+  dataSourceId: string;
+  metadata: Record<string, unknown> | null;
+  mimeType: string;
+  rawDocumentId: string;
+  sourceId: string;
+  sourceType: SourceType;
+  sourceUri: string;
+  storageUri: string;
+};
+
+type ValidationParserVersion = {
+  contract: ParserVersionContract;
+  id: string;
+  parserProfileId: string;
+  schemaVersion: number;
+  status: string;
+  version: number;
+};
+
+type ValidationResult =
+  | {
+      docType: string;
+      ok: true;
+      parserVersionId: string;
+      rawDocumentId: string;
+      sourceId: string;
+      title: string;
+    }
+  | {
+      error: string;
+      ok: false;
+      parserVersionId?: string;
+      rawDocumentId: string;
+      sourceId: string;
+    };
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
@@ -28,7 +81,7 @@ async function main(): Promise<void> {
       sourceType,
       sql,
     });
-    const results = [];
+    const results: ValidationResult[] = [];
 
     for (const row of rows) {
       const parserVersion = await selectActiveParserVersion({
@@ -47,9 +100,9 @@ async function main(): Promise<void> {
       results,
       source: sourceType,
       summary: {
-        failed: results.filter((result: any): boolean => !result.ok).length,
+        failed: results.filter((result): boolean => !result.ok).length,
         total: results.length,
-        valid: results.filter((result: any): boolean => result.ok).length,
+        valid: results.filter((result): boolean => result.ok).length,
       },
     };
 
@@ -62,7 +115,12 @@ async function main(): Promise<void> {
   }
 }
 
-async function validateRawDocument(input: any): Promise<any> {
+async function validateRawDocument(input: {
+  parserVersion?: ValidationParserVersion;
+  project: ProjectRecord;
+  row: RawValidationRow;
+  storage: LocalFsObjectStorage;
+}): Promise<ValidationResult> {
   if (!input.parserVersion) {
     return {
       error: 'No approved active parser version was found.',
@@ -135,8 +193,14 @@ async function validateRawDocument(input: any): Promise<any> {
   }
 }
 
-async function readRawDocuments(input: any): Promise<any> {
-  return input.sql`
+async function readRawDocuments(input: {
+  heldOnly: boolean;
+  limit: number;
+  projectId: string;
+  sourceType: SourceType;
+  sql: postgres.Sql;
+}): Promise<RawValidationRow[]> {
+  return (await input.sql`
     SELECT
       q.data_source_id::text AS "dataSourceId",
       rd.content_hash AS "contentHash",
@@ -154,12 +218,17 @@ async function readRawDocuments(input: any): Promise<any> {
       AND (${input.heldOnly} = false OR rd.ingest_status = 'held' OR q.status = 'held')
     ORDER BY rd.updated_at DESC, rd.fetched_at DESC
     LIMIT ${input.limit}
-  `;
+  `) as RawValidationRow[];
 }
 
-async function selectActiveParserVersion(input: any): Promise<any> {
+async function selectActiveParserVersion(input: {
+  dataSourceId: string;
+  projectId: string;
+  sourceType: SourceType;
+  sql: postgres.Sql;
+}): Promise<ValidationParserVersion | undefined> {
   return singleJson(
-    await input.sql`
+    (await input.sql`
       SELECT
         pv.contract,
         pv.id::text AS id,
@@ -175,34 +244,22 @@ async function selectActiveParserVersion(input: any): Promise<any> {
         AND (pp.data_source_id = ${input.dataSourceId} OR pp.data_source_id IS NULL)
       ORDER BY pp.data_source_id IS NULL, pp.created_at DESC, pp.id DESC
       LIMIT 1
-    `,
+    `) as ValidationParserVersion[],
   );
 }
 
-async function lookupProject(sql: postgres.Sql, slug: string): Promise<any> {
+async function lookupProject(sql: postgres.Sql, slug: string): Promise<ProjectRecord | undefined> {
   return singleJson(
-    await sql`
+    (await sql`
       SELECT id::text AS id, slug
       FROM public.projects
       WHERE slug = ${slug}
-    `,
+    `) as ProjectRecord[],
   );
 }
 
-function parseArgs(argv: string[]): {
-  project?: string;
-  source?: string;
-  limit?: number;
-  held?: boolean;
-  dryRun?: boolean;
-} {
-  const options: {
-    project?: string;
-    source?: string;
-    limit?: number;
-    held?: boolean;
-    dryRun?: boolean;
-  } = {};
+function parseArgs(argv: string[]): ValidateParserVersionOptions {
+  const options: ValidateParserVersionOptions = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {
@@ -232,11 +289,11 @@ function createLocalObjectStorageFromEnv(
   return new LocalFsObjectStorage(root);
 }
 
-function readSourceType(value: string): string {
-  if (!SOURCE_TYPES.includes(value)) {
+function readSourceType(value: string): SourceType {
+  if (!(SOURCE_TYPES as readonly string[]).includes(value)) {
     throw new Error(`Unsupported --source value: ${value}`);
   }
-  return value;
+  return value as SourceType;
 }
 
 function readOptionValue(argv: string[], index: number, optionName: string): string {
@@ -263,7 +320,7 @@ function requiredEnv(name: string): string {
   return value;
 }
 
-function requiredOption(value: string | undefined, name: string): string {
+function requiredOption<T extends string>(value: T | undefined, name: string): T {
   if (!value) {
     throw new Error(`${name} is required.`);
   }

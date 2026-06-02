@@ -1,4 +1,16 @@
 import postgres from 'postgres';
+import type {
+  GraphActorAliasType,
+  GraphEdgeInput,
+  GraphNodeInput,
+  GraphRelationActorRecord,
+  GraphRelationDocumentRecord,
+  GraphRelationProjectRecord,
+  GraphRelationsRepository,
+  GraphRelationTarget,
+  ReplaceEmailQuotesInput,
+  SourceType,
+} from '../packages/ingestion/dist/index.js';
 import { storeGraphRelations } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
@@ -24,25 +36,44 @@ async function main(): Promise<void> {
   }
 }
 
-class PostgresGraphRelationsRepository {
+type GraphTargetRow = {
+  docType: GraphRelationDocumentRecord['docType'];
+  documentId: string;
+  documentRawDocumentId: string;
+  graphNodeId: string;
+  parsedUri: string;
+  rawContentHash: string;
+  rawDocumentId: string;
+};
+
+type InsertedEmailQuoteRow = {
+  id: string;
+  quoteIndex: number;
+};
+
+class PostgresGraphRelationsRepository implements GraphRelationsRepository {
   private sql: postgres.Sql;
   private storage: LocalFsObjectStorage;
-  private sourceType: string | undefined;
+  private sourceType: SourceType | undefined;
   private graphName: string | undefined;
-  constructor(sql: postgres.Sql, storage: LocalFsObjectStorage, sourceType: string | undefined) {
+  constructor(
+    sql: postgres.Sql,
+    storage: LocalFsObjectStorage,
+    sourceType: SourceType | undefined,
+  ) {
     this.sql = sql;
     this.storage = storage;
     this.sourceType = sourceType;
     this.graphName = undefined;
   }
 
-  async lookupProjectBySlug(slug: string): Promise<any> {
+  async lookupProjectBySlug(slug: string): Promise<GraphRelationProjectRecord | undefined> {
     const project = singleJson(
-      await this.sql`
+      (await this.sql`
         SELECT graph_name AS "graphName", id::text AS id, slug
         FROM public.projects
         WHERE slug = ${slug}
-      `,
+      `) as GraphRelationProjectRecord[],
     );
     if (project) {
       this.graphName = validateGraphName(project.graphName);
@@ -52,8 +83,11 @@ class PostgresGraphRelationsRepository {
     return project;
   }
 
-  async readGraphTargets(input: any): Promise<any> {
-    const rows = await this.sql`
+  async readGraphTargets(input: {
+    limit: number;
+    projectId: string;
+  }): Promise<GraphRelationTarget[]> {
+    const rows = (await this.sql`
       SELECT
         d.doc_type AS "docType",
         d.graph_node_id AS "graphNodeId",
@@ -71,11 +105,11 @@ class PostgresGraphRelationsRepository {
         AND (${this.sourceType ?? null}::text IS NULL OR rd.source_type = ${this.sourceType ?? null})
       ORDER BY rd.parsed_at NULLS LAST, rd.fetched_at, rd.id
       LIMIT ${input.limit}
-    `;
+    `) as GraphTargetRow[];
 
     return Promise.all(
       rows.map(
-        async (row: any): Promise<any> => ({
+        async (row): Promise<GraphRelationTarget> => ({
           document: {
             docType: row.docType,
             graphNodeId: row.graphNodeId,
@@ -90,9 +124,13 @@ class PostgresGraphRelationsRepository {
     );
   }
 
-  async findActorByAlias(input: any): Promise<any> {
+  async findActorByAlias(input: {
+    aliasType: GraphActorAliasType;
+    aliasValue: string;
+    projectId: string;
+  }): Promise<GraphRelationActorRecord | undefined> {
     return singleJson(
-      await this.sql`
+      (await this.sql`
         SELECT
           a.display_name AS "displayName",
           a.graph_node_id AS "graphNodeId",
@@ -103,13 +141,16 @@ class PostgresGraphRelationsRepository {
           AND aa.alias_type = ${input.aliasType}
           AND aa.alias_value = ${input.aliasValue}
         LIMIT 1
-      `,
+      `) as GraphRelationActorRecord[],
     );
   }
 
-  async findActorByGraphNodeId(input: any): Promise<any> {
+  async findActorByGraphNodeId(input: {
+    graphNodeId: string;
+    projectId: string;
+  }): Promise<GraphRelationActorRecord | undefined> {
     return singleJson(
-      await this.sql`
+      (await this.sql`
         SELECT
           display_name AS "displayName",
           graph_node_id AS "graphNodeId",
@@ -118,12 +159,17 @@ class PostgresGraphRelationsRepository {
         WHERE project_id = ${input.projectId}
           AND graph_node_id = ${input.graphNodeId}
         LIMIT 1
-      `,
+      `) as GraphRelationActorRecord[],
     );
   }
 
-  async findSameAsDocuments(input: any): Promise<any> {
-    return this.sql`
+  async findSameAsDocuments(input: {
+    projectId: string;
+    rawContentHash: string;
+    rawDocumentId: string;
+    sourceType: SourceType;
+  }): Promise<GraphRelationDocumentRecord[]> {
+    return (await this.sql`
       SELECT
         d.doc_type AS "docType",
         d.graph_node_id AS "graphNodeId",
@@ -136,10 +182,10 @@ class PostgresGraphRelationsRepository {
         AND rd.id <> ${input.rawDocumentId}
         AND rd.source_type <> ${input.sourceType}
         AND rd.content_hash = ${input.rawContentHash}
-    `;
+    `) as GraphRelationDocumentRecord[];
   }
 
-  async upsertGraphNode(input: any): Promise<any> {
+  async upsertGraphNode(input: GraphNodeInput): Promise<void> {
     const graphName = requiredGraphName(this.graphName);
     const label = validateLabel(input.labels[0] ?? 'Document');
     const properties = {
@@ -156,7 +202,7 @@ class PostgresGraphRelationsRepository {
     );
   }
 
-  async upsertGraphEdge(input: any): Promise<any> {
+  async upsertGraphEdge(input: GraphEdgeInput): Promise<void> {
     const graphName = requiredGraphName(this.graphName);
     const edgeType = validateLabel(input.type);
     const setClause = parameterizedSetClause('r', input.properties, 'edge');
@@ -178,20 +224,18 @@ class PostgresGraphRelationsRepository {
     );
   }
 
-  async replaceEmailQuotes(input: any): Promise<any> {
-    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<any> => {
+  async replaceEmailQuotes(input: ReplaceEmailQuotesInput): Promise<void> {
+    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
       await transaction`
         DELETE FROM public.email_quotes
         WHERE project_id = ${input.projectId}
           AND document_id = ${input.documentId}
       `;
       const insertedByIndex = new Map<number, string>();
-      const sortedQuotes = [...input.quotes].sort(
-        (a: any, b: any): any => a.quoteIndex - b.quoteIndex,
-      );
+      const sortedQuotes = [...input.quotes].sort((a, b) => a.quoteIndex - b.quoteIndex);
       for (const quote of sortedQuotes) {
         const inserted = singleJson(
-          await transaction`
+          (await transaction`
             INSERT INTO public.email_quotes (
               project_id,
               document_id,
@@ -217,7 +261,7 @@ class PostgresGraphRelationsRepository {
               ${transaction.json({})}
             )
             RETURNING id::text AS id, quote_index AS "quoteIndex"
-          `,
+          `) as InsertedEmailQuoteRow[],
         );
         if (!inserted) {
           throw new Error('Failed to insert email quote.');
@@ -227,8 +271,8 @@ class PostgresGraphRelationsRepository {
     });
   }
 
-  async markIndexed(input: any): Promise<any> {
-    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<any> => {
+  async markIndexed(input: { projectId: string; rawDocumentId: string }): Promise<void> {
+    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
       await transaction`
         UPDATE public.raw_documents
         SET ingest_status = 'indexed', indexed_at = now(), ingest_error = null
@@ -244,8 +288,12 @@ class PostgresGraphRelationsRepository {
     });
   }
 
-  async markFailed(input: any): Promise<any> {
-    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<any> => {
+  async markFailed(input: {
+    errorMessage: string;
+    projectId: string;
+    rawDocumentId: string;
+  }): Promise<void> {
+    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
       await transaction`
         UPDATE public.raw_documents
         SET ingest_status = 'failed', ingest_error = ${input.errorMessage}
@@ -287,12 +335,12 @@ async function executeCypher(
 
 function parseArgs(argv: string[]): {
   project?: string;
-  source?: string;
+  source?: SourceType;
   limit?: number;
 } {
   const options: {
     project?: string;
-    source?: string;
+    source?: SourceType;
     limit?: number;
   } = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -310,11 +358,11 @@ function parseArgs(argv: string[]): {
   return options;
 }
 
-function readSourceType(value: string): string {
-  if (!SOURCE_TYPES.includes(value)) {
+function readSourceType(value: string): SourceType {
+  if (!(SOURCE_TYPES as readonly string[]).includes(value)) {
     throw new Error(`Unsupported --source value: ${value}`);
   }
-  return value;
+  return value as SourceType;
 }
 
 function createLocalObjectStorageFromEnv(

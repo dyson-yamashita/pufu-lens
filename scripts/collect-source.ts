@@ -1,4 +1,14 @@
 import postgres from 'postgres';
+import type {
+  CollectionRepository,
+  DataSourceRecord,
+  LinkDataSourceInput,
+  ProjectRecord,
+  QueueCandidateInput,
+  RawDocumentInput,
+  RawDocumentRecord,
+  SourceType,
+} from '../packages/ingestion/dist/index.js';
 import { collectWebUrlSource } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
@@ -35,24 +45,27 @@ async function main(): Promise<void> {
   }
 }
 
-class PostgresCollectionRepository {
+class PostgresCollectionRepository implements CollectionRepository {
   private sql: postgres.Sql;
   constructor(sql: postgres.Sql) {
     this.sql = sql;
   }
 
-  async lookupProjectBySlug(slug: string): Promise<any> {
+  async lookupProjectBySlug(slug: string): Promise<ProjectRecord | undefined> {
     return singleJson(
-      await this.sql`
+      (await this.sql`
         SELECT id::text AS id, slug
         FROM public.projects
         WHERE slug = ${slug}
-      `,
+      `) as ProjectRecord[],
     );
   }
 
-  async findDataSources(projectId: any, sourceType: any): Promise<any> {
-    return this.sql`
+  async findDataSources(projectId: string, sourceType?: SourceType): Promise<DataSourceRecord[]> {
+    if (!sourceType) {
+      return [];
+    }
+    return (await this.sql`
       SELECT
         config,
         enabled,
@@ -65,12 +78,16 @@ class PostgresCollectionRepository {
         AND enabled = true
         AND source_type = ${sourceType}
       ORDER BY source_type, name
-    `;
+    `) as DataSourceRecord[];
   }
 
-  async lookupRawDocument(input: any): Promise<any> {
+  async lookupRawDocument(input: {
+    projectId: string;
+    sourceId: string;
+    sourceType: SourceType;
+  }): Promise<RawDocumentRecord | undefined> {
     return singleJson(
-      await this.sql`
+      (await this.sql`
         SELECT
           id::text AS id,
           ingest_status AS "ingestStatus",
@@ -80,23 +97,27 @@ class PostgresCollectionRepository {
         WHERE project_id = ${input.projectId}
           AND source_type = ${input.sourceType}
           AND source_id = ${input.sourceId}
-      `,
+      `) as RawDocumentRecord[],
     );
   }
 
-  async findSameHashCandidates(input: any): Promise<any> {
-    return this.sql`
+  async findSameHashCandidates(input: {
+    contentHash: string;
+    projectId: string;
+    sourceType: SourceType;
+  }): Promise<Array<{ id: string; sourceId: string; sourceType: SourceType }>> {
+    return (await this.sql`
       SELECT id::text AS id, source_id AS "sourceId", source_type AS "sourceType"
       FROM public.raw_documents
       WHERE project_id = ${input.projectId}
         AND content_hash = ${input.contentHash}
       ORDER BY created_at
-    `;
+    `) as Array<{ id: string; sourceId: string; sourceType: SourceType }>;
   }
 
-  async upsertRawDocument(input: any): Promise<any> {
+  async upsertRawDocument(input: RawDocumentInput): Promise<RawDocumentRecord> {
     const rawDocument = singleJson(
-      await this.sql`
+      (await this.sql`
         INSERT INTO public.raw_documents (
           project_id,
           source_type,
@@ -119,7 +140,7 @@ class PostgresCollectionRepository {
           ${input.byteSize},
           ${input.contentHash},
           'fetched',
-          ${this.sql.json(input.metadata)}
+          ${this.sql.json(input.metadata as postgres.JSONValue)}
         )
         ON CONFLICT (project_id, source_type, source_id)
         DO UPDATE SET
@@ -134,7 +155,7 @@ class PostgresCollectionRepository {
           ingest_status AS "ingestStatus",
           source_id AS "sourceId",
           source_type AS "sourceType"
-      `,
+      `) as RawDocumentRecord[],
     );
 
     if (!rawDocument) {
@@ -144,7 +165,7 @@ class PostgresCollectionRepository {
     return rawDocument;
   }
 
-  async linkDataSource(input: any): Promise<any> {
+  async linkDataSource(input: LinkDataSourceInput): Promise<void> {
     await this.sql`
       INSERT INTO public.raw_document_data_sources (
         raw_document_id,
@@ -158,7 +179,7 @@ class PostgresCollectionRepository {
         ${input.dataSourceId},
         ${input.projectId},
         ${input.matchReason},
-        ${this.sql.json(input.metadata)}
+        ${this.sql.json(input.metadata as postgres.JSONValue)}
       )
       ON CONFLICT (raw_document_id, data_source_id)
       DO UPDATE SET
@@ -168,7 +189,7 @@ class PostgresCollectionRepository {
     `;
   }
 
-  async queueCandidate(input: any): Promise<any> {
+  async queueCandidate(input: QueueCandidateInput): Promise<void> {
     await this.sql`
       INSERT INTO public.ingestion_queue (
         project_id,
@@ -200,7 +221,7 @@ class PostgresCollectionRepository {
     `;
   }
 
-  async markDataSourceChecked(dataSourceId: any): Promise<any> {
+  async markDataSourceChecked(dataSourceId: string): Promise<void> {
     await this.sql`
       UPDATE public.data_sources
       SET last_checked_at = now()
@@ -209,7 +230,11 @@ class PostgresCollectionRepository {
   }
 }
 
-async function ensureWebUrlDataSource(input: any): Promise<void> {
+async function ensureWebUrlDataSource(input: {
+  projectSlug: string;
+  sql: postgres.Sql;
+  urls: string[];
+}): Promise<void> {
   await input.sql`
     WITH project AS (
       SELECT id FROM public.projects WHERE slug = ${input.projectSlug}

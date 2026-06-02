@@ -3,10 +3,27 @@ import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
+import type { SourceType } from '../packages/ingestion/dist/index.js';
 
-const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
-const STEP_ORDER = ['collect', 'parse', 'resolve', 'chunk', 'graph'];
+const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
+const STEP_ORDER = ['collect', 'parse', 'resolve', 'chunk', 'graph'] as const;
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+type WorkflowStep = (typeof STEP_ORDER)[number];
+type WorkflowCommand = 'run' | 'retry';
+
+type WorkflowOptions = {
+  dryRun?: boolean;
+  embeddingProvider?: string;
+  failedOnly?: boolean;
+  fixture?: boolean;
+  limit?: number;
+  project?: string;
+  resumeFrom?: WorkflowStep;
+  source?: SourceType;
+  step?: WorkflowStep;
+  urls?: string[];
+};
 
 type CountRow = {
   count: number;
@@ -26,6 +43,35 @@ type ProjectRecord = {
   id: string;
   slug: string;
 };
+
+type LlmUsage = {
+  agentCalls: number;
+  chatModelCalls: number;
+  embeddingModelCalls: number;
+  tokenUsage: number;
+};
+
+type RunLogger = {
+  command: WorkflowCommand;
+  projectSlug: string;
+  runId: string;
+  sourceType?: SourceType;
+};
+
+type StepCommand = {
+  args: string[];
+};
+
+type ScriptResult = Record<string, unknown> & {
+  llm?: LlmUsage;
+};
+
+type ResetFailedQueueResult = {
+  queueItems: number;
+  rawDocuments: number;
+};
+
+type WorkflowEvent = Record<string, unknown>;
 
 type Totals = {
   documentChunks: number;
@@ -55,7 +101,7 @@ async function main(): Promise<void> {
   throw new Error(`Unknown workflow command: ${command ?? '<missing>'}`);
 }
 
-async function runCommand(options: any): Promise<void> {
+async function runCommand(options: WorkflowOptions): Promise<void> {
   const projectSlug = requiredOption(options.project, '--project');
   if (!options.fixture && options.source !== 'web') {
     throw new Error('--fixture is required unless --source web is used.');
@@ -78,7 +124,7 @@ async function runCommand(options: any): Promise<void> {
   logEvent(run, { event: 'workflow_completed', llm: noLlmUsage() });
 }
 
-async function retryCommand(options: any): Promise<void> {
+async function retryCommand(options: WorkflowOptions): Promise<void> {
   const projectSlug = requiredOption(options.project, '--project');
   if (!options.failedOnly) {
     throw new Error('--failed-only is required for ingest:retry.');
@@ -88,7 +134,7 @@ async function retryCommand(options: any): Promise<void> {
   const reset = options.dryRun
     ? { planned: true, queueItems: 0, rawDocuments: 0 }
     : await withSql(
-        (sql: postgres.Sql): Promise<any> =>
+        (sql: postgres.Sql): Promise<ResetFailedQueueResult> =>
           resetFailedQueue({ projectSlug, sourceType: options.source, sql }),
       );
   logEvent(run, {
@@ -122,7 +168,7 @@ async function withSql<T>(callback: (sql: postgres.Sql) => Promise<T> | T): Prom
   }
 }
 
-async function statusCommand(options: any): Promise<void> {
+async function statusCommand(options: WorkflowOptions): Promise<void> {
   const projectSlug = requiredOption(options.project, '--project');
   await withSql(async (sql: postgres.Sql): Promise<void> => {
     const project = await lookupProject(sql, projectSlug);
@@ -142,7 +188,12 @@ async function statusCommand(options: any): Promise<void> {
   });
 }
 
-async function executeWorkflowStep(input: any): Promise<void> {
+async function executeWorkflowStep(input: {
+  options: WorkflowOptions;
+  projectSlug: string;
+  run: RunLogger;
+  step: WorkflowStep;
+}): Promise<void> {
   const startedAt = new Date();
   const command = buildStepCommand(input.step, input.projectSlug, input.options);
   logEvent(input.run, {
@@ -184,8 +235,12 @@ async function executeWorkflowStep(input: any): Promise<void> {
   }
 }
 
-function buildStepCommand(step: any, projectSlug: any, options: any): any {
-  const args = [];
+function buildStepCommand(
+  step: WorkflowStep,
+  projectSlug: string,
+  options: WorkflowOptions,
+): StepCommand {
+  const args: string[] = [];
   if (step === 'collect') {
     if (options.fixture) {
       args.push(join(repoRoot, 'scripts/collect-fixture-source.ts'), '--project', projectSlug);
@@ -193,12 +248,13 @@ function buildStepCommand(step: any, projectSlug: any, options: any): any {
         args.push('--source', options.source);
       }
     } else {
+      const sourceType = requiredOption(options.source, '--source');
       args.push(
         join(repoRoot, 'scripts/collect-source.ts'),
         '--project',
         projectSlug,
         '--source',
-        options.source,
+        sourceType,
       );
       for (const url of options.urls ?? []) {
         args.push('--url', url);
@@ -243,13 +299,13 @@ function buildStepCommand(step: any, projectSlug: any, options: any): any {
   throw new Error(`Unknown workflow step: ${step}`);
 }
 
-function appendLimit(args: any, limit: any): any {
+function appendLimit(args: string[], limit: number | undefined): void {
   if (limit !== undefined) {
     args.push('--limit', String(limit));
   }
 }
 
-async function runNodeScript(args: any): Promise<any> {
+async function runNodeScript(args: string[]): Promise<ScriptResult> {
   const child = spawn(process.execPath, [...process.execArgv, ...args], {
     cwd: repoRoot,
     env: process.env,
@@ -279,7 +335,7 @@ async function runNodeScript(args: any): Promise<any> {
   return parseScriptOutput(stdout);
 }
 
-function parseScriptOutput(stdout: any): any {
+function parseScriptOutput(stdout: string): ScriptResult {
   const trimmed = stdout.trim();
   if (!trimmed) {
     return {};
@@ -316,24 +372,29 @@ function parseScriptOutput(stdout: any): any {
   }
 }
 
-function summarizeScriptResult(result: any): any {
+function summarizeScriptResult(result: unknown): ScriptResult {
   if (!result || typeof result !== 'object') {
     return {};
   }
 
-  const decisions = Array.isArray(result.decisions)
-    ? result.decisions.map(summarizeDecision)
+  const record = result as Record<string, unknown>;
+  const decisions = Array.isArray(record.decisions)
+    ? record.decisions.map(summarizeDecision)
     : undefined;
   return {
-    ...(result.projectSlug ? { projectSlug: result.projectSlug } : {}),
-    ...(result.embeddingModel ? { embeddingModel: result.embeddingModel } : {}),
-    ...(result.llm ? { llm: result.llm } : {}),
+    ...(typeof record.projectSlug === 'string' ? { projectSlug: record.projectSlug } : {}),
+    ...(typeof record.embeddingModel === 'string' ? { embeddingModel: record.embeddingModel } : {}),
+    ...(isLlmUsage(record.llm) ? { llm: record.llm } : {}),
     ...(decisions ? { decisionCount: decisions.length, decisions } : {}),
   };
 }
 
-function summarizeDecision(decision: any): any {
-  const summary: any = {};
+function summarizeDecision(decision: unknown): Record<string, unknown> {
+  const summary: Record<string, unknown> = {};
+  if (!decision || typeof decision !== 'object') {
+    return summary;
+  }
+  const record = decision as Record<string, unknown>;
   for (const key of [
     'actorEdgeCount',
     'chunkCount',
@@ -348,20 +409,24 @@ function summarizeDecision(decision: any): any {
     'sourceId',
     'sourceType',
   ]) {
-    if (decision[key] !== undefined) {
-      summary[key] = decision[key];
+    if (record[key] !== undefined) {
+      summary[key] = record[key];
     }
   }
   return summary;
 }
 
-async function resetFailedQueue(input: any): Promise<any> {
+async function resetFailedQueue(input: {
+  projectSlug: string;
+  sourceType?: SourceType;
+  sql: postgres.Sql;
+}): Promise<ResetFailedQueueResult> {
   const project = await lookupProject(input.sql, input.projectSlug);
   if (!project) {
     throw new Error(`Project not found: ${input.projectSlug}`);
   }
 
-  const rows = await input.sql`
+  const rows = (await input.sql`
     WITH failed AS (
       SELECT q.id AS queue_id, rd.id AS raw_document_id, rd.parsed_uri
       FROM public.ingestion_queue q
@@ -395,7 +460,7 @@ async function resetFailedQueue(input: any): Promise<any> {
     SELECT
       (SELECT count(*)::int FROM updated_raw) AS "rawDocuments",
       (SELECT count(*)::int FROM updated_queue) AS "queueItems"
-  `;
+  `) as ResetFailedQueueResult[];
 
   return rows[0] ?? { queueItems: 0, rawDocuments: 0 };
 }
@@ -485,7 +550,7 @@ async function listFailedQueue(sql: postgres.Sql, projectId: string): Promise<Fa
   `) as FailedQueueItem[];
 }
 
-function selectSteps(options: { resumeFrom?: string; step?: string }): string[] {
+function selectSteps(options: { resumeFrom?: WorkflowStep; step?: WorkflowStep }): WorkflowStep[] {
   if (options.step && options.resumeFrom) {
     throw new Error('Cannot specify both --step and --resume-from.');
   }
@@ -500,7 +565,11 @@ function selectSteps(options: { resumeFrom?: string; step?: string }): string[] 
   return STEP_ORDER.slice(startIndex);
 }
 
-function createRunLogger(input: any): any {
+function createRunLogger(input: {
+  command: WorkflowCommand;
+  projectSlug: string;
+  sourceType?: SourceType;
+}): RunLogger {
   return {
     command: input.command,
     projectSlug: input.projectSlug,
@@ -509,7 +578,7 @@ function createRunLogger(input: any): any {
   };
 }
 
-function logEvent(run: any, event: any): void {
+function logEvent(run: RunLogger, event: WorkflowEvent): void {
   console.log(
     JSON.stringify({
       command: run.command,
@@ -522,12 +591,7 @@ function logEvent(run: any, event: any): void {
   );
 }
 
-function noLlmUsage(): {
-  agentCalls: number;
-  chatModelCalls: number;
-  embeddingModelCalls: number;
-  tokenUsage: number;
-} {
+function noLlmUsage(): LlmUsage {
   return {
     agentCalls: 0,
     chatModelCalls: 0,
@@ -536,40 +600,27 @@ function noLlmUsage(): {
   };
 }
 
-function parseArgs(argv: string[]): {
-  project?: string;
-  source?: string;
-  fixture?: boolean;
-  urls?: string[];
-  failedOnly?: boolean;
-  dryRun?: boolean;
-  limit?: number;
-  embeddingProvider?: string;
-  resumeFrom?: string;
-  step?: string;
-} {
-  const options: {
-    project?: string;
-    source?: string;
-    fixture?: boolean;
-    urls?: string[];
-    failedOnly?: boolean;
-    dryRun?: boolean;
-    limit?: number;
-    embeddingProvider?: string;
-    resumeFrom?: string;
-    step?: string;
-  } = {};
+function isLlmUsage(value: unknown): value is LlmUsage {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.agentCalls === 'number' &&
+    typeof record.chatModelCalls === 'number' &&
+    typeof record.embeddingModelCalls === 'number' &&
+    typeof record.tokenUsage === 'number'
+  );
+}
+
+function parseArgs(argv: string[]): WorkflowOptions {
+  const options: WorkflowOptions = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {
       options.project = readOptionValue(argv, ++index, arg);
     } else if (arg === '--source') {
-      const sourceType = readOptionValue(argv, ++index, arg);
-      if (!SOURCE_TYPES.includes(sourceType)) {
-        throw new Error(`Unsupported --source value: ${sourceType}`);
-      }
-      options.source = sourceType;
+      options.source = readSourceType(readOptionValue(argv, ++index, arg));
     } else if (arg === '--fixture') {
       options.fixture = true;
     } else if (arg === '--url') {
@@ -594,11 +645,18 @@ function parseArgs(argv: string[]): {
   return options;
 }
 
-function readStepOption(value: string, optionName: string): string {
-  if (!STEP_ORDER.includes(value)) {
+function readSourceType(value: string): SourceType {
+  if (!(SOURCE_TYPES as readonly string[]).includes(value)) {
+    throw new Error(`Unsupported --source value: ${value}`);
+  }
+  return value as SourceType;
+}
+
+function readStepOption(value: string, optionName: string): WorkflowStep {
+  if (!(STEP_ORDER as readonly string[]).includes(value)) {
     throw new Error(`Invalid ${optionName} value: ${value}`);
   }
-  return value;
+  return value as WorkflowStep;
 }
 
 function readOptionValue(argv: string[], index: number, optionName: string): string {
@@ -638,7 +696,7 @@ function requiredEnv(name: string): string {
   return value;
 }
 
-function requiredOption(value: string | undefined, name: string): string {
+function requiredOption<T extends string>(value: T | undefined, name: string): T {
   if (!value) {
     throw new Error(`${name} is required.`);
   }

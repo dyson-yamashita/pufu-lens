@@ -1,9 +1,105 @@
 import { createHash } from 'node:crypto';
 import postgres from 'postgres';
-import { parseRawContent, validateParsedDocument } from '../packages/ingestion/dist/index.js';
+import {
+  type ParsedDocument,
+  parseRawContent,
+  type SourceType,
+  validateParsedDocument,
+} from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
-const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
+const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
+
+type InspectOptions = {
+  format?: 'json';
+  limit?: number;
+  project?: string;
+  source?: SourceType;
+};
+
+type ProjectRecord = {
+  id: string;
+  slug: string;
+};
+
+type InspectRow = {
+  byteSize: number | string | null;
+  contentHash: string;
+  documentCanonicalUri: string | null;
+  documentId: string | null;
+  documentTitle: string | null;
+  documentType: string | null;
+  fetchedAt: string;
+  holdReason: string | null;
+  ingestError: string | null;
+  ingestStatus: string;
+  metadata: Record<string, unknown> | null;
+  mimeType: string;
+  parsedUri: string | null;
+  parserArtifactHash: string | null;
+  parserVersionId: string | null;
+  queueAttempts: number | null;
+  queueHoldReason: string | null;
+  queueLastError: string | null;
+  queueStatus: string | null;
+  rawDocumentId: string;
+  sanitizedSampleUri: string | null;
+  sourceId: string;
+  sourceType: SourceType;
+  sourceUri: string;
+  storageUri: string;
+};
+
+type SourceContract = Record<string, string | boolean | null>;
+
+type InspectedDocument = {
+  content: {
+    actualContentHash: string | null;
+    byteSize: number | null;
+    contentHashMatchesStorage: boolean;
+    mimeType: string;
+    storageReadable: boolean;
+    storageUri: string;
+  };
+  document: {
+    canonicalUri: string | null;
+    docType: string | null;
+    id: string;
+    title: string | null;
+  } | null;
+  parser: {
+    artifactHash: string | null;
+    parsedReadable: boolean;
+    parsedUri: string | null;
+    parserVersionId: string | null;
+  };
+  queue: {
+    attempts: number | null;
+    holdReason: string | null;
+    lastError: unknown;
+    status: string | null;
+  };
+  raw: {
+    fetchedAt: string;
+    holdReason: string | null;
+    id: string;
+    ingestError: unknown;
+    ingestStatus: string;
+    metadata: Record<string, unknown>;
+    sanitizedSampleUri: string | null;
+    sourceId: string;
+    sourceType: SourceType;
+    sourceUri: string;
+  };
+  sourceContract: SourceContract;
+};
+
+type Summary = {
+  byIngestStatus: Record<string | number, number>;
+  byQueueStatus: Record<string | number, number>;
+  failedContracts: number;
+  total: number;
+};
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
@@ -24,7 +120,7 @@ async function main(): Promise<void> {
       sourceType,
       sql,
     });
-    const documents = [];
+    const documents: InspectedDocument[] = [];
     for (const row of rows) {
       documents.push(await inspectRow({ row, storage }));
     }
@@ -43,8 +139,13 @@ async function main(): Promise<void> {
   }
 }
 
-async function readRows(input: any): Promise<any> {
-  return input.sql`
+async function readRows(input: {
+  limit: number;
+  projectId: string;
+  sourceType: SourceType;
+  sql: postgres.Sql;
+}): Promise<InspectRow[]> {
+  return (await input.sql`
     SELECT
       rd.byte_size AS "byteSize",
       rd.content_hash AS "contentHash",
@@ -78,10 +179,13 @@ async function readRows(input: any): Promise<any> {
       AND rd.source_type = ${input.sourceType}
     ORDER BY rd.fetched_at DESC, rd.id
     LIMIT ${input.limit}
-  `;
+  `) as InspectRow[];
 }
 
-async function inspectRow(input: any): Promise<any> {
+async function inspectRow(input: {
+  row: InspectRow;
+  storage: LocalFsObjectStorage;
+}): Promise<InspectedDocument> {
   const rawText = await safeReadText(input.storage, input.row.storageUri);
   const actualContentHash = rawText === undefined ? null : sha256Hex(rawText);
   const parsed = input.row.parsedUri
@@ -140,7 +244,12 @@ async function inspectRow(input: any): Promise<any> {
   };
 }
 
-function validateSourceContract(input: any): any {
+function validateSourceContract(input: {
+  actualContentHash: string | null;
+  parsed: ParsedDocument | null;
+  parsedFromRaw: ParsedDocument | null;
+  row: InspectRow;
+}): SourceContract {
   if (input.row.sourceType === 'web') {
     const canonicalUrl = readString(input.row.metadata?.canonicalUrl);
     const title = readString(input.row.metadata?.title);
@@ -175,7 +284,10 @@ async function safeReadText(
   }
 }
 
-async function safeReadParsed(storage: LocalFsObjectStorage, uri: string): Promise<any> {
+async function safeReadParsed(
+  storage: LocalFsObjectStorage,
+  uri: string,
+): Promise<ParsedDocument | null> {
   try {
     return validateParsedDocument(JSON.parse(await storage.getText(uri)));
   } catch {
@@ -183,7 +295,7 @@ async function safeReadParsed(storage: LocalFsObjectStorage, uri: string): Promi
   }
 }
 
-function parseRawSafely(row: any, rawText: string): any {
+function parseRawSafely(row: InspectRow, rawText: string): ParsedDocument | null {
   try {
     return validateParsedDocument(
       parseRawContent(
@@ -208,12 +320,12 @@ function parseRawSafely(row: any, rawText: string): any {
   }
 }
 
-function summarize(documents: any[]): any {
+function summarize(documents: InspectedDocument[]): Summary {
   return {
-    byIngestStatus: countBy(documents, (document: any): any => document.raw.ingestStatus),
-    byQueueStatus: countBy(documents, (document: any): any => document.queue.status ?? '<none>'),
+    byIngestStatus: countBy(documents, (document): string => document.raw.ingestStatus),
+    byQueueStatus: countBy(documents, (document): string => document.queue.status ?? '<none>'),
     failedContracts: documents.filter(
-      (document: any): boolean => !isContractPassing(document.sourceContract),
+      (document): boolean => !isContractPassing(document.sourceContract),
     ).length,
     total: documents.length,
   };
@@ -235,21 +347,21 @@ function countBy<T>(
   return counts;
 }
 
-async function lookupProject(sql: postgres.Sql, slug: string): Promise<any> {
+async function lookupProject(sql: postgres.Sql, slug: string): Promise<ProjectRecord | undefined> {
   return singleJson(
-    await sql`
+    (await sql`
       SELECT id::text AS id, slug
       FROM public.projects
       WHERE slug = ${slug}
-    `,
+    `) as ProjectRecord[],
   );
 }
 
-function sanitizeMetadata(metadata: any): any {
+function sanitizeMetadata(metadata: unknown): Record<string, unknown> {
   if (!metadata || typeof metadata !== 'object') {
     return {};
   }
-  const sanitized = { ...metadata };
+  const sanitized = { ...(metadata as Record<string, unknown>) };
   delete sanitized.body;
   delete sanitized.html;
   delete sanitized.text;
@@ -270,18 +382,8 @@ function createLocalObjectStorageFromEnv(
   return new LocalFsObjectStorage(root);
 }
 
-function parseArgs(argv: string[]): {
-  project?: string;
-  source?: string;
-  limit?: number;
-  format?: string;
-} {
-  const options: {
-    project?: string;
-    source?: string;
-    limit?: number;
-    format?: string;
-  } = {};
+function parseArgs(argv: string[]): InspectOptions {
+  const options: InspectOptions = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {
@@ -299,14 +401,14 @@ function parseArgs(argv: string[]): {
   return options;
 }
 
-function readSourceType(value: string): string {
-  if (!SOURCE_TYPES.includes(value)) {
+function readSourceType(value: string): SourceType {
+  if (!(SOURCE_TYPES as readonly string[]).includes(value)) {
     throw new Error(`Unsupported --source value: ${value}`);
   }
-  return value;
+  return value as SourceType;
 }
 
-function readFormat(value: string): string {
+function readFormat(value: string): 'json' {
   if (value !== 'json') {
     throw new Error(`Unsupported --format value: ${value}`);
   }
@@ -341,7 +443,7 @@ function requiredEnv(name: string): string {
   return value;
 }
 
-function requiredOption(value: string | undefined, name: string): string {
+function requiredOption<T extends string>(value: T | undefined, name: string): T {
   if (!value) {
     throw new Error(`${name} is required.`);
   }
