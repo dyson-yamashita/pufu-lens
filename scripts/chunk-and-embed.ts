@@ -239,8 +239,20 @@ function createEmbeddingProvider(options: any): any {
   throw new Error(`Unknown embedding provider: ${options.embeddingProvider}`);
 }
 
-function parseArgs(argv: string[]): any {
-  const options: any = {};
+function parseArgs(argv: string[]): {
+  project?: string;
+  source?: string;
+  limit?: number;
+  embeddingProvider?: string;
+  dryRun?: boolean;
+} {
+  const options: {
+    project?: string;
+    source?: string;
+    limit?: number;
+    embeddingProvider?: string;
+    dryRun?: boolean;
+  } = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {

@@ -192,8 +192,16 @@ function createLocalObjectStorageFromEnv(
   return new LocalFsObjectStorage(root);
 }
 
-function parseArgs(argv: string[]): any {
-  const options: any = {};
+function parseArgs(argv: string[]): {
+  project?: string;
+  source?: string;
+  limit?: number;
+} {
+  const options: {
+    project?: string;
+    source?: string;
+    limit?: number;
+  } = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {

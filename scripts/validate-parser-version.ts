@@ -189,8 +189,20 @@ async function lookupProject(sql: postgres.Sql, slug: string): Promise<any> {
   );
 }
 
-function parseArgs(argv: string[]): any {
-  const options: any = {};
+function parseArgs(argv: string[]): {
+  project?: string;
+  source?: string;
+  limit?: number;
+  held?: boolean;
+  dryRun?: boolean;
+} {
+  const options: {
+    project?: string;
+    source?: string;
+    limit?: number;
+    held?: boolean;
+    dryRun?: boolean;
+  } = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {

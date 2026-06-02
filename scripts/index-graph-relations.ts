@@ -185,7 +185,7 @@ class PostgresGraphRelationsRepository {
         WHERE project_id = ${input.projectId}
           AND document_id = ${input.documentId}
       `;
-      const insertedByIndex = new Map<any, any>();
+      const insertedByIndex = new Map<number, string>();
       const sortedQuotes = [...input.quotes].sort(
         (a: any, b: any): any => a.quoteIndex - b.quoteIndex,
       );
@@ -282,8 +282,16 @@ async function executeCypher(
   );
 }
 
-function parseArgs(argv: string[]): any {
-  const options: any = {};
+function parseArgs(argv: string[]): {
+  project?: string;
+  source?: string;
+  limit?: number;
+} {
+  const options: {
+    project?: string;
+    source?: string;
+    limit?: number;
+  } = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {

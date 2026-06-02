@@ -498,8 +498,30 @@ function noLlmUsage(): any {
   };
 }
 
-function parseArgs(argv: string[]): any {
-  const options: any = {};
+function parseArgs(argv: string[]): {
+  project?: string;
+  source?: string;
+  fixture?: boolean;
+  urls?: string[];
+  failedOnly?: boolean;
+  dryRun?: boolean;
+  limit?: number;
+  embeddingProvider?: string;
+  resumeFrom?: string;
+  step?: string;
+} {
+  const options: {
+    project?: string;
+    source?: string;
+    fixture?: boolean;
+    urls?: string[];
+    failedOnly?: boolean;
+    dryRun?: boolean;
+    limit?: number;
+    embeddingProvider?: string;
+    resumeFrom?: string;
+    step?: string;
+  } = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {

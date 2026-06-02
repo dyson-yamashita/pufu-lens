@@ -34,8 +34,14 @@ async function ensureAgeSession(sql: postgres.Sql): Promise<void> {
   await sql.unsafe('SET search_path = ag_catalog, "$user", public');
 }
 
-function parseArgs(argv: any): any {
-  const options: any = {};
+function parseArgs(argv: string[]): {
+  project?: string;
+  cypher?: string;
+} {
+  const options: {
+    project?: string;
+    cypher?: string;
+  } = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {

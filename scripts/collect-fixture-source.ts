@@ -4,7 +4,8 @@ import postgres from 'postgres';
 import { collectFixtureSource } from '../packages/ingestion/dist/collection-pipeline.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
-const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
+const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
+type SourceType = (typeof SOURCE_TYPES)[number];
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 async function main(): Promise<void> {
@@ -274,8 +275,14 @@ function createLocalObjectStorageFromEnv(
   return new LocalFsObjectStorage(root);
 }
 
-function parseArgs(args: string[]): any {
-  const options: any = {};
+function parseArgs(args: string[]): {
+  project?: string;
+  source?: SourceType;
+} {
+  const options: {
+    project?: string;
+    source?: SourceType;
+  } = {};
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -288,10 +295,10 @@ function parseArgs(args: string[]): any {
     if (arg === '--source') {
       index += 1;
       const sourceType = readOptionValue(args, index, arg);
-      if (!SOURCE_TYPES.includes(sourceType)) {
+      if (!SOURCE_TYPES.includes(sourceType as SourceType)) {
         throw new Error(`Unsupported --source value: ${sourceType}`);
       }
-      options.source = sourceType;
+      options.source = sourceType as SourceType;
       continue;
     }
 
