@@ -64,7 +64,7 @@ source 別に `ingest:inspect` と source contract test で次を検査する。
 
 Step 10 の Web URL 接続で追加した scripts は、後続 Step 10a / Step 10b で段階的に整理する。
 
-- Step 10a: scripts の実行形式だけを `.ts` に統一する。Step 10 確認記録に残る `.ts` 表記は、Step 10a 実装時に `.ts` へ追従する。
+- Step 10a: scripts の実行形式だけを `.ts` に統一する。Step 10 確認記録に残る旧拡張子表記は、Step 10a 実装時に `.ts` へ更新済み。
 - Step 10b: scripts 全体の strict typecheck 対応を行う。Step 10a では型注釈整理や `tsconfig.scripts.json` 追加は行わない。
 
 ## Step 10 確認記録
