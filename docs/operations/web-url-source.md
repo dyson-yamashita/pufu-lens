@@ -35,6 +35,30 @@ DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
     --embedding-provider deterministic
 ```
 
+取り込み後の状態と Web source contract は `ingest:inspect` で確認する。
+
+```bash
+DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
+  STORAGE_ROOT=/tmp/pufu-lens-storage \
+  pnpm ingest:inspect --project sample-a --source web --limit 5 --format json
+```
+
+保留中 raw を parser contract / parser 実行で検査する場合は次を使う。
+
+```bash
+DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
+  STORAGE_ROOT=/tmp/pufu-lens-storage \
+  pnpm parser:version:validate --project sample-a --source web --held --dry-run
+```
+
+失敗 raw を regression fixture 化する dry-run は source ごとに絞り込める。
+
+```bash
+DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
+  STORAGE_ROOT=/tmp/pufu-lens-storage \
+  pnpm ingest:fixture:add-failed --project sample-a --source web --limit 3 --dry-run
+```
+
 ## 収集仕様
 
 - `data_sources.config.urls` または `--url` の URL を候補として扱う。
@@ -54,3 +78,9 @@ find "$STORAGE_ROOT/sample-a/raw/web" -type f | sort
 
 同じ command を 2 回実行したとき、既存 raw は `skipped_existing` になり、
 `raw_documents` と `ingestion_queue` の件数は増えない。
+
+`ingest:inspect` の `sourceContract` では、Web source について次を検査する。
+
+- `metadata.canonicalUrl` と `source_id` が一致する。
+- storage 上の HTML SHA-256 が `raw_documents.content_hash` と一致する。
+- parsed document が `web_page` として読め、本文抽出結果が空ではない。

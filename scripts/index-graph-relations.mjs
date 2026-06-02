@@ -2,12 +2,14 @@ import postgres from 'postgres';
 import { storeGraphRelations } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
+const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   const storage = createLocalObjectStorageFromEnv();
-  const repository = new PostgresGraphRelationsRepository(sql, storage);
+  const repository = new PostgresGraphRelationsRepository(sql, storage, options.source);
 
   try {
     const result = await storeGraphRelations({
@@ -23,9 +25,10 @@ async function main() {
 }
 
 class PostgresGraphRelationsRepository {
-  constructor(sql, storage) {
+  constructor(sql, storage, sourceType) {
     this.sql = sql;
     this.storage = storage;
+    this.sourceType = sourceType;
     this.graphName = undefined;
   }
 
@@ -61,6 +64,7 @@ class PostgresGraphRelationsRepository {
         AND rd.project_id = ${input.projectId}
         AND rd.parsed_uri IS NOT NULL
         AND rd.ingest_status IN ('parsed', 'indexed')
+        AND (${this.sourceType ?? null}::text IS NULL OR rd.source_type = ${this.sourceType ?? null})
       ORDER BY rd.parsed_at NULLS LAST, rd.fetched_at, rd.id
       LIMIT ${input.limit}
     `;
@@ -271,6 +275,8 @@ function parseArgs(argv) {
     const arg = argv[index];
     if (arg === '--project') {
       options.project = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--source') {
+      options.source = readSourceType(readOptionValue(argv, ++index, arg));
     } else if (arg === '--limit') {
       options.limit = readPositiveInteger(readOptionValue(argv, ++index, arg), arg);
     } else {
@@ -278,6 +284,13 @@ function parseArgs(argv) {
     }
   }
   return options;
+}
+
+function readSourceType(value) {
+  if (!SOURCE_TYPES.includes(value)) {
+    throw new Error(`Unsupported --source value: ${value}`);
+  }
+  return value;
 }
 
 function createLocalObjectStorageFromEnv(env = process.env) {

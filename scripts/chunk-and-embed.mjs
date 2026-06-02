@@ -7,12 +7,14 @@ import {
 } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
+const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   const storage = createLocalObjectStorageFromEnv();
-  const repository = new PostgresChunkEmbeddingRepository(sql, storage);
+  const repository = new PostgresChunkEmbeddingRepository(sql, storage, options.source);
   const embeddingProvider = createEmbeddingProvider(options);
 
   try {
@@ -31,9 +33,10 @@ async function main() {
 }
 
 class PostgresChunkEmbeddingRepository {
-  constructor(sql, storage) {
+  constructor(sql, storage, sourceType) {
     this.sql = sql;
     this.storage = storage;
+    this.sourceType = sourceType;
   }
 
   async lookupProjectBySlug(slug) {
@@ -58,6 +61,7 @@ class PostgresChunkEmbeddingRepository {
       WHERE rd.project_id = ${input.projectId}
         AND rd.ingest_status IN ('parsed', 'indexed')
         AND rd.parsed_uri IS NOT NULL
+        AND (${this.sourceType ?? null}::text IS NULL OR rd.source_type = ${this.sourceType ?? null})
       ORDER BY rd.parsed_at NULLS LAST, rd.fetched_at, rd.id
       LIMIT ${input.limit}
     `;
@@ -236,6 +240,8 @@ function parseArgs(argv) {
     const arg = argv[index];
     if (arg === '--project') {
       options.project = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--source') {
+      options.source = readSourceType(readOptionValue(argv, ++index, arg));
     } else if (arg === '--limit') {
       options.limit = readPositiveInteger(readOptionValue(argv, ++index, arg), arg);
     } else if (arg === '--embedding-provider') {
@@ -247,6 +253,13 @@ function parseArgs(argv) {
     }
   }
   return options;
+}
+
+function readSourceType(value) {
+  if (!SOURCE_TYPES.includes(value)) {
+    throw new Error(`Unsupported --source value: ${value}`);
+  }
+  return value;
 }
 
 function createLocalObjectStorageFromEnv(env = process.env) {

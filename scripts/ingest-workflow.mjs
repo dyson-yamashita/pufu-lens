@@ -187,17 +187,26 @@ function buildStepCommand(step, projectSlug, options) {
   }
   if (step === 'resolve') {
     args.push(join(repoRoot, 'scripts/resolve-actors.mjs'), '--project', projectSlug);
+    if (options.source) {
+      args.push('--source', options.source);
+    }
     appendLimit(args, options.limit);
     return { args };
   }
   if (step === 'chunk') {
     args.push(join(repoRoot, 'scripts/chunk-and-embed.mjs'), '--project', projectSlug);
+    if (options.source) {
+      args.push('--source', options.source);
+    }
     appendLimit(args, options.limit);
     args.push('--embedding-provider', options.embeddingProvider ?? 'deterministic');
     return { args };
   }
   if (step === 'graph') {
     args.push(join(repoRoot, 'scripts/index-graph-relations.mjs'), '--project', projectSlug);
+    if (options.source) {
+      args.push('--source', options.source);
+    }
     appendLimit(args, options.limit);
     return { args };
   }

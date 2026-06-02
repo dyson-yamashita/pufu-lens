@@ -8,6 +8,7 @@ interface Args {
   limit: number;
   project?: string;
   rawDocumentId?: string;
+  source?: string;
 }
 
 const args = parseArgs(process.argv.slice(2));
@@ -89,6 +90,7 @@ async function findFailedRawDocuments(
     JOIN public.projects p ON p.id = rd.project_id
     WHERE p.slug = ${args.project}
       AND rd.ingest_status = 'failed'
+      AND (${args.source ?? null}::text IS NULL OR rd.source_type = ${args.source ?? null})
     ORDER BY rd.updated_at DESC
     LIMIT ${args.limit}
   `;
@@ -102,6 +104,8 @@ function parseArgs(argv: string[]): Args {
       args.rawDocumentId = argv[++index];
     } else if (arg === '--project') {
       args.project = argv[++index];
+    } else if (arg === '--source') {
+      args.source = readSourceType(argv[++index], arg);
     } else if (arg === '--limit') {
       args.limit = Number(argv[++index]);
     } else if (arg === '--dry-run') {
@@ -111,6 +115,16 @@ function parseArgs(argv: string[]): Args {
     }
   }
   return args;
+}
+
+function readSourceType(value: string | undefined, optionName: string): string {
+  if (!value || value.startsWith('--')) {
+    throw new Error(`${optionName} requires a value.`);
+  }
+  if (!['github', 'web', 'gmail', 'drive'].includes(value)) {
+    throw new Error(`Unsupported ${optionName} value: ${value}`);
+  }
+  return value;
 }
 
 function createLocalObjectStorageFromEnv(env = process.env): LocalFsObjectStorage {

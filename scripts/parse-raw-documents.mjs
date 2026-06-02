@@ -13,7 +13,7 @@ async function main() {
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   const storage = createLocalObjectStorageFromEnv();
-  const repository = new PostgresRawParseRepository(sql);
+  const repository = new PostgresRawParseRepository(sql, options.source);
 
   try {
     if (options.seedBuiltInParsers !== false) {
@@ -34,8 +34,9 @@ async function main() {
 }
 
 class PostgresRawParseRepository {
-  constructor(sql) {
+  constructor(sql, sourceType) {
     this.sql = sql;
+    this.sourceType = sourceType;
   }
 
   async lookupProjectBySlug(slug) {
@@ -57,6 +58,7 @@ class PostgresRawParseRepository {
         WHERE q.project_id = ${input.projectId}
           AND q.status IN ('pending', 'failed')
           AND rd.ingest_status IN ('fetched', 'failed')
+          AND (${this.sourceType ?? null}::text IS NULL OR rd.source_type = ${this.sourceType ?? null})
         ORDER BY q.priority DESC, q.scheduled_at, q.created_at
         LIMIT ${input.limit}
         FOR UPDATE OF q SKIP LOCKED
@@ -295,7 +297,7 @@ function parseArgs(argv) {
     if (arg === '--project') {
       options.project = argv[++index];
     } else if (arg === '--source') {
-      options.source = argv[++index];
+      options.source = readSourceType(argv[++index], arg);
     } else if (arg === '--limit') {
       options.limit = Number(argv[++index]);
     } else if (arg === '--no-seed-built-in-parsers') {
@@ -305,6 +307,16 @@ function parseArgs(argv) {
     }
   }
   return options;
+}
+
+function readSourceType(value, optionName) {
+  if (!value || value.startsWith('--')) {
+    throw new Error(`${optionName} requires a value.`);
+  }
+  if (!SOURCE_TYPES.includes(value)) {
+    throw new Error(`Unsupported ${optionName} value: ${value}`);
+  }
+  return value;
 }
 
 function createLocalObjectStorageFromEnv(env = process.env) {

@@ -2,12 +2,14 @@ import postgres from 'postgres';
 import { resolveActors } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
+const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   const storage = createLocalObjectStorageFromEnv();
-  const repository = new PostgresActorResolutionRepository(sql, storage);
+  const repository = new PostgresActorResolutionRepository(sql, storage, options.source);
 
   try {
     const result = await resolveActors({
@@ -23,9 +25,10 @@ async function main() {
 }
 
 class PostgresActorResolutionRepository {
-  constructor(sql, storage) {
+  constructor(sql, storage, sourceType) {
     this.sql = sql;
     this.storage = storage;
+    this.sourceType = sourceType;
   }
 
   async lookupProjectBySlug(slug) {
@@ -47,6 +50,7 @@ class PostgresActorResolutionRepository {
       WHERE project_id = ${input.projectId}
         AND ingest_status = 'parsed'
         AND parsed_uri IS NOT NULL
+        AND (${this.sourceType ?? null}::text IS NULL OR source_type = ${this.sourceType ?? null})
       ORDER BY parsed_at NULLS LAST, fetched_at, id
       LIMIT ${input.limit}
     `;
@@ -187,6 +191,8 @@ function parseArgs(argv) {
     const arg = argv[index];
     if (arg === '--project') {
       options.project = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--source') {
+      options.source = readSourceType(readOptionValue(argv, ++index, arg));
     } else if (arg === '--limit') {
       const value = readOptionValue(argv, ++index, arg);
       const limit = Number(value);
@@ -199,6 +205,13 @@ function parseArgs(argv) {
     }
   }
   return options;
+}
+
+function readSourceType(value) {
+  if (!SOURCE_TYPES.includes(value)) {
+    throw new Error(`Unsupported --source value: ${value}`);
+  }
+  return value;
 }
 
 function readOptionValue(argv, index, optionName) {

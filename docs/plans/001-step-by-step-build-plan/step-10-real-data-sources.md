@@ -64,15 +64,17 @@ source 別に `ingest:inspect` と source contract test で次を検査する。
 
 - 実施日: 2026-06-01
 - 対象 Issue: #27
-- 実装範囲: Web URL source scanner / raw adapter / `pnpm ingest:collect` CLI / `ingest:run --source web` の collect step 接続。
+- 実装範囲: Web URL source scanner / raw adapter / `pnpm ingest:collect` CLI / `ingest:run --source web` の collect step 接続。2026-06-02 に `ingest:inspect`、`parser:version:validate`、失敗 raw fixture 化の source 絞り込み、`ingest:run --source web` の parse / resolve / chunk / graph source 絞り込みを追加。
 - 実行コマンド:
   - `pnpm --filter @pufu-lens/ingestion test`
   - `pnpm format:check`
   - `pnpm test`
+  - `node --check scripts/inspect-ingestion-source.mjs && node --check scripts/validate-parser-version.mjs && node --check scripts/ingest-workflow.mjs`
+  - `node scripts/ingest-workflow.mjs run --project sample-a --source web --limit 1 --dry-run`
 - 自動テスト結果: Web URL の URL 正規化、canonical URL source id、本文全文を metadata に入れないこと、dry-run、重複 skip を unit test で確認。全 package test と format check も通過。
-- 補助的な手動確認: 未実施。
-- DB 確認: 未実施。
-- Storage 確認: 未実施。
+- 補助的な手動確認: workflow dry-run で collect / parse / resolve / chunk / graph の各サブコマンドに `--source web` が渡ることを確認。
+- DB 確認: Docker daemon に接続できず、実 DB smoke は未実施。
+- Storage 確認: Docker daemon に接続できず、実 URL storage smoke は未実施。
 - ログ / secret 確認: unit test で raw body を metadata に保存しないことを確認。実 URL でのログ検査は未実施。
-- 未確認リスク: ローカル DB / storage を使った実 URL `--limit 5` の indexed 到達、`ingest:inspect`、失敗 raw の fixture 化、parser version validation CLI は未実装 / 未検証。
-- 次 step に進む判断: Web URL の最小 scanner / adapter は追加したが、Step 10 全体は継続。次は実 URL smoke test と inspect / failed fixture / parser validation CLI を整備する。
+- 未確認リスク: ローカル DB / storage を使った実 URL `--limit 5` の indexed 到達、`ingest:inspect` / 失敗 raw fixture 化 / parser version validation CLI の実 DB 実行、実 URL でのログ検査は未実施。
+- 次 step に進む判断: Web URL の最小 scanner / adapter と source 別観察 CLI は追加したが、Step 10 全体は継続。次は Docker 起動後に実 URL smoke test を実施する。
