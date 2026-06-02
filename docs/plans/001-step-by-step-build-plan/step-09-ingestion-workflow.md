@@ -61,7 +61,7 @@ SELECT count(*) FROM document_chunks;
   - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp pnpm ingest:run --project sample-a --source github --fixture --embedding-provider deterministic`
   - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp pnpm ingest:retry --project sample-a --source github --failed-only --embedding-provider deterministic`
   - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens pnpm ingest:status --project sample-a`
-  - `node --check scripts/ingest-workflow.mjs`
+  - `node --experimental-strip-types --check scripts/ingest-workflow.ts`
   - `pnpm format:check`
   - `pnpm lint`
   - `pnpm typecheck`

@@ -64,7 +64,7 @@ source 別に `ingest:inspect` と source contract test で次を検査する。
 
 Step 10 の Web URL 接続で追加した scripts は、後続 Step 10a / Step 10b で段階的に整理する。
 
-- Step 10a: scripts の実行形式だけを `.ts` に統一する。Step 10 確認記録に残る `.mjs` 表記は、Step 10a 実装時に `.ts` へ追従する。
+- Step 10a: scripts の実行形式だけを `.ts` に統一する。Step 10 確認記録に残る旧拡張子表記は、Step 10a 実装時に `.ts` へ更新済み。
 - Step 10b: scripts 全体の strict typecheck 対応を行う。Step 10a では型注釈整理や `tsconfig.scripts.json` 追加は行わない。
 
 ## Step 10 確認記録
@@ -76,8 +76,8 @@ Step 10 の Web URL 接続で追加した scripts は、後続 Step 10a / Step 1
   - `pnpm --filter @pufu-lens/ingestion test`
   - `pnpm format:check`
   - `pnpm test`
-  - `node --check scripts/inspect-ingestion-source.mjs && node --check scripts/validate-parser-version.mjs && node --check scripts/ingest-workflow.mjs`
-  - `node scripts/ingest-workflow.mjs run --project sample-a --source web --limit 1 --dry-run`
+  - `node --experimental-strip-types --check scripts/inspect-ingestion-source.ts && node --experimental-strip-types --check scripts/validate-parser-version.ts && node --experimental-strip-types --check scripts/ingest-workflow.ts`
+  - `node --experimental-strip-types scripts/ingest-workflow.ts run --project sample-a --source web --limit 1 --dry-run`
 - 自動テスト結果: Web URL の URL 正規化、canonical URL source id、本文全文を metadata に入れないこと、dry-run、重複 skip を unit test で確認。全 package test と format check も通過。
 - 補助的な手動確認: workflow dry-run で collect / parse / resolve / chunk / graph の各サブコマンドに `--source web` が渡ることを確認。
 - DB 確認: Docker daemon に接続できず、実 DB smoke は未実施。

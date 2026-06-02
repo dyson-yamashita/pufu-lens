@@ -235,7 +235,7 @@ async function ensureBuiltInParserVersions(input) {
           sources.data_source_id,
           sources.source_type,
           ${`Built-in ${sourceType} parser`},
-          ${input.sql.json({ managedBy: 'scripts/parse-raw-documents.mjs' })}
+          ${input.sql.json({ managedBy: 'scripts/parse-raw-documents.ts' })}
         FROM sources
         ON CONFLICT (project_id, data_source_id, source_type, name)
         DO UPDATE SET metadata = EXCLUDED.metadata

@@ -55,8 +55,8 @@ pnpm graph:query --project sample-b --cypher "MATCH (d:Document) RETURN d LIMIT 
   - `pnpm typecheck`
   - `pnpm lint`
   - `pnpm build`
-  - `node --check scripts/index-graph-relations.mjs`
-  - `node --check scripts/query-graph.mjs`
+  - `node --experimental-strip-types --check scripts/index-graph-relations.ts`
+  - `node --experimental-strip-types --check scripts/query-graph.ts`
   - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/tmp/pufu-lens-step8-storage pnpm ingest:index --project step8-smoke --limit 10`
   - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens pnpm graph:query --project step8-smoke --cypher "MATCH (d:Document) RETURN d LIMIT 5"`
   - `DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens pnpm graph:query --project sample-b --cypher "MATCH (d:Document) RETURN d LIMIT 5"`

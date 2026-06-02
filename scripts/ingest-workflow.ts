@@ -158,13 +158,13 @@ function buildStepCommand(step, projectSlug, options) {
   const args = [];
   if (step === 'collect') {
     if (options.fixture) {
-      args.push(join(repoRoot, 'scripts/collect-fixture-source.mjs'), '--project', projectSlug);
+      args.push(join(repoRoot, 'scripts/collect-fixture-source.ts'), '--project', projectSlug);
       if (options.source) {
         args.push('--source', options.source);
       }
     } else {
       args.push(
-        join(repoRoot, 'scripts/collect-source.mjs'),
+        join(repoRoot, 'scripts/collect-source.ts'),
         '--project',
         projectSlug,
         '--source',
@@ -178,7 +178,7 @@ function buildStepCommand(step, projectSlug, options) {
     return { args };
   }
   if (step === 'parse') {
-    args.push(join(repoRoot, 'scripts/parse-raw-documents.mjs'), '--project', projectSlug);
+    args.push(join(repoRoot, 'scripts/parse-raw-documents.ts'), '--project', projectSlug);
     if (options.source) {
       args.push('--source', options.source);
     }
@@ -186,7 +186,7 @@ function buildStepCommand(step, projectSlug, options) {
     return { args };
   }
   if (step === 'resolve') {
-    args.push(join(repoRoot, 'scripts/resolve-actors.mjs'), '--project', projectSlug);
+    args.push(join(repoRoot, 'scripts/resolve-actors.ts'), '--project', projectSlug);
     if (options.source) {
       args.push('--source', options.source);
     }
@@ -194,7 +194,7 @@ function buildStepCommand(step, projectSlug, options) {
     return { args };
   }
   if (step === 'chunk') {
-    args.push(join(repoRoot, 'scripts/chunk-and-embed.mjs'), '--project', projectSlug);
+    args.push(join(repoRoot, 'scripts/chunk-and-embed.ts'), '--project', projectSlug);
     if (options.source) {
       args.push('--source', options.source);
     }
@@ -203,7 +203,7 @@ function buildStepCommand(step, projectSlug, options) {
     return { args };
   }
   if (step === 'graph') {
-    args.push(join(repoRoot, 'scripts/index-graph-relations.mjs'), '--project', projectSlug);
+    args.push(join(repoRoot, 'scripts/index-graph-relations.ts'), '--project', projectSlug);
     if (options.source) {
       args.push('--source', options.source);
     }
@@ -220,7 +220,7 @@ function appendLimit(args, limit) {
 }
 
 async function runNodeScript(args) {
-  const child = spawn(process.execPath, args, {
+  const child = spawn(process.execPath, [...process.execArgv, ...args], {
     cwd: repoRoot,
     env: process.env,
     stdio: ['ignore', 'pipe', 'pipe'],
