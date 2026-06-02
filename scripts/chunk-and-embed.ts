@@ -1,4 +1,15 @@
 import postgres from 'postgres';
+import type { ChunkEmbeddingProjectRecord } from '../packages/ingestion/dist/chunk-embedding.js';
+import type {
+  ChunkEmbeddingRepository,
+  ChunkEmbeddingTarget,
+  DocumentChunkRecord,
+  DocumentRecord,
+  EmbeddingProvider,
+  ReplaceDocumentChunksInput,
+  SourceType,
+  UpsertDocumentInput,
+} from '../packages/ingestion/dist/index.js';
 import {
   chunkAndEmbed,
   createDeterministicEmbeddingProvider,
@@ -9,7 +20,7 @@ import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 
-async function main() {
+async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
@@ -32,25 +43,35 @@ async function main() {
   }
 }
 
-class PostgresChunkEmbeddingRepository {
-  constructor(sql, storage, sourceType) {
+class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
+  private sql: postgres.Sql;
+  private storage: LocalFsObjectStorage;
+  private sourceType: SourceType | undefined;
+  constructor(
+    sql: postgres.Sql,
+    storage: LocalFsObjectStorage,
+    sourceType: SourceType | undefined,
+  ) {
     this.sql = sql;
     this.storage = storage;
     this.sourceType = sourceType;
   }
 
-  async lookupProjectBySlug(slug) {
+  async lookupProjectBySlug(slug: string): Promise<ChunkEmbeddingProjectRecord | undefined> {
     return singleJson(
-      await this.sql`
+      (await this.sql`
         SELECT id::text AS id, slug
         FROM public.projects
         WHERE slug = ${slug}
-      `,
+      `) as ChunkEmbeddingProjectRecord[],
     );
   }
 
-  async readParsedDocuments(input) {
-    const rows = await this.sql`
+  async readParsedDocuments(input: {
+    limit: number;
+    projectId: string;
+  }): Promise<ChunkEmbeddingTarget[]> {
+    const rows = (await this.sql`
       SELECT
         rd.content_hash AS "rawContentHash",
         rd.id::text AS "rawDocumentId",
@@ -64,23 +85,25 @@ class PostgresChunkEmbeddingRepository {
         AND (${this.sourceType ?? null}::text IS NULL OR rd.source_type = ${this.sourceType ?? null})
       ORDER BY rd.parsed_at NULLS LAST, rd.fetched_at, rd.id
       LIMIT ${input.limit}
-    `;
+    `) as Array<Omit<ChunkEmbeddingTarget, 'parsed'> & { parsedUri: string }>;
 
     return Promise.all(
-      rows.map(async (row) => ({
-        parsed: await this.storage.getText(row.parsedUri),
-        parsedUri: row.parsedUri,
-        parserArtifactHash: row.parserArtifactHash,
-        parserVersionId: row.parserVersionId,
-        rawContentHash: row.rawContentHash,
-        rawDocumentId: row.rawDocumentId,
-      })),
+      rows.map(
+        async (row): Promise<ChunkEmbeddingTarget> => ({
+          parsed: await this.storage.getText(row.parsedUri),
+          parsedUri: row.parsedUri,
+          parserArtifactHash: row.parserArtifactHash,
+          parserVersionId: row.parserVersionId,
+          rawContentHash: row.rawContentHash,
+          rawDocumentId: row.rawDocumentId,
+        }),
+      ),
     );
   }
 
-  async upsertDocument(input) {
+  async upsertDocument(input: UpsertDocumentInput): Promise<DocumentRecord> {
     const document = singleJson(
-      await this.sql`
+      (await this.sql`
         INSERT INTO public.documents (
           project_id,
           raw_document_id,
@@ -101,7 +124,7 @@ class PostgresChunkEmbeddingRepository {
           ${input.canonicalUri},
           ${input.occurredAt},
           ${input.graphNodeId},
-          ${this.sql.json(input.metadata)}
+          ${this.sql.json(input.metadata as postgres.JSONValue)}
         )
         ON CONFLICT (raw_document_id)
         DO UPDATE SET
@@ -118,7 +141,7 @@ class PostgresChunkEmbeddingRepository {
           id::text AS id,
           project_id::text AS "projectId",
           raw_document_id::text AS "rawDocumentId"
-      `,
+      `) as DocumentRecord[],
     );
 
     if (!document) {
@@ -127,8 +150,11 @@ class PostgresChunkEmbeddingRepository {
     return document;
   }
 
-  async listCurrentChunks(input) {
-    return this.sql`
+  async listCurrentChunks(input: {
+    documentId: string;
+    projectId: string;
+  }): Promise<DocumentChunkRecord[]> {
+    return (await this.sql`
       SELECT
         chunk_index AS "chunkIndex",
         content_hash AS "contentHash",
@@ -138,11 +164,11 @@ class PostgresChunkEmbeddingRepository {
       WHERE project_id = ${input.projectId}
         AND document_id = ${input.documentId}
       ORDER BY chunk_index
-    `;
+    `) as DocumentChunkRecord[];
   }
 
-  async replaceDocumentChunks(input) {
-    await this.sql.begin(async (transaction) => {
+  async replaceDocumentChunks(input: ReplaceDocumentChunksInput): Promise<void> {
+    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
       await transaction`
         INSERT INTO public.document_chunk_history (
           project_id,
@@ -202,7 +228,7 @@ class PostgresChunkEmbeddingRepository {
             ${chunk.contentHash},
             ${vectorLiteral(chunk.embedding)},
             ${chunk.embeddingModel},
-            ${transaction.json(chunk.metadata)}
+            ${transaction.json(chunk.metadata as postgres.JSONValue)}
           )
         `;
       }
@@ -220,7 +246,7 @@ class PostgresChunkEmbeddingRepository {
   }
 }
 
-function createEmbeddingProvider(options) {
+function createEmbeddingProvider(options: { embeddingProvider?: string }): EmbeddingProvider {
   if ((options.embeddingProvider ?? 'deterministic') === 'deterministic') {
     return createDeterministicEmbeddingProvider();
   }
@@ -234,8 +260,20 @@ function createEmbeddingProvider(options) {
   throw new Error(`Unknown embedding provider: ${options.embeddingProvider}`);
 }
 
-function parseArgs(argv) {
-  const options = {};
+function parseArgs(argv: string[]): {
+  project?: string;
+  source?: SourceType;
+  limit?: number;
+  embeddingProvider?: string;
+  dryRun?: boolean;
+} {
+  const options: {
+    project?: string;
+    source?: SourceType;
+    limit?: number;
+    embeddingProvider?: string;
+    dryRun?: boolean;
+  } = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {
@@ -255,14 +293,16 @@ function parseArgs(argv) {
   return options;
 }
 
-function readSourceType(value) {
-  if (!SOURCE_TYPES.includes(value)) {
+function readSourceType(value: string): SourceType {
+  if (!(SOURCE_TYPES as readonly string[]).includes(value)) {
     throw new Error(`Unsupported --source value: ${value}`);
   }
-  return value;
+  return value as SourceType;
 }
 
-function createLocalObjectStorageFromEnv(env = process.env) {
+function createLocalObjectStorageFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): LocalFsObjectStorage {
   const root = env.STORAGE_ROOT ?? env.LOCAL_STORAGE_ROOT;
   if (!root) {
     throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
@@ -270,7 +310,7 @@ function createLocalObjectStorageFromEnv(env = process.env) {
   return new LocalFsObjectStorage(root);
 }
 
-function readDimensionsEnv() {
+function readDimensionsEnv(): number {
   const value = process.env.GEMINI_EMBEDDING_DIMENSIONS;
   if (!value) {
     throw new Error('GEMINI_EMBEDDING_DIMENSIONS is required.');
@@ -278,7 +318,7 @@ function readDimensionsEnv() {
   return readPositiveInteger(value, 'GEMINI_EMBEDDING_DIMENSIONS');
 }
 
-function readOptionValue(argv, index, optionName) {
+function readOptionValue(argv: string[], index: number, optionName: string): string {
   const value = argv[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
@@ -286,7 +326,7 @@ function readOptionValue(argv, index, optionName) {
   return value;
 }
 
-function readPositiveInteger(value, name) {
+function readPositiveInteger(value: string, name: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`Invalid ${name} value: ${value}`);
@@ -294,7 +334,7 @@ function readPositiveInteger(value, name) {
   return parsed;
 }
 
-function requiredEnv(name) {
+function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -302,22 +342,22 @@ function requiredEnv(name) {
   return value;
 }
 
-function requiredOption(value, name) {
+function requiredOption(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(`${name} is required.`);
   }
   return value;
 }
 
-function singleJson(rows) {
+function singleJson<T>(rows: T[]): T | undefined {
   return rows[0];
 }
 
-function vectorLiteral(vector) {
+function vectorLiteral(vector: number[]): string {
   return `[${vector.join(',')}]`;
 }
 
-main().catch((error) => {
+main().catch((error: unknown): void => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

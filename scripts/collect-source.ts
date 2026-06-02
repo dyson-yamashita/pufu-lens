@@ -1,10 +1,20 @@
 import postgres from 'postgres';
+import type {
+  CollectionRepository,
+  DataSourceRecord,
+  LinkDataSourceInput,
+  ProjectRecord,
+  QueueCandidateInput,
+  RawDocumentInput,
+  RawDocumentRecord,
+  SourceType,
+} from '../packages/ingestion/dist/index.js';
 import { collectWebUrlSource } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
 const SOURCE_TYPES = ['web'];
 
-async function main() {
+async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sourceType = requiredOption(options.source, '--source');
@@ -35,23 +45,27 @@ async function main() {
   }
 }
 
-class PostgresCollectionRepository {
-  constructor(sql) {
+class PostgresCollectionRepository implements CollectionRepository {
+  private sql: postgres.Sql;
+  constructor(sql: postgres.Sql) {
     this.sql = sql;
   }
 
-  async lookupProjectBySlug(slug) {
+  async lookupProjectBySlug(slug: string): Promise<ProjectRecord | undefined> {
     return singleJson(
-      await this.sql`
+      (await this.sql`
         SELECT id::text AS id, slug
         FROM public.projects
         WHERE slug = ${slug}
-      `,
+      `) as ProjectRecord[],
     );
   }
 
-  async findDataSources(projectId, sourceType) {
-    return this.sql`
+  async findDataSources(projectId: string, sourceType?: SourceType): Promise<DataSourceRecord[]> {
+    if (!sourceType) {
+      return [];
+    }
+    return (await this.sql`
       SELECT
         config,
         enabled,
@@ -64,12 +78,16 @@ class PostgresCollectionRepository {
         AND enabled = true
         AND source_type = ${sourceType}
       ORDER BY source_type, name
-    `;
+    `) as DataSourceRecord[];
   }
 
-  async lookupRawDocument(input) {
+  async lookupRawDocument(input: {
+    projectId: string;
+    sourceId: string;
+    sourceType: SourceType;
+  }): Promise<RawDocumentRecord | undefined> {
     return singleJson(
-      await this.sql`
+      (await this.sql`
         SELECT
           id::text AS id,
           ingest_status AS "ingestStatus",
@@ -79,23 +97,27 @@ class PostgresCollectionRepository {
         WHERE project_id = ${input.projectId}
           AND source_type = ${input.sourceType}
           AND source_id = ${input.sourceId}
-      `,
+      `) as RawDocumentRecord[],
     );
   }
 
-  async findSameHashCandidates(input) {
-    return this.sql`
+  async findSameHashCandidates(input: {
+    contentHash: string;
+    projectId: string;
+    sourceType: SourceType;
+  }): Promise<Array<{ id: string; sourceId: string; sourceType: SourceType }>> {
+    return (await this.sql`
       SELECT id::text AS id, source_id AS "sourceId", source_type AS "sourceType"
       FROM public.raw_documents
       WHERE project_id = ${input.projectId}
         AND content_hash = ${input.contentHash}
       ORDER BY created_at
-    `;
+    `) as Array<{ id: string; sourceId: string; sourceType: SourceType }>;
   }
 
-  async upsertRawDocument(input) {
+  async upsertRawDocument(input: RawDocumentInput): Promise<RawDocumentRecord> {
     const rawDocument = singleJson(
-      await this.sql`
+      (await this.sql`
         INSERT INTO public.raw_documents (
           project_id,
           source_type,
@@ -118,7 +140,7 @@ class PostgresCollectionRepository {
           ${input.byteSize},
           ${input.contentHash},
           'fetched',
-          ${this.sql.json(input.metadata)}
+          ${this.sql.json(input.metadata as postgres.JSONValue)}
         )
         ON CONFLICT (project_id, source_type, source_id)
         DO UPDATE SET
@@ -133,7 +155,7 @@ class PostgresCollectionRepository {
           ingest_status AS "ingestStatus",
           source_id AS "sourceId",
           source_type AS "sourceType"
-      `,
+      `) as RawDocumentRecord[],
     );
 
     if (!rawDocument) {
@@ -143,7 +165,7 @@ class PostgresCollectionRepository {
     return rawDocument;
   }
 
-  async linkDataSource(input) {
+  async linkDataSource(input: LinkDataSourceInput): Promise<void> {
     await this.sql`
       INSERT INTO public.raw_document_data_sources (
         raw_document_id,
@@ -157,7 +179,7 @@ class PostgresCollectionRepository {
         ${input.dataSourceId},
         ${input.projectId},
         ${input.matchReason},
-        ${this.sql.json(input.metadata)}
+        ${this.sql.json(input.metadata as postgres.JSONValue)}
       )
       ON CONFLICT (raw_document_id, data_source_id)
       DO UPDATE SET
@@ -167,7 +189,7 @@ class PostgresCollectionRepository {
     `;
   }
 
-  async queueCandidate(input) {
+  async queueCandidate(input: QueueCandidateInput): Promise<void> {
     await this.sql`
       INSERT INTO public.ingestion_queue (
         project_id,
@@ -199,7 +221,7 @@ class PostgresCollectionRepository {
     `;
   }
 
-  async markDataSourceChecked(dataSourceId) {
+  async markDataSourceChecked(dataSourceId: string): Promise<void> {
     await this.sql`
       UPDATE public.data_sources
       SET last_checked_at = now()
@@ -208,7 +230,11 @@ class PostgresCollectionRepository {
   }
 }
 
-async function ensureWebUrlDataSource(input) {
+async function ensureWebUrlDataSource(input: {
+  projectSlug: string;
+  sql: postgres.Sql;
+  urls: string[];
+}): Promise<void> {
   await input.sql`
     WITH project AS (
       SELECT id FROM public.projects WHERE slug = ${input.projectSlug}
@@ -237,7 +263,9 @@ async function ensureWebUrlDataSource(input) {
   `;
 }
 
-function createLocalObjectStorageFromEnv(env = process.env) {
+function createLocalObjectStorageFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): LocalFsObjectStorage {
   const driver = env.STORAGE_DRIVER ?? env.OBJECT_STORAGE_DRIVER ?? 'local';
   if (driver !== 'local') {
     throw new Error(`Unsupported object storage driver for real collection CLI: ${driver}`);
@@ -251,8 +279,20 @@ function createLocalObjectStorageFromEnv(env = process.env) {
   return new LocalFsObjectStorage(root);
 }
 
-function parseArgs(args) {
-  const options = { urls: [] };
+function parseArgs(args: string[]): {
+  project?: string;
+  source?: string;
+  urls: string[];
+  limit?: number;
+  dryRun?: boolean;
+} {
+  const options: {
+    project?: string;
+    source?: string;
+    urls: string[];
+    limit?: number;
+    dryRun?: boolean;
+  } = { urls: [] };
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -278,7 +318,7 @@ function parseArgs(args) {
   return options;
 }
 
-function readOptionValue(args, index, optionName) {
+function readOptionValue(args: string[], index: number, optionName: string): string {
   const value = args[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
@@ -287,7 +327,7 @@ function readOptionValue(args, index, optionName) {
   return value;
 }
 
-function readPositiveInteger(value, name) {
+function readPositiveInteger(value: string, name: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`Invalid ${name} value: ${value}`);
@@ -295,7 +335,7 @@ function readPositiveInteger(value, name) {
   return parsed;
 }
 
-function requiredEnv(name) {
+function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -303,18 +343,18 @@ function requiredEnv(name) {
   return value;
 }
 
-function requiredOption(value, optionName) {
+function requiredOption(value: string | undefined, optionName: string): string {
   if (!value) {
     throw new Error(`${optionName} is required.`);
   }
   return value;
 }
 
-function singleJson(rows) {
+function singleJson<T>(rows: T[]): T | undefined {
   return rows[0];
 }
 
-main().catch((error) => {
+main().catch((error: unknown): void => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

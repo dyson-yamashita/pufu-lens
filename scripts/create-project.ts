@@ -64,7 +64,9 @@ async function main(): Promise<void> {
   }
 }
 
-function createLocalObjectStorageFromEnv(env = process.env): LocalFsObjectStorage {
+function createLocalObjectStorageFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): LocalFsObjectStorage {
   const driver = env.STORAGE_DRIVER ?? env.OBJECT_STORAGE_DRIVER ?? 'local';
   if (driver !== 'local') {
     throw new Error(`Unsupported object storage driver for create-project CLI: ${driver}`);
@@ -201,7 +203,7 @@ function databaseUrlToPsqlEnv(databaseUrl: string): NodeJS.ProcessEnv {
   return env;
 }
 
-main().catch((error: unknown) => {
+main().catch((error: unknown): void => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

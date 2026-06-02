@@ -3,12 +3,85 @@ import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
+import type { SourceType } from '../packages/ingestion/dist/index.js';
 
-const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
-const STEP_ORDER = ['collect', 'parse', 'resolve', 'chunk', 'graph'];
+const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
+const STEP_ORDER = ['collect', 'parse', 'resolve', 'chunk', 'graph'] as const;
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-async function main() {
+type WorkflowStep = (typeof STEP_ORDER)[number];
+type WorkflowCommand = 'run' | 'retry';
+
+type WorkflowOptions = {
+  dryRun?: boolean;
+  embeddingProvider?: string;
+  failedOnly?: boolean;
+  fixture?: boolean;
+  limit?: number;
+  project?: string;
+  resumeFrom?: WorkflowStep;
+  source?: SourceType;
+  step?: WorkflowStep;
+  urls?: string[];
+};
+
+type CountRow = {
+  count: number;
+  name: string;
+};
+
+type FailedQueueItem = {
+  attempts: number;
+  holdReason: string | null;
+  lastError: string | null;
+  sourceId: string;
+  sourceType: string;
+  status: string;
+};
+
+type ProjectRecord = {
+  id: string;
+  slug: string;
+};
+
+type LlmUsage = {
+  agentCalls: number;
+  chatModelCalls: number;
+  embeddingModelCalls: number;
+  tokenUsage: number;
+};
+
+type RunLogger = {
+  command: WorkflowCommand;
+  projectSlug: string;
+  runId: string;
+  sourceType?: SourceType;
+};
+
+type StepCommand = {
+  args: string[];
+};
+
+type ScriptResult = Record<string, unknown> & {
+  llm?: LlmUsage;
+};
+
+type ResetFailedQueueResult = {
+  queueItems: number;
+  rawDocuments: number;
+};
+
+type WorkflowEvent = Record<string, unknown>;
+
+type Totals = {
+  documentChunks: number;
+  documents: number;
+  emailQuotes: number;
+  queueItems: number;
+  rawDocuments: number;
+};
+
+async function main(): Promise<void> {
   const [command, ...argv] = process.argv.slice(2);
   const options = parseArgs(argv);
 
@@ -28,7 +101,7 @@ async function main() {
   throw new Error(`Unknown workflow command: ${command ?? '<missing>'}`);
 }
 
-async function runCommand(options) {
+async function runCommand(options: WorkflowOptions): Promise<void> {
   const projectSlug = requiredOption(options.project, '--project');
   if (!options.fixture && options.source !== 'web') {
     throw new Error('--fixture is required unless --source web is used.');
@@ -51,7 +124,7 @@ async function runCommand(options) {
   logEvent(run, { event: 'workflow_completed', llm: noLlmUsage() });
 }
 
-async function retryCommand(options) {
+async function retryCommand(options: WorkflowOptions): Promise<void> {
   const projectSlug = requiredOption(options.project, '--project');
   if (!options.failedOnly) {
     throw new Error('--failed-only is required for ingest:retry.');
@@ -60,7 +133,10 @@ async function retryCommand(options) {
   const run = createRunLogger({ command: 'retry', projectSlug, sourceType: options.source });
   const reset = options.dryRun
     ? { planned: true, queueItems: 0, rawDocuments: 0 }
-    : await withSql((sql) => resetFailedQueue({ projectSlug, sourceType: options.source, sql }));
+    : await withSql(
+        (sql: postgres.Sql): Promise<ResetFailedQueueResult> =>
+          resetFailedQueue({ projectSlug, sourceType: options.source, sql }),
+      );
   logEvent(run, {
     event: 'failed_queue_reset',
     llm: noLlmUsage(),
@@ -83,7 +159,7 @@ async function retryCommand(options) {
   logEvent(run, { event: 'workflow_completed', llm: noLlmUsage() });
 }
 
-async function withSql(callback) {
+async function withSql<T>(callback: (sql: postgres.Sql) => Promise<T> | T): Promise<T> {
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   try {
     return await callback(sql);
@@ -92,9 +168,9 @@ async function withSql(callback) {
   }
 }
 
-async function statusCommand(options) {
+async function statusCommand(options: WorkflowOptions): Promise<void> {
   const projectSlug = requiredOption(options.project, '--project');
-  await withSql(async (sql) => {
+  await withSql(async (sql: postgres.Sql): Promise<void> => {
     const project = await lookupProject(sql, projectSlug);
     if (!project) {
       throw new Error(`Project not found: ${projectSlug}`);
@@ -112,7 +188,12 @@ async function statusCommand(options) {
   });
 }
 
-async function executeWorkflowStep(input) {
+async function executeWorkflowStep(input: {
+  options: WorkflowOptions;
+  projectSlug: string;
+  run: RunLogger;
+  step: WorkflowStep;
+}): Promise<void> {
   const startedAt = new Date();
   const command = buildStepCommand(input.step, input.projectSlug, input.options);
   logEvent(input.run, {
@@ -154,8 +235,12 @@ async function executeWorkflowStep(input) {
   }
 }
 
-function buildStepCommand(step, projectSlug, options) {
-  const args = [];
+function buildStepCommand(
+  step: WorkflowStep,
+  projectSlug: string,
+  options: WorkflowOptions,
+): StepCommand {
+  const args: string[] = [];
   if (step === 'collect') {
     if (options.fixture) {
       args.push(join(repoRoot, 'scripts/collect-fixture-source.ts'), '--project', projectSlug);
@@ -163,12 +248,13 @@ function buildStepCommand(step, projectSlug, options) {
         args.push('--source', options.source);
       }
     } else {
+      const sourceType = requiredOption(options.source, '--source');
       args.push(
         join(repoRoot, 'scripts/collect-source.ts'),
         '--project',
         projectSlug,
         '--source',
-        options.source,
+        sourceType,
       );
       for (const url of options.urls ?? []) {
         args.push('--url', url);
@@ -213,13 +299,13 @@ function buildStepCommand(step, projectSlug, options) {
   throw new Error(`Unknown workflow step: ${step}`);
 }
 
-function appendLimit(args, limit) {
+function appendLimit(args: string[], limit: number | undefined): void {
   if (limit !== undefined) {
     args.push('--limit', String(limit));
   }
 }
 
-async function runNodeScript(args) {
+async function runNodeScript(args: string[]): Promise<ScriptResult> {
   const child = spawn(process.execPath, [...process.execArgv, ...args], {
     cwd: repoRoot,
     env: process.env,
@@ -230,14 +316,14 @@ async function runNodeScript(args) {
   let stderr = '';
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
-  child.stdout.on('data', (chunk) => {
+  child.stdout.on('data', (chunk: string): void => {
     stdout += chunk;
   });
-  child.stderr.on('data', (chunk) => {
+  child.stderr.on('data', (chunk: string): void => {
     stderr += chunk;
   });
 
-  const exitCode = await new Promise((resolve, reject) => {
+  const exitCode = await new Promise<number | null>((resolve, reject) => {
     child.on('error', reject);
     child.on('close', resolve);
   });
@@ -249,7 +335,7 @@ async function runNodeScript(args) {
   return parseScriptOutput(stdout);
 }
 
-function parseScriptOutput(stdout) {
+function parseScriptOutput(stdout: string): ScriptResult {
   const trimmed = stdout.trim();
   if (!trimmed) {
     return {};
@@ -286,24 +372,29 @@ function parseScriptOutput(stdout) {
   }
 }
 
-function summarizeScriptResult(result) {
+function summarizeScriptResult(result: unknown): ScriptResult {
   if (!result || typeof result !== 'object') {
     return {};
   }
 
-  const decisions = Array.isArray(result.decisions)
-    ? result.decisions.map(summarizeDecision)
+  const record = result as Record<string, unknown>;
+  const decisions = Array.isArray(record.decisions)
+    ? record.decisions.map(summarizeDecision)
     : undefined;
   return {
-    ...(result.projectSlug ? { projectSlug: result.projectSlug } : {}),
-    ...(result.embeddingModel ? { embeddingModel: result.embeddingModel } : {}),
-    ...(result.llm ? { llm: result.llm } : {}),
+    ...(typeof record.projectSlug === 'string' ? { projectSlug: record.projectSlug } : {}),
+    ...(typeof record.embeddingModel === 'string' ? { embeddingModel: record.embeddingModel } : {}),
+    ...(isLlmUsage(record.llm) ? { llm: record.llm } : {}),
     ...(decisions ? { decisionCount: decisions.length, decisions } : {}),
   };
 }
 
-function summarizeDecision(decision) {
-  const summary = {};
+function summarizeDecision(decision: unknown): Record<string, unknown> {
+  const summary: Record<string, unknown> = {};
+  if (!decision || typeof decision !== 'object') {
+    return summary;
+  }
+  const record = decision as Record<string, unknown>;
   for (const key of [
     'actorEdgeCount',
     'chunkCount',
@@ -318,20 +409,24 @@ function summarizeDecision(decision) {
     'sourceId',
     'sourceType',
   ]) {
-    if (decision[key] !== undefined) {
-      summary[key] = decision[key];
+    if (record[key] !== undefined) {
+      summary[key] = record[key];
     }
   }
   return summary;
 }
 
-async function resetFailedQueue(input) {
+async function resetFailedQueue(input: {
+  projectSlug: string;
+  sourceType?: SourceType;
+  sql: postgres.Sql;
+}): Promise<ResetFailedQueueResult> {
   const project = await lookupProject(input.sql, input.projectSlug);
   if (!project) {
     throw new Error(`Project not found: ${input.projectSlug}`);
   }
 
-  const rows = await input.sql`
+  const rows = (await input.sql`
     WITH failed AS (
       SELECT q.id AS queue_id, rd.id AS raw_document_id, rd.parsed_uri
       FROM public.ingestion_queue q
@@ -365,26 +460,36 @@ async function resetFailedQueue(input) {
     SELECT
       (SELECT count(*)::int FROM updated_raw) AS "rawDocuments",
       (SELECT count(*)::int FROM updated_queue) AS "queueItems"
-  `;
+  `) as ResetFailedQueueResult[];
 
   return rows[0] ?? { queueItems: 0, rawDocuments: 0 };
 }
 
-async function lookupProject(sql, slug) {
+async function lookupProject(sql: postgres.Sql, slug: string): Promise<ProjectRecord | undefined> {
   const rows = await sql`
     SELECT id::text AS id, slug
     FROM public.projects
     WHERE slug = ${slug}
   `;
-  return rows[0];
+  return rows[0] as ProjectRecord | undefined;
 }
 
-async function countBy(sql, tableName, columnName, projectId) {
+async function countBy(
+  sql: postgres.Sql,
+  tableName: string,
+  columnName: string,
+  projectId: string,
+): Promise<Record<string, number>> {
   const rows = await selectCountRows(sql, tableName, columnName, projectId);
   return Object.fromEntries(rows.map((row) => [row.name, row.count]));
 }
 
-async function selectCountRows(sql, tableName, columnName, projectId) {
+async function selectCountRows(
+  sql: postgres.Sql,
+  tableName: string,
+  columnName: string,
+  projectId: string,
+): Promise<CountRow[]> {
   if (tableName === 'documents' && columnName === 'doc_type') {
     return sql`
       SELECT doc_type AS name, count(*)::int AS count
@@ -415,7 +520,7 @@ async function selectCountRows(sql, tableName, columnName, projectId) {
   throw new Error(`Unsupported status count: ${tableName}.${columnName}`);
 }
 
-async function readTotals(sql, projectId) {
+async function readTotals(sql: postgres.Sql, projectId: string): Promise<Totals | undefined> {
   const rows = await sql`
     SELECT
       (SELECT count(*)::int FROM public.raw_documents WHERE project_id = ${projectId}) AS "rawDocuments",
@@ -424,11 +529,11 @@ async function readTotals(sql, projectId) {
       (SELECT count(*)::int FROM public.document_chunks WHERE project_id = ${projectId}) AS "documentChunks",
       (SELECT count(*)::int FROM public.email_quotes WHERE project_id = ${projectId}) AS "emailQuotes"
   `;
-  return rows[0];
+  return rows[0] as Totals | undefined;
 }
 
-async function listFailedQueue(sql, projectId) {
-  return sql`
+async function listFailedQueue(sql: postgres.Sql, projectId: string): Promise<FailedQueueItem[]> {
+  return (await sql`
     SELECT
       q.attempts,
       q.hold_reason AS "holdReason",
@@ -442,10 +547,10 @@ async function listFailedQueue(sql, projectId) {
       AND q.status IN ('failed', 'held')
     ORDER BY q.updated_at DESC, q.created_at DESC
     LIMIT 20
-  `;
+  `) as FailedQueueItem[];
 }
 
-function selectSteps(options) {
+function selectSteps(options: { resumeFrom?: WorkflowStep; step?: WorkflowStep }): WorkflowStep[] {
   if (options.step && options.resumeFrom) {
     throw new Error('Cannot specify both --step and --resume-from.');
   }
@@ -460,7 +565,11 @@ function selectSteps(options) {
   return STEP_ORDER.slice(startIndex);
 }
 
-function createRunLogger(input) {
+function createRunLogger(input: {
+  command: WorkflowCommand;
+  projectSlug: string;
+  sourceType?: SourceType;
+}): RunLogger {
   return {
     command: input.command,
     projectSlug: input.projectSlug,
@@ -469,7 +578,7 @@ function createRunLogger(input) {
   };
 }
 
-function logEvent(run, event) {
+function logEvent(run: RunLogger, event: WorkflowEvent): void {
   console.log(
     JSON.stringify({
       command: run.command,
@@ -482,7 +591,7 @@ function logEvent(run, event) {
   );
 }
 
-function noLlmUsage() {
+function noLlmUsage(): LlmUsage {
   return {
     agentCalls: 0,
     chatModelCalls: 0,
@@ -491,18 +600,27 @@ function noLlmUsage() {
   };
 }
 
-function parseArgs(argv) {
-  const options = {};
+function isLlmUsage(value: unknown): value is LlmUsage {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.agentCalls === 'number' &&
+    typeof record.chatModelCalls === 'number' &&
+    typeof record.embeddingModelCalls === 'number' &&
+    typeof record.tokenUsage === 'number'
+  );
+}
+
+function parseArgs(argv: string[]): WorkflowOptions {
+  const options: WorkflowOptions = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {
       options.project = readOptionValue(argv, ++index, arg);
     } else if (arg === '--source') {
-      const sourceType = readOptionValue(argv, ++index, arg);
-      if (!SOURCE_TYPES.includes(sourceType)) {
-        throw new Error(`Unsupported --source value: ${sourceType}`);
-      }
-      options.source = sourceType;
+      options.source = readSourceType(readOptionValue(argv, ++index, arg));
     } else if (arg === '--fixture') {
       options.fixture = true;
     } else if (arg === '--url') {
@@ -527,14 +645,21 @@ function parseArgs(argv) {
   return options;
 }
 
-function readStepOption(value, optionName) {
-  if (!STEP_ORDER.includes(value)) {
-    throw new Error(`Invalid ${optionName} value: ${value}`);
+function readSourceType(value: string): SourceType {
+  if (!(SOURCE_TYPES as readonly string[]).includes(value)) {
+    throw new Error(`Unsupported --source value: ${value}`);
   }
-  return value;
+  return value as SourceType;
 }
 
-function readOptionValue(argv, index, optionName) {
+function readStepOption(value: string, optionName: string): WorkflowStep {
+  if (!(STEP_ORDER as readonly string[]).includes(value)) {
+    throw new Error(`Invalid ${optionName} value: ${value}`);
+  }
+  return value as WorkflowStep;
+}
+
+function readOptionValue(argv: string[], index: number, optionName: string): string {
   const value = argv[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
@@ -542,7 +667,7 @@ function readOptionValue(argv, index, optionName) {
   return value;
 }
 
-function readPositiveInteger(value, name) {
+function readPositiveInteger(value: string, name: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`Invalid ${name} value: ${value}`);
@@ -550,18 +675,20 @@ function readPositiveInteger(value, name) {
   return parsed;
 }
 
-function redactArgv(args) {
-  return args.map((arg) => (arg.includes(process.cwd()) ? arg.replace(process.cwd(), '.') : arg));
+function redactArgv(args: string[]): string[] {
+  return args.map((arg: string): string =>
+    arg.includes(process.cwd()) ? arg.replace(process.cwd(), '.') : arg,
+  );
 }
 
-function safeErrorMessage(value) {
+function safeErrorMessage(value: unknown): string {
   return String(value)
     .replace(/(token|secret|api[_-]?key)=\S+/gi, '$1=<redacted>')
     .replace(/(postgres(?:ql)?:\/\/[^:]+:)[^@]+@/gi, '$1<redacted>@')
     .slice(0, 1000);
 }
 
-function requiredEnv(name) {
+function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -569,14 +696,14 @@ function requiredEnv(name) {
   return value;
 }
 
-function requiredOption(value, name) {
+function requiredOption<T extends string>(value: T | undefined, name: string): T {
   if (!value) {
     throw new Error(`${name} is required.`);
   }
   return value;
 }
 
-main().catch((error) => {
+main().catch((error: unknown): void => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

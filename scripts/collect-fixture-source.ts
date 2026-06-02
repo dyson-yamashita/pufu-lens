@@ -2,12 +2,22 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 import { collectFixtureSource } from '../packages/ingestion/dist/collection-pipeline.js';
+import type {
+  CollectionRepository,
+  DataSourceRecord,
+  LinkDataSourceInput,
+  ProjectRecord,
+  QueueCandidateInput,
+  RawDocumentInput,
+  RawDocumentRecord,
+  SourceType,
+} from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
-const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
+const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-async function main() {
+async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
@@ -35,24 +45,25 @@ async function main() {
   }
 }
 
-class PostgresCollectionRepository {
-  constructor(sql) {
+class PostgresCollectionRepository implements CollectionRepository {
+  private sql: postgres.Sql;
+  constructor(sql: postgres.Sql) {
     this.sql = sql;
   }
 
-  async lookupProjectBySlug(slug) {
+  async lookupProjectBySlug(slug: string): Promise<ProjectRecord | undefined> {
     return singleJson(
-      await this.sql`
+      (await this.sql`
         SELECT id::text AS id, slug
         FROM public.projects
         WHERE slug = ${slug}
-      `,
+      `) as ProjectRecord[],
     );
   }
 
-  async findDataSources(projectId, sourceType) {
+  async findDataSources(projectId: string, sourceType?: SourceType): Promise<DataSourceRecord[]> {
     if (sourceType) {
-      return this.sql`
+      return (await this.sql`
         SELECT
           config,
           enabled,
@@ -65,10 +76,10 @@ class PostgresCollectionRepository {
           AND enabled = true
           AND source_type = ${sourceType}
         ORDER BY source_type, name
-      `;
+      `) as DataSourceRecord[];
     }
 
-    return this.sql`
+    return (await this.sql`
       SELECT
         config,
         enabled,
@@ -80,12 +91,16 @@ class PostgresCollectionRepository {
       WHERE project_id = ${projectId}
         AND enabled = true
       ORDER BY source_type, name
-    `;
+    `) as DataSourceRecord[];
   }
 
-  async lookupRawDocument(input) {
+  async lookupRawDocument(input: {
+    projectId: string;
+    sourceId: string;
+    sourceType: SourceType;
+  }): Promise<RawDocumentRecord | undefined> {
     return singleJson(
-      await this.sql`
+      (await this.sql`
         SELECT
           id::text AS id,
           ingest_status AS "ingestStatus",
@@ -95,23 +110,27 @@ class PostgresCollectionRepository {
         WHERE project_id = ${input.projectId}
           AND source_type = ${input.sourceType}
           AND source_id = ${input.sourceId}
-      `,
+      `) as RawDocumentRecord[],
     );
   }
 
-  async findSameHashCandidates(input) {
-    return this.sql`
+  async findSameHashCandidates(input: {
+    contentHash: string;
+    projectId: string;
+    sourceType: SourceType;
+  }): Promise<Array<{ id: string; sourceId: string; sourceType: SourceType }>> {
+    return (await this.sql`
       SELECT id::text AS id, source_id AS "sourceId", source_type AS "sourceType"
       FROM public.raw_documents
       WHERE project_id = ${input.projectId}
         AND content_hash = ${input.contentHash}
       ORDER BY created_at
-    `;
+    `) as Array<{ id: string; sourceId: string; sourceType: SourceType }>;
   }
 
-  async upsertRawDocument(input) {
+  async upsertRawDocument(input: RawDocumentInput): Promise<RawDocumentRecord> {
     const rawDocument = singleJson(
-      await this.sql`
+      (await this.sql`
         INSERT INTO public.raw_documents (
           project_id,
           source_type,
@@ -134,7 +153,7 @@ class PostgresCollectionRepository {
           ${input.byteSize},
           ${input.contentHash},
           'fetched',
-          ${this.sql.json(input.metadata)}
+          ${this.sql.json(input.metadata as postgres.JSONValue)}
         )
         ON CONFLICT (project_id, source_type, source_id)
         DO UPDATE SET
@@ -149,7 +168,7 @@ class PostgresCollectionRepository {
           ingest_status AS "ingestStatus",
           source_id AS "sourceId",
           source_type AS "sourceType"
-      `,
+      `) as RawDocumentRecord[],
     );
 
     if (!rawDocument) {
@@ -159,7 +178,7 @@ class PostgresCollectionRepository {
     return rawDocument;
   }
 
-  async linkDataSource(input) {
+  async linkDataSource(input: LinkDataSourceInput): Promise<void> {
     await this.sql`
       INSERT INTO public.raw_document_data_sources (
         raw_document_id,
@@ -173,7 +192,7 @@ class PostgresCollectionRepository {
         ${input.dataSourceId},
         ${input.projectId},
         ${input.matchReason},
-        ${this.sql.json(input.metadata)}
+        ${this.sql.json(input.metadata as postgres.JSONValue)}
       )
       ON CONFLICT (raw_document_id, data_source_id)
       DO UPDATE SET
@@ -183,7 +202,7 @@ class PostgresCollectionRepository {
     `;
   }
 
-  async queueCandidate(input) {
+  async queueCandidate(input: QueueCandidateInput): Promise<void> {
     await this.sql`
       INSERT INTO public.ingestion_queue (
         project_id,
@@ -215,7 +234,7 @@ class PostgresCollectionRepository {
     `;
   }
 
-  async markDataSourceChecked(dataSourceId) {
+  async markDataSourceChecked(dataSourceId: string): Promise<void> {
     await this.sql`
       UPDATE public.data_sources
       SET last_checked_at = now()
@@ -224,7 +243,11 @@ class PostgresCollectionRepository {
   }
 }
 
-async function ensureFixtureDataSources(input) {
+async function ensureFixtureDataSources(input: {
+  projectSlug: string;
+  sourceType?: SourceType;
+  sql: postgres.Sql;
+}): Promise<void> {
   const sourceTypes = input.sourceType ? [input.sourceType] : SOURCE_TYPES;
 
   for (const sourceType of sourceTypes) {
@@ -257,7 +280,9 @@ async function ensureFixtureDataSources(input) {
   }
 }
 
-function createLocalObjectStorageFromEnv(env = process.env) {
+function createLocalObjectStorageFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): LocalFsObjectStorage {
   const driver = env.STORAGE_DRIVER ?? env.OBJECT_STORAGE_DRIVER ?? 'local';
   if (driver !== 'local') {
     throw new Error(`Unsupported object storage driver for fixture collection CLI: ${driver}`);
@@ -271,8 +296,14 @@ function createLocalObjectStorageFromEnv(env = process.env) {
   return new LocalFsObjectStorage(root);
 }
 
-function parseArgs(args) {
-  const options = {};
+function parseArgs(args: string[]): {
+  project?: string;
+  source?: SourceType;
+} {
+  const options: {
+    project?: string;
+    source?: SourceType;
+  } = {};
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -285,10 +316,10 @@ function parseArgs(args) {
     if (arg === '--source') {
       index += 1;
       const sourceType = readOptionValue(args, index, arg);
-      if (!SOURCE_TYPES.includes(sourceType)) {
+      if (!(SOURCE_TYPES as readonly string[]).includes(sourceType)) {
         throw new Error(`Unsupported --source value: ${sourceType}`);
       }
-      options.source = sourceType;
+      options.source = sourceType as SourceType;
       continue;
     }
 
@@ -298,7 +329,7 @@ function parseArgs(args) {
   return options;
 }
 
-function readOptionValue(args, index, optionName) {
+function readOptionValue(args: string[], index: number, optionName: string): string {
   const value = args[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
@@ -307,7 +338,7 @@ function readOptionValue(args, index, optionName) {
   return value;
 }
 
-function requiredEnv(name) {
+function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -316,7 +347,7 @@ function requiredEnv(name) {
   return value;
 }
 
-function requiredOption(value, optionName) {
+function requiredOption(value: string | undefined, optionName: string): string {
   if (!value) {
     throw new Error(`${optionName} is required.`);
   }
@@ -324,11 +355,11 @@ function requiredOption(value, optionName) {
   return value;
 }
 
-function singleJson(rows) {
+function singleJson<T>(rows: T[]): T | undefined {
   return rows[0];
 }
 
-main().catch((error) => {
+main().catch((error: unknown): void => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

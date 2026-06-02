@@ -25,8 +25,9 @@
     "parser:version:validate": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node --experimental-strip-types scripts/validate-parser-version.ts",
     "lint": "biome ci . && markdownlint-cli2",
     "seed:projects": "node --experimental-strip-types scripts/create-project.ts --seed-samples",
+    "scripts:typecheck": "pnpm build && tsc --noEmit -p tsconfig.scripts.json",
     "test": "turbo run test",
-    "typecheck": "turbo run typecheck"
+    "typecheck": "turbo run typecheck && pnpm scripts:typecheck"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.4",

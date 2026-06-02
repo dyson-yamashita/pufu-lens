@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import postgres from 'postgres';
 
-async function main() {
+async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const cypher = requiredOption(options.cypher, '--cypher');
@@ -29,13 +29,19 @@ async function main() {
   }
 }
 
-async function ensureAgeSession(sql) {
+async function ensureAgeSession(sql: postgres.Sql): Promise<void> {
   await sql.unsafe("LOAD 'age'");
   await sql.unsafe('SET search_path = ag_catalog, "$user", public');
 }
 
-function parseArgs(argv) {
-  const options = {};
+function parseArgs(argv: string[]): {
+  project?: string;
+  cypher?: string;
+} {
+  const options: {
+    project?: string;
+    cypher?: string;
+  } = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {
@@ -49,7 +55,7 @@ function parseArgs(argv) {
   return options;
 }
 
-function readOptionValue(argv, index, optionName) {
+function readOptionValue(argv: string[], index: number, optionName: string): string {
   const value = argv[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
@@ -57,7 +63,7 @@ function readOptionValue(argv, index, optionName) {
   return value;
 }
 
-function requiredEnv(name) {
+function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -65,34 +71,34 @@ function requiredEnv(name) {
   return value;
 }
 
-function requiredOption(value, name) {
+function requiredOption(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(`${name} is required.`);
   }
   return value;
 }
 
-function singleJson(rows) {
+function singleJson<T>(rows: T[]): T | undefined {
   return rows[0];
 }
 
-function sqlString(value) {
+function sqlString(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-function dollarQuote(value) {
+function dollarQuote(value: string): string {
   const tag = `$pufu_${createHash('sha256').update(value).digest('hex')}$`;
   return `${tag}${value}${tag}`;
 }
 
-function validateGraphName(graphName) {
+function validateGraphName(graphName: string): string {
   if (!/^graph_[a-z0-9_]+$/.test(graphName) || graphName.length > 63) {
     throw new Error(`Invalid AGE graph name: ${graphName}`);
   }
   return graphName;
 }
 
-main().catch((error) => {
+main().catch((error: unknown): void => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

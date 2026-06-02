@@ -40,14 +40,19 @@ pnpm format:check
 
 ## Step 10b 確認記録
 
-- 実施日:
-- 対象 Issue:
-- 実装範囲:
+- 実施日: 2026-06-02
+- 対象 Issue: #34
+- 実装範囲: `tsconfig.scripts.json` と `pnpm scripts:typecheck` を追加し、root `pnpm typecheck` から scripts typecheck を実行するようにした。Step 10a で `.ts` 化した scripts 全体に型注釈を追加し、`allowImportingTsExtensions` で既存の `.ts` import 実行形式を維持した。
 - 実行コマンド:
-- 自動テスト結果:
-- 補助的な手動確認:
-- DB 確認:
-- Storage 確認:
-- ログ / secret 確認:
-- 未確認リスク:
-- 次 step に進む判断:
+  - `pnpm scripts:typecheck`
+  - `pnpm typecheck`
+  - `pnpm test`
+  - `pnpm format`
+  - `pnpm format:check`
+- 自動テスト結果: `pnpm scripts:typecheck`、`pnpm typecheck`、`pnpm test`、`pnpm format:check` が通過。
+- 補助的な手動確認: `git diff --stat` と主要設定ファイル差分を確認し、scripts typecheck が root 品質ゲートに含まれることを確認。
+- DB 確認: 型チェック経路の追加が対象であり、DB 接続を伴う smoke test は未実施。
+- Storage 確認: 型チェック経路の追加が対象であり、Storage 実体を使う smoke test は未実施。
+- ログ / secret 確認: 実データ収集や DB / Storage 実行はしていないため、secret を含むログ出力は発生していない。
+- 未確認リスク: scripts の DB row / repository 境界は段階導入として広めの明示型を残している。今後の source 追加時に具体型へ狭める余地がある。
+- 次 step に進む判断: scripts typecheck が root 品質ゲートに入り、Step 10a の `.ts` 実行形式を維持したまま通過したため Step 10b は完了。

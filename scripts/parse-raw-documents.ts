@@ -1,4 +1,14 @@
 import postgres from 'postgres';
+import type {
+  MarkFailedInput,
+  MarkHeldInput,
+  MarkParsedInput,
+  ParseProjectRecord,
+  ParseQueueTarget,
+  ParserVersionRecord,
+  RawParseRepository,
+  SourceType,
+} from '../packages/ingestion/dist/index.js';
 import {
   BUILT_IN_PARSER_ARTIFACT_HASH,
   defaultParserContract,
@@ -6,9 +16,9 @@ import {
 } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
-const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
+const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
 
-async function main() {
+async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
@@ -33,24 +43,26 @@ async function main() {
   }
 }
 
-class PostgresRawParseRepository {
-  constructor(sql, sourceType) {
+class PostgresRawParseRepository implements RawParseRepository {
+  private sql: postgres.Sql;
+  private sourceType: SourceType | undefined;
+  constructor(sql: postgres.Sql, sourceType: SourceType | undefined) {
     this.sql = sql;
     this.sourceType = sourceType;
   }
 
-  async lookupProjectBySlug(slug) {
+  async lookupProjectBySlug(slug: string): Promise<ParseProjectRecord | undefined> {
     return singleJson(
-      await this.sql`
+      (await this.sql`
         SELECT id::text AS id, slug
         FROM public.projects
         WHERE slug = ${slug}
-      `,
+      `) as ParseProjectRecord[],
     );
   }
 
-  async dequeueTargets(input) {
-    return this.sql`
+  async dequeueTargets(input: { limit: number; projectId: string }): Promise<ParseQueueTarget[]> {
+    return (await this.sql`
       WITH candidates AS (
         SELECT q.id AS queue_id
         FROM public.ingestion_queue q
@@ -97,12 +109,16 @@ class PostgresRawParseRepository {
       FROM updated
       JOIN public.raw_documents rd ON rd.id = updated.raw_document_id
       ORDER BY updated.id
-    `;
+    `) as ParseQueueTarget[];
   }
 
-  async selectActiveParserVersion(input) {
+  async selectActiveParserVersion(input: {
+    dataSourceId: string;
+    projectId: string;
+    sourceType: SourceType;
+  }): Promise<ParserVersionRecord | undefined> {
     return singleJson(
-      await this.sql`
+      (await this.sql`
         SELECT
           pv.artifact_hash AS "artifactHash",
           pv.artifact_uri AS "artifactUri",
@@ -121,12 +137,12 @@ class PostgresRawParseRepository {
           AND (pp.data_source_id = ${input.dataSourceId} OR pp.data_source_id IS NULL)
         ORDER BY pp.data_source_id IS NULL, pp.created_at DESC, pp.id DESC
         LIMIT 1
-      `,
+      `) as ParserVersionRecord[],
     );
   }
 
-  async markParsed(input) {
-    await this.sql.begin(async (transaction) => {
+  async markParsed(input: MarkParsedInput): Promise<void> {
+    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
       await transaction`
         UPDATE public.raw_documents
         SET
@@ -154,8 +170,8 @@ class PostgresRawParseRepository {
     });
   }
 
-  async markFailed(input) {
-    await this.sql.begin(async (transaction) => {
+  async markFailed(input: MarkFailedInput): Promise<void> {
+    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
       await transaction`
         UPDATE public.raw_documents
         SET
@@ -181,8 +197,8 @@ class PostgresRawParseRepository {
     });
   }
 
-  async markHeld(input) {
-    await this.sql.begin(async (transaction) => {
+  async markHeld(input: MarkHeldInput): Promise<void> {
+    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
       await transaction`
         UPDATE public.raw_documents
         SET
@@ -207,7 +223,11 @@ class PostgresRawParseRepository {
   }
 }
 
-async function ensureBuiltInParserVersions(input) {
+async function ensureBuiltInParserVersions(input: {
+  projectSlug: string;
+  sourceType?: SourceType;
+  sql: postgres.Sql;
+}): Promise<void> {
   const sourceTypes = input.sourceType ? [input.sourceType] : SOURCE_TYPES;
 
   for (const sourceType of sourceTypes) {
@@ -257,7 +277,7 @@ async function ensureBuiltInParserVersions(input) {
           'fixture-parser-v1',
           1,
           ${BUILT_IN_PARSER_ARTIFACT_HASH},
-          ${input.sql.json(defaultParserContract(sourceType))},
+          ${input.sql.json(defaultParserContract(sourceType) as postgres.JSONValue)},
           'approved',
           '00000000-0000-0000-0000-000000000001',
           now()
@@ -290,8 +310,18 @@ async function ensureBuiltInParserVersions(input) {
   }
 }
 
-function parseArgs(argv) {
-  const options = {};
+function parseArgs(argv: string[]): {
+  project?: string;
+  source?: SourceType;
+  limit?: number;
+  seedBuiltInParsers?: boolean;
+} {
+  const options: {
+    project?: string;
+    source?: SourceType;
+    limit?: number;
+    seedBuiltInParsers?: boolean;
+  } = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {
@@ -309,22 +339,24 @@ function parseArgs(argv) {
   return options;
 }
 
-function readOptionValue(value, optionName) {
+function readOptionValue(value: string | undefined, optionName: string): string {
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
   }
   return value;
 }
 
-function readSourceType(value, optionName) {
+function readSourceType(value: string | undefined, optionName: string): SourceType {
   const sourceType = readOptionValue(value, optionName);
-  if (!SOURCE_TYPES.includes(sourceType)) {
+  if (!(SOURCE_TYPES as readonly string[]).includes(sourceType)) {
     throw new Error(`Unsupported ${optionName} value: ${sourceType}`);
   }
-  return sourceType;
+  return sourceType as SourceType;
 }
 
-function createLocalObjectStorageFromEnv(env = process.env) {
+function createLocalObjectStorageFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): LocalFsObjectStorage {
   const root = env.STORAGE_ROOT ?? env.LOCAL_STORAGE_ROOT;
   if (!root) {
     throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
@@ -332,7 +364,7 @@ function createLocalObjectStorageFromEnv(env = process.env) {
   return new LocalFsObjectStorage(root);
 }
 
-function requiredEnv(name) {
+function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -340,18 +372,18 @@ function requiredEnv(name) {
   return value;
 }
 
-function requiredOption(value, name) {
+function requiredOption(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(`${name} is required.`);
   }
   return value;
 }
 
-function singleJson(rows) {
+function singleJson<T>(rows: T[]): T | undefined {
   return rows[0];
 }
 
-main().catch((error) => {
+main().catch((error: unknown): void => {
   console.error(error);
   process.exitCode = 1;
 });

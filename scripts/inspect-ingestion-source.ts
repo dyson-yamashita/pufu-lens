@@ -1,11 +1,107 @@
 import { createHash } from 'node:crypto';
 import postgres from 'postgres';
-import { parseRawContent, validateParsedDocument } from '../packages/ingestion/dist/index.js';
+import {
+  type ParsedDocument,
+  parseRawContent,
+  type SourceType,
+  validateParsedDocument,
+} from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
-const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
+const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
 
-async function main() {
+type InspectOptions = {
+  format?: 'json';
+  limit?: number;
+  project?: string;
+  source?: SourceType;
+};
+
+type ProjectRecord = {
+  id: string;
+  slug: string;
+};
+
+type InspectRow = {
+  byteSize: number | string | null;
+  contentHash: string;
+  documentCanonicalUri: string | null;
+  documentId: string | null;
+  documentTitle: string | null;
+  documentType: string | null;
+  fetchedAt: string;
+  holdReason: string | null;
+  ingestError: string | null;
+  ingestStatus: string;
+  metadata: Record<string, unknown> | null;
+  mimeType: string;
+  parsedUri: string | null;
+  parserArtifactHash: string | null;
+  parserVersionId: string | null;
+  queueAttempts: number | null;
+  queueHoldReason: string | null;
+  queueLastError: string | null;
+  queueStatus: string | null;
+  rawDocumentId: string;
+  sanitizedSampleUri: string | null;
+  sourceId: string;
+  sourceType: SourceType;
+  sourceUri: string;
+  storageUri: string;
+};
+
+type SourceContract = Record<string, string | boolean | null>;
+
+type InspectedDocument = {
+  content: {
+    actualContentHash: string | null;
+    byteSize: number | null;
+    contentHashMatchesStorage: boolean;
+    mimeType: string;
+    storageReadable: boolean;
+    storageUri: string;
+  };
+  document: {
+    canonicalUri: string | null;
+    docType: string | null;
+    id: string;
+    title: string | null;
+  } | null;
+  parser: {
+    artifactHash: string | null;
+    parsedReadable: boolean;
+    parsedUri: string | null;
+    parserVersionId: string | null;
+  };
+  queue: {
+    attempts: number | null;
+    holdReason: string | null;
+    lastError: unknown;
+    status: string | null;
+  };
+  raw: {
+    fetchedAt: string;
+    holdReason: string | null;
+    id: string;
+    ingestError: unknown;
+    ingestStatus: string;
+    metadata: Record<string, unknown>;
+    sanitizedSampleUri: string | null;
+    sourceId: string;
+    sourceType: SourceType;
+    sourceUri: string;
+  };
+  sourceContract: SourceContract;
+};
+
+type Summary = {
+  byIngestStatus: Record<string | number, number>;
+  byQueueStatus: Record<string | number, number>;
+  failedContracts: number;
+  total: number;
+};
+
+async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sourceType = requiredOption(options.source, '--source');
@@ -24,7 +120,7 @@ async function main() {
       sourceType,
       sql,
     });
-    const documents = [];
+    const documents: InspectedDocument[] = [];
     for (const row of rows) {
       documents.push(await inspectRow({ row, storage }));
     }
@@ -43,8 +139,13 @@ async function main() {
   }
 }
 
-async function readRows(input) {
-  return input.sql`
+async function readRows(input: {
+  limit: number;
+  projectId: string;
+  sourceType: SourceType;
+  sql: postgres.Sql;
+}): Promise<InspectRow[]> {
+  return (await input.sql`
     SELECT
       rd.byte_size AS "byteSize",
       rd.content_hash AS "contentHash",
@@ -78,10 +179,13 @@ async function readRows(input) {
       AND rd.source_type = ${input.sourceType}
     ORDER BY rd.fetched_at DESC, rd.id
     LIMIT ${input.limit}
-  `;
+  `) as InspectRow[];
 }
 
-async function inspectRow(input) {
+async function inspectRow(input: {
+  row: InspectRow;
+  storage: LocalFsObjectStorage;
+}): Promise<InspectedDocument> {
   const rawText = await safeReadText(input.storage, input.row.storageUri);
   const actualContentHash = rawText === undefined ? null : sha256Hex(rawText);
   const parsed = input.row.parsedUri
@@ -140,10 +244,15 @@ async function inspectRow(input) {
   };
 }
 
-function validateSourceContract(input) {
+function validateSourceContract(input: {
+  actualContentHash: string | null;
+  parsed: ParsedDocument | null;
+  parsedFromRaw: ParsedDocument | null;
+  row: InspectRow;
+}): SourceContract {
   if (input.row.sourceType === 'web') {
-    const canonicalUrl = readString(input.row.metadata?.canonicalUrl);
-    const title = readString(input.row.metadata?.title);
+    const canonicalUrl = readString(input.row.metadata?.['canonicalUrl']);
+    const title = readString(input.row.metadata?.['title']);
     const bodyText = input.parsed?.bodyText ?? input.parsedFromRaw?.bodyText;
     return {
       canonicalUrlMatchesSourceId: canonicalUrl === input.row.sourceId,
@@ -164,7 +273,10 @@ function validateSourceContract(input) {
   };
 }
 
-async function safeReadText(storage, uri) {
+async function safeReadText(
+  storage: LocalFsObjectStorage,
+  uri: string,
+): Promise<string | undefined> {
   try {
     return await storage.getText(uri);
   } catch {
@@ -172,7 +284,10 @@ async function safeReadText(storage, uri) {
   }
 }
 
-async function safeReadParsed(storage, uri) {
+async function safeReadParsed(
+  storage: LocalFsObjectStorage,
+  uri: string,
+): Promise<ParsedDocument | null> {
   try {
     return validateParsedDocument(JSON.parse(await storage.getText(uri)));
   } catch {
@@ -180,7 +295,7 @@ async function safeReadParsed(storage, uri) {
   }
 }
 
-function parseRawSafely(row, rawText) {
+function parseRawSafely(row: InspectRow, rawText: string): ParsedDocument | null {
   try {
     return validateParsedDocument(
       parseRawContent(
@@ -205,22 +320,26 @@ function parseRawSafely(row, rawText) {
   }
 }
 
-function summarize(documents) {
+function summarize(documents: InspectedDocument[]): Summary {
   return {
-    byIngestStatus: countBy(documents, (document) => document.raw.ingestStatus),
-    byQueueStatus: countBy(documents, (document) => document.queue.status ?? '<none>'),
-    failedContracts: documents.filter((document) => !isContractPassing(document.sourceContract))
-      .length,
+    byIngestStatus: countBy(documents, (document): string => document.raw.ingestStatus),
+    byQueueStatus: countBy(documents, (document): string => document.queue.status ?? '<none>'),
+    failedContracts: documents.filter(
+      (document): boolean => !isContractPassing(document.sourceContract),
+    ).length,
     total: documents.length,
   };
 }
 
-function isContractPassing(contract) {
+function isContractPassing(contract: Record<string, unknown>): boolean {
   return Object.entries(contract).every(([, value]) => typeof value !== 'boolean' || value);
 }
 
-function countBy(values, keyFn) {
-  const counts = {};
+function countBy<T>(
+  values: T[],
+  keyFn: (value: T) => string | number,
+): Record<string | number, number> {
+  const counts: Record<string | number, number> = {};
   for (const value of values) {
     const key = keyFn(value);
     counts[key] = (counts[key] ?? 0) + 1;
@@ -228,32 +347,34 @@ function countBy(values, keyFn) {
   return counts;
 }
 
-async function lookupProject(sql, slug) {
+async function lookupProject(sql: postgres.Sql, slug: string): Promise<ProjectRecord | undefined> {
   return singleJson(
-    await sql`
+    (await sql`
       SELECT id::text AS id, slug
       FROM public.projects
       WHERE slug = ${slug}
-    `,
+    `) as ProjectRecord[],
   );
 }
 
-function sanitizeMetadata(metadata) {
+function sanitizeMetadata(metadata: unknown): Record<string, unknown> {
   if (!metadata || typeof metadata !== 'object') {
     return {};
   }
-  const sanitized = { ...metadata };
+  const sanitized = { ...(metadata as Record<string, unknown>) };
   delete sanitized.body;
   delete sanitized.html;
   delete sanitized.text;
   return sanitized;
 }
 
-function sanitizeNullable(value) {
+function sanitizeNullable(value: unknown): unknown {
   return typeof value === 'string' ? value.slice(0, 500) : value;
 }
 
-function createLocalObjectStorageFromEnv(env = process.env) {
+function createLocalObjectStorageFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): LocalFsObjectStorage {
   const root = env.STORAGE_ROOT ?? env.LOCAL_STORAGE_ROOT;
   if (!root) {
     throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
@@ -261,8 +382,8 @@ function createLocalObjectStorageFromEnv(env = process.env) {
   return new LocalFsObjectStorage(root);
 }
 
-function parseArgs(argv) {
-  const options = {};
+function parseArgs(argv: string[]): InspectOptions {
+  const options: InspectOptions = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--project') {
@@ -280,21 +401,21 @@ function parseArgs(argv) {
   return options;
 }
 
-function readSourceType(value) {
-  if (!SOURCE_TYPES.includes(value)) {
+function readSourceType(value: string): SourceType {
+  if (!(SOURCE_TYPES as readonly string[]).includes(value)) {
     throw new Error(`Unsupported --source value: ${value}`);
   }
-  return value;
+  return value as SourceType;
 }
 
-function readFormat(value) {
+function readFormat(value: string): 'json' {
   if (value !== 'json') {
     throw new Error(`Unsupported --format value: ${value}`);
   }
   return value;
 }
 
-function readOptionValue(argv, index, optionName) {
+function readOptionValue(argv: string[], index: number, optionName: string): string {
   const value = argv[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
@@ -302,7 +423,7 @@ function readOptionValue(argv, index, optionName) {
   return value;
 }
 
-function readPositiveInteger(value, name) {
+function readPositiveInteger(value: string, name: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`Invalid ${name} value: ${value}`);
@@ -310,11 +431,11 @@ function readPositiveInteger(value, name) {
   return parsed;
 }
 
-function readString(value) {
+function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
-function requiredEnv(name) {
+function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -322,22 +443,22 @@ function requiredEnv(name) {
   return value;
 }
 
-function requiredOption(value, name) {
+function requiredOption<T extends string>(value: T | undefined, name: string): T {
   if (!value) {
     throw new Error(`${name} is required.`);
   }
   return value;
 }
 
-function sha256Hex(value) {
+function sha256Hex(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function singleJson(rows) {
+function singleJson<T>(rows: T[]): T | undefined {
   return rows[0];
 }
 
-main().catch((error) => {
+main().catch((error: unknown): void => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });
