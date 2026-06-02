@@ -295,7 +295,7 @@ function parseArgs(args: string[]): {
     if (arg === '--source') {
       index += 1;
       const sourceType = readOptionValue(args, index, arg);
-      if (!SOURCE_TYPES.includes(sourceType as SourceType)) {
+      if (!(SOURCE_TYPES as readonly string[]).includes(sourceType)) {
         throw new Error(`Unsupported --source value: ${sourceType}`);
       }
       options.source = sourceType as SourceType;

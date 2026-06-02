@@ -47,9 +47,9 @@ async function main(): Promise<void> {
       results,
       source: sourceType,
       summary: {
-        failed: results.filter((result: any): any => !result.ok).length,
+        failed: results.filter((result: any): boolean => !result.ok).length,
         total: results.length,
-        valid: results.filter((result: any): any => result.ok).length,
+        valid: results.filter((result: any): boolean => result.ok).length,
       },
     };
 

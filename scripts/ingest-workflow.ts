@@ -260,10 +260,10 @@ async function runNodeScript(args: any): Promise<any> {
   let stderr = '';
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
-  child.stdout.on('data', (chunk: any): any => {
+  child.stdout.on('data', (chunk: string): void => {
     stdout += chunk;
   });
-  child.stderr.on('data', (chunk: any): any => {
+  child.stderr.on('data', (chunk: string): void => {
     stderr += chunk;
   });
 

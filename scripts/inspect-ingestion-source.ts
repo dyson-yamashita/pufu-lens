@@ -213,7 +213,7 @@ function summarize(documents: any[]): any {
     byIngestStatus: countBy(documents, (document: any): any => document.raw.ingestStatus),
     byQueueStatus: countBy(documents, (document: any): any => document.queue.status ?? '<none>'),
     failedContracts: documents.filter(
-      (document: any): any => !isContractPassing(document.sourceContract),
+      (document: any): boolean => !isContractPassing(document.sourceContract),
     ).length,
     total: documents.length,
   };
