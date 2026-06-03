@@ -349,6 +349,13 @@ button {
   color: white;
 }
 
+.action-error {
+  color: var(--red);
+  font-size: 12px;
+  margin: 6px 0 0;
+  max-width: 280px;
+}
+
 .split-layout {
   display: grid;
   gap: 16px;

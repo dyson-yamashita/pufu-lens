@@ -1,6 +1,48 @@
 'use client';
 
+import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
+
+type FormAction = (formData: FormData) => Promise<void>;
+
+interface ActionFormState {
+  readonly error?: string;
+}
+
+const initialActionFormState: ActionFormState = {};
+
+export function ActionForm({
+  action,
+  children,
+  className,
+}: {
+  readonly action: FormAction;
+  readonly children: React.ReactNode;
+  readonly className?: string;
+}) {
+  const [state, formAction] = useActionState(
+    async (_previousState: ActionFormState, formData: FormData): Promise<ActionFormState> => {
+      try {
+        await action(formData);
+        return {};
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : 'Action failed.' };
+      }
+    },
+    initialActionFormState,
+  );
+
+  return (
+    <form action={formAction} className={className}>
+      {children}
+      {state.error ? (
+        <p className="action-error" role="alert">
+          {state.error}
+        </p>
+      ) : null}
+    </form>
+  );
+}
 
 export function PendingSubmitButton({
   children,

@@ -12,9 +12,7 @@ export async function retryFailedQueue(formData: FormData): Promise<void> {
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
     await sql.begin(async (tx) => {
-      const dataSourceFilter = dataSourceId
-        ? tx`AND ingestion_queue.data_source_id = ${dataSourceId}`
-        : tx``;
+      const dataSourceFilter = dataSourceId ? tx`AND data_source_id = ${dataSourceId}` : tx``;
 
       await tx`
         UPDATE public.raw_documents
