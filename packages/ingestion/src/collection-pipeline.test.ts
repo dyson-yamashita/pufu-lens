@@ -679,6 +679,34 @@ test('scanDriveDataSource reads configured folders, applies ingest window, and f
   assert.match(query, /modifiedTime > '2026-05-01T00:00:00.000Z'/);
 });
 
+test('scanDriveDataSource normalizes Drive folder URLs and since dates', async () => {
+  const paths: string[] = [];
+  const candidates = await scanDriveDataSource({
+    dataSource: dataSource({
+      config: {
+        folderUrls: [
+          'https://drive.google.com/open?id=drive-folder-open',
+          'https://drive.google.com/drive/folders/drive-folder-path',
+        ],
+      },
+      ingestWindow: { since: '2026-05-01T00:00:00Z' },
+      sourceType: 'drive',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      return { files: [driveFile({ id: `drive-file-${paths.length}` })] };
+    },
+    limit: 2,
+  });
+
+  assert.equal(candidates.length, 2);
+  assert.equal(candidates[0]?.folderId, 'drive-folder-open');
+  assert.equal(candidates[1]?.folderId, 'drive-folder-path');
+  const firstQuery = new URL(`https://example.test${paths[0] ?? ''}`).searchParams.get('q') ?? '';
+  assert.match(firstQuery, /'drive-folder-open' in parents/);
+  assert.match(firstQuery, /modifiedTime > '2026-05-01T00:00:00.000Z'/);
+});
+
 test('scanDriveDataSource keeps pageSize within the Drive API maximum', async () => {
   const paths: string[] = [];
   await scanDriveDataSource({
@@ -721,6 +749,37 @@ test('buildDriveRawCandidate converts file metadata and text without storing bod
   assert.doesNotMatch(JSON.stringify(rawCandidate.raw.metadata), /secret-token/);
 });
 
+test('buildDriveRawCandidate accepts null owners from Drive API responses', async () => {
+  const rawCandidate = await buildDriveRawCandidate({
+    candidate: {
+      file: { ...driveFile({ id: 'drive-file-no-owners' }), owners: undefined },
+      folderId: 'drive-folder-1',
+    },
+    dataSource: dataSource({ id: 'data-source-drive', sourceType: 'drive' }),
+    projectId: 'project-1',
+    projectSlug: 'sample-a',
+    textFetcher: async () => 'Drive document body',
+  });
+
+  const raw = JSON.parse(rawCandidate.body);
+  assert.deepEqual(raw.owners, []);
+});
+
+test('scanDriveDataSource accepts null owners from list responses', async () => {
+  const candidates = await scanDriveDataSource({
+    dataSource: dataSource({
+      config: { folderIds: ['drive-folder-1'] },
+      sourceType: 'drive',
+    }),
+    fetcher: async (): Promise<unknown> => ({
+      files: [{ ...driveFile({ id: 'drive-file-no-owners' }), owners: null }],
+    }),
+  });
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0]?.file.owners, undefined);
+});
+
 test('fetchDriveJson builds Google API URLs with URL semantics', async () => {
   const originalFetch = globalThis.fetch;
   const urls: string[] = [];
@@ -759,6 +818,55 @@ test('fetchDriveText rejects binary files before reading response text', async (
   }
 });
 
+test('fetchDriveText uses source-specific export formats for Google apps', async () => {
+  const originalFetch = globalThis.fetch;
+  const urls: string[] = [];
+  globalThis.fetch = (async (url) => {
+    urls.push(String(url));
+    return {
+      ok: true,
+      text: async () => 'exported body',
+    } as Response;
+  }) as typeof fetch;
+
+  try {
+    await fetchDriveText({
+      file: driveFile({
+        id: 'drive-doc-1',
+        mimeType: 'application/vnd.google-apps.document',
+      }),
+    });
+    await fetchDriveText({
+      file: driveFile({
+        id: 'drive-sheet-1',
+        mimeType: 'application/vnd.google-apps.spreadsheet',
+      }),
+    });
+    await assert.rejects(
+      () =>
+        fetchDriveText({
+          file: driveFile({
+            id: 'drive-slide-1',
+            mimeType: 'application/vnd.google-apps.presentation',
+          }),
+        }),
+      /Unsupported Drive MIME type/,
+    );
+
+    assert.equal(
+      urls[0],
+      'https://www.googleapis.com/drive/v3/files/drive-doc-1/export?mimeType=text/plain',
+    );
+    assert.equal(
+      urls[1],
+      'https://www.googleapis.com/drive/v3/files/drive-sheet-1/export?mimeType=text/csv',
+    );
+    assert.equal(urls.length, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('fetchDriveText reads text-like Drive files with a safe URL', async () => {
   const originalFetch = globalThis.fetch;
   const urls: string[] = [];
@@ -780,6 +888,42 @@ test('fetchDriveText reads text-like Drive files with a safe URL', async () => {
     assert.equal(urls[0], 'https://www.googleapis.com/drive/v3/files/drive-text-1?alt=media');
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test('collectDriveSource preserves message from non-Error failures while redacting secrets', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { folderIds: ['drive-folder-1'] },
+      id: 'data-source-drive',
+      sourceType: 'drive',
+    }),
+  );
+  const storage = new InMemoryObjectStorage();
+  const originalConsoleError = console.error;
+  const errors: unknown[] = [];
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
+  };
+
+  try {
+    await collectDriveSource({
+      fetcher: driveListFetcher(),
+      projectSlug: 'sample-a',
+      repository,
+      storage,
+      textFetcher: async () => {
+        throw { message: 'custom Drive error Bearer secret-token' };
+      },
+    });
+
+    assert.match(JSON.stringify(errors), /custom Drive error/);
+    assert.doesNotMatch(JSON.stringify(errors), /secret-token/);
+  } finally {
+    console.error = originalConsoleError;
   }
 });
 

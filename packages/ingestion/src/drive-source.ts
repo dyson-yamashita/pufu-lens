@@ -85,7 +85,6 @@ const DEFAULT_PAGE_SIZE = 100;
 const DEFAULT_USER_AGENT = 'pufu-lens-drive-collector/0.1';
 const GOOGLE_DOC_MIME_TYPES = new Set([
   'application/vnd.google-apps.document',
-  'application/vnd.google-apps.presentation',
   'application/vnd.google-apps.spreadsheet',
 ]);
 const TEXT_FILE_MIME_TYPES = new Set([
@@ -370,9 +369,7 @@ export async function fetchDriveText(input: {
     throw new Error(`Unsupported Drive MIME type for text extraction: ${input.file.mimeType}`);
   }
 
-  const path = GOOGLE_DOC_MIME_TYPES.has(input.file.mimeType)
-    ? `/drive/v3/files/${encodeURIComponent(input.file.id)}/export?mimeType=text/plain`
-    : `/drive/v3/files/${encodeURIComponent(input.file.id)}?alt=media`;
+  const path = driveTextFetchPath(input.file);
   const url = new URL(path, 'https://www.googleapis.com');
   const response = await fetch(url.toString(), {
     headers: driveHeaders(input.token),
@@ -410,6 +407,17 @@ function isDriveTextReadableMimeType(mimeType: string): boolean {
   );
 }
 
+function driveTextFetchPath(file: DriveFileResponse): string {
+  const encodedFileId = encodeURIComponent(file.id);
+  if (file.mimeType === 'application/vnd.google-apps.document') {
+    return `/drive/v3/files/${encodedFileId}/export?mimeType=text/plain`;
+  }
+  if (file.mimeType === 'application/vnd.google-apps.spreadsheet') {
+    return `/drive/v3/files/${encodedFileId}/export?mimeType=text/csv`;
+  }
+  return `/drive/v3/files/${encodedFileId}?alt=media`;
+}
+
 function driveOwners(
   owners: DriveOwnerResponse[] | undefined,
 ): Array<{ email: string; name: string }> {
@@ -422,7 +430,7 @@ function driveOwners(
 function driveQuery(folderId: string, since: unknown): string {
   const parts = [`'${escapeDriveQueryValue(folderId)}' in parents`, 'trashed = false'];
   if (typeof since === 'string' && !Number.isNaN(Date.parse(since))) {
-    parts.push(`modifiedTime > '${escapeDriveQueryValue(since)}'`);
+    parts.push(`modifiedTime > '${escapeDriveQueryValue(new Date(since).toISOString())}'`);
   }
   return parts.join(' and ');
 }
@@ -452,7 +460,10 @@ function readFolderIdFromUrl(value: string): string {
   try {
     const url = new URL(value);
     const folderMatch = url.pathname.match(/\/folders\/(?<folderId>[A-Za-z0-9_-]+)/);
-    return folderMatch?.groups?.folderId ?? value;
+    if (folderMatch?.groups?.folderId) {
+      return folderMatch.groups.folderId;
+    }
+    return url.searchParams.get('id') ?? value;
   } catch {
     return value;
   }
@@ -500,7 +511,7 @@ function validateDriveFile(value: unknown): DriveFileResponse {
 }
 
 function validateOwners(value: unknown): DriveOwnerResponse[] | undefined {
-  if (value === undefined) {
+  if (value === undefined || value === null) {
     return undefined;
   }
   if (!Array.isArray(value)) {
@@ -565,7 +576,16 @@ function redactDriveUri(value: string): string {
 }
 
 function sanitizeError(error: unknown): string {
-  return String(error instanceof Error ? error.message : error)
+  const message =
+    error instanceof Error
+      ? error.message
+      : error &&
+          typeof error === 'object' &&
+          'message' in error &&
+          typeof error.message === 'string'
+        ? error.message
+        : String(error);
+  return message
     .replace(/(token|secret|api[_-]?key)=\S+/gi, '$1=<redacted>')
     .replace(/Bearer\s+[A-Za-z0-9._-]+/g, 'Bearer <redacted>')
     .slice(0, 500);
