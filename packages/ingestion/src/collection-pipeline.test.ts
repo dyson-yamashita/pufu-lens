@@ -17,6 +17,12 @@ import {
   shouldCollectCandidate,
 } from './collection-pipeline.js';
 import {
+  buildDriveRawCandidate,
+  collectDriveSource,
+  type DriveFetcher,
+  scanDriveDataSource,
+} from './drive-source.js';
+import {
   buildGitHubRawCandidate,
   collectGitHubSource,
   type GitHubFetcher,
@@ -642,6 +648,150 @@ test('collectGitHubSource continues after a candidate fetch failure with sanitiz
   }
 });
 
+test('scanDriveDataSource reads configured folders, applies ingest window, and filters files', async () => {
+  const paths: string[] = [];
+  const candidates = await scanDriveDataSource({
+    dataSource: dataSource({
+      config: {
+        fileIds: ['drive-file-2'],
+        folderIds: ['drive-folder-1'],
+        folderUrls: ['https://drive.google.com/drive/folders/drive-folder-2'],
+      },
+      ingestWindow: { since: '2026-05-01T00:00:00.000Z' },
+      sourceType: 'drive',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      return {
+        files: [driveFile({ id: 'drive-file-1' }), driveFile({ id: 'drive-file-2' })],
+      };
+    },
+    limit: 1,
+  });
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0]?.file.id, 'drive-file-2');
+  assert.equal(candidates[0]?.folderId, 'drive-folder-1');
+  const query = new URL(`https://example.test${paths[0] ?? ''}`).searchParams.get('q') ?? '';
+  assert.match(query, /'drive-folder-1' in parents/);
+  assert.match(query, /modifiedTime > '2026-05-01T00:00:00.000Z'/);
+});
+
+test('buildDriveRawCandidate converts file metadata and text without storing body metadata', async () => {
+  const rawCandidate = await buildDriveRawCandidate({
+    candidate: {
+      file: driveFile({ id: 'drive-file-1', name: 'Project Brief', revisionId: 'rev-2' }),
+      folderId: 'drive-folder-1',
+    },
+    dataSource: dataSource({ id: 'data-source-drive', sourceType: 'drive' }),
+    projectId: 'project-1',
+    projectSlug: 'sample-a',
+    textFetcher: async () => 'Drive document body',
+    token: 'secret-token',
+  });
+
+  const raw = JSON.parse(rawCandidate.body);
+  assert.equal(raw.fileId, 'drive-file-1');
+  assert.equal(raw.revisionId, 'rev-2');
+  assert.equal(raw.title, 'Project Brief');
+  assert.equal(raw.bodyText, 'Drive document body');
+  assert.equal(rawCandidate.raw.sourceId, 'drive-file-1:rev-2');
+  assert.equal(rawCandidate.raw.metadata.folderId, 'drive-folder-1');
+  assert.equal(rawCandidate.raw.metadata.bodyText, undefined);
+  assert.doesNotMatch(JSON.stringify(rawCandidate.raw.metadata), /secret-token/);
+});
+
+test('collectDriveSource supports dry-run and duplicate skip without writing storage', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { folderIds: ['drive-folder-1'] },
+      id: 'data-source-drive',
+      sourceType: 'drive',
+    }),
+  );
+  const storage = new InMemoryObjectStorage();
+  const fetcher = driveListFetcher();
+
+  const dryRun = await collectDriveSource({
+    dryRun: true,
+    fetcher,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+    textFetcher: async () => 'Drive document body',
+    token: 'secret-token',
+  });
+  const collected = await collectDriveSource({
+    fetcher,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+    textFetcher: async () => 'Drive document body',
+    token: 'secret-token',
+  });
+  const duplicate = await collectDriveSource({
+    fetcher,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+    textFetcher: async () => 'Drive document body',
+    token: 'secret-token',
+  });
+
+  assert.equal(dryRun.decisions[0]?.decision, 'would_collect');
+  assert.equal(collected.decisions[0]?.decision, 'collected');
+  assert.equal(duplicate.decisions[0]?.decision, 'skipped_existing');
+  assert.equal(repository.rawDocuments.size, 1);
+  assert.equal(repository.queue.size, 1);
+  assert.equal(repository.links.size, 1);
+  assert.equal(storage.objects.size, 1);
+  const [rawDocument] = [...repository.rawDocuments.values()];
+  assert.ok(rawDocument);
+  assert.doesNotMatch(JSON.stringify(rawDocument.metadata), /secret-token/);
+});
+
+test('collectDriveSource continues after a text fetch failure with sanitized logs', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { folderIds: ['drive-folder-1'] },
+      id: 'data-source-drive',
+      sourceType: 'drive',
+    }),
+  );
+  const storage = new InMemoryObjectStorage();
+  const originalConsoleError = console.error;
+  const errors: unknown[] = [];
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
+  };
+
+  try {
+    const result = await collectDriveSource({
+      fetcher: driveListFetcher(),
+      projectSlug: 'sample-a',
+      repository,
+      storage,
+      textFetcher: async () => {
+        throw new Error('temporary Drive failure token=secret');
+      },
+    });
+
+    assert.equal(result.decisions.length, 0);
+    assert.equal(repository.rawDocuments.size, 0);
+    assert.equal(storage.objects.size, 0);
+    assert.match(String(errors[0]), /Failed to build raw Drive candidate/);
+    assert.doesNotMatch(JSON.stringify(errors), /token=secret/);
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
 function dataSource(input: Partial<DataSourceRecord> = {}): DataSourceRecord {
   return {
     config: {},
@@ -779,4 +929,28 @@ function githubDetailFetcher(paths: string[] = []): GitHubFetcher {
     }
     throw new Error(`Unexpected GitHub path: ${path}`);
   };
+}
+
+function driveFile(input: { id: string; name?: string; revisionId?: string }): {
+  headRevisionId: string;
+  id: string;
+  mimeType: string;
+  modifiedTime: string;
+  name: string;
+  owners: Array<{ displayName: string; emailAddress: string }>;
+  webViewLink: string;
+} {
+  return {
+    headRevisionId: input.revisionId ?? 'rev-1',
+    id: input.id,
+    mimeType: 'application/vnd.google-apps.document',
+    modifiedTime: '2026-05-09T00:00:00.000Z',
+    name: input.name ?? 'Drive document',
+    owners: [{ displayName: 'Drive Owner', emailAddress: 'owner@example.test' }],
+    webViewLink: `https://drive.google.com/document/d/${input.id}/edit`,
+  };
+}
+
+function driveListFetcher(): DriveFetcher {
+  return async (): Promise<unknown> => ({ files: [driveFile({ id: 'drive-file-1' })] });
 }

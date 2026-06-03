@@ -71,7 +71,7 @@ Step 10 の Web URL 接続で追加した scripts は、後続 Step 10a / Step 1
 
 - 実施日: 2026-06-01
 - 対象 Issue: #27
-- 実装範囲: Web URL source scanner / raw adapter / `pnpm ingest:collect` CLI / `ingest:run --source web` の collect step 接続。2026-06-02 に `ingest:inspect`、`parser:version:validate`、失敗 raw fixture 化の source 絞り込み、`ingest:run --source web` の parse / resolve / chunk / graph source 絞り込みを追加。2026-06-03 に Issue #38 で GitHub source scanner / raw adapter / `--repo` CLI / `ingest:run --source github` の collect step 接続 / GitHub inspect contract を追加。
+- 実装範囲: Web URL source scanner / raw adapter / `pnpm ingest:collect` CLI / `ingest:run --source web` の collect step 接続。2026-06-02 に `ingest:inspect`、`parser:version:validate`、失敗 raw fixture 化の source 絞り込み、`ingest:run --source web` の parse / resolve / chunk / graph source 絞り込みを追加。2026-06-03 に Issue #38 で GitHub source scanner / raw adapter / `--repo` CLI / `ingest:run --source github` の collect step 接続 / GitHub inspect contract を追加。2026-06-03 に Issue #40 で Drive source scanner / raw adapter / `--folder-id`・`--folder-url` CLI / `ingest:run --source drive` の collect step 接続 / Drive inspect contract を追加。
 - 実行コマンド:
   - `pnpm --filter @pufu-lens/ingestion test`
   - `pnpm format:check`
@@ -83,7 +83,7 @@ Step 10 の Web URL 接続で追加した scripts は、後続 Step 10a / Step 1
 - DB 確認: 2026-06-03 に Docker daemon 起動後、`step10-web-smoke` project で実 URL smoke test を実施。`raw_documents.ingest_status='indexed'` 1 件、`ingestion_queue.status='indexed'` 1 件、`documents.web_page` 1 件、`document_chunks` 1 件を確認。`sample-a` では既存 fixture Web の `parsed_uri` が過去の `/private/tmp/pufu-lens-step6-storage` を指しており、現在の `STORAGE_ROOT` から外れるため chunk で失敗した。
 - Storage 確認: `/private/tmp/pufu-lens-step10-web-smoke/step10-web-smoke/raw/web/example.com-0f115db062b7.html` と `/private/tmp/pufu-lens-step10-web-smoke/step10-web-smoke/parsed/web/https-example.com.json` を確認。
 - ログ / secret 確認: unit test で raw body を metadata に保存しないことを確認。実 URL でのログ検査は未実施。
-- 未確認リスク: Web URL と GitHub は isolated smoke project で indexed 到達を確認済み。`sample-a` の古い fixture Web raw は storage root mismatch を起こすため、同 project で実 URL と fixture Web を混在させる場合は storage URI の掃除または volume 初期化が必要。GitHub smoke は public repo の issue 1 件で確認し、pull request diff の実データ indexed は未確認。Drive / Gmail の実データ接続は未着手。
+- 未確認リスク: Web URL と GitHub は isolated smoke project で indexed 到達を確認済み。`sample-a` の古い fixture Web raw は storage root mismatch を起こすため、同 project で実 URL と fixture Web を混在させる場合は storage URI の掃除または volume 初期化が必要。GitHub smoke は public repo の issue 1 件で確認し、pull request diff の実データ indexed は未確認。Drive は scanner / adapter 実装済みだが実 Drive folder での indexed 到達は未確認。Gmail の実データ接続は未着手。
 - 次 step に進む判断: Web URL と GitHub の collect / dedup / parse / resolve / chunk / graph / inspect が deterministic provider で通り、LLM / chat model 使用量 0 も確認できたため、Step 10 の次 source（Drive）に進める。
 
 ### 2026-06-03 追記: Web URL smoke test
@@ -134,3 +134,24 @@ Step 10 の Web URL 接続で追加した scripts は、後続 Step 10a / Step 1
   - 再 collect は `skipped_existing` で、GitHub raw 件数は 1 件のまま。
   - `parser:version:validate --held --dry-run` は held raw がなく `total=0`。
   - `ingest:fixture:add-failed --dry-run` は失敗 raw がなく追加対象なし。
+
+### 2026-06-03 追記: Drive source 実装
+
+- 対象 Issue: #40
+- 実装範囲:
+  - Drive folder scanner / raw adapter を追加。
+  - `GOOGLE_DRIVE_ACCESS_TOKEN` または `GOOGLE_OAUTH_ACCESS_TOKEN` を使う `pnpm ingest:collect --source drive --folder-id ...` / `--folder-url ...` を追加。
+  - `ingest:run --source drive` の collect step 接続を追加。
+  - `ingest:inspect --source drive` の source contract に `fileId`、`revisionId`、`mimeType`、`ownerCount`、`drive_doc` parse 検査を追加。
+  - Drive 実データ収集手順を `docs/operations/drive-source.md` に追加。
+- 実行コマンド:
+  - `pnpm --filter @pufu-lens/ingestion test`
+  - `node --experimental-strip-types --check scripts/collect-source.ts && node --experimental-strip-types --check scripts/ingest-workflow.ts && node --experimental-strip-types --check scripts/inspect-ingestion-source.ts`
+  - `pnpm format`
+- 自動テスト結果: Drive folder scan、ingest window、file filter、raw metadata、本文全文 / token を metadata に保存しないこと、dry-run、重複 skip、失敗時の secret マスクを unit test で確認。ingestion package test は全 59 件成功。
+- 補助的な手動確認: script 構文 check で Drive 用 CLI option と workflow option が Node の strip-types 実行形式で解釈できることを確認。
+- DB 確認: 未実施。OAuth access token と実 Drive folder が必要なため、この追記時点では実 DB smoke は未実施。
+- Storage 確認: 未実施。unit test の in-memory storage では raw JSON 保存と重複 skip を確認済み。
+- ログ / secret 確認: unit test で Drive text fetch failure の `token=secret` がログに残らないこと、raw metadata に token と本文全文が入らないことを確認。
+- 未確認リスク: 実 Drive API での `--limit 5` indexed 到達、OAuth scope の最小性、Google Docs / Sheets / Slides 以外の binary / PDF の本文抽出、実 folder での再実行重複確認は未実施。Gmail の実データ接続は未着手。
+- 次 step に進む判断: Drive の実 API 接続部と contract test は追加済みだが、Step 10 の完了条件である実データ `indexed` 到達は未確認。Drive smoke 用の OAuth access token と folder が用意できたら `docs/operations/drive-source.md` の手順で確認する。

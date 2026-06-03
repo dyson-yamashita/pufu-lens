@@ -295,6 +295,28 @@ function validateSourceContract(input: {
     };
   }
 
+  if (input.row.sourceType === 'drive') {
+    const fileId = readString(input.row.metadata?.fileId);
+    const revisionId = readString(input.row.metadata?.revisionId);
+    const mimeType = readString(input.row.metadata?.mimeType);
+    const ownerCount = readNumber(input.row.metadata?.ownerCount);
+    const parsed = input.parsed ?? input.parsedFromRaw;
+    return {
+      contentHashMatchesStorage: input.actualContentHash === input.row.contentHash,
+      hasFileId: Boolean(fileId),
+      hasMimeType: Boolean(mimeType),
+      hasOwnerCount: ownerCount !== undefined,
+      hasRevisionId: Boolean(revisionId),
+      parsedCanonicalUri: parsed?.canonicalUri ?? null,
+      parsedDocType: parsed?.docType ?? null,
+      parsedHasBodyText: typeof parsed?.bodyText === 'string' && parsed.bodyText.trim().length > 0,
+      parsedMatchesDriveDoc: parsed ? parsed.docType === 'drive_doc' : null,
+      sourceIdMatchesMetadata:
+        fileId && revisionId ? input.row.sourceId === `${fileId}:${revisionId}` : false,
+      sourceType: 'drive',
+    };
+  }
+
   return {
     contentHashMatchesStorage: input.actualContentHash === input.row.contentHash,
     parsedDocType: input.parsed?.docType ?? input.parsedFromRaw?.docType ?? null,

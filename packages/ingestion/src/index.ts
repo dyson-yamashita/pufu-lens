@@ -63,6 +63,25 @@ export {
   shouldCollectCandidate,
 } from './collection-pipeline.js';
 export type {
+  CollectDriveSourceOptions,
+  CollectDriveSourceResult,
+  DriveCandidate,
+  DriveFetcher,
+  DriveFileResponse,
+  DriveListResponse,
+  DriveOwnerResponse,
+  DriveRawCandidate,
+  DriveRawDocument,
+  DriveTextFetcher,
+} from './drive-source.js';
+export {
+  buildDriveRawCandidate,
+  collectDriveSource,
+  fetchDriveJson,
+  fetchDriveText,
+  scanDriveDataSource,
+} from './drive-source.js';
+export type {
   CollectGitHubSourceOptions,
   CollectGitHubSourceResult,
   GitHubCandidate,
