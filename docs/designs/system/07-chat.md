@@ -47,6 +47,22 @@ export const privateChatAgent = new Agent({
 
 `rawDocumentFetchTool` は `raw_documents.storage_uri` を読み、`ObjectStorage.getText` で本文を返す。サイズ上限を設け、画像・バイナリは要約メタデータのみ返す。
 
+#### Step 12 初期実装
+
+Step 12 の最小実装では Mastra stream proxy へ進む前に、Next.js 内に同期 JSON API と UI を置く。
+
+- API: `POST /api/projects/[projectSlug]/chat`
+- UI: `/projects/[projectSlug]/chat`
+- server-side provider: `GEMINI_API_KEY` と `GEMINI_CHAT_MODEL` がある場合は Gemini chat provider、未設定時は source 確認用の extractive fallback provider
+- project member 判定: `PUFU_LENS_CHAT_USER_ID` または `PUFU_LENS_ADMIN_USER_ID` を使って `project_members` を確認
+- tool call: `vector-search` / `graph-query` / `document-fetch` / `raw-document-fetch` / `parsed-doc-fetch` を同一 API 内で順に実行し、回答に `sources` と `toolCalls` を含める
+- raw document fetch: 初期実装では本文実体を返さず、`byte_size <= 64 KiB` の document source metadata に限定する
+- 業務時間外: `PUFU_LENS_CHAT_ENFORCE_BUSINESS_HOURS=true` の場合、API は `db_outside_business_hours` を返し、UI は入力欄を disabled にする
+- rate limit: process 内 memory bucket で user + project 単位に制限する
+- 評価: `pnpm chat:eval --fixture fixtures/chat/private-chat-eval.json` で running web server に対して source / tool call を確認する
+
+この初期実装は Step 12 の確認用であり、Mastra Agent 化、streaming、Object Storage からの raw / parsed 本文取得、AGE Cypher の本格利用、永続 rate limit / audit log は後続で置き換える。
+
 ### 2. Public Chat Agent 設計
 
 Public Chat Agent は未ログインユーザー向けに提供するが、対象を **公開済み report** に限定する。private chat と同じ tool set は使わず、Object Storage 上の redaction 済み public report JSON と public context bundle だけを参照する。DB / AGE / pgvector / raw document / parsed document への tool は持たせない。

@@ -7,7 +7,7 @@
     "build": "next build",
     "dev": "next dev",
     "start": "next start",
-    "test": "node --experimental-strip-types src/admin-data.test.ts",
+    "test": "node --experimental-strip-types src/admin-data.test.ts && node --experimental-strip-types src/chat.test.ts",
     "test:e2e": "playwright test",
     "typecheck": "next typegen && tsc --noEmit -p tsconfig.json"
   },

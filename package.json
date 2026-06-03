@@ -6,6 +6,7 @@
   "packageManager": "pnpm@11.1.1",
   "scripts": {
     "build": "turbo run build",
+    "chat:eval": "node --experimental-strip-types scripts/chat-eval.ts",
     "create-project": "node --experimental-strip-types scripts/create-project.ts",
     "format": "biome check --write . && prettier --write \"**/*.{md,yml,yaml}\"",
     "format:check": "biome check . && prettier --check \"**/*.{md,yml,yaml}\"",

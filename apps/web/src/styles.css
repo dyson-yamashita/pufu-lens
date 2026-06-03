@@ -451,6 +451,97 @@ th {
   font-size: 18px;
 }
 
+.chat-panel {
+  display: grid;
+  gap: 20px;
+}
+
+.chat-form {
+  display: grid;
+  gap: 10px;
+}
+
+.chat-form label,
+.chat-result h3 {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.chat-input-row {
+  align-items: stretch;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.chat-input-row textarea {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  min-height: 104px;
+  padding: 12px;
+  resize: vertical;
+}
+
+.chat-input-row textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.notice {
+  background: rgba(243, 186, 77, 0.12);
+  border: 1px solid rgba(243, 186, 77, 0.36);
+  border-radius: 8px;
+  color: var(--amber);
+  margin: 0;
+  padding: 12px;
+}
+
+.notice.error {
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.32);
+  color: var(--red);
+}
+
+.chat-result {
+  display: grid;
+  gap: 12px;
+}
+
+.chat-result h2,
+.chat-result h3,
+.chat-result p {
+  margin: 0;
+}
+
+.source-list,
+.tool-call-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.source-chip {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  max-width: 360px;
+  min-width: 240px;
+  padding: 12px;
+}
+
+.source-chip span,
+.source-chip small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 1023px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -470,6 +561,7 @@ th {
   }
 
   .split-layout,
+  .chat-input-row,
   .status-row {
     grid-template-columns: 1fr;
   }

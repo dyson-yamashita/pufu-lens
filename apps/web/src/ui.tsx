@@ -6,6 +6,7 @@ import {
   Globe,
   HardDrive,
   Mail,
+  MessageSquare,
   RefreshCw,
   ShieldCheck,
   TriangleAlert,
@@ -40,7 +41,7 @@ export function AppShell({
   children,
 }: {
   readonly project?: ProjectSummary;
-  readonly active?: 'projects' | 'data-sources' | 'ingestion' | 'parser-profiles';
+  readonly active?: 'chat' | 'projects' | 'data-sources' | 'ingestion' | 'parser-profiles';
   readonly children: React.ReactNode;
 }) {
   const projectSlug = project?.slug;
@@ -89,6 +90,14 @@ export function AppShell({
               >
                 <FileSearch size={18} />
                 Parsers
+              </Link>
+              <Link
+                className={navClass(active === 'chat')}
+                href={`/projects/${projectSlug}/chat`}
+                data-testid="global-nav-chat"
+              >
+                <MessageSquare size={18} />
+                Chat
               </Link>
             </>
           ) : null}
