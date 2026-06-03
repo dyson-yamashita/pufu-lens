@@ -251,8 +251,8 @@ function validateSourceContract(input: {
   row: InspectRow;
 }): SourceContract {
   if (input.row.sourceType === 'web') {
-    const canonicalUrl = readString(input.row.metadata?.['canonicalUrl']);
-    const title = readString(input.row.metadata?.['title']);
+    const canonicalUrl = readString(input.row.metadata?.canonicalUrl);
+    const title = readString(input.row.metadata?.title);
     const bodyText = input.parsed?.bodyText ?? input.parsedFromRaw?.bodyText;
     return {
       canonicalUrlMatchesSourceId: canonicalUrl === input.row.sourceId,

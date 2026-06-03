@@ -16,6 +16,8 @@ build/
 .next/
 .turbo/
 coverage/
+playwright-report/
+test-results/
 *.tsbuildinfo
 
 # Local data and generated artifacts
