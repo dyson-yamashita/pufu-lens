@@ -522,8 +522,8 @@ function readDriveFolderId(value: string, name: string): string {
 }
 
 function readGmailLabelId(value: string, name: string): string {
-  if (!/^[A-Za-z0-9_:-]+$/.test(value)) {
-    throw new Error(`${name} must be a Gmail label id: ${value}`);
+  if (value.trim().length === 0) {
+    throw new Error(`${name} must be a non-empty string.`);
   }
   return value;
 }

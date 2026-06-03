@@ -726,11 +726,37 @@ test('buildGmailRawCandidate converts latest thread message and previous message
   assert.equal(raw.quotedMessages[0]?.messageId, 'msg-alpha-001');
   assert.deepEqual(raw.to, [
     { email: 'john@example.test', name: 'Doe, John' },
+    { email: 'boss@example.test', name: 'John "The, Boss"' },
     { email: 'jane@example.test', name: 'Jane Reviewer' },
   ]);
   assert.equal(rawCandidate.raw.sourceId, 'thread-alpha:msg-alpha-002');
   assert.equal(rawCandidate.raw.metadata.quotedMessageCount, 1);
   assert.equal(rawCandidate.raw.metadata.bodyText, undefined);
+});
+
+test('buildGmailRawCandidate decodes HTML single quote entities when plain text is absent', async () => {
+  const rawCandidate = buildGmailRawCandidate({
+    dataSource: dataSource({ id: 'data-source-gmail', sourceType: 'gmail' }),
+    projectId: 'project-1',
+    projectSlug: 'sample-a',
+    thread: {
+      id: 'thread-html',
+      messages: [
+        gmailMessage({
+          bodyMimeType: 'text/html',
+          bodyText: '<p>HTML mail&#x27;s fallback</p>',
+          from: 'HTML Sender <html@example.test>',
+          id: 'msg-html-001',
+          internalDate: '1777994400000',
+          sentAt: 'Tue, 05 May 2026 15:20:00 +0000',
+          subject: 'HTML fallback',
+        }),
+      ],
+    },
+  });
+
+  const raw = JSON.parse(rawCandidate.body);
+  assert.equal(raw.bodyText, "HTML mail's fallback");
 });
 
 test('fetchGmailJson builds Gmail API URLs with URL semantics', async () => {
@@ -1417,13 +1443,14 @@ function gmailThread(): {
         internalDate: '1777994400000',
         sentAt: 'Tue, 05 May 2026 15:20:00 +0000',
         subject: 'Fixture ingestion review',
-        to: '"Doe, John" <john@example.test>, Jane Reviewer <jane@example.test>',
+        to: '"Doe, John" <john@example.test>, "John \\"The, Boss\\"" <boss@example.test>, Jane Reviewer <jane@example.test>',
       }),
     ],
   };
 }
 
 function gmailMessage(input: {
+  bodyMimeType?: string;
   bodyText: string;
   from: string;
   id: string;
@@ -1457,7 +1484,7 @@ function gmailMessage(input: {
       parts: [
         {
           body: { data: Buffer.from(input.bodyText, 'utf8').toString('base64url') },
-          mimeType: 'text/plain',
+          mimeType: input.bodyMimeType ?? 'text/plain',
         },
       ],
     },

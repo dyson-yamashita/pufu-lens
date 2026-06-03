@@ -493,7 +493,11 @@ function parseAddress(value: string | undefined): { email: string; name: string 
   const angleMatch = trimmed.match(/^(?<name>.*?)\s*<(?<email>[^>]+)>$/);
   if (angleMatch?.groups?.email) {
     const email = angleMatch.groups.email.trim();
-    const name = (angleMatch.groups.name ?? '').replace(/^"|"$/g, '').trim() || email;
+    const name =
+      (angleMatch.groups.name ?? '')
+        .replace(/^"|"$/g, '')
+        .replace(/\\(["\\])/g, '$1')
+        .trim() || email;
     return { email, name };
   }
   if (trimmed.includes('@')) {
@@ -504,7 +508,7 @@ function parseAddress(value: string | undefined): { email: string; name: string 
 
 function parseAddressList(value: string | undefined): Array<{ email: string; name: string }> {
   return (value ?? '')
-    .split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
+    .split(/,(?=(?:(?:[^"\\]|\\.)*"(?:[^"\\]|\\.)*")*(?:[^"\\]|\\.)*$)/)
     .map((item) => parseAddress(item))
     .filter((address) => address.email || address.name !== 'Unknown Sender');
 }
@@ -676,7 +680,7 @@ function textFromHtml(value: string): string {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/&(apos|#39);/g, "'")
+    .replace(/&(apos|#39|#x27);/gi, "'")
     .replace(/\s+/g, ' ')
     .trim();
 }
