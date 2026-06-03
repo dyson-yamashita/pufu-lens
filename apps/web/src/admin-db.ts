@@ -1,4 +1,4 @@
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import {
   type DataSourceSummary,
   fallbackProjects,
@@ -8,6 +8,7 @@ import {
   type SourceStatus,
   type SourceType,
 } from './admin-data';
+import { getOptionalAdminSql } from './admin-sql';
 
 type ProjectRow = {
   description: string | null;
@@ -51,22 +52,26 @@ export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
   return withOptionalSql(async (sql) => {
     const rows = (await sql`
       SELECT
-        projects.id::text AS id,
-        projects.slug,
-        projects.name,
-        projects.description,
-        count(DISTINCT project_members.user_id)::int AS member_count,
-        count(DISTINCT raw_documents.id)::int AS raw_count,
-        count(DISTINCT ingestion_queue.id)::int AS queue_count,
-        count(DISTINCT raw_documents.id) FILTER (WHERE raw_documents.ingest_status = 'failed')::int AS failed_count,
-        count(DISTINCT raw_documents.id) FILTER (WHERE raw_documents.ingest_status = 'held')::int AS held_count,
-        max(raw_documents.indexed_at) AS last_indexed
-      FROM public.projects
-      LEFT JOIN public.project_members ON project_members.project_id = projects.id
-      LEFT JOIN public.raw_documents ON raw_documents.project_id = projects.id
-      LEFT JOIN public.ingestion_queue ON ingestion_queue.project_id = projects.id
-      GROUP BY projects.id
-      ORDER BY projects.slug
+        p.id::text AS id,
+        p.slug,
+        p.name,
+        p.description,
+        (SELECT count(*)::int FROM public.project_members pm WHERE pm.project_id = p.id) AS member_count,
+        (SELECT count(*)::int FROM public.raw_documents rd WHERE rd.project_id = p.id) AS raw_count,
+        (SELECT count(*)::int FROM public.ingestion_queue iq WHERE iq.project_id = p.id) AS queue_count,
+        (
+          SELECT count(*)::int
+          FROM public.raw_documents rd
+          WHERE rd.project_id = p.id AND rd.ingest_status = 'failed'
+        ) AS failed_count,
+        (
+          SELECT count(*)::int
+          FROM public.raw_documents rd
+          WHERE rd.project_id = p.id AND rd.ingest_status = 'held'
+        ) AS held_count,
+        (SELECT max(rd.indexed_at) FROM public.raw_documents rd WHERE rd.project_id = p.id) AS last_indexed
+      FROM public.projects p
+      ORDER BY p.slug
     `) as ProjectRow[];
 
     const projects = await Promise.all(
@@ -107,27 +112,41 @@ async function listDataSources(
 ): Promise<readonly DataSourceSummary[]> {
   const rows = (await sql`
     SELECT
-      data_sources.id::text AS id,
-      data_sources.name,
-      data_sources.source_type,
-      data_sources.config,
-      data_sources.last_checked_at,
-      count(DISTINCT raw_documents.id)::int AS raw_count,
-      count(DISTINCT ingestion_queue.id)::int AS queue_count,
-      count(DISTINCT ingestion_queue.id) FILTER (WHERE ingestion_queue.status = 'failed')::int AS failed_count,
-      count(DISTINCT ingestion_queue.id) FILTER (WHERE ingestion_queue.status = 'held')::int AS held_count,
-      max(raw_documents.indexed_at) AS last_indexed
-    FROM public.data_sources
-    LEFT JOIN public.raw_document_data_sources
-      ON raw_document_data_sources.data_source_id = data_sources.id
-    LEFT JOIN public.raw_documents
-      ON raw_documents.id = raw_document_data_sources.raw_document_id
-    LEFT JOIN public.ingestion_queue
-      ON ingestion_queue.data_source_id = data_sources.id
-    WHERE data_sources.project_id = ${projectId}
-      AND data_sources.enabled = true
-    GROUP BY data_sources.id
-    ORDER BY data_sources.source_type, data_sources.name
+      ds.id::text AS id,
+      ds.name,
+      ds.source_type,
+      ds.config,
+      ds.last_checked_at,
+      (
+        SELECT count(*)::int
+        FROM public.raw_document_data_sources rdds
+        WHERE rdds.data_source_id = ds.id
+      ) AS raw_count,
+      (
+        SELECT count(*)::int
+        FROM public.ingestion_queue iq
+        WHERE iq.data_source_id = ds.id
+      ) AS queue_count,
+      (
+        SELECT count(*)::int
+        FROM public.ingestion_queue iq
+        WHERE iq.data_source_id = ds.id AND iq.status = 'failed'
+      ) AS failed_count,
+      (
+        SELECT count(*)::int
+        FROM public.ingestion_queue iq
+        WHERE iq.data_source_id = ds.id AND iq.status = 'held'
+      ) AS held_count,
+      (
+        SELECT max(rd.indexed_at)
+        FROM public.raw_document_data_sources rdds
+        JOIN public.raw_documents rd ON rd.id = rdds.raw_document_id
+        WHERE rdds.data_source_id = ds.id
+      ) AS last_indexed
+    FROM public.data_sources ds
+    WHERE ds.project_id = ${projectId}
+      AND ds.enabled = true
+    ORDER BY ds.source_type, ds.name
   `) as DataSourceRow[];
 
   return rows.map((row) => {
@@ -157,26 +176,27 @@ async function listParserProfiles(
 ): Promise<readonly ParserProfileSummary[]> {
   const rows = (await sql`
     SELECT
-      parser_profiles.id::text AS id,
-      parser_profiles.name,
-      parser_profiles.source_type,
+      pp.id::text AS id,
+      pp.name,
+      pp.source_type,
       active_versions.version AS active_version,
       review_versions.id::text AS review_version_id,
       review_versions.version AS review_version,
       review_versions.status AS review_status,
       review_versions.validation_report_uri AS review_validation_report_uri,
-      count(DISTINCT ingestion_queue.id) FILTER (WHERE ingestion_queue.status = 'held')::int AS held_queue_count
-    FROM public.parser_profiles
+      (
+        SELECT count(*)::int
+        FROM public.ingestion_queue iq
+        WHERE iq.parser_profile_id = pp.id AND iq.status = 'held'
+      ) AS held_queue_count
+    FROM public.parser_profiles pp
     LEFT JOIN public.parser_versions AS active_versions
-      ON active_versions.id = parser_profiles.active_version_id
+      ON active_versions.id = pp.active_version_id
     LEFT JOIN public.parser_versions AS review_versions
-      ON review_versions.parser_profile_id = parser_profiles.id
+      ON review_versions.parser_profile_id = pp.id
       AND review_versions.status IN ('draft', 'review_requested')
-    LEFT JOIN public.ingestion_queue
-      ON ingestion_queue.parser_profile_id = parser_profiles.id
-    WHERE parser_profiles.project_id = ${projectId}
-    GROUP BY parser_profiles.id, active_versions.version, review_versions.id
-    ORDER BY parser_profiles.source_type, parser_profiles.name, review_versions.created_at DESC NULLS LAST
+    WHERE pp.project_id = ${projectId}
+    ORDER BY pp.source_type, pp.name, review_versions.created_at DESC NULLS LAST
   `) as ParserProfileRow[];
 
   const seen = new Set<string>();
@@ -233,14 +253,15 @@ async function withOptionalSql<T>(
     return fallback;
   }
 
-  const sql = postgres(databaseUrl, { max: 1 });
+  const sql = getOptionalAdminSql();
+  if (!sql) {
+    return fallback;
+  }
   try {
     return await callback(sql);
   } catch (error) {
     console.warn(error instanceof Error ? error.message : String(error));
     return fallback;
-  } finally {
-    await sql.end();
   }
 }
 
@@ -303,7 +324,11 @@ function formatDate(value: Date | string | null): string {
   if (!value) {
     return 'not yet';
   }
-  return new Date(value).toISOString().replace('T', ' ').slice(0, 16);
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'invalid date';
+  }
+  return date.toISOString().replace('T', ' ').slice(0, 16);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

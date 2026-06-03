@@ -18,6 +18,7 @@ import type {
   SourceStatus,
   SourceType,
 } from './admin-data';
+import { PendingSubmitButton } from './form-buttons';
 
 const sourceLabels: Record<SourceType, string> = {
   drive: 'Drive',
@@ -232,15 +233,10 @@ export function RetryButton({
       <form action={action}>
         <input name="projectSlug" type="hidden" value={projectSlug} />
         {dataSourceId ? <input name="dataSourceId" type="hidden" value={dataSourceId} /> : null}
-        <button
-          className="icon-button"
-          data-testid={testId}
-          title="Retry failed queue"
-          type="submit"
-        >
+        <PendingSubmitButton className="icon-button" testId={testId} title="Retry failed queue">
           <RefreshCw size={16} />
           Retry
-        </button>
+        </PendingSubmitButton>
       </form>
     );
   }
@@ -271,30 +267,28 @@ export function ParserActionButtons({
           <input name="projectSlug" type="hidden" value={projectSlug} />
           <input name="parserProfileId" type="hidden" value={profile.id} />
           <input name="parserVersionId" type="hidden" value={profile.reviewVersionId} />
-          <button
+          <PendingSubmitButton
             className="icon-button"
-            data-testid={`parser-profile-approve-${profile.id}`}
             disabled={profile.status !== 'review_requested'}
+            testId={`parser-profile-approve-${profile.id}`}
             title="Approve parser version"
-            type="submit"
           >
             <ShieldCheck size={16} />
             Approve
-          </button>
+          </PendingSubmitButton>
         </form>
         <form action={rejectAction}>
           <input name="projectSlug" type="hidden" value={projectSlug} />
           <input name="parserVersionId" type="hidden" value={profile.reviewVersionId} />
-          <button
+          <PendingSubmitButton
             className="icon-button muted"
-            data-testid={`parser-profile-reject-${profile.id}`}
             disabled={profile.status !== 'review_requested'}
+            testId={`parser-profile-reject-${profile.id}`}
             title="Reject parser version"
-            type="submit"
           >
             <TriangleAlert size={16} />
             Reject
-          </button>
+          </PendingSubmitButton>
         </form>
       </div>
     );
