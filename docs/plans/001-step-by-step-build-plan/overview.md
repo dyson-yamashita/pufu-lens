@@ -53,10 +53,10 @@ Step の詳細を参照する前に、この表で status を確認する。
 | Step 7   | [Document / Chunk / Embedding の決定的検証](step-07-chunk-embedding.md)                | `completed` | 2026-05-31 | Issue #19 で完了確認済み。                           |
 | Step 8   | [Graph / Relation 構築](step-08-graph-relations.md)                                    | `completed` | 2026-06-01 | Issue #21 で完了確認済み。                           |
 | Step 9   | [Ingestion Workflow の通し実行](step-09-ingestion-workflow.md)                         | `completed` | 2026-06-01 | Issue #25 で完了確認済み。                           |
-| Step 10  | [実データソース接続を 1 種類ずつ追加](step-10-real-data-sources.md)                    | `active`    | 2026-06-01 | Issue #27 で Web URL から着手。                      |
+| Step 10  | [実データソース接続を 1 種類ずつ追加](step-10-real-data-sources.md)                    | `active`    | 2026-06-03 | Web URL smoke test 確認済み。次は GitHub。           |
 | Step 10a | [scripts 実行形式の `.ts` 統一](step-10a-scripts-ts-execution.md)                      | `completed` | 2026-06-02 | Issue #32 で完了確認済み。                           |
 | Step 10b | [scripts strict typecheck 対応](step-10b-scripts-strict-typecheck.md)                  | `completed` | 2026-06-02 | Issue #34 で完了確認済み。                           |
-| Step 11  | [管理 UI と取り込み状況の可視化](step-11-admin-ui.md)                                  | `planned`   | 2026-05-29 | 未着手。                                             |
+| Step 11  | [管理 UI と取り込み状況の可視化](step-11-admin-ui.md)                                  | `completed` | 2026-06-03 | Issue #36 で完了確認済み。                           |
 | Step 12  | [Chat Agent の最小確認](step-12-chat-agent.md)                                         | `planned`   | 2026-05-29 | 未着手。                                             |
 | Step 13a | [Private Report 生成と閲覧](step-13a-private-report.md)                                | `planned`   | 2026-05-29 | 未着手。                                             |
 | Step 13b | [Public Report 公開 artifact と配信](step-13b-public-report-artifact.md)               | `planned`   | 2026-05-29 | 未着手。                                             |

@@ -4,8 +4,23 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "test": "node -e \"console.log('web tests: no tests yet')\"",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "build": "next build",
+    "dev": "next dev",
+    "start": "next start",
+    "test": "node --experimental-strip-types src/admin-data.test.ts",
+    "test:e2e": "playwright test",
+    "typecheck": "next typegen && tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "lucide-react": "^1.17.0",
+    "next": "^16.2.6",
+    "postgres": "^3.4.9",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3"
   }
 }
