@@ -317,6 +317,27 @@ function validateSourceContract(input: {
     };
   }
 
+  if (input.row.sourceType === 'gmail') {
+    const threadId = readString(input.row.metadata?.threadId);
+    const messageId = readString(input.row.metadata?.messageId);
+    const quotedMessageCount = readNumber(input.row.metadata?.quotedMessageCount);
+    const toCount = readNumber(input.row.metadata?.toCount);
+    const parsed = input.parsed ?? input.parsedFromRaw;
+    return {
+      contentHashMatchesStorage: input.actualContentHash === input.row.contentHash,
+      hasMessageId: Boolean(messageId),
+      hasQuotedMessageCount: quotedMessageCount !== undefined,
+      hasThreadId: Boolean(threadId),
+      hasToCount: toCount !== undefined,
+      parsedDocType: parsed?.docType ?? null,
+      parsedHasBodyText: typeof parsed?.bodyText === 'string' && parsed.bodyText.trim().length > 0,
+      parsedMatchesEmail: parsed ? parsed.docType === 'email' : null,
+      sourceIdMatchesMetadata:
+        threadId && messageId ? input.row.sourceId === `${threadId}:${messageId}` : false,
+      sourceType: 'gmail',
+    };
+  }
+
   return {
     contentHashMatchesStorage: input.actualContentHash === input.row.contentHash,
     parsedDocType: input.parsed?.docType ?? input.parsedFromRaw?.docType ?? null,

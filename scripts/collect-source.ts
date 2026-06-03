@@ -12,11 +12,12 @@ import type {
 import {
   collectDriveSource,
   collectGitHubSource,
+  collectGmailSource,
   collectWebUrlSource,
 } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
-const SOURCE_TYPES = ['drive', 'github', 'web'] as const;
+const SOURCE_TYPES = ['drive', 'github', 'gmail', 'web'] as const;
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
@@ -47,6 +48,14 @@ async function main(): Promise<void> {
         sql,
       });
     }
+    if (sourceType === 'gmail' && (options.labelIds.length > 0 || options.query)) {
+      await ensureGmailDataSource({
+        labelIds: options.labelIds,
+        projectSlug,
+        query: options.query,
+        sql,
+      });
+    }
 
     const result =
       sourceType === 'drive'
@@ -58,22 +67,31 @@ async function main(): Promise<void> {
             storage,
             token: process.env.GOOGLE_DRIVE_ACCESS_TOKEN ?? process.env.GOOGLE_OAUTH_ACCESS_TOKEN,
           })
-        : sourceType === 'github'
-          ? await collectGitHubSource({
+        : sourceType === 'gmail'
+          ? await collectGmailSource({
               dryRun: options.dryRun,
               limit: options.limit,
               projectSlug,
               repository,
               storage,
-              token: process.env.GITHUB_TOKEN,
+              token: process.env.GMAIL_ACCESS_TOKEN ?? process.env.GOOGLE_OAUTH_ACCESS_TOKEN,
             })
-          : await collectWebUrlSource({
-              dryRun: options.dryRun,
-              limit: options.limit,
-              projectSlug,
-              repository,
-              storage,
-            });
+          : sourceType === 'github'
+            ? await collectGitHubSource({
+                dryRun: options.dryRun,
+                limit: options.limit,
+                projectSlug,
+                repository,
+                storage,
+                token: process.env.GITHUB_TOKEN,
+              })
+            : await collectWebUrlSource({
+                dryRun: options.dryRun,
+                limit: options.limit,
+                projectSlug,
+                repository,
+                storage,
+              });
 
     console.log(JSON.stringify(result, null, 2));
   } finally {
@@ -380,6 +398,43 @@ async function ensureDriveDataSource(input: {
   `;
 }
 
+async function ensureGmailDataSource(input: {
+  labelIds: string[];
+  projectSlug: string;
+  query?: string;
+  sql: postgres.Sql;
+}): Promise<void> {
+  await input.sql`
+    WITH project AS (
+      SELECT id FROM public.projects WHERE slug = ${input.projectSlug}
+    )
+    INSERT INTO public.data_sources (
+      project_id,
+      owner_user_id,
+      source_type,
+      name,
+      config,
+      ingest_window
+    )
+    SELECT
+      project.id,
+      '00000000-0000-0000-0000-000000000001',
+      'gmail',
+      'Gmail messages',
+      ${input.sql.json({
+        labelIds: input.labelIds,
+        query: input.query,
+      })},
+      ${input.sql.json({})}
+    FROM project
+    ON CONFLICT (project_id, source_type, name)
+    DO UPDATE SET
+      enabled = true,
+      config = EXCLUDED.config,
+      ingest_window = EXCLUDED.ingest_window
+  `;
+}
+
 function createLocalObjectStorageFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): LocalFsObjectStorage {
@@ -399,7 +454,9 @@ function createLocalObjectStorageFromEnv(
 function parseArgs(args: string[]): {
   folderIds: string[];
   folderUrls: string[];
+  labelIds: string[];
   project?: string;
+  query?: string;
   repositories: string[];
   source?: string;
   state?: 'all' | 'closed' | 'open';
@@ -410,14 +467,16 @@ function parseArgs(args: string[]): {
   const options: {
     folderIds: string[];
     folderUrls: string[];
+    labelIds: string[];
     project?: string;
+    query?: string;
     repositories: string[];
     source?: string;
     state?: 'all' | 'closed' | 'open';
     urls: string[];
     limit?: number;
     dryRun?: boolean;
-  } = { folderIds: [], folderUrls: [], repositories: [], urls: [] };
+  } = { folderIds: [], folderUrls: [], labelIds: [], repositories: [], urls: [] };
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -437,6 +496,10 @@ function parseArgs(args: string[]): {
       options.folderIds.push(readDriveFolderId(readOptionValue(args, ++index, arg), arg));
     } else if (arg === '--folder-url') {
       options.folderUrls.push(readOptionValue(args, ++index, arg));
+    } else if (arg === '--label' || arg === '--label-id') {
+      options.labelIds.push(readGmailLabelId(readOptionValue(args, ++index, arg), arg));
+    } else if (arg === '--query' || arg === '--gmail-query') {
+      options.query = readOptionValue(args, ++index, arg);
     } else if (arg === '--url') {
       options.urls.push(readOptionValue(args, ++index, arg));
     } else if (arg === '--limit') {
@@ -454,6 +517,13 @@ function parseArgs(args: string[]): {
 function readDriveFolderId(value: string, name: string): string {
   if (!/^[A-Za-z0-9_-]+$/.test(value)) {
     throw new Error(`${name} must be a Google Drive folder id: ${value}`);
+  }
+  return value;
+}
+
+function readGmailLabelId(value: string, name: string): string {
+  if (!/^[A-Za-z0-9_:-]+$/.test(value)) {
+    throw new Error(`${name} must be a Gmail label id: ${value}`);
   }
   return value;
 }

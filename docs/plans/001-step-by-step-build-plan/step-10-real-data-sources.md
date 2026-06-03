@@ -71,7 +71,7 @@ Step 10 の Web URL 接続で追加した scripts は、後続 Step 10a / Step 1
 
 - 実施日: 2026-06-01
 - 対象 Issue: #27
-- 実装範囲: Web URL source scanner / raw adapter / `pnpm ingest:collect` CLI / `ingest:run --source web` の collect step 接続。2026-06-02 に `ingest:inspect`、`parser:version:validate`、失敗 raw fixture 化の source 絞り込み、`ingest:run --source web` の parse / resolve / chunk / graph source 絞り込みを追加。2026-06-03 に Issue #38 で GitHub source scanner / raw adapter / `--repo` CLI / `ingest:run --source github` の collect step 接続 / GitHub inspect contract を追加。2026-06-03 に Issue #40 で Drive source scanner / raw adapter / `--folder-id`・`--folder-url` CLI / `ingest:run --source drive` の collect step 接続 / Drive inspect contract を追加。
+- 実装範囲: Web URL source scanner / raw adapter / `pnpm ingest:collect` CLI / `ingest:run --source web` の collect step 接続。2026-06-02 に `ingest:inspect`、`parser:version:validate`、失敗 raw fixture 化の source 絞り込み、`ingest:run --source web` の parse / resolve / chunk / graph source 絞り込みを追加。2026-06-03 に Issue #38 で GitHub source scanner / raw adapter / `--repo` CLI / `ingest:run --source github` の collect step 接続 / GitHub inspect contract を追加。2026-06-03 に Issue #40 で Drive source scanner / raw adapter / `--folder-id`・`--folder-url` CLI / `ingest:run --source drive` の collect step 接続 / Drive inspect contract を追加。2026-06-03 に Issue #42 で Gmail source scanner / raw adapter / `--label-id`・`--query` CLI / `ingest:run --source gmail` の collect step 接続 / Gmail inspect contract を追加。
 - 実行コマンド:
   - `pnpm --filter @pufu-lens/ingestion test`
   - `pnpm format:check`
@@ -155,3 +155,27 @@ Step 10 の Web URL 接続で追加した scripts は、後続 Step 10a / Step 1
 - ログ / secret 確認: unit test で Drive text fetch failure の `token=secret` がログに残らないこと、raw metadata に token と本文全文が入らないことを確認。
 - 未確認リスク: 実 Drive API での `--limit 5` indexed 到達、OAuth scope の最小性、Google Docs / Sheets / Slides 以外の binary / PDF の本文抽出、実 folder での再実行重複確認は未実施。Gmail の実データ接続は未着手。
 - 次 step に進む判断: Drive の実 API 接続部と contract test は追加済みだが、Step 10 の完了条件である実データ `indexed` 到達は未確認。Drive smoke 用の OAuth access token と folder が用意できたら `docs/operations/drive-source.md` の手順で確認する。
+
+### 2026-06-03 追記: Gmail source 実装
+
+- 対象 Issue: #42
+- 実装範囲:
+  - Gmail message scanner / thread raw adapter を追加。
+  - `GMAIL_ACCESS_TOKEN` または `GOOGLE_OAUTH_ACCESS_TOKEN` を使う `pnpm ingest:collect --source gmail --label-id ... --query ...` を追加。
+  - `ingest:run --source gmail` の collect step 接続を追加。
+  - `ingest:inspect --source gmail` の source contract に `threadId`、`messageId`、`quotedMessageCount`、`toCount`、`email` parse 検査を追加。
+  - Gmail 実データ収集手順を `docs/operations/gmail-source.md` に追加。
+- 実行コマンド:
+  - `pnpm --filter @pufu-lens/ingestion test`
+  - `node --experimental-strip-types --check scripts/collect-source.ts && node --experimental-strip-types --check scripts/ingest-workflow.ts && node --experimental-strip-types --check scripts/inspect-ingestion-source.ts`
+  - `pnpm format`
+  - `pnpm format:check`
+  - `pnpm test`
+  - `pnpm scripts:typecheck`
+- 自動テスト結果: Gmail message scan、label / query / ingest window、thread の最新 message と過去 message の quote 化、raw metadata、本文全文 / token を metadata に保存しないこと、dry-run、重複 skip、失敗時の secret マスクを unit test で確認。ingestion package test は全 74 件成功。
+- 補助的な手動確認: script 構文 check で Gmail 用 CLI option と workflow option が Node の strip-types 実行形式で解釈できることを確認。
+- DB 確認: 未実施。OAuth access token と実 Gmail query / label が必要なため、この追記時点では実 DB smoke は未実施。
+- Storage 確認: 未実施。unit test の in-memory storage では raw JSON 保存と重複 skip を確認済み。
+- ログ / secret 確認: unit test で Gmail thread fetch failure の `token=secret` がログに残らないこと、raw metadata に token と本文全文が入らないことを確認。
+- 未確認リスク: 実 Gmail API での `--limit 5` indexed 到達、OAuth scope の最小性、複雑な MIME multipart / attachment / quoted text の本文抽出、実 label / query での再実行重複確認は未実施。
+- 次 step に進む判断: Gmail の実 API 接続部と contract test は追加済みだが、Step 10 の完了条件である実データ `indexed` 到達は未確認。Gmail smoke 用の OAuth access token と安全な query / label が用意できたら `docs/operations/gmail-source.md` の手順で確認する。
