@@ -9,35 +9,50 @@ import type {
   RawDocumentRecord,
   SourceType,
 } from '../packages/ingestion/dist/index.js';
-import { collectWebUrlSource } from '../packages/ingestion/dist/index.js';
+import { collectGitHubSource, collectWebUrlSource } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
-const SOURCE_TYPES = ['web'];
+const SOURCE_TYPES = ['github', 'web'] as const;
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sourceType = requiredOption(options.source, '--source');
-  if (sourceType !== 'web') {
-    throw new Error(`Unsupported real data source for ingest:collect: ${sourceType}`);
-  }
 
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   const storage = createLocalObjectStorageFromEnv();
   const repository = new PostgresCollectionRepository(sql);
 
   try {
-    if (options.urls.length > 0) {
+    if (sourceType === 'web' && options.urls.length > 0) {
       await ensureWebUrlDataSource({ projectSlug, sql, urls: options.urls });
     }
+    if (sourceType === 'github' && options.repositories.length > 0) {
+      await ensureGitHubDataSource({
+        projectSlug,
+        repositories: options.repositories,
+        sql,
+        state: options.state,
+      });
+    }
 
-    const result = await collectWebUrlSource({
-      dryRun: options.dryRun,
-      limit: options.limit,
-      projectSlug,
-      repository,
-      storage,
-    });
+    const result =
+      sourceType === 'github'
+        ? await collectGitHubSource({
+            dryRun: options.dryRun,
+            limit: options.limit,
+            projectSlug,
+            repository,
+            storage,
+            token: process.env.GITHUB_TOKEN,
+          })
+        : await collectWebUrlSource({
+            dryRun: options.dryRun,
+            limit: options.limit,
+            projectSlug,
+            repository,
+            storage,
+          });
 
     console.log(JSON.stringify(result, null, 2));
   } finally {
@@ -207,7 +222,14 @@ class PostgresCollectionRepository implements CollectionRepository {
         ${input.targetId},
         ${input.targetUri},
         'pending',
-        'web-url-collection'
+        (
+          SELECT CASE
+            WHEN source_type = 'web' THEN 'web-url-collection'
+            ELSE source_type || '-collection'
+          END
+          FROM public.raw_documents
+          WHERE id = ${input.rawDocumentId}
+        )
       )
       ON CONFLICT (project_id, raw_document_id)
       DO UPDATE SET
@@ -263,6 +285,43 @@ async function ensureWebUrlDataSource(input: {
   `;
 }
 
+async function ensureGitHubDataSource(input: {
+  projectSlug: string;
+  repositories: string[];
+  sql: postgres.Sql;
+  state?: 'all' | 'closed' | 'open';
+}): Promise<void> {
+  await input.sql`
+    WITH project AS (
+      SELECT id FROM public.projects WHERE slug = ${input.projectSlug}
+    )
+    INSERT INTO public.data_sources (
+      project_id,
+      owner_user_id,
+      source_type,
+      name,
+      config,
+      ingest_window
+    )
+    SELECT
+      project.id,
+      '00000000-0000-0000-0000-000000000001',
+      'github',
+      'GitHub repositories',
+      ${input.sql.json({
+        repositories: input.repositories,
+        state: input.state ?? 'open',
+      })},
+      ${input.sql.json({})}
+    FROM project
+    ON CONFLICT (project_id, source_type, name)
+    DO UPDATE SET
+      enabled = true,
+      config = EXCLUDED.config,
+      ingest_window = EXCLUDED.ingest_window
+  `;
+}
+
 function createLocalObjectStorageFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): LocalFsObjectStorage {
@@ -281,18 +340,22 @@ function createLocalObjectStorageFromEnv(
 
 function parseArgs(args: string[]): {
   project?: string;
+  repositories: string[];
   source?: string;
+  state?: 'all' | 'closed' | 'open';
   urls: string[];
   limit?: number;
   dryRun?: boolean;
 } {
   const options: {
     project?: string;
+    repositories: string[];
     source?: string;
+    state?: 'all' | 'closed' | 'open';
     urls: string[];
     limit?: number;
     dryRun?: boolean;
-  } = { urls: [] };
+  } = { repositories: [], urls: [] };
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -300,10 +363,14 @@ function parseArgs(args: string[]): {
       options.project = readOptionValue(args, ++index, arg);
     } else if (arg === '--source') {
       const sourceType = readOptionValue(args, ++index, arg);
-      if (!SOURCE_TYPES.includes(sourceType)) {
+      if (!isRealSourceType(sourceType)) {
         throw new Error(`Unsupported --source value: ${sourceType}`);
       }
       options.source = sourceType;
+    } else if (arg === '--repo' || arg === '--repository') {
+      options.repositories.push(readRepository(readOptionValue(args, ++index, arg), arg));
+    } else if (arg === '--state') {
+      options.state = readGitHubState(readOptionValue(args, ++index, arg), arg);
     } else if (arg === '--url') {
       options.urls.push(readOptionValue(args, ++index, arg));
     } else if (arg === '--limit') {
@@ -316,6 +383,24 @@ function parseArgs(args: string[]): {
   }
 
   return options;
+}
+
+function readGitHubState(value: string, name: string): 'all' | 'closed' | 'open' {
+  if (value !== 'all' && value !== 'closed' && value !== 'open') {
+    throw new Error(`Invalid ${name} value: ${value}`);
+  }
+  return value;
+}
+
+function isRealSourceType(value: string): value is (typeof SOURCE_TYPES)[number] {
+  return (SOURCE_TYPES as readonly string[]).includes(value);
+}
+
+function readRepository(value: string, name: string): string {
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value)) {
+    throw new Error(`${name} must be owner/repo: ${value}`);
+  }
+  return value;
 }
 
 function readOptionValue(args: string[], index: number, optionName: string): string {

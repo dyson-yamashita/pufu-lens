@@ -71,7 +71,7 @@ Step 10 の Web URL 接続で追加した scripts は、後続 Step 10a / Step 1
 
 - 実施日: 2026-06-01
 - 対象 Issue: #27
-- 実装範囲: Web URL source scanner / raw adapter / `pnpm ingest:collect` CLI / `ingest:run --source web` の collect step 接続。2026-06-02 に `ingest:inspect`、`parser:version:validate`、失敗 raw fixture 化の source 絞り込み、`ingest:run --source web` の parse / resolve / chunk / graph source 絞り込みを追加。
+- 実装範囲: Web URL source scanner / raw adapter / `pnpm ingest:collect` CLI / `ingest:run --source web` の collect step 接続。2026-06-02 に `ingest:inspect`、`parser:version:validate`、失敗 raw fixture 化の source 絞り込み、`ingest:run --source web` の parse / resolve / chunk / graph source 絞り込みを追加。2026-06-03 に Issue #38 で GitHub source scanner / raw adapter / `--repo` CLI / `ingest:run --source github` の collect step 接続 / GitHub inspect contract を追加。
 - 実行コマンド:
   - `pnpm --filter @pufu-lens/ingestion test`
   - `pnpm format:check`
@@ -83,8 +83,8 @@ Step 10 の Web URL 接続で追加した scripts は、後続 Step 10a / Step 1
 - DB 確認: 2026-06-03 に Docker daemon 起動後、`step10-web-smoke` project で実 URL smoke test を実施。`raw_documents.ingest_status='indexed'` 1 件、`ingestion_queue.status='indexed'` 1 件、`documents.web_page` 1 件、`document_chunks` 1 件を確認。`sample-a` では既存 fixture Web の `parsed_uri` が過去の `/private/tmp/pufu-lens-step6-storage` を指しており、現在の `STORAGE_ROOT` から外れるため chunk で失敗した。
 - Storage 確認: `/private/tmp/pufu-lens-step10-web-smoke/step10-web-smoke/raw/web/example.com-0f115db062b7.html` と `/private/tmp/pufu-lens-step10-web-smoke/step10-web-smoke/parsed/web/https-example.com.json` を確認。
 - ログ / secret 確認: unit test で raw body を metadata に保存しないことを確認。実 URL でのログ検査は未実施。
-- 未確認リスク: Web URL は isolated smoke project で indexed 到達を確認済み。`sample-a` の古い fixture Web raw は storage root mismatch を起こすため、同 project で実 URL と fixture Web を混在させる場合は storage URI の掃除または volume 初期化が必要。GitHub / Drive / Gmail の実データ接続は未着手。
-- 次 step に進む判断: Web URL の collect / dedup / parse / resolve / chunk / graph / inspect が deterministic provider で通り、LLM / chat model 使用量 0 も確認できたため、Step 10 の次 source（GitHub）に進める。
+- 未確認リスク: Web URL と GitHub は isolated smoke project で indexed 到達を確認済み。`sample-a` の古い fixture Web raw は storage root mismatch を起こすため、同 project で実 URL と fixture Web を混在させる場合は storage URI の掃除または volume 初期化が必要。GitHub smoke は public repo の issue 1 件で確認し、pull request diff の実データ indexed は未確認。Drive / Gmail の実データ接続は未着手。
+- 次 step に進む判断: Web URL と GitHub の collect / dedup / parse / resolve / chunk / graph / inspect が deterministic provider で通り、LLM / chat model 使用量 0 も確認できたため、Step 10 の次 source（Drive）に進める。
 
 ### 2026-06-03 追記: Web URL smoke test
 
@@ -106,5 +106,31 @@ Step 10 の Web URL 接続で追加した scripts は、後続 Step 10a / Step 1
   - `ingest:status` は `rawDocuments=1`、`queueItems=1`、`documents=1`、`documentChunks=1`、`rawDocumentsByStatus.indexed=1`、`ingestionQueueByStatus.indexed=1`、`failedQueue=[]`。
   - `ingest:inspect` は `contentHashMatchesStorage=true`、`canonicalUrlMatchesSourceId=true`、`parsedDocType=web_page`、`parsedHasBodyText=true`、`failedContracts=0`。
   - 再 collect は `skipped_existing` で、Web raw 件数は 1 件のまま。
+  - `parser:version:validate --held --dry-run` は held raw がなく `total=0`。
+  - `ingest:fixture:add-failed --dry-run` は失敗 raw がなく追加対象なし。
+
+### 2026-06-03 追記: GitHub smoke test
+
+- 対象 Issue: #38
+- 対象 project: `step10-github-smoke`
+- 対象 repository: `octocat/Hello-World`
+- 対象 raw: `octocat/Hello-World/issues/9678`
+- 実行コマンド:
+  - `docker compose up -d postgres`
+  - `DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step10-github-smoke pnpm --config.store-dir=/Users/yoshiharu/Library/pnpm/store/v11 create-project --slug step10-github-smoke --name "Step 10 GitHub Smoke"`
+  - `DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step10-github-smoke pnpm --config.store-dir=/Users/yoshiharu/Library/pnpm/store/v11 ingest:collect --project step10-github-smoke --source github --repo octocat/Hello-World --state all --limit 1 --dry-run`
+  - `DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step10-github-smoke pnpm --config.store-dir=/Users/yoshiharu/Library/pnpm/store/v11 ingest:run --project step10-github-smoke --source github --repo octocat/Hello-World --state all --limit 1 --embedding-provider deterministic`
+  - `DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step10-github-smoke pnpm --config.store-dir=/Users/yoshiharu/Library/pnpm/store/v11 ingest:status --project step10-github-smoke`
+  - `DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step10-github-smoke pnpm --config.store-dir=/Users/yoshiharu/Library/pnpm/store/v11 ingest:inspect --project step10-github-smoke --source github --limit 5 --format json`
+  - `DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step10-github-smoke pnpm --config.store-dir=/Users/yoshiharu/Library/pnpm/store/v11 parser:version:validate --project step10-github-smoke --source github --held --dry-run`
+  - `DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step10-github-smoke pnpm --config.store-dir=/Users/yoshiharu/Library/pnpm/store/v11 ingest:fixture:add-failed --project step10-github-smoke --source github --limit 3 --dry-run`
+  - `DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens STORAGE_ROOT=/private/tmp/pufu-lens-step10-github-smoke pnpm --config.store-dir=/Users/yoshiharu/Library/pnpm/store/v11 ingest:collect --project step10-github-smoke --source github --repo octocat/Hello-World --state all --limit 1`
+- 結果:
+  - `ingest:collect --dry-run` は `would_collect`。
+  - `ingest:run` は `collect` / `parse` / `resolve` / `chunk` / `graph` 全 step 成功。
+  - workflow log の `llm` は `agentCalls=0`、`chatModelCalls=0`、`embeddingModelCalls=0`、`tokenUsage=0`。
+  - `ingest:status` は `rawDocuments=1`、`queueItems=1`、`documents=1`、`documentChunks=1`、`rawDocumentsByStatus.indexed=1`、`ingestionQueueByStatus.indexed=1`、`failedQueue=[]`。
+  - `ingest:inspect` は `contentHashMatchesStorage=true`、`sourceIdMatchesMetadata=true`、`parsedDocType=issue`、`parsedMatchesKind=true`、`parsedHasBodyText=true`、`failedContracts=0`。
+  - 再 collect は `skipped_existing` で、GitHub raw 件数は 1 件のまま。
   - `parser:version:validate --held --dry-run` は held raw がなく `total=0`。
   - `ingest:fixture:add-failed --dry-run` は失敗 raw がなく追加対象なし。

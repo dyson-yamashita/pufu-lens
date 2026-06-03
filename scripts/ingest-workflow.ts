@@ -19,8 +19,10 @@ type WorkflowOptions = {
   fixture?: boolean;
   limit?: number;
   project?: string;
+  repositories?: string[];
   resumeFrom?: WorkflowStep;
   source?: SourceType;
+  state?: 'all' | 'closed' | 'open';
   step?: WorkflowStep;
   urls?: string[];
 };
@@ -103,8 +105,8 @@ async function main(): Promise<void> {
 
 async function runCommand(options: WorkflowOptions): Promise<void> {
   const projectSlug = requiredOption(options.project, '--project');
-  if (!options.fixture && options.source !== 'web') {
-    throw new Error('--fixture is required unless --source web is used.');
+  if (!options.fixture && options.source !== 'web' && options.source !== 'github') {
+    throw new Error('--fixture is required unless --source web or github is used.');
   }
 
   const run = createRunLogger({ command: 'run', projectSlug, sourceType: options.source });
@@ -258,6 +260,12 @@ function buildStepCommand(
       );
       for (const url of options.urls ?? []) {
         args.push('--url', url);
+      }
+      for (const repository of options.repositories ?? []) {
+        args.push('--repo', repository);
+      }
+      if (options.state) {
+        args.push('--state', options.state);
       }
       appendLimit(args, options.limit);
     }
@@ -626,6 +634,11 @@ function parseArgs(argv: string[]): WorkflowOptions {
     } else if (arg === '--url') {
       options.urls = options.urls ?? [];
       options.urls.push(readOptionValue(argv, ++index, arg));
+    } else if (arg === '--repo' || arg === '--repository') {
+      options.repositories = options.repositories ?? [];
+      options.repositories.push(readRepository(readOptionValue(argv, ++index, arg), arg));
+    } else if (arg === '--state') {
+      options.state = readGitHubState(readOptionValue(argv, ++index, arg), arg);
     } else if (arg === '--failed-only') {
       options.failedOnly = true;
     } else if (arg === '--dry-run') {
@@ -650,6 +663,20 @@ function readSourceType(value: string): SourceType {
     throw new Error(`Unsupported --source value: ${value}`);
   }
   return value as SourceType;
+}
+
+function readGitHubState(value: string, optionName: string): 'all' | 'closed' | 'open' {
+  if (value !== 'all' && value !== 'closed' && value !== 'open') {
+    throw new Error(`Invalid ${optionName} value: ${value}`);
+  }
+  return value;
+}
+
+function readRepository(value: string, optionName: string): string {
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value)) {
+    throw new Error(`${optionName} must be owner/repo: ${value}`);
+  }
+  return value;
 }
 
 function readStepOption(value: string, optionName: string): WorkflowStep {
