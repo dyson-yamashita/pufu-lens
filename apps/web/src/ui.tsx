@@ -43,7 +43,7 @@ export function AppShell({
   readonly active?: 'projects' | 'data-sources' | 'ingestion' | 'parser-profiles';
   readonly children: React.ReactNode;
 }) {
-  const projectSlug = project?.slug ?? 'sample-a';
+  const projectSlug = project?.slug;
 
   return (
     <div className="app-shell">
@@ -64,30 +64,34 @@ export function AppShell({
             <Database size={18} />
             Projects
           </Link>
-          <Link
-            className={navClass(active === 'data-sources')}
-            href={`/projects/${projectSlug}/admin/data-sources`}
-            data-testid="global-nav-data-sources"
-          >
-            <GitBranch size={18} />
-            Sources
-          </Link>
-          <Link
-            className={navClass(active === 'ingestion')}
-            href={`/projects/${projectSlug}/admin/ingestion`}
-            data-testid="global-nav-ingestion"
-          >
-            <Activity size={18} />
-            Ingestion
-          </Link>
-          <Link
-            className={navClass(active === 'parser-profiles')}
-            href={`/projects/${projectSlug}/admin/parser-profiles`}
-            data-testid="global-nav-parser-profiles"
-          >
-            <FileSearch size={18} />
-            Parsers
-          </Link>
+          {projectSlug ? (
+            <>
+              <Link
+                className={navClass(active === 'data-sources')}
+                href={`/projects/${projectSlug}/admin/data-sources`}
+                data-testid="global-nav-data-sources"
+              >
+                <GitBranch size={18} />
+                Sources
+              </Link>
+              <Link
+                className={navClass(active === 'ingestion')}
+                href={`/projects/${projectSlug}/admin/ingestion`}
+                data-testid="global-nav-ingestion"
+              >
+                <Activity size={18} />
+                Ingestion
+              </Link>
+              <Link
+                className={navClass(active === 'parser-profiles')}
+                href={`/projects/${projectSlug}/admin/parser-profiles`}
+                data-testid="global-nav-parser-profiles"
+              >
+                <FileSearch size={18} />
+                Parsers
+              </Link>
+            </>
+          ) : null}
         </nav>
       </aside>
       <main className="main-surface">{children}</main>
@@ -155,20 +159,35 @@ export function SourceIcon({ sourceType }: { readonly sourceType: SourceType }) 
   return <Icon aria-hidden="true" size={18} />;
 }
 
-export function SourceTypeTabs({ activeType }: { readonly activeType?: SourceType }) {
+export function SourceTypeTabs({
+  activeType,
+  projectSlug,
+}: {
+  readonly activeType?: SourceType;
+  readonly projectSlug: string;
+}) {
   return (
     <div className="segmented-control" role="tablist" aria-label="Source type">
+      <Link
+        aria-selected={!activeType}
+        className={!activeType ? 'selected' : ''}
+        data-testid="source-type-all-tab"
+        href={`/projects/${projectSlug}/admin/data-sources`}
+        role="tab"
+      >
+        All
+      </Link>
       {(['gmail', 'drive', 'github', 'web'] as const).map((sourceType) => (
-        <button
-          aria-selected={!activeType || activeType === sourceType}
-          className={!activeType || activeType === sourceType ? 'selected' : ''}
+        <Link
+          aria-selected={activeType === sourceType}
+          className={activeType === sourceType ? 'selected' : ''}
           data-testid={`source-type-${sourceType}-tab`}
+          href={`/projects/${projectSlug}/admin/data-sources?sourceType=${sourceType}`}
           key={sourceType}
           role="tab"
-          type="button"
         >
           {sourceLabels[sourceType]}
-        </button>
+        </Link>
       ))}
     </div>
   );

@@ -4,6 +4,9 @@ test('projects page links to project administration', async ({ page }) => {
   await page.goto('/projects');
 
   await expect(page.getByTestId('global-nav')).toBeVisible();
+  await expect(page.getByTestId('global-nav-data-sources')).toHaveCount(0);
+  await expect(page.getByTestId('global-nav-ingestion')).toHaveCount(0);
+  await expect(page.getByTestId('global-nav-parser-profiles')).toHaveCount(0);
   await expect(page.getByTestId('project-list')).toBeVisible();
   await expect(page.getByTestId('project-card-sample-a')).toBeVisible();
 
@@ -17,6 +20,12 @@ test('admin routes expose stable operation controls', async ({ page }) => {
   await expect(page.getByTestId('data-source-table')).toBeVisible();
   await expect(page.getByTestId('data-source-detail-panel')).toBeVisible();
   await expect(page.getByTestId('source-type-web-tab')).toBeVisible();
+
+  await page.getByTestId('source-type-web-tab').click();
+  await expect(page).toHaveURL(/\/projects\/sample-a\/admin\/data-sources\?sourceType=web$/);
+  await expect(page.getByTestId('source-type-web-tab')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('data-source-table').getByText('Fixture web')).toBeVisible();
+  await expect(page.getByTestId('data-source-table').getByText('Fixture drive')).toHaveCount(0);
 
   await page.goto('/projects/sample-a/admin/ingestion');
   await expect(page.getByTestId('ingestion-status-list')).toBeVisible();

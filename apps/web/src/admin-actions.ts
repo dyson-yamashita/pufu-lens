@@ -62,6 +62,7 @@ export async function approveParserVersion(formData: FormData): Promise<void> {
         parserProfileId,
         parserVersionId,
       );
+      requireParserVersionReviewable(parserVersion, 'approve');
 
       await tx`
         UPDATE public.parser_versions
@@ -113,6 +114,7 @@ export async function rejectParserVersion(formData: FormData): Promise<void> {
         undefined,
         parserVersionId,
       );
+      requireParserVersionReviewable(parserVersion, 'reject');
       await tx`
         UPDATE public.parser_versions
         SET status = 'retired',
@@ -159,23 +161,35 @@ async function lookupProjectParserVersion(
   projectId: string,
   parserProfileId: string | undefined,
   parserVersionId: string,
-): Promise<{ readonly id: string }> {
+): Promise<{ readonly id: string; readonly status: string }> {
   const parserProfileFilter = parserProfileId
     ? sql`AND parser_profiles.id = ${parserProfileId}`
     : sql``;
   const rows = (await sql`
-    SELECT parser_versions.id::text AS id
+    SELECT parser_versions.id::text AS id, parser_versions.status
     FROM public.parser_versions
     JOIN public.parser_profiles ON parser_profiles.id = parser_versions.parser_profile_id
     WHERE parser_profiles.project_id = ${projectId}
       ${parserProfileFilter}
       AND parser_versions.id = ${parserVersionId}
-  `) as Array<{ id: string }>;
+  `) as Array<{ id: string; status: string }>;
   const parserVersion = rows[0];
   if (!parserVersion) {
     throw new Error('Parser version not found in project.');
   }
   return parserVersion;
+}
+
+function requireParserVersionReviewable(
+  parserVersion: { readonly id: string; readonly status: string },
+  action: 'approve' | 'reject',
+): void {
+  if (parserVersion.status === 'draft' || parserVersion.status === 'review_requested') {
+    return;
+  }
+  throw new Error(
+    `Cannot ${action} parser version ${parserVersion.id} from status ${parserVersion.status}.`,
+  );
 }
 
 function requireFormValue(formData: FormData, key: string): string {

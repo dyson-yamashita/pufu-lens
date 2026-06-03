@@ -33,6 +33,7 @@ type DataSourceRow = {
   name: string;
   queue_count: number | string | bigint;
   raw_count: number | string | bigint;
+  project_id: string;
   source_type: SourceType;
 };
 
@@ -45,7 +46,16 @@ type ParserProfileRow = {
   review_validation_report_uri: string | null;
   review_version: string | null;
   review_version_id: string | null;
+  project_id: string;
   source_type: SourceType;
+};
+
+type AdminConfig = Record<string, unknown> & {
+  readonly folderId?: unknown;
+  readonly query?: unknown;
+  readonly repositories?: unknown;
+  readonly source?: unknown;
+  readonly urls?: unknown;
 };
 
 export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
@@ -74,26 +84,69 @@ export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
       ORDER BY p.slug
     `) as ProjectRow[];
 
-    const projects = await Promise.all(
-      rows.map(async (row) => {
-        const [dataSources, parserProfiles] = await Promise.all([
-          listDataSources(sql, row.id),
-          listParserProfiles(sql, row.id),
-        ]);
-        return projectFromRow(row, dataSources, parserProfiles);
-      }),
+    const projectIds = rows.map((row) => row.id);
+    const [dataSourcesByProject, parserProfilesByProject] = await Promise.all([
+      listDataSourcesByProject(sql, projectIds),
+      listParserProfilesByProject(sql, projectIds),
+    ]);
+    const projects = rows.map((row) =>
+      projectFromRow(
+        row,
+        dataSourcesByProject.get(row.id) ?? [],
+        parserProfilesByProject.get(row.id) ?? [],
+      ),
     );
     return projects.length > 0 ? projects : fallbackProjects;
   }, fallbackProjects);
 }
 
 export async function getAdminProject(slug: string): Promise<ProjectSummary> {
-  const projects = await listAdminProjects();
-  const project = projects.find((candidate) => candidate.slug === slug);
-  if (!project) {
-    throw new Error(`Unknown project slug: ${slug}`);
+  const sql = getOptionalAdminSql();
+  if (!sql) {
+    return getFallbackProject(slug);
   }
-  return project;
+
+  try {
+    const rows = (await sql`
+      SELECT
+        p.id::text AS id,
+        p.slug,
+        p.name,
+        p.description,
+        (SELECT count(*)::int FROM public.project_members pm WHERE pm.project_id = p.id) AS member_count,
+        (SELECT count(*)::int FROM public.raw_documents rd WHERE rd.project_id = p.id) AS raw_count,
+        (SELECT count(*)::int FROM public.ingestion_queue iq WHERE iq.project_id = p.id) AS queue_count,
+        (
+          SELECT count(*)::int
+          FROM public.raw_documents rd
+          WHERE rd.project_id = p.id AND rd.ingest_status = 'failed'
+        ) AS failed_count,
+        (
+          SELECT count(*)::int
+          FROM public.raw_documents rd
+          WHERE rd.project_id = p.id AND rd.ingest_status = 'held'
+        ) AS held_count,
+        (SELECT max(rd.indexed_at) FROM public.raw_documents rd WHERE rd.project_id = p.id) AS last_indexed
+      FROM public.projects p
+      WHERE p.slug = ${slug}
+    `) as ProjectRow[];
+    const row = rows[0];
+    if (!row) {
+      throw new Error(`Unknown project slug: ${slug}`);
+    }
+    const [dataSources, parserProfiles] = await Promise.all([
+      listDataSources(sql, row.id),
+      listParserProfiles(sql, row.id),
+    ]);
+    return projectFromRow(row, dataSources, parserProfiles);
+  } catch (error) {
+    const fallback = fallbackProjects.find((candidate) => candidate.slug === slug);
+    if (fallback) {
+      console.warn(error instanceof Error ? error.message : String(error));
+      return fallback;
+    }
+    throw error;
+  }
 }
 
 export function getSourceTypeCounts(project: ProjectSummary): Record<SourceType, number> {
@@ -106,12 +159,84 @@ export function getSourceTypeCounts(project: ProjectSummary): Record<SourceType,
   );
 }
 
+async function listDataSourcesByProject(
+  sql: postgres.Sql,
+  projectIds: readonly string[],
+): Promise<ReadonlyMap<string, readonly DataSourceSummary[]>> {
+  if (projectIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = (await sql`
+    SELECT
+      ds.project_id::text AS project_id,
+      ds.id::text AS id,
+      ds.name,
+      ds.source_type,
+      ds.config,
+      ds.last_checked_at,
+      (
+        SELECT count(*)::int
+        FROM public.raw_document_data_sources rdds
+        WHERE rdds.data_source_id = ds.id
+      ) AS raw_count,
+      (
+        SELECT count(*)::int
+        FROM public.ingestion_queue iq
+        WHERE iq.data_source_id = ds.id
+      ) AS queue_count,
+      (
+        SELECT count(*)::int
+        FROM public.ingestion_queue iq
+        WHERE iq.data_source_id = ds.id AND iq.status = 'failed'
+      ) AS failed_count,
+      (
+        SELECT count(*)::int
+        FROM public.ingestion_queue iq
+        WHERE iq.data_source_id = ds.id AND iq.status = 'held'
+      ) AS held_count,
+      (
+        SELECT max(rd.indexed_at)
+        FROM public.raw_document_data_sources rdds
+        JOIN public.raw_documents rd ON rd.id = rdds.raw_document_id
+        WHERE rdds.data_source_id = ds.id
+      ) AS last_indexed
+    FROM public.data_sources ds
+    WHERE ds.enabled = true
+      AND ds.project_id IN ${sql(projectIds)}
+    ORDER BY ds.source_type, ds.name
+  `) as DataSourceRow[];
+
+  return groupRowsByProject(rows, dataSourceFromRow);
+}
+
+function dataSourceFromRow(row: DataSourceRow): DataSourceSummary {
+  const failedCount = toNumber(row.failed_count);
+  const heldCount = toNumber(row.held_count);
+  const queueCount = toNumber(row.queue_count);
+  return {
+    configSummary: summarizeConfig(row.source_type, row.config),
+    failedCount,
+    heldCount,
+    id: row.id,
+    lastChecked: formatDate(row.last_checked_at),
+    lastIndexed: formatDate(row.last_indexed),
+    name: row.name,
+    queueCount,
+    rawCount: toNumber(row.raw_count),
+    scope: summarizeScope(row.source_type, row.config),
+    sourceType: row.source_type,
+    status: statusFromCounts({ failedCount, heldCount, queueCount }),
+  };
+}
+
 async function listDataSources(
   sql: postgres.Sql,
   projectId: string,
 ): Promise<readonly DataSourceSummary[]> {
   const rows = (await sql`
     SELECT
+      ds.project_id::text AS project_id,
       ds.id::text AS id,
       ds.name,
       ds.source_type,
@@ -149,25 +274,44 @@ async function listDataSources(
     ORDER BY ds.source_type, ds.name
   `) as DataSourceRow[];
 
-  return rows.map((row) => {
-    const failedCount = toNumber(row.failed_count);
-    const heldCount = toNumber(row.held_count);
-    const queueCount = toNumber(row.queue_count);
-    return {
-      configSummary: summarizeConfig(row.source_type, row.config),
-      failedCount,
-      heldCount,
-      id: row.id,
-      lastChecked: formatDate(row.last_checked_at),
-      lastIndexed: formatDate(row.last_indexed),
-      name: row.name,
-      queueCount,
-      rawCount: toNumber(row.raw_count),
-      scope: summarizeScope(row.source_type, row.config),
-      sourceType: row.source_type,
-      status: statusFromCounts({ failedCount, heldCount, queueCount }),
-    };
-  });
+  return rows.map(dataSourceFromRow);
+}
+
+async function listParserProfilesByProject(
+  sql: postgres.Sql,
+  projectIds: readonly string[],
+): Promise<ReadonlyMap<string, readonly ParserProfileSummary[]>> {
+  if (projectIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = (await sql`
+    SELECT
+      pp.project_id::text AS project_id,
+      pp.id::text AS id,
+      pp.name,
+      pp.source_type,
+      active_versions.version AS active_version,
+      review_versions.id::text AS review_version_id,
+      review_versions.version AS review_version,
+      review_versions.status AS review_status,
+      review_versions.validation_report_uri AS review_validation_report_uri,
+      (
+        SELECT count(*)::int
+        FROM public.ingestion_queue iq
+        WHERE iq.parser_profile_id = pp.id AND iq.status = 'held'
+      ) AS held_queue_count
+    FROM public.parser_profiles pp
+    LEFT JOIN public.parser_versions AS active_versions
+      ON active_versions.id = pp.active_version_id
+    LEFT JOIN public.parser_versions AS review_versions
+      ON review_versions.parser_profile_id = pp.id
+      AND review_versions.status IN ('draft', 'review_requested')
+    WHERE pp.project_id IN ${sql(projectIds)}
+    ORDER BY pp.source_type, pp.name, review_versions.created_at DESC NULLS LAST
+  `) as ParserProfileRow[];
+
+  return groupParserProfileRowsByProject(rows);
 }
 
 async function listParserProfiles(
@@ -176,6 +320,7 @@ async function listParserProfiles(
 ): Promise<readonly ParserProfileSummary[]> {
   const rows = (await sql`
     SELECT
+      pp.project_id::text AS project_id,
       pp.id::text AS id,
       pp.name,
       pp.source_type,
@@ -199,6 +344,32 @@ async function listParserProfiles(
     ORDER BY pp.source_type, pp.name, review_versions.created_at DESC NULLS LAST
   `) as ParserProfileRow[];
 
+  return parserProfilesFromRows(rows);
+}
+
+function groupParserProfileRowsByProject(
+  rows: readonly ParserProfileRow[],
+): ReadonlyMap<string, readonly ParserProfileSummary[]> {
+  const rowsByProject = new Map<string, ParserProfileRow[]>();
+  for (const row of rows) {
+    const projectRows = rowsByProject.get(row.project_id);
+    if (projectRows) {
+      projectRows.push(row);
+      continue;
+    }
+    rowsByProject.set(row.project_id, [row]);
+  }
+
+  const profilesByProject = new Map<string, readonly ParserProfileSummary[]>();
+  for (const [projectId, projectRows] of rowsByProject) {
+    profilesByProject.set(projectId, parserProfilesFromRows(projectRows));
+  }
+  return profilesByProject;
+}
+
+function parserProfilesFromRows(
+  rows: readonly ParserProfileRow[],
+): readonly ParserProfileSummary[] {
   const seen = new Set<string>();
   const profiles: ParserProfileSummary[] = [];
   for (const row of rows) {
@@ -219,6 +390,22 @@ async function listParserProfiles(
     });
   }
   return profiles;
+}
+
+function groupRowsByProject<TRow extends { readonly project_id: string }, TValue>(
+  rows: readonly TRow[],
+  mapper: (row: TRow) => TValue,
+): ReadonlyMap<string, readonly TValue[]> {
+  const valuesByProject = new Map<string, TValue[]>();
+  for (const row of rows) {
+    const values = valuesByProject.get(row.project_id);
+    if (values) {
+      values.push(mapper(row));
+      continue;
+    }
+    valuesByProject.set(row.project_id, [mapper(row)]);
+  }
+  return valuesByProject;
 }
 
 function projectFromRow(
@@ -293,7 +480,7 @@ function normalizeParserStatus(status: string | null): ParserProfileStatus {
 }
 
 function summarizeScope(sourceType: SourceType, config: unknown): string {
-  const object = isRecord(config) ? config : {};
+  const object: AdminConfig = isRecord(config) ? config : {};
   if (sourceType === 'web' && Array.isArray(object.urls)) {
     return object.urls.map(String).join(', ');
   }
@@ -310,7 +497,7 @@ function summarizeScope(sourceType: SourceType, config: unknown): string {
 }
 
 function summarizeConfig(sourceType: SourceType, config: unknown): string {
-  const object = isRecord(config) ? config : {};
+  const object: AdminConfig = isRecord(config) ? config : {};
   if (sourceType === 'web' && Array.isArray(object.urls)) {
     return `URL ${object.urls.length} 件`;
   }
@@ -337,4 +524,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function toNumber(value: number | string | bigint): number {
   return Number(value);
+}
+
+function getFallbackProject(slug: string): ProjectSummary {
+  const project = fallbackProjects.find((candidate) => candidate.slug === slug);
+  if (!project) {
+    throw new Error(`Unknown project slug: ${slug}`);
+  }
+  return project;
 }

@@ -1,3 +1,4 @@
+import type { SourceType } from '../../../../../src/admin-data';
 import { getAdminProject, getSourceTypeCounts } from '../../../../../src/admin-db';
 import {
   AppShell,
@@ -10,12 +11,19 @@ import {
 
 export default async function DataSourcesPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ readonly projectSlug: string }>;
+  readonly searchParams: Promise<{ readonly sourceType?: string }>;
 }) {
   const { projectSlug } = await params;
+  const { sourceType } = await searchParams;
+  const activeSourceType = parseSourceType(sourceType);
   const project = await getAdminProject(projectSlug);
-  const selectedSource = project.dataSources[0];
+  const visibleSources = activeSourceType
+    ? project.dataSources.filter((source) => source.sourceType === activeSourceType)
+    : project.dataSources;
+  const selectedSource = visibleSources[0];
   const counts = getSourceTypeCounts(project);
 
   return (
@@ -30,7 +38,7 @@ export default async function DataSourcesPage({
         }
       />
       <MetricStrip project={project} />
-      <SourceTypeTabs />
+      <SourceTypeTabs activeType={activeSourceType} projectSlug={project.slug} />
       <section className="split-layout">
         <div className="panel">
           <div className="panel-heading">
@@ -39,7 +47,7 @@ export default async function DataSourcesPage({
               web {counts.web} / github {counts.github}
             </span>
           </div>
-          <DataSourceTable sources={project.dataSources} />
+          <DataSourceTable sources={visibleSources} />
         </div>
         <aside className="panel" data-testid="data-source-detail-panel">
           {selectedSource ? (
@@ -94,4 +102,11 @@ export default async function DataSourcesPage({
       </section>
     </AppShell>
   );
+}
+
+function parseSourceType(value: string | undefined): SourceType | undefined {
+  if (value === 'drive' || value === 'github' || value === 'gmail' || value === 'web') {
+    return value;
+  }
+  return undefined;
 }

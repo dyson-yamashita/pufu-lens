@@ -326,21 +326,25 @@ button {
   border-radius: 8px;
   display: inline-grid;
   gap: 4px;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   margin-bottom: 16px;
   padding: 4px;
 }
 
-.segmented-control button {
+.segmented-control a {
   background: transparent;
   border: 0;
   border-radius: 6px;
   color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 36px;
   padding: 0 14px;
+  text-decoration: none;
 }
 
-.segmented-control button.selected {
+.segmented-control a.selected {
   background: var(--blue-strong);
   color: white;
 }
@@ -497,7 +501,7 @@ th {
     width: 100%;
   }
 
-  .segmented-control button {
+  .segmented-control a {
     padding: 0 8px;
   }
 }
