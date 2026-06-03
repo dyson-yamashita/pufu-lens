@@ -266,6 +266,35 @@ function validateSourceContract(input: {
     };
   }
 
+  if (input.row.sourceType === 'github') {
+    const repository = readString(input.row.metadata?.repository);
+    const kind = readString(input.row.metadata?.kind);
+    const number = readNumber(input.row.metadata?.number);
+    const expectedSourceId =
+      repository && kind && number !== undefined
+        ? `${repository}/${kind === 'pull_request' ? 'pulls' : 'issues'}/${number}`
+        : null;
+    const parsed = input.parsed ?? input.parsedFromRaw;
+    return {
+      contentHashMatchesStorage: input.actualContentHash === input.row.contentHash,
+      hasDiffMetadata: kind !== 'pull_request' || typeof input.row.metadata?.hasDiff === 'boolean',
+      hasIssueNumber: number !== undefined,
+      hasKind: kind === 'issue' || kind === 'pull_request',
+      hasRepository: Boolean(repository),
+      parsedCanonicalUri: parsed?.canonicalUri ?? null,
+      parsedDocType: parsed?.docType ?? null,
+      parsedHasBodyText: typeof parsed?.bodyText === 'string' && parsed.bodyText.trim().length > 0,
+      parsedMatchesKind:
+        !kind || !parsed
+          ? null
+          : kind === 'pull_request'
+            ? parsed.docType === 'pull_request'
+            : parsed.docType === 'issue',
+      sourceIdMatchesMetadata: expectedSourceId === input.row.sourceId,
+      sourceType: 'github',
+    };
+  }
+
   return {
     contentHashMatchesStorage: input.actualContentHash === input.row.contentHash,
     parsedDocType: input.parsed?.docType ?? input.parsedFromRaw?.docType ?? null,
@@ -433,6 +462,10 @@ function readPositiveInteger(value: string, name: string): number {
 
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function readNumber(value: unknown): number | undefined {
+  return Number.isInteger(value) ? Number(value) : undefined;
 }
 
 function requiredEnv(name: string): string {

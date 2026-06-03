@@ -63,6 +63,25 @@ export {
   shouldCollectCandidate,
 } from './collection-pipeline.js';
 export type {
+  CollectGitHubSourceOptions,
+  CollectGitHubSourceResult,
+  GitHubCandidate,
+  GitHubCommentResponse,
+  GitHubDiffFetcher,
+  GitHubFetcher,
+  GitHubIssueResponse,
+  GitHubRawCandidate,
+  GitHubRawDocument,
+  GitHubReviewResponse,
+} from './github-source.js';
+export {
+  buildGitHubRawCandidate,
+  collectGitHubSource,
+  fetchGitHubJson,
+  fetchGitHubText,
+  scanGitHubDataSource,
+} from './github-source.js';
+export type {
   GraphActorAliasType,
   GraphEdgeInput,
   GraphEdgeType,

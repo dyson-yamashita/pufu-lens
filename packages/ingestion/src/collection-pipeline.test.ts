@@ -17,6 +17,12 @@ import {
   shouldCollectCandidate,
 } from './collection-pipeline.js';
 import {
+  buildGitHubRawCandidate,
+  collectGitHubSource,
+  type GitHubFetcher,
+  scanGitHubDataSource,
+} from './github-source.js';
+import {
   buildWebUrlRawCandidate,
   collectWebUrlSource,
   fetchWebUrl,
@@ -413,6 +419,143 @@ test('collectWebUrlSource continues after a candidate fetch failure', async () =
   }
 });
 
+test('scanGitHubDataSource reads configured repositories and filters issues by kind', async () => {
+  const paths: string[] = [];
+  const candidates = await scanGitHubDataSource({
+    dataSource: dataSource({
+      config: {
+        includeIssues: false,
+        repositories: ['Example-Org/pufu-sample', 'invalid repo'],
+        state: 'all',
+      },
+      sourceType: 'github',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      return [githubIssue({ number: 101 }), githubIssue({ number: 202, pullRequest: true })];
+    },
+    limit: 5,
+  });
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0]?.repository, 'Example-Org/pufu-sample');
+  assert.equal(candidates[0]?.issue.number, 202);
+  assert.match(paths[0] ?? '', /state=all/);
+});
+
+test('buildGitHubRawCandidate converts issue comments, PR reviews, and diff metadata', async () => {
+  const rawCandidate = await buildGitHubRawCandidate({
+    candidate: {
+      issue: githubIssue({ number: 202, pullRequest: true }),
+      repository: 'example-org/pufu-sample',
+    },
+    dataSource: dataSource({ id: 'data-source-github', sourceType: 'github' }),
+    diffFetcher: async () => 'diff --git a/file b/file\n',
+    fetcher: githubDetailFetcher(),
+    projectId: 'project-1',
+    projectSlug: 'sample-a',
+    token: 'secret-token',
+  });
+
+  const raw = JSON.parse(rawCandidate.body);
+  assert.equal(raw.kind, 'pull_request');
+  assert.equal(raw.comments.length, 1);
+  assert.equal(raw.reviews.length, 1);
+  assert.match(raw.diff.sha256, /^[a-f0-9]{64}$/);
+  assert.equal(rawCandidate.raw.sourceId, 'example-org/pufu-sample/pulls/202');
+  assert.equal(rawCandidate.raw.metadata.hasDiff, true);
+  assert.equal(rawCandidate.raw.metadata.body, undefined);
+});
+
+test('collectGitHubSource supports dry-run and duplicate skip without storing token metadata', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { repositories: ['example-org/pufu-sample'] },
+      id: 'data-source-github',
+      sourceType: 'github',
+    }),
+  );
+  const storage = new InMemoryObjectStorage();
+  const fetcher = githubDetailFetcher();
+
+  const dryRun = await collectGitHubSource({
+    dryRun: true,
+    fetcher,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+    token: 'secret-token',
+  });
+  const collected = await collectGitHubSource({
+    fetcher,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+    token: 'secret-token',
+  });
+  const duplicate = await collectGitHubSource({
+    fetcher,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+    token: 'secret-token',
+  });
+
+  assert.equal(dryRun.decisions[0]?.decision, 'would_collect');
+  assert.equal(collected.decisions[0]?.decision, 'collected');
+  assert.equal(duplicate.decisions[0]?.decision, 'skipped_existing');
+  assert.equal(repository.rawDocuments.size, 1);
+  assert.equal(repository.queue.size, 1);
+  assert.equal(repository.links.size, 1);
+  assert.equal(storage.objects.size, 1);
+  const [rawDocument] = [...repository.rawDocuments.values()];
+  assert.ok(rawDocument);
+  assert.doesNotMatch(JSON.stringify(rawDocument.metadata), /secret-token/);
+});
+
+test('collectGitHubSource continues after a candidate fetch failure with sanitized logs', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { repositories: ['example-org/pufu-sample'] },
+      id: 'data-source-github',
+      sourceType: 'github',
+    }),
+  );
+  const storage = new InMemoryObjectStorage();
+  const originalConsoleError = console.error;
+  const errors: unknown[] = [];
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
+  };
+
+  try {
+    const result = await collectGitHubSource({
+      fetcher: async ({ path }): Promise<unknown> => {
+        if (path.includes('/issues?')) {
+          return [githubIssue({ number: 101 })];
+        }
+        throw new Error('temporary GitHub failure token=secret');
+      },
+      projectSlug: 'sample-a',
+      repository,
+      storage,
+    });
+
+    assert.equal(result.decisions.length, 0);
+    assert.equal(repository.rawDocuments.size, 0);
+    assert.match(String(errors[0]), /Failed to build raw GitHub candidate/);
+    assert.doesNotMatch(JSON.stringify(errors), /token=secret/);
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
 function dataSource(input: Partial<DataSourceRecord> = {}): DataSourceRecord {
   return {
     config: {},
@@ -505,4 +648,48 @@ class InMemoryCollectionRepository implements CollectionRepository {
 
 function rawKey(projectId: string, sourceType: string, sourceId: string): string {
   return `${projectId}:${sourceType}:${sourceId}`;
+}
+
+function githubIssue(input: { number: number; pullRequest?: boolean }): {
+  body: string;
+  created_at: string;
+  html_url: string;
+  number: number;
+  pull_request?: { html_url: string };
+  title: string;
+  updated_at: string;
+  user: { login: string; name: string };
+} {
+  const path = input.pullRequest ? 'pull' : 'issues';
+  return {
+    body: `Body ${input.number}`,
+    created_at: '2026-05-08T00:00:00.000Z',
+    html_url: `https://github.com/example-org/pufu-sample/${path}/${input.number}`,
+    number: input.number,
+    ...(input.pullRequest
+      ? {
+          pull_request: {
+            html_url: `https://github.com/example-org/pufu-sample/pull/${input.number}`,
+          },
+        }
+      : {}),
+    title: `GitHub item ${input.number}`,
+    updated_at: '2026-05-09T00:00:00.000Z',
+    user: { login: 'author', name: 'Author' },
+  };
+}
+
+function githubDetailFetcher(): GitHubFetcher {
+  return async ({ path }): Promise<unknown> => {
+    if (path.includes('/issues?')) {
+      return [githubIssue({ number: 202, pullRequest: true })];
+    }
+    if (path.endsWith('/issues/202/comments')) {
+      return [{ body: 'Comment body', id: 1, user: { login: 'commenter', name: 'Commenter' } }];
+    }
+    if (path.endsWith('/pulls/202/reviews')) {
+      return [{ id: 2, state: 'APPROVED', user: { login: 'reviewer', name: 'Reviewer' } }];
+    }
+    throw new Error(`Unexpected GitHub path: ${path}`);
+  };
 }
