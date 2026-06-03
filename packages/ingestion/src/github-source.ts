@@ -87,6 +87,7 @@ export interface CollectGitHubSourceResult {
 }
 
 const DEFAULT_PER_PAGE = 30;
+const MAX_PER_PAGE = 100;
 const DEFAULT_USER_AGENT = 'pufu-lens-github-collector/0.1';
 
 export async function collectGitHubSource(
@@ -123,27 +124,7 @@ export async function collectGitHubSource(
         remainingLimit -= 1;
       }
 
-      let rawCandidate: GitHubRawCandidate;
-      try {
-        rawCandidate = await buildGitHubRawCandidate({
-          candidate,
-          dataSource,
-          diffFetcher,
-          fetcher,
-          projectId: project.id,
-          projectSlug: project.slug,
-          token: options.token,
-        });
-      } catch (error) {
-        console.error(
-          `Failed to build raw GitHub candidate for ${redactGitHubUri(
-            candidate.issue.html_url,
-          )}: ${sanitizeError(error)}`,
-        );
-        continue;
-      }
-
-      const sourceId = rawCandidate.raw.sourceId;
+      const sourceId = githubCandidateSourceId(candidate);
       const existing = await options.repository.lookupRawDocument({
         projectId: project.id,
         sourceId,
@@ -166,7 +147,7 @@ export async function collectGitHubSource(
               projectId: project.id,
               rawDocumentId: existing.id,
               targetId: sourceId,
-              targetUri: rawCandidate.raw.sourceUri,
+              targetUri: candidate.issue.html_url,
             });
           }
         }
@@ -192,6 +173,26 @@ export async function collectGitHubSource(
           sourceId,
           sourceType: 'github',
         });
+        continue;
+      }
+
+      let rawCandidate: GitHubRawCandidate;
+      try {
+        rawCandidate = await buildGitHubRawCandidate({
+          candidate,
+          dataSource,
+          diffFetcher,
+          fetcher,
+          projectId: project.id,
+          projectSlug: project.slug,
+          token: options.token,
+        });
+      } catch (error) {
+        console.error(
+          `Failed to build raw GitHub candidate for ${redactGitHubUri(
+            candidate.issue.html_url,
+          )}: ${sanitizeError(error)}`,
+        );
         continue;
       }
 
@@ -267,7 +268,7 @@ export async function scanGitHubDataSource(input: {
 
     const searchParams = new URLSearchParams({
       direction: 'desc',
-      per_page: String(Math.min(limit ?? DEFAULT_PER_PAGE, DEFAULT_PER_PAGE)),
+      per_page: String(Math.min(limit ?? DEFAULT_PER_PAGE, MAX_PER_PAGE)),
       sort: 'updated',
       state,
     });
@@ -306,25 +307,30 @@ export async function buildGitHubRawCandidate(input: {
   const { candidate, diffFetcher, fetcher, token } = input;
   const issue = candidate.issue;
   const kind = issue.pull_request ? 'pull_request' : 'issue';
-  const comments = await fetcher({
+  const commentsPromise = fetcher({
     path: `/repos/${candidate.repository}/issues/${issue.number}/comments`,
     token,
   });
-  const reviews =
+  const reviewsPromise =
     kind === 'pull_request'
-      ? await fetcher({
+      ? fetcher({
           path: `/repos/${candidate.repository}/pulls/${issue.number}/reviews`,
           token,
         })
-      : [];
-  const diff =
+      : Promise.resolve([]);
+  const diffPromise =
     kind === 'pull_request'
-      ? await safeFetchDiff({
+      ? safeFetchDiff({
           diffFetcher,
           path: `/repos/${candidate.repository}/pulls/${issue.number}`,
           token,
         })
-      : undefined;
+      : Promise.resolve(undefined);
+  const [comments, reviews, diff] = await Promise.all([
+    commentsPromise,
+    reviewsPromise,
+    diffPromise,
+  ]);
 
   const rawDocument: GitHubRawDocument = {
     body: issue.body ?? '',
@@ -350,10 +356,7 @@ export async function buildGitHubRawCandidate(input: {
   };
   const body = `${JSON.stringify(rawDocument, null, 2)}\n`;
   const contentHash = sha256Hex(body);
-  const sourceId = normalizeSourceId(
-    'github',
-    `${candidate.repository}/${kind === 'pull_request' ? 'pulls' : 'issues'}/${issue.number}`,
-  );
+  const sourceId = githubCandidateSourceId(candidate);
   const fetchedAt = new Date().toISOString();
 
   return {
@@ -380,6 +383,14 @@ export async function buildGitHubRawCandidate(input: {
       storageUri: `${input.projectSlug}/raw/github/${safeStorageSegment(sourceId)}.json`,
     },
   };
+}
+
+function githubCandidateSourceId(candidate: GitHubCandidate): string {
+  const kind = candidate.issue.pull_request ? 'pull_request' : 'issue';
+  return normalizeSourceId(
+    'github',
+    `${candidate.repository}/${kind === 'pull_request' ? 'pulls' : 'issues'}/${candidate.issue.number}`,
+  );
 }
 
 export async function fetchGitHubJson(input: { path: string; token?: string }): Promise<unknown> {

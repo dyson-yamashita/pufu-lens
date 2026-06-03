@@ -443,6 +443,23 @@ test('scanGitHubDataSource reads configured repositories and filters issues by k
   assert.match(paths[0] ?? '', /state=all/);
 });
 
+test('scanGitHubDataSource uses GitHub max per_page when the limit allows it', async () => {
+  const paths: string[] = [];
+  await scanGitHubDataSource({
+    dataSource: dataSource({
+      config: { repositories: ['example-org/pufu-sample'] },
+      sourceType: 'github',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      return [];
+    },
+    limit: 100,
+  });
+
+  assert.match(paths[0] ?? '', /per_page=100/);
+});
+
 test('buildGitHubRawCandidate converts issue comments, PR reviews, and diff metadata', async () => {
   const rawCandidate = await buildGitHubRawCandidate({
     candidate: {
@@ -479,7 +496,8 @@ test('collectGitHubSource supports dry-run and duplicate skip without storing to
     }),
   );
   const storage = new InMemoryObjectStorage();
-  const fetcher = githubDetailFetcher();
+  const paths: string[] = [];
+  const fetcher = githubDetailFetcher(paths);
 
   const dryRun = await collectGitHubSource({
     dryRun: true,
@@ -487,9 +505,11 @@ test('collectGitHubSource supports dry-run and duplicate skip without storing to
     projectSlug: 'sample-a',
     repository,
     storage,
+    diffFetcher: async () => 'diff --git a/file b/file\n',
     token: 'secret-token',
   });
   const collected = await collectGitHubSource({
+    diffFetcher: async () => 'diff --git a/file b/file\n',
     fetcher,
     projectSlug: 'sample-a',
     repository,
@@ -497,6 +517,7 @@ test('collectGitHubSource supports dry-run and duplicate skip without storing to
     token: 'secret-token',
   });
   const duplicate = await collectGitHubSource({
+    diffFetcher: async () => 'diff --git a/file b/file\n',
     fetcher,
     projectSlug: 'sample-a',
     repository,
@@ -514,6 +535,8 @@ test('collectGitHubSource supports dry-run and duplicate skip without storing to
   const [rawDocument] = [...repository.rawDocuments.values()];
   assert.ok(rawDocument);
   assert.doesNotMatch(JSON.stringify(rawDocument.metadata), /secret-token/);
+  assert.equal(paths.filter((path) => path.endsWith('/issues/202/comments')).length, 1);
+  assert.equal(paths.filter((path) => path.endsWith('/pulls/202/reviews')).length, 1);
 });
 
 test('collectGitHubSource continues after a candidate fetch failure with sanitized logs', async () => {
@@ -679,8 +702,9 @@ function githubIssue(input: { number: number; pullRequest?: boolean }): {
   };
 }
 
-function githubDetailFetcher(): GitHubFetcher {
+function githubDetailFetcher(paths: string[] = []): GitHubFetcher {
   return async ({ path }): Promise<unknown> => {
+    paths.push(path);
     if (path.includes('/issues?')) {
       return [githubIssue({ number: 202, pullRequest: true })];
     }

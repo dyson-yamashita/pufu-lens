@@ -222,11 +222,14 @@ class PostgresCollectionRepository implements CollectionRepository {
         ${input.targetId},
         ${input.targetUri},
         'pending',
-        ${
-          input.targetId.includes('/issues/') || input.targetId.includes('/pulls/')
-            ? 'github-collection'
-            : 'web-url-collection'
-        }
+        (
+          SELECT CASE
+            WHEN source_type = 'github' THEN 'github-collection'
+            ELSE 'web-url-collection'
+          END
+          FROM public.raw_documents
+          WHERE id = ${input.rawDocumentId}
+        )
       )
       ON CONFLICT (project_id, raw_document_id)
       DO UPDATE SET
