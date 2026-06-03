@@ -224,8 +224,8 @@ class PostgresCollectionRepository implements CollectionRepository {
         'pending',
         (
           SELECT CASE
-            WHEN source_type = 'github' THEN 'github-collection'
-            ELSE 'web-url-collection'
+            WHEN source_type = 'web' THEN 'web-url-collection'
+            ELSE source_type || '-collection'
           END
           FROM public.raw_documents
           WHERE id = ${input.rawDocumentId}

@@ -484,6 +484,29 @@ test('buildGitHubRawCandidate converts issue comments, PR reviews, and diff meta
   assert.equal(rawCandidate.raw.metadata.body, undefined);
 });
 
+test('buildGitHubRawCandidate falls back to ghost for deleted GitHub users', async () => {
+  const rawCandidate = await buildGitHubRawCandidate({
+    candidate: {
+      issue: { ...githubIssue({ number: 101 }), user: null },
+      repository: 'example-org/pufu-sample',
+    },
+    dataSource: dataSource({ id: 'data-source-github', sourceType: 'github' }),
+    diffFetcher: async () => 'diff --git a/file b/file\n',
+    fetcher: async ({ path }): Promise<unknown> => {
+      if (path.endsWith('/issues/101/comments')) {
+        return [{ body: 'Comment body', id: 1, user: null }];
+      }
+      throw new Error(`Unexpected GitHub path: ${path}`);
+    },
+    projectId: 'project-1',
+    projectSlug: 'sample-a',
+  });
+
+  const raw = JSON.parse(rawCandidate.body);
+  assert.equal(raw.user.login, 'ghost');
+  assert.equal(raw.comments[0]?.user.login, 'ghost');
+});
+
 test('collectGitHubSource supports dry-run and duplicate skip without storing token metadata', async () => {
   const repository = new InMemoryCollectionRepository();
   repository.dataSources.splice(
@@ -537,6 +560,46 @@ test('collectGitHubSource supports dry-run and duplicate skip without storing to
   assert.doesNotMatch(JSON.stringify(rawDocument.metadata), /secret-token/);
   assert.equal(paths.filter((path) => path.endsWith('/issues/202/comments')).length, 1);
   assert.equal(paths.filter((path) => path.endsWith('/pulls/202/reviews')).length, 1);
+});
+
+test('collectGitHubSource does not store incomplete PR raw when diff fetch fails', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { repositories: ['example-org/pufu-sample'] },
+      id: 'data-source-github',
+      sourceType: 'github',
+    }),
+  );
+  const storage = new InMemoryObjectStorage();
+  const originalConsoleError = console.error;
+  const errors: unknown[] = [];
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
+  };
+
+  try {
+    const result = await collectGitHubSource({
+      diffFetcher: async (): Promise<string> => {
+        throw new Error('temporary diff failure token=secret');
+      },
+      fetcher: githubDetailFetcher(),
+      projectSlug: 'sample-a',
+      repository,
+      storage,
+    });
+
+    assert.equal(result.decisions.length, 0);
+    assert.equal(repository.rawDocuments.size, 0);
+    assert.equal(repository.queue.size, 0);
+    assert.equal(storage.objects.size, 0);
+    assert.match(JSON.stringify(errors), /Failed to fetch GitHub diff/);
+    assert.doesNotMatch(JSON.stringify(errors), /token=secret/);
+  } finally {
+    console.error = originalConsoleError;
+  }
 });
 
 test('collectGitHubSource continues after a candidate fetch failure with sanitized logs', async () => {
@@ -681,7 +744,7 @@ function githubIssue(input: { number: number; pullRequest?: boolean }): {
   pull_request?: { html_url: string };
   title: string;
   updated_at: string;
-  user: { login: string; name: string };
+  user: { login: string; name: string } | null;
 } {
   const path = input.pullRequest ? 'pull' : 'issues';
   return {

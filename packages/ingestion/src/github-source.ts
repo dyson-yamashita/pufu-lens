@@ -19,19 +19,24 @@ export interface GitHubIssueResponse {
   repository_url?: string;
   title: string;
   updated_at: string;
-  user: { login: string; name?: string | null };
+  user: GitHubUserResponse | null;
 }
 
 export interface GitHubCommentResponse {
   body?: string | null;
   id: number;
-  user: { login: string; name?: string | null };
+  user: GitHubUserResponse | null;
 }
 
 export interface GitHubReviewResponse {
   id: number;
   state: string;
-  user: { login: string; name?: string | null };
+  user: GitHubUserResponse | null;
+}
+
+export interface GitHubUserResponse {
+  login: string;
+  name?: string | null;
 }
 
 export interface GitHubRawDocument {
@@ -433,8 +438,9 @@ async function safeFetchDiff(input: {
       byteSize: Buffer.byteLength(diffText),
       sha256: sha256Hex(diffText),
     };
-  } catch {
-    return undefined;
+  } catch (error) {
+    console.error(`Failed to fetch GitHub diff for ${input.path}: ${sanitizeError(error)}`);
+    throw error;
   }
 }
 
@@ -533,7 +539,10 @@ function validateReviewList(value: unknown): GitHubReviewResponse[] {
   });
 }
 
-function validateUser(value: unknown): { login: string; name?: string | null } {
+function validateUser(value: unknown): GitHubUserResponse {
+  if (value === null || value === undefined) {
+    return { login: 'ghost', name: 'Ghost' };
+  }
   if (typeof value !== 'object' || value === null) {
     throw new Error('GitHub user must be an object.');
   }
@@ -544,10 +553,13 @@ function validateUser(value: unknown): { login: string; name?: string | null } {
   };
 }
 
-function githubUser(user: { login: string; name?: string | null }): {
+function githubUser(user: GitHubUserResponse | null): {
   login: string;
   name: string;
 } {
+  if (!user) {
+    return { login: 'ghost', name: 'Ghost' };
+  }
   return {
     login: user.login,
     name: user.name?.trim() || user.login,
