@@ -9,10 +9,14 @@ import type {
   RawDocumentRecord,
   SourceType,
 } from '../packages/ingestion/dist/index.js';
-import { collectGitHubSource, collectWebUrlSource } from '../packages/ingestion/dist/index.js';
+import {
+  collectDriveSource,
+  collectGitHubSource,
+  collectWebUrlSource,
+} from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
-const SOURCE_TYPES = ['github', 'web'] as const;
+const SOURCE_TYPES = ['drive', 'github', 'web'] as const;
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
@@ -35,24 +39,41 @@ async function main(): Promise<void> {
         state: options.state,
       });
     }
+    if (sourceType === 'drive' && (options.folderIds.length > 0 || options.folderUrls.length > 0)) {
+      await ensureDriveDataSource({
+        folderIds: options.folderIds,
+        folderUrls: options.folderUrls,
+        projectSlug,
+        sql,
+      });
+    }
 
     const result =
-      sourceType === 'github'
-        ? await collectGitHubSource({
+      sourceType === 'drive'
+        ? await collectDriveSource({
             dryRun: options.dryRun,
             limit: options.limit,
             projectSlug,
             repository,
             storage,
-            token: process.env.GITHUB_TOKEN,
+            token: process.env.GOOGLE_DRIVE_ACCESS_TOKEN ?? process.env.GOOGLE_OAUTH_ACCESS_TOKEN,
           })
-        : await collectWebUrlSource({
-            dryRun: options.dryRun,
-            limit: options.limit,
-            projectSlug,
-            repository,
-            storage,
-          });
+        : sourceType === 'github'
+          ? await collectGitHubSource({
+              dryRun: options.dryRun,
+              limit: options.limit,
+              projectSlug,
+              repository,
+              storage,
+              token: process.env.GITHUB_TOKEN,
+            })
+          : await collectWebUrlSource({
+              dryRun: options.dryRun,
+              limit: options.limit,
+              projectSlug,
+              repository,
+              storage,
+            });
 
     console.log(JSON.stringify(result, null, 2));
   } finally {
@@ -322,6 +343,43 @@ async function ensureGitHubDataSource(input: {
   `;
 }
 
+async function ensureDriveDataSource(input: {
+  folderIds: string[];
+  folderUrls: string[];
+  projectSlug: string;
+  sql: postgres.Sql;
+}): Promise<void> {
+  await input.sql`
+    WITH project AS (
+      SELECT id FROM public.projects WHERE slug = ${input.projectSlug}
+    )
+    INSERT INTO public.data_sources (
+      project_id,
+      owner_user_id,
+      source_type,
+      name,
+      config,
+      ingest_window
+    )
+    SELECT
+      project.id,
+      '00000000-0000-0000-0000-000000000001',
+      'drive',
+      'Drive folders',
+      ${input.sql.json({
+        folderIds: input.folderIds,
+        folderUrls: input.folderUrls,
+      })},
+      ${input.sql.json({})}
+    FROM project
+    ON CONFLICT (project_id, source_type, name)
+    DO UPDATE SET
+      enabled = true,
+      config = EXCLUDED.config,
+      ingest_window = EXCLUDED.ingest_window
+  `;
+}
+
 function createLocalObjectStorageFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): LocalFsObjectStorage {
@@ -339,6 +397,8 @@ function createLocalObjectStorageFromEnv(
 }
 
 function parseArgs(args: string[]): {
+  folderIds: string[];
+  folderUrls: string[];
   project?: string;
   repositories: string[];
   source?: string;
@@ -348,6 +408,8 @@ function parseArgs(args: string[]): {
   dryRun?: boolean;
 } {
   const options: {
+    folderIds: string[];
+    folderUrls: string[];
     project?: string;
     repositories: string[];
     source?: string;
@@ -355,7 +417,7 @@ function parseArgs(args: string[]): {
     urls: string[];
     limit?: number;
     dryRun?: boolean;
-  } = { repositories: [], urls: [] };
+  } = { folderIds: [], folderUrls: [], repositories: [], urls: [] };
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -371,6 +433,10 @@ function parseArgs(args: string[]): {
       options.repositories.push(readRepository(readOptionValue(args, ++index, arg), arg));
     } else if (arg === '--state') {
       options.state = readGitHubState(readOptionValue(args, ++index, arg), arg);
+    } else if (arg === '--folder-id') {
+      options.folderIds.push(readDriveFolderId(readOptionValue(args, ++index, arg), arg));
+    } else if (arg === '--folder-url') {
+      options.folderUrls.push(readOptionValue(args, ++index, arg));
     } else if (arg === '--url') {
       options.urls.push(readOptionValue(args, ++index, arg));
     } else if (arg === '--limit') {
@@ -383,6 +449,13 @@ function parseArgs(args: string[]): {
   }
 
   return options;
+}
+
+function readDriveFolderId(value: string, name: string): string {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) {
+    throw new Error(`${name} must be a Google Drive folder id: ${value}`);
+  }
+  return value;
 }
 
 function readGitHubState(value: string, name: string): 'all' | 'closed' | 'open' {

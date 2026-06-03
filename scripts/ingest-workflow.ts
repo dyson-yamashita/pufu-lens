@@ -17,6 +17,8 @@ type WorkflowOptions = {
   embeddingProvider?: string;
   failedOnly?: boolean;
   fixture?: boolean;
+  folderIds?: string[];
+  folderUrls?: string[];
   limit?: number;
   project?: string;
   repositories?: string[];
@@ -105,8 +107,13 @@ async function main(): Promise<void> {
 
 async function runCommand(options: WorkflowOptions): Promise<void> {
   const projectSlug = requiredOption(options.project, '--project');
-  if (!options.fixture && options.source !== 'web' && options.source !== 'github') {
-    throw new Error('--fixture is required unless --source web or github is used.');
+  if (
+    !options.fixture &&
+    options.source !== 'web' &&
+    options.source !== 'github' &&
+    options.source !== 'drive'
+  ) {
+    throw new Error('--fixture is required unless --source web, github, or drive is used.');
   }
 
   const run = createRunLogger({ command: 'run', projectSlug, sourceType: options.source });
@@ -263,6 +270,12 @@ function buildStepCommand(
       }
       for (const repository of options.repositories ?? []) {
         args.push('--repo', repository);
+      }
+      for (const folderId of options.folderIds ?? []) {
+        args.push('--folder-id', folderId);
+      }
+      for (const folderUrl of options.folderUrls ?? []) {
+        args.push('--folder-url', folderUrl);
       }
       if (options.state) {
         args.push('--state', options.state);
@@ -637,6 +650,12 @@ function parseArgs(argv: string[]): WorkflowOptions {
     } else if (arg === '--repo' || arg === '--repository') {
       options.repositories = options.repositories ?? [];
       options.repositories.push(readRepository(readOptionValue(argv, ++index, arg), arg));
+    } else if (arg === '--folder-id') {
+      options.folderIds = options.folderIds ?? [];
+      options.folderIds.push(readDriveFolderId(readOptionValue(argv, ++index, arg), arg));
+    } else if (arg === '--folder-url') {
+      options.folderUrls = options.folderUrls ?? [];
+      options.folderUrls.push(readOptionValue(argv, ++index, arg));
     } else if (arg === '--state') {
       options.state = readGitHubState(readOptionValue(argv, ++index, arg), arg);
     } else if (arg === '--failed-only') {
@@ -663,6 +682,13 @@ function readSourceType(value: string): SourceType {
     throw new Error(`Unsupported --source value: ${value}`);
   }
   return value as SourceType;
+}
+
+function readDriveFolderId(value: string, optionName: string): string {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) {
+    throw new Error(`${optionName} must be a Google Drive folder id: ${value}`);
+  }
+  return value;
 }
 
 function readGitHubState(value: string, optionName: string): 'all' | 'closed' | 'open' {
