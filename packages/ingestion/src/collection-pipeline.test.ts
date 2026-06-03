@@ -31,6 +31,13 @@ import {
   scanGitHubDataSource,
 } from './github-source.js';
 import {
+  buildGmailRawCandidate,
+  collectGmailSource,
+  fetchGmailJson,
+  type GmailFetcher,
+  scanGmailDataSource,
+} from './gmail-source.js';
+import {
   buildWebUrlRawCandidate,
   collectWebUrlSource,
   fetchWebUrl,
@@ -650,6 +657,217 @@ test('collectGitHubSource continues after a candidate fetch failure with sanitiz
   }
 });
 
+test('scanGmailDataSource reads configured labels, query, ingest window, and filters messages', async () => {
+  const paths: string[] = [];
+  const candidates = await scanGmailDataSource({
+    dataSource: dataSource({
+      config: {
+        labelIds: ['Label_1'],
+        messageIds: ['msg-2'],
+        query: 'from:sender@example.test',
+      },
+      ingestWindow: { since: '2026-05-01T00:00:00.000Z' },
+      sourceType: 'gmail',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      return {
+        messages: [
+          { id: 'msg-1', threadId: 'thread-1' },
+          { id: 'msg-2', threadId: 'thread-1' },
+        ],
+      };
+    },
+    limit: 1,
+  });
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0]?.message.id, 'msg-2');
+  const params = new URL(`https://example.test${paths[0] ?? ''}`).searchParams;
+  assert.equal(params.get('labelIds'), 'Label_1');
+  assert.match(params.get('q') ?? '', /from:sender@example.test/);
+  assert.match(params.get('q') ?? '', /after:1777593600/);
+});
+
+test('scanGmailDataSource keeps maxResults within the Gmail API maximum', async () => {
+  const paths: string[] = [];
+  await scanGmailDataSource({
+    dataSource: dataSource({
+      config: { query: 'label:inbox' },
+      sourceType: 'gmail',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      return { messages: [] };
+    },
+    limit: 1_000,
+  });
+
+  const maxResults = new URL(`https://example.test${paths[0] ?? ''}`).searchParams.get(
+    'maxResults',
+  );
+  assert.equal(maxResults, '100');
+});
+
+test('buildGmailRawCandidate converts latest thread message and previous messages as quotes', async () => {
+  const rawCandidate = buildGmailRawCandidate({
+    dataSource: dataSource({ id: 'data-source-gmail', sourceType: 'gmail' }),
+    projectId: 'project-1',
+    projectSlug: 'sample-a',
+    thread: gmailThread(),
+  });
+
+  const raw = JSON.parse(rawCandidate.body);
+  assert.equal(raw.threadId, 'thread-alpha');
+  assert.equal(raw.messageId, 'msg-alpha-002');
+  assert.equal(raw.subject, 'Fixture ingestion review');
+  assert.equal(raw.bodyText, 'Latest update');
+  assert.equal(raw.quotedMessages.length, 1);
+  assert.equal(raw.quotedMessages[0]?.messageId, 'msg-alpha-001');
+  assert.deepEqual(raw.to, [
+    { email: 'john@example.test', name: 'Doe, John' },
+    { email: 'boss@example.test', name: 'John "The, Boss"' },
+    { email: 'jane@example.test', name: 'Jane Reviewer' },
+  ]);
+  assert.equal(rawCandidate.raw.sourceId, 'thread-alpha:msg-alpha-002');
+  assert.equal(rawCandidate.raw.metadata.quotedMessageCount, 1);
+  assert.equal(rawCandidate.raw.metadata.bodyText, undefined);
+});
+
+test('buildGmailRawCandidate decodes HTML single quote entities when plain text is absent', async () => {
+  const rawCandidate = buildGmailRawCandidate({
+    dataSource: dataSource({ id: 'data-source-gmail', sourceType: 'gmail' }),
+    projectId: 'project-1',
+    projectSlug: 'sample-a',
+    thread: {
+      id: 'thread-html',
+      messages: [
+        gmailMessage({
+          bodyMimeType: 'text/html',
+          bodyText: '<p>HTML mail&#x27;s fallback</p>',
+          from: 'HTML Sender <html@example.test>',
+          id: 'msg-html-001',
+          internalDate: '1777994400000',
+          sentAt: 'Tue, 05 May 2026 15:20:00 +0000',
+          subject: 'HTML fallback',
+        }),
+      ],
+    },
+  });
+
+  const raw = JSON.parse(rawCandidate.body);
+  assert.equal(raw.bodyText, "HTML mail's fallback");
+});
+
+test('fetchGmailJson builds Gmail API URLs with URL semantics', async () => {
+  const originalFetch = globalThis.fetch;
+  const urls: string[] = [];
+  globalThis.fetch = (async (url) => {
+    urls.push(String(url));
+    return {
+      json: async () => ({ messages: [] }),
+      ok: true,
+    } as Response;
+  }) as typeof fetch;
+
+  try {
+    await fetchGmailJson({ path: 'gmail/v1/users/me/messages?maxResults=1', token: 'secret' });
+    assert.equal(urls[0], 'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('collectGmailSource supports dry-run and duplicate skip without storing token metadata', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { labelIds: ['INBOX'], query: 'from:sender@example.test' },
+      id: 'data-source-gmail',
+      sourceType: 'gmail',
+    }),
+  );
+  const storage = new InMemoryObjectStorage();
+  const fetcher = gmailFetcher();
+
+  const dryRun = await collectGmailSource({
+    dryRun: true,
+    fetcher,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+    token: 'secret-token',
+  });
+  const collected = await collectGmailSource({
+    fetcher,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+    token: 'secret-token',
+  });
+  const duplicate = await collectGmailSource({
+    fetcher,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+    token: 'secret-token',
+  });
+
+  assert.equal(dryRun.decisions[0]?.decision, 'would_collect');
+  assert.equal(collected.decisions[0]?.decision, 'collected');
+  assert.equal(duplicate.decisions[0]?.decision, 'skipped_existing');
+  assert.equal(repository.rawDocuments.size, 1);
+  assert.equal(repository.queue.size, 1);
+  assert.equal(repository.links.size, 1);
+  assert.equal(storage.objects.size, 1);
+  const [rawDocument] = [...repository.rawDocuments.values()];
+  assert.ok(rawDocument);
+  assert.doesNotMatch(JSON.stringify(rawDocument.metadata), /secret-token/);
+});
+
+test('collectGmailSource continues after a thread fetch failure with sanitized logs', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { labelIds: ['INBOX'] },
+      id: 'data-source-gmail',
+      sourceType: 'gmail',
+    }),
+  );
+  const storage = new InMemoryObjectStorage();
+  const originalConsoleError = console.error;
+  const errors: unknown[] = [];
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
+  };
+
+  try {
+    const result = await collectGmailSource({
+      fetcher: async ({ path }): Promise<unknown> => {
+        if (path.includes('/messages?')) {
+          return { messages: [{ id: 'msg-alpha-002', threadId: 'thread-alpha' }] };
+        }
+        throw new Error('temporary Gmail failure token=secret');
+      },
+      projectSlug: 'sample-a',
+      repository,
+      storage,
+    });
+
+    assert.equal(result.decisions.length, 0);
+    assert.equal(repository.rawDocuments.size, 0);
+    assert.equal(storage.objects.size, 0);
+    assert.match(String(errors[0]), /Failed to fetch Gmail thread/);
+    assert.doesNotMatch(JSON.stringify(errors), /token=secret/);
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
 test('scanDriveDataSource reads configured folders, applies ingest window, and filters files', async () => {
   const paths: string[] = [];
   const candidates = await scanDriveDataSource({
@@ -1179,4 +1397,97 @@ function driveFile(input: { id: string; mimeType?: string; name?: string; revisi
 
 function driveListFetcher(): DriveFetcher {
   return async (): Promise<unknown> => ({ files: [driveFile({ id: 'drive-file-1' })] });
+}
+
+function gmailFetcher(): GmailFetcher {
+  return async ({ path }): Promise<unknown> => {
+    if (path.includes('/messages?')) {
+      return { messages: [{ id: 'msg-alpha-002', threadId: 'thread-alpha' }] };
+    }
+    if (path.includes('/threads/thread-alpha?')) {
+      return gmailThread();
+    }
+    throw new Error(`Unexpected Gmail path: ${path}`);
+  };
+}
+
+function gmailThread(): {
+  id: string;
+  messages: Array<{
+    id: string;
+    internalDate: string;
+    labelIds: string[];
+    payload: {
+      headers: Array<{ name: string; value: string }>;
+      mimeType: string;
+      parts: Array<{ body: { data: string }; mimeType: string }>;
+    };
+    threadId: string;
+  }>;
+} {
+  return {
+    id: 'thread-alpha',
+    messages: [
+      gmailMessage({
+        bodyText: 'Please keep quoted text out of the primary document body.',
+        from: 'Sample Reviewer <reviewer@example.test>',
+        id: 'msg-alpha-001',
+        internalDate: '1777989000000',
+        sentAt: 'Tue, 05 May 2026 14:50:00 +0000',
+        subject: 'Fixture ingestion review',
+      }),
+      gmailMessage({
+        bodyText: 'Latest update',
+        from: 'Sample Sender <sender@example.test>',
+        id: 'msg-alpha-002',
+        internalDate: '1777994400000',
+        sentAt: 'Tue, 05 May 2026 15:20:00 +0000',
+        subject: 'Fixture ingestion review',
+        to: '"Doe, John" <john@example.test>, "John \\"The, Boss\\"" <boss@example.test>, Jane Reviewer <jane@example.test>',
+      }),
+    ],
+  };
+}
+
+function gmailMessage(input: {
+  bodyMimeType?: string;
+  bodyText: string;
+  from: string;
+  id: string;
+  internalDate: string;
+  sentAt: string;
+  subject: string;
+  to?: string;
+}): {
+  id: string;
+  internalDate: string;
+  labelIds: string[];
+  payload: {
+    headers: Array<{ name: string; value: string }>;
+    mimeType: string;
+    parts: Array<{ body: { data: string }; mimeType: string }>;
+  };
+  threadId: string;
+} {
+  return {
+    id: input.id,
+    internalDate: input.internalDate,
+    labelIds: ['INBOX'],
+    payload: {
+      headers: [
+        { name: 'From', value: input.from },
+        { name: 'To', value: input.to ?? 'Sample Sender <sender@example.test>' },
+        { name: 'Subject', value: input.subject },
+        { name: 'Date', value: input.sentAt },
+      ],
+      mimeType: 'multipart/alternative',
+      parts: [
+        {
+          body: { data: Buffer.from(input.bodyText, 'utf8').toString('base64url') },
+          mimeType: input.bodyMimeType ?? 'text/plain',
+        },
+      ],
+    },
+    threadId: 'thread-alpha',
+  };
 }

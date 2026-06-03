@@ -19,8 +19,10 @@ type WorkflowOptions = {
   fixture?: boolean;
   folderIds?: string[];
   folderUrls?: string[];
+  labelIds?: string[];
   limit?: number;
   project?: string;
+  query?: string;
   repositories?: string[];
   resumeFrom?: WorkflowStep;
   source?: SourceType;
@@ -111,9 +113,10 @@ async function runCommand(options: WorkflowOptions): Promise<void> {
     !options.fixture &&
     options.source !== 'web' &&
     options.source !== 'github' &&
-    options.source !== 'drive'
+    options.source !== 'drive' &&
+    options.source !== 'gmail'
   ) {
-    throw new Error('--fixture is required unless --source web, github, or drive is used.');
+    throw new Error('--fixture is required unless --source web, github, drive, or gmail is used.');
   }
 
   const run = createRunLogger({ command: 'run', projectSlug, sourceType: options.source });
@@ -276,6 +279,12 @@ function buildStepCommand(
       }
       for (const folderUrl of options.folderUrls ?? []) {
         args.push('--folder-url', folderUrl);
+      }
+      for (const labelId of options.labelIds ?? []) {
+        args.push('--label-id', labelId);
+      }
+      if (options.query) {
+        args.push('--query', options.query);
       }
       if (options.state) {
         args.push('--state', options.state);
@@ -656,6 +665,11 @@ function parseArgs(argv: string[]): WorkflowOptions {
     } else if (arg === '--folder-url') {
       options.folderUrls = options.folderUrls ?? [];
       options.folderUrls.push(readOptionValue(argv, ++index, arg));
+    } else if (arg === '--label' || arg === '--label-id') {
+      options.labelIds = options.labelIds ?? [];
+      options.labelIds.push(readGmailLabelId(readOptionValue(argv, ++index, arg), arg));
+    } else if (arg === '--query' || arg === '--gmail-query') {
+      options.query = readOptionValue(argv, ++index, arg);
     } else if (arg === '--state') {
       options.state = readGitHubState(readOptionValue(argv, ++index, arg), arg);
     } else if (arg === '--failed-only') {
@@ -687,6 +701,13 @@ function readSourceType(value: string): SourceType {
 function readDriveFolderId(value: string, optionName: string): string {
   if (!/^[A-Za-z0-9_-]+$/.test(value)) {
     throw new Error(`${optionName} must be a Google Drive folder id: ${value}`);
+  }
+  return value;
+}
+
+function readGmailLabelId(value: string, optionName: string): string {
+  if (value.trim().length === 0) {
+    throw new Error(`${optionName} must be a non-empty string.`);
   }
   return value;
 }

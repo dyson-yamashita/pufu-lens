@@ -101,6 +101,27 @@ export {
   scanGitHubDataSource,
 } from './github-source.js';
 export type {
+  CollectGmailSourceOptions,
+  CollectGmailSourceResult,
+  GmailCandidate,
+  GmailFetcher,
+  GmailHeaderResponse,
+  GmailListMessageResponse,
+  GmailListResponse,
+  GmailMessagePartBodyResponse,
+  GmailMessagePartResponse,
+  GmailMessageResponse,
+  GmailRawCandidate,
+  GmailRawDocument,
+  GmailThreadResponse,
+} from './gmail-source.js';
+export {
+  buildGmailRawCandidate,
+  collectGmailSource,
+  fetchGmailJson,
+  scanGmailDataSource,
+} from './gmail-source.js';
+export type {
   GraphActorAliasType,
   GraphEdgeInput,
   GraphEdgeType,
