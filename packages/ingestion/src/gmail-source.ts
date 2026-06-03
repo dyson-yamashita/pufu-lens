@@ -481,8 +481,7 @@ function collectPartBodies(part: GmailMessagePartResponse | undefined, mimeType:
 }
 
 function decodeBase64Url(value: string): string {
-  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
-  return Buffer.from(normalized, 'base64').toString('utf8');
+  return Buffer.from(value, 'base64url').toString('utf8');
 }
 
 function headerMap(headers: GmailHeaderResponse[] | undefined): Map<string, string> {
@@ -505,7 +504,7 @@ function parseAddress(value: string | undefined): { email: string; name: string 
 
 function parseAddressList(value: string | undefined): Array<{ email: string; name: string }> {
   return (value ?? '')
-    .split(',')
+    .split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
     .map((item) => parseAddress(item))
     .filter((address) => address.email || address.name !== 'Unknown Sender');
 }

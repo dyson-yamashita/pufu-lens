@@ -724,6 +724,10 @@ test('buildGmailRawCandidate converts latest thread message and previous message
   assert.equal(raw.bodyText, 'Latest update');
   assert.equal(raw.quotedMessages.length, 1);
   assert.equal(raw.quotedMessages[0]?.messageId, 'msg-alpha-001');
+  assert.deepEqual(raw.to, [
+    { email: 'john@example.test', name: 'Doe, John' },
+    { email: 'jane@example.test', name: 'Jane Reviewer' },
+  ]);
   assert.equal(rawCandidate.raw.sourceId, 'thread-alpha:msg-alpha-002');
   assert.equal(rawCandidate.raw.metadata.quotedMessageCount, 1);
   assert.equal(rawCandidate.raw.metadata.bodyText, undefined);
@@ -1413,7 +1417,7 @@ function gmailThread(): {
         internalDate: '1777994400000',
         sentAt: 'Tue, 05 May 2026 15:20:00 +0000',
         subject: 'Fixture ingestion review',
-        to: 'Sample Reviewer <reviewer@example.test>',
+        to: '"Doe, John" <john@example.test>, Jane Reviewer <jane@example.test>',
       }),
     ],
   };
