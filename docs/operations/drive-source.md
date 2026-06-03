@@ -67,7 +67,8 @@ DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
 - `data_sources.config.folderIds` / `folderUrls` または `--folder-id` / `--folder-url` の folder を候補として扱う。
 - Drive query は folder 配下かつ `trashed = false` に限定し、`ingest_window.since` が有効な ISO date の場合は `modifiedTime` による incremental window を加える。
 - `source_id` は `fileId:revisionId` とし、`revisionId` は `headRevisionId`、`version`、`modifiedTime` の順に採用する。
-- Google Docs / Sheets / Slides は export API で text/plain として取得し、それ以外は `alt=media` で本文を取得する。
+- Google Docs / Sheets / Slides は export API で text/plain として取得し、`text/*`、`application/json`、`application/xml`、`application/yaml`、`application/x-yaml` は `alt=media` で本文を取得する。
+- PDF や画像などの binary MIME type は、現時点では Drive raw contract の `bodyText` に安全に変換できないため収集対象外として skip する。
 - raw body は object storage に保存し、DB metadata には本文全文や OAuth token を保存しない。
 - `content_hash` は Drive raw JSON body の SHA-256 で算出する。
 - 既存 `(project_id, source_type, source_id)` がある場合は raw を増やさず、data source link だけ更新する。

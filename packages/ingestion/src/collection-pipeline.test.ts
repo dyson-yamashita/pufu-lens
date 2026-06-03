@@ -20,6 +20,8 @@ import {
   buildDriveRawCandidate,
   collectDriveSource,
   type DriveFetcher,
+  fetchDriveJson,
+  fetchDriveText,
   scanDriveDataSource,
 } from './drive-source.js';
 import {
@@ -677,6 +679,24 @@ test('scanDriveDataSource reads configured folders, applies ingest window, and f
   assert.match(query, /modifiedTime > '2026-05-01T00:00:00.000Z'/);
 });
 
+test('scanDriveDataSource keeps pageSize within the Drive API maximum', async () => {
+  const paths: string[] = [];
+  await scanDriveDataSource({
+    dataSource: dataSource({
+      config: { folderIds: ['drive-folder-1'] },
+      sourceType: 'drive',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      return { files: [] };
+    },
+    limit: 1_000,
+  });
+
+  const pageSize = new URL(`https://example.test${paths[0] ?? ''}`).searchParams.get('pageSize');
+  assert.equal(pageSize, '100');
+});
+
 test('buildDriveRawCandidate converts file metadata and text without storing body metadata', async () => {
   const rawCandidate = await buildDriveRawCandidate({
     candidate: {
@@ -699,6 +719,68 @@ test('buildDriveRawCandidate converts file metadata and text without storing bod
   assert.equal(rawCandidate.raw.metadata.folderId, 'drive-folder-1');
   assert.equal(rawCandidate.raw.metadata.bodyText, undefined);
   assert.doesNotMatch(JSON.stringify(rawCandidate.raw.metadata), /secret-token/);
+});
+
+test('fetchDriveJson builds Google API URLs with URL semantics', async () => {
+  const originalFetch = globalThis.fetch;
+  const urls: string[] = [];
+  globalThis.fetch = (async (url) => {
+    urls.push(String(url));
+    return {
+      json: async () => ({ files: [] }),
+      ok: true,
+    } as Response;
+  }) as typeof fetch;
+
+  try {
+    await fetchDriveJson({ path: 'drive/v3/files?pageSize=1', token: 'secret-token' });
+    assert.equal(urls[0], 'https://www.googleapis.com/drive/v3/files?pageSize=1');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('fetchDriveText rejects binary files before reading response text', async () => {
+  const originalFetch = globalThis.fetch;
+  let fetchCalled = false;
+  globalThis.fetch = (async () => {
+    fetchCalled = true;
+    throw new Error('fetch should not be called for unsupported binary files');
+  }) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      () => fetchDriveText({ file: driveFile({ id: 'drive-pdf-1', mimeType: 'application/pdf' }) }),
+      /Unsupported Drive MIME type/,
+    );
+    assert.equal(fetchCalled, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('fetchDriveText reads text-like Drive files with a safe URL', async () => {
+  const originalFetch = globalThis.fetch;
+  const urls: string[] = [];
+  globalThis.fetch = (async (url) => {
+    urls.push(String(url));
+    return {
+      ok: true,
+      text: async () => 'plain text body',
+    } as Response;
+  }) as typeof fetch;
+
+  try {
+    const body = await fetchDriveText({
+      file: driveFile({ id: 'drive-text-1', mimeType: 'text/plain' }),
+      token: 'secret-token',
+    });
+
+    assert.equal(body, 'plain text body');
+    assert.equal(urls[0], 'https://www.googleapis.com/drive/v3/files/drive-text-1?alt=media');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('collectDriveSource supports dry-run and duplicate skip without writing storage', async () => {
@@ -931,7 +1013,7 @@ function githubDetailFetcher(paths: string[] = []): GitHubFetcher {
   };
 }
 
-function driveFile(input: { id: string; name?: string; revisionId?: string }): {
+function driveFile(input: { id: string; mimeType?: string; name?: string; revisionId?: string }): {
   headRevisionId: string;
   id: string;
   mimeType: string;
@@ -943,7 +1025,7 @@ function driveFile(input: { id: string; name?: string; revisionId?: string }): {
   return {
     headRevisionId: input.revisionId ?? 'rev-1',
     id: input.id,
-    mimeType: 'application/vnd.google-apps.document',
+    mimeType: input.mimeType ?? 'application/vnd.google-apps.document',
     modifiedTime: '2026-05-09T00:00:00.000Z',
     name: input.name ?? 'Drive document',
     owners: [{ displayName: 'Drive Owner', emailAddress: 'owner@example.test' }],

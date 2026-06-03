@@ -88,6 +88,12 @@ const GOOGLE_DOC_MIME_TYPES = new Set([
   'application/vnd.google-apps.presentation',
   'application/vnd.google-apps.spreadsheet',
 ]);
+const TEXT_FILE_MIME_TYPES = new Set([
+  'application/json',
+  'application/xml',
+  'application/yaml',
+  'application/x-yaml',
+]);
 
 export async function collectDriveSource(
   options: CollectDriveSourceOptions,
@@ -267,7 +273,7 @@ export async function scanDriveDataSource(input: {
         fields:
           'nextPageToken,files(id,name,mimeType,modifiedTime,webViewLink,owners(displayName,emailAddress),headRevisionId,version,md5Checksum)',
         orderBy: 'modifiedTime desc',
-        pageSize: String(Math.min(limit ?? DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE)),
+        pageSize: String(drivePageSize(limit)),
         q: driveQuery(folderId, dataSource.ingestWindow.since),
         supportsAllDrives: 'true',
       });
@@ -346,7 +352,8 @@ export async function buildDriveRawCandidate(input: {
 }
 
 export async function fetchDriveJson(input: { path: string; token?: string }): Promise<unknown> {
-  const response = await fetch(`https://www.googleapis.com${input.path}`, {
+  const url = new URL(input.path, 'https://www.googleapis.com');
+  const response = await fetch(url.toString(), {
     headers: driveHeaders(input.token),
   });
   if (!response.ok) {
@@ -359,10 +366,15 @@ export async function fetchDriveText(input: {
   file: DriveFileResponse;
   token?: string;
 }): Promise<string> {
+  if (!isDriveTextReadableMimeType(input.file.mimeType)) {
+    throw new Error(`Unsupported Drive MIME type for text extraction: ${input.file.mimeType}`);
+  }
+
   const path = GOOGLE_DOC_MIME_TYPES.has(input.file.mimeType)
     ? `/drive/v3/files/${encodeURIComponent(input.file.id)}/export?mimeType=text/plain`
     : `/drive/v3/files/${encodeURIComponent(input.file.id)}?alt=media`;
-  const response = await fetch(`https://www.googleapis.com${path}`, {
+  const url = new URL(path, 'https://www.googleapis.com');
+  const response = await fetch(url.toString(), {
     headers: driveHeaders(input.token),
   });
   if (!response.ok) {
@@ -383,6 +395,19 @@ function driveHeaders(token: string | undefined): Record<string, string> {
     ...(token ? { authorization: `Bearer ${token}` } : {}),
     'user-agent': DEFAULT_USER_AGENT,
   };
+}
+
+function drivePageSize(limit: number | undefined): number {
+  const requested = Number.isFinite(limit) ? Number(limit) : DEFAULT_PAGE_SIZE;
+  return Math.max(1, Math.min(requested, DEFAULT_PAGE_SIZE));
+}
+
+function isDriveTextReadableMimeType(mimeType: string): boolean {
+  return (
+    GOOGLE_DOC_MIME_TYPES.has(mimeType) ||
+    TEXT_FILE_MIME_TYPES.has(mimeType) ||
+    mimeType.startsWith('text/')
+  );
 }
 
 function driveOwners(
