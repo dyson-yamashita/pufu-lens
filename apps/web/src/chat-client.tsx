@@ -30,11 +30,17 @@ export function ChatPanel({
         headers: { 'content-type': 'application/json' },
         method: 'POST',
       });
-      const body = (await result.json()) as ChatResponse | { error?: string };
+      const isJson = result.headers.get('content-type')?.includes('application/json') ?? false;
+      const body = isJson ? ((await result.json()) as ChatResponse | { error?: string }) : null;
       if (!result.ok) {
-        throw new Error('error' in body && body.error ? body.error : `HTTP ${result.status}`);
+        throw new Error(
+          body && 'error' in body && body.error ? body.error : `HTTP ${result.status}`,
+        );
       }
-      setResponse(body as ChatResponse);
+      if (!body || !('status' in body)) {
+        throw new Error('Chat API returned an invalid response.');
+      }
+      setResponse(body);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {

@@ -16,8 +16,13 @@ export async function POST(
   { params }: { readonly params: Promise<{ readonly projectSlug: string }> },
 ) {
   const { projectSlug } = await params;
-  const body = (await request.json()) as { question?: unknown };
-  const question = typeof body.question === 'string' ? body.question.trim() : '';
+  let question = '';
+  try {
+    const body = (await request.json()) as { question?: unknown };
+    question = typeof body.question === 'string' ? body.question.trim() : '';
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
   if (!question) {
     return NextResponse.json({ error: 'question is required' }, { status: 400 });
   }

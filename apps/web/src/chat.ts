@@ -231,14 +231,21 @@ export function createExtractiveChatProvider(): ChatProvider {
 }
 
 export function createMemoryRateLimiter(input: {
+  readonly cleanupThreshold?: number;
   readonly limit: number;
+  readonly now?: () => number;
   readonly windowMs: number;
 }): ChatRateLimiter {
+  const cleanupThreshold = input.cleanupThreshold ?? 1000;
+  const nowProvider = input.now ?? Date.now;
   const buckets = new Map<string, { count: number; resetAt: number }>();
   return {
     check({ projectSlug, userId }) {
       const key = `${userId}:${projectSlug}`;
-      const now = Date.now();
+      const now = nowProvider();
+      if (buckets.size > cleanupThreshold) {
+        cleanupExpiredBuckets(buckets, now);
+      }
       const bucket = buckets.get(key);
       if (!bucket || bucket.resetAt <= now) {
         buckets.set(key, { count: 1, resetAt: now + input.windowMs });
@@ -268,7 +275,7 @@ export function isWithinBusinessHours(date: Date, config: BusinessHoursConfig): 
   }
   const parts = new Intl.DateTimeFormat('en-US', {
     hour: 'numeric',
-    hour12: false,
+    hourCycle: 'h23',
     timeZone: config.timeZone,
     weekday: 'short',
   }).formatToParts(date);
@@ -294,16 +301,22 @@ export function createPostgresChatRepository(sql: postgres.Sql): ChatRepository 
     async vectorSearch({ embedding, limit, projectId }) {
       const vector = `[${embedding.join(',')}]`;
       const rows = (await sql`
-        SELECT DISTINCT ON (d.id)
-          d.id::text AS document_id,
-          d.raw_document_id::text AS raw_document_id,
-          d.doc_type,
-          coalesce(d.title, 'Untitled') AS title,
-          coalesce(d.canonical_uri, '') AS canonical_uri
-        FROM public.document_chunks dc
-        JOIN public.documents d ON d.id = dc.document_id
-        WHERE dc.project_id = ${projectId}
-        ORDER BY d.id, dc.embedding <=> ${vector}::vector
+        WITH distinct_chunks AS (
+          SELECT DISTINCT ON (d.id)
+            d.id::text AS document_id,
+            d.raw_document_id::text AS raw_document_id,
+            d.doc_type,
+            coalesce(d.title, 'Untitled') AS title,
+            coalesce(d.canonical_uri, '') AS canonical_uri,
+            dc.embedding <=> ${vector}::vector AS distance
+          FROM public.document_chunks dc
+          JOIN public.documents d ON d.id = dc.document_id
+          WHERE dc.project_id = ${projectId}
+          ORDER BY d.id, dc.embedding <=> ${vector}::vector
+        )
+        SELECT document_id, raw_document_id, doc_type, title, canonical_uri
+        FROM distinct_chunks
+        ORDER BY distance
         LIMIT ${limit}
       `) as ChatSourceRow[];
       return rows.map(sourceFromRow);
@@ -402,6 +415,17 @@ function uniqueSources(sources: readonly ChatSource[]): ChatSource[] {
     }
   }
   return unique;
+}
+
+function cleanupExpiredBuckets(
+  buckets: Map<string, { count: number; resetAt: number }>,
+  now: number,
+): void {
+  for (const [key, bucket] of buckets.entries()) {
+    if (bucket.resetAt <= now) {
+      buckets.delete(key);
+    }
+  }
 }
 
 interface ChatSourceRow {

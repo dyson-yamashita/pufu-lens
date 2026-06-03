@@ -3,6 +3,7 @@ import {
   type ChatRepository,
   createExtractiveChatProvider,
   createMemoryRateLimiter,
+  isWithinBusinessHours,
   runPrivateChat,
 } from './chat.ts';
 
@@ -107,5 +108,28 @@ const limited = await runPrivateChat(
   },
 );
 assert.equal(limited.status, 'rate_limited');
+
+let clock = 0;
+const expiringLimiter = createMemoryRateLimiter({
+  cleanupThreshold: 0,
+  limit: 1,
+  now: () => clock,
+  windowMs: 10,
+});
+assert.equal(expiringLimiter.check({ projectSlug: 'sample-a', userId: 'user-a' }), true);
+assert.equal(expiringLimiter.check({ projectSlug: 'sample-a', userId: 'user-a' }), false);
+clock = 11;
+assert.equal(expiringLimiter.check({ projectSlug: 'sample-b', userId: 'user-b' }), true);
+assert.equal(expiringLimiter.check({ projectSlug: 'sample-a', userId: 'user-a' }), true);
+
+const tokyoBusinessHours = { enabled: true, endHour: 18, startHour: 9, timeZone: 'Asia/Tokyo' };
+assert.equal(
+  isWithinBusinessHours(new Date('2026-06-04T00:00:00+09:00'), tokyoBusinessHours),
+  false,
+);
+assert.equal(
+  isWithinBusinessHours(new Date('2026-06-04T09:00:00+09:00'), tokyoBusinessHours),
+  true,
+);
 
 console.log('web chat tests passed');
