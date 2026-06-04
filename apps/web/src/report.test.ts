@@ -7,6 +7,7 @@ import {
   createGeminiReportProvider,
   getPrivateReport,
   getPublicReport,
+  getPublicReportArtifacts,
   isSafePublicReportLocator,
   listPrivateReports,
   PublicReportNotFoundError,
@@ -18,6 +19,7 @@ import {
   revokePublicReport,
   runGenerateReport,
   validatePrivateReportJson,
+  validatePublicContextBundle,
   validatePublicReportJson,
 } from './report.ts';
 
@@ -187,6 +189,14 @@ const publicDetail = await getPublicReport({
 });
 assert.equal(publicDetail.status, 'ok');
 assert.equal(publicDetail.report.report_id, generated.report.report_id);
+const publicArtifacts = await getPublicReportArtifacts({
+  projectSlug: 'sample-a',
+  reportId: generated.report.report_id,
+  storage,
+});
+assert.equal(publicArtifacts.contextBundle.schema_version, 'public-context-v1');
+assert.equal(publicArtifacts.contextBundle.report_id, generated.report.report_id);
+validatePublicContextBundle(publicArtifacts.contextBundle, publicArtifacts.report);
 
 assert.equal(isSafePublicReportLocator({ projectSlug: 'sample-a', reportId: 'report-a' }), true);
 assert.equal(
@@ -210,7 +220,19 @@ const gsReportUri = `gs://pufu-lens-public/sample-a/reports/public/${generated.r
 const gsContextUri = `gs://pufu-lens-public/sample-a/reports/public/${generated.report.report_id}/${published.manifest.artifact_version}/context-bundle.json`;
 const gsStorage = new MemoryStorage();
 gsStorage.objects.set(gsReportUri, JSON.stringify(published.publicReport));
-gsStorage.objects.set(gsContextUri, JSON.stringify({ schema_version: 'public-context-v1' }));
+gsStorage.objects.set(
+  gsContextUri,
+  JSON.stringify({
+    report_id: published.publicReport.report_id,
+    schema_version: 'public-context-v1',
+    sections: published.publicReport.sections.map((section) => ({
+      id: section.id,
+      markdown: section.markdown,
+      public_source_ids: section.sources?.map((source) => source.public_source_id) ?? [],
+      title: section.title,
+    })),
+  }),
+);
 gsStorage.objects.set(
   `sample-a/reports/public/${generated.report.report_id}/manifest.json`,
   JSON.stringify({

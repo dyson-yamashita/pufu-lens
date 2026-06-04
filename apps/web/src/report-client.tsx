@@ -1,7 +1,9 @@
 'use client';
 
+import { Send } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import type { PublicChatResponse } from './chat';
 import type { PrivateReportJsonV1, PublicReportJsonV1, ReportListItem } from './report';
 
 type ReportApiError = {
@@ -251,58 +253,166 @@ export function PublicReportDocument({
   }
 
   return (
-    <article
-      className="report-document public-report-document"
-      data-testid="public-report-document"
-    >
-      <header className="report-document-header">
-        <p className="eyebrow">{report.schema_version}</p>
-        <h2>{report.title}</h2>
-        <p>{report.summary}</p>
-        <dl className="detail-list">
-          <div>
-            <dt>Period</dt>
-            <dd>
-              {report.period.start} / {report.period.end}
-            </dd>
-          </div>
-          <div>
-            <dt>Published</dt>
-            <dd>{report.published_at}</dd>
-          </div>
-        </dl>
-      </header>
-      {report.sections.map((section) => (
-        <section
-          className="report-section"
-          data-testid={`public-report-section-${section.id}`}
-          key={section.id}
-        >
-          <h3>{section.title}</h3>
-          <p className="markdown-text">{section.markdown}</p>
-          {section.metrics ? (
-            <div className="metric-strip compact">
-              {Object.entries(section.metrics).map(([name, value]) => (
-                <div className="metric" key={name}>
-                  <span>{name}</span>
-                  <strong>{value}</strong>
-                </div>
-              ))}
+    <>
+      <article
+        className="report-document public-report-document"
+        data-testid="public-report-document"
+      >
+        <header className="report-document-header">
+          <p className="eyebrow">{report.schema_version}</p>
+          <h2>{report.title}</h2>
+          <p>{report.summary}</p>
+          <dl className="detail-list">
+            <div>
+              <dt>Period</dt>
+              <dd>
+                {report.period.start} / {report.period.end}
+              </dd>
             </div>
-          ) : null}
-          {section.sources?.length ? (
-            <div className="source-list">
-              {section.sources.map((source) => (
-                <article className="source-chip" key={source.public_source_id}>
-                  <strong>{source.public_source_id}</strong>
-                  <span>{source.label}</span>
-                </article>
-              ))}
+            <div>
+              <dt>Published</dt>
+              <dd>{report.published_at}</dd>
             </div>
-          ) : null}
-        </section>
-      ))}
-    </article>
+          </dl>
+        </header>
+        {report.sections.map((section) => (
+          <section
+            className="report-section"
+            data-testid={`public-report-section-${section.id}`}
+            key={section.id}
+          >
+            <h3>{section.title}</h3>
+            <p className="markdown-text">{section.markdown}</p>
+            {section.metrics ? (
+              <div className="metric-strip compact">
+                {Object.entries(section.metrics).map(([name, value]) => (
+                  <div className="metric" key={name}>
+                    <span>{name}</span>
+                    <strong>{value}</strong>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {section.sources?.length ? (
+              <div className="source-list">
+                {section.sources.map((source) => (
+                  <article className="source-chip" key={source.public_source_id}>
+                    <strong>{source.public_source_id}</strong>
+                    <span>{source.label}</span>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ))}
+      </article>
+      <PublicReportChatPanel projectSlug={projectSlug} reportId={reportId} />
+    </>
+  );
+}
+
+function PublicReportChatPanel({
+  projectSlug,
+  reportId,
+}: {
+  readonly projectSlug: string;
+  readonly reportId: string;
+}) {
+  const [question, setQuestion] = useState('');
+  const [response, setResponse] = useState<PublicChatResponse | undefined>();
+  const [error, setError] = useState<string | undefined>();
+  const [pending, setPending] = useState(false);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedQuestion = question.trim();
+    if (!trimmedQuestion || pending) {
+      return;
+    }
+    setPending(true);
+    setError(undefined);
+    try {
+      const result = await fetch(
+        `/api/public/reports/${reportId}/chat?projectSlug=${encodeURIComponent(projectSlug)}`,
+        {
+          body: JSON.stringify({ question: trimmedQuestion }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      );
+      const isJson = result.headers.get('content-type')?.includes('application/json') ?? false;
+      const body = isJson
+        ? ((await result.json()) as PublicChatResponse | ReportApiError)
+        : undefined;
+      if (!result.ok) {
+        const errorBody = body && 'error' in body ? body : {};
+        throw new Error(reportErrorStatus(errorBody, result.status));
+      }
+      if (!body || !('status' in body)) {
+        throw new Error('Public Chat API returned an invalid response.');
+      }
+      setResponse(body);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <section className="panel public-chat-panel" data-testid="public-chat-panel">
+      <form className="chat-form" onSubmit={submit}>
+        <label htmlFor="public-chat-question">Public report question</label>
+        <div className="chat-input-row">
+          <textarea
+            data-testid="public-chat-question-input"
+            disabled={pending}
+            id="public-chat-question"
+            onChange={(event) => setQuestion(event.target.value)}
+            rows={3}
+            value={question}
+          />
+          <button
+            className="primary-button"
+            data-testid="public-chat-submit-button"
+            disabled={pending || !question.trim()}
+            type="submit"
+          >
+            <Send size={16} />
+            Send
+          </button>
+        </div>
+      </form>
+      {error ? (
+        <p className="notice error" data-testid="public-chat-error">
+          {error}
+        </p>
+      ) : null}
+      {response ? (
+        <div className="chat-result" data-testid="public-chat-result">
+          <h2>Answer</h2>
+          <p>{response.answer}</p>
+          <h3>Public Sources</h3>
+          <div className="source-list">
+            {response.sources.map((source) => (
+              <article className="source-chip" key={`${source.sectionId}-${source.publicSourceId}`}>
+                <strong>{source.publicSourceId}</strong>
+                <span>{source.sectionId}</span>
+                <small>{source.label}</small>
+              </article>
+            ))}
+          </div>
+          <h3>Tool Calls</h3>
+          <div className="tool-call-list">
+            {response.toolCalls.map((toolCall) => (
+              <span className="status-badge" key={toolCall.name}>
+                {toolCall.name}: {toolCall.resultCount}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 

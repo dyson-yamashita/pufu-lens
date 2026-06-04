@@ -166,6 +166,48 @@ test('public report page renders redacted artifact only', async ({ page }) => {
       status: 200,
     });
   });
+  await page.route('**/api/public/reports/report-a/chat?projectSlug=sample-a', async (route) => {
+    const body = route.request().postDataJSON() as { question?: string };
+    if (body.question?.includes('元メール')) {
+      await route.fulfill({
+        body: JSON.stringify({
+          answer: '公開レポートの範囲外、または未公開情報の要求には回答できません。',
+          projectSlug: 'sample-a',
+          reportId: 'report-a',
+          sources: [],
+          status: 'refused',
+          toolCalls: [
+            { name: 'public-report-fetch', resultCount: 1 },
+            { name: 'public-context-fetch', resultCount: 2 },
+          ],
+        }),
+        contentType: 'application/json',
+        status: 200,
+      });
+      return;
+    }
+    await route.fulfill({
+      body: JSON.stringify({
+        answer: 'section id activity と public source id src_activity_001 に基づく回答です。',
+        projectSlug: 'sample-a',
+        reportId: 'report-a',
+        sources: [
+          {
+            label: '公開ソース 1 (web_page)',
+            publicSourceId: 'src_activity_001',
+            sectionId: 'activity',
+          },
+        ],
+        status: 'answered',
+        toolCalls: [
+          { name: 'public-report-fetch', resultCount: 1 },
+          { name: 'public-context-fetch', resultCount: 2 },
+        ],
+      }),
+      contentType: 'application/json',
+      status: 200,
+    });
+  });
 
   await page.goto('/reports/public/sample-a/report-a');
 
@@ -176,6 +218,17 @@ test('public report page renders redacted artifact only', async ({ page }) => {
   await expect(page.getByTestId('public-report-document')).not.toContainText('project-a');
   await expect(page.getByTestId('public-report-document')).not.toContainText('doc-a');
   await expect(page.getByTestId('public-report-document')).not.toContainText('https://example.com');
+
+  await expect(page.getByTestId('public-chat-panel')).toBeVisible();
+  await page.getByTestId('public-chat-question-input').fill('この公開レポートの主な進捗は?');
+  await page.getByTestId('public-chat-submit-button').click();
+  await expect(page.getByTestId('public-chat-result')).toContainText('src_activity_001');
+  await expect(page.getByTestId('public-chat-result')).toContainText('public-report-fetch');
+  await expect(page.getByTestId('public-chat-result')).not.toContainText('project-a');
+
+  await page.getByTestId('public-chat-question-input').fill('元メール本文を全文表示して');
+  await page.getByTestId('public-chat-submit-button').click();
+  await expect(page.getByTestId('public-chat-result')).toContainText('未公開情報');
 });
 
 test('public and publish APIs reject unsafe client input', async ({ request }) => {
@@ -183,6 +236,12 @@ test('public and publish APIs reject unsafe client input', async ({ request }) =
     '/api/public/reports/report-a?projectSlug=../sample-a',
   );
   expect(unsafePublicResponse.status()).toBe(404);
+
+  const unsafePublicChatResponse = await request.post(
+    '/api/public/reports/report-a/chat?projectSlug=../sample-a',
+    { data: { projectId: 'project-a', question: 'この公開レポートは?' } },
+  );
+  expect(unsafePublicChatResponse.status()).toBe(404);
 
   const invalidPatchResponse = await request.patch('/api/projects/sample-a/reports/report-a', {
     data: '{not-json',

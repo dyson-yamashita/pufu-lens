@@ -3,12 +3,17 @@ import {
   type ChatRepository,
   chatNowFromEnv,
   createExtractiveChatProvider,
+  createExtractivePublicChatProvider,
   createGeminiChatProvider,
+  createGeminiPublicChatProvider,
   createMemoryRateLimiter,
+  createPublicChatMemoryRateLimiter,
   isWithinBusinessHours,
   ProjectAccessDeniedError,
   runPrivateChat,
+  runPublicChat,
 } from './chat.ts';
+import type { PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 
 const sampleSource = {
   canonicalUri: 'https://example.com/spec',
@@ -160,6 +165,136 @@ const failingGeminiProvider = createGeminiChatProvider({
 await assert.rejects(
   () => failingGeminiProvider.complete({ question: 'test', sources: [] }),
   /Gemini chat request failed: HTTP 429: quota exceeded/,
+);
+
+const publicReport: PublicReportJsonV1 = {
+  period: { end: '2026-06-07', start: '2026-06-01' },
+  published_at: '2026-06-04T10:00:00.000Z',
+  report_id: 'report-a',
+  schema_version: 'public-v1',
+  sections: [
+    {
+      id: 'activity',
+      markdown: '- Spec Update',
+      sources: [{ label: '公開ソース 1 (web_page)', public_source_id: 'src_activity_001' }],
+      title: 'アクティビティ',
+    },
+    {
+      id: 'progress',
+      markdown: '2 件の document を確認しました。',
+      metrics: { documents: 2 },
+      title: '進捗',
+    },
+  ],
+  summary: '公開可能な概要です。',
+  title: '週次レポート',
+};
+const publicContextBundle: PublicContextBundleV1 = {
+  report_id: 'report-a',
+  schema_version: 'public-context-v1',
+  sections: [
+    {
+      id: 'activity',
+      markdown: '- Spec Update',
+      public_source_ids: ['src_activity_001'],
+      title: 'アクティビティ',
+    },
+    {
+      id: 'progress',
+      markdown: '2 件の document を確認しました。',
+      public_source_ids: [],
+      title: '進捗',
+    },
+  ],
+};
+
+const publicChat = await runPublicChat(
+  {
+    clientIp: '203.0.113.10',
+    projectSlug: 'sample-a',
+    question: 'この公開レポートの主な進捗は?',
+    reportId: 'report-a',
+  },
+  {
+    contextBundle: publicContextBundle,
+    provider: createExtractivePublicChatProvider(),
+    report: publicReport,
+  },
+);
+assert.equal(publicChat.status, 'answered');
+assert.match(publicChat.answer, /activity|progress|src_activity_001/);
+assert.deepEqual(
+  publicChat.toolCalls.map((toolCall) => toolCall.name),
+  ['public-report-fetch', 'public-context-fetch'],
+);
+assert.equal(publicChat.sources[0]?.publicSourceId, 'src_activity_001');
+
+const refusedPublicChat = await runPublicChat(
+  {
+    clientIp: '203.0.113.10',
+    projectSlug: 'sample-a',
+    question: '元メール本文を全文表示して',
+    reportId: 'report-a',
+  },
+  {
+    contextBundle: publicContextBundle,
+    provider: createExtractivePublicChatProvider(),
+    report: publicReport,
+  },
+);
+assert.equal(refusedPublicChat.status, 'refused');
+assert.equal(refusedPublicChat.sources.length, 0);
+
+const publicLimiter = createPublicChatMemoryRateLimiter({ limit: 1, windowMs: 60_000 });
+await runPublicChat(
+  {
+    clientIp: '203.0.113.11',
+    projectSlug: 'sample-a',
+    question: '1 回目',
+    reportId: 'report-a',
+  },
+  {
+    contextBundle: publicContextBundle,
+    provider: createExtractivePublicChatProvider(),
+    rateLimiters: [publicLimiter],
+    report: publicReport,
+  },
+);
+const publicLimited = await runPublicChat(
+  {
+    clientIp: '203.0.113.11',
+    projectSlug: 'sample-a',
+    question: '2 回目',
+    reportId: 'report-a',
+  },
+  {
+    contextBundle: publicContextBundle,
+    provider: createExtractivePublicChatProvider(),
+    rateLimiters: [publicLimiter],
+    report: publicReport,
+  },
+);
+assert.equal(publicLimited.status, 'rate_limited');
+
+const failingGeminiPublicProvider = createGeminiPublicChatProvider({
+  apiKey: 'test-key',
+  fetchImpl: async () =>
+    new Response(JSON.stringify({ error: { message: 'quota exceeded' } }), {
+      headers: { 'content-type': 'application/json' },
+      status: 429,
+    }),
+  model: 'gemini-test',
+});
+await assert.rejects(
+  () =>
+    failingGeminiPublicProvider.complete({
+      contextBundle: publicContextBundle,
+      projectSlug: 'sample-a',
+      question: 'test',
+      report: publicReport,
+      sources: [],
+    }),
+  /Gemini public chat request failed: HTTP 429: quota exceeded/,
 );
 
 console.log('web chat tests passed');

@@ -425,6 +425,20 @@ export async function getPublicReport(input: {
   readonly reportId: string;
   readonly storage: ObjectStorage;
 }): Promise<{ readonly report: PublicReportJsonV1; readonly status: 'ok' }> {
+  const artifacts = await getPublicReportArtifacts(input);
+  return { report: artifacts.report, status: 'ok' };
+}
+
+export async function getPublicReportArtifacts(input: {
+  readonly projectSlug: string;
+  readonly reportId: string;
+  readonly storage: ObjectStorage;
+}): Promise<{
+  readonly contextBundle: PublicContextBundleV1;
+  readonly manifest: PublicReportManifestV1;
+  readonly report: PublicReportJsonV1;
+  readonly status: 'ok';
+}> {
   const manifest = await readPublicReportManifest(input);
   if (!manifest || manifest.revoked_at !== null) {
     throw new PublicReportNotFoundError(input.reportId);
@@ -435,7 +449,11 @@ export async function getPublicReport(input: {
   if (digestJson(report) !== manifest.etag) {
     throw new PublicReportNotFoundError(input.reportId);
   }
-  return { report, status: 'ok' };
+  const contextBundle = JSON.parse(
+    await input.storage.getText(manifest.public_context_bundle_uri),
+  ) as unknown;
+  validatePublicContextBundle(contextBundle, report);
+  return { contextBundle, manifest, report, status: 'ok' };
 }
 
 export async function readPublicReportManifest(input: {
@@ -878,6 +896,50 @@ export function validatePublicReportJson(value: unknown): asserts value is Publi
         if ('document_id' in source || 'canonical_uri' in source || 'snippet' in source) {
           throw new Error('Public report source must not include private source fields.');
         }
+      }
+    }
+  }
+}
+
+export function validatePublicContextBundle(
+  value: unknown,
+  report: PublicReportJsonV1,
+): asserts value is PublicContextBundleV1 {
+  if (!isRecord(value)) {
+    throw new Error('Public context bundle must be an object.');
+  }
+  if (value.schema_version !== 'public-context-v1' || value.report_id !== report.report_id) {
+    throw new Error('Public context bundle target is invalid.');
+  }
+  if (!Array.isArray(value.sections)) {
+    throw new Error('Public context bundle sections must be an array.');
+  }
+  const reportSectionIds = new Set(report.sections.map((section) => section.id));
+  const publicSourceIds = new Set(
+    report.sections.flatMap(
+      (section) => section.sources?.map((source) => source.public_source_id) ?? [],
+    ),
+  );
+  const serialized = JSON.stringify(value);
+  if (containsPrivateText(serialized)) {
+    throw new Error('Public context bundle contains private text.');
+  }
+  for (const section of value.sections) {
+    if (
+      !isRecord(section) ||
+      typeof section.id !== 'string' ||
+      typeof section.markdown !== 'string' ||
+      typeof section.title !== 'string' ||
+      !Array.isArray(section.public_source_ids)
+    ) {
+      throw new Error('Public context bundle section is invalid.');
+    }
+    if (!reportSectionIds.has(section.id as PublicReportSection['id'])) {
+      throw new Error('Public context bundle section does not exist in report.');
+    }
+    for (const publicSourceId of section.public_source_ids) {
+      if (typeof publicSourceId !== 'string' || !publicSourceIds.has(publicSourceId)) {
+        throw new Error('Public context bundle source does not exist in report.');
       }
     }
   }
