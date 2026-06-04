@@ -16,6 +16,7 @@ interface ChatEvalCase {
   readonly minSources: number;
   readonly project?: string;
   readonly question: string;
+  readonly requestBody?: Record<string, unknown>;
   readonly report?: string;
   readonly requiredToolCalls: readonly string[];
 }
@@ -49,7 +50,7 @@ async function main(): Promise<void> {
           )}`
         : `${baseUrl}/api/projects/${caseProject}/chat`;
     const response = await fetch(endpoint, {
-      body: JSON.stringify({ question: testCase.question }),
+      body: JSON.stringify({ ...testCase.requestBody, question: testCase.question }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
     });
