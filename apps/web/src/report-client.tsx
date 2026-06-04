@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import type { PrivateReportJsonV1, ReportListItem } from './report';
+import type { PrivateReportJsonV1, PublicReportJsonV1, ReportListItem } from './report';
 
 type ReportApiError = {
   readonly error?: { readonly code?: string; readonly message?: string };
@@ -188,6 +188,114 @@ export function ReportDocument({
                   <strong>{source.doc_type}</strong>
                   <span>{source.snippet}</span>
                   <small>{source.canonical_uri || source.document_id}</small>
+                </article>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ))}
+    </article>
+  );
+}
+
+export function PublicReportDocument({
+  projectSlug,
+  reportId,
+}: {
+  readonly projectSlug: string;
+  readonly reportId: string;
+}) {
+  const [report, setReport] = useState<PublicReportJsonV1 | undefined>();
+  const [status, setStatus] = useState('loading');
+
+  useEffect(() => {
+    let cancelled = false;
+    setReport(undefined);
+    setStatus('loading');
+    fetch(`/api/public/reports/${reportId}?projectSlug=${encodeURIComponent(projectSlug)}`)
+      .then(async (response) => {
+        const body = (await response.json()) as {
+          readonly error?: { readonly code?: string; readonly message?: string };
+          readonly report?: PublicReportJsonV1 | null;
+          readonly status?: string;
+        };
+        if (!cancelled) {
+          if (!response.ok && body.error) {
+            setReport(undefined);
+            setStatus(reportErrorStatus(body, response.status));
+          } else {
+            setReport(body.report ?? undefined);
+            setStatus(body.status ?? `http_${response.status}`);
+          }
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setStatus(error instanceof Error ? error.message : String(error));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectSlug, reportId]);
+
+  if (status === 'loading') {
+    return <p className="notice">loading</p>;
+  }
+  if (!report || status !== 'ok') {
+    return (
+      <p className="notice error" data-testid="public-report-status">
+        {status}
+      </p>
+    );
+  }
+
+  return (
+    <article
+      className="report-document public-report-document"
+      data-testid="public-report-document"
+    >
+      <header className="report-document-header">
+        <p className="eyebrow">{report.schema_version}</p>
+        <h2>{report.title}</h2>
+        <p>{report.summary}</p>
+        <dl className="detail-list">
+          <div>
+            <dt>Period</dt>
+            <dd>
+              {report.period.start} / {report.period.end}
+            </dd>
+          </div>
+          <div>
+            <dt>Published</dt>
+            <dd>{report.published_at}</dd>
+          </div>
+        </dl>
+      </header>
+      {report.sections.map((section) => (
+        <section
+          className="report-section"
+          data-testid={`public-report-section-${section.id}`}
+          key={section.id}
+        >
+          <h3>{section.title}</h3>
+          <p className="markdown-text">{section.markdown}</p>
+          {section.metrics ? (
+            <div className="metric-strip compact">
+              {Object.entries(section.metrics).map(([name, value]) => (
+                <div className="metric" key={name}>
+                  <span>{name}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {section.sources?.length ? (
+            <div className="source-list">
+              {section.sources.map((source) => (
+                <article className="source-chip" key={source.public_source_id}>
+                  <strong>{source.public_source_id}</strong>
+                  <span>{source.label}</span>
                 </article>
               ))}
             </div>

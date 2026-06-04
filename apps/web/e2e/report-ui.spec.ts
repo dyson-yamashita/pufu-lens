@@ -135,3 +135,45 @@ test('private report pages render API error codes', async ({ page }) => {
   await page.goto('/projects/sample-a/reports/missing-report');
   await expect(page.getByTestId('report-status')).toHaveText('report_not_found');
 });
+
+test('public report page renders redacted artifact only', async ({ page }) => {
+  const publicReport = {
+    period: report.period,
+    published_at: '2026-06-04T10:00:00.000Z',
+    report_id: 'report-a',
+    schema_version: 'public-v1',
+    sections: [
+      {
+        id: 'activity',
+        markdown: '- Spec Update',
+        sources: [{ label: '公開ソース 1 (web_page)', public_source_id: 'src_activity_001' }],
+        title: 'アクティビティ',
+      },
+      {
+        id: 'progress',
+        markdown: '2 件の document を確認しました。',
+        metrics: { documents: 2 },
+        title: '進捗',
+      },
+    ],
+    summary: '公開可能な概要です。',
+    title: report.title,
+  };
+  await page.route('**/api/public/reports/report-a?projectSlug=sample-a', async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({ report: publicReport, status: 'ok' }),
+      contentType: 'application/json',
+      status: 200,
+    });
+  });
+
+  await page.goto('/reports/public/sample-a/report-a');
+
+  await expect(page.getByTestId('public-report-document')).toContainText('公開可能な概要です。');
+  await expect(page.getByTestId('public-report-section-activity')).toContainText(
+    'src_activity_001',
+  );
+  await expect(page.getByTestId('public-report-document')).not.toContainText('project-a');
+  await expect(page.getByTestId('public-report-document')).not.toContainText('doc-a');
+  await expect(page.getByTestId('public-report-document')).not.toContainText('https://example.com');
+});
