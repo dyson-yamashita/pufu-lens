@@ -49,7 +49,7 @@ pnpm infra:check --env staging
 pnpm deploy:smoke --env staging
 ```
 
-- `deploy:dry-run`:
+- `deploy:dry-run`: `curate-workflow`、`ingest-workflow`、`generate-report` の `WORKFLOW_ID` / `WORKFLOW_INPUT_JSON` entrypoint 計画をローカル dry-run で検査する。
 - `infra:check`:
 - `deploy:smoke`:
 - Cloud Run Job 単発実行:
@@ -63,3 +63,12 @@ pnpm deploy:smoke --env staging
 ## 未完了項目
 
 - [ ] なし
+
+## Step 14 初期実装メモ
+
+- Cloud Run Job の共通 entrypoint は `scripts/workflow-job.ts`。
+- Job コンテナは `WORKFLOW_ID` と `WORKFLOW_INPUT_JSON` を受け取り、`curate-workflow`、`ingest-workflow`、`generate-report` を個別に計画・実行する。
+- `DRY_RUN=true` または input の `dryRun: true` では DB / Storage / 外部 API に接続せず、secret 値を出さない計画ログだけを出す。
+- Cloud Run Job 用 Dockerfile は `infra/docker/jobs/Dockerfile`。
+- ローカルでは `docker build -f infra/docker/jobs/Dockerfile -t pufu-lens-workflow-job:local .` の後、`docker run --rm -e WORKFLOW_ID=generate-report -e WORKFLOW_INPUT_JSON='{"projectSlug":"sample-a","period":"weekly","dryRun":true}' pufu-lens-workflow-job:local` のように entrypoint dry-run を確認できる。
+- `infra:check` は GCP identifier と Secret Manager の secret 名だけを検査し、secret の実値は出力しない。

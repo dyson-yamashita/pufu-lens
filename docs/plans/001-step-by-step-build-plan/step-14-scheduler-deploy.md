@@ -8,6 +8,15 @@
 - Secret Manager / Workload Identity / GCS / VPC 接続
 - 本番向け env validation
 
+### 進捗メモ
+
+- Issue #57 / branch `feature/issue-57-scheduler-deploy-check` で着手。
+- `scripts/workflow-job.ts` を追加し、Cloud Run Job の共通 entrypoint として `WORKFLOW_ID` / `WORKFLOW_INPUT_JSON` を受ける形にした。
+- `curate-workflow`、`ingest-workflow`、`generate-report` の dry-run 計画を `pnpm deploy:dry-run` で確認できるようにした。
+- `pnpm infra:check --env staging` と `pnpm deploy:smoke --env staging` の入口を追加し、GCP identifier / Secret Manager secret 名の不足を secret 実値なしで検査する。
+- Cloud Run Job 用 Dockerfile を `infra/docker/jobs/Dockerfile` として追加。
+- ローカル Docker で job image を build し、3 workflow の container dry-run を確認。
+
 ### 確認できること
 
 - ローカルで確認済みの workflow を job として実行できる。
