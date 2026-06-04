@@ -17,7 +17,7 @@ interface ChatEvalCase {
 }
 
 interface ChatEvalResponse {
-  readonly error?: { readonly code?: string; readonly message?: string } | string;
+  readonly error?: { readonly code?: string; readonly message?: string } | string | null;
   readonly sources?: readonly unknown[];
   readonly status?: string;
   readonly toolCalls?: ReadonlyArray<{ readonly name?: string }>;
@@ -37,7 +37,7 @@ async function main(): Promise<void> {
       headers: { 'content-type': 'application/json' },
       method: 'POST',
     });
-    const body = (await response.json()) as ChatEvalResponse;
+    const body = await readJsonResponse(response);
     assertCase(testCase, response.status, body);
     results.push({
       httpStatus: response.status,
@@ -50,6 +50,11 @@ async function main(): Promise<void> {
   }
 
   console.log(JSON.stringify({ project, results }, null, 2));
+}
+
+async function readJsonResponse(response: Response): Promise<ChatEvalResponse> {
+  const isJson = response.headers.get('content-type')?.includes('application/json') ?? false;
+  return isJson ? ((await response.json()) as ChatEvalResponse) : {};
 }
 
 function assertCase(testCase: ChatEvalCase, httpStatus: number, response: ChatEvalResponse): void {
@@ -88,7 +93,7 @@ function assertCase(testCase: ChatEvalCase, httpStatus: number, response: ChatEv
 }
 
 function errorCode(response: ChatEvalResponse): string | undefined {
-  return typeof response.error === 'object' ? response.error.code : undefined;
+  return response.error && typeof response.error === 'object' ? response.error.code : undefined;
 }
 
 function errorMessage(response: ChatEvalResponse): string {

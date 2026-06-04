@@ -6,6 +6,7 @@ import {
   createGeminiChatProvider,
   createMemoryRateLimiter,
   createPostgresChatRepository,
+  ProjectAccessDeniedError,
   runPrivateChat,
 } from '../../../../../src/chat';
 
@@ -58,7 +59,7 @@ export async function POST(
     return NextResponse.json(response, { status });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (message.startsWith('Project access denied:')) {
+    if (error instanceof ProjectAccessDeniedError) {
       return chatErrorResponse('project_access_denied', message, 403);
     }
     return chatErrorResponse('chat_internal_error', message, 500);

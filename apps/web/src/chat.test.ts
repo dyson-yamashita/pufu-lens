@@ -5,6 +5,7 @@ import {
   createGeminiChatProvider,
   createMemoryRateLimiter,
   isWithinBusinessHours,
+  ProjectAccessDeniedError,
   runPrivateChat,
 } from './chat.ts';
 
@@ -73,7 +74,7 @@ await assert.rejects(
       { projectSlug: 'sample-b', question: '別 project は?', userId: 'user-a' },
       { provider: createExtractiveChatProvider(), repository: createRepository() },
     ),
-  /Project access denied/,
+  ProjectAccessDeniedError,
 );
 
 const outsideBusinessHours = await runPrivateChat(
