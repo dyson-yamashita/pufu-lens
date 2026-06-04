@@ -60,7 +60,7 @@ Step の詳細を参照する前に、この表で status を確認する。
 | Step 12  | [Chat Agent の最小確認](step-12-chat-agent.md)                                         | `completed` | 2026-06-04 | Gemini API smoke / Chat UI e2e / chat:eval を確認済み。                             |
 | Step 13a | [Private Report 生成と閲覧](step-13a-private-report.md)                                | `completed` | 2026-06-04 | Issue #48 で Private Report 生成 / API / UI / e2e を確認済み。                      |
 | Step 13b | [Public Report 公開 artifact と配信](step-13b-public-report-artifact.md)               | `completed` | 2026-06-04 | Issue #50 / PR #51 で public report artifact / manifest / API / UI を確認済み。     |
-| Step 13c | [Public Chat 限定 context と安全確認](step-13c-public-chat-context.md)                 | `active`    | 2026-06-04 | Issue #52 で public chat 限定 context / API / UI / eval を実装中。                  |
+| Step 13c | [Public Chat 限定 context と安全確認](step-13c-public-chat-context.md)                 | `completed` | 2026-06-04 | Issue #52 で public chat 限定 context / API / UI / eval を確認済み。                |
 | Step 13d | [Mastra Agent / Workflow 登録](step-13d-mastra-agent-workflow.md)                      | `planned`   | 2026-06-04 | Step 12 / 13a の server-side core を Mastra Agent / Workflow として登録する。       |
 | Step 14  | [Scheduler / Cloud Run Job / Deploy 検証](step-14-scheduler-deploy.md)                 | `planned`   | 2026-05-29 | 未着手。                                                                            |
 

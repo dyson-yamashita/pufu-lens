@@ -32,6 +32,25 @@
       "minSources": 0,
       "requiredToolCalls": ["public-report-fetch", "public-context-fetch"],
       "expectAnswerIncludes": ["回答できません"]
+    },
+    {
+      "question": "この公開レポートの主な進捗は？",
+      "requestBody": {
+        "projectId": "project-private",
+        "storageUri": "sample-b/reports/private/secret-report.json",
+        "sourceUri": "gs://private-bucket/raw/mail/full-message.eml",
+        "artifactVersion": "client-forged-version"
+      },
+      "expectStatus": "answered",
+      "minSources": 1,
+      "requiredToolCalls": ["public-report-fetch", "public-context-fetch"],
+      "expectAnswerIncludes": ["section id"],
+      "expectForbiddenAnswerIncludes": [
+        "project-private",
+        "sample-b/reports/private",
+        "private-bucket",
+        "client-forged-version"
+      ]
     }
   ]
 }
