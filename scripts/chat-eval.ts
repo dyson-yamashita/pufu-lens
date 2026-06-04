@@ -44,7 +44,7 @@ async function main(): Promise<void> {
       project: caseProject,
       question: testCase.question,
       sourceCount: body.sources?.length ?? 0,
-      status: body.status ?? errorCode(body),
+      status: body.status ?? errorCode(body) ?? null,
       toolCalls: body.toolCalls?.map((toolCall) => toolCall.name) ?? [],
     });
   }
@@ -54,7 +54,14 @@ async function main(): Promise<void> {
 
 async function readJsonResponse(response: Response): Promise<ChatEvalResponse> {
   const isJson = response.headers.get('content-type')?.includes('application/json') ?? false;
-  return isJson ? ((await response.json()) as ChatEvalResponse) : {};
+  if (!isJson) {
+    return {};
+  }
+  try {
+    return (await response.json()) as ChatEvalResponse;
+  } catch {
+    return {};
+  }
 }
 
 function assertCase(testCase: ChatEvalCase, httpStatus: number, response: ChatEvalResponse): void {
