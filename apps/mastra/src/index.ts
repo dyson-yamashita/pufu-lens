@@ -81,9 +81,23 @@ const mastraProjectContextSchema = z.object({
 
 export function createProjectChatTools(repository: ChatRepository) {
   const projectIdFromContext = (
-    context: { requestContext?: { get<T>(key: string): T } } | undefined,
+    context:
+      | {
+          requestContext?:
+            | { get<T>(key: string): T }
+            | {
+                projectId?: string;
+              };
+        }
+      | undefined,
   ): string => {
-    const projectId = context?.requestContext?.get<string>('projectId');
+    const requestContext = context?.requestContext;
+    const projectId =
+      requestContext && 'get' in requestContext && typeof requestContext.get === 'function'
+        ? requestContext.get<string>('projectId')
+        : requestContext && 'projectId' in requestContext
+          ? requestContext.projectId
+          : undefined;
     if (!projectId) {
       throw new Error('Mastra project tool requires requestContext.projectId.');
     }

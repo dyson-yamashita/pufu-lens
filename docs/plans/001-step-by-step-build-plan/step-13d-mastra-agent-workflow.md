@@ -62,6 +62,7 @@ Mastra Studio / Playground では次を補助確認する。
 - Issue #55 / branch `feature/issue-55-mastra-agent-workflow` で着手。
 - `apps/mastra` に `project-chat-agent`、project context tools、`generate-report` workflow を登録。
 - review 対応で Mastra tool `execute` と `generate-report` workflow を直接実行する smoke test に更新し、runtime wrapper が core 直接実行で Mastra path を隠さないよう整理。
+- review 対応で Mastra CLI entrypoint の DB / Storage 初期化を build-time safe にし、env 未設定の `mastra lint` / `mastra build` でも schema 抽出できることを確認。`apps/web` core の shared package 化は Step 13d 後続の境界整理候補として残す。
 - `pnpm --filter @pufu-lens/mastra test`、`typecheck`、`build`、`pnpm --filter @pufu-lens/mastra exec mastra lint`、`pnpm --filter @pufu-lens/mastra exec mastra build`、`pnpm format:check`、`pnpm lint`、`pnpm test`、`pnpm scripts:typecheck` を確認。
 - local DB / storage / web server 起動状態で `pnpm chat:eval --project sample-a --fixture fixtures/chat/private-chat-eval.json` と `pnpm report:generate --project sample-a --period weekly` を確認。
 - `DATABASE_URL` / local storage env 付きで `pnpm --filter @pufu-lens/mastra exec mastra dev` を起動し、Studio `http://localhost:4111` が HTTP 200、`/api/agents` に `project-chat-agent` と tools、`/api/workflows` に `generateReportWorkflow` と step graph が出ることを確認。
