@@ -13,11 +13,11 @@ import {
 } from '../../../../../../src/report';
 
 const hourlyRateLimiter = createPublicChatMemoryRateLimiter({
-  limit: Number.parseInt(process.env.PUFU_LENS_PUBLIC_CHAT_HOURLY_LIMIT ?? '10', 10),
+  limit: parseEnvInt(process.env.PUFU_LENS_PUBLIC_CHAT_HOURLY_LIMIT, 10),
   windowMs: 60 * 60_000,
 });
 const dailyRateLimiter = createPublicChatMemoryRateLimiter({
-  limit: Number.parseInt(process.env.PUFU_LENS_PUBLIC_CHAT_DAILY_LIMIT ?? '50', 10),
+  limit: parseEnvInt(process.env.PUFU_LENS_PUBLIC_CHAT_DAILY_LIMIT, 50),
   windowMs: 24 * 60 * 60_000,
 });
 
@@ -86,12 +86,15 @@ export async function POST(
 
 function trustedClientIp(request: NextRequest): string {
   const nextRequestIp = (request as NextRequest & { readonly ip?: string }).ip?.trim();
-  return (
-    nextRequestIp ||
-    request.headers.get('x-real-ip')?.trim() ||
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    'unknown'
-  );
+  return nextRequestIp || request.headers.get('x-real-ip')?.trim() || 'unknown';
+}
+
+function parseEnvInt(value: string | undefined, fallback: number): number {
+  if (!value?.trim()) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function publicChatNotFound() {
