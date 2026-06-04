@@ -75,6 +75,7 @@ test('private report list links to detail and renders sections', async ({ page }
 
   await page.goto('/projects/sample-a/reports');
   await expect(page.getByTestId('global-nav-reports')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('reports-generate-button')).toBeDisabled();
   await expect(page.getByTestId('reports-table')).toContainText(report.title);
 
   await page.getByRole('link', { name: report.title }).click();
@@ -100,4 +101,37 @@ test('private report detail keeps sections visible on mobile', async ({ page }) 
   await expect(page.getByTestId('report-section-issues')).toBeVisible();
   await expect(page.getByTestId('report-section-progress')).toBeVisible();
   await expect(page.getByTestId('report-section-risks')).toBeVisible();
+});
+
+test('private report pages render API error codes', async ({ page }) => {
+  await page.route('**/api/projects/sample-a/reports', async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        error: {
+          code: 'report_user_not_configured',
+          message: 'PUFU_LENS_REPORT_USER_ID is required',
+        },
+      }),
+      contentType: 'application/json',
+      status: 503,
+    });
+  });
+  await page.route('**/api/projects/sample-a/reports/missing-report', async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        error: {
+          code: 'report_not_found',
+          message: 'Report not found: missing-report',
+        },
+      }),
+      contentType: 'application/json',
+      status: 404,
+    });
+  });
+
+  await page.goto('/projects/sample-a/reports');
+  await expect(page.getByTestId('reports-status')).toHaveText('report_user_not_configured');
+
+  await page.goto('/projects/sample-a/reports/missing-report');
+  await expect(page.getByTestId('report-status')).toHaveText('report_not_found');
 });

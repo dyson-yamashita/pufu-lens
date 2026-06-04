@@ -419,7 +419,10 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
         WHERE d.project_id = ${projectId}
           AND (
             d.occurred_at IS NULL
-            OR (d.occurred_at::date >= ${period.start}::date AND d.occurred_at::date <= ${period.end}::date)
+            OR (
+              d.occurred_at >= ${period.start}::timestamptz
+              AND d.occurred_at < ${period.end}::timestamptz + interval '1 day'
+            )
           )
         ORDER BY d.occurred_at DESC NULLS LAST, d.updated_at DESC
         LIMIT ${limit}

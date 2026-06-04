@@ -43,8 +43,8 @@ export async function GET(
       status: response.status === 'db_outside_business_hours' ? 503 : 200,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return reportErrorResponse('report_internal_error', message, 500);
+    console.error('Reports List API Error:', error);
+    return reportErrorResponse('report_internal_error', 'An unexpected error occurred', 500);
   }
 }
 

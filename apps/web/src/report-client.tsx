@@ -4,6 +4,10 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { PrivateReportJsonV1, ReportListItem } from './report';
 
+type ReportApiError = {
+  readonly error?: { readonly code?: string; readonly message?: string };
+};
+
 export function ReportsList({ projectSlug }: { readonly projectSlug: string }) {
   const [reports, setReports] = useState<readonly ReportListItem[]>([]);
   const [status, setStatus] = useState('loading');
@@ -13,12 +17,18 @@ export function ReportsList({ projectSlug }: { readonly projectSlug: string }) {
     fetch(`/api/projects/${projectSlug}/reports`)
       .then(async (response) => {
         const body = (await response.json()) as {
+          readonly error?: { readonly code?: string; readonly message?: string };
           readonly reports?: readonly ReportListItem[];
           readonly status?: string;
         };
         if (!cancelled) {
-          setReports(body.reports ?? []);
-          setStatus(body.status ?? `http_${response.status}`);
+          if (!response.ok && body.error) {
+            setReports([]);
+            setStatus(reportErrorStatus(body, response.status));
+          } else {
+            setReports(body.reports ?? []);
+            setStatus(body.status ?? `http_${response.status}`);
+          }
         }
       })
       .catch((error: unknown) => {
@@ -95,12 +105,18 @@ export function ReportDocument({
     fetch(`/api/projects/${projectSlug}/reports/${reportId}`)
       .then(async (response) => {
         const body = (await response.json()) as {
+          readonly error?: { readonly code?: string; readonly message?: string };
           readonly report?: PrivateReportJsonV1 | null;
           readonly status?: string;
         };
         if (!cancelled) {
-          setReport(body.report ?? undefined);
-          setStatus(body.status ?? `http_${response.status}`);
+          if (!response.ok && body.error) {
+            setReport(undefined);
+            setStatus(reportErrorStatus(body, response.status));
+          } else {
+            setReport(body.report ?? undefined);
+            setStatus(body.status ?? `http_${response.status}`);
+          }
         }
       })
       .catch((error: unknown) => {
@@ -176,4 +192,8 @@ export function ReportDocument({
       ))}
     </article>
   );
+}
+
+function reportErrorStatus(body: ReportApiError, status: number): string {
+  return body.error?.code ?? body.error?.message ?? `http_${status}`;
 }

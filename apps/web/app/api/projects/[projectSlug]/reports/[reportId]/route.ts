@@ -60,7 +60,8 @@ export async function GET(
     if (error instanceof ReportNotFoundError) {
       return reportErrorResponse('report_not_found', message, 404);
     }
-    return reportErrorResponse('report_internal_error', message, 500);
+    console.error('Report Detail API Error:', error);
+    return reportErrorResponse('report_internal_error', 'An unexpected error occurred', 500);
   }
 }
 

@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { getAdminProject } from '../../../../src/admin-db';
 import { ReportsList } from '../../../../src/report-client';
 import { AppShell, PageHeader } from '../../../../src/ui';
@@ -23,13 +22,15 @@ export default async function ReportsPage({
             <h2>Private Reports</h2>
             <p className="mono">GET /api/projects/{project.slug}/reports</p>
           </div>
-          <Link
+          <button
             className="secondary-link"
             data-testid="reports-generate-button"
-            href={`/projects/${project.slug}/reports`}
+            disabled
+            title="Report generation is available from the CLI in Step 13a"
+            type="button"
           >
             Generate Report
-          </Link>
+          </button>
         </div>
         <ReportsList projectSlug={project.slug} />
       </section>
