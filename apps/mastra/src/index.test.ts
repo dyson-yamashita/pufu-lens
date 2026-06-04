@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
+import { RequestContext } from '@mastra/core/request-context';
 import type { ObjectInfo, ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import type { ChatRepository } from '../../web/src/chat.ts';
 import type { ReportRepository } from '../../web/src/report.ts';
 import {
   createPufuLensMastraRuntime,
+  type MastraProjectContext,
   mastraAgentIds,
   mastraToolIds,
   mastraWorkflowIds,
@@ -140,25 +142,54 @@ assert.deepEqual(
   Object.values(mastraToolIds).sort(),
 );
 
-const chat = await runtime.runProjectChat({
-  projectSlug: 'sample-a',
-  question: '仕様変更は?',
-  userId: 'user-a',
-});
-assert.equal(chat.status, 'answered');
-assert.deepEqual(
-  chat.toolCalls.map((toolCall) => toolCall.name),
-  ['vector-search', 'graph-query', 'document-fetch', 'raw-document-fetch', 'parsed-doc-fetch'],
+const requestContext = new RequestContext<MastraProjectContext>([['projectId', 'project-a']]);
+const vectorSearch = await runtime.projectChatTools.vectorSearch.execute?.(
+  { embedding: [0.1], limit: 3, query: '仕様変更' },
+  { requestContext } as never,
 );
+assert.deepEqual(vectorSearch, { sources: [sampleSource] });
+
+const graphQuery = await runtime.projectChatTools.graphQuery.execute?.(
+  { limit: 3, query: '関連 issue' },
+  { requestContext } as never,
+);
+assert.equal(graphQuery?.sources[0]?.documentId, 'doc-graph');
+
+const documentFetch = await runtime.projectChatTools.documentFetch.execute?.(
+  { documentIds: ['doc-a'] },
+  { requestContext } as never,
+);
+assert.deepEqual(documentFetch, { sources: [sampleSource] });
+
+const rawDocumentFetch = await runtime.projectChatTools.rawDocumentFetch.execute?.(
+  { limit: 3, maxBytes: 64 * 1024 },
+  { requestContext } as never,
+);
+assert.equal(rawDocumentFetch?.sources[0]?.documentId, 'doc-raw');
+
+const parsedDocFetch = await runtime.projectChatTools.parsedDocFetch.execute?.({ limit: 3 }, {
+  requestContext,
+} as never);
+assert.equal(parsedDocFetch?.sources[0]?.documentId, 'doc-parsed');
+
 assert.ok(chatRepository.projectIds.every((projectId) => projectId === 'project-a'));
 
-const report = await runtime.runGenerateReportWorkflow({
-  now: new Date('2026-06-04T12:00:00.000Z'),
-  projectSlug: 'sample-a',
+const run = await runtime.generateReportWorkflow.createRun();
+const report = await run.start({
+  inputData: {
+    nowIso: '2026-06-04T12:00:00.000Z',
+    projectSlug: 'sample-a',
+  },
 });
-assert.equal(report.report.schema_version, 'v1');
-assert.equal(report.report.project_id, 'project-a');
+assert.equal(report.status, 'success');
+const reportResult = report.result as {
+  readonly reportUrl: string;
+  readonly schemaVersion: string;
+  readonly storageUri: string;
+};
+assert.equal(reportResult.schemaVersion, 'v1');
+assert.match(reportResult.reportUrl, /^\/projects\/sample-a\/reports\//);
 assert.equal(reportRepository.insertedReports, 1);
-assert.ok(await storage.exists(report.storageUri));
+assert.ok(await storage.exists(reportResult.storageUri));
 
 console.log('mastra runtime tests passed');

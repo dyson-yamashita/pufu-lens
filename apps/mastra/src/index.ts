@@ -4,16 +4,9 @@ import { createTool } from '@mastra/core/tools';
 import { createStep, createWorkflow } from '@mastra/core/workflows';
 import { z } from 'zod';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
-import {
-  type ChatProvider,
-  type ChatRepository,
-  type ChatResponse,
-  createExtractiveChatProvider,
-  runPrivateChat,
-} from '../../web/src/chat.ts';
+import type { ChatRepository } from '../../web/src/chat.ts';
 import {
   createExtractiveReportProvider,
-  type GenerateReportResult,
   type ReportGenerationProvider,
   type ReportPeriodKind,
   type ReportRepository,
@@ -57,7 +50,6 @@ export interface GenerateReportWorkflowInput {
 }
 
 export interface PufuLensMastraDependencies {
-  readonly chatProvider?: ChatProvider;
   readonly chatRepository: ChatRepository;
   readonly reportProvider?: ReportGenerationProvider;
   readonly reportRepository: ReportRepository;
@@ -69,8 +61,6 @@ export interface PufuLensMastraRuntime {
   readonly projectChatTools: ReturnType<typeof createProjectChatTools>;
   readonly projectChatAgent: Agent;
   readonly generateReportWorkflow: ReturnType<typeof createGenerateReportWorkflow>;
-  runGenerateReportWorkflow(input: GenerateReportWorkflowInput): Promise<GenerateReportResult>;
-  runProjectChat(input: ProjectChatAgentInput): Promise<ChatResponse>;
 }
 
 const chatSourceSchema = z.object({
@@ -249,7 +239,6 @@ export function createGenerateReportWorkflow(options: RunGenerateReportOptions) 
 export function createPufuLensMastraRuntime(
   dependencies: PufuLensMastraDependencies,
 ): PufuLensMastraRuntime {
-  const chatProvider = dependencies.chatProvider ?? createExtractiveChatProvider();
   const reportProvider = dependencies.reportProvider ?? createExtractiveReportProvider();
   const projectChatTools = createProjectChatTools(dependencies.chatRepository);
   const projectChatAgent = createProjectChatAgent({ tools: projectChatTools });
@@ -268,23 +257,5 @@ export function createPufuLensMastraRuntime(
     mastra,
     projectChatAgent,
     projectChatTools,
-    async runGenerateReportWorkflow(input) {
-      return runGenerateReport({
-        options: {
-          provider: reportProvider,
-          repository: dependencies.reportRepository,
-          storage: dependencies.reportStorage,
-          now: input.now,
-          periodKind: input.periodKind,
-        },
-        projectSlug: input.projectSlug,
-      });
-    },
-    async runProjectChat(input) {
-      return runPrivateChat(input, {
-        provider: chatProvider,
-        repository: dependencies.chatRepository,
-      });
-    },
   };
 }
