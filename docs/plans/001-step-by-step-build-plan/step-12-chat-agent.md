@@ -1,5 +1,7 @@
 # Step 12: Chat Agent の最小確認
 
+この Step は Mastra Agent 本体ではなく、Mastra `project-chat-agent` に載せる前の server-side core、API、UI、eval を最小確認する。Mastra Agent 登録、stream proxy、Mastra Studio / Playground での trace 確認は [Step 13d](step-13d-mastra-agent-workflow.md) で扱う。
+
 ### 実装する機能
 
 - `vector-search`
@@ -64,3 +66,4 @@ pnpm dev
 - ログ / secret 確認: Gemini API key は API route 内の server-side provider だけに渡し、Chat UI へ props として渡さない構成を typecheck / 実装確認で確認。Infisical 注入確認と smoke の出力には secret 値を表示していない。
 - 未確認リスク: Graph AGE query の本格 Cypher 利用、raw / parsed 本文取得は未実施。ローカル既存 `sample-a` は過去 smoke の parsed URI が実ファイルと不整合だったため、既存データを消さずに `step12-smoke` で検証した。
 - 次 step に進む判断: 最小 Chat API / UI、自動テスト、実 DB に対する `chat:eval`、ブラウザ e2e、実 Gemini API smoke を確認できたため Step 12 は完了。次は Step 13a に進める。
+- Mastra 実装の残タスク: `apps/web/src/chat.ts` の `runPrivateChat`、provider、repository 境界を再利用し、`apps/mastra` に `project-chat-agent` と tool 群を登録する。Mastra stream proxy への切り替え、raw / parsed 本文取得、AGE Cypher の本格利用、永続 rate limit / audit log は Step 13d 以降で扱う。

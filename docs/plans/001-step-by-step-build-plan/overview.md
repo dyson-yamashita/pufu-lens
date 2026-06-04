@@ -61,6 +61,7 @@ Step の詳細を参照する前に、この表で status を確認する。
 | Step 13a | [Private Report 生成と閲覧](step-13a-private-report.md)                                | `completed` | 2026-06-04 | Issue #48 で Private Report 生成 / API / UI / e2e を確認済み。                      |
 | Step 13b | [Public Report 公開 artifact と配信](step-13b-public-report-artifact.md)               | `planned`   | 2026-05-29 | 未着手。                                                                            |
 | Step 13c | [Public Chat 限定 context と安全確認](step-13c-public-chat-context.md)                 | `planned`   | 2026-05-29 | 未着手。                                                                            |
+| Step 13d | [Mastra Agent / Workflow 登録](step-13d-mastra-agent-workflow.md)                      | `planned`   | 2026-06-04 | Step 12 / 13a の server-side core を Mastra Agent / Workflow として登録する。       |
 | Step 14  | [Scheduler / Cloud Run Job / Deploy 検証](step-14-scheduler-deploy.md)                 | `planned`   | 2026-05-29 | 未着手。                                                                            |
 
 ### ステータス定義
@@ -78,6 +79,12 @@ Step の詳細を参照する前に、この表で status を確認する。
 - Step の着手・完了・停止時は、この表の `status`、更新日、メモを同時に更新する。
 - Step 完了時は、該当 Step ファイルの確認方法と完了条件に沿って検証結果を残す。
 - `completed` / `deprecated` の Step は、ユーザーが明示した場合を除き通常作業の参照対象にしない。
+
+### Mastra Agent / Workflow 実装の扱い
+
+Step 12 と Step 13a は、Mastra runtime に載せる前の server-side core、CLI、API、UI、e2e を先に確認した Step である。`apps/mastra` にはまだ `project-chat-agent`、`public-report-chat-agent`、`generate-report` workflow、`ingest-workflow` などの Mastra 登録実体はない。
+
+Mastra Studio / Playground で Agent / Workflow の入出力、tool call、trace を観察できる状態にする作業は Step 13d で扱う。Step 14 の Scheduler / Cloud Run Job / Deploy 検証へ進む前に、少なくとも `project-chat-agent` と `generate-report` workflow を `apps/mastra` に登録し、既存の Next.js / CLI core と二重実装にならないよう共有境界を整理する。
 
 ## データ取り込み・成形の重点確認項目
 
