@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import type { ObjectInfo, ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import { ProjectAccessDeniedError } from './chat.ts';
 import {
@@ -6,11 +7,13 @@ import {
   createGeminiReportProvider,
   getPrivateReport,
   getPublicReport,
+  isSafePublicReportLocator,
   listPrivateReports,
   PublicReportNotFoundError,
   publishPublicReport,
   ReportNotFoundError,
   type ReportRepository,
+  readPublicReportManifest,
   resolveReportPeriod,
   revokePublicReport,
   runGenerateReport,
@@ -180,6 +183,45 @@ const publicDetail = await getPublicReport({
 });
 assert.equal(publicDetail.status, 'ok');
 assert.equal(publicDetail.report.report_id, generated.report.report_id);
+
+assert.equal(isSafePublicReportLocator({ projectSlug: 'sample-a', reportId: 'report-a' }), true);
+assert.equal(
+  isSafePublicReportLocator({ projectSlug: '../sample-a', reportId: 'report-a' }),
+  false,
+);
+assert.equal(
+  isSafePublicReportLocator({ projectSlug: 'sample-a', reportId: '../report-a' }),
+  false,
+);
+assert.equal(
+  await readPublicReportManifest({
+    projectSlug: '../sample-a',
+    reportId: generated.report.report_id,
+    storage,
+  }),
+  undefined,
+);
+
+const gsReportUri = `gs://pufu-lens-public/sample-a/reports/public/${generated.report.report_id}/${published.manifest.artifact_version}/report.json`;
+const gsContextUri = `gs://pufu-lens-public/sample-a/reports/public/${generated.report.report_id}/${published.manifest.artifact_version}/context-bundle.json`;
+const gsStorage = new MemoryStorage();
+gsStorage.objects.set(gsReportUri, JSON.stringify(published.publicReport));
+gsStorage.objects.set(gsContextUri, JSON.stringify({ schema_version: 'public-context-v1' }));
+gsStorage.objects.set(
+  `sample-a/reports/public/${generated.report.report_id}/manifest.json`,
+  JSON.stringify({
+    ...published.manifest,
+    etag: createHash('sha256').update(JSON.stringify(published.publicReport)).digest('hex'),
+    public_context_bundle_uri: gsContextUri,
+    public_report_uri: gsReportUri,
+  }),
+);
+const gsPublicDetail = await getPublicReport({
+  projectSlug: 'sample-a',
+  reportId: generated.report.report_id,
+  storage: gsStorage,
+});
+assert.equal(gsPublicDetail.status, 'ok');
 
 const revoked = await revokePublicReport({
   now: new Date('2026-06-04T14:00:00.000Z'),

@@ -177,3 +177,18 @@ test('public report page renders redacted artifact only', async ({ page }) => {
   await expect(page.getByTestId('public-report-document')).not.toContainText('doc-a');
   await expect(page.getByTestId('public-report-document')).not.toContainText('https://example.com');
 });
+
+test('public and publish APIs reject unsafe client input', async ({ request }) => {
+  const unsafePublicResponse = await request.get(
+    '/api/public/reports/report-a?projectSlug=../sample-a',
+  );
+  expect(unsafePublicResponse.status()).toBe(404);
+
+  const invalidPatchResponse = await request.patch('/api/projects/sample-a/reports/report-a', {
+    data: '{not-json',
+    headers: { 'content-type': 'application/json' },
+  });
+  expect(invalidPatchResponse.status()).toBe(400);
+  const invalidPatchBody = await invalidPatchResponse.json();
+  expect(invalidPatchBody.error.code).toBe('report_invalid_request');
+});

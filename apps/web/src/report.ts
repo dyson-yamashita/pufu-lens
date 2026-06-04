@@ -443,6 +443,9 @@ export async function readPublicReportManifest(input: {
   readonly reportId: string;
   readonly storage: ObjectStorage;
 }): Promise<PublicReportManifestV1 | undefined> {
+  if (!isSafePublicReportLocator(input)) {
+    return undefined;
+  }
   const path = publicReportManifestPath(input.projectSlug, input.reportId);
   if (!(await input.storage.exists(path))) {
     return undefined;
@@ -819,6 +822,15 @@ export function validatePrivateReportJson(value: unknown): asserts value is Priv
   }
 }
 
+export function isSafePublicReportLocator(input: {
+  readonly projectSlug: string;
+  readonly reportId: string;
+}): boolean {
+  return (
+    PROJECT_SLUG_PATTERN.test(input.projectSlug) && PUBLIC_REPORT_ID_PATTERN.test(input.reportId)
+  );
+}
+
 export function validatePublicReportJson(value: unknown): asserts value is PublicReportJsonV1 {
   if (!isRecord(value)) {
     throw new Error('Public report JSON must be an object.');
@@ -1008,12 +1020,14 @@ function storageUriHasAllowedPublicPrefix(uri: string, allowedPrefix: string): b
   if (uri.includes('/../') || uri.endsWith('/..')) {
     return false;
   }
-  if (uri.startsWith('file://')) {
+  if (uri.startsWith('file://') || uri.startsWith('/') || uri.includes('://')) {
     return uri.includes(`/${allowedPrefix}`);
   }
   return uri.startsWith(allowedPrefix);
 }
 
+const PROJECT_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/;
+const PUBLIC_REPORT_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
 const PRIVATE_PUBLIC_REPORT_KEYS = new Set([
   'canonical_uri',
   'document_id',

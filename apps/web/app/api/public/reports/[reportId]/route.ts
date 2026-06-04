@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import {
   createReportStorageFromEnv,
   getPublicReport,
+  isSafePublicReportLocator,
   PublicReportNotFoundError,
 } from '../../../../../src/report';
 
@@ -11,7 +12,7 @@ export async function GET(
 ) {
   const { reportId } = await params;
   const projectSlug = new URL(request.url).searchParams.get('projectSlug');
-  if (!projectSlug) {
+  if (!projectSlug || !isSafePublicReportLocator({ projectSlug, reportId })) {
     return publicReportNotFound();
   }
 

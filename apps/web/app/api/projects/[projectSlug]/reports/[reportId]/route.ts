@@ -75,6 +75,19 @@ export async function PATCH(
   }: { readonly params: Promise<{ readonly projectSlug: string; readonly reportId: string }> },
 ) {
   const { projectSlug, reportId } = await params;
+  let body: { readonly isPublic?: boolean };
+  try {
+    body = (await request.json()) as { readonly isPublic?: boolean };
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return reportErrorResponse('report_invalid_request', 'Invalid JSON body', 400);
+    }
+    throw error;
+  }
+  if (typeof body.isPublic !== 'boolean') {
+    return reportErrorResponse('report_invalid_request', 'isPublic must be boolean', 400);
+  }
+
   const userId = process.env.PUFU_LENS_REPORT_USER_ID ?? process.env.PUFU_LENS_ADMIN_USER_ID;
   if (!userId) {
     return reportErrorResponse(
@@ -85,10 +98,6 @@ export async function PATCH(
   }
 
   try {
-    const body = (await request.json()) as { readonly isPublic?: boolean };
-    if (typeof body.isPublic !== 'boolean') {
-      return reportErrorResponse('report_invalid_request', 'isPublic must be boolean', 400);
-    }
     const businessHours = businessHoursFromEnv(process.env);
     const now = reportNowFromEnv(process.env) ?? new Date();
     if (!isWithinBusinessHours(now, businessHours)) {
