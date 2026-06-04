@@ -364,10 +364,18 @@ export function createGeminiReportProvider(input: {
       if (!text) {
         throw new Error('Gemini report response did not include JSON text.');
       }
-      const generated = JSON.parse(text) as Pick<
-        PrivateReportJsonV1,
-        'sections' | 'summary' | 'title'
-      >;
+      let generated: Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'>;
+      try {
+        generated = JSON.parse(text) as Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'>;
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `Failed to parse Gemini report response as JSON: ${reason}. Raw text prefix: ${text.slice(
+            0,
+            500,
+          )}`,
+        );
+      }
       validateGeneratedReport(generated);
       return generated;
     },

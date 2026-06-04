@@ -3,6 +3,7 @@ import type { ObjectInfo, ObjectStorage } from '../../../packages/storage/src/ob
 import { ProjectAccessDeniedError } from './chat.ts';
 import {
   createExtractiveReportProvider,
+  createGeminiReportProvider,
   getPrivateReport,
   listPrivateReports,
   ReportNotFoundError,
@@ -180,5 +181,26 @@ await assert.rejects(
 );
 
 assert.throws(() => validatePrivateReportJson({ schema_version: 'v2' }), /schema_version/);
+
+const malformedGeminiProvider = createGeminiReportProvider({
+  apiKey: 'test-key',
+  fetchImpl: async () =>
+    new Response(
+      JSON.stringify({
+        candidates: [{ content: { parts: [{ text: '{"title":"broken"' }] } }],
+      }),
+      { status: 200 },
+    ),
+  model: 'gemini-test',
+});
+await assert.rejects(
+  () =>
+    malformedGeminiProvider.generate({
+      documents: [],
+      period,
+      projectSlug: 'sample-a',
+    }),
+  /Failed to parse Gemini report response as JSON/,
+);
 
 console.log('web report tests passed');

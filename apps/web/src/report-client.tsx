@@ -14,6 +14,8 @@ export function ReportsList({ projectSlug }: { readonly projectSlug: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    setReports([]);
+    setStatus('loading');
     fetch(`/api/projects/${projectSlug}/reports`)
       .then(async (response) => {
         const body = (await response.json()) as {
@@ -102,6 +104,8 @@ export function ReportDocument({
 
   useEffect(() => {
     let cancelled = false;
+    setReport(undefined);
+    setStatus('loading');
     fetch(`/api/projects/${projectSlug}/reports/${reportId}`)
       .then(async (response) => {
         const body = (await response.json()) as {
