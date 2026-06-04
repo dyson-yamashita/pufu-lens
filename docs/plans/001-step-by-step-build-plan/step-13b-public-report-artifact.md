@@ -2,10 +2,10 @@
 
 ## ステータス
 
-- status: `active`
+- status: `completed`
 - Issue: #50
 - 更新日: 2026-06-04
-- メモ: public report JSON / manifest / context bundle / publish・revoke / public API・page を実装中。
+- メモ: PR #51 で public report JSON / manifest / context bundle / publish・revoke / public API・page を確認済み。
 
 ### 実装する機能
 

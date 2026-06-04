@@ -1,5 +1,12 @@
 # Step 13c: Public Chat 限定 context と安全確認
 
+## ステータス
+
+- status: `active`
+- Issue: #52
+- 更新日: 2026-06-04
+- メモ: public chat 限定 context / API / UI / eval を実装中。
+
 ### 実装する機能
 
 - public chat 用 context bundle の保存と更新

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type postgres from 'postgres';
+import type { PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 
 export type ChatToolName =
   | 'document-fetch'
@@ -7,6 +8,8 @@ export type ChatToolName =
   | 'parsed-doc-fetch'
   | 'raw-document-fetch'
   | 'vector-search';
+
+export type PublicChatToolName = 'public-context-fetch' | 'public-report-fetch';
 
 export interface ChatSource {
   readonly canonicalUri: string;
@@ -27,6 +30,26 @@ export interface ChatResponse {
   readonly sources: readonly ChatSource[];
   readonly status: 'answered' | 'db_outside_business_hours' | 'rate_limited';
   readonly toolCalls: readonly ChatToolCall[];
+}
+
+export interface PublicChatSource {
+  readonly label: string;
+  readonly publicSourceId: string;
+  readonly sectionId: string;
+}
+
+export interface PublicChatToolCall {
+  readonly name: PublicChatToolName;
+  readonly resultCount: number;
+}
+
+export interface PublicChatResponse {
+  readonly answer: string;
+  readonly projectSlug: string;
+  readonly reportId: string;
+  readonly sources: readonly PublicChatSource[];
+  readonly status: 'answered' | 'rate_limited' | 'refused';
+  readonly toolCalls: readonly PublicChatToolCall[];
 }
 
 export class ProjectAccessDeniedError extends Error {
@@ -90,6 +113,27 @@ export interface BusinessHoursConfig {
 
 export interface ChatRateLimiter {
   check(input: { projectSlug: string; userId: string }): boolean;
+}
+
+export interface PublicChatRateLimiter {
+  check(input: { clientIp: string; reportId: string }): boolean;
+}
+
+export interface PublicChatProvider {
+  complete(input: {
+    readonly contextBundle: PublicContextBundleV1;
+    readonly projectSlug: string;
+    readonly question: string;
+    readonly report: PublicReportJsonV1;
+    readonly sources: readonly PublicChatSource[];
+  }): Promise<string>;
+}
+
+export interface RunPublicChatOptions {
+  readonly contextBundle: PublicContextBundleV1;
+  readonly provider: PublicChatProvider;
+  readonly rateLimiters?: readonly PublicChatRateLimiter[];
+  readonly report: PublicReportJsonV1;
 }
 
 const DEFAULT_BUSINESS_HOURS: BusinessHoursConfig = {
@@ -175,6 +219,59 @@ export async function runPrivateChat(
   };
 }
 
+export async function runPublicChat(
+  request: {
+    readonly clientIp: string;
+    readonly projectSlug: string;
+    readonly question: string;
+    readonly reportId: string;
+  },
+  options: RunPublicChatOptions,
+): Promise<PublicChatResponse> {
+  for (const rateLimiter of options.rateLimiters ?? []) {
+    if (!rateLimiter.check({ clientIp: request.clientIp, reportId: request.reportId })) {
+      return publicChatResponse({
+        answer: 'rate limit exceeded',
+        projectSlug: request.projectSlug,
+        reportId: request.reportId,
+        status: 'rate_limited',
+      });
+    }
+  }
+
+  const sources = publicChatSources(options.report, options.contextBundle);
+  const toolCalls: PublicChatToolCall[] = [
+    { name: 'public-report-fetch', resultCount: 1 },
+    { name: 'public-context-fetch', resultCount: options.contextBundle.sections.length },
+  ];
+  if (shouldRefusePublicQuestion(request.question)) {
+    return publicChatResponse({
+      answer:
+        '公開レポートの範囲外、または未公開情報の要求には回答できません。公開済み section id / public source id に基づく質問をしてください。',
+      projectSlug: request.projectSlug,
+      reportId: request.reportId,
+      sources: [],
+      status: 'refused',
+      toolCalls,
+    });
+  }
+
+  return publicChatResponse({
+    answer: await options.provider.complete({
+      contextBundle: options.contextBundle,
+      projectSlug: request.projectSlug,
+      question: request.question,
+      report: options.report,
+      sources,
+    }),
+    projectSlug: request.projectSlug,
+    reportId: request.reportId,
+    sources,
+    status: 'answered',
+    toolCalls,
+  });
+}
+
 export function createGeminiChatProvider(input: {
   readonly apiKey: string;
   readonly endpoint?: string;
@@ -246,6 +343,93 @@ export function createExtractiveChatProvider(): ChatProvider {
   };
 }
 
+export function createExtractivePublicChatProvider(): PublicChatProvider {
+  return {
+    async complete({ contextBundle, question, report, sources }) {
+      const sourceText = sources
+        .map((source) => `${source.publicSourceId} (${source.sectionId})`)
+        .join(', ');
+      const sectionText = contextBundle.sections
+        .map((section) => `${section.id}: ${section.markdown}`)
+        .join('\n');
+      return [
+        `質問「${question}」への回答です。`,
+        `公開レポート ${report.report_id} の section id: ${contextBundle.sections
+          .map((section) => section.id)
+          .join(', ')}。`,
+        sourceText
+          ? `根拠 public source id: ${sourceText}。`
+          : '根拠 public source id はありません。',
+        `公開 context: ${sectionText}`,
+      ].join('\n');
+    },
+  };
+}
+
+export function createGeminiPublicChatProvider(input: {
+  readonly apiKey: string;
+  readonly endpoint?: string;
+  readonly fetchImpl?: typeof fetch;
+  readonly model: string;
+}): PublicChatProvider {
+  if (!input.apiKey) {
+    throw new Error('GEMINI_API_KEY is required for Gemini public chat.');
+  }
+  if (!input.model) {
+    throw new Error('GEMINI_CHAT_MODEL is required for Gemini public chat.');
+  }
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const endpoint =
+    input.endpoint ??
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      input.model,
+    )}:generateContent`;
+  return {
+    async complete({ contextBundle, projectSlug, question, report, sources }) {
+      const response = await fetchImpl(`${endpoint}?key=${encodeURIComponent(input.apiKey)}`, {
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: [
+                    'Answer only from this redacted public report and public context bundle.',
+                    'Do not reveal email addresses, private URLs, raw or parsed content, secrets, projectId, storageUri, or documentId.',
+                    'If the question asks for information outside the public report, refuse briefly.',
+                    'Cite section id or public source id in the answer.',
+                    `Project slug: ${projectSlug}`,
+                    `Question: ${question}`,
+                    `Public report: ${JSON.stringify(report)}`,
+                    `Public context bundle: ${JSON.stringify(contextBundle)}`,
+                    `Allowed sources: ${JSON.stringify(sources)}`,
+                  ].join('\n'),
+                },
+              ],
+            },
+          ],
+        }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error(
+          `Gemini public chat request failed: HTTP ${response.status}${await geminiErrorDetails(
+            response,
+          )}`,
+        );
+      }
+      const body = (await response.json()) as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      };
+      const text = body.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('');
+      if (!text) {
+        throw new Error('Gemini public chat response did not include text.');
+      }
+      return text;
+    },
+  };
+}
+
 export function createMemoryRateLimiter(input: {
   readonly cleanupThreshold?: number;
   readonly limit: number;
@@ -261,6 +445,40 @@ export function createMemoryRateLimiter(input: {
       const now = nowProvider();
       if (buckets.size > cleanupThreshold) {
         cleanupExpiredBuckets(buckets, now);
+      }
+      const bucket = buckets.get(key);
+      if (!bucket || bucket.resetAt <= now) {
+        buckets.set(key, { count: 1, resetAt: now + input.windowMs });
+        return true;
+      }
+      if (bucket.count >= input.limit) {
+        return false;
+      }
+      bucket.count += 1;
+      return true;
+    },
+  };
+}
+
+export function createPublicChatMemoryRateLimiter(input: {
+  readonly cleanupIntervalMs?: number;
+  readonly cleanupThreshold?: number;
+  readonly limit: number;
+  readonly now?: () => number;
+  readonly windowMs: number;
+}): PublicChatRateLimiter {
+  const cleanupIntervalMs = input.cleanupIntervalMs ?? 60_000;
+  const cleanupThreshold = input.cleanupThreshold ?? 1000;
+  const nowProvider = input.now ?? Date.now;
+  const buckets = new Map<string, { count: number; resetAt: number }>();
+  let lastCleanup = nowProvider();
+  return {
+    check({ clientIp, reportId }) {
+      const key = `${clientIp}:${reportId}`;
+      const now = nowProvider();
+      if (buckets.size > cleanupThreshold && now - lastCleanup >= cleanupIntervalMs) {
+        cleanupExpiredBuckets(buckets, now);
+        lastCleanup = now;
       }
       const bucket = buckets.get(key);
       if (!bucket || bucket.resetAt <= now) {
@@ -431,6 +649,48 @@ function unavailableResponse(projectSlug: string): ChatResponse {
     status: 'db_outside_business_hours',
     toolCalls: [],
   };
+}
+
+function publicChatResponse(input: {
+  readonly answer: string;
+  readonly projectSlug: string;
+  readonly reportId: string;
+  readonly sources?: readonly PublicChatSource[];
+  readonly status: PublicChatResponse['status'];
+  readonly toolCalls?: readonly PublicChatToolCall[];
+}): PublicChatResponse {
+  return {
+    answer: input.answer,
+    projectSlug: input.projectSlug,
+    reportId: input.reportId,
+    sources: input.sources ?? [],
+    status: input.status,
+    toolCalls: input.toolCalls ?? [],
+  };
+}
+
+function publicChatSources(
+  report: PublicReportJsonV1,
+  contextBundle: PublicContextBundleV1,
+): PublicChatSource[] {
+  const contextSourceIds = new Set(
+    contextBundle.sections.flatMap((section) => section.public_source_ids),
+  );
+  return report.sections.flatMap((section) =>
+    (section.sources ?? [])
+      .filter((source) => contextSourceIds.has(source.public_source_id))
+      .map((source) => ({
+        label: source.label,
+        publicSourceId: source.public_source_id,
+        sectionId: section.id,
+      })),
+  );
+}
+
+function shouldRefusePublicQuestion(question: string): boolean {
+  return /raw|parsed|全文|元メール|メール本文|document[_\s-]?id|project[_\s-]?id|storage[_\s-]?uri|source[_\s-]?uri|別プロジェクト|他プロジェクト|未公開|社内|private|secret|oauth/i.test(
+    question,
+  );
 }
 
 function uniqueSources(sources: readonly ChatSource[]): ChatSource[] {

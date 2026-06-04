@@ -456,6 +456,13 @@ th {
   gap: 20px;
 }
 
+.public-chat-panel {
+  display: grid;
+  gap: 18px;
+  margin: 20px auto 0;
+  max-width: 880px;
+}
+
 .chat-form {
   display: grid;
   gap: 10px;
