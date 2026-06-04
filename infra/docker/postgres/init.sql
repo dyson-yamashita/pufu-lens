@@ -287,6 +287,36 @@ CREATE TABLE public.email_quotes (
 );
 CREATE INDEX email_quotes_project_document_idx ON public.email_quotes (project_id, document_id, quote_index);
 
+CREATE TABLE public.reports (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  summary TEXT,
+  storage_uri TEXT NOT NULL,
+  schema_version TEXT NOT NULL DEFAULT 'v1',
+  period DATERANGE,
+  is_public BOOLEAN NOT NULL DEFAULT false,
+  generated_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (project_id, id)
+);
+CREATE INDEX reports_project_created_idx ON public.reports (project_id, created_at DESC);
+
+CREATE TABLE public.report_chunks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL,
+  report_id UUID NOT NULL,
+  chunk_index INTEGER NOT NULL CHECK (chunk_index >= 0),
+  content TEXT NOT NULL,
+  embedding vector(1536),
+  metadata JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (project_id, report_id, chunk_index),
+  FOREIGN KEY (project_id, report_id) REFERENCES public.reports(project_id, id) ON DELETE CASCADE
+);
+CREATE INDEX report_chunks_embedding_idx ON public.report_chunks USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX report_chunks_project_report_idx ON public.report_chunks (project_id, report_id);
+
 CREATE OR REPLACE FUNCTION public.set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
