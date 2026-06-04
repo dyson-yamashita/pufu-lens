@@ -5,7 +5,17 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "node -e \"console.log('mastra tests: no tests yet')\"",
+    "dev": "mastra dev",
+    "mastra:build": "mastra build",
+    "mastra:lint": "mastra lint",
+    "test": "node --experimental-strip-types src/index.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@mastra/core": "^1.40.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "mastra": "^1.11.0"
   }
 }

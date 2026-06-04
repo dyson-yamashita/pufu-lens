@@ -2,8 +2,16 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "composite": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "outDir": "dist",
-    "rootDir": "src"
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": "../.."
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "../web/src/chat.ts",
+    "../web/src/report.ts",
+    "../../packages/storage/src/**/*.ts"
+  ]
 }
