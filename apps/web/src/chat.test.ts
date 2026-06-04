@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   type ChatRepository,
+  chatNowFromEnv,
   createExtractiveChatProvider,
   createGeminiChatProvider,
   createMemoryRateLimiter,
@@ -132,6 +133,19 @@ assert.equal(
 assert.equal(
   isWithinBusinessHours(new Date('2026-06-04T09:00:00+09:00'), tokyoBusinessHours),
   true,
+);
+assert.equal(
+  chatNowFromEnv({
+    ...process.env,
+    PUFU_LENS_CHAT_NOW: '2026-06-04T09:00:00+09:00',
+  })?.toISOString(),
+  '2026-06-04T00:00:00.000Z',
+);
+assert.equal(chatNowFromEnv(), undefined);
+assert.equal(chatNowFromEnv({ ...process.env, PUFU_LENS_CHAT_NOW: '   ' }), undefined);
+assert.throws(
+  () => chatNowFromEnv({ ...process.env, PUFU_LENS_CHAT_NOW: 'invalid-date' }),
+  /PUFU_LENS_CHAT_NOW must be an ISO 8601 datetime/,
 );
 
 const failingGeminiProvider = createGeminiChatProvider({

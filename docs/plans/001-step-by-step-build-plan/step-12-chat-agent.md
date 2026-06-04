@@ -49,17 +49,18 @@ pnpm dev
 
 - 実施日: 2026-06-03、2026-06-04
 - 対象 Issue: #44
-- 実装範囲: Chat コア、Gemini chat provider、extractive fallback provider、rate limit、業務時間外判定、project member 確認、`vector-search` / `graph-query` / `document-fetch` / `raw-document-fetch` / `parsed-doc-fetch` の最小 tool call、Chat API、Chat UI、`chat:eval` CLI と fixture を追加。2026-06-04 に `chat:eval` の HTTP status / error / case 別 project 検査、project 越境拒否 fixture、営業時間外 fixture、Chat API の共通 error response を追加。
+- 実装範囲: Chat コア、Gemini chat provider、extractive fallback provider、rate limit、業務時間外判定、project member 確認、`vector-search` / `graph-query` / `document-fetch` / `raw-document-fetch` / `parsed-doc-fetch` の最小 tool call、Chat API、Chat UI、`chat:eval` CLI と fixture を追加。2026-06-04 に `chat:eval` の HTTP status / error / case 別 project 検査、project 越境拒否 fixture、営業時間外 fixture、Chat API の共通 error response、Chat UI e2e、Chat page / API の `PUFU_LENS_CHAT_NOW` 共通化を追加。
 - 実行コマンド:
   - `pnpm --filter @pufu-lens/web test`
   - `node --experimental-strip-types --check scripts/chat-eval.ts`
   - `pnpm --filter @pufu-lens/web typecheck`
+  - `pnpm --filter @pufu-lens/web test:e2e`
   - `pnpm scripts:typecheck`
   - `pnpm format:check`
-- 自動テスト結果: Chat unit test で source 付き回答、tool call、project 越境拒否、raw document fetch のサイズ上限、営業時間外 `db_outside_business_hours`、user + project 単位 rate limit を確認。2026-06-04 に `chat:eval` で通常回答、project 越境拒否、営業時間外応答を確認。
+- 自動テスト結果: Chat unit test で source 付き回答、tool call、project 越境拒否、raw document fetch のサイズ上限、営業時間外 `db_outside_business_hours`、user + project 単位 rate limit を確認。2026-06-04 に `chat:eval` で通常回答、project 越境拒否、営業時間外応答を確認。Chat UI e2e で `/projects/sample-a/chat` の質問送信、source 表示、tool call 表示を desktop / mobile で確認。Infisical から `GEMINI_API_KEY` / `GEMINI_CHAT_MODEL=gemini-2.5-flash` を注入し、Gemini provider の最小 smoke と Next API 経由の `chat:eval` を確認。
 - 補助的な手動確認: `pnpm --filter @pufu-lens/web dev` でローカル server を起動し、`pnpm chat:eval --project step12-smoke --fixture fixtures/chat/private-chat-eval.json` と `PUFU_LENS_CHAT_ENFORCE_BUSINESS_HOURS=true PUFU_LENS_CHAT_NOW=2026-06-07T12:00:00+09:00` 起動時の `pnpm chat:eval --project step12-smoke --fixture fixtures/chat/private-chat-outside-business-hours-eval.json` を実行。
 - DB 確認: `step12-smoke` project を作成し、system user を project member に追加した上で `pnpm ingest:run --project step12-smoke --source github --fixture --embedding-provider deterministic` を実行。`step12-smoke` は documents 2 件、chunks 4 件、`sample-b` は documents 0 件で project 越境拒否の eval を確認。
 - Storage 確認: `/tmp/pufu-lens-step12-storage/step12-smoke` に raw / parsed fixture を保存し、ingestion workflow が collect / parse / resolve / chunk / graph まで完了することを確認。
-- ログ / secret 確認: Gemini API key は API route 内の server-side provider だけに渡し、Chat UI へ props として渡さない構成を typecheck / 実装確認で確認。
-- 未確認リスク: 実 Gemini API 応答、Graph AGE query の本格 Cypher 利用、raw / parsed 本文取得、ブラウザ e2e は未実施。ローカル既存 `sample-a` は過去 smoke の parsed URI が実ファイルと不整合だったため、既存データを消さずに `step12-smoke` で検証した。
-- 次 step に進む判断: 最小 Chat API / UI、自動テスト、実 DB に対する `chat:eval` は確認済み。実 Gemini API smoke とブラウザ e2e 後に Step 12 完了判定する。
+- ログ / secret 確認: Gemini API key は API route 内の server-side provider だけに渡し、Chat UI へ props として渡さない構成を typecheck / 実装確認で確認。Infisical 注入確認と smoke の出力には secret 値を表示していない。
+- 未確認リスク: Graph AGE query の本格 Cypher 利用、raw / parsed 本文取得は未実施。ローカル既存 `sample-a` は過去 smoke の parsed URI が実ファイルと不整合だったため、既存データを消さずに `step12-smoke` で検証した。
+- 次 step に進む判断: 最小 Chat API / UI、自動テスト、実 DB に対する `chat:eval`、ブラウザ e2e、実 Gemini API smoke を確認できたため Step 12 は完了。次は Step 13a に進める。

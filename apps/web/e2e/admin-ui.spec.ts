@@ -24,8 +24,13 @@ test('admin routes expose stable operation controls', async ({ page }) => {
   await page.getByTestId('source-type-web-tab').click();
   await expect(page).toHaveURL(/\/projects\/sample-a\/admin\/data-sources\?sourceType=web$/);
   await expect(page.getByTestId('source-type-web-tab')).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByTestId('data-source-table').getByText('Fixture web')).toBeVisible();
+  await expect(
+    page.getByTestId('data-source-table').getByText(/Fixture web|公開ドキュメント/),
+  ).toBeVisible();
   await expect(page.getByTestId('data-source-table').getByText('Fixture drive')).toHaveCount(0);
+  await expect(page.getByTestId('data-source-table').getByText('Drive プロダクト資料')).toHaveCount(
+    0,
+  );
 
   await page.goto('/projects/sample-a/admin/ingestion');
   await expect(page.getByTestId('ingestion-status-list')).toBeVisible();

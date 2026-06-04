@@ -58,6 +58,7 @@ export function AppShell({
         </Link>
         <nav aria-label="Primary">
           <Link
+            aria-current={active === 'projects' ? 'page' : undefined}
             className={navClass(active === 'projects')}
             href="/projects"
             data-testid="global-nav-projects"
@@ -68,6 +69,7 @@ export function AppShell({
           {projectSlug ? (
             <>
               <Link
+                aria-current={active === 'data-sources' ? 'page' : undefined}
                 className={navClass(active === 'data-sources')}
                 href={`/projects/${projectSlug}/admin/data-sources`}
                 data-testid="global-nav-data-sources"
@@ -76,6 +78,7 @@ export function AppShell({
                 Sources
               </Link>
               <Link
+                aria-current={active === 'ingestion' ? 'page' : undefined}
                 className={navClass(active === 'ingestion')}
                 href={`/projects/${projectSlug}/admin/ingestion`}
                 data-testid="global-nav-ingestion"
@@ -84,6 +87,7 @@ export function AppShell({
                 Ingestion
               </Link>
               <Link
+                aria-current={active === 'parser-profiles' ? 'page' : undefined}
                 className={navClass(active === 'parser-profiles')}
                 href={`/projects/${projectSlug}/admin/parser-profiles`}
                 data-testid="global-nav-parser-profiles"
@@ -92,6 +96,7 @@ export function AppShell({
                 Parsers
               </Link>
               <Link
+                aria-current={active === 'chat' ? 'page' : undefined}
                 className={navClass(active === 'chat')}
                 href={`/projects/${projectSlug}/chat`}
                 data-testid="global-nav-chat"

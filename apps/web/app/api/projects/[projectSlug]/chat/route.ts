@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getRequiredAdminSql } from '../../../../../src/admin-sql';
 import {
   businessHoursFromEnv,
+  chatNowFromEnv,
   createExtractiveChatProvider,
   createGeminiChatProvider,
   createMemoryRateLimiter,
@@ -68,15 +69,4 @@ export async function POST(
 
 function chatErrorResponse(code: string, message: string, status: number) {
   return NextResponse.json({ error: { code, message } }, { status });
-}
-
-function chatNowFromEnv(env: NodeJS.ProcessEnv): Date | undefined {
-  if (!env.PUFU_LENS_CHAT_NOW) {
-    return undefined;
-  }
-  const date = new Date(env.PUFU_LENS_CHAT_NOW);
-  if (Number.isNaN(date.getTime())) {
-    throw new Error('PUFU_LENS_CHAT_NOW must be an ISO 8601 datetime.');
-  }
-  return date;
 }
