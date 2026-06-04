@@ -542,6 +542,59 @@ th {
   overflow-wrap: anywhere;
 }
 
+.block-muted {
+  color: var(--muted);
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.report-list-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.report-document {
+  display: grid;
+  gap: 18px;
+  max-width: 880px;
+}
+
+.report-document-header,
+.report-section {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.report-document-header h2,
+.report-section h3,
+.report-document-header p,
+.report-section p {
+  margin: 0;
+}
+
+.report-document-header {
+  display: grid;
+  gap: 12px;
+}
+
+.report-section {
+  display: grid;
+  gap: 14px;
+}
+
+.markdown-text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.metric-strip.compact {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  margin: 0;
+}
+
 @media (max-width: 1023px) {
   .app-shell {
     grid-template-columns: 1fr;

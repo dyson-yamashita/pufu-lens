@@ -2,6 +2,7 @@ import {
   Activity,
   Database,
   FileSearch,
+  FileText,
   GitBranch,
   Globe,
   HardDrive,
@@ -41,7 +42,13 @@ export function AppShell({
   children,
 }: {
   readonly project?: ProjectSummary;
-  readonly active?: 'chat' | 'projects' | 'data-sources' | 'ingestion' | 'parser-profiles';
+  readonly active?:
+    | 'chat'
+    | 'projects'
+    | 'data-sources'
+    | 'ingestion'
+    | 'parser-profiles'
+    | 'reports';
   readonly children: React.ReactNode;
 }) {
   const projectSlug = project?.slug;
@@ -103,6 +110,15 @@ export function AppShell({
               >
                 <MessageSquare size={18} />
                 Chat
+              </Link>
+              <Link
+                aria-current={active === 'reports' ? 'page' : undefined}
+                className={navClass(active === 'reports')}
+                href={`/projects/${projectSlug}/reports`}
+                data-testid="global-nav-reports"
+              >
+                <FileText size={18} />
+                Reports
               </Link>
             </>
           ) : null}
