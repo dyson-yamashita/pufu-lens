@@ -42,6 +42,53 @@ export interface PrivateReportJsonV1 {
   readonly title: string;
 }
 
+export interface PublicReportSource {
+  readonly label: string;
+  readonly public_source_id: string;
+}
+
+export interface PublicReportSection {
+  readonly id: PrivateReportSection['id'];
+  readonly items?: readonly Record<string, unknown>[];
+  readonly markdown: string;
+  readonly metrics?: Record<string, number>;
+  readonly sources?: readonly PublicReportSource[];
+  readonly title: string;
+}
+
+export interface PublicReportJsonV1 {
+  readonly period: ReportPeriod;
+  readonly published_at: string;
+  readonly report_id: string;
+  readonly schema_version: 'public-v1';
+  readonly sections: readonly PublicReportSection[];
+  readonly summary: string;
+  readonly title: string;
+}
+
+export interface PublicContextBundleV1 {
+  readonly report_id: string;
+  readonly schema_version: 'public-context-v1';
+  readonly sections: ReadonlyArray<{
+    readonly id: PrivateReportSection['id'];
+    readonly markdown: string;
+    readonly public_source_ids: readonly string[];
+    readonly title: string;
+  }>;
+}
+
+export interface PublicReportManifestV1 {
+  readonly artifact_version: string;
+  readonly etag: string;
+  readonly project_slug: string;
+  readonly public_context_bundle_uri: string;
+  readonly public_report_uri: string;
+  readonly published_at: string;
+  readonly report_id: string;
+  readonly revoked_at: string | null;
+  readonly schema_version: 'public-report-manifest-v1';
+}
+
 export interface ReportListItem {
   readonly createdAt: string;
   readonly id: string;
@@ -87,6 +134,11 @@ export interface ReportRepository {
     readonly projectId: string;
     readonly reportId: string;
   }): Promise<ReportListItem | undefined>;
+  setReportPublicState?(input: {
+    readonly isPublic: boolean;
+    readonly projectId: string;
+    readonly reportId: string;
+  }): Promise<void>;
 }
 
 export interface ReportGenerationProvider {
@@ -117,6 +169,10 @@ export interface ReportAccessOptions {
   readonly now?: Date;
   readonly repository: ReportRepository;
   readonly storage?: ObjectStorage;
+}
+
+export interface PublishReportOptions extends ReportAccessOptions {
+  readonly storage: ObjectStorage;
 }
 
 export interface PreparedReportChunk {
@@ -232,12 +288,189 @@ export async function getPrivateReport(input: {
   return { report, status: 'ok' };
 }
 
+export async function publishPublicReport(input: {
+  readonly now?: Date;
+  readonly options: PublishReportOptions;
+  readonly projectSlug: string;
+  readonly reportId: string;
+  readonly userId: string;
+}): Promise<{
+  readonly manifest: PublicReportManifestV1;
+  readonly publicReport: PublicReportJsonV1;
+  readonly status: 'ok';
+}> {
+  if (!isReportDbAvailable(input.options)) {
+    throw new Error('Cannot publish report outside DB business hours.');
+  }
+  const project = await lookupMemberOrThrow(input);
+  const metadata = await input.options.repository.readReportMetadata({
+    projectId: project.id,
+    reportId: input.reportId,
+  });
+  if (!metadata) {
+    throw new ReportNotFoundError(input.reportId);
+  }
+
+  const privateReport = JSON.parse(
+    await input.options.storage.getText(metadata.storageUri),
+  ) as unknown;
+  validatePrivateReportJson(privateReport);
+  const publishedAt = (input.now ?? input.options.now ?? new Date()).toISOString();
+  const publicReport = buildPublicReport(privateReport, publishedAt);
+  const contextBundle = buildPublicContextBundle(publicReport);
+  const artifactVersion = buildArtifactVersion(publicReport, publishedAt);
+  const baseUri = `${project.slug}/reports/public/${input.reportId}/${artifactVersion}`;
+  const reportPut = await input.options.storage.put(
+    `${baseUri}/report.json`,
+    `${JSON.stringify(publicReport, null, 2)}\n`,
+    {
+      cacheControl: 'public, max-age=300',
+      contentType: 'application/json; charset=utf-8',
+    },
+  );
+  const contextPut = await input.options.storage.put(
+    `${baseUri}/context-bundle.json`,
+    `${JSON.stringify(contextBundle, null, 2)}\n`,
+    {
+      cacheControl: 'public, max-age=300',
+      contentType: 'application/json; charset=utf-8',
+    },
+  );
+  const manifest: PublicReportManifestV1 = {
+    artifact_version: artifactVersion,
+    etag: digestJson(publicReport),
+    project_slug: project.slug,
+    public_context_bundle_uri: contextPut.uri,
+    public_report_uri: reportPut.uri,
+    published_at: publishedAt,
+    report_id: input.reportId,
+    revoked_at: null,
+    schema_version: 'public-report-manifest-v1',
+  };
+  validatePublicReportJson(publicReport);
+  validatePublicReportManifest(manifest, project.slug, input.reportId);
+  await input.options.storage.put(
+    publicReportManifestPath(project.slug, input.reportId),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    {
+      cacheControl: 'no-store',
+      contentType: 'application/json; charset=utf-8',
+    },
+  );
+  await input.options.repository.setReportPublicState?.({
+    isPublic: true,
+    projectId: project.id,
+    reportId: input.reportId,
+  });
+
+  return { manifest, publicReport, status: 'ok' };
+}
+
+export async function revokePublicReport(input: {
+  readonly now?: Date;
+  readonly options: PublishReportOptions;
+  readonly projectSlug: string;
+  readonly reportId: string;
+  readonly userId: string;
+}): Promise<{ readonly manifest: PublicReportManifestV1; readonly status: 'ok' }> {
+  if (!isReportDbAvailable(input.options)) {
+    throw new Error('Cannot revoke report outside DB business hours.');
+  }
+  const project = await lookupMemberOrThrow(input);
+  const metadata = await input.options.repository.readReportMetadata({
+    projectId: project.id,
+    reportId: input.reportId,
+  });
+  if (!metadata) {
+    throw new ReportNotFoundError(input.reportId);
+  }
+
+  const manifest = await readPublicReportManifest({
+    projectSlug: project.slug,
+    reportId: input.reportId,
+    storage: input.options.storage,
+  });
+  const revokedAt = (input.now ?? input.options.now ?? new Date()).toISOString();
+  const revokedManifest: PublicReportManifestV1 = manifest
+    ? { ...manifest, revoked_at: revokedAt }
+    : {
+        artifact_version: 'revoked',
+        etag: '',
+        project_slug: project.slug,
+        public_context_bundle_uri: '',
+        public_report_uri: '',
+        published_at: revokedAt,
+        report_id: input.reportId,
+        revoked_at: revokedAt,
+        schema_version: 'public-report-manifest-v1',
+      };
+  await input.options.storage.put(
+    publicReportManifestPath(project.slug, input.reportId),
+    `${JSON.stringify(revokedManifest, null, 2)}\n`,
+    {
+      cacheControl: 'no-store',
+      contentType: 'application/json; charset=utf-8',
+    },
+  );
+  await input.options.repository.setReportPublicState?.({
+    isPublic: false,
+    projectId: project.id,
+    reportId: input.reportId,
+  });
+  return { manifest: revokedManifest, status: 'ok' };
+}
+
+export async function getPublicReport(input: {
+  readonly projectSlug: string;
+  readonly reportId: string;
+  readonly storage: ObjectStorage;
+}): Promise<{ readonly report: PublicReportJsonV1; readonly status: 'ok' }> {
+  const manifest = await readPublicReportManifest(input);
+  if (!manifest || manifest.revoked_at !== null) {
+    throw new PublicReportNotFoundError(input.reportId);
+  }
+  validatePublicReportManifest(manifest, input.projectSlug, input.reportId);
+  const report = JSON.parse(await input.storage.getText(manifest.public_report_uri)) as unknown;
+  validatePublicReportJson(report);
+  if (digestJson(report) !== manifest.etag) {
+    throw new PublicReportNotFoundError(input.reportId);
+  }
+  return { report, status: 'ok' };
+}
+
+export async function readPublicReportManifest(input: {
+  readonly projectSlug: string;
+  readonly reportId: string;
+  readonly storage: ObjectStorage;
+}): Promise<PublicReportManifestV1 | undefined> {
+  if (!isSafePublicReportLocator(input)) {
+    return undefined;
+  }
+  const path = publicReportManifestPath(input.projectSlug, input.reportId);
+  if (!(await input.storage.exists(path))) {
+    return undefined;
+  }
+  const manifest = JSON.parse(await input.storage.getText(path)) as unknown;
+  validatePublicReportManifest(manifest, input.projectSlug, input.reportId);
+  return manifest;
+}
+
 export class ReportNotFoundError extends Error {
   readonly reportId: string;
 
   constructor(reportId: string) {
     super(`Report not found: ${reportId}`);
     this.name = 'ReportNotFoundError';
+    this.reportId = reportId;
+  }
+}
+
+export class PublicReportNotFoundError extends Error {
+  readonly reportId: string;
+
+  constructor(reportId: string) {
+    super(`Public report not found: ${reportId}`);
+    this.name = 'PublicReportNotFoundError';
     this.reportId = reportId;
   }
 }
@@ -521,6 +754,14 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
       `) as ReportMetadataRow[];
       return rows[0] ? reportFromRow(rows[0]) : undefined;
     },
+    async setReportPublicState({ isPublic, projectId, reportId }) {
+      await sql`
+        UPDATE public.reports
+        SET is_public = ${isPublic}
+        WHERE project_id = ${projectId}
+          AND id = ${reportId}
+      `;
+    },
   };
 }
 
@@ -580,6 +821,222 @@ export function validatePrivateReportJson(value: unknown): asserts value is Priv
     }
   }
 }
+
+export function isSafePublicReportLocator(input: {
+  readonly projectSlug: string;
+  readonly reportId: string;
+}): boolean {
+  return (
+    PROJECT_SLUG_PATTERN.test(input.projectSlug) && PUBLIC_REPORT_ID_PATTERN.test(input.reportId)
+  );
+}
+
+export function validatePublicReportJson(value: unknown): asserts value is PublicReportJsonV1 {
+  if (!isRecord(value)) {
+    throw new Error('Public report JSON must be an object.');
+  }
+  if (value.schema_version !== 'public-v1') {
+    throw new Error('Public report schema_version must be public-v1.');
+  }
+  for (const key of ['report_id', 'title', 'published_at', 'summary']) {
+    if (typeof value[key] !== 'string' || value[key].length === 0) {
+      throw new Error(`Public report ${key} must be a non-empty string.`);
+    }
+  }
+  if ('project_id' in value || 'document_id' in value || 'storage_uri' in value) {
+    throw new Error('Public report must not include private identifiers.');
+  }
+  if (
+    !isRecord(value.period) ||
+    typeof value.period.start !== 'string' ||
+    typeof value.period.end !== 'string'
+  ) {
+    throw new Error('Public report period must include start and end.');
+  }
+  if (!Array.isArray(value.sections) || value.sections.length === 0) {
+    throw new Error('Public report sections must be a non-empty array.');
+  }
+  const serialized = JSON.stringify(value);
+  if (containsPrivateText(serialized)) {
+    throw new Error('Public report contains private text.');
+  }
+  for (const section of value.sections) {
+    if (!isRecord(section) || typeof section.id !== 'string' || typeof section.title !== 'string') {
+      throw new Error('Public report section must include id and title.');
+    }
+    if (typeof section.markdown !== 'string') {
+      throw new Error(`Public report section ${section.id} markdown must be a string.`);
+    }
+    if (section.sources !== undefined && !Array.isArray(section.sources)) {
+      throw new Error('Public report section sources must be an array.');
+    }
+    if (section.sources) {
+      for (const source of section.sources) {
+        if (!isRecord(source) || typeof source.public_source_id !== 'string') {
+          throw new Error('Public report source must include public_source_id.');
+        }
+        if ('document_id' in source || 'canonical_uri' in source || 'snippet' in source) {
+          throw new Error('Public report source must not include private source fields.');
+        }
+      }
+    }
+  }
+}
+
+function validatePublicReportManifest(
+  value: unknown,
+  projectSlug: string,
+  reportId: string,
+): asserts value is PublicReportManifestV1 {
+  if (!isRecord(value)) {
+    throw new Error('Public report manifest must be an object.');
+  }
+  if (value.schema_version !== 'public-report-manifest-v1') {
+    throw new Error('Public report manifest schema_version is invalid.');
+  }
+  if (value.project_slug !== projectSlug || value.report_id !== reportId) {
+    throw new Error('Public report manifest target mismatch.');
+  }
+  if (
+    typeof value.artifact_version !== 'string' ||
+    typeof value.published_at !== 'string' ||
+    typeof value.etag !== 'string'
+  ) {
+    throw new Error('Public report manifest metadata is invalid.');
+  }
+  if (value.revoked_at !== null && typeof value.revoked_at !== 'string') {
+    throw new Error('Public report manifest revoked_at is invalid.');
+  }
+  if (value.revoked_at !== null) {
+    return;
+  }
+  const allowedPrefix = `${projectSlug}/reports/public/${reportId}/${value.artifact_version}/`;
+  for (const key of ['public_report_uri', 'public_context_bundle_uri']) {
+    const uri = value[key];
+    if (typeof uri !== 'string' || !storageUriHasAllowedPublicPrefix(uri, allowedPrefix)) {
+      throw new Error(`Public report manifest ${key} is outside the allowed prefix.`);
+    }
+  }
+}
+
+function buildPublicReport(report: PrivateReportJsonV1, publishedAt: string): PublicReportJsonV1 {
+  return {
+    period: report.period,
+    published_at: publishedAt,
+    report_id: report.report_id,
+    schema_version: 'public-v1',
+    sections: report.sections.map((section) => ({
+      id: section.id,
+      items: redactItems(section.items),
+      markdown: redactText(section.markdown),
+      metrics: section.metrics,
+      sources: section.sources?.map((source, index) => ({
+        label: publicSourceLabel(source.doc_type, index),
+        public_source_id: `src_${section.id}_${String(index + 1).padStart(3, '0')}`,
+      })),
+      title: redactText(section.title),
+    })),
+    summary: redactText(report.summary),
+    title: redactText(report.title),
+  };
+}
+
+function buildPublicContextBundle(report: PublicReportJsonV1): PublicContextBundleV1 {
+  return {
+    report_id: report.report_id,
+    schema_version: 'public-context-v1',
+    sections: report.sections.map((section) => ({
+      id: section.id,
+      markdown: section.markdown,
+      public_source_ids: section.sources?.map((source) => source.public_source_id) ?? [],
+      title: section.title,
+    })),
+  };
+}
+
+function buildArtifactVersion(report: PublicReportJsonV1, publishedAt: string): string {
+  const time = publishedAt.replace(/[^0-9]/g, '').slice(0, 14);
+  return `${time}-${digestJson(report).slice(0, 12)}`;
+}
+
+function publicReportManifestPath(projectSlug: string, reportId: string): string {
+  return `${projectSlug}/reports/public/${reportId}/manifest.json`;
+}
+
+function digestJson(value: unknown): string {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+function redactItems(items: readonly Record<string, unknown>[] | undefined) {
+  return items?.map((item) => redactRecord(item));
+}
+
+function redactRecord(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !PRIVATE_PUBLIC_REPORT_KEYS.has(key))
+      .map(([key, fieldValue]) => [key, redactUnknown(fieldValue)]),
+  );
+}
+
+function redactUnknown(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return redactText(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(redactUnknown);
+  }
+  if (isRecord(value)) {
+    return redactRecord(value);
+  }
+  return value;
+}
+
+function redactText(value: string): string {
+  return value
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted-email]')
+    .replace(
+      /https?:\/\/(?:localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[0-1])\.\d+\.\d+|192\.168\.\d+\.\d+|[^/\s]*(?:internal|corp|intranet|local)[^/\s]*)[^\s)]*/gi,
+      '[redacted-url]',
+    )
+    .replace(/\b(?:file|gs):\/\/[^\s)]*/gi, '[redacted-uri]');
+}
+
+function containsPrivateText(value: string): boolean {
+  return (
+    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(value) ||
+    /\b(?:file|gs):\/\//i.test(value) ||
+    /https?:\/\/(?:localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[0-1])\.\d+\.\d+|192\.168\.\d+\.\d+|[^/\s]*(?:internal|corp|intranet|local))/i.test(
+      value,
+    )
+  );
+}
+
+function publicSourceLabel(docType: string, index: number): string {
+  return `公開ソース ${index + 1} (${redactText(docType)})`;
+}
+
+function storageUriHasAllowedPublicPrefix(uri: string, allowedPrefix: string): boolean {
+  if (uri.includes('/../') || uri.endsWith('/..')) {
+    return false;
+  }
+  if (uri.startsWith('file://') || uri.startsWith('/') || uri.includes('://')) {
+    return uri.includes(`/${allowedPrefix}`);
+  }
+  return uri.startsWith(allowedPrefix);
+}
+
+const PROJECT_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/;
+const PUBLIC_REPORT_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
+const PRIVATE_PUBLIC_REPORT_KEYS = new Set([
+  'canonical_uri',
+  'document_id',
+  'parsed_uri',
+  'project_id',
+  'raw_uri',
+  'snippet',
+  'storage_uri',
+]);
 
 function validateGeneratedReport(
   value: Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'>,

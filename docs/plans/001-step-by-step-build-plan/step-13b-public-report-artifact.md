@@ -1,5 +1,12 @@
 # Step 13b: Public Report 公開 artifact と配信
 
+## ステータス
+
+- status: `active`
+- Issue: #50
+- 更新日: 2026-06-04
+- メモ: public report JSON / manifest / context bundle / publish・revoke / public API・page を実装中。
+
 ### 実装する機能
 
 - private report JSON から redaction 済み public report JSON を生成する処理

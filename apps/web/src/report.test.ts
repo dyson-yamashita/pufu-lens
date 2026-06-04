@@ -1,16 +1,24 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import type { ObjectInfo, ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import { ProjectAccessDeniedError } from './chat.ts';
 import {
   createExtractiveReportProvider,
   createGeminiReportProvider,
   getPrivateReport,
+  getPublicReport,
+  isSafePublicReportLocator,
   listPrivateReports,
+  PublicReportNotFoundError,
+  publishPublicReport,
   ReportNotFoundError,
   type ReportRepository,
+  readPublicReportManifest,
   resolveReportPeriod,
+  revokePublicReport,
   runGenerateReport,
   validatePrivateReportJson,
+  validatePublicReportJson,
 } from './report.ts';
 
 class MemoryStorage implements ObjectStorage {
@@ -21,6 +29,7 @@ class MemoryStorage implements ObjectStorage {
       typeof body === 'string' ? body : Buffer.isBuffer(body) ? body.toString('utf8') : '';
     const storedUri = `file:///tmp/pufu-lens/${uri}`;
     this.objects.set(storedUri, text);
+    this.objects.set(uri, text);
     return { uri: storedUri };
   }
 
@@ -37,14 +46,14 @@ class MemoryStorage implements ObjectStorage {
   }
 
   async exists(uri: string): Promise<boolean> {
-    return this.objects.has(uri);
+    return this.objects.has(uri) || this.objects.has(`file:///tmp/pufu-lens/${uri}`);
   }
 
   async *list(): AsyncIterable<ObjectInfo> {}
 }
 
 function createRepository(): ReportRepository & { insertedChunks: number; storageUri?: string } {
-  const reports = new Map<string, { storageUri: string; title: string }>();
+  const reports = new Map<string, { isPublic: boolean; storageUri: string; title: string }>();
   return {
     insertedChunks: 0,
     async lookupProjectMember({ projectSlug, userId }) {
@@ -79,13 +88,13 @@ function createRepository(): ReportRepository & { insertedChunks: number; storag
     async insertReport({ chunks, report, storageUri }) {
       this.insertedChunks = chunks.length;
       this.storageUri = storageUri;
-      reports.set(report.report_id, { storageUri, title: report.title });
+      reports.set(report.report_id, { isPublic: false, storageUri, title: report.title });
     },
     async listReports() {
       return [...reports.entries()].map(([id, report]) => ({
         createdAt: '2026-06-04T00:00:00.000Z',
         id,
-        isPublic: false,
+        isPublic: report.isPublic,
         period: { end: '2026-06-07', start: '2026-06-01' },
         schemaVersion: 'v1',
         storageUri: report.storageUri,
@@ -99,7 +108,7 @@ function createRepository(): ReportRepository & { insertedChunks: number; storag
         ? {
             createdAt: '2026-06-04T00:00:00.000Z',
             id: reportId,
-            isPublic: false,
+            isPublic: report.isPublic,
             period: { end: '2026-06-07', start: '2026-06-01' },
             schemaVersion: 'v1',
             storageUri: report.storageUri,
@@ -107,6 +116,12 @@ function createRepository(): ReportRepository & { insertedChunks: number; storag
             title: report.title,
           }
         : undefined;
+    },
+    async setReportPublicState({ isPublic, reportId }) {
+      const report = reports.get(reportId);
+      if (report) {
+        reports.set(reportId, { ...report, isPublic });
+      }
     },
   };
 }
@@ -130,6 +145,106 @@ assert.equal(generated.report.sections.length, 4);
 assert.equal(repository.insertedChunks, 4);
 assert.ok(repository.storageUri?.includes('/sample-a/reports/private/'));
 validatePrivateReportJson(JSON.parse(await storage.getText(generated.storageUri)));
+
+const privateReport = JSON.parse(await storage.getText(generated.storageUri));
+privateReport.summary = '公開前の概要 contact@example.com https://internal.example.com/roadmap';
+privateReport.sections[0].markdown =
+  '社内 URL https://corp.example.com/doc と user@example.com を含む';
+privateReport.sections[0].sources[0].canonical_uri = 'file:///private/raw/doc-a.json';
+privateReport.sections[0].sources[0].snippet = 'PII を含む可能性がある抜粋';
+await storage.put(generated.storageUri, `${JSON.stringify(privateReport, null, 2)}\n`);
+
+const published = await publishPublicReport({
+  now: new Date('2026-06-04T13:00:00.000Z'),
+  options: { repository, storage },
+  projectSlug: 'sample-a',
+  reportId: generated.report.report_id,
+  userId: 'user-a',
+});
+assert.equal(published.status, 'ok');
+assert.equal(published.publicReport.schema_version, 'public-v1');
+assert.equal(published.manifest.revoked_at, null);
+assert.match(published.manifest.public_report_uri, /report\.json/);
+assert.ok(
+  await storage.exists(`sample-a/reports/public/${generated.report.report_id}/manifest.json`),
+);
+validatePublicReportJson(published.publicReport);
+const publicText = JSON.stringify(published.publicReport);
+assert.doesNotMatch(
+  publicText,
+  /project-a|doc-issue|doc-pr|doc-a|contact@example\.com|user@example\.com|internal|corp|file:\/\//,
+);
+assert.match(publicText, /public_source_id/);
+validatePublicReportJson({
+  ...published.publicReport,
+  summary: 'Public host https://10.example.com is allowed when it is not a private IP.',
+});
+
+const publicDetail = await getPublicReport({
+  projectSlug: 'sample-a',
+  reportId: generated.report.report_id,
+  storage,
+});
+assert.equal(publicDetail.status, 'ok');
+assert.equal(publicDetail.report.report_id, generated.report.report_id);
+
+assert.equal(isSafePublicReportLocator({ projectSlug: 'sample-a', reportId: 'report-a' }), true);
+assert.equal(
+  isSafePublicReportLocator({ projectSlug: '../sample-a', reportId: 'report-a' }),
+  false,
+);
+assert.equal(
+  isSafePublicReportLocator({ projectSlug: 'sample-a', reportId: '../report-a' }),
+  false,
+);
+assert.equal(
+  await readPublicReportManifest({
+    projectSlug: '../sample-a',
+    reportId: generated.report.report_id,
+    storage,
+  }),
+  undefined,
+);
+
+const gsReportUri = `gs://pufu-lens-public/sample-a/reports/public/${generated.report.report_id}/${published.manifest.artifact_version}/report.json`;
+const gsContextUri = `gs://pufu-lens-public/sample-a/reports/public/${generated.report.report_id}/${published.manifest.artifact_version}/context-bundle.json`;
+const gsStorage = new MemoryStorage();
+gsStorage.objects.set(gsReportUri, JSON.stringify(published.publicReport));
+gsStorage.objects.set(gsContextUri, JSON.stringify({ schema_version: 'public-context-v1' }));
+gsStorage.objects.set(
+  `sample-a/reports/public/${generated.report.report_id}/manifest.json`,
+  JSON.stringify({
+    ...published.manifest,
+    etag: createHash('sha256').update(JSON.stringify(published.publicReport)).digest('hex'),
+    public_context_bundle_uri: gsContextUri,
+    public_report_uri: gsReportUri,
+  }),
+);
+const gsPublicDetail = await getPublicReport({
+  projectSlug: 'sample-a',
+  reportId: generated.report.report_id,
+  storage: gsStorage,
+});
+assert.equal(gsPublicDetail.status, 'ok');
+
+const revoked = await revokePublicReport({
+  now: new Date('2026-06-04T14:00:00.000Z'),
+  options: { repository, storage },
+  projectSlug: 'sample-a',
+  reportId: generated.report.report_id,
+  userId: 'user-a',
+});
+assert.equal(revoked.status, 'ok');
+assert.equal(typeof revoked.manifest.revoked_at, 'string');
+await assert.rejects(
+  () =>
+    getPublicReport({
+      projectSlug: 'sample-a',
+      reportId: generated.report.report_id,
+      storage,
+    }),
+  PublicReportNotFoundError,
+);
 
 const reports = await listPrivateReports({
   options: { repository },
