@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import {
   createExtractivePublicChatProvider,
   createGeminiPublicChatProvider,
@@ -22,11 +22,11 @@ const dailyRateLimiter = createPublicChatMemoryRateLimiter({
 });
 
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { readonly params: Promise<{ readonly reportId: string }> },
 ) {
   const { reportId } = await params;
-  const projectSlug = new URL(request.url).searchParams.get('projectSlug');
+  const projectSlug = request.nextUrl.searchParams.get('projectSlug');
   if (!projectSlug || !isSafePublicReportLocator({ projectSlug, reportId })) {
     return publicChatNotFound();
   }
@@ -84,10 +84,12 @@ export async function POST(
   }
 }
 
-function trustedClientIp(request: Request): string {
+function trustedClientIp(request: NextRequest): string {
+  const nextRequestIp = (request as NextRequest & { readonly ip?: string }).ip?.trim();
   return (
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    nextRequestIp ||
     request.headers.get('x-real-ip')?.trim() ||
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     'unknown'
   );
 }

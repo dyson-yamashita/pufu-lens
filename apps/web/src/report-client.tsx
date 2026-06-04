@@ -331,6 +331,7 @@ function PublicReportChatPanel({
     }
     setPending(true);
     setError(undefined);
+    setResponse(undefined);
     try {
       const result = await fetch(
         `/api/public/reports/${reportId}/chat?projectSlug=${encodeURIComponent(projectSlug)}`,

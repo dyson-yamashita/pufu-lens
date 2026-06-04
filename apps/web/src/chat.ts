@@ -461,20 +461,24 @@ export function createMemoryRateLimiter(input: {
 }
 
 export function createPublicChatMemoryRateLimiter(input: {
+  readonly cleanupIntervalMs?: number;
   readonly cleanupThreshold?: number;
   readonly limit: number;
   readonly now?: () => number;
   readonly windowMs: number;
 }): PublicChatRateLimiter {
+  const cleanupIntervalMs = input.cleanupIntervalMs ?? 60_000;
   const cleanupThreshold = input.cleanupThreshold ?? 1000;
   const nowProvider = input.now ?? Date.now;
   const buckets = new Map<string, { count: number; resetAt: number }>();
+  let lastCleanup = nowProvider();
   return {
     check({ clientIp, reportId }) {
       const key = `${clientIp}:${reportId}`;
       const now = nowProvider();
-      if (buckets.size > cleanupThreshold) {
+      if (buckets.size > cleanupThreshold && now - lastCleanup >= cleanupIntervalMs) {
         cleanupExpiredBuckets(buckets, now);
+        lastCleanup = now;
       }
       const bucket = buckets.get(key);
       if (!bucket || bucket.resetAt <= now) {
