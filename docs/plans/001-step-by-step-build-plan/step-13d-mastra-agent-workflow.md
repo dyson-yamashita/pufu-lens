@@ -66,3 +66,4 @@ Mastra Studio / Playground では次を補助確認する。
 - `pnpm --filter @pufu-lens/mastra test`、`typecheck`、`build`、`pnpm --filter @pufu-lens/mastra exec mastra lint`、`pnpm --filter @pufu-lens/mastra exec mastra build`、`pnpm format:check`、`pnpm lint`、`pnpm test`、`pnpm scripts:typecheck` を確認。
 - local DB / storage / web server 起動状態で `pnpm chat:eval --project sample-a --fixture fixtures/chat/private-chat-eval.json` と `pnpm report:generate --project sample-a --period weekly` を確認。
 - `DATABASE_URL` / local storage env 付きで `pnpm --filter @pufu-lens/mastra exec mastra dev` を起動し、Studio `http://localhost:4111` が HTTP 200、`/api/agents` に `project-chat-agent` と tools、`/api/workflows` に `generateReportWorkflow` と step graph が出ることを確認。
+- Issue #55 / PR #56 が merge 済み。Step 14 へ進むため、overview の status を `completed` に更新。
