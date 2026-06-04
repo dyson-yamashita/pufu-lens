@@ -33,9 +33,7 @@ export function ChatPanel({
       const isJson = result.headers.get('content-type')?.includes('application/json') ?? false;
       const body = isJson ? ((await result.json()) as ChatResponse | { error?: string }) : null;
       if (!result.ok) {
-        throw new Error(
-          body && 'error' in body && body.error ? body.error : `HTTP ${result.status}`,
-        );
+        throw new Error(chatErrorMessage(body, result.status));
       }
       if (!body || !('status' in body)) {
         throw new Error('Chat API returned an invalid response.');
@@ -108,4 +106,14 @@ export function ChatPanel({
       ) : null}
     </section>
   );
+}
+
+function chatErrorMessage(body: ChatResponse | { error?: string } | null, status: number): string {
+  if (body && 'error' in body && body.error) {
+    return body.error;
+  }
+  if (body && 'answer' in body && body.answer) {
+    return body.answer;
+  }
+  return `HTTP ${status}`;
 }

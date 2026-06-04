@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   type ChatRepository,
   createExtractiveChatProvider,
+  createGeminiChatProvider,
   createMemoryRateLimiter,
   isWithinBusinessHours,
   runPrivateChat,
@@ -130,6 +131,20 @@ assert.equal(
 assert.equal(
   isWithinBusinessHours(new Date('2026-06-04T09:00:00+09:00'), tokyoBusinessHours),
   true,
+);
+
+const failingGeminiProvider = createGeminiChatProvider({
+  apiKey: 'test-key',
+  fetchImpl: async () =>
+    new Response(JSON.stringify({ error: { message: 'quota exceeded' } }), {
+      headers: { 'content-type': 'application/json' },
+      status: 429,
+    }),
+  model: 'gemini-test',
+});
+await assert.rejects(
+  () => failingGeminiProvider.complete({ question: 'test', sources: [] }),
+  /Gemini chat request failed: HTTP 429: quota exceeded/,
 );
 
 console.log('web chat tests passed');

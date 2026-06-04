@@ -116,28 +116,30 @@ export async function runPrivateChat(
   }
 
   const embedding = deterministicVector(request.question, 1536);
-  const vectorSources = await options.repository.vectorSearch({
-    embedding,
-    limit: 5,
-    projectId: project.id,
-    query: request.question,
-  });
-  const graphSources = await options.repository.graphQuery({
-    limit: 5,
-    projectId: project.id,
-    query: request.question,
-  });
+  const [vectorSources, graphSources, rawSources, parsedSources] = await Promise.all([
+    options.repository.vectorSearch({
+      embedding,
+      limit: 5,
+      projectId: project.id,
+      query: request.question,
+    }),
+    options.repository.graphQuery({
+      limit: 5,
+      projectId: project.id,
+      query: request.question,
+    }),
+    options.repository.rawDocumentFetch({
+      limit: 5,
+      maxBytes: 64 * 1024,
+      projectId: project.id,
+    }),
+    options.repository.parsedDocFetch({
+      limit: 5,
+      projectId: project.id,
+    }),
+  ]);
   const documentSources = await options.repository.documentFetch({
     documentIds: vectorSources.map((source) => source.documentId),
-    projectId: project.id,
-  });
-  const rawSources = await options.repository.rawDocumentFetch({
-    limit: 5,
-    maxBytes: 64 * 1024,
-    projectId: project.id,
-  });
-  const parsedSources = await options.repository.parsedDocFetch({
-    limit: 5,
     projectId: project.id,
   });
   const sources = uniqueSources([
@@ -203,7 +205,11 @@ export function createGeminiChatProvider(input: {
         method: 'POST',
       });
       if (!response.ok) {
-        throw new Error(`Gemini chat request failed: HTTP ${response.status}`);
+        throw new Error(
+          `Gemini chat request failed: HTTP ${response.status}${await geminiErrorDetails(
+            response,
+          )}`,
+        );
       }
       const body = (await response.json()) as {
         candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
@@ -447,11 +453,25 @@ function sourceFromRow(row: ChatSourceRow): ChatSource {
 }
 
 function deterministicVector(text: string, dimensions: number): number[] {
+  const hash = createHash('sha256').update(text).digest();
+  let seed = hash.readUInt32BE(0);
   const vector: number[] = [];
   for (let index = 0; index < dimensions; index += 1) {
-    const digest = createHash('sha256').update(`${index}:${text}`).digest();
-    const value = digest.readUInt32BE(0) / 0xffffffff;
+    seed = (seed * 1664525 + 1013904223) | 0;
+    const value = (seed >>> 0) / 0xffffffff;
     vector.push(value * 2 - 1);
   }
   return vector;
+}
+
+async function geminiErrorDetails(response: Response): Promise<string> {
+  if (!response.headers.get('content-type')?.includes('application/json')) {
+    return '';
+  }
+  try {
+    const body = (await response.json()) as { error?: { message?: unknown } };
+    return typeof body.error?.message === 'string' ? `: ${body.error.message}` : '';
+  } catch {
+    return '';
+  }
 }
