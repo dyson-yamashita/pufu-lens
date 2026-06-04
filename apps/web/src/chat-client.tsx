@@ -31,7 +31,7 @@ export function ChatPanel({
         method: 'POST',
       });
       const isJson = result.headers.get('content-type')?.includes('application/json') ?? false;
-      const body = isJson ? ((await result.json()) as ChatResponse | { error?: string }) : null;
+      const body = isJson ? ((await result.json()) as ChatResponse | ChatErrorResponse) : null;
       if (!result.ok) {
         throw new Error(chatErrorMessage(body, result.status));
       }
@@ -108,9 +108,15 @@ export function ChatPanel({
   );
 }
 
-function chatErrorMessage(body: ChatResponse | { error?: string } | null, status: number): string {
+type ChatErrorResponse = {
+  readonly error?: string | { readonly code?: string; readonly message?: string };
+};
+
+function chatErrorMessage(body: ChatResponse | ChatErrorResponse | null, status: number): string {
   if (body && 'error' in body && body.error) {
-    return body.error;
+    return typeof body.error === 'string'
+      ? body.error
+      : (body.error.message ?? body.error.code ?? `HTTP ${status}`);
   }
   if (body && 'answer' in body && body.answer) {
     return body.answer;

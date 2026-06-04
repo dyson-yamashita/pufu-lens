@@ -6,6 +6,7 @@ import {
   createGeminiChatProvider,
   createMemoryRateLimiter,
   createPostgresChatRepository,
+  ProjectAccessDeniedError,
   runPrivateChat,
 } from '../../../../../src/chat';
 
@@ -21,15 +22,15 @@ export async function POST(
     const body = (await request.json()) as { question?: unknown };
     question = typeof body.question === 'string' ? body.question.trim() : '';
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    return chatErrorResponse('invalid_json', 'Invalid JSON body', 400);
   }
   if (!question) {
-    return NextResponse.json({ error: 'question is required' }, { status: 400 });
+    return chatErrorResponse('invalid_request', 'question is required', 400);
   }
 
   const userId = process.env.PUFU_LENS_CHAT_USER_ID ?? process.env.PUFU_LENS_ADMIN_USER_ID;
   if (!userId) {
-    return NextResponse.json({ error: 'PUFU_LENS_CHAT_USER_ID is required' }, { status: 503 });
+    return chatErrorResponse('chat_user_not_configured', 'PUFU_LENS_CHAT_USER_ID is required', 503);
   }
 
   try {
@@ -41,7 +42,7 @@ export async function POST(
           })
         : createExtractiveChatProvider();
     const response = await runPrivateChat(
-      { projectSlug, question, userId },
+      { now: chatNowFromEnv(process.env), projectSlug, question, userId },
       {
         businessHours: businessHoursFromEnv(process.env),
         provider,
@@ -57,9 +58,25 @@ export async function POST(
           : 200;
     return NextResponse.json(response, { status });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : String(error) },
-      { status: 500 },
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof ProjectAccessDeniedError) {
+      return chatErrorResponse('project_access_denied', message, 403);
+    }
+    return chatErrorResponse('chat_internal_error', message, 500);
   }
+}
+
+function chatErrorResponse(code: string, message: string, status: number) {
+  return NextResponse.json({ error: { code, message } }, { status });
+}
+
+function chatNowFromEnv(env: NodeJS.ProcessEnv): Date | undefined {
+  if (!env.PUFU_LENS_CHAT_NOW) {
+    return undefined;
+  }
+  const date = new Date(env.PUFU_LENS_CHAT_NOW);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error('PUFU_LENS_CHAT_NOW must be an ISO 8601 datetime.');
+  }
+  return date;
 }

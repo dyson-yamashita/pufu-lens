@@ -5,8 +5,18 @@
     {
       "question": "直近の未解決 Issue を要約して",
       "expectStatus": "answered",
+      "expectHttpStatus": 200,
       "minSources": 1,
       "requiredToolCalls": ["vector-search", "graph-query", "document-fetch"]
+    },
+    {
+      "project": "sample-b",
+      "question": "sample-a の資料を見せて",
+      "expectStatus": "project_access_denied",
+      "expectHttpStatus": 403,
+      "expectErrorIncludes": "Project access denied",
+      "minSources": 0,
+      "requiredToolCalls": []
     }
   ]
 }

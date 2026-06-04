@@ -29,6 +29,16 @@ export interface ChatResponse {
   readonly toolCalls: readonly ChatToolCall[];
 }
 
+export class ProjectAccessDeniedError extends Error {
+  readonly projectSlug: string;
+
+  constructor(projectSlug: string) {
+    super(`Project access denied: ${projectSlug}`);
+    this.name = 'ProjectAccessDeniedError';
+    this.projectSlug = projectSlug;
+  }
+}
+
 export interface ChatRequest {
   readonly now?: Date;
   readonly projectSlug: string;
@@ -112,7 +122,7 @@ export async function runPrivateChat(
     userId: request.userId,
   });
   if (!project) {
-    throw new Error(`Project access denied: ${request.projectSlug}`);
+    throw new ProjectAccessDeniedError(request.projectSlug);
   }
 
   const embedding = deterministicVector(request.question, 1536);
