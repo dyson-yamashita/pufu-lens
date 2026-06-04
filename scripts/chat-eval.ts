@@ -7,13 +7,17 @@ interface ChatEvalFixture {
 }
 
 interface ChatEvalCase {
+  readonly expectErrorIncludes?: string;
+  readonly expectHttpStatus?: number;
   readonly expectStatus: string;
   readonly minSources: number;
+  readonly project?: string;
   readonly question: string;
   readonly requiredToolCalls: readonly string[];
 }
 
 interface ChatEvalResponse {
+  readonly error?: { readonly code?: string; readonly message?: string } | string;
   readonly sources?: readonly unknown[];
   readonly status?: string;
   readonly toolCalls?: ReadonlyArray<{ readonly name?: string }>;
@@ -27,17 +31,20 @@ async function main(): Promise<void> {
   const results = [];
 
   for (const testCase of fixture.cases) {
-    const response = await fetch(`${baseUrl}/api/projects/${project}/chat`, {
+    const caseProject = testCase.project ?? project;
+    const response = await fetch(`${baseUrl}/api/projects/${caseProject}/chat`, {
       body: JSON.stringify({ question: testCase.question }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
     });
     const body = (await response.json()) as ChatEvalResponse;
-    assertCase(testCase, body);
+    assertCase(testCase, response.status, body);
     results.push({
+      httpStatus: response.status,
+      project: caseProject,
       question: testCase.question,
       sourceCount: body.sources?.length ?? 0,
-      status: body.status,
+      status: body.status ?? errorCode(body),
       toolCalls: body.toolCalls?.map((toolCall) => toolCall.name) ?? [],
     });
   }
@@ -45,13 +52,26 @@ async function main(): Promise<void> {
   console.log(JSON.stringify({ project, results }, null, 2));
 }
 
-function assertCase(testCase: ChatEvalCase, response: ChatEvalResponse): void {
-  if (response.status !== testCase.expectStatus) {
+function assertCase(testCase: ChatEvalCase, httpStatus: number, response: ChatEvalResponse): void {
+  const expectedHttpStatus = testCase.expectHttpStatus ?? 200;
+  if (httpStatus !== expectedHttpStatus) {
     throw new Error(
-      `Expected status ${testCase.expectStatus} for "${testCase.question}", got ${String(
-        response.status,
-      )}.`,
+      `Expected HTTP ${expectedHttpStatus} for "${testCase.question}", got ${httpStatus}.`,
     );
+  }
+  const status = response.status ?? errorCode(response);
+  if (status !== testCase.expectStatus) {
+    throw new Error(
+      `Expected status ${testCase.expectStatus} for "${testCase.question}", got ${String(status)}.`,
+    );
+  }
+  if (testCase.expectErrorIncludes) {
+    const message = errorMessage(response);
+    if (!message.includes(testCase.expectErrorIncludes)) {
+      throw new Error(
+        `Expected error including "${testCase.expectErrorIncludes}" for "${testCase.question}", got "${message}".`,
+      );
+    }
   }
   const sourceCount = response.sources?.length ?? 0;
   if (sourceCount < testCase.minSources) {
@@ -65,6 +85,20 @@ function assertCase(testCase: ChatEvalCase, response: ChatEvalResponse): void {
       throw new Error(`Missing required tool call ${requiredToolCall} for "${testCase.question}".`);
     }
   }
+}
+
+function errorCode(response: ChatEvalResponse): string | undefined {
+  return typeof response.error === 'object' ? response.error.code : undefined;
+}
+
+function errorMessage(response: ChatEvalResponse): string {
+  if (typeof response.error === 'string') {
+    return response.error;
+  }
+  if (typeof response.error?.message === 'string') {
+    return response.error.message;
+  }
+  return '';
 }
 
 function parseArgs(argv: readonly string[]): {
