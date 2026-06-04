@@ -191,4 +191,12 @@ test('public and publish APIs reject unsafe client input', async ({ request }) =
   expect(invalidPatchResponse.status()).toBe(400);
   const invalidPatchBody = await invalidPatchResponse.json();
   expect(invalidPatchBody.error.code).toBe('report_invalid_request');
+
+  const nullPatchResponse = await request.patch('/api/projects/sample-a/reports/report-a', {
+    data: 'null',
+    headers: { 'content-type': 'application/json' },
+  });
+  expect(nullPatchResponse.status()).toBe(400);
+  const nullPatchBody = await nullPatchResponse.json();
+  expect(nullPatchBody.error.code).toBe('report_invalid_request');
 });

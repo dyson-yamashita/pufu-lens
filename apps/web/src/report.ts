@@ -1006,7 +1006,7 @@ function containsPrivateText(value: string): boolean {
   return (
     /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(value) ||
     /\b(?:file|gs):\/\//i.test(value) ||
-    /https?:\/\/(?:localhost|127\.0\.0\.1|10\.|172\.(?:1[6-9]|2\d|3[0-1])\.|192\.168\.|[^/\s]*(?:internal|corp|intranet|local))/i.test(
+    /https?:\/\/(?:localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[0-1])\.\d+\.\d+|192\.168\.\d+\.\d+|[^/\s]*(?:internal|corp|intranet|local))/i.test(
       value,
     )
   );

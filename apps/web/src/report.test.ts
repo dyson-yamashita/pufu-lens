@@ -175,6 +175,10 @@ assert.doesNotMatch(
   /project-a|doc-issue|doc-pr|doc-a|contact@example\.com|user@example\.com|internal|corp|file:\/\//,
 );
 assert.match(publicText, /public_source_id/);
+validatePublicReportJson({
+  ...published.publicReport,
+  summary: 'Public host https://10.example.com is allowed when it is not a private IP.',
+});
 
 const publicDetail = await getPublicReport({
   projectSlug: 'sample-a',

@@ -84,7 +84,7 @@ export async function PATCH(
     }
     throw error;
   }
-  if (typeof body.isPublic !== 'boolean') {
+  if (!body || typeof body.isPublic !== 'boolean') {
     return reportErrorResponse('report_invalid_request', 'isPublic must be boolean', 400);
   }
 
