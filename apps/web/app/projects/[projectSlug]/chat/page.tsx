@@ -10,10 +10,14 @@ export default async function ProjectChatPage({
 }) {
   const { projectSlug } = await params;
   const project = await getAdminProject(projectSlug);
-  const available = isWithinBusinessHours(
-    chatNowFromEnv(process.env) ?? new Date(),
-    businessHoursFromEnv(process.env),
-  );
+  const businessHours = businessHoursFromEnv(process.env);
+  let available = false;
+  try {
+    available = isWithinBusinessHours(chatNowFromEnv(process.env) ?? new Date(), businessHours);
+  } catch (error) {
+    console.error('Failed to parse PUFU_LENS_CHAT_NOW, falling back to current time:', error);
+    available = isWithinBusinessHours(new Date(), businessHours);
+  }
 
   return (
     <AppShell active="chat" project={project}>

@@ -285,11 +285,12 @@ export function businessHoursFromEnv(env: NodeJS.ProcessEnv): BusinessHoursConfi
   };
 }
 
-export function chatNowFromEnv(env: NodeJS.ProcessEnv): Date | undefined {
-  if (!env.PUFU_LENS_CHAT_NOW) {
+export function chatNowFromEnv(env?: NodeJS.ProcessEnv): Date | undefined {
+  const value = env?.PUFU_LENS_CHAT_NOW?.trim();
+  if (!value) {
     return undefined;
   }
-  const date = new Date(env.PUFU_LENS_CHAT_NOW);
+  const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     throw new Error('PUFU_LENS_CHAT_NOW must be an ISO 8601 datetime.');
   }

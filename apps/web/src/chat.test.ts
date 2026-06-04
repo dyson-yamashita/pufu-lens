@@ -141,6 +141,8 @@ assert.equal(
   })?.toISOString(),
   '2026-06-04T00:00:00.000Z',
 );
+assert.equal(chatNowFromEnv(), undefined);
+assert.equal(chatNowFromEnv({ ...process.env, PUFU_LENS_CHAT_NOW: '   ' }), undefined);
 assert.throws(
   () => chatNowFromEnv({ ...process.env, PUFU_LENS_CHAT_NOW: 'invalid-date' }),
   /PUFU_LENS_CHAT_NOW must be an ISO 8601 datetime/,
