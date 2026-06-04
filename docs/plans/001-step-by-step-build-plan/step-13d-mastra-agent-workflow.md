@@ -56,3 +56,11 @@ Mastra Studio / Playground では次を補助確認する。
 - private chat / private report の project member 認可、業務時間外 `db_outside_business_hours`、project 越境拒否が維持される。
 - Gemini API key / OAuth token / secret / raw 本文全文が browser、API response、Mastra trace、log に露出しない。
 - Step 14 の Scheduler / Cloud Run Job / Deploy 検証に進めるよう、`generate-report` workflow id、job entrypoint、internal API の呼び出し境界が明確になっている。
+
+### 進捗メモ
+
+- Issue #55 / branch `feature/issue-55-mastra-agent-workflow` で着手。
+- `apps/mastra` に `project-chat-agent`、project context tools、`generate-report` workflow を登録。
+- `pnpm --filter @pufu-lens/mastra test`、`typecheck`、`build`、`pnpm format:check`、`pnpm lint`、`pnpm test`、`pnpm scripts:typecheck` を確認。
+- local DB / storage / web server 起動状態で `pnpm chat:eval --project sample-a --fixture fixtures/chat/private-chat-eval.json` と `pnpm report:generate --project sample-a --period weekly` を確認。
+- Mastra Studio / Playground は CLI dependency の build script 承認が必要だったため未確認。PR では登録 runtime と scripted smoke を先に確認し、UI 観察は後続確認として残す。

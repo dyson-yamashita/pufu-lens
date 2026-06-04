@@ -3,7 +3,13 @@
   "compilerOptions": {
     "composite": true,
     "outDir": "dist",
-    "rootDir": "src"
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": "../.."
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "../web/src/chat.ts",
+    "../web/src/report.ts",
+    "../../packages/storage/src/**/*.ts"
+  ]
 }
