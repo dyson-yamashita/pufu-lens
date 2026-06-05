@@ -161,6 +161,60 @@ const documentFetch = await runtime.projectChatTools.documentFetch.execute?.(
 );
 assert.deepEqual(documentFetch, { sources: [sampleSource] });
 
+const pufuScore = await runtime.projectChatTools.pufuScoreGenerate.execute?.(
+  {
+    period: { end: '2026-06-07', start: '2026-06-01' },
+    pufuSources: [
+      {
+        canonical_uri: 'https://note.example.com/osc-osaka',
+        doc_type: 'web_page',
+        document_id: 'doc-osc',
+        occurred_at: '2026-01-31T15:24:00.000Z',
+        snippet:
+          '昨年に引き続き、オープンソースカンファレンス＠大阪に「プ譜友の会」からプ譜エディターを出展しました。',
+        title: '【プ譜友の会】オープンソースカンファレンス2026＠大阪の出展レポート',
+      },
+    ],
+    reportId: 'report-a',
+    sections: [
+      {
+        id: 'activity',
+        markdown:
+          '対象期間に確認できた情報は 1 件です。直近の材料から見ると、プロジェクトは次の文脈で動いています。引用本文が続きます。',
+        title: '概況',
+      },
+      {
+        id: 'progress',
+        markdown: '判断材料は蓄積されつつあります。',
+        title: '進行状況',
+      },
+      {
+        id: 'issues',
+        markdown: '現時点で大きな論点候補は抽出されていません。',
+        title: '論点',
+      },
+      {
+        id: 'risks',
+        markdown: '情報量が少ない場合は未検出の論点が残る可能性があります。',
+        title: '不確実性・リスク',
+      },
+    ],
+    summary: 'プロジェクトの概況と進行状況を整理しました。',
+    title: 'プロジェクト状況レポート',
+  },
+  { requestContext } as never,
+);
+const generatedScore = pufuScore?.score as {
+  readonly elements?: { readonly environment?: { readonly text?: string } };
+  readonly gainingGoal?: { readonly text?: string };
+  readonly purposes?: Array<{ readonly measures: Array<{ readonly text: string }> }>;
+};
+assert.match(generatedScore.gainingGoal?.text ?? '', /プ譜エディターを試す人を増やす/);
+assert.match(generatedScore.elements?.environment?.text ?? '', /来場者/);
+assert.match(generatedScore.purposes?.[0]?.measures[0]?.text ?? '', /ブース/);
+assert.doesNotMatch(generatedScore.purposes?.[0]?.measures[0]?.text ?? '', /引用本文が続きます/);
+assert.doesNotMatch(JSON.stringify(generatedScore), /データソースから|根拠資料/);
+
 const rawDocumentFetch = await runtime.projectChatTools.rawDocumentFetch.execute?.(
   { limit: 3, maxBytes: 64 * 1024 },
   { requestContext } as never,

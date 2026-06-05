@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import type { ObjectInfo, ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import { ProjectAccessDeniedError } from './chat.ts';
+import { createPufuScoreFromReport } from './pufu-score.ts';
 import {
   createExtractiveReportProvider,
   createGeminiReportProvider,
@@ -144,6 +145,38 @@ const generated = await runGenerateReport({
 });
 assert.equal(generated.report.schema_version, 'v1');
 assert.equal(generated.report.sections.length, 4);
+assert.equal(generated.report.pufu_sources?.length, 2);
+assert.equal(generated.report.pufu_sources?.[0]?.title, 'Issue #42 Login failure');
+assert.equal(generated.report.title, 'プロジェクト状況レポート 2026-06-01 - 2026-06-07');
+assert.match(generated.report.summary, /概況と進行状況/);
+assert.deepEqual(
+  generated.report.sections.map((section) => section.title),
+  ['概況', '論点', '進行状況', '不確実性・リスク'],
+);
+const overviewSection = generated.report.sections.find((section) => section.id === 'activity');
+const progressSection = generated.report.sections.find((section) => section.id === 'progress');
+assert.ok(overviewSection);
+assert.ok(progressSection);
+assert.match(overviewSection.markdown, /プロジェクトは次の文脈で動いています/);
+assert.match(progressSection.markdown, /目指す状態に近づいているか/);
+const pufuScore = createPufuScoreFromReport({
+  ...generated.report,
+  pufu_sources: [
+    {
+      canonical_uri: 'https://note.example.com/osc-osaka',
+      doc_type: 'web_page',
+      document_id: 'doc-osc',
+      occurred_at: '2026-01-31T15:24:00.000Z',
+      snippet:
+        '昨年に引き続き、オープンソースカンファレンス＠大阪に「プ譜友の会」からプ譜エディターを出展しました。',
+      title: '【プ譜友の会】オープンソースカンファレンス2026＠大阪の出展レポート',
+    },
+  ],
+});
+assert.match(pufuScore.gainingGoal.text, /プ譜エディターを試す人を増やす/);
+assert.match(pufuScore.elements.environment.text, /来場者/);
+assert.match(pufuScore.purposes[0]?.measures[0]?.text ?? '', /ブース/);
+assert.doesNotMatch(JSON.stringify(pufuScore), /データソースから|根拠資料/);
 assert.equal(repository.insertedChunks, 4);
 assert.ok(repository.storageUri?.includes('/sample-a/reports/private/'));
 validatePrivateReportJson(JSON.parse(await storage.getText(generated.storageUri)));

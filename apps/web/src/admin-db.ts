@@ -224,6 +224,7 @@ function dataSourceFromRow(row: DataSourceRow): DataSourceSummary {
     name: row.name,
     queueCount,
     rawCount: toNumber(row.raw_count),
+    editableScope: editableScopeFromConfig(row.source_type, row.config),
     scope: summarizeScope(row.source_type, row.config),
     sourceType: row.source_type,
     status: statusFromCounts({ failedCount, heldCount, queueCount }),
@@ -494,6 +495,23 @@ function summarizeScope(sourceType: SourceType, config: unknown): string {
     return object.query;
   }
   return typeof object.source === 'string' ? object.source : 'configured';
+}
+
+function editableScopeFromConfig(sourceType: SourceType, config: unknown): string {
+  const object: AdminConfig = isRecord(config) ? config : {};
+  if (sourceType === 'web' && Array.isArray(object.urls)) {
+    return object.urls.map(String).join('\n');
+  }
+  if (sourceType === 'github' && Array.isArray(object.repositories)) {
+    return object.repositories.map(String).join('\n');
+  }
+  if (sourceType === 'drive' && typeof object.folderId === 'string') {
+    return object.folderId;
+  }
+  if (sourceType === 'gmail' && typeof object.query === 'string') {
+    return object.query;
+  }
+  return '';
 }
 
 function summarizeConfig(sourceType: SourceType, config: unknown): string {

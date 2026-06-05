@@ -3,13 +3,25 @@ import { expect, test } from '@playwright/test';
 const report = {
   generated_at: '2026-06-04T09:00:00.000Z',
   period: { end: '2026-06-07', start: '2026-06-01' },
+  pufu_sources: [
+    {
+      canonical_uri: 'https://note.example.com/osc-osaka',
+      doc_type: 'web_page',
+      document_id: 'doc-osc',
+      occurred_at: '2026-01-31T15:24:00.000Z',
+      snippet:
+        '昨年に引き続き、オープンソースカンファレンス＠大阪に「プ譜友の会」からプ譜エディターを出展しました。',
+      title: '【プ譜友の会】オープンソースカンファレンス2026＠大阪の出展レポート',
+    },
+  ],
   project_id: 'project-a',
   report_id: 'report-a',
   schema_version: 'v1',
   sections: [
     {
       id: 'activity',
-      markdown: '- Spec Update\n- Report UI',
+      markdown:
+        '対象期間に確認できた情報から、プロジェクトは仕様整理とレポート体験の改善を進めている状態です。',
       sources: [
         {
           canonical_uri: 'https://example.com/spec',
@@ -18,29 +30,29 @@ const report = {
           snippet: 'Spec Update',
         },
       ],
-      title: 'アクティビティ',
+      title: '概況',
     },
     {
       id: 'issues',
       items: [{ document_id: 'doc-issue', title: 'Issue #42' }],
-      markdown: '- Issue #42',
-      title: '未解決 Issue',
+      markdown: 'ログイン失敗時の体験と、利用者が状況を理解できる説明が論点です。',
+      title: '論点',
     },
     {
       id: 'progress',
-      markdown: '2 件の document を確認しました。',
-      metrics: { documents: 2, merged_prs: 1, open_issues: 1 },
-      title: '進捗',
+      markdown: '仕様更新とレポート UI の情報が増えており、判断材料は蓄積されつつあります。',
+      metrics: { discussion_points: 1, documents: 2, risk_signals: 1 },
+      title: '進行状況',
     },
     {
       id: 'risks',
       items: [],
-      markdown: '- 重大なリスク候補は見つかりませんでした。',
-      title: 'リスク',
+      markdown: '失敗時の導線が不明瞭なままだと、利用者の理解を阻む可能性があります。',
+      title: '不確実性・リスク',
     },
   ],
-  summary: '2 件の indexed document から週次レポートを生成しました。',
-  title: '週次レポート 2026-06-01 - 2026-06-07',
+  summary: '2 件の indexed document から、プロジェクトの概況と進行状況を整理しました。',
+  title: 'プロジェクト状況レポート 2026-06-01 - 2026-06-07',
 };
 
 test('private report list links to detail and renders sections', async ({ page }) => {
@@ -80,8 +92,9 @@ test('private report list links to detail and renders sections', async ({ page }
 
   await page.getByRole('link', { name: report.title }).click();
   await expect(page.getByTestId('report-document')).toContainText(report.summary);
+  await expect(page.getByTestId('pufu-report-score')).toContainText('プ譜エディターを試す人');
   await expect(page.getByTestId('report-section-activity')).toContainText('Spec Update');
-  await expect(page.getByTestId('report-section-progress')).toContainText('documents');
+  await expect(page.getByTestId('report-section-progress')).toContainText('判断材料');
 });
 
 test('private report detail keeps sections visible on mobile', async ({ page }) => {

@@ -1,4 +1,6 @@
+import { generatePrivateReport } from '../../../../src/admin-actions';
 import { getAdminProject } from '../../../../src/admin-db';
+import { ActionForm, PendingSubmitButton } from '../../../../src/form-buttons';
 import { ReportsList } from '../../../../src/report-client';
 import { AppShell, PageHeader } from '../../../../src/ui';
 
@@ -22,15 +24,16 @@ export default async function ReportsPage({
             <h2>Private Reports</h2>
             <p className="mono">GET /api/projects/{project.slug}/reports</p>
           </div>
-          <button
-            className="secondary-link"
-            data-testid="reports-generate-button"
-            disabled
-            title="Report generation is available from the CLI in Step 13a"
-            type="button"
-          >
-            Generate Report
-          </button>
+          <ActionForm action={generatePrivateReport}>
+            <input name="projectSlug" type="hidden" value={project.slug} />
+            <PendingSubmitButton
+              className="secondary-link"
+              testId="reports-generate-button"
+              title="Generate private report"
+            >
+              Generate Report
+            </PendingSubmitButton>
+          </ActionForm>
         </div>
         <ReportsList projectSlug={project.slug} />
       </section>

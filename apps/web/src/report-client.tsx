@@ -4,6 +4,7 @@ import { Send } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { PublicChatResponse } from './chat';
+import { PufuReportViewer } from './pufu-report-viewer';
 import type { PrivateReportJsonV1, PublicReportJsonV1, ReportListItem } from './report';
 
 type ReportApiError = {
@@ -165,6 +166,7 @@ export function ReportDocument({
           </div>
         </dl>
       </header>
+      <PufuReportViewer report={report} />
       {report.sections.map((section) => (
         <section
           className="report-section"

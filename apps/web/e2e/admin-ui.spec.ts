@@ -27,6 +27,9 @@ test('admin routes expose stable operation controls', async ({ page }) => {
   await expect(
     page.getByTestId('data-source-table').getByText(/Fixture web|公開ドキュメント/),
   ).toBeVisible();
+  await expect(page.getByTestId('data-source-edit-name-input')).toBeVisible();
+  await expect(page.getByTestId('data-source-edit-scope-input')).toBeVisible();
+  await expect(page.getByTestId('data-source-save-button')).toBeEnabled();
   await expect(page.getByTestId('data-source-table').getByText('Fixture drive')).toHaveCount(0);
   await expect(page.getByTestId('data-source-table').getByText('Drive プロダクト資料')).toHaveCount(
     0,
