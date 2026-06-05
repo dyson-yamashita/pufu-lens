@@ -13,6 +13,9 @@
   },
   "dependencies": {
     "@goto-lab/pufu-editor": "0.9.14",
+    "@pufu-lens/ingestion": "workspace:*",
+    "@pufu-lens/project-tenancy": "workspace:*",
+    "@pufu-lens/storage": "workspace:*",
     "dom-to-image": "^2.6.0",
     "html-to-image": "^1.11.13",
     "i18next": "^23.16.8",
