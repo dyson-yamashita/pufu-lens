@@ -1,3 +1,5 @@
+@import '../node_modules/@goto-lab/pufu-editor/dist/index.css';
+
 :root {
   color-scheme: dark;
   --bg: #080f1f;
@@ -111,6 +113,15 @@ button {
   color: var(--text);
 }
 
+tr.selected-row {
+  background: rgba(47, 125, 255, 0.12);
+}
+
+.source-name-link:hover strong {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .main-surface {
   min-width: 0;
   padding: 32px;
@@ -200,6 +211,94 @@ button {
   display: grid;
   gap: 16px;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.create-project-panel {
+  margin-bottom: 16px;
+}
+
+.create-project-panel summary {
+  cursor: pointer;
+  list-style: none;
+  width: fit-content;
+}
+
+.create-project-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.create-project-panel[open] summary {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.project-create-form {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(180px, 0.7fr) minmax(240px, 1fr) auto;
+  margin-top: 16px;
+}
+
+.project-create-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.project-create-form span {
+  color: var(--muted);
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.project-create-form input,
+.project-create-form select,
+.project-create-form textarea,
+.detail-edit-form input,
+.detail-edit-form textarea {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  min-height: 40px;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
+.detail-edit-form {
+  display: grid;
+  gap: 14px;
+}
+
+.detail-edit-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.detail-edit-form span {
+  color: var(--muted);
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.detail-edit-form textarea {
+  resize: vertical;
+}
+
+.inline-action-form {
+  margin: 0;
+}
+
+.project-create-form textarea {
+  resize: vertical;
 }
 
 .project-card,
@@ -564,7 +663,7 @@ th {
 .report-document {
   display: grid;
   gap: 18px;
-  max-width: 880px;
+  max-width: 1280px;
 }
 
 .public-shell {
@@ -609,6 +708,37 @@ th {
   gap: 14px;
 }
 
+.pufu-report-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.pufu-score-frame {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: #111827;
+  margin-top: 16px;
+  overflow-x: auto;
+  padding: 16px;
+}
+
+.pufu-score-canvas {
+  display: block;
+  min-width: 1120px;
+}
+
+.pufu-score-canvas textarea {
+  background: transparent !important;
+  color: #374151 !important;
+}
+
+.pufu-score-canvas textarea:disabled {
+  opacity: 1;
+}
+
 .markdown-text {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -639,6 +769,7 @@ th {
 
   .split-layout,
   .chat-input-row,
+  .project-create-form,
   .status-row {
     grid-template-columns: 1fr;
   }

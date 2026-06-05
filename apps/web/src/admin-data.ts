@@ -8,6 +8,7 @@ export interface DataSourceSummary {
   readonly sourceType: SourceType;
   readonly status: SourceStatus;
   readonly scope: string;
+  readonly editableScope: string;
   readonly rawCount: number;
   readonly queueCount: number;
   readonly failedCount: number;
@@ -61,6 +62,7 @@ export const fallbackProjects = [
         sourceType: 'web',
         status: 'healthy',
         scope: 'https://example.com/docs',
+        editableScope: 'https://example.com/docs',
         rawCount: 8,
         queueCount: 0,
         failedCount: 0,
@@ -75,6 +77,7 @@ export const fallbackProjects = [
         sourceType: 'github',
         status: 'failed',
         scope: 'dyson-yamashita/pufu-lens',
+        editableScope: 'dyson-yamashita/pufu-lens',
         rawCount: 21,
         queueCount: 4,
         failedCount: 2,
@@ -89,6 +92,7 @@ export const fallbackProjects = [
         sourceType: 'drive',
         status: 'held',
         scope: 'folder: product-specs',
+        editableScope: 'product-specs',
         rawCount: 13,
         queueCount: 2,
         failedCount: 0,
@@ -138,6 +142,7 @@ export const fallbackProjects = [
         sourceType: 'web',
         status: 'healthy',
         scope: 'https://status.example.com',
+        editableScope: 'https://status.example.com',
         rawCount: 5,
         queueCount: 0,
         failedCount: 0,
@@ -152,6 +157,7 @@ export const fallbackProjects = [
         sourceType: 'gmail',
         status: 'syncing',
         scope: 'label:support',
+        editableScope: 'label:support',
         rawCount: 12,
         queueCount: 1,
         failedCount: 0,

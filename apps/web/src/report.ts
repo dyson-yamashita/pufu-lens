@@ -22,6 +22,11 @@ export interface PrivateReportSource {
   readonly snippet: string;
 }
 
+export interface PrivateReportPufuSource extends PrivateReportSource {
+  readonly occurred_at: string | null;
+  readonly title: string;
+}
+
 export interface PrivateReportSection {
   readonly id: 'activity' | 'issues' | 'progress' | 'risks';
   readonly items?: readonly Record<string, unknown>[];
@@ -35,6 +40,7 @@ export interface PrivateReportJsonV1 {
   readonly generated_at: string;
   readonly period: ReportPeriod;
   readonly project_id: string;
+  readonly pufu_sources?: readonly PrivateReportPufuSource[];
   readonly report_id: string;
   readonly schema_version: 'v1';
   readonly sections: readonly PrivateReportSection[];
@@ -217,6 +223,7 @@ export async function runGenerateReport(input: {
     generated_at: now.toISOString(),
     period,
     project_id: project.id,
+    pufu_sources: documents.map(pufuSourceFromDocument),
     report_id: reportId,
     schema_version: 'v1',
     sections: generated.sections,
@@ -498,7 +505,6 @@ export function createExtractiveReportProvider(): ReportGenerationProvider {
     async generate({ documents, period }) {
       const sourceDocuments = documents.slice(0, 8);
       const issueDocuments = documents.filter((document) => document.docType === 'issue');
-      const pullRequests = documents.filter((document) => document.docType === 'pull_request');
       const risks = documents.filter((document) =>
         `${document.title} ${document.summary}`
           .toLowerCase()
@@ -515,10 +521,17 @@ export function createExtractiveReportProvider(): ReportGenerationProvider {
           {
             id: 'activity',
             markdown: sourceDocuments.length
-              ? sourceDocuments.map((document) => `- ${document.title}`).join('\n')
-              : '- 対象期間の indexed document はありません。',
+              ? [
+                  `対象期間に確認できた情報は ${documents.length} 件です。直近の材料から見ると、プロジェクトは次の文脈で動いています。`,
+                  '',
+                  ...sourceDocuments.map(
+                    (document) =>
+                      `- ${document.title}: ${truncate(document.summary || '要約は未設定です。', 180)}`,
+                  ),
+                ].join('\n')
+              : '対象期間の indexed document はありません。現時点では概況を判断する材料が不足しています。',
             sources,
-            title: 'アクティビティ',
+            title: '概況',
           },
           {
             id: 'issues',
@@ -528,18 +541,25 @@ export function createExtractiveReportProvider(): ReportGenerationProvider {
             })),
             markdown: issueDocuments.length
               ? issueDocuments.map((document) => `- ${document.title}`).join('\n')
-              : '- 未解決 Issue 候補は見つかりませんでした。',
-            title: '未解決 Issue',
+              : '現時点で大きな論点候補は抽出されていません。ただし、情報量が少ない場合は未検出の論点が残る可能性があります。',
+            title: '論点',
           },
           {
             id: 'progress',
-            markdown: `対象期間 ${period.start} から ${period.end} に ${documents.length} 件の document を確認しました。`,
+            markdown:
+              documents.length > 0
+                ? [
+                    `${period.start} から ${period.end} の情報を見る限り、プロジェクトは情報収集と状況把握を継続できている状態です。`,
+                    `確認できた document は ${documents.length} 件で、判断材料は蓄積されつつあります。`,
+                    '今後は、個別タスクの消化数よりも、目指す状態に近づいているか、次の意思決定に十分な材料が揃っているかを確認する必要があります。',
+                  ].join('\n')
+                : `${period.start} から ${period.end} の期間には indexed document がなく、進行状況を判断できる材料がありません。`,
             metrics: {
               documents: documents.length,
-              merged_prs: pullRequests.length,
-              open_issues: issueDocuments.length,
+              discussion_points: issueDocuments.length,
+              risk_signals: risks.length,
             },
-            title: '進捗',
+            title: '進行状況',
           },
           {
             id: 'risks',
@@ -549,15 +569,15 @@ export function createExtractiveReportProvider(): ReportGenerationProvider {
             })),
             markdown: risks.length
               ? risks.map((document) => `- ${document.title}`).join('\n')
-              : '- 重大なリスク候補は見つかりませんでした。',
-            title: 'リスク',
+              : '重大なリスク候補は抽出されていません。とはいえ、情報が少ない場合は不確実性そのものがリスクになります。',
+            title: '不確実性・リスク',
           },
         ],
         summary:
           documents.length > 0
-            ? `${documents.length} 件の indexed document から週次レポートを生成しました。`
-            : '対象期間の indexed document はありません。',
-        title: `週次レポート ${period.start} - ${period.end}`,
+            ? `${documents.length} 件の indexed document から、プロジェクトの概況と進行状況を整理しました。`
+            : '対象期間の indexed document がないため、プロジェクト概況は未判定です。',
+        title: `プロジェクト状況レポート ${period.start} - ${period.end}`,
       };
     },
   };
@@ -591,7 +611,15 @@ export function createGeminiReportProvider(input: {
                 {
                   text: [
                     'Return only JSON for Pufu Lens private report schema v1 fields: title, summary, sections.',
-                    'Sections must include activity, issues, progress, risks.',
+                    'This report is for understanding the project situation, not checking task completion.',
+                    'Summarize the overall context, current movement, decisions implied by the information, uncertainty, and signals that matter.',
+                    'Do not make the report primarily about GitHub issues, PR counts, task lists, or TODO tracking.',
+                    'Sections must include exactly these ids:',
+                    '- activity: title "概況"; summarize what kind of project state the documents indicate.',
+                    '- progress: title "進行状況"; explain how the project appears to be moving or not moving.',
+                    '- issues: title "論点"; summarize open questions, tensions, or decisions to clarify.',
+                    '- risks: title "不確実性・リスク"; summarize blockers, risk signals, and unknowns.',
+                    'Use markdown prose and concise bullets. metrics are optional and should support situation understanding, not task management.',
                     `Project: ${projectSlug}`,
                     `Period: ${period.start} to ${period.end}`,
                     `Documents: ${JSON.stringify(documents)}`,
@@ -829,6 +857,24 @@ export function validatePrivateReportJson(value: unknown): asserts value is Priv
   }
   if (!Array.isArray(value.sections) || value.sections.length === 0) {
     throw new Error('Report sections must be a non-empty array.');
+  }
+  if (value.pufu_sources !== undefined) {
+    if (!Array.isArray(value.pufu_sources)) {
+      throw new Error('Report pufu_sources must be an array.');
+    }
+    for (const source of value.pufu_sources) {
+      if (
+        !isRecord(source) ||
+        typeof source.document_id !== 'string' ||
+        typeof source.doc_type !== 'string' ||
+        typeof source.title !== 'string' ||
+        typeof source.snippet !== 'string' ||
+        typeof source.canonical_uri !== 'string' ||
+        (source.occurred_at !== null && typeof source.occurred_at !== 'string')
+      ) {
+        throw new Error('Report pufu source is invalid.');
+      }
+    }
   }
   for (const section of value.sections) {
     if (!isRecord(section) || typeof section.id !== 'string' || typeof section.title !== 'string') {
@@ -1170,6 +1216,17 @@ function documentFromRow(row: ReportDocumentRow): ReportDocumentRecord {
     occurredAt: formatNullableDate(row.occurred_at),
     summary: row.summary,
     title: row.title,
+  };
+}
+
+function pufuSourceFromDocument(document: ReportDocumentRecord): PrivateReportPufuSource {
+  return {
+    canonical_uri: document.canonicalUri,
+    doc_type: document.docType,
+    document_id: document.documentId,
+    occurred_at: document.occurredAt,
+    snippet: truncate(document.summary || document.title, 220),
+    title: document.title,
   };
 }
 

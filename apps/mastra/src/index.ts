@@ -5,6 +5,7 @@ import { createStep, createWorkflow } from '@mastra/core/workflows';
 import { z } from 'zod';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import type { ChatRepository } from '../../web/src/chat.ts';
+import { createPufuScoreFromReport } from '../../web/src/pufu-score.ts';
 import {
   createExtractiveReportProvider,
   type ReportGenerationProvider,
@@ -28,6 +29,7 @@ export const mastraToolIds = {
   documentFetch: 'document-fetch',
   graphQuery: 'graph-query',
   parsedDocFetch: 'parsed-doc-fetch',
+  pufuScoreGenerate: 'pufu-score-generate',
   rawDocumentFetch: 'raw-document-fetch',
   vectorSearch: 'vector-search',
 } as const;
@@ -78,6 +80,38 @@ const chatSourceListSchema = z.object({
 const mastraProjectContextSchema = z.object({
   projectId: z.string().min(1),
 });
+
+const reportSourceSchema = z.object({
+  canonical_uri: z.string().optional(),
+  doc_type: z.string().optional(),
+  document_id: z.string().optional(),
+  occurred_at: z.string().nullable().optional(),
+  snippet: z.string().optional(),
+  title: z.string().optional(),
+});
+
+const reportSectionSchema = z.object({
+  id: z.enum(['activity', 'issues', 'progress', 'risks']),
+  markdown: z.string(),
+  metrics: z.record(z.string(), z.number()).optional(),
+  sources: z.array(reportSourceSchema).optional(),
+  title: z.string(),
+});
+
+const pufuScoreGenerateInputSchema = z.object({
+  period: z.object({ end: z.string(), start: z.string() }),
+  pufuSources: z.array(reportSourceSchema).default([]),
+  reportId: z.string().default('agent-generated-pufu'),
+  sections: z.array(reportSectionSchema).default([]),
+  summary: z.string(),
+  title: z.string(),
+});
+
+const pufuScoreGenerateOutputSchema = z.object({
+  score: z.unknown(),
+});
+
+type PufuScoreGenerateInput = z.infer<typeof pufuScoreGenerateInputSchema>;
 
 export function createProjectChatTools(repository: ChatRepository) {
   const projectIdFromContext = (
@@ -145,6 +179,42 @@ export function createProjectChatTools(repository: ChatRepository) {
         }),
       }),
     }),
+    pufuScoreGenerate: createTool({
+      id: mastraToolIds.pufuScoreGenerate,
+      description:
+        'Generate ProjectScore (プ譜) data from project data source records. Use pufuSources as the primary input and structure gaining goal, win condition, intermediate purposes, measures, and eight elements instead of quoting report prose into pufu boxes.',
+      inputSchema: pufuScoreGenerateInputSchema,
+      outputSchema: pufuScoreGenerateOutputSchema,
+      requestContextSchema: mastraProjectContextSchema,
+      execute: async (input: PufuScoreGenerateInput, context) => {
+        projectIdFromContext(context);
+        return {
+          score: createPufuScoreFromReport({
+            period: input.period,
+            pufu_sources: input.pufuSources.map((source, index) => ({
+              canonical_uri: source.canonical_uri ?? '',
+              doc_type: source.doc_type ?? 'unknown',
+              document_id: source.document_id ?? `agent-source-${index}`,
+              occurred_at: source.occurred_at ?? null,
+              snippet: source.snippet ?? '',
+              title: source.title ?? source.snippet ?? `データソース ${index + 1}`,
+            })),
+            report_id: input.reportId,
+            sections: input.sections.map((section) => ({
+              ...section,
+              sources: section.sources?.map((source) => ({
+                canonical_uri: source.canonical_uri ?? '',
+                doc_type: source.doc_type ?? 'unknown',
+                document_id: source.document_id ?? '',
+                snippet: source.snippet ?? '',
+              })),
+            })),
+            summary: input.summary,
+            title: input.title,
+          }),
+        };
+      },
+    }),
     rawDocumentFetch: createTool({
       id: mastraToolIds.rawDocumentFetch,
       description:
@@ -201,6 +271,7 @@ export function createProjectChatAgent(input: {
       '回答に使えるのは requestContext.projectId で固定された project の data だけです。',
       '他 project の id、raw body、parsed body、secret、OAuth token、Gemini API key を出してはいけません。',
       '必要に応じて vector-search、graph-query、document-fetch、raw-document-fetch、parsed-doc-fetch を使い、source を明示します。',
+      'プ譜データを作る場合は、レポート本文ではなく data source の title、snippet、doc_type、canonical_uri を pufu-score-generate の pufuSources に渡し、獲得目標、勝利条件、中間目的、施策、廟算八要素として再構成します。',
     ].join('\n'),
     model: input.model ?? 'google/gemini-2.5-flash',
     tools: input.tools,

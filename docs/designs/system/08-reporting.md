@@ -21,6 +21,16 @@ Private report JSON スキーマ（`schema_version: "v1"`）：
   "period": { "start": "2026-05-25", "end": "2026-05-31" },
   "generated_at": "2026-05-31T17:00:00+09:00",
   "summary": "今週の概要...",
+  "pufu_sources": [
+    {
+      "document_id": "...",
+      "doc_type": "web_page",
+      "title": "データソースのタイトル",
+      "canonical_uri": "...",
+      "occurred_at": "2026-05-31T00:00:00.000Z",
+      "snippet": "プ譜生成で参照する短い要約..."
+    }
+  ],
   "sections": [
     {
       "id": "activity",
@@ -53,6 +63,8 @@ Private report JSON スキーマ（`schema_version: "v1"`）：
   ]
 }
 ```
+
+プ譜ビューは `sections.markdown` の本文をそのまま流し込まず、private report に保存した `pufu_sources`（生成時に参照した data source の title / snippet / doc_type / canonical_uri）を第一入力にして ProjectScoreModel を組み立てる。過去 artifact など `pufu_sources` がない private report では、`sections[].sources` または activity section の source 行を後方互換の入力として扱う。
 
 Public report JSON は private report JSON から公開可能な情報だけを抽出した別 schema とする。内部 `project_id`、`document_id`、raw / parsed の URI、社内 URL、メールアドレス、個人情報を含む可能性のある snippet は含めない。根拠は `section_id` と `public_source_id` だけで示す。
 

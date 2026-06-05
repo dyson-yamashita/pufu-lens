@@ -1,5 +1,6 @@
-import { retryFailedQueue } from '../../../../../src/admin-actions';
+import { collectDataSource, retryFailedQueue } from '../../../../../src/admin-actions';
 import { getAdminProject } from '../../../../../src/admin-db';
+import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
 import { AppShell, MetricStrip, PageHeader, RetryButton, StatusBadge } from '../../../../../src/ui';
 
 export default async function IngestionPage({
@@ -65,6 +66,18 @@ export default async function IngestionPage({
                 projectSlug={project.slug}
                 testId={`ingestion-retry-${source.id}`}
               />
+              <ActionForm action={collectDataSource} className="inline-action-form">
+                <input name="projectSlug" type="hidden" value={project.slug} />
+                <input name="dataSourceId" type="hidden" value={source.id} />
+                <PendingSubmitButton
+                  className="icon-button"
+                  disabled={source.sourceType !== 'web'}
+                  testId={`ingestion-collect-${source.id}`}
+                  title="Collect source"
+                >
+                  Collect
+                </PendingSubmitButton>
+              </ActionForm>
             </article>
           ))}
         </div>

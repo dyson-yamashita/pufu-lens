@@ -223,7 +223,17 @@ export function SourceTypeTabs({
   );
 }
 
-export function DataSourceTable({ sources }: { readonly sources: readonly DataSourceSummary[] }) {
+export function DataSourceTable({
+  activeSourceId,
+  activeType,
+  projectSlug,
+  sources,
+}: {
+  readonly activeSourceId?: string;
+  readonly activeType?: SourceType;
+  readonly projectSlug: string;
+  readonly sources: readonly DataSourceSummary[];
+}) {
   return (
     <div className="table-frame">
       <table data-testid="data-source-table">
@@ -238,15 +248,23 @@ export function DataSourceTable({ sources }: { readonly sources: readonly DataSo
         </thead>
         <tbody>
           {sources.map((source) => (
-            <tr key={source.id} data-testid={`data-source-row-${source.id}`}>
+            <tr
+              className={activeSourceId === source.id ? 'selected-row' : undefined}
+              key={source.id}
+              data-testid={`data-source-row-${source.id}`}
+            >
               <td>
-                <span className="source-name">
+                <Link
+                  className="source-name source-name-link"
+                  data-testid={`data-source-select-${source.id}`}
+                  href={dataSourceDetailHref(projectSlug, source.id, activeType)}
+                >
                   <SourceIcon sourceType={source.sourceType} />
                   <span>
                     <strong>{source.name}</strong>
                     <small>{sourceLabels[source.sourceType]}</small>
                   </span>
-                </span>
+                </Link>
               </td>
               <td>
                 <StatusBadge status={source.status} />
@@ -264,6 +282,19 @@ export function DataSourceTable({ sources }: { readonly sources: readonly DataSo
       </table>
     </div>
   );
+}
+
+function dataSourceDetailHref(
+  projectSlug: string,
+  dataSourceId: string,
+  activeType: SourceType | undefined,
+): string {
+  const params = new URLSearchParams();
+  if (activeType) {
+    params.set('sourceType', activeType);
+  }
+  params.set('dataSourceId', dataSourceId);
+  return `/projects/${projectSlug}/admin/data-sources?${params.toString()}`;
 }
 
 export function RetryButton({

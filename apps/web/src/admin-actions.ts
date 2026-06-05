@@ -2,9 +2,156 @@
 
 import { revalidatePath } from 'next/cache';
 import type postgres from 'postgres';
+import {
+  deriveProjectIdentifiers,
+  validateProjectSlug,
+} from '../../../packages/project-tenancy/src/project-tenancy.ts';
+import {
+  collectWebUrlSource,
+  type CollectionRepository,
+  type DataSourceRecord,
+  type LinkDataSourceInput,
+  type ProjectRecord,
+  type QueueCandidateInput,
+  type RawDocumentInput,
+  type RawDocumentRecord,
+} from '../../../packages/ingestion/dist/index.js';
+import { LocalFsObjectStorage } from '../../../packages/storage/src/local-fs.ts';
+import type { SourceType } from './admin-data';
 import { getRequiredAdminSql } from './admin-sql';
+import {
+  createExtractiveReportProvider,
+  createGeminiReportProvider,
+  createPostgresReportRepository,
+  createReportStorageFromEnv,
+  type ReportGenerationProvider,
+  reportNowFromEnv,
+  runGenerateReport,
+} from './report';
 
 type SqlExecutor = postgres.Sql | postgres.TransactionSql;
+
+export async function createProject(formData: FormData): Promise<void> {
+  const name = requireFormValue(formData, 'name').trim();
+  if (!name) {
+    throw new Error('name is required.');
+  }
+  const slug = validateProjectSlug(requireFormValue(formData, 'slug').trim());
+  const description = formData.get('description')?.toString().trim() || null;
+  const identifiers = deriveProjectIdentifiers(slug);
+
+  await withSql(async (sql) => {
+    const adminUserId = requireAdminUserId();
+    await sql`LOAD 'age'`;
+    await sql`SET search_path = ag_catalog, "$user", public`;
+    await sql.begin(async (tx) => {
+      const existing = (await tx`
+        SELECT slug FROM public.projects WHERE slug = ${slug}
+      `) as Array<{ slug: string }>;
+      if (existing.length > 0) {
+        throw new Error(`Project slug already exists: ${slug}`);
+      }
+
+      const projects = (await tx`
+        INSERT INTO public.projects (slug, name, description, graph_name, storage_prefix)
+        VALUES (
+          ${slug},
+          ${name},
+          ${description},
+          ${identifiers.graphName},
+          ${identifiers.storagePrefix}
+        )
+        RETURNING id::text
+      `) as Array<{ id: string }>;
+      const project = projects[0];
+      if (!project) {
+        throw new Error('Project creation failed.');
+      }
+
+      await tx`
+        INSERT INTO public.project_members (project_id, user_id, role)
+        VALUES (${project.id}, ${adminUserId}, 'admin')
+        ON CONFLICT (project_id, user_id) DO UPDATE SET role = 'admin'
+      `;
+
+      await tx.unsafe(
+        `SELECT create_graph('${identifiers.graphName}') WHERE NOT EXISTS (SELECT 1 FROM ag_catalog.ag_graph WHERE name = '${identifiers.graphName}')`,
+      );
+    });
+  });
+
+  await ensureProjectStoragePrefixes(slug);
+  revalidatePath('/projects');
+}
+
+export async function createDataSource(formData: FormData): Promise<void> {
+  const projectSlug = requireFormValue(formData, 'projectSlug');
+  const name = requireFormValue(formData, 'name').trim();
+  if (!name) {
+    throw new Error('name is required.');
+  }
+  const sourceType = requireSourceType(requireFormValue(formData, 'sourceType'));
+  const scope = requireFormValue(formData, 'scope').trim();
+  if (!scope) {
+    throw new Error('scope is required.');
+  }
+  const config = buildDataSourceConfig(sourceType, scope);
+
+  await withSql(async (sql) => {
+    const project = await requireAdminProject(sql, projectSlug);
+    await sql`
+      INSERT INTO public.data_sources (project_id, owner_user_id, source_type, name, config)
+      VALUES (
+        ${project.id},
+        ${project.adminUserId},
+        ${sourceType},
+        ${name},
+        ${sql.json(config as postgres.JSONValue)}
+      )
+    `;
+  });
+
+  revalidateProject(projectSlug);
+}
+
+export async function updateDataSource(formData: FormData): Promise<void> {
+  const projectSlug = requireFormValue(formData, 'projectSlug');
+  const dataSourceId = requireFormValue(formData, 'dataSourceId');
+  const name = requireFormValue(formData, 'name').trim();
+  if (!name) {
+    throw new Error('name is required.');
+  }
+  const scope = requireFormValue(formData, 'scope').trim();
+  if (!scope) {
+    throw new Error('scope is required.');
+  }
+
+  await withSql(async (sql) => {
+    const project = await requireAdminProject(sql, projectSlug);
+    const rows = (await sql`
+      SELECT id::text, source_type
+      FROM public.data_sources
+      WHERE id = ${dataSourceId}
+        AND project_id = ${project.id}
+        AND enabled = true
+    `) as Array<{ id: string; source_type: SourceType }>;
+    const dataSource = rows[0];
+    if (!dataSource) {
+      throw new Error('Data source not found in project.');
+    }
+    const config = buildDataSourceConfig(dataSource.source_type, scope);
+    await sql`
+      UPDATE public.data_sources
+      SET name = ${name},
+          config = ${sql.json(config as postgres.JSONValue)},
+          updated_at = now()
+      WHERE id = ${dataSource.id}
+        AND project_id = ${project.id}
+    `;
+  });
+
+  revalidateProject(projectSlug);
+}
 
 export async function retryFailedQueue(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
@@ -41,6 +188,52 @@ export async function retryFailedQueue(formData: FormData): Promise<void> {
           ${dataSourceFilter}
           AND status IN ('failed', 'held')
       `;
+    });
+  });
+  revalidateProject(projectSlug);
+}
+
+export async function collectDataSource(formData: FormData): Promise<void> {
+  const projectSlug = requireFormValue(formData, 'projectSlug');
+  const dataSourceId = requireFormValue(formData, 'dataSourceId');
+  await withSql(async (sql) => {
+    const project = await requireAdminProject(sql, projectSlug);
+    const rows = (await sql`
+      SELECT id::text, source_type
+      FROM public.data_sources
+      WHERE id = ${dataSourceId}
+        AND project_id = ${project.id}
+        AND enabled = true
+    `) as Array<{ id: string; source_type: SourceType }>;
+    const dataSource = rows[0];
+    if (!dataSource) {
+      throw new Error('Data source not found in project.');
+    }
+    if (dataSource.source_type !== 'web') {
+      throw new Error(`Collect from admin UI is not supported for ${dataSource.source_type} yet.`);
+    }
+    await collectWebUrlSource({
+      projectSlug,
+      repository: new AdminCollectionRepository(sql, dataSourceId),
+      storage: createCollectionStorageFromEnv(),
+    });
+  });
+  revalidateProject(projectSlug);
+}
+
+export async function generatePrivateReport(formData: FormData): Promise<void> {
+  const projectSlug = requireFormValue(formData, 'projectSlug');
+  await withSql(async (sql) => {
+    await requireAdminProject(sql, projectSlug);
+    await runGenerateReport({
+      options: {
+        generatedBy: 'admin-ui',
+        now: reportNowFromEnv(process.env),
+        provider: createReportProvider(),
+        repository: createPostgresReportRepository(sql),
+        storage: createReportStorageFromEnv(),
+      },
+      projectSlug,
     });
   });
   revalidateProject(projectSlug);
@@ -128,6 +321,193 @@ async function withSql<T>(callback: (sql: postgres.Sql) => Promise<T>): Promise<
   return callback(getRequiredAdminSql());
 }
 
+class AdminCollectionRepository implements CollectionRepository {
+  constructor(
+    private readonly sql: postgres.Sql,
+    private readonly dataSourceId: string,
+  ) {}
+
+  async lookupProjectBySlug(slug: string): Promise<ProjectRecord | undefined> {
+    const rows = (await this.sql`
+      SELECT id::text AS id, slug
+      FROM public.projects
+      WHERE slug = ${slug}
+    `) as ProjectRecord[];
+    return rows[0];
+  }
+
+  async findDataSources(projectId: string, sourceType?: SourceType): Promise<DataSourceRecord[]> {
+    if (sourceType !== 'web') {
+      return [];
+    }
+    return (await this.sql`
+      SELECT
+        config,
+        enabled,
+        id::text AS id,
+        ingest_window AS "ingestWindow",
+        project_id::text AS "projectId",
+        source_type AS "sourceType"
+      FROM public.data_sources
+      WHERE project_id = ${projectId}
+        AND enabled = true
+        AND source_type = ${sourceType}
+        AND id = ${this.dataSourceId}
+    `) as DataSourceRecord[];
+  }
+
+  async lookupRawDocument(input: {
+    projectId: string;
+    sourceId: string;
+    sourceType: SourceType;
+  }): Promise<RawDocumentRecord | undefined> {
+    const rows = (await this.sql`
+      SELECT
+        id::text AS id,
+        ingest_status AS "ingestStatus",
+        source_id AS "sourceId",
+        source_type AS "sourceType"
+      FROM public.raw_documents
+      WHERE project_id = ${input.projectId}
+        AND source_type = ${input.sourceType}
+        AND source_id = ${input.sourceId}
+    `) as RawDocumentRecord[];
+    return rows[0];
+  }
+
+  async findSameHashCandidates(input: {
+    contentHash: string;
+    projectId: string;
+    sourceType: SourceType;
+  }): Promise<Array<{ id: string; sourceId: string; sourceType: SourceType }>> {
+    return (await this.sql`
+      SELECT id::text AS id, source_id AS "sourceId", source_type AS "sourceType"
+      FROM public.raw_documents
+      WHERE project_id = ${input.projectId}
+        AND content_hash = ${input.contentHash}
+      ORDER BY created_at
+    `) as Array<{ id: string; sourceId: string; sourceType: SourceType }>;
+  }
+
+  async upsertRawDocument(input: RawDocumentInput): Promise<RawDocumentRecord> {
+    const rows = (await this.sql`
+      INSERT INTO public.raw_documents (
+        project_id,
+        source_type,
+        source_id,
+        source_uri,
+        storage_uri,
+        mime_type,
+        byte_size,
+        content_hash,
+        ingest_status,
+        metadata
+      )
+      VALUES (
+        ${input.projectId},
+        ${input.sourceType},
+        ${input.sourceId},
+        ${input.sourceUri},
+        ${input.storageUri},
+        ${input.mimeType},
+        ${input.byteSize},
+        ${input.contentHash},
+        'fetched',
+        ${this.sql.json(input.metadata as postgres.JSONValue)}
+      )
+      ON CONFLICT (project_id, source_type, source_id)
+      DO UPDATE SET
+        source_uri = EXCLUDED.source_uri,
+        storage_uri = EXCLUDED.storage_uri,
+        mime_type = EXCLUDED.mime_type,
+        byte_size = EXCLUDED.byte_size,
+        content_hash = EXCLUDED.content_hash,
+        ingest_status = 'fetched',
+        ingest_error = null,
+        hold_reason = null,
+        metadata = EXCLUDED.metadata,
+        updated_at = now()
+      RETURNING
+        id::text AS id,
+        ingest_status AS "ingestStatus",
+        source_id AS "sourceId",
+        source_type AS "sourceType"
+    `) as RawDocumentRecord[];
+    const rawDocument = rows[0];
+    if (!rawDocument) {
+      throw new Error(`Failed to upsert raw document: ${input.sourceType}:${input.sourceId}`);
+    }
+    return rawDocument;
+  }
+
+  async linkDataSource(input: LinkDataSourceInput): Promise<void> {
+    await this.sql`
+      INSERT INTO public.raw_document_data_sources (
+        raw_document_id,
+        data_source_id,
+        project_id,
+        match_reason,
+        metadata
+      )
+      VALUES (
+        ${input.rawDocumentId},
+        ${input.dataSourceId},
+        ${input.projectId},
+        ${input.matchReason},
+        ${this.sql.json(input.metadata as postgres.JSONValue)}
+      )
+      ON CONFLICT (raw_document_id, data_source_id)
+      DO UPDATE SET
+        last_seen_at = now(),
+        match_reason = EXCLUDED.match_reason,
+        metadata = EXCLUDED.metadata
+    `;
+  }
+
+  async queueCandidate(input: QueueCandidateInput): Promise<void> {
+    await this.sql`
+      INSERT INTO public.ingestion_queue (
+        project_id,
+        data_source_id,
+        raw_document_id,
+        target_id,
+        target_uri,
+        status,
+        reason
+      )
+      VALUES (
+        ${input.projectId},
+        ${input.dataSourceId},
+        ${input.rawDocumentId},
+        ${input.targetId},
+        ${input.targetUri},
+        'pending',
+        'web-url-collection'
+      )
+      ON CONFLICT (project_id, raw_document_id)
+      DO UPDATE SET
+        data_source_id = EXCLUDED.data_source_id,
+        target_id = EXCLUDED.target_id,
+        target_uri = EXCLUDED.target_uri,
+        status = EXCLUDED.status,
+        attempts = 0,
+        last_error = null,
+        hold_reason = null,
+        reason = EXCLUDED.reason,
+        updated_at = now()
+    `;
+  }
+
+  async markDataSourceChecked(dataSourceId: string): Promise<void> {
+    await this.sql`
+      UPDATE public.data_sources
+      SET last_checked_at = now(),
+          updated_at = now()
+      WHERE id = ${dataSourceId}
+    `;
+  }
+}
+
 async function requireAdminProject(
   sql: postgres.Sql,
   projectSlug: string,
@@ -135,10 +515,7 @@ async function requireAdminProject(
   if (process.env.PUFU_LENS_ENABLE_ADMIN_ACTIONS !== 'true') {
     throw new Error('Admin actions are disabled.');
   }
-  const adminUserId = process.env.PUFU_LENS_ADMIN_USER_ID;
-  if (!adminUserId) {
-    throw new Error('PUFU_LENS_ADMIN_USER_ID is required for admin actions.');
-  }
+  const adminUserId = requireAdminUserId();
   const rows = (await sql`
     SELECT projects.id::text AS id, projects.slug, project_members.user_id::text AS admin_user_id
     FROM public.projects
@@ -152,6 +529,104 @@ async function requireAdminProject(
     throw new Error(`Admin access denied for project slug: ${projectSlug}`);
   }
   return { adminUserId: project.admin_user_id, id: project.id, slug: project.slug };
+}
+
+function requireAdminUserId(): string {
+  if (process.env.PUFU_LENS_ENABLE_ADMIN_ACTIONS !== 'true') {
+    throw new Error('Admin actions are disabled.');
+  }
+  const adminUserId = process.env.PUFU_LENS_ADMIN_USER_ID;
+  if (!adminUserId) {
+    throw new Error('PUFU_LENS_ADMIN_USER_ID is required for admin actions.');
+  }
+  return adminUserId;
+}
+
+function requireSourceType(value: string): SourceType {
+  if (value === 'drive' || value === 'github' || value === 'gmail' || value === 'web') {
+    return value;
+  }
+  throw new Error(`Unsupported source type: ${value}`);
+}
+
+function buildDataSourceConfig(sourceType: SourceType, scope: string): Record<string, unknown> {
+  if (sourceType === 'web') {
+    return {
+      source: 'admin-ui',
+      urls: splitScopeList(scope),
+    };
+  }
+  if (sourceType === 'github') {
+    return {
+      repositories: splitScopeList(scope),
+      source: 'admin-ui',
+    };
+  }
+  if (sourceType === 'drive') {
+    return {
+      folderId: scope,
+      source: 'admin-ui',
+    };
+  }
+  return {
+    query: scope,
+    source: 'admin-ui',
+  };
+}
+
+function createReportProvider(): ReportGenerationProvider {
+  const fallbackProvider = createExtractiveReportProvider();
+  if (process.env.GEMINI_API_KEY && process.env.GEMINI_CHAT_MODEL) {
+    const geminiProvider = createGeminiReportProvider({
+      apiKey: process.env.GEMINI_API_KEY,
+      model: process.env.GEMINI_CHAT_MODEL,
+    });
+    return {
+      async generate(input) {
+        try {
+          return await geminiProvider.generate(input);
+        } catch (error) {
+          console.warn(
+            'Gemini report generation failed; falling back to extractive provider.',
+            error instanceof Error ? error.message : String(error),
+          );
+          return fallbackProvider.generate(input);
+        }
+      },
+    };
+  }
+  return fallbackProvider;
+}
+
+function createCollectionStorageFromEnv(): LocalFsObjectStorage {
+  const driver = process.env.STORAGE_DRIVER ?? process.env.OBJECT_STORAGE_DRIVER ?? 'local';
+  if (driver !== 'local') {
+    throw new Error(`Unsupported object storage driver for collection: ${driver}`);
+  }
+  const root = process.env.STORAGE_ROOT ?? process.env.LOCAL_STORAGE_ROOT;
+  if (!root) {
+    throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required for collection.');
+  }
+  return new LocalFsObjectStorage(root);
+}
+
+function splitScopeList(value: string): readonly string[] {
+  const items = value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (items.length === 0) {
+    throw new Error('scope is required.');
+  }
+  return items;
+}
+
+async function ensureProjectStoragePrefixes(projectSlug: string): Promise<void> {
+  const storageRoot = process.env.STORAGE_ROOT ?? process.env.LOCAL_STORAGE_ROOT;
+  if (!storageRoot) {
+    return;
+  }
+  await new LocalFsObjectStorage(storageRoot).ensureProjectPrefixes(projectSlug);
 }
 
 async function lookupProjectParserVersion(
@@ -203,4 +678,5 @@ function revalidateProject(projectSlug: string): void {
   revalidatePath(`/projects/${projectSlug}/admin/data-sources`);
   revalidatePath(`/projects/${projectSlug}/admin/ingestion`);
   revalidatePath(`/projects/${projectSlug}/admin/parser-profiles`);
+  revalidatePath(`/projects/${projectSlug}/reports`);
 }
