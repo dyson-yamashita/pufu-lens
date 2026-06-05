@@ -4,6 +4,7 @@ import type { ObjectInfo, ObjectStorage } from '../../../packages/storage/src/ob
 import type { ChatRepository } from '../../web/src/chat.ts';
 import type { ReportRepository } from '../../web/src/report.ts';
 import {
+  type CrossProjectInvestigationRepository,
   createPufuLensMastraRuntime,
   type MastraProjectContext,
   mastraAgentIds,
@@ -121,17 +122,97 @@ function createReportRepository(): ReportRepository & { insertedReports: number 
   };
 }
 
+function createCrossProjectInvestigationRepository(): CrossProjectInvestigationRepository {
+  return {
+    async dataSourceStatus({ limit, sourceTypes }) {
+      const dataSources = [
+        {
+          enabled: true,
+          lastCheckedAt: '2026-06-04T12:00:00.000Z',
+          name: 'GitHub Issues',
+          projectName: 'Sample A',
+          projectSlug: 'sample-a',
+          sourceType: 'github',
+        },
+        {
+          enabled: false,
+          lastCheckedAt: null,
+          name: 'Drive Docs',
+          projectName: 'Sample B',
+          projectSlug: 'sample-b',
+          sourceType: 'drive',
+        },
+      ];
+      return dataSources
+        .filter((source) => !sourceTypes?.length || sourceTypes.includes(source.sourceType))
+        .slice(0, limit);
+    },
+    async listProjects({ limit }) {
+      return [
+        {
+          description: 'Alpha project',
+          documentCount: 2,
+          enabledDataSourceCount: 1,
+          name: 'Sample A',
+          rawDocumentCount: 3,
+          slug: 'sample-a',
+        },
+        {
+          description: 'Beta project',
+          documentCount: 1,
+          enabledDataSourceCount: 0,
+          name: 'Sample B',
+          rawDocumentCount: 1,
+          slug: 'sample-b',
+        },
+      ].slice(0, limit);
+    },
+    async searchDocuments({ limit, projectSlugs, query }) {
+      assert.match(query, /仕様|issue/);
+      const sources = [
+        {
+          canonicalUri: 'https://example.com/a/spec',
+          docType: 'drive_doc',
+          documentId: 'doc-a',
+          occurredAt: '2026-06-04T12:00:00.000Z',
+          projectName: 'Sample A',
+          projectSlug: 'sample-a',
+          summary: '仕様変更の要約',
+          title: 'Spec Update',
+        },
+        {
+          canonicalUri: 'https://example.com/b/issues/1',
+          docType: 'issue',
+          documentId: 'doc-b',
+          occurredAt: null,
+          projectName: 'Sample B',
+          projectSlug: 'sample-b',
+          summary: '関連 issue の要約',
+          title: 'Issue Update',
+        },
+      ];
+      return sources
+        .filter((source) => !projectSlugs?.length || projectSlugs.includes(source.projectSlug))
+        .slice(0, limit);
+    },
+  };
+}
+
 const chatRepository = createChatRepository();
+const crossProjectInvestigationRepository = createCrossProjectInvestigationRepository();
 const reportRepository = createReportRepository();
 const storage = new MemoryStorage();
 const runtime = createPufuLensMastraRuntime({
   chatRepository,
+  crossProjectInvestigationRepository,
   reportRepository,
   reportStorage: storage,
 });
 
+assert.equal(runtime.crossProjectResearchAgent?.id, mastraAgentIds.crossProjectResearch);
 assert.equal(runtime.projectChatAgent.id, mastraAgentIds.projectChat);
 assert.equal(runtime.generateReportWorkflow.id, mastraWorkflowIds.generateReport);
+assert.ok(runtime.mastra.getAgentById(mastraAgentIds.crossProjectResearch));
 assert.ok(runtime.mastra.getAgentById(mastraAgentIds.projectChat));
 assert.ok(runtime.mastra.getWorkflow('generateReportWorkflow'));
 
@@ -139,8 +220,56 @@ assert.deepEqual(
   Object.values(runtime.projectChatTools)
     .map((tool) => tool.id)
     .sort(),
-  Object.values(mastraToolIds).sort(),
+  [
+    mastraToolIds.documentFetch,
+    mastraToolIds.graphQuery,
+    mastraToolIds.parsedDocFetch,
+    mastraToolIds.pufuScoreGenerate,
+    mastraToolIds.rawDocumentFetch,
+    mastraToolIds.vectorSearch,
+  ].sort(),
 );
+
+assert.deepEqual(
+  Object.values(runtime.crossProjectResearchTools ?? {})
+    .map((tool) => tool.id)
+    .sort(),
+  [
+    mastraToolIds.crossProjectDataSourceStatus,
+    mastraToolIds.crossProjectDocumentSearch,
+    mastraToolIds.crossProjectList,
+  ].sort(),
+);
+
+const projectInventory = await runtime.crossProjectResearchTools?.listProjects.execute?.(
+  {
+    limit: 10,
+  },
+  {} as never,
+);
+assert.equal(projectInventory?.projects.length, 2);
+assert.equal(projectInventory?.projects[0]?.slug, 'sample-a');
+
+const crossProjectSearch = await runtime.crossProjectResearchTools?.documentSearch.execute?.(
+  {
+    limit: 10,
+    projectSlugs: ['sample-b'],
+    query: '仕様 issue',
+  },
+  {} as never,
+);
+assert.equal(crossProjectSearch?.sources.length, 1);
+assert.equal(crossProjectSearch?.sources[0]?.projectSlug, 'sample-b');
+
+const dataSourceStatus = await runtime.crossProjectResearchTools?.dataSourceStatus.execute?.(
+  {
+    limit: 10,
+    sourceTypes: ['github'],
+  },
+  {} as never,
+);
+assert.equal(dataSourceStatus?.dataSources.length, 1);
+assert.equal(dataSourceStatus?.dataSources[0]?.sourceType, 'github');
 
 const requestContext = new RequestContext<MastraProjectContext>([['projectId', 'project-a']]);
 const vectorSearch = await runtime.projectChatTools.vectorSearch.execute?.(

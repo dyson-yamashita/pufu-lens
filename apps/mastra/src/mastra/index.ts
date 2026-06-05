@@ -10,6 +10,9 @@ import {
   createReportStorageFromEnv,
 } from '../../../web/src/report.ts';
 import {
+  type CrossProjectInvestigationRepository,
+  createCrossProjectResearchAgent,
+  createCrossProjectResearchTools,
   createGenerateReportWorkflow,
   createProjectChatAgent,
   createProjectChatTools,
@@ -23,6 +26,15 @@ const chatRepository = databaseUrl
 const reportRepository = databaseUrl
   ? createPostgresReportRepository(sql)
   : unavailableReportRepository('DATABASE_URL');
+const crossProjectInvestigationRepository = databaseUrl
+  ? createPostgresCrossProjectInvestigationRepository(sql)
+  : unavailableCrossProjectInvestigationRepository('DATABASE_URL');
+const crossProjectResearchTools = createCrossProjectResearchTools(
+  crossProjectInvestigationRepository,
+);
+const crossProjectResearchAgent = createCrossProjectResearchAgent({
+  tools: crossProjectResearchTools,
+});
 const projectChatTools = createProjectChatTools(chatRepository);
 const projectChatAgent = createProjectChatAgent({ tools: projectChatTools });
 const generateReportWorkflow = createGenerateReportWorkflow({
@@ -32,9 +44,158 @@ const generateReportWorkflow = createGenerateReportWorkflow({
 });
 
 export const mastra = new Mastra({
-  agents: { projectChatAgent },
+  agents: { crossProjectResearchAgent, projectChatAgent },
   workflows: { generateReportWorkflow },
 });
+
+function createPostgresCrossProjectInvestigationRepository(
+  db: postgres.Sql,
+): CrossProjectInvestigationRepository {
+  return {
+    async dataSourceStatus({ limit, projectSlugs, sourceTypes }) {
+      const rows = (await db`
+        SELECT
+          p.slug AS project_slug,
+          p.name AS project_name,
+          ds.source_type,
+          ds.name,
+          ds.enabled,
+          ds.last_checked_at::text AS last_checked_at
+        FROM public.data_sources ds
+        JOIN public.projects p ON p.id = ds.project_id
+        WHERE true
+          ${projectSlugs?.length ? db`AND p.slug IN ${db(projectSlugs)}` : db``}
+          ${sourceTypes?.length ? db`AND ds.source_type IN ${db(sourceTypes)}` : db``}
+        ORDER BY p.slug, ds.source_type, ds.name
+        LIMIT ${limit}
+      `) as Array<{
+        enabled: boolean;
+        last_checked_at: string | null;
+        name: string;
+        project_name: string;
+        project_slug: string;
+        source_type: string;
+      }>;
+      return rows.map((row) => ({
+        enabled: row.enabled,
+        lastCheckedAt: row.last_checked_at,
+        name: row.name,
+        projectName: row.project_name,
+        projectSlug: row.project_slug,
+        sourceType: row.source_type,
+      }));
+    },
+    async listProjects({ limit }) {
+      const rows = (await db`
+        SELECT
+          p.slug,
+          p.name,
+          p.description,
+          (
+            SELECT count(*)::int
+            FROM public.documents d
+            WHERE d.project_id = p.id
+          ) AS document_count,
+          (
+            SELECT count(*)::int
+            FROM public.raw_documents rd
+            WHERE rd.project_id = p.id
+          ) AS raw_document_count,
+          (
+            SELECT count(*)::int
+            FROM public.data_sources ds
+            WHERE ds.project_id = p.id
+              AND ds.enabled
+          ) AS enabled_data_source_count
+        FROM public.projects p
+        ORDER BY p.slug
+        LIMIT ${limit}
+      `) as Array<{
+        description: string | null;
+        document_count: number;
+        enabled_data_source_count: number;
+        name: string;
+        raw_document_count: number;
+        slug: string;
+      }>;
+      return rows.map((row) => ({
+        description: row.description,
+        documentCount: row.document_count,
+        enabledDataSourceCount: row.enabled_data_source_count,
+        name: row.name,
+        rawDocumentCount: row.raw_document_count,
+        slug: row.slug,
+      }));
+    },
+    async searchDocuments({ limit, projectSlugs, query, sourceTypes }) {
+      const docTypes = projectDocTypes(sourceTypes);
+      const escapedQuery = escapeIlikePattern(query);
+      const likeQuery = `%${escapedQuery}%`;
+      const rows = (await db`
+        SELECT
+          p.slug AS project_slug,
+          p.name AS project_name,
+          d.id::text AS document_id,
+          d.doc_type,
+          coalesce(d.title, 'Untitled') AS title,
+          coalesce(d.summary, '') AS summary,
+          coalesce(d.canonical_uri, '') AS canonical_uri,
+          d.occurred_at::text AS occurred_at
+        FROM public.documents d
+        JOIN public.projects p ON p.id = d.project_id
+        WHERE (
+          d.title ILIKE ${likeQuery}
+          OR d.summary ILIKE ${likeQuery}
+          OR d.canonical_uri ILIKE ${likeQuery}
+        )
+          ${projectSlugs?.length ? db`AND p.slug IN ${db(projectSlugs)}` : db``}
+          ${docTypes.length ? db`AND d.doc_type IN ${db(docTypes)}` : db``}
+        ORDER BY d.occurred_at DESC NULLS LAST, d.updated_at DESC
+        LIMIT ${limit}
+      `) as Array<{
+        canonical_uri: string;
+        doc_type: string;
+        document_id: string;
+        occurred_at: string | null;
+        project_name: string;
+        project_slug: string;
+        summary: string;
+        title: string;
+      }>;
+      return rows.map((row) => ({
+        canonicalUri: row.canonical_uri,
+        docType: row.doc_type,
+        documentId: row.document_id,
+        occurredAt: row.occurred_at,
+        projectName: row.project_name,
+        projectSlug: row.project_slug,
+        summary: row.summary,
+        title: row.title,
+      }));
+    },
+  };
+}
+
+function escapeIlikePattern(query: string): string {
+  return query.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
+
+function projectDocTypes(sourceTypes: readonly string[] | undefined): string[] {
+  const docTypes = new Set<string>();
+  for (const sourceType of sourceTypes ?? []) {
+    if (sourceType === 'drive') {
+      docTypes.add('drive_doc');
+    } else if (sourceType === 'github') {
+      docTypes.add('issue');
+      docTypes.add('pull_request');
+    } else if (sourceType === 'gmail') {
+      docTypes.add('email');
+    } else if (sourceType === 'web') {
+      docTypes.add('web_page');
+    }
+  }
+  return [...docTypes];
+}
 
 function createStorage(): ObjectStorage {
   try {
@@ -64,6 +225,16 @@ function unavailableReportRepository(envName: string): ReportRepository {
     lookupProjectMember: unavailableMethod(envName),
     readReportMetadata: unavailableMethod(envName),
     setReportPublicState: unavailableMethod(envName),
+  };
+}
+
+function unavailableCrossProjectInvestigationRepository(
+  envName: string,
+): CrossProjectInvestigationRepository {
+  return {
+    dataSourceStatus: unavailableMethod(envName),
+    listProjects: unavailableMethod(envName),
+    searchDocuments: unavailableMethod(envName),
   };
 }
 
