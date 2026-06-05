@@ -1,4 +1,4 @@
-@import '../node_modules/@goto-lab/pufu-editor/dist/index.css';
+@import "../node_modules/@goto-lab/pufu-editor/dist/index.css";
 
 :root {
   color-scheme: dark;
@@ -730,9 +730,9 @@ th {
   min-width: 1120px;
 }
 
-.pufu-score-canvas textarea {
-  background: transparent !important;
-  color: #374151 !important;
+.pufu-report-panel .pufu-score-frame .pufu-score-canvas textarea {
+  background: transparent;
+  color: #374151;
 }
 
 .pufu-score-canvas textarea:disabled {

@@ -3,12 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import type postgres from 'postgres';
 import {
-  deriveProjectIdentifiers,
-  validateProjectSlug,
-} from '../../../packages/project-tenancy/src/project-tenancy.ts';
-import {
-  collectWebUrlSource,
   type CollectionRepository,
+  collectWebUrlSource,
   type DataSourceRecord,
   type LinkDataSourceInput,
   type ProjectRecord,
@@ -16,6 +12,10 @@ import {
   type RawDocumentInput,
   type RawDocumentRecord,
 } from '../../../packages/ingestion/dist/index.js';
+import {
+  deriveProjectIdentifiers,
+  validateProjectSlug,
+} from '../../../packages/project-tenancy/src/project-tenancy.ts';
 import { LocalFsObjectStorage } from '../../../packages/storage/src/local-fs.ts';
 import type { SourceType } from './admin-data';
 import { getRequiredAdminSql } from './admin-sql';
@@ -42,9 +42,10 @@ export async function createProject(formData: FormData): Promise<void> {
 
   await withSql(async (sql) => {
     const adminUserId = requireAdminUserId();
-    await sql`LOAD 'age'`;
-    await sql`SET search_path = ag_catalog, "$user", public`;
     await sql.begin(async (tx) => {
+      await tx`LOAD 'age'`;
+      await tx`SET search_path = ag_catalog, "$user", public`;
+
       const existing = (await tx`
         SELECT slug FROM public.projects WHERE slug = ${slug}
       `) as Array<{ slug: string }>;
@@ -74,9 +75,12 @@ export async function createProject(formData: FormData): Promise<void> {
         ON CONFLICT (project_id, user_id) DO UPDATE SET role = 'admin'
       `;
 
-      await tx.unsafe(
-        `SELECT create_graph('${identifiers.graphName}') WHERE NOT EXISTS (SELECT 1 FROM ag_catalog.ag_graph WHERE name = '${identifiers.graphName}')`,
-      );
+      await tx`
+        SELECT create_graph(${identifiers.graphName})
+        WHERE NOT EXISTS (
+          SELECT 1 FROM ag_catalog.ag_graph WHERE name = ${identifiers.graphName}
+        )
+      `;
     });
   });
 

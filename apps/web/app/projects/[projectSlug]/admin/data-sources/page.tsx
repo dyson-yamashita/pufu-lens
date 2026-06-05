@@ -1,5 +1,5 @@
-import type { SourceType } from '../../../../../src/admin-data';
 import { createDataSource, updateDataSource } from '../../../../../src/admin-actions';
+import type { SourceType } from '../../../../../src/admin-data';
 import { getAdminProject, getSourceTypeCounts } from '../../../../../src/admin-db';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
 import {

@@ -40,8 +40,7 @@ const report = {
     },
     {
       id: 'progress',
-      markdown:
-        '仕様更新とレポート UI の情報が増えており、判断材料は蓄積されつつあります。',
+      markdown: '仕様更新とレポート UI の情報が増えており、判断材料は蓄積されつつあります。',
       metrics: { discussion_points: 1, documents: 2, risk_signals: 1 },
       title: '進行状況',
     },

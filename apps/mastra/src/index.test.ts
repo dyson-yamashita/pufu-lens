@@ -212,10 +212,7 @@ const generatedScore = pufuScore?.score as {
 assert.match(generatedScore.gainingGoal?.text ?? '', /プ譜エディターを試す人を増やす/);
 assert.match(generatedScore.elements?.environment?.text ?? '', /来場者/);
 assert.match(generatedScore.purposes?.[0]?.measures[0]?.text ?? '', /ブース/);
-assert.doesNotMatch(
-  generatedScore.purposes?.[0]?.measures[0]?.text ?? '',
-  /引用本文が続きます/,
-);
+assert.doesNotMatch(generatedScore.purposes?.[0]?.measures[0]?.text ?? '', /引用本文が続きます/);
 assert.doesNotMatch(JSON.stringify(generatedScore), /データソースから|根拠資料/);
 
 const rawDocumentFetch = await runtime.projectChatTools.rawDocumentFetch.execute?.(

@@ -6,6 +6,17 @@ import type {
 
 const emptyComment = { color: 'blue' as const, text: '' };
 
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+    const random = (Math.random() * 16) | 0;
+    const value = char === 'x' ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
+
 export type PufuScoreModel = {
   elements: {
     businessScheme: PufuBaseModel;
@@ -126,7 +137,10 @@ function createExhibitionPufuScore(
       ]),
       purpose('出展後の学びが次の活動につながっている', [
         measure('出展で得た反応、質問、説明の手応えをプ譜友の会で共有する。', 'yellow'),
-        measure(`${sourceLabel(primary)} を振り返り、次のイベントやエディター改善に反映する。`, 'green'),
+        measure(
+          `${sourceLabel(primary)} を振り返り、次のイベントやエディター改善に反映する。`,
+          'green',
+        ),
       ]),
     ],
     winCondition: objective(
@@ -312,11 +326,11 @@ function truncateText(text: string, maxLength: number): string {
 }
 
 function objective(text: string) {
-  return { comment: emptyComment, text, uuid: crypto.randomUUID() };
+  return { comment: emptyComment, text, uuid: generateUUID() };
 }
 
 function purpose(text: string, measures: PufuMeasureModel[]) {
-  return { comment: emptyComment, measures, text, uuid: crypto.randomUUID() };
+  return { comment: emptyComment, measures, text, uuid: generateUUID() };
 }
 
 function measure(text: string, color: PufuMeasureModel['color']) {
@@ -324,10 +338,10 @@ function measure(text: string, color: PufuMeasureModel['color']) {
     color,
     comment: emptyComment,
     text,
-    uuid: crypto.randomUUID(),
+    uuid: generateUUID(),
   };
 }
 
 function element(text: string) {
-  return { comment: emptyComment, text, uuid: crypto.randomUUID() };
+  return { comment: emptyComment, text, uuid: generateUUID() };
 }

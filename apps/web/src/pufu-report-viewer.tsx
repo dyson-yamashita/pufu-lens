@@ -1,8 +1,8 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useMemo } from 'react';
 import type { ComponentType } from 'react';
+import { useMemo } from 'react';
 import { createPufuScoreFromReport, type PufuScoreModel } from './pufu-score';
 import type { PrivateReportJsonV1 } from './report';
 
