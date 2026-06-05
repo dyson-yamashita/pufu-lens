@@ -314,13 +314,19 @@ function primarySource(sources: readonly PufuSourceCandidate[]): PufuSourceCandi
   return source;
 }
 
-function sourceTitleFromSnippet(snippet: string): string {
+function sourceTitleFromSnippet(snippet: string | null | undefined): string {
+  if (!snippet) {
+    return '';
+  }
   const normalized = snippet.replace(/\s+/g, ' ').trim();
   const [title] = normalized.split(/[:：]/);
   return title && title.length < normalized.length ? truncateText(title, 120) : '';
 }
 
-function truncateText(text: string, maxLength: number): string {
+function truncateText(text: string | null | undefined, maxLength: number): string {
+  if (!text) {
+    return '';
+  }
   const normalized = text.replace(/\s+/g, ' ').trim();
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3)}...` : normalized;
 }
