@@ -248,7 +248,9 @@ test('scenario: public user reads redacted report and receives scoped chat answe
   await expect(page.getByTestId('public-chat-result')).toContainText('未公開情報');
 });
 
-test('scenario: public and publish APIs reject unsafe client input', async ({ request }) => {
+test('scenario: hostile client sends unsafe input and public/publish APIs reject it', async ({
+  request,
+}) => {
   const unsafePublicResponse = await request.get(
     '/api/public/projects/%2E%2E%2Fsample-a/reports/report-a',
   );
