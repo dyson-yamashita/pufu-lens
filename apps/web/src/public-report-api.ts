@@ -21,6 +21,10 @@ const dailyRateLimiter = createPublicChatMemoryRateLimiter({
   limit: parseEnvInt(process.env.PUFU_LENS_PUBLIC_CHAT_DAILY_LIMIT, 50),
   windowMs: 24 * 60 * 60_000,
 });
+const publicChatQuestionMaxLength = parseEnvInt(
+  process.env.PUFU_LENS_PUBLIC_CHAT_QUESTION_MAX_LENGTH,
+  2000,
+);
 
 export async function handlePublicReportGet(input: {
   readonly projectSlug: string;
@@ -70,6 +74,13 @@ export async function handlePublicChatPost(
   if (!question) {
     return publicChatErrorResponse('invalid_request', 'question is required', 400);
   }
+  if (question.length > publicChatQuestionMaxLength) {
+    return publicChatErrorResponse(
+      'public_chat_question_too_long',
+      `question must be ${publicChatQuestionMaxLength} characters or less`,
+      413,
+    );
+  }
 
   try {
     const artifacts = await getPublicReportArtifacts({
@@ -115,18 +126,7 @@ export async function handlePublicChatPost(
 
 function trustedClientIp(request: NextRequest): string {
   const nextRequestIp = (request as NextRequest & { readonly ip?: string }).ip?.trim();
-  if (nextRequestIp) {
-    return nextRequestIp;
-  }
-
-  const xRealIp = request.headers.get('x-real-ip')?.trim();
-  if (xRealIp) {
-    return xRealIp;
-  }
-
-  const forwardedFor = request.headers.get('x-forwarded-for');
-  const firstForwardedIp = forwardedFor?.split(',')[0]?.trim();
-  return firstForwardedIp || 'unknown';
+  return nextRequestIp || 'anonymous';
 }
 
 function parseEnvInt(value: string | undefined, fallback: number): number {

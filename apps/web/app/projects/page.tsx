@@ -5,8 +5,13 @@ import { ActionForm, PendingSubmitButton } from '../../src/form-buttons';
 import { AppShell, MetricStrip, PageHeader, StatusBadge } from '../../src/ui';
 
 export default async function ProjectsPage() {
-  const [projects, publicProjects] = await Promise.all([listAdminProjects(), listPublicProjects()]);
-  const canCreateProject = process.env.PUFU_LENS_ENABLE_PROJECT_CREATE_UI === 'true';
+  const canShowAdminProjects = process.env.PUFU_LENS_ENABLE_ADMIN_PROJECT_LIST === 'true';
+  const canCreateProject =
+    canShowAdminProjects && process.env.PUFU_LENS_ENABLE_PROJECT_CREATE_UI === 'true';
+  const [projects, publicProjects] = await Promise.all([
+    canShowAdminProjects ? listAdminProjects() : Promise.resolve([]),
+    listPublicProjects(),
+  ]);
 
   return (
     <AppShell active="projects">
@@ -95,46 +100,48 @@ export default async function ProjectsPage() {
           </p>
         )}
       </section>
-      <section className="project-grid" data-testid="project-list">
-        {projects.map((project) => (
-          <article
-            className="project-card"
-            data-testid={`project-card-${project.slug}`}
-            key={project.slug}
-          >
-            <div className="project-card-header">
-              <div>
-                <p className="eyebrow">{project.slug}</p>
-                <h2>{project.name}</h2>
+      {canShowAdminProjects ? (
+        <section className="project-grid" data-testid="project-list">
+          {projects.map((project) => (
+            <article
+              className="project-card"
+              data-testid={`project-card-${project.slug}`}
+              key={project.slug}
+            >
+              <div className="project-card-header">
+                <div>
+                  <p className="eyebrow">{project.slug}</p>
+                  <h2>{project.name}</h2>
+                </div>
+                <StatusBadge status={project.status === 'active' ? 'healthy' : 'failed'} />
               </div>
-              <StatusBadge status={project.status === 'active' ? 'healthy' : 'failed'} />
-            </div>
-            <MetricStrip project={project} />
-            <dl className="detail-list">
-              <div>
-                <dt>Members</dt>
-                <dd>{project.memberCount}</dd>
+              <MetricStrip project={project} />
+              <dl className="detail-list">
+                <div>
+                  <dt>Members</dt>
+                  <dd>{project.memberCount}</dd>
+                </div>
+                <div>
+                  <dt>Last indexed</dt>
+                  <dd>{project.lastIndexed}</dd>
+                </div>
+              </dl>
+              <div className="action-row">
+                <Link
+                  className="secondary-link"
+                  data-testid={`project-open-${project.slug}`}
+                  href={`/projects/${project.slug}/admin/data-sources`}
+                >
+                  Data Sources
+                </Link>
+                <Link className="secondary-link" href={`/projects/${project.slug}/admin/ingestion`}>
+                  Ingestion
+                </Link>
               </div>
-              <div>
-                <dt>Last indexed</dt>
-                <dd>{project.lastIndexed}</dd>
-              </div>
-            </dl>
-            <div className="action-row">
-              <Link
-                className="secondary-link"
-                data-testid={`project-open-${project.slug}`}
-                href={`/projects/${project.slug}/admin/data-sources`}
-              >
-                Data Sources
-              </Link>
-              <Link className="secondary-link" href={`/projects/${project.slug}/admin/ingestion`}>
-                Ingestion
-              </Link>
-            </div>
-          </article>
-        ))}
-      </section>
+            </article>
+          ))}
+        </section>
+      ) : null}
     </AppShell>
   );
 }
