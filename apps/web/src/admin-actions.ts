@@ -17,7 +17,7 @@ import {
   validateProjectSlug,
 } from '../../../packages/project-tenancy/src/project-tenancy.ts';
 import { LocalFsObjectStorage } from '../../../packages/storage/src/local-fs.ts';
-import type { SourceType } from './admin-data';
+import type { ProjectVisibility, SourceType } from './admin-data';
 import { getRequiredAdminSql } from './admin-sql';
 import {
   createExtractiveReportProvider,
@@ -27,6 +27,7 @@ import {
   type ReportGenerationProvider,
   reportNowFromEnv,
   runGenerateReport,
+  writePublicProjectManifest,
 } from './report';
 
 type SqlExecutor = postgres.Sql | postgres.TransactionSql;
@@ -89,7 +90,32 @@ export async function createProject(formData: FormData): Promise<void> {
   });
 
   await ensureProjectStoragePrefixes(slug);
+  await writePublicProjectVisibilityManifest(slug, 'private');
   revalidatePath('/projects');
+}
+
+export async function updateProjectVisibility(formData: FormData): Promise<void> {
+  const projectSlug = requireFormValue(formData, 'projectSlug');
+  const visibility = requireProjectVisibility(requireFormValue(formData, 'visibility'));
+
+  await withSql(async (sql) => {
+    const project = await requireAdminProject(sql, projectSlug);
+    if (visibility === 'private') {
+      await writePublicProjectVisibilityManifest(projectSlug, visibility);
+      await updateProjectVisibilityRow(sql, project.id, visibility);
+      return;
+    }
+
+    await updateProjectVisibilityRow(sql, project.id, visibility);
+    try {
+      await writePublicProjectVisibilityManifest(projectSlug, visibility);
+    } catch (error) {
+      await updateProjectVisibilityRow(sql, project.id, project.visibility);
+      throw error;
+    }
+  });
+
+  revalidateProject(projectSlug);
 }
 
 export async function createDataSource(formData: FormData): Promise<void> {
@@ -519,24 +545,43 @@ class AdminCollectionRepository implements CollectionRepository {
 async function requireAdminProject(
   sql: postgres.Sql,
   projectSlug: string,
-): Promise<{ readonly adminUserId: string; readonly id: string; readonly slug: string }> {
+): Promise<{
+  readonly adminUserId: string;
+  readonly id: string;
+  readonly slug: string;
+  readonly visibility: ProjectVisibility;
+}> {
   if (process.env.PUFU_LENS_ENABLE_ADMIN_ACTIONS !== 'true') {
     throw new Error('Admin actions are disabled.');
   }
   const adminUserId = requireAdminUserId();
   const rows = (await sql`
-    SELECT projects.id::text AS id, projects.slug, project_members.user_id::text AS admin_user_id
+    SELECT
+      projects.id::text AS id,
+      projects.slug,
+      COALESCE(projects.visibility, 'private') AS visibility,
+      project_members.user_id::text AS admin_user_id
     FROM public.projects
     JOIN public.project_members ON project_members.project_id = projects.id
     WHERE projects.slug = ${projectSlug}
       AND project_members.user_id = ${adminUserId}
       AND project_members.role = 'admin'
-  `) as Array<{ admin_user_id: string; id: string; slug: string }>;
+  `) as Array<{
+    admin_user_id: string;
+    id: string;
+    slug: string;
+    visibility: ProjectVisibility;
+  }>;
   const project = rows[0];
   if (!project) {
     throw new Error(`Admin access denied for project slug: ${projectSlug}`);
   }
-  return { adminUserId: project.admin_user_id, id: project.id, slug: project.slug };
+  return {
+    adminUserId: project.admin_user_id,
+    id: project.id,
+    slug: project.slug,
+    visibility: project.visibility,
+  };
 }
 
 function requireAdminUserId(): string {
@@ -555,6 +600,26 @@ function requireSourceType(value: string): SourceType {
     return value;
   }
   throw new Error(`Unsupported source type: ${value}`);
+}
+
+function requireProjectVisibility(value: string): ProjectVisibility {
+  if (value === 'private' || value === 'public') {
+    return value;
+  }
+  throw new Error(`Unsupported project visibility: ${value}`);
+}
+
+async function updateProjectVisibilityRow(
+  sql: postgres.Sql,
+  projectId: string,
+  visibility: ProjectVisibility,
+): Promise<void> {
+  await sql`
+    UPDATE public.projects
+    SET visibility = ${visibility},
+        updated_at = now()
+    WHERE id = ${projectId}
+  `;
 }
 
 function buildDataSourceConfig(sourceType: SourceType, scope: string): Record<string, unknown> {
@@ -635,6 +700,24 @@ async function ensureProjectStoragePrefixes(projectSlug: string): Promise<void> 
     return;
   }
   await new LocalFsObjectStorage(storageRoot).ensureProjectPrefixes(projectSlug);
+}
+
+async function writePublicProjectVisibilityManifest(
+  projectSlug: string,
+  visibility: ProjectVisibility,
+): Promise<void> {
+  try {
+    await writePublicProjectManifest({
+      projectSlug,
+      storage: createReportStorageFromEnv(),
+      visibility,
+    });
+  } catch (error) {
+    if (error instanceof Error && /STORAGE_ROOT|LOCAL_STORAGE_ROOT/.test(error.message)) {
+      return;
+    }
+    throw error;
+  }
 }
 
 async function lookupProjectParserVersion(

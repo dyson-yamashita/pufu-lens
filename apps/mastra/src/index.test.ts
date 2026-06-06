@@ -89,11 +89,13 @@ function createReportRepository(): ReportRepository & { insertedReports: number 
   return {
     insertedReports: 0,
     async lookupProject({ projectSlug }) {
-      return projectSlug === 'sample-a' ? { id: 'project-a', slug: 'sample-a' } : undefined;
+      return projectSlug === 'sample-a'
+        ? { id: 'project-a', slug: 'sample-a', visibility: 'public' }
+        : undefined;
     },
     async lookupProjectMember({ projectSlug, userId }) {
       return projectSlug === 'sample-a' && userId === 'user-a'
-        ? { id: 'project-a', slug: 'sample-a' }
+        ? { id: 'project-a', slug: 'sample-a', visibility: 'public' }
         : undefined;
     },
     async listRecentDocuments({ projectId }) {

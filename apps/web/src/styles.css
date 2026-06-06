@@ -311,6 +311,10 @@ tr.selected-row {
   padding: 20px;
 }
 
+.project-card {
+  position: relative;
+}
+
 .project-card-link {
   color: inherit;
   display: block;
@@ -321,9 +325,16 @@ tr.selected-row {
 }
 
 .project-card-link:hover,
-.project-card-link:focus-visible {
+.project-card-link:focus-within {
   border-color: var(--blue);
   transform: translateY(-1px);
+}
+
+.project-card-stretched-link {
+  border-radius: inherit;
+  inset: 0;
+  position: absolute;
+  z-index: 1;
 }
 
 .project-card-header,
@@ -427,6 +438,29 @@ tr.selected-row {
 .status-rejected {
   background: rgba(248, 113, 113, 0.13);
   color: var(--red);
+}
+
+.status-visibility-public {
+  background: rgba(0, 102, 255, 0.16);
+  color: var(--blue);
+}
+
+.status-visibility-private {
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--muted);
+}
+
+.status-stack {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.project-card-actions {
+  margin-top: 16px;
+  position: relative;
+  z-index: 2;
 }
 
 .status-held {

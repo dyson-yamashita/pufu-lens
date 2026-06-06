@@ -95,6 +95,13 @@ export interface PublicReportManifestV1 {
   readonly schema_version: 'public-report-manifest-v1';
 }
 
+export interface PublicProjectManifestV1 {
+  readonly project_slug: string;
+  readonly published_at: string | null;
+  readonly schema_version: 'public-project-manifest-v1';
+  readonly visibility: 'private' | 'public';
+}
+
 export interface ReportListItem {
   readonly createdAt: string;
   readonly id: string;
@@ -129,13 +136,11 @@ export interface ReportRepository {
     readonly projectId: string;
   }): Promise<readonly ReportDocumentRecord[]>;
   listReports(input: { readonly projectId: string }): Promise<readonly ReportListItem[]>;
-  lookupProject(input: {
-    readonly projectSlug: string;
-  }): Promise<{ readonly id: string; readonly slug: string } | undefined>;
+  lookupProject(input: { readonly projectSlug: string }): Promise<ProjectLookupResult | undefined>;
   lookupProjectMember(input: {
     readonly projectSlug: string;
     readonly userId: string;
-  }): Promise<{ readonly id: string; readonly slug: string } | undefined>;
+  }): Promise<ProjectLookupResult | undefined>;
   readReportMetadata(input: {
     readonly projectId: string;
     readonly reportId: string;
@@ -180,6 +185,12 @@ export interface ReportAccessOptions {
 export interface PublishReportOptions extends ReportAccessOptions {
   readonly storage: ObjectStorage;
 }
+
+type ProjectLookupResult = {
+  readonly id: string;
+  readonly slug: string;
+  readonly visibility: 'private' | 'public';
+};
 
 export interface PreparedReportChunk {
   readonly chunkIndex: number;
@@ -323,6 +334,12 @@ export async function publishPublicReport(input: {
   ) as unknown;
   validatePrivateReportJson(privateReport);
   const publishedAt = (input.now ?? input.options.now ?? new Date()).toISOString();
+  await writePublicProjectManifest({
+    projectSlug: project.slug,
+    publishedAt: project.visibility === 'public' ? publishedAt : null,
+    storage: input.options.storage,
+    visibility: project.visibility,
+  });
   const publicReport = buildPublicReport(privateReport, publishedAt);
   const contextBundle = buildPublicContextBundle(publicReport);
   const artifactVersion = buildArtifactVersion(publicReport, publishedAt);
@@ -446,6 +463,9 @@ export async function getPublicReportArtifacts(input: {
   readonly report: PublicReportJsonV1;
   readonly status: 'ok';
 }> {
+  if (!(await isProjectPublic({ projectSlug: input.projectSlug, storage: input.storage }))) {
+    throw new PublicReportNotFoundError(input.reportId);
+  }
   const manifest = await readPublicReportManifest(input);
   if (!manifest || manifest.revoked_at !== null) {
     throw new PublicReportNotFoundError(input.reportId);
@@ -477,6 +497,57 @@ export async function readPublicReportManifest(input: {
   }
   const manifest = JSON.parse(await input.storage.getText(path)) as unknown;
   validatePublicReportManifest(manifest, input.projectSlug, input.reportId);
+  return manifest;
+}
+
+export async function writePublicProjectManifest(input: {
+  readonly projectSlug: string;
+  readonly publishedAt?: string | null;
+  readonly storage: ObjectStorage;
+  readonly visibility: 'private' | 'public';
+}): Promise<PublicProjectManifestV1> {
+  if (!PROJECT_SLUG_PATTERN.test(input.projectSlug)) {
+    throw new Error(`Invalid project slug: ${input.projectSlug}`);
+  }
+  const manifest: PublicProjectManifestV1 = {
+    project_slug: input.projectSlug,
+    published_at:
+      input.visibility === 'public' ? (input.publishedAt ?? new Date().toISOString()) : null,
+    schema_version: 'public-project-manifest-v1',
+    visibility: input.visibility,
+  };
+  await input.storage.put(
+    publicProjectManifestPath(input.projectSlug),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    {
+      cacheControl: 'no-store',
+      contentType: 'application/json; charset=utf-8',
+    },
+  );
+  return manifest;
+}
+
+export async function isProjectPublic(input: {
+  readonly projectSlug: string;
+  readonly storage: ObjectStorage;
+}): Promise<boolean> {
+  const manifest = await readPublicProjectManifest(input);
+  return manifest?.visibility === 'public';
+}
+
+async function readPublicProjectManifest(input: {
+  readonly projectSlug: string;
+  readonly storage: ObjectStorage;
+}): Promise<PublicProjectManifestV1 | undefined> {
+  if (!PROJECT_SLUG_PATTERN.test(input.projectSlug)) {
+    return undefined;
+  }
+  const path = publicProjectManifestPath(input.projectSlug);
+  if (!(await input.storage.exists(path))) {
+    return undefined;
+  }
+  const manifest = JSON.parse(await input.storage.getText(path)) as unknown;
+  validatePublicProjectManifest(manifest, input.projectSlug);
   return manifest;
 }
 
@@ -677,20 +748,20 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
   return {
     async lookupProjectMember({ projectSlug, userId }) {
       const rows = (await sql`
-        SELECT p.id::text AS id, p.slug
+        SELECT p.id::text AS id, p.slug, COALESCE(p.visibility, 'private') AS visibility
         FROM public.projects p
         JOIN public.project_members pm ON pm.project_id = p.id
         WHERE p.slug = ${projectSlug}
           AND pm.user_id = ${userId}
-      `) as Array<{ id: string; slug: string }>;
+      `) as Array<{ id: string; slug: string; visibility: 'private' | 'public' }>;
       return rows[0];
     },
     async lookupProject({ projectSlug }) {
       const rows = (await sql`
-        SELECT p.id::text AS id, p.slug
+        SELECT p.id::text AS id, p.slug, COALESCE(p.visibility, 'private') AS visibility
         FROM public.projects p
         WHERE p.slug = ${projectSlug}
-      `) as Array<{ id: string; slug: string }>;
+      `) as Array<{ id: string; slug: string; visibility: 'private' | 'public' }>;
       return rows[0];
     },
     async listRecentDocuments({ limit, period, projectId }) {
@@ -1027,6 +1098,27 @@ function validatePublicReportManifest(
   }
 }
 
+function validatePublicProjectManifest(
+  value: unknown,
+  projectSlug: string,
+): asserts value is PublicProjectManifestV1 {
+  if (!isRecord(value)) {
+    throw new Error('Public project manifest must be an object.');
+  }
+  if (value.schema_version !== 'public-project-manifest-v1') {
+    throw new Error('Public project manifest schema_version is invalid.');
+  }
+  if (value.project_slug !== projectSlug) {
+    throw new Error('Public project manifest target mismatch.');
+  }
+  if (value.visibility !== 'private' && value.visibility !== 'public') {
+    throw new Error('Public project manifest visibility is invalid.');
+  }
+  if (value.published_at !== null && typeof value.published_at !== 'string') {
+    throw new Error('Public project manifest published_at is invalid.');
+  }
+}
+
 function buildPublicReport(report: PrivateReportJsonV1, publishedAt: string): PublicReportJsonV1 {
   return {
     period: report.period,
@@ -1069,6 +1161,10 @@ function buildArtifactVersion(report: PublicReportJsonV1, publishedAt: string): 
 
 function publicReportManifestPath(projectSlug: string, reportId: string): string {
   return `${projectSlug}/reports/public/${reportId}/manifest.json`;
+}
+
+function publicProjectManifestPath(projectSlug: string): string {
+  return `${projectSlug}/project-public-state.json`;
 }
 
 function digestJson(value: unknown): string {
