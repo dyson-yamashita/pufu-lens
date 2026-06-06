@@ -189,7 +189,7 @@ export interface PublishReportOptions extends ReportAccessOptions {
 type ProjectLookupResult = {
   readonly id: string;
   readonly slug: string;
-  readonly visibility?: 'private' | 'public';
+  readonly visibility: 'private' | 'public';
 };
 
 export interface PreparedReportChunk {
@@ -338,7 +338,7 @@ export async function publishPublicReport(input: {
     projectSlug: project.slug,
     publishedAt: project.visibility === 'public' ? publishedAt : null,
     storage: input.options.storage,
-    visibility: project.visibility ?? 'private',
+    visibility: project.visibility,
   });
   const publicReport = buildPublicReport(privateReport, publishedAt);
   const contextBundle = buildPublicContextBundle(publicReport);

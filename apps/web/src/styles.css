@@ -325,7 +325,7 @@ tr.selected-row {
 }
 
 .project-card-link:hover,
-.project-card-link:focus-visible {
+.project-card-link:focus-within {
   border-color: var(--blue);
   transform: translateY(-1px);
 }

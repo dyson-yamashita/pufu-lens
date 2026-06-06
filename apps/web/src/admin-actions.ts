@@ -100,13 +100,14 @@ export async function updateProjectVisibility(formData: FormData): Promise<void>
 
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
+    if (visibility === 'private') {
+      await writePublicProjectVisibilityManifest(projectSlug, visibility);
+      await updateProjectVisibilityRow(sql, project.id, visibility);
+      return;
+    }
+
+    await updateProjectVisibilityRow(sql, project.id, visibility);
     await writePublicProjectVisibilityManifest(projectSlug, visibility);
-    await sql`
-      UPDATE public.projects
-      SET visibility = ${visibility},
-          updated_at = now()
-      WHERE id = ${project.id}
-    `;
   });
 
   revalidateProject(projectSlug);
@@ -582,6 +583,19 @@ function requireProjectVisibility(value: string): ProjectVisibility {
     return value;
   }
   throw new Error(`Unsupported project visibility: ${value}`);
+}
+
+async function updateProjectVisibilityRow(
+  sql: postgres.Sql,
+  projectId: string,
+  visibility: ProjectVisibility,
+): Promise<void> {
+  await sql`
+    UPDATE public.projects
+    SET visibility = ${visibility},
+        updated_at = now()
+    WHERE id = ${projectId}
+  `;
 }
 
 function buildDataSourceConfig(sourceType: SourceType, scope: string): Record<string, unknown> {
