@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-test('chat page submits a question and renders sources and tool calls', async ({ page }) => {
+test('scenario: member submits private chat question and sees sources and tool calls', async ({
+  page,
+}) => {
   await page.route('**/api/projects/sample-a/chat', async (route) => {
     await route.fulfill({
       body: JSON.stringify({
