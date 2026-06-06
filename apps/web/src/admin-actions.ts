@@ -100,6 +100,7 @@ export async function updateProjectVisibility(formData: FormData): Promise<void>
 
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
+    await writePublicProjectVisibilityManifest(projectSlug, visibility);
     await sql`
       UPDATE public.projects
       SET visibility = ${visibility},
@@ -108,7 +109,6 @@ export async function updateProjectVisibility(formData: FormData): Promise<void>
     `;
   });
 
-  await writePublicProjectVisibilityManifest(projectSlug, visibility);
   revalidateProject(projectSlug);
 }
 

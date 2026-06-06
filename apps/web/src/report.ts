@@ -748,7 +748,7 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
   return {
     async lookupProjectMember({ projectSlug, userId }) {
       const rows = (await sql`
-        SELECT p.id::text AS id, p.slug, p.visibility
+        SELECT p.id::text AS id, p.slug, COALESCE(p.visibility, 'private') AS visibility
         FROM public.projects p
         JOIN public.project_members pm ON pm.project_id = p.id
         WHERE p.slug = ${projectSlug}
@@ -758,7 +758,7 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
     },
     async lookupProject({ projectSlug }) {
       const rows = (await sql`
-        SELECT p.id::text AS id, p.slug, p.visibility
+        SELECT p.id::text AS id, p.slug, COALESCE(p.visibility, 'private') AS visibility
         FROM public.projects p
         WHERE p.slug = ${projectSlug}
       `) as Array<{ id: string; slug: string; visibility: 'private' | 'public' }>;
