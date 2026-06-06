@@ -55,7 +55,9 @@ const report = {
   title: 'プロジェクト状況レポート 2026-06-01 - 2026-06-07',
 };
 
-test('private report list links to detail and renders sections', async ({ page }) => {
+test('scenario: member opens private report detail from list and sees sections', async ({
+  page,
+}) => {
   await page.route('**/api/projects/sample-a/reports', async (route) => {
     await route.fulfill({
       body: JSON.stringify({
@@ -87,7 +89,7 @@ test('private report list links to detail and renders sections', async ({ page }
 
   await page.goto('/projects/sample-a/reports');
   await expect(page.getByTestId('global-nav-reports')).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByTestId('reports-generate-button')).toBeDisabled();
+  await expect(page.getByTestId('reports-generate-button')).toBeEnabled();
   await expect(page.getByTestId('reports-table')).toContainText(report.title);
 
   await page.getByRole('link', { name: report.title }).click();
@@ -97,7 +99,7 @@ test('private report list links to detail and renders sections', async ({ page }
   await expect(page.getByTestId('report-section-progress')).toContainText('判断材料');
 });
 
-test('private report detail keeps sections visible on mobile', async ({ page }) => {
+test('scenario: member reads private report sections on mobile', async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 390 });
   await page.route('**/api/projects/sample-a/reports/report-a', async (route) => {
     await route.fulfill({
@@ -116,7 +118,7 @@ test('private report detail keeps sections visible on mobile', async ({ page }) 
   await expect(page.getByTestId('report-section-risks')).toBeVisible();
 });
 
-test('private report pages render API error codes', async ({ page }) => {
+test('scenario: member sees private report API error codes', async ({ page }) => {
   await page.route('**/api/projects/sample-a/reports', async (route) => {
     await route.fulfill({
       body: JSON.stringify({
@@ -149,7 +151,9 @@ test('private report pages render API error codes', async ({ page }) => {
   await expect(page.getByTestId('report-status')).toHaveText('report_not_found');
 });
 
-test('public report page renders redacted artifact only', async ({ page }) => {
+test('scenario: public user reads redacted report and receives scoped chat answers', async ({
+  page,
+}) => {
   const publicReport = {
     period: report.period,
     published_at: '2026-06-04T10:00:00.000Z',
@@ -244,7 +248,9 @@ test('public report page renders redacted artifact only', async ({ page }) => {
   await expect(page.getByTestId('public-chat-result')).toContainText('未公開情報');
 });
 
-test('public and publish APIs reject unsafe client input', async ({ request }) => {
+test('scenario: hostile client sends unsafe input and public/publish APIs reject it', async ({
+  request,
+}) => {
   const unsafePublicResponse = await request.get(
     '/api/public/projects/%2E%2E%2Fsample-a/reports/report-a',
   );

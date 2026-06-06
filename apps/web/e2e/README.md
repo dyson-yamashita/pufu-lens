@@ -1,0 +1,42 @@
+# E2E シナリオ
+
+このディレクトリは Playwright で、Pufu Lens の主要な利用者導線と公開 API の安全性を確認する。個々の spec は UI コンポーネント単位ではなく、ユーザー行動または攻撃入力のシナリオ単位で読む。
+
+## 実行
+
+```bash
+pnpm --filter @pufu-lens/web test:e2e
+pnpm --filter @pufu-lens/web test:e2e -- --project desktop
+pnpm --filter @pufu-lens/web test:e2e -- --project mobile
+pnpm --filter @pufu-lens/web test:e2e -- --grep "scenario:"
+```
+
+`apps/web/playwright.config.ts` は `desktop` と `mobile` の 2 project を定義し、`http://localhost:3000` の Next.js dev server を起動または再利用する。
+
+## シナリオ一覧
+
+| シナリオ                          | spec                | ロール                  | 対象                                       | viewport         | データ境界         | 期待結果                                                                         |
+| --------------------------------- | ------------------- | ----------------------- | ------------------------------------------ | ---------------- | ------------------ | -------------------------------------------------------------------------------- |
+| Public project discovery          | `admin-ui.spec.ts`  | public user             | `/projects`                                | desktop / mobile | fixture DB         | public project と public report 入口が見え、admin / private project 導線は出ない |
+| Admin operation controls          | `admin-ui.spec.ts`  | admin user              | data sources / ingestion / parser profiles | desktop / mobile | fixture DB         | 運用画面の主要 control が安定した `data-testid` で操作・確認できる               |
+| Private chat answer rendering     | `chat-ui.spec.ts`   | member user             | private chat UI                            | desktop / mobile | API mock           | 質問送信後に answer、source、tool call が表示される                              |
+| Private report list to detail     | `report-ui.spec.ts` | member user             | private report list / detail               | desktop / mobile | API mock           | 一覧から詳細へ遷移し、summary、section、pufu score が表示される                  |
+| Private report mobile readability | `report-ui.spec.ts` | member user             | private report detail                      | mobile focused   | API mock           | 主要 section が mobile viewport で表示される                                     |
+| Private report error visibility   | `report-ui.spec.ts` | member user             | private report list / detail               | desktop / mobile | API mock           | API error code が UI に表示される                                                |
+| Public report redaction and chat  | `report-ui.spec.ts` | public user             | public report / public chat                | desktop / mobile | API mock           | redacted artifact のみ表示し、公開範囲内質問に回答し、未公開情報要求を拒否する   |
+| Public API unsafe input rejection | `report-ui.spec.ts` | public / hostile client | public report/chat API、publish API        | API only         | real route handler | path traversal、過長質問、不正 body を拒否する                                   |
+
+## 不足観点
+
+- 認証導入後のログイン済み member 表示は未実装のため、現時点では `Public project discovery` が未ログイン相当の表示を担保する。
+- `/projects` のログイン状態別 matrix は `docs/plans/002-account-login-public-projects/overview.md` の Step 4 / Step 5 と同期して追加する。
+- private route / private API への未ログイン、非 member、非 admin アクセス拒否は、認証境界の実装と合わせて E2E または route test に追加する。
+- report 生成、公開、public report 閲覧、public chat までを実 API / fixture DB でつなぐ統合シナリオは未整備。現在は UI シナリオを API mock で安定化し、API 安全性は route handler で確認している。
+- viewport ごとのレイアウト崩れは Playwright の `desktop` / `mobile` project で全 spec を走らせているが、スクリーンショット比較は導入していない。
+
+## 追加時の基準
+
+- test 名は `scenario: <role> <action> <expected outcome>` の形を基本にする。
+- UI の正常系は API mock を使い、表示・操作・redaction の期待値を安定して確認する。
+- storage key、path traversal、過長入力、不正 JSON などの安全性は、mock ではなく route handler に到達する API test として追加する。
+- mobile 固有の可読性や重なりは、`page.setViewportSize` で意図を明示するか、Playwright project の `mobile` 実行で保証する。

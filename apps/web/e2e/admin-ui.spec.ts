@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-test('projects page links to project administration', async ({ page }) => {
+test('scenario: public user discovers public projects without private admin links', async ({
+  page,
+}) => {
   await page.goto('/projects');
 
   await expect(page.getByTestId('global-nav')).toBeVisible();
@@ -17,7 +19,7 @@ test('projects page links to project administration', async ({ page }) => {
   );
 });
 
-test('admin routes expose stable operation controls', async ({ page }) => {
+test('scenario: admin user can inspect stable operation controls', async ({ page }) => {
   await page.goto('/projects/sample-a/admin/data-sources');
   await expect(page.getByTestId('data-source-table')).toBeVisible();
   await expect(page.getByTestId('data-source-detail-panel')).toBeVisible();
