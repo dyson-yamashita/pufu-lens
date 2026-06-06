@@ -157,7 +157,23 @@ export async function POST(req: Request, { params }: { params: { projectSlug: st
 
 Public report page では、必要に応じて report 本文の横に public chat composer を表示する。private chat と誤認しないよう、公開情報だけに基づく回答であることを短く表示し、入力 placeholder も report 内容への質問に限定する。
 
-### 5. レート制限
+### 5. Mastra Studio 内部調査 Agent
+
+`cross-project-research-agent` は Mastra Studio での運用調査専用 Agent として登録する。通常の Private Chat Agent と異なり、複数 project を横断して project inventory、data source 状態、document title / summary の傾向を比較できる。
+
+この Agent は Pufu Lens の Next.js Web UI には route や画面導線を持たせない。Web UI から利用できるのは project member 認可を通る `project-chat-agent` と、公開 report に限定された public chat だけである。Mastra Studio / Mastra API 自体を外部公開する場合は、Studio Auth、OIDC、Cloud Run IAM などの server 側認可で内部利用者に限定する。
+
+`cross-project-research-agent` の tool は次に限定する。
+
+| ツール                             | 役割                                                                  |
+| ---------------------------------- | --------------------------------------------------------------------- |
+| `cross-project-list`               | project slug / name と document・raw document・enabled data source 数 |
+| `cross-project-document-search`    | project 横断で document title / summary / canonical URI を検索        |
+| `cross-project-data-source-status` | project 横断で data source の enabled / last_checked_at を確認        |
+
+tool response では raw body、parsed body、OAuth token、secret、API key、storage prefix、project UUID、個人情報を返さない。document の確認材料は project slug、source type、title、summary、canonical URI に絞る。本文や未公開詳細が必要な場合は、追加の収集・解析作業として扱い、この Agent から直接返さない。
+
+### 6. レート制限
 
 private chat と public chat は別の rate limit bucket を使う。
 

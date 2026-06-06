@@ -18,6 +18,7 @@ import {
 export const mastraAppName = 'pufu-lens-mastra';
 
 export const mastraAgentIds = {
+  crossProjectResearch: 'cross-project-research-agent',
   projectChat: 'project-chat-agent',
 } as const;
 
@@ -26,6 +27,9 @@ export const mastraWorkflowIds = {
 } as const;
 
 export const mastraToolIds = {
+  crossProjectDataSourceStatus: 'cross-project-data-source-status',
+  crossProjectDocumentSearch: 'cross-project-document-search',
+  crossProjectList: 'cross-project-list',
   documentFetch: 'document-fetch',
   graphQuery: 'graph-query',
   parsedDocFetch: 'parsed-doc-fetch',
@@ -51,14 +55,61 @@ export interface GenerateReportWorkflowInput {
   readonly projectSlug: string;
 }
 
+export interface CrossProjectSummary {
+  readonly description: string | null;
+  readonly documentCount: number;
+  readonly enabledDataSourceCount: number;
+  readonly name: string;
+  readonly rawDocumentCount: number;
+  readonly slug: string;
+}
+
+export interface CrossProjectDocumentSource {
+  readonly canonicalUri: string;
+  readonly docType: string;
+  readonly documentId: string;
+  readonly occurredAt: string | null;
+  readonly projectName: string;
+  readonly projectSlug: string;
+  readonly summary: string;
+  readonly title: string;
+}
+
+export interface CrossProjectDataSourceStatus {
+  readonly enabled: boolean;
+  readonly lastCheckedAt: string | null;
+  readonly name: string;
+  readonly projectName: string;
+  readonly projectSlug: string;
+  readonly sourceType: string;
+}
+
+export interface CrossProjectInvestigationRepository {
+  dataSourceStatus(input: {
+    readonly limit: number;
+    readonly projectSlugs?: readonly string[];
+    readonly sourceTypes?: readonly string[];
+  }): Promise<CrossProjectDataSourceStatus[]>;
+  listProjects(input: { readonly limit: number }): Promise<CrossProjectSummary[]>;
+  searchDocuments(input: {
+    readonly limit: number;
+    readonly projectSlugs?: readonly string[];
+    readonly query: string;
+    readonly sourceTypes?: readonly string[];
+  }): Promise<CrossProjectDocumentSource[]>;
+}
+
 export interface PufuLensMastraDependencies {
   readonly chatRepository: ChatRepository;
+  readonly crossProjectInvestigationRepository?: CrossProjectInvestigationRepository;
   readonly reportProvider?: ReportGenerationProvider;
   readonly reportRepository: ReportRepository;
   readonly reportStorage: ObjectStorage;
 }
 
 export interface PufuLensMastraRuntime {
+  readonly crossProjectResearchAgent?: Agent;
+  readonly crossProjectResearchTools?: ReturnType<typeof createCrossProjectResearchTools>;
   readonly mastra: Mastra;
   readonly projectChatTools: ReturnType<typeof createProjectChatTools>;
   readonly projectChatAgent: Agent;
@@ -76,6 +127,41 @@ const chatSourceSchema = z.object({
 const chatSourceListSchema = z.object({
   sources: z.array(chatSourceSchema),
 });
+
+const crossProjectSummarySchema = z.object({
+  description: z.string().nullable(),
+  documentCount: z.number().int().min(0),
+  enabledDataSourceCount: z.number().int().min(0),
+  name: z.string(),
+  rawDocumentCount: z.number().int().min(0),
+  slug: z.string(),
+});
+
+const crossProjectDocumentSourceSchema = z.object({
+  canonicalUri: z.string(),
+  docType: z.string(),
+  documentId: z.string(),
+  occurredAt: z.string().nullable(),
+  projectName: z.string(),
+  projectSlug: z.string(),
+  summary: z.string(),
+  title: z.string(),
+});
+
+const crossProjectDataSourceStatusSchema = z.object({
+  enabled: z.boolean(),
+  lastCheckedAt: z.string().nullable(),
+  name: z.string(),
+  projectName: z.string(),
+  projectSlug: z.string(),
+  sourceType: z.string(),
+});
+
+const optionalProjectSlugFilterSchema = z.array(z.string().min(1)).max(20).optional();
+const optionalSourceTypeFilterSchema = z
+  .array(z.enum(['drive', 'github', 'gmail', 'web']))
+  .max(4)
+  .optional();
 
 const mastraProjectContextSchema = z.object({
   projectId: z.string().min(1),
@@ -112,6 +198,70 @@ const pufuScoreGenerateOutputSchema = z.object({
 });
 
 type PufuScoreGenerateInput = z.infer<typeof pufuScoreGenerateInputSchema>;
+
+export function createCrossProjectResearchTools(repository: CrossProjectInvestigationRepository) {
+  return {
+    dataSourceStatus: createTool({
+      id: mastraToolIds.crossProjectDataSourceStatus,
+      description:
+        'List enabled and disabled data sources across projects without exposing OAuth tokens or source configs.',
+      inputSchema: z.object({
+        limit: z.number().int().min(1).max(50).default(20),
+        projectSlugs: optionalProjectSlugFilterSchema,
+        sourceTypes: optionalSourceTypeFilterSchema,
+      }),
+      outputSchema: z.object({ dataSources: z.array(crossProjectDataSourceStatusSchema) }),
+      execute: async ({ limit, projectSlugs, sourceTypes }) => ({
+        dataSources: await repository.dataSourceStatus({ limit, projectSlugs, sourceTypes }),
+      }),
+    }),
+    documentSearch: createTool({
+      id: mastraToolIds.crossProjectDocumentSearch,
+      description:
+        'Search document titles and summaries across projects. Returns metadata and summaries only, never raw or parsed body text.',
+      inputSchema: z.object({
+        limit: z.number().int().min(1).max(25).default(10),
+        projectSlugs: optionalProjectSlugFilterSchema,
+        query: z.string().min(1),
+        sourceTypes: optionalSourceTypeFilterSchema,
+      }),
+      outputSchema: z.object({ sources: z.array(crossProjectDocumentSourceSchema) }),
+      execute: async ({ limit, projectSlugs, query, sourceTypes }) => ({
+        sources: await repository.searchDocuments({ limit, projectSlugs, query, sourceTypes }),
+      }),
+    }),
+    listProjects: createTool({
+      id: mastraToolIds.crossProjectList,
+      description:
+        'List project-level inventory counts for cross-project investigation. Does not return project UUIDs or storage prefixes.',
+      inputSchema: z.object({ limit: z.number().int().min(1).max(50).default(20) }),
+      outputSchema: z.object({ projects: z.array(crossProjectSummarySchema) }),
+      execute: async ({ limit }) => ({
+        projects: await repository.listProjects({ limit }),
+      }),
+    }),
+  };
+}
+
+export function createCrossProjectResearchAgent(input: {
+  readonly model?: string;
+  readonly tools: ReturnType<typeof createCrossProjectResearchTools>;
+}): Agent {
+  return new Agent({
+    id: mastraAgentIds.crossProjectResearch,
+    name: 'Cross Project Research Agent',
+    instructions: [
+      'あなたは Pufu Lens の内部調査用アナリストです。',
+      '複数 project を横断して、project inventory、data source 状態、document title / summary の傾向を比較します。',
+      'Web アプリ利用者向けではなく、Mastra Studio での運用調査だけを想定します。',
+      'raw body、parsed body、OAuth token、secret、API key、storage prefix、project UUID、個人情報を出してはいけません。',
+      '回答では project slug、source type、document title、canonical URI、summary を根拠として示します。',
+      '未取得の本文や非公開詳細を推測せず、必要なら追加の収集・解析作業として明示します。',
+    ].join('\n'),
+    model: input.model ?? 'google/gemini-2.5-flash',
+    tools: input.tools,
+  });
+}
 
 export function createProjectChatTools(repository: ChatRepository) {
   const projectIdFromContext = (
@@ -325,6 +475,12 @@ export function createPufuLensMastraRuntime(
   dependencies: PufuLensMastraDependencies,
 ): PufuLensMastraRuntime {
   const reportProvider = dependencies.reportProvider ?? createExtractiveReportProvider();
+  const crossProjectResearchTools = dependencies.crossProjectInvestigationRepository
+    ? createCrossProjectResearchTools(dependencies.crossProjectInvestigationRepository)
+    : undefined;
+  const crossProjectResearchAgent = crossProjectResearchTools
+    ? createCrossProjectResearchAgent({ tools: crossProjectResearchTools })
+    : undefined;
   const projectChatTools = createProjectChatTools(dependencies.chatRepository);
   const projectChatAgent = createProjectChatAgent({ tools: projectChatTools });
   const generateReportWorkflow = createGenerateReportWorkflow({
@@ -333,11 +489,16 @@ export function createPufuLensMastraRuntime(
     storage: dependencies.reportStorage,
   });
   const mastra = new Mastra({
-    agents: { projectChatAgent },
+    agents: {
+      ...(crossProjectResearchAgent ? { crossProjectResearchAgent } : {}),
+      projectChatAgent,
+    },
     workflows: { generateReportWorkflow },
   });
 
   return {
+    crossProjectResearchAgent,
+    crossProjectResearchTools,
     generateReportWorkflow,
     mastra,
     projectChatAgent,
