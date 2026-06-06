@@ -7,12 +7,14 @@ test('projects page links to project administration', async ({ page }) => {
   await expect(page.getByTestId('global-nav-data-sources')).toHaveCount(0);
   await expect(page.getByTestId('global-nav-ingestion')).toHaveCount(0);
   await expect(page.getByTestId('global-nav-parser-profiles')).toHaveCount(0);
-  await expect(page.getByTestId('project-list')).toBeVisible();
-  await expect(page.getByTestId('project-card-sample-a')).toBeVisible();
-
-  await page.getByTestId('project-open-sample-a').click();
-  await expect(page).toHaveURL(/\/projects\/sample-a\/admin\/data-sources$/);
-  await expect(page.getByTestId('data-source-table')).toBeVisible();
+  await expect(page.getByTestId('project-list')).toHaveCount(0);
+  await expect(page.getByTestId('project-card-sample-a')).toHaveCount(0);
+  await expect(page.getByTestId('public-project-list')).toBeVisible();
+  await expect(page.getByTestId('public-project-sample-a')).toBeVisible();
+  await expect(page.getByTestId('public-report-sample-a-report-a')).toHaveAttribute(
+    'href',
+    '/reports/public/sample-a/report-a',
+  );
 });
 
 test('admin routes expose stable operation controls', async ({ page }) => {

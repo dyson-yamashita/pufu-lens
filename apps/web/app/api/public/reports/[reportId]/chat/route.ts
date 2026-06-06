@@ -1,25 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import {
-  createExtractivePublicChatProvider,
-  createGeminiPublicChatProvider,
-  createPublicChatMemoryRateLimiter,
-  runPublicChat,
-} from '../../../../../../src/chat';
-import {
-  createReportStorageFromEnv,
-  getPublicReportArtifacts,
-  isSafePublicReportLocator,
-  PublicReportNotFoundError,
-} from '../../../../../../src/report';
-
-const hourlyRateLimiter = createPublicChatMemoryRateLimiter({
-  limit: parseEnvInt(process.env.PUFU_LENS_PUBLIC_CHAT_HOURLY_LIMIT, 10),
-  windowMs: 60 * 60_000,
-});
-const dailyRateLimiter = createPublicChatMemoryRateLimiter({
-  limit: parseEnvInt(process.env.PUFU_LENS_PUBLIC_CHAT_DAILY_LIMIT, 50),
-  windowMs: 24 * 60 * 60_000,
-});
+import { handlePublicChatPost } from '../../../../../../src/public-report-api';
 
 export async function POST(
   request: NextRequest,
@@ -27,74 +7,11 @@ export async function POST(
 ) {
   const { reportId } = await params;
   const projectSlug = request.nextUrl.searchParams.get('projectSlug');
-  if (!projectSlug || !isSafePublicReportLocator({ projectSlug, reportId })) {
+  if (!projectSlug) {
     return publicChatNotFound();
   }
 
-  let question = '';
-  try {
-    const body = (await request.json()) as { question?: unknown };
-    question = typeof body.question === 'string' ? body.question.trim() : '';
-  } catch {
-    return publicChatErrorResponse('invalid_json', 'Invalid JSON body', 400);
-  }
-  if (!question) {
-    return publicChatErrorResponse('invalid_request', 'question is required', 400);
-  }
-
-  try {
-    const artifacts = await getPublicReportArtifacts({
-      projectSlug,
-      reportId,
-      storage: createReportStorageFromEnv(),
-    });
-    const provider =
-      process.env.GEMINI_API_KEY && process.env.GEMINI_CHAT_MODEL
-        ? createGeminiPublicChatProvider({
-            apiKey: process.env.GEMINI_API_KEY,
-            model: process.env.GEMINI_CHAT_MODEL,
-          })
-        : createExtractivePublicChatProvider();
-    const response = await runPublicChat(
-      {
-        clientIp: trustedClientIp(request),
-        projectSlug,
-        question,
-        reportId,
-      },
-      {
-        contextBundle: artifacts.contextBundle,
-        provider,
-        rateLimiters: [hourlyRateLimiter, dailyRateLimiter],
-        report: artifacts.report,
-      },
-    );
-    const status = response.status === 'rate_limited' ? 429 : 200;
-    return NextResponse.json(response, { status });
-  } catch (error) {
-    if (error instanceof PublicReportNotFoundError) {
-      return publicChatNotFound();
-    }
-    console.error('Public Chat API Error:', error);
-    return publicChatErrorResponse(
-      'public_chat_internal_error',
-      'An unexpected error occurred',
-      500,
-    );
-  }
-}
-
-function trustedClientIp(request: NextRequest): string {
-  const nextRequestIp = (request as NextRequest & { readonly ip?: string }).ip?.trim();
-  return nextRequestIp || request.headers.get('x-real-ip')?.trim() || 'unknown';
-}
-
-function parseEnvInt(value: string | undefined, fallback: number): number {
-  if (!value?.trim()) {
-    return fallback;
-  }
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  return handlePublicChatPost(request, { projectSlug, reportId });
 }
 
 function publicChatNotFound() {

@@ -2,9 +2,13 @@ import type postgres from 'postgres';
 import {
   type DataSourceSummary,
   fallbackProjects,
+  fallbackPublicProjects,
   type ParserProfileStatus,
   type ParserProfileSummary,
   type ProjectSummary,
+  type ProjectVisibility,
+  type PublicProjectReportSummary,
+  type PublicProjectSummary,
   type SourceStatus,
   type SourceType,
 } from './admin-data';
@@ -21,6 +25,21 @@ type ProjectRow = {
   queue_count: number | string | bigint;
   raw_count: number | string | bigint;
   slug: string;
+  visibility: ProjectVisibility;
+};
+
+type PublicProjectReportRow = {
+  description: string | null;
+  name: string;
+  published_at: Date | string | null;
+  report_id: string;
+  report_summary: string | null;
+  report_title: string;
+  slug: string;
+};
+
+type MutablePublicProjectSummary = Omit<PublicProjectSummary, 'reports'> & {
+  reports: PublicProjectReportSummary[];
 };
 
 type DataSourceRow = {
@@ -66,6 +85,7 @@ export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
         p.slug,
         p.name,
         p.description,
+        p.visibility,
         (SELECT count(*)::int FROM public.project_members pm WHERE pm.project_id = p.id) AS member_count,
         (SELECT count(*)::int FROM public.raw_documents rd WHERE rd.project_id = p.id) AS raw_count,
         (SELECT count(*)::int FROM public.ingestion_queue iq WHERE iq.project_id = p.id) AS queue_count,
@@ -100,6 +120,33 @@ export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
   }, fallbackProjects);
 }
 
+export async function listPublicProjects(): Promise<readonly PublicProjectSummary[]> {
+  return withOptionalSql(async (sql) => {
+    const rows = (await sql`
+      SELECT
+        p.slug,
+        p.name,
+        p.description,
+        r.id::text AS report_id,
+        r.title AS report_title,
+        r.summary AS report_summary,
+        r.created_at AS published_at
+      FROM public.projects p
+      JOIN LATERAL (
+        SELECT id, title, summary, created_at
+        FROM public.reports
+        WHERE project_id = p.id
+          AND is_public = true
+        ORDER BY created_at DESC
+        LIMIT 3
+      ) r ON true
+      WHERE p.visibility = 'public'
+      ORDER BY p.slug, r.created_at DESC
+    `) as PublicProjectReportRow[];
+    return publicProjectsFromRows(rows);
+  }, publicProjectsFallback());
+}
+
 export async function getAdminProject(slug: string): Promise<ProjectSummary> {
   const sql = getOptionalAdminSql();
   if (!sql) {
@@ -113,6 +160,7 @@ export async function getAdminProject(slug: string): Promise<ProjectSummary> {
         p.slug,
         p.name,
         p.description,
+        p.visibility,
         (SELECT count(*)::int FROM public.project_members pm WHERE pm.project_id = p.id) AS member_count,
         (SELECT count(*)::int FROM public.raw_documents rd WHERE rd.project_id = p.id) AS raw_count,
         (SELECT count(*)::int FROM public.ingestion_queue iq WHERE iq.project_id = p.id) AS queue_count,
@@ -429,7 +477,35 @@ function projectFromRow(
     rawCount: toNumber(row.raw_count),
     slug: row.slug,
     status: failedCount > 0 || heldCount > 0 ? 'attention' : 'active',
+    visibility: row.visibility,
   };
+}
+
+function publicProjectsFromRows(
+  rows: readonly PublicProjectReportRow[],
+): readonly PublicProjectSummary[] {
+  const projects = new Map<string, MutablePublicProjectSummary>();
+  for (const row of rows) {
+    const existing = projects.get(row.slug);
+    const project = existing ?? {
+      description: row.description ?? '',
+      name: row.name,
+      reports: [],
+      slug: row.slug,
+    };
+    project.reports.push({
+      id: row.report_id,
+      publishedAt: formatDate(row.published_at),
+      summary: row.report_summary ?? '',
+      title: row.report_title,
+    });
+    projects.set(row.slug, project);
+  }
+  return Array.from(projects.values());
+}
+
+function publicProjectsFallback(): readonly PublicProjectSummary[] {
+  return process.env.NODE_ENV === 'production' ? [] : fallbackPublicProjects;
 }
 
 async function withOptionalSql<T>(

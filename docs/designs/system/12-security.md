@@ -44,18 +44,18 @@ API は以下の認可をかける：
 - すべての `/api/projects/[projectSlug]/...` で `projectSlug` を UUID の `projectId` に解決し、`project_members` を確認して、ログインユーザーが対象プロジェクトのメンバーであることを検証する。
 - Admin API は `project_members.role IN ('admin')` のユーザーのみ可。
 - Mastra のツール呼び出しは `projectId` 必須、context にない場合エラー。
-- 公開レポートは通常の `/api/projects/[projectSlug]/...` とは別に、未ログイン用の `/api/public/reports/[reportId]` を用意する。公開ページの正規 URL は `/reports/public/[projectSlug]/[reportId]` とする。
-- `/api/public/reports/[reportId]` は Object Storage 上の公開用 manifest / metadata で公開可否を確認できた場合だけ redaction 済み public report JSON を取得して返す。private report JSON は直接公開しない。`is_public = false`、存在しない、または project が無効な場合は同じ `404` を返し、非公開レポートの存在有無を漏らさない。
-- `/api/public/reports/[reportId]/chat` は公開済みレポートに紐づく public chat だけを提供する。public chat は redaction 済み public report JSON と公開用 context bundle のみ参照し、DB / AGE / pgvector / raw document / parsed document にはアクセスしない。Public Chat tool はユーザー入力や LLM が指定した URI を読まず、Next.js が検証済み manifest から解決した URI だけを使う。
+- 公開レポートは通常の `/api/projects/[projectSlug]/...` とは別に、未ログイン用の `/api/public/projects/[projectSlug]/reports/[reportId]` を用意する。公開ページの正規 URL は `/reports/public/[projectSlug]/[reportId]` とする。
+- `/api/public/projects/[projectSlug]/reports/[reportId]` は API entrypoint で `projectSlug` と `reportId` を storage-safe pattern に validate し、Object Storage 上の公開用 manifest / metadata で公開可否を確認できた場合だけ redaction 済み public report JSON を取得して返す。private report JSON は直接公開しない。`is_public = false`、存在しない、または project が無効な場合は同じ `404` を返し、非公開レポートの存在有無を漏らさない。
+- `/api/public/projects/[projectSlug]/reports/[reportId]/chat` は公開済みレポートに紐づく public chat だけを提供する。public chat は redaction 済み public report JSON と公開用 context bundle のみ参照し、DB / AGE / pgvector / raw document / parsed document にはアクセスしない。Public Chat tool はユーザー入力や LLM が指定した URI を読まず、Next.js が検証済み manifest から解決した URI だけを使う。
 - private レポートの閲覧と signed URL 発行は DB 依存 API として扱う。`/api/projects/[projectSlug]/reports/[reportId]` または `/api/projects/[projectSlug]/reports/[reportId]/signed-url` で必ず `project_members` 認可後に返し、業務時間外はチャットと同様に `db_outside_business_hours` を返す。公開 API では private レポート本体や signed URL を返さない。
 
 ### 3. 公開レポートの保護
 
 - Object Storage（GCS）バケットは Private
-- 公開用 manifest / metadata で `is_public = true` のレポートは Next.js の公開ページ `/reports/public/[projectSlug]/[reportId]` から `/api/public/reports/[reportId]` 経由で redaction 済み public report JSON を取得・描画
+- 公開用 manifest / metadata で `is_public = true` のレポートは Next.js の公開ページ `/reports/public/[projectSlug]/[reportId]` から `/api/public/projects/[projectSlug]/reports/[reportId]` 経由で redaction 済み public report JSON を取得・描画
 - `is_public = false` のレポートは `/api/projects/[projectSlug]/reports/[reportId]` で DB による認可チェック後にサーバから JSON を返す、または短時間の signed URL を発行する。DB 停止中は利用不可にする
 - public chat は個人情報、メールアドレス、未公開 URL、raw / parsed 本文全文、secret を回答しない。公開 report と対象 project の公開済み情報に関係しない質問は拒否する
-- レート制限を Cloud Armor または Hono middleware で実装する。public chat は信頼済み client IP + report id 単位で 1 時間 / 1 日の上限を設け、private chat は user + project 単位で public より緩い上限にする。Mastra 側で使う rate limit 用 header は OIDC 検証済みの Next.js から来たものだけを信頼し、ブラウザから直接送られた同名 header は破棄する
+- レート制限を Cloud Armor または Hono middleware で実装する。public chat は Next.js が解決した client IP 相当値 + report id 単位で 1 時間 / 1 日 / 質問長の上限を設け、private chat は user + project 単位で public より緩い上限にする。Mastra 側で使う rate limit 用 header は OIDC 検証済みの Next.js から来たものだけを信頼し、ブラウザから直接送られた同名 header や `x-forwarded-for` / `x-real-ip` は rate limit key として信用しない
 - App Hosting の runtime env と secret は `apphosting.yaml` で参照し、secret 値をリポジトリに含めない。
 
 ---

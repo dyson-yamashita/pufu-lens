@@ -97,11 +97,11 @@ export const publicReportChatAgent = new Agent({
 public chat の入口：
 
 ```text
-Browser -> Next.js /api/public/reports/[reportId]/chat
+Browser -> Next.js /api/public/projects/[projectSlug]/reports/[reportId]/chat
 Next.js -> Mastra Server /api/agents/public-report-chat-agent/stream
 ```
 
-Next.js は公開用 manifest / metadata で `reportId` が public であることを確認し、server side で public report JSON と public context bundle URI を解決する。ブラウザから送られた `projectId`、`storageUri`、`sourceUri`、`artifactVersion` は信用しない。
+Next.js は path の `projectSlug` と `reportId` を storage-safe pattern で validate し、公開用 manifest / metadata で対象 report が public であることを確認してから、server side で public report JSON と public context bundle URI を解決する。ブラウザから送られた `projectId`、`storageUri`、`sourceUri`、`artifactVersion` は信用しない。
 
 ### 3. 業務時間外の扱い
 
@@ -177,10 +177,10 @@ tool response では raw body、parsed body、OAuth token、secret、API key、s
 
 private chat と public chat は別の rate limit bucket を使う。
 
-| 対象         | キー                           |                             初期上限 | ルール                                                                            |
-| ------------ | ------------------------------ | -----------------------------------: | --------------------------------------------------------------------------------- |
-| Private Chat | user id + project id           | 60 request / hour、300 request / day | project member 向け。raw / parsed 取得はサイズ上限と監査ログを必須にする          |
-| Public Chat  | 信頼済み client IP + report id |  10 request / hour、50 request / day | 公開 report 限定。複数 report への横断アクセスも信頼済み client IP 単位で制限する |
+| 対象         | キー                                            |                                              初期上限 | ルール                                                                          |
+| ------------ | ----------------------------------------------- | ----------------------------------------------------: | ------------------------------------------------------------------------------- |
+| Private Chat | user id + project id                            |                  60 request / hour、300 request / day | project member 向け。raw / parsed 取得はサイズ上限と監査ログを必須にする        |
+| Public Chat  | Next.js が解決した client IP 相当値 + report id | 10 request / hour、50 request / day、質問長 2000 文字 | 公開 report 限定。`request.ip` が得られない環境では anonymous bucket に集約する |
 
 ```typescript
 server: {
@@ -202,6 +202,6 @@ server: {
 }
 ```
 
-Mastra Server は private Cloud Run とし、rate limit 用の `x-user-id`、`x-project-id`、`x-report-id`、`x-client-ip` は OIDC 検証済みの Next.js から来た内部 header だけを信頼する。ブラウザから直接送られた同名 header は Next.js で破棄し、信頼済み proxy 情報から client IP を解決して付与する。
+Mastra Server は private Cloud Run とし、rate limit 用の `x-user-id`、`x-project-id`、`x-report-id`、`x-client-ip` は OIDC 検証済みの Next.js から来た内部 header だけを信頼する。ブラウザから直接送られた同名 header や `x-forwarded-for` / `x-real-ip` は rate limit key として信用しない。
 
 ---

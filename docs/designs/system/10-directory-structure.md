@@ -68,10 +68,13 @@ project-root/
 │       │       │   ├── projects/route.ts
 │       │       │   └── connections/{google,github}/route.ts
 │       │       ├── public/
-│       │       │   └── reports/
-│       │       │       └── [reportId]/
-│       │       │           ├── route.ts        # redaction 済み public report JSON 配信
-│       │       │           └── chat/route.ts   # Public Chat Agent へ stream proxy
+│       │       │   ├── projects/
+│       │       │   │   ├── route.ts            # public project 一覧
+│       │       │   │   └── [projectSlug]/
+│       │       │   │       └── reports/[reportId]/
+│       │       │   │           ├── route.ts    # redaction 済み public report JSON 配信
+│       │       │   │           └── chat/route.ts # Public Chat Agent へ stream proxy
+│       │       │   └── reports/[reportId]/     # 短期互換 alias
 │       │       └── projects/[projectSlug]/
 │       │           ├── chat/route.ts
 │       │           ├── data-sources/route.ts

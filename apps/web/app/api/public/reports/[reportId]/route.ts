@@ -1,10 +1,5 @@
 import { NextResponse } from 'next/server';
-import {
-  createReportStorageFromEnv,
-  getPublicReport,
-  isSafePublicReportLocator,
-  PublicReportNotFoundError,
-} from '../../../../../src/report';
+import { handlePublicReportGet } from '../../../../../src/public-report-api';
 
 export async function GET(
   request: Request,
@@ -12,27 +7,11 @@ export async function GET(
 ) {
   const { reportId } = await params;
   const projectSlug = new URL(request.url).searchParams.get('projectSlug');
-  if (!projectSlug || !isSafePublicReportLocator({ projectSlug, reportId })) {
+  if (!projectSlug) {
     return publicReportNotFound();
   }
 
-  try {
-    const response = await getPublicReport({
-      projectSlug,
-      reportId,
-      storage: createReportStorageFromEnv(),
-    });
-    return NextResponse.json(response);
-  } catch (error) {
-    if (error instanceof PublicReportNotFoundError) {
-      return publicReportNotFound();
-    }
-    console.error('Public Report API Error:', error);
-    return NextResponse.json(
-      { error: { code: 'public_report_internal_error', message: 'An unexpected error occurred' } },
-      { status: 500 },
-    );
-  }
+  return handlePublicReportGet({ projectSlug, reportId });
 }
 
 function publicReportNotFound() {

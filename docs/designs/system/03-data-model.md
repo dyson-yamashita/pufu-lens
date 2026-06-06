@@ -28,7 +28,7 @@ CREATE TABLE users (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email      TEXT NOT NULL UNIQUE,
   name       TEXT,
-  role       TEXT NOT NULL DEFAULT 'admin',
+  role       TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin', 'system')),
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -40,6 +40,7 @@ CREATE TABLE projects (
   description     TEXT,
   graph_name      TEXT NOT NULL UNIQUE,        -- 'graph_project_a'
   storage_prefix  TEXT NOT NULL UNIQUE,        -- 'project-a'
+  visibility      TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'public')),
   settings        JSONB NOT NULL DEFAULT '{}', -- LLM、embedding モデル等
   created_at      TIMESTAMPTZ DEFAULT now(),
   updated_at      TIMESTAMPTZ DEFAULT now()
@@ -448,6 +449,7 @@ erDiagram
         text name
         text graph_name UK
         text storage_prefix UK
+        text visibility
         jsonb settings
     }
     project_members {

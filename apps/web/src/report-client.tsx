@@ -216,7 +216,7 @@ export function PublicReportDocument({
     let cancelled = false;
     setReport(undefined);
     setStatus('loading');
-    fetch(`/api/public/reports/${reportId}?projectSlug=${encodeURIComponent(projectSlug)}`)
+    fetch(`/api/public/projects/${projectSlug}/reports/${reportId}`)
       .then(async (response) => {
         const body = (await response.json()) as {
           readonly error?: { readonly code?: string; readonly message?: string };
@@ -335,14 +335,11 @@ function PublicReportChatPanel({
     setError(undefined);
     setResponse(undefined);
     try {
-      const result = await fetch(
-        `/api/public/reports/${reportId}/chat?projectSlug=${encodeURIComponent(projectSlug)}`,
-        {
-          body: JSON.stringify({ question: trimmedQuestion }),
-          headers: { 'content-type': 'application/json' },
-          method: 'POST',
-        },
-      );
+      const result = await fetch(`/api/public/projects/${projectSlug}/reports/${reportId}/chat`, {
+        body: JSON.stringify({ question: trimmedQuestion }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      });
       const isJson = result.headers.get('content-type')?.includes('application/json') ?? false;
       const body = isJson
         ? ((await result.json()) as PublicChatResponse | ReportApiError)

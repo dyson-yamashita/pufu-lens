@@ -172,14 +172,14 @@ test('public report page renders redacted artifact only', async ({ page }) => {
     summary: '公開可能な概要です。',
     title: report.title,
   };
-  await page.route('**/api/public/reports/report-a?projectSlug=sample-a', async (route) => {
+  await page.route('**/api/public/projects/sample-a/reports/report-a*', async (route) => {
     await route.fulfill({
       body: JSON.stringify({ report: publicReport, status: 'ok' }),
       contentType: 'application/json',
       status: 200,
     });
   });
-  await page.route('**/api/public/reports/report-a/chat?projectSlug=sample-a', async (route) => {
+  await page.route('**/api/public/projects/sample-a/reports/report-a/chat*', async (route) => {
     const body = route.request().postDataJSON() as { question?: string };
     if (body.question?.includes('元メール')) {
       await route.fulfill({
@@ -246,15 +246,34 @@ test('public report page renders redacted artifact only', async ({ page }) => {
 
 test('public and publish APIs reject unsafe client input', async ({ request }) => {
   const unsafePublicResponse = await request.get(
-    '/api/public/reports/report-a?projectSlug=../sample-a',
+    '/api/public/projects/%2E%2E%2Fsample-a/reports/report-a',
   );
   expect(unsafePublicResponse.status()).toBe(404);
 
   const unsafePublicChatResponse = await request.post(
-    '/api/public/reports/report-a/chat?projectSlug=../sample-a',
+    '/api/public/projects/sample-a/reports/%2E%2E%2Freport-a/chat',
     { data: { projectId: 'project-a', question: 'この公開レポートは?' } },
   );
   expect(unsafePublicChatResponse.status()).toBe(404);
+
+  const longQuestionResponse = await request.post(
+    '/api/public/projects/sample-a/reports/report-a/chat',
+    { data: { question: 'あ'.repeat(2001) } },
+  );
+  expect(longQuestionResponse.status()).toBe(413);
+  const longQuestionBody = await longQuestionResponse.json();
+  expect(longQuestionBody.error.code).toBe('public_chat_question_too_long');
+
+  const nullPublicChatResponse = await request.post(
+    '/api/public/projects/sample-a/reports/report-a/chat',
+    {
+      data: 'null',
+      headers: { 'content-type': 'application/json' },
+    },
+  );
+  expect(nullPublicChatResponse.status()).toBe(400);
+  const nullPublicChatBody = await nullPublicChatResponse.json();
+  expect(nullPublicChatBody.error.code).toBe('invalid_request');
 
   const invalidPatchResponse = await request.patch('/api/projects/sample-a/reports/report-a', {
     data: '{not-json',

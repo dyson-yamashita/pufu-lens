@@ -6,11 +6,21 @@ export interface CreateProjectInput {
   description?: string | null;
   name: string;
   slug: string;
+  visibility?: ProjectVisibility;
 }
 
 export interface ProjectIdentifiers {
   graphName: string;
   storagePrefix: string;
+}
+
+export type ProjectVisibility = 'private' | 'public';
+
+export function validateProjectVisibility(visibility: string): ProjectVisibility {
+  if (visibility === 'private' || visibility === 'public') {
+    return visibility;
+  }
+  throw new Error(`Invalid project visibility: ${visibility}. Use private or public.`);
 }
 
 export function validateProjectSlug(slug: string): string {
@@ -51,6 +61,7 @@ export function deriveProjectIdentifiers(slug: string): ProjectIdentifiers {
 
 export function buildCreateProjectSql(input: CreateProjectInput): string {
   const slug = validateProjectSlug(input.slug);
+  const visibility = validateProjectVisibility(input.visibility ?? 'private');
   const identifiers = deriveProjectIdentifiers(slug);
 
   return [
@@ -58,10 +69,12 @@ export function buildCreateProjectSql(input: CreateProjectInput): string {
     'SET standard_conforming_strings = on;',
     'SET search_path = ag_catalog, "$user", public;',
     'BEGIN;',
-    `INSERT INTO public.projects (slug, name, description, graph_name, storage_prefix)`,
+    `INSERT INTO public.projects (slug, name, description, graph_name, storage_prefix, visibility)`,
     `VALUES (${escapeSqlLiteral(slug)}, ${escapeSqlLiteral(input.name)}, ${escapeOptionalSqlLiteral(
       input.description,
-    )}, ${escapeSqlLiteral(identifiers.graphName)}, ${escapeSqlLiteral(identifiers.storagePrefix)})`,
+    )}, ${escapeSqlLiteral(identifiers.graphName)}, ${escapeSqlLiteral(
+      identifiers.storagePrefix,
+    )}, ${escapeSqlLiteral(visibility)})`,
     'ON CONFLICT (slug) DO NOTHING;',
     `SELECT create_graph(${escapeSqlLiteral(identifiers.graphName)})`,
     'WHERE NOT EXISTS (',
