@@ -264,6 +264,17 @@ test('public and publish APIs reject unsafe client input', async ({ request }) =
   const longQuestionBody = await longQuestionResponse.json();
   expect(longQuestionBody.error.code).toBe('public_chat_question_too_long');
 
+  const nullPublicChatResponse = await request.post(
+    '/api/public/projects/sample-a/reports/report-a/chat',
+    {
+      data: 'null',
+      headers: { 'content-type': 'application/json' },
+    },
+  );
+  expect(nullPublicChatResponse.status()).toBe(400);
+  const nullPublicChatBody = await nullPublicChatResponse.json();
+  expect(nullPublicChatBody.error.code).toBe('invalid_request');
+
   const invalidPatchResponse = await request.patch('/api/projects/sample-a/reports/report-a', {
     data: '{not-json',
     headers: { 'content-type': 'application/json' },

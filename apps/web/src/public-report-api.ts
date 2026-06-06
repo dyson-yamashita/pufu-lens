@@ -66,8 +66,11 @@ export async function handlePublicChatPost(
 
   let question = '';
   try {
-    const body = (await request.json()) as { question?: unknown };
-    question = typeof body.question === 'string' ? body.question.trim() : '';
+    const body = (await request.json()) as Record<string, unknown> | null;
+    question =
+      body && typeof body === 'object' && typeof body.question === 'string'
+        ? body.question.trim()
+        : '';
   } catch {
     return publicChatErrorResponse('invalid_json', 'Invalid JSON body', 400);
   }
@@ -124,9 +127,8 @@ export async function handlePublicChatPost(
   }
 }
 
-function trustedClientIp(request: NextRequest): string {
-  const nextRequestIp = (request as NextRequest & { readonly ip?: string }).ip?.trim();
-  return nextRequestIp || 'anonymous';
+function trustedClientIp(request: NextRequest & { readonly ip?: string }): string {
+  return request.ip?.trim() || 'anonymous';
 }
 
 function parseEnvInt(value: string | undefined, fallback: number): number {
