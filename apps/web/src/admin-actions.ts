@@ -107,7 +107,12 @@ export async function updateProjectVisibility(formData: FormData): Promise<void>
     }
 
     await updateProjectVisibilityRow(sql, project.id, visibility);
-    await writePublicProjectVisibilityManifest(projectSlug, visibility);
+    try {
+      await writePublicProjectVisibilityManifest(projectSlug, visibility);
+    } catch (error) {
+      await updateProjectVisibilityRow(sql, project.id, project.visibility);
+      throw error;
+    }
   });
 
   revalidateProject(projectSlug);
@@ -540,24 +545,43 @@ class AdminCollectionRepository implements CollectionRepository {
 async function requireAdminProject(
   sql: postgres.Sql,
   projectSlug: string,
-): Promise<{ readonly adminUserId: string; readonly id: string; readonly slug: string }> {
+): Promise<{
+  readonly adminUserId: string;
+  readonly id: string;
+  readonly slug: string;
+  readonly visibility: ProjectVisibility;
+}> {
   if (process.env.PUFU_LENS_ENABLE_ADMIN_ACTIONS !== 'true') {
     throw new Error('Admin actions are disabled.');
   }
   const adminUserId = requireAdminUserId();
   const rows = (await sql`
-    SELECT projects.id::text AS id, projects.slug, project_members.user_id::text AS admin_user_id
+    SELECT
+      projects.id::text AS id,
+      projects.slug,
+      COALESCE(projects.visibility, 'private') AS visibility,
+      project_members.user_id::text AS admin_user_id
     FROM public.projects
     JOIN public.project_members ON project_members.project_id = projects.id
     WHERE projects.slug = ${projectSlug}
       AND project_members.user_id = ${adminUserId}
       AND project_members.role = 'admin'
-  `) as Array<{ admin_user_id: string; id: string; slug: string }>;
+  `) as Array<{
+    admin_user_id: string;
+    id: string;
+    slug: string;
+    visibility: ProjectVisibility;
+  }>;
   const project = rows[0];
   if (!project) {
     throw new Error(`Admin access denied for project slug: ${projectSlug}`);
   }
-  return { adminUserId: project.admin_user_id, id: project.id, slug: project.slug };
+  return {
+    adminUserId: project.admin_user_id,
+    id: project.id,
+    slug: project.slug,
+    visibility: project.visibility,
+  };
 }
 
 function requireAdminUserId(): string {

@@ -30,6 +30,7 @@
     "ingest:resolve-actors": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node --experimental-strip-types scripts/resolve-actors.ts",
     "parser:version:validate": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node --experimental-strip-types scripts/validate-parser-version.ts",
     "report:generate": "pnpm --filter @pufu-lens/storage build && node --experimental-strip-types scripts/generate-report.ts",
+    "report:backfill-project-manifests": "pnpm --filter @pufu-lens/storage build && node --experimental-strip-types scripts/backfill-public-project-manifests.ts",
     "report:publish": "pnpm --filter @pufu-lens/storage build && node --experimental-strip-types scripts/publish-report.ts",
     "lint": "biome ci . && markdownlint-cli2",
     "seed:projects": "node --experimental-strip-types scripts/create-project.ts --seed-samples",

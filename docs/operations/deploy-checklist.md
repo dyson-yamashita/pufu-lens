@@ -45,11 +45,13 @@ API key、DB password は記録しない。
 
 ```bash
 pnpm deploy:dry-run
+pnpm report:backfill-project-manifests -- --dry-run
 pnpm infra:check --env staging
 pnpm deploy:smoke --env staging
 ```
 
 - `deploy:dry-run`: `curate-workflow`、`ingest-workflow`、`generate-report` の `WORKFLOW_ID` / `WORKFLOW_INPUT_JSON` entrypoint 計画をローカル dry-run で検査する。
+- `report:backfill-project-manifests`: 既存の `projects.visibility = 'public'` project に対して、公開レポート API が参照する `project-public-state.json` を Object Storage に作成する。初回は `--dry-run` で対象を確認し、問題なければ `--dry-run` なしで一度だけ実行する。
 - `infra:check`:
 - `deploy:smoke`:
 - Cloud Run Job 単発実行:
