@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "next build",
-    "dev": "next dev -H 0.0.0.0",
+    "dev": "next dev",
+    "dev:lan": "next dev -H 0.0.0.0",
     "start": "next start",
     "test": "node --experimental-strip-types src/admin-data.test.ts && node --experimental-strip-types src/chat.test.ts && node --experimental-strip-types src/report.test.ts",
     "test:e2e": "playwright test",
