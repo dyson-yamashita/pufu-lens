@@ -115,7 +115,18 @@ export async function handlePublicChatPost(
 
 function trustedClientIp(request: NextRequest): string {
   const nextRequestIp = (request as NextRequest & { readonly ip?: string }).ip?.trim();
-  return nextRequestIp || request.headers.get('x-real-ip')?.trim() || 'unknown';
+  if (nextRequestIp) {
+    return nextRequestIp;
+  }
+
+  const xRealIp = request.headers.get('x-real-ip')?.trim();
+  if (xRealIp) {
+    return xRealIp;
+  }
+
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  const firstForwardedIp = forwardedFor?.split(',')[0]?.trim();
+  return firstForwardedIp || 'unknown';
 }
 
 function parseEnvInt(value: string | undefined, fallback: number): number {

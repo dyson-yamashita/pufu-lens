@@ -144,7 +144,7 @@ export async function listPublicProjects(): Promise<readonly PublicProjectSummar
       ORDER BY p.slug, r.created_at DESC
     `) as PublicProjectReportRow[];
     return publicProjectsFromRows(rows);
-  }, fallbackPublicProjects);
+  }, publicProjectsFallback());
 }
 
 export async function getAdminProject(slug: string): Promise<ProjectSummary> {
@@ -502,6 +502,10 @@ function publicProjectsFromRows(
     projects.set(row.slug, project);
   }
   return Array.from(projects.values());
+}
+
+function publicProjectsFallback(): readonly PublicProjectSummary[] {
+  return process.env.NODE_ENV === 'production' ? [] : fallbackPublicProjects;
 }
 
 async function withOptionalSql<T>(
