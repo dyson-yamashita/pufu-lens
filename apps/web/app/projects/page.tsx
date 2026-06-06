@@ -104,6 +104,7 @@ export default async function ProjectsPage() {
         <section className="project-grid" data-testid="project-list">
           {projects.map((project) => (
             <Link
+              aria-label={`${project.name} のレポート一覧`}
               className="project-card project-card-link"
               data-testid={`project-card-${project.slug}`}
               href={`/projects/${project.slug}/reports`}
