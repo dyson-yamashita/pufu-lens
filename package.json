@@ -10,6 +10,8 @@
     "create-project": "node --experimental-strip-types scripts/create-project.ts",
     "deploy:dry-run": "node --experimental-strip-types scripts/deploy-dry-run.ts",
     "deploy:smoke": "node --experimental-strip-types scripts/deploy-smoke.ts",
+    "dev": "pnpm --filter @pufu-lens/web dev",
+    "dev:lan": "pnpm --filter @pufu-lens/web dev:lan",
     "format": "biome check --write . && prettier --write \"**/*.{md,yml,yaml}\"",
     "format:check": "biome check . && prettier --check \"**/*.{md,yml,yaml}\"",
     "infra:check": "node --experimental-strip-types scripts/infra-check.ts",
