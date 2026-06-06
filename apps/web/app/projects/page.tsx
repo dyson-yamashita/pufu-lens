@@ -17,7 +17,7 @@ export default async function ProjectsPage() {
     <AppShell active="projects">
       <PageHeader
         title="Projects"
-        subtitle="プロジェクトごとの ingestion 状態と管理画面への入口を確認します。"
+        subtitle="プロジェクトごとの状態を確認し、カードからレポート一覧を開きます。"
       />
       {canCreateProject ? (
         <details className="panel create-project-panel" data-testid="project-create-panel">
@@ -103,9 +103,11 @@ export default async function ProjectsPage() {
       {canShowAdminProjects ? (
         <section className="project-grid" data-testid="project-list">
           {projects.map((project) => (
-            <article
-              className="project-card"
+            <Link
+              aria-label={`${project.name} のレポート一覧`}
+              className="project-card project-card-link"
               data-testid={`project-card-${project.slug}`}
+              href={`/projects/${project.slug}/reports`}
               key={project.slug}
             >
               <div className="project-card-header">
@@ -126,19 +128,7 @@ export default async function ProjectsPage() {
                   <dd>{project.lastIndexed}</dd>
                 </div>
               </dl>
-              <div className="action-row">
-                <Link
-                  className="secondary-link"
-                  data-testid={`project-open-${project.slug}`}
-                  href={`/projects/${project.slug}/admin/data-sources`}
-                >
-                  Data Sources
-                </Link>
-                <Link className="secondary-link" href={`/projects/${project.slug}/admin/ingestion`}>
-                  Ingestion
-                </Link>
-              </div>
-            </article>
+            </Link>
           ))}
         </section>
       ) : null}
