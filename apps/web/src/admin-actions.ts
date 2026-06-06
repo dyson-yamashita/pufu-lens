@@ -17,7 +17,7 @@ import {
   validateProjectSlug,
 } from '../../../packages/project-tenancy/src/project-tenancy.ts';
 import { LocalFsObjectStorage } from '../../../packages/storage/src/local-fs.ts';
-import type { SourceType } from './admin-data';
+import type { ProjectVisibility, SourceType } from './admin-data';
 import { getRequiredAdminSql } from './admin-sql';
 import {
   createExtractiveReportProvider,
@@ -27,6 +27,7 @@ import {
   type ReportGenerationProvider,
   reportNowFromEnv,
   runGenerateReport,
+  writePublicProjectManifest,
 } from './report';
 
 type SqlExecutor = postgres.Sql | postgres.TransactionSql;
@@ -89,7 +90,26 @@ export async function createProject(formData: FormData): Promise<void> {
   });
 
   await ensureProjectStoragePrefixes(slug);
+  await writePublicProjectVisibilityManifest(slug, 'private');
   revalidatePath('/projects');
+}
+
+export async function updateProjectVisibility(formData: FormData): Promise<void> {
+  const projectSlug = requireFormValue(formData, 'projectSlug');
+  const visibility = requireProjectVisibility(requireFormValue(formData, 'visibility'));
+
+  await withSql(async (sql) => {
+    const project = await requireAdminProject(sql, projectSlug);
+    await sql`
+      UPDATE public.projects
+      SET visibility = ${visibility},
+          updated_at = now()
+      WHERE id = ${project.id}
+    `;
+  });
+
+  await writePublicProjectVisibilityManifest(projectSlug, visibility);
+  revalidateProject(projectSlug);
 }
 
 export async function createDataSource(formData: FormData): Promise<void> {
@@ -557,6 +577,13 @@ function requireSourceType(value: string): SourceType {
   throw new Error(`Unsupported source type: ${value}`);
 }
 
+function requireProjectVisibility(value: string): ProjectVisibility {
+  if (value === 'private' || value === 'public') {
+    return value;
+  }
+  throw new Error(`Unsupported project visibility: ${value}`);
+}
+
 function buildDataSourceConfig(sourceType: SourceType, scope: string): Record<string, unknown> {
   if (sourceType === 'web') {
     return {
@@ -635,6 +662,24 @@ async function ensureProjectStoragePrefixes(projectSlug: string): Promise<void> 
     return;
   }
   await new LocalFsObjectStorage(storageRoot).ensureProjectPrefixes(projectSlug);
+}
+
+async function writePublicProjectVisibilityManifest(
+  projectSlug: string,
+  visibility: ProjectVisibility,
+): Promise<void> {
+  try {
+    await writePublicProjectManifest({
+      projectSlug,
+      storage: createReportStorageFromEnv(),
+      visibility,
+    });
+  } catch (error) {
+    if (error instanceof Error && /STORAGE_ROOT|LOCAL_STORAGE_ROOT/.test(error.message)) {
+      return;
+    }
+    throw error;
+  }
 }
 
 async function lookupProjectParserVersion(

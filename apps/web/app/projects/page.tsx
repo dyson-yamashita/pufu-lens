@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { createProject } from '../../src/admin-actions';
+import { createProject, updateProjectVisibility } from '../../src/admin-actions';
 import { listAdminProjects, listPublicProjects } from '../../src/admin-db';
 import { ActionForm, PendingSubmitButton } from '../../src/form-buttons';
 import { AppShell, MetricStrip, PageHeader, StatusBadge } from '../../src/ui';
@@ -113,7 +113,15 @@ export default async function ProjectsPage() {
                   <p className="eyebrow">{project.slug}</p>
                   <h2>{project.name}</h2>
                 </div>
-                <StatusBadge status={project.status === 'active' ? 'healthy' : 'failed'} />
+                <div className="status-stack">
+                  <StatusBadge status={project.status === 'active' ? 'healthy' : 'failed'} />
+                  <span
+                    className={`status-badge status-visibility-${project.visibility}`}
+                    data-testid={`project-visibility-${project.slug}`}
+                  >
+                    {project.visibility}
+                  </span>
+                </div>
               </div>
               <MetricStrip project={project} />
               <dl className="detail-list">
@@ -126,7 +134,7 @@ export default async function ProjectsPage() {
                   <dd>{project.lastIndexed}</dd>
                 </div>
               </dl>
-              <div className="action-row">
+              <div className="action-row project-card-actions">
                 <Link
                   className="secondary-link"
                   data-testid={`project-open-${project.slug}`}
@@ -137,6 +145,25 @@ export default async function ProjectsPage() {
                 <Link className="secondary-link" href={`/projects/${project.slug}/admin/ingestion`}>
                   Ingestion
                 </Link>
+                <ActionForm action={updateProjectVisibility} className="inline-action-form">
+                  <input name="projectSlug" type="hidden" value={project.slug} />
+                  <input
+                    name="visibility"
+                    type="hidden"
+                    value={project.visibility === 'public' ? 'private' : 'public'}
+                  />
+                  <PendingSubmitButton
+                    className="icon-button"
+                    testId={`project-visibility-toggle-${project.slug}`}
+                    title={
+                      project.visibility === 'public'
+                        ? 'Make project private'
+                        : 'Make project public'
+                    }
+                  >
+                    {project.visibility === 'public' ? 'Make Private' : 'Make Public'}
+                  </PendingSubmitButton>
+                </ActionForm>
               </div>
             </article>
           ))}

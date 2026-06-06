@@ -414,6 +414,27 @@ tr.selected-row {
   color: var(--red);
 }
 
+.status-visibility-public {
+  background: rgba(0, 102, 255, 0.16);
+  color: var(--blue);
+}
+
+.status-visibility-private {
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--muted);
+}
+
+.status-stack {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.project-card-actions {
+  margin-top: 16px;
+}
+
 .status-held {
   background: rgba(243, 186, 77, 0.14);
   color: var(--amber);

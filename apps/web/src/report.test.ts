@@ -22,6 +22,7 @@ import {
   validatePrivateReportJson,
   validatePublicContextBundle,
   validatePublicReportJson,
+  writePublicProjectManifest,
 } from './report.ts';
 
 class MemoryStorage implements ObjectStorage {
@@ -61,11 +62,13 @@ function createRepository(): ReportRepository & { insertedChunks: number; storag
     insertedChunks: 0,
     async lookupProjectMember({ projectSlug, userId }) {
       return projectSlug === 'sample-a' && userId === 'user-a'
-        ? { id: 'project-a', slug: 'sample-a' }
+        ? { id: 'project-a', slug: 'sample-a', visibility: 'public' }
         : undefined;
     },
     async lookupProject({ projectSlug }) {
-      return projectSlug === 'sample-a' ? { id: 'project-a', slug: 'sample-a' } : undefined;
+      return projectSlug === 'sample-a'
+        ? { id: 'project-a', slug: 'sample-a', visibility: 'public' }
+        : undefined;
     },
     async listRecentDocuments({ projectId }) {
       assert.equal(projectId, 'project-a');
@@ -267,6 +270,15 @@ gsStorage.objects.set(
   }),
 );
 gsStorage.objects.set(
+  `sample-a/project-public-state.json`,
+  JSON.stringify({
+    project_slug: 'sample-a',
+    published_at: '2026-06-04T13:00:00.000Z',
+    schema_version: 'public-project-manifest-v1',
+    visibility: 'public',
+  }),
+);
+gsStorage.objects.set(
   `sample-a/reports/public/${generated.report.report_id}/manifest.json`,
   JSON.stringify({
     ...published.manifest,
@@ -281,6 +293,26 @@ const gsPublicDetail = await getPublicReport({
   storage: gsStorage,
 });
 assert.equal(gsPublicDetail.status, 'ok');
+
+await writePublicProjectManifest({
+  projectSlug: 'sample-a',
+  storage,
+  visibility: 'private',
+});
+await assert.rejects(
+  () =>
+    getPublicReport({
+      projectSlug: 'sample-a',
+      reportId: generated.report.report_id,
+      storage,
+    }),
+  PublicReportNotFoundError,
+);
+await writePublicProjectManifest({
+  projectSlug: 'sample-a',
+  storage,
+  visibility: 'public',
+});
 
 const revoked = await revokePublicReport({
   now: new Date('2026-06-04T14:00:00.000Z'),
