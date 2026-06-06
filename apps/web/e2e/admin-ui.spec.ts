@@ -9,6 +9,12 @@ test('projects page links to project administration', async ({ page }) => {
   await expect(page.getByTestId('global-nav-parser-profiles')).toHaveCount(0);
   await expect(page.getByTestId('project-list')).toBeVisible();
   await expect(page.getByTestId('project-card-sample-a')).toBeVisible();
+  await expect(page.getByTestId('public-project-list')).toBeVisible();
+  await expect(page.getByTestId('public-project-sample-a')).toBeVisible();
+  await expect(page.getByTestId('public-report-sample-a-report-a')).toHaveAttribute(
+    'href',
+    '/reports/public/sample-a/report-a',
+  );
 
   await page.getByTestId('project-open-sample-a').click();
   await expect(page).toHaveURL(/\/projects\/sample-a\/admin\/data-sources$/);

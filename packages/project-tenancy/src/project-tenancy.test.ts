@@ -6,6 +6,7 @@ import {
   escapeSqlLiteral,
   validateGraphName,
   validateProjectSlug,
+  validateProjectVisibility,
 } from './project-tenancy.js';
 
 test('deriveProjectIdentifiers creates graph name and storage prefix from slug', () => {
@@ -38,6 +39,12 @@ test('validateGraphName rejects names longer than PostgreSQL identifiers', () =>
   assert.throws(() => deriveProjectIdentifiers('a'.repeat(58)), /63 characters or less/);
 });
 
+test('validateProjectVisibility allows only private and public projects', () => {
+  assert.equal(validateProjectVisibility('private'), 'private');
+  assert.equal(validateProjectVisibility('public'), 'public');
+  assert.throws(() => validateProjectVisibility('team'), /Invalid project visibility/);
+});
+
 test('escapeSqlLiteral escapes quotes', () => {
   assert.equal(escapeSqlLiteral("Bob's Project"), "'Bob''s Project'");
 });
@@ -54,6 +61,19 @@ test('buildCreateProjectSql is idempotent for project row and graph creation', (
   assert.match(sql, /WHERE NOT EXISTS/);
   assert.match(sql, /graph_sample_a/);
   assert.match(sql, /'Bob''s fixture'/);
+  assert.match(sql, /'private'\)/);
+});
+
+test('buildCreateProjectSql accepts public visibility', () => {
+  const sql = buildCreateProjectSql({
+    description: 'Public sample',
+    name: 'Sample A',
+    slug: 'sample-a',
+    visibility: 'public',
+  });
+
+  assert.match(sql, /visibility\)/);
+  assert.match(sql, /'public'\)/);
 });
 
 test('buildCreateProjectSql treats null description as SQL NULL', () => {

@@ -1,6 +1,21 @@
 export type SourceType = 'gmail' | 'drive' | 'github' | 'web';
 export type SourceStatus = 'healthy' | 'syncing' | 'failed' | 'held';
 export type ParserProfileStatus = 'approved' | 'review_requested' | 'draft' | 'rejected';
+export type ProjectVisibility = 'private' | 'public';
+
+export interface PublicProjectReportSummary {
+  readonly id: string;
+  readonly publishedAt: string;
+  readonly summary: string;
+  readonly title: string;
+}
+
+export interface PublicProjectSummary {
+  readonly description: string;
+  readonly name: string;
+  readonly reports: readonly PublicProjectReportSummary[];
+  readonly slug: string;
+}
 
 export interface DataSourceSummary {
   readonly id: string;
@@ -42,6 +57,7 @@ export interface ProjectSummary {
   readonly lastIndexed: string;
   readonly dataSources: readonly DataSourceSummary[];
   readonly parserProfiles: readonly ParserProfileSummary[];
+  readonly visibility: ProjectVisibility;
 }
 
 export const fallbackProjects = [
@@ -124,6 +140,7 @@ export const fallbackProjects = [
         validationReport: 'owner metadata 欠落 2 件を確認待ち',
       },
     ],
+    visibility: 'public',
   },
   {
     slug: 'sample-b',
@@ -179,11 +196,32 @@ export const fallbackProjects = [
         validationReport: '引用チェーンと sender alias が通過',
       },
     ],
+    visibility: 'private',
   },
 ] satisfies readonly ProjectSummary[];
 
+export const fallbackPublicProjects = [
+  {
+    description: '公開レポートと Public Chat を確認できるサンプルプロジェクトです。',
+    name: 'Sample A',
+    reports: [
+      {
+        id: 'report-a',
+        publishedAt: '2026-06-04 19:00',
+        summary: '公開可能な概要です。',
+        title: 'プロジェクト状況レポート 2026-06-01 - 2026-06-07',
+      },
+    ],
+    slug: 'sample-a',
+  },
+] satisfies readonly PublicProjectSummary[];
+
 export function listProjects(): readonly ProjectSummary[] {
   return fallbackProjects;
+}
+
+export function listPublicProjects(): readonly PublicProjectSummary[] {
+  return fallbackPublicProjects;
 }
 
 export function getProject(slug: string): ProjectSummary {

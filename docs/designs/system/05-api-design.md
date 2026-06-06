@@ -107,10 +107,10 @@ data source 作成時は次を検証する。
 
 ### 6. Chat API
 
-| Method | Path                                  | 認可           | 用途                               |
-| ------ | ------------------------------------- | -------------- | ---------------------------------- |
-| `POST` | `/api/projects/[projectSlug]/chat`    | project member | Private Chat Agent へ stream proxy |
-| `POST` | `/api/public/reports/[reportId]/chat` | public         | Public Chat Agent へ stream proxy  |
+| Method | Path                                                         | 認可           | 用途                               |
+| ------ | ------------------------------------------------------------ | -------------- | ---------------------------------- |
+| `POST` | `/api/projects/[projectSlug]/chat`                           | project member | Private Chat Agent へ stream proxy |
+| `POST` | `/api/public/projects/[projectSlug]/reports/[reportId]/chat` | public         | Public Chat Agent へ stream proxy  |
 
 Private Chat API では、Next.js は Auth.js session と project membership を検証した後、Mastra Server の Agent API へ OIDC 付きで proxy する。
 
@@ -123,7 +123,7 @@ Next.js -> Mastra Server /api/agents/project-chat-agent/stream
 
 request body には `messages` と UI 側 metadata を受け取り、Next.js が `projectSlug` から解決した `projectId` を server side で追加する。ブラウザから渡された `projectId` は信用しない。
 
-Public Chat API は未ログインで利用できるが、対象は `is_public=true` の report に限定する。Next.js は公開用 manifest / metadata で report の公開状態を確認し、redaction 済み public report JSON と公開用 context bundle URI を server side で解決して Public Chat Agent に渡す。ブラウザから渡された `projectId`、`storageUri`、`sourceUri`、`artifactVersion` は信用しない。
+Public Chat API は未ログインで利用できるが、対象は `projects.visibility='public'` かつ `is_public=true` の report に限定する。正規 API は `projectSlug` と `reportId` の両方を path parameter で受け取り、Next.js は API entrypoint で slug / report id を storage-safe pattern に validate してから公開用 manifest / metadata を参照する。ブラウザから渡された `projectId`、`storageUri`、`sourceUri`、`artifactVersion` は信用しない。
 
 Public Chat Agent の tool は、ユーザー入力や LLM が指定した URI を読まない。Next.js が検証済み manifest から解決した `reportId`、`artifactVersion`、`public_report_uri`、`public_context_bundle_uri` のみを内部 context として渡し、tool 側でも対象 report、許可 prefix、etag / artifact version の一致を確認する。
 
@@ -144,11 +144,12 @@ Public Chat Agent のルール：
 | `GET`   | `/api/projects/[projectSlug]/reports/[reportId]`            | project member | report JSON 本体                                        |
 | `GET`   | `/api/projects/[projectSlug]/reports/[reportId]/signed-url` | project member | private report の短時間 signed URL                      |
 | `PATCH` | `/api/projects/[projectSlug]/reports/[reportId]`            | project admin  | `is_public` など metadata 更新                          |
-| `GET`   | `/api/public/reports/[reportId]`                            | public         | `is_public = true` の redaction 済み public report JSON |
+| `GET`   | `/api/public/projects`                                      | public         | public project と公開済み report の一覧                 |
+| `GET`   | `/api/public/projects/[projectSlug]/reports/[reportId]`     | public         | public project 配下の redaction 済み public report JSON |
 
 private report の閲覧・一覧・signed URL 発行・公開状態更新は DB 依存 API として扱う。ログイン済み session と `project_members` を PostgreSQL で検証し、業務時間外は DB 接続を試みず `503 Service Unavailable` と `db_outside_business_hours` を返す。
 
-public report は公開用 manifest または storage metadata で `is_public=true` を判定し、redaction 済み public report JSON を Object Storage から取得して返す。業務時間外でも閲覧可能にするが、非公開・存在しない・無効な場合は同じ `404` を返し、private report の存在有無を漏らさない。
+public report は公開用 manifest または storage metadata で `is_public=true` を判定し、redaction 済み public report JSON を Object Storage から取得して返す。業務時間外でも閲覧可能にするが、非公開・存在しない・無効な場合は同じ `404` を返し、private report の存在有無を漏らさない。既存の `/api/public/reports/[reportId]?projectSlug=...` と `/api/public/reports/[reportId]/chat?projectSlug=...` は短期互換 alias とし、正規 API は project-scoped path とする。
 
 ### 8. Internal Scheduler / Job API
 

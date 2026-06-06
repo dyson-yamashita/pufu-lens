@@ -97,11 +97,11 @@ export const publicReportChatAgent = new Agent({
 public chat の入口：
 
 ```text
-Browser -> Next.js /api/public/reports/[reportId]/chat
+Browser -> Next.js /api/public/projects/[projectSlug]/reports/[reportId]/chat
 Next.js -> Mastra Server /api/agents/public-report-chat-agent/stream
 ```
 
-Next.js は公開用 manifest / metadata で `reportId` が public であることを確認し、server side で public report JSON と public context bundle URI を解決する。ブラウザから送られた `projectId`、`storageUri`、`sourceUri`、`artifactVersion` は信用しない。
+Next.js は path の `projectSlug` と `reportId` を storage-safe pattern で validate し、公開用 manifest / metadata で対象 report が public であることを確認してから、server side で public report JSON と public context bundle URI を解決する。ブラウザから送られた `projectId`、`storageUri`、`sourceUri`、`artifactVersion` は信用しない。
 
 ### 3. 業務時間外の扱い
 

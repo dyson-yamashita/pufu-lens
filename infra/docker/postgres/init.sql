@@ -10,7 +10,7 @@ CREATE TABLE public.users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT NOT NULL UNIQUE,
   name TEXT,
-  role TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('admin', 'system')),
+  role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin', 'system')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -21,6 +21,7 @@ CREATE TABLE public.projects (
   description TEXT,
   graph_name TEXT NOT NULL UNIQUE CHECK (graph_name ~ '^graph_[a-z0-9_]+$'),
   storage_prefix TEXT NOT NULL UNIQUE CHECK (storage_prefix !~ '(^/|\\.\\.)'),
+  visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'public')),
   settings JSONB NOT NULL DEFAULT '{}',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -374,14 +375,15 @@ INSERT INTO public.users (id, email, name, role)
 VALUES ('00000000-0000-0000-0000-000000000001', 'system@pufu-lens.local', 'Pufu Lens System', 'system')
 ON CONFLICT (email) DO NOTHING;
 
-INSERT INTO public.projects (id, slug, name, description, graph_name, storage_prefix)
+INSERT INTO public.projects (id, slug, name, description, graph_name, storage_prefix, visibility)
 VALUES (
   '00000000-0000-0000-0000-000000000101',
   'local-dev',
   'Local Development',
   'Fixture and CLI smoke test project',
   'graph_local_dev',
-  'local-dev'
+  'local-dev',
+  'private'
 )
 ON CONFLICT (slug) DO NOTHING;
 

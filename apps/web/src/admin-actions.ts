@@ -32,6 +32,10 @@ import {
 type SqlExecutor = postgres.Sql | postgres.TransactionSql;
 
 export async function createProject(formData: FormData): Promise<void> {
+  if (process.env.PUFU_LENS_ENABLE_PROJECT_CREATE_UI !== 'true') {
+    throw new Error('Project creation is disabled.');
+  }
+
   const name = requireFormValue(formData, 'name').trim();
   if (!name) {
     throw new Error('name is required.');
