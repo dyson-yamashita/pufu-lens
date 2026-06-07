@@ -16,7 +16,7 @@ STORAGE_ROOT=./infra/volumes/pufu-lens-data \
 pnpm ingest:parse --project sample-a --limit 10
 ```
 
-`scripts/parse-raw-documents.ts` は対象 project / data_source / source_type に built-in parser profile と `fixture-parser-v1` の approved parser version を seed し、active version として設定する。未承認 parser の保留動作を確認したい場合は次を使う。
+管理 UI で data source を作成すると、対象 project / data_source / source_type に built-in parser profile と `fixture-parser-v1` の approved parser version が作成され、active version として設定される。`scripts/parse-raw-documents.ts` も既存 data source の補完として同じ default parser を seed する。未承認 parser の保留動作を確認したい場合は次を使う。
 
 ```bash
 pnpm ingest:parse --project sample-a --limit 10 --no-seed-built-in-parsers
