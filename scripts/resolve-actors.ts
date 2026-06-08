@@ -133,10 +133,9 @@ class PostgresActorResolutionRepository implements ActorResolutionRepository {
         )
         ON CONFLICT (project_id, graph_node_id)
         DO UPDATE SET
-          display_name = public.actors.display_name,
-          primary_email = COALESCE(public.actors.primary_email, EXCLUDED.primary_email),
-          primary_login = COALESCE(public.actors.primary_login, EXCLUDED.primary_login),
-          metadata = COALESCE(public.actors.metadata, '{}'::jsonb) || EXCLUDED.metadata
+          primary_email = COALESCE(actors.primary_email, EXCLUDED.primary_email),
+          primary_login = COALESCE(actors.primary_login, EXCLUDED.primary_login),
+          metadata = COALESCE(actors.metadata, '{}'::jsonb) || EXCLUDED.metadata
         RETURNING
           display_name AS "displayName",
           graph_node_id AS "graphNodeId",
@@ -175,12 +174,12 @@ class PostgresActorResolutionRepository implements ActorResolutionRepository {
         ON CONFLICT (project_id, alias_type, alias_value)
         DO UPDATE SET
           actor_id = EXCLUDED.actor_id,
-          confidence = GREATEST(public.actor_aliases.confidence, EXCLUDED.confidence),
+          confidence = GREATEST(actor_aliases.confidence, EXCLUDED.confidence),
           source = (
             SELECT string_agg(DISTINCT val, ',' ORDER BY val)
             FROM unnest(
               string_to_array(
-                COALESCE(public.actor_aliases.source, '') || ',' || COALESCE(EXCLUDED.source, ''),
+                COALESCE(actor_aliases.source, '') || ',' || COALESCE(EXCLUDED.source, ''),
                 ','
               )
             ) AS val

@@ -3,10 +3,13 @@
 import { revalidatePath } from 'next/cache';
 import type postgres from 'postgres';
 import {
+  BUILT_IN_PARSER_ARTIFACT_HASH,
   type CollectionRepository,
   collectWebUrlSource,
   type DataSourceRecord,
+  defaultParserContract,
   type LinkDataSourceInput,
+  PARSED_SCHEMA_VERSION,
   type ProjectRecord,
   type QueueCandidateInput,
   type RawDocumentInput,
@@ -133,16 +136,29 @@ export async function createDataSource(formData: FormData): Promise<void> {
 
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
-    await sql`
-      INSERT INTO public.data_sources (project_id, owner_user_id, source_type, name, config)
-      VALUES (
-        ${project.id},
-        ${project.adminUserId},
-        ${sourceType},
-        ${name},
-        ${sql.json(config as postgres.JSONValue)}
-      )
-    `;
+    await sql.begin(async (tx) => {
+      const dataSources = (await tx`
+        INSERT INTO public.data_sources (project_id, owner_user_id, source_type, name, config)
+        VALUES (
+          ${project.id},
+          ${project.adminUserId},
+          ${sourceType},
+          ${name},
+          ${tx.json(config as postgres.JSONValue)}
+        )
+        RETURNING id::text
+      `) as Array<{ id: string }>;
+      const dataSource = dataSources[0];
+      if (!dataSource) {
+        throw new Error('Data source creation failed.');
+      }
+      await ensureDefaultParserProfile(tx, {
+        approvedByUserId: project.adminUserId,
+        dataSourceId: dataSource.id,
+        projectId: project.id,
+        sourceType,
+      });
+    });
   });
 
   revalidateProject(projectSlug);
@@ -353,6 +369,76 @@ export async function rejectParserVersion(formData: FormData): Promise<void> {
 
 async function withSql<T>(callback: (sql: postgres.Sql) => Promise<T>): Promise<T> {
   return callback(getRequiredAdminSql());
+}
+
+async function ensureDefaultParserProfile(
+  sql: SqlExecutor,
+  input: {
+    readonly approvedByUserId: string;
+    readonly dataSourceId: string;
+    readonly projectId: string;
+    readonly sourceType: SourceType;
+  },
+): Promise<void> {
+  await sql`
+    WITH profiles AS (
+      INSERT INTO public.parser_profiles AS pp (
+        project_id,
+        data_source_id,
+        source_type,
+        name,
+        metadata
+      )
+      VALUES (
+        ${input.projectId},
+        ${input.dataSourceId},
+        ${input.sourceType},
+        ${`Built-in ${input.sourceType} parser`},
+        ${sql.json({ managedBy: 'apps/web/src/admin-actions.ts' } as postgres.JSONValue)}
+      )
+      ON CONFLICT (project_id, data_source_id, source_type, name)
+      DO UPDATE SET
+        metadata = EXCLUDED.metadata,
+        updated_at = now()
+      RETURNING id
+    ),
+    versions AS (
+      INSERT INTO public.parser_versions AS pv (
+        parser_profile_id,
+        version,
+        schema_version,
+        artifact_hash,
+        contract,
+        status,
+        approved_by_user_id,
+        approved_at
+      )
+      SELECT
+        profiles.id,
+        'fixture-parser-v1',
+        ${PARSED_SCHEMA_VERSION},
+        ${BUILT_IN_PARSER_ARTIFACT_HASH},
+        ${sql.json(defaultParserContract(input.sourceType) as postgres.JSONValue)},
+        'approved',
+        ${input.approvedByUserId},
+        now()
+      FROM profiles
+      ON CONFLICT (parser_profile_id, version)
+      DO UPDATE SET
+        artifact_hash = EXCLUDED.artifact_hash,
+        contract = EXCLUDED.contract,
+        status = 'approved',
+        approved_by_user_id = EXCLUDED.approved_by_user_id,
+        approved_at = COALESCE(pv.approved_at, now()),
+        updated_at = now()
+      RETURNING id, parser_profile_id
+    )
+    UPDATE public.parser_profiles AS pp
+    SET active_version_id = versions.id,
+        updated_at = now()
+    FROM versions
+    WHERE pp.id = versions.parser_profile_id
+  `;
 }
 
 class AdminCollectionRepository implements CollectionRepository {
