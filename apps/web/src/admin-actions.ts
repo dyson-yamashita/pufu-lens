@@ -382,7 +382,7 @@ async function ensureDefaultParserProfile(
 ): Promise<void> {
   await sql`
     WITH profiles AS (
-      INSERT INTO public.parser_profiles (
+      INSERT INTO public.parser_profiles AS pp (
         project_id,
         data_source_id,
         source_type,
@@ -403,7 +403,7 @@ async function ensureDefaultParserProfile(
       RETURNING id
     ),
     versions AS (
-      INSERT INTO public.parser_versions (
+      INSERT INTO public.parser_versions AS pv (
         parser_profile_id,
         version,
         schema_version,
@@ -429,15 +429,15 @@ async function ensureDefaultParserProfile(
         contract = EXCLUDED.contract,
         status = 'approved',
         approved_by_user_id = EXCLUDED.approved_by_user_id,
-        approved_at = COALESCE(parser_versions.approved_at, now()),
+        approved_at = COALESCE(pv.approved_at, now()),
         updated_at = now()
       RETURNING id, parser_profile_id
     )
-    UPDATE public.parser_profiles
+    UPDATE public.parser_profiles AS pp
     SET active_version_id = versions.id,
         updated_at = now()
     FROM versions
-    WHERE parser_profiles.id = versions.parser_profile_id
+    WHERE pp.id = versions.parser_profile_id
   `;
 }
 

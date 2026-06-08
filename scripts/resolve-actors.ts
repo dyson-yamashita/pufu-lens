@@ -133,7 +133,6 @@ class PostgresActorResolutionRepository implements ActorResolutionRepository {
         )
         ON CONFLICT (project_id, graph_node_id)
         DO UPDATE SET
-          display_name = actors.display_name,
           primary_email = COALESCE(actors.primary_email, EXCLUDED.primary_email),
           primary_login = COALESCE(actors.primary_login, EXCLUDED.primary_login),
           metadata = COALESCE(actors.metadata, '{}'::jsonb) || EXCLUDED.metadata
