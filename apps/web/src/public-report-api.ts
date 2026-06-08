@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { listVisiblePublicProjects } from './admin-db';
+import { getVisiblePublicProject } from './admin-db';
 import {
   createExtractivePublicChatProvider,
   createGeminiPublicChatProvider,
@@ -134,9 +134,7 @@ export async function handlePublicProjectChatPost(
     readonly projectSlug: string;
   },
 ) {
-  const publicProject = (await listVisiblePublicProjects()).find(
-    (project) => project.slug === input.projectSlug,
-  );
+  const publicProject = await getVisiblePublicProject(input.projectSlug);
   if (!publicProject) {
     return publicChatErrorResponse('public_project_not_found', 'Public project not found', 404);
   }

@@ -1,7 +1,11 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '../../../auth';
-import { getAdminProject, listVisiblePublicProjects } from '../../../src/admin-db';
+import {
+  getAdminProject,
+  getProjectMembership,
+  getVisiblePublicProject,
+} from '../../../src/admin-db';
 import { AppShell, MetricStrip, PageHeader } from '../../../src/ui';
 
 export default async function ProjectOverviewPage({
@@ -12,13 +16,18 @@ export default async function ProjectOverviewPage({
   const { projectSlug } = await params;
   const [project, session] = await Promise.all([getAdminProject(projectSlug), auth()]);
   const userId = session?.user?.id;
-  if (!userId && project.visibility !== 'public') {
-    redirect('/login');
+  if (project.visibility !== 'public') {
+    if (!userId) {
+      redirect('/login');
+    }
+    try {
+      await getProjectMembership(projectSlug, userId);
+    } catch {
+      redirect('/projects');
+    }
   }
   const publicProject =
-    project.visibility === 'public'
-      ? (await listVisiblePublicProjects()).find((candidate) => candidate.slug === project.slug)
-      : undefined;
+    project.visibility === 'public' ? await getVisiblePublicProject(project.slug) : undefined;
 
   return (
     <AppShell active="projects" project={project}>

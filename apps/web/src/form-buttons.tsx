@@ -15,15 +15,18 @@ export function ActionForm({
   action,
   children,
   className,
+  onSuccess,
 }: {
   readonly action: FormAction;
   readonly children: React.ReactNode;
   readonly className?: string;
+  readonly onSuccess?: () => void;
 }) {
   const [state, formAction] = useActionState(
     async (_previousState: ActionFormState, formData: FormData): Promise<ActionFormState> => {
       try {
         await action(formData);
+        onSuccess?.();
         return {};
       } catch (error) {
         return { error: error instanceof Error ? error.message : 'Action failed.' };

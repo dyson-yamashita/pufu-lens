@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { auth } from '../../../../auth';
-import { getAdminProject } from '../../../../src/admin-db';
+import { getAdminProject, getProjectMembership } from '../../../../src/admin-db';
 import { businessHoursFromEnv, chatNowFromEnv, isWithinBusinessHours } from '../../../../src/chat';
 import { ChatPanel, PublicProjectChatPanel } from '../../../../src/chat-client';
 import { AppShell, PageHeader } from '../../../../src/ui';
@@ -13,10 +13,17 @@ export default async function ProjectChatPage({
   const { projectSlug } = await params;
   const [project, session] = await Promise.all([getAdminProject(projectSlug), auth()]);
   const userId = session?.user?.id;
-  if (!userId) {
-    if (project.visibility !== 'public') {
+  if (project.visibility !== 'public') {
+    if (!userId) {
       redirect('/login');
     }
+    try {
+      await getProjectMembership(projectSlug, userId);
+    } catch {
+      redirect('/projects');
+    }
+  }
+  if (!userId) {
     return (
       <AppShell active="chat" project={project}>
         <PageHeader

@@ -271,6 +271,39 @@ export async function listVisiblePublicProjects(): Promise<readonly PublicProjec
   }, publicProjectsFallback());
 }
 
+export async function getVisiblePublicProject(
+  slug: string,
+): Promise<PublicProjectSummary | undefined> {
+  return withOptionalSql(
+    async (sql) => {
+      const rows = (await sql`
+      SELECT
+        p.slug,
+        p.name,
+        p.description,
+        r.id::text AS report_id,
+        r.title AS report_title,
+        r.summary AS report_summary,
+        r.created_at AS published_at
+      FROM public.projects p
+      LEFT JOIN LATERAL (
+        SELECT id, title, summary, created_at
+        FROM public.reports
+        WHERE project_id = p.id
+          AND is_public = true
+        ORDER BY created_at DESC
+        LIMIT 3
+      ) r ON true
+      WHERE p.visibility = 'public'
+        AND p.slug = ${slug}
+      ORDER BY r.created_at DESC NULLS LAST
+    `) as PublicProjectReportRow[];
+      return publicProjectsFromRows(rows)[0];
+    },
+    publicProjectsFallback().find((project) => project.slug === slug),
+  );
+}
+
 export async function listAppMembersForUser(userId: string): Promise<GlobalMemberDirectory> {
   return withOptionalSql(
     async (sql) => {

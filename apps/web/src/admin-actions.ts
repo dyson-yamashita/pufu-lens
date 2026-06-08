@@ -142,10 +142,6 @@ export async function createMember(formData: FormData): Promise<void> {
       const rows = (await tx`
         INSERT INTO public.users (email, name, role)
         VALUES (${email}, ${name}, ${role})
-        ON CONFLICT (email)
-        DO UPDATE SET
-          name = EXCLUDED.name,
-          role = EXCLUDED.role
         RETURNING id::text
       `) as Array<{ id: string }>;
       const user = rows[0];

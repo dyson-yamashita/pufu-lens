@@ -33,6 +33,9 @@ export async function verifyPassword(password: string, storedHash: string): Prom
     return false;
   }
   const expected = Buffer.from(encodedHash, 'base64url');
+  if (expected.length === 0) {
+    return false;
+  }
   const actual = (await scryptAsync(password, salt, expected.length)) as Buffer;
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }

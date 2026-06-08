@@ -39,7 +39,11 @@ export function AccountEditDialog({
               <h2>{member.email}</h2>
             </div>
           </div>
-          <ActionForm action={action} className="detail-edit-form">
+          <ActionForm
+            action={action}
+            className="detail-edit-form"
+            onSuccess={() => dialogRef.current?.close()}
+          >
             <input name="userId" type="hidden" value={member.id} />
             <label>
               <span>Name</span>

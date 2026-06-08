@@ -24,12 +24,13 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         token.role = user.role;
         return token;
       }
+      const provider = requireProvider(account.provider);
       const authUser = await resolveAuthUser(
         {
           email: getProfileEmail(profile, user),
-          emailVerified: isProfileEmailVerified(profile),
+          emailVerified: isProviderEmailVerified(provider, profile),
           name: getProfileName(profile, user),
-          provider: requireProvider(account.provider),
+          provider,
           providerAccountId: account.providerAccountId,
         },
         createPostgresAuthUserRepository(getRequiredAdminSql()),
@@ -142,7 +143,13 @@ function getStringProfileValue(profile: Profile | undefined, key: string): strin
   return typeof value === 'string' ? value : null;
 }
 
-function isProfileEmailVerified(profile: Profile | undefined): boolean {
+function isProviderEmailVerified(
+  provider: 'github' | 'google',
+  profile: Profile | undefined,
+): boolean {
+  if (provider === 'github') {
+    return true;
+  }
   const verified = profile?.email_verified;
   if (typeof verified === 'boolean') {
     return verified;

@@ -2,7 +2,11 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '../../../../auth';
 import { generatePrivateReport } from '../../../../src/admin-actions';
-import { getAdminProject, listVisiblePublicProjects } from '../../../../src/admin-db';
+import {
+  getAdminProject,
+  getProjectMembership,
+  getVisiblePublicProject,
+} from '../../../../src/admin-db';
 import { ActionForm, PendingSubmitButton } from '../../../../src/form-buttons';
 import { ReportsList } from '../../../../src/report-client';
 import { AppShell, PageHeader } from '../../../../src/ui';
@@ -16,13 +20,19 @@ export default async function ReportsPage({
   const [project, session] = await Promise.all([getAdminProject(projectSlug), auth()]);
   const userId = session?.user?.id;
 
-  if (!userId) {
-    if (project.visibility !== 'public') {
+  if (project.visibility !== 'public') {
+    if (!userId) {
       redirect('/login');
     }
-    const publicProject = (await listVisiblePublicProjects()).find(
-      (candidate) => candidate.slug === project.slug,
-    );
+    try {
+      await getProjectMembership(projectSlug, userId);
+    } catch {
+      redirect('/projects');
+    }
+  }
+
+  if (!userId) {
+    const publicProject = await getVisiblePublicProject(project.slug);
 
     return (
       <AppShell active="reports" project={project}>

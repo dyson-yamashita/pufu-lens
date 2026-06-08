@@ -5,6 +5,7 @@ const passwordHash = await hashPassword('correct horse battery staple');
 assert.equal(await verifyPassword('correct horse battery staple', passwordHash), true);
 assert.equal(await verifyPassword('wrong password', passwordHash), false);
 assert.equal(await verifyPassword('correct horse battery staple', 'invalid'), false);
+assert.equal(await verifyPassword('correct horse battery staple', 'scrypt:v1:salt:'), false);
 assert.doesNotMatch(passwordHash, /correct horse battery staple/);
 
 const user = await verifyPasswordCredential(
