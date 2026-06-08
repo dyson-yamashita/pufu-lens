@@ -147,14 +147,19 @@ function isProviderEmailVerified(
   provider: 'github' | 'google',
   profile: Profile | undefined,
 ): boolean {
-  if (provider === 'github') {
-    return true;
-  }
-  const verified = profile?.email_verified;
+  const verified = getBooleanProfileValue(profile, 'email_verified');
   if (typeof verified === 'boolean') {
     return verified;
   }
+  if (provider === 'github') {
+    return getBooleanProfileValue(profile, 'verified') ?? false;
+  }
   return false;
+}
+
+function getBooleanProfileValue(profile: Profile | undefined, key: string): boolean | null {
+  const value = profile?.[key as keyof Profile];
+  return typeof value === 'boolean' ? value : null;
 }
 
 function requireProvider(provider: string): 'github' | 'google' {

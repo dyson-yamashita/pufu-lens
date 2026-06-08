@@ -175,6 +175,9 @@ export async function updateMember(formData: FormData): Promise<void> {
   await withSql(async (sql) => {
     await requireGlobalAdmin(sql);
     await sql.begin(async (tx) => {
+      if (role === 'member') {
+        await assertAdminRemainsAfterRoleChange(tx, userId);
+      }
       await tx`
         UPDATE public.users
         SET name = ${name},
@@ -811,6 +814,22 @@ async function requireGlobalAdmin(sql: postgres.Sql | postgres.TransactionSql): 
     throw new Error('Admin access is required.');
   }
   return user.id;
+}
+
+async function assertAdminRemainsAfterRoleChange(
+  sql: postgres.Sql | postgres.TransactionSql,
+  userId: string,
+): Promise<void> {
+  const rows = (await sql`
+    SELECT COUNT(*)::int AS admin_count
+    FROM public.users
+    WHERE role = 'admin'
+      AND id <> ${userId}
+  `) as Array<{ admin_count: number | string }>;
+  const adminCount = Number(rows[0]?.admin_count ?? 0);
+  if (adminCount < 1) {
+    throw new Error('At least one admin account is required.');
+  }
 }
 
 async function requireProjectMemberManager(
