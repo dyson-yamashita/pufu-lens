@@ -429,7 +429,7 @@ async function ensureDefaultParserProfile(
         contract = EXCLUDED.contract,
         status = 'approved',
         approved_by_user_id = EXCLUDED.approved_by_user_id,
-        approved_at = COALESCE(public.parser_versions.approved_at, now()),
+        approved_at = COALESCE(parser_versions.approved_at, now()),
         updated_at = now()
       RETURNING id, parser_profile_id
     )

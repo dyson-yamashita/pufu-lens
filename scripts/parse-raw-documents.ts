@@ -288,7 +288,7 @@ async function ensureBuiltInParserVersions(input: {
           contract = EXCLUDED.contract,
           status = 'approved',
           approved_by_user_id = EXCLUDED.approved_by_user_id,
-          approved_at = COALESCE(public.parser_versions.approved_at, now())
+          approved_at = COALESCE(parser_versions.approved_at, now())
         RETURNING id, parser_profile_id
       )
       UPDATE public.parser_profiles pp
