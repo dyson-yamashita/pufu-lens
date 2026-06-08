@@ -41,4 +41,15 @@ const rejected = await verifyPasswordCredential(
 );
 assert.equal(rejected, undefined);
 
+const missingUser = await verifyPasswordCredential(
+  { email: 'missing@example.com', password: 'whatever' },
+  {
+    async findPasswordCredential(email) {
+      assert.equal(email, 'missing@example.com');
+      return undefined;
+    },
+  },
+);
+assert.equal(missingUser, undefined);
+
 console.log('web password auth tests passed');

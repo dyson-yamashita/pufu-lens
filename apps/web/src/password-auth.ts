@@ -5,6 +5,8 @@ import type postgres from 'postgres';
 const scryptAsync = promisify(scrypt);
 const keyLength = 64;
 const saltBytes = 16;
+const missingCredentialPasswordHash =
+  'scrypt:v1:pufu-lens-dummy-salt:b0hjJnuSJWzipQMsMim6a_hGrJorfFmNusChrNg9mzCpUyqB3ENtQ6-B_ldf9Si3nwuVH2bx0Wv12h0sOGO3-w';
 
 type SqlExecutor = postgres.Sql | postgres.TransactionSql;
 
@@ -53,11 +55,11 @@ export async function verifyPasswordCredential(
     return undefined;
   }
   const credential = await repository.findPasswordCredential(email);
-  if (!credential) {
-    return undefined;
-  }
-  const valid = await verifyPassword(input.password, credential.password_hash);
-  if (!valid) {
+  const valid = await verifyPassword(
+    input.password,
+    credential?.password_hash ?? missingCredentialPasswordHash,
+  );
+  if (!credential || !valid) {
     return undefined;
   }
   return {

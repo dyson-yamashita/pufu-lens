@@ -398,7 +398,7 @@ export async function getProjectMembership(
           users.role,
           project_members.role AS project_role,
           project_members.created_at AS membership_created_at,
-          project_members.role = 'member' AS removable
+          project_members.role = 'member' AND users.role <> 'admin' AS removable
         FROM public.project_members
         JOIN public.users
           ON users.id = project_members.user_id
