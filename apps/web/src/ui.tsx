@@ -1,18 +1,24 @@
 import {
   Activity,
+  ArrowLeft,
   Database,
   FileSearch,
   FileText,
   GitBranch,
   Globe,
   HardDrive,
+  LogIn,
+  LogOut,
   Mail,
+  Menu,
   MessageSquare,
   RefreshCw,
   ShieldCheck,
   TriangleAlert,
+  Users,
 } from 'lucide-react';
 import Link from 'next/link';
+import { auth, signOut } from '../auth';
 import type {
   DataSourceSummary,
   ParserProfileSummary,
@@ -20,6 +26,7 @@ import type {
   SourceStatus,
   SourceType,
 } from './admin-data';
+import { getAppUserRole } from './admin-db';
 import { ActionForm, PendingSubmitButton } from './form-buttons';
 
 const sourceLabels: Record<SourceType, string> = {
@@ -36,7 +43,7 @@ const statusLabels: Record<SourceStatus, string> = {
   syncing: 'Syncing',
 };
 
-export function AppShell({
+export async function AppShell({
   project,
   active,
   children,
@@ -47,34 +54,60 @@ export function AppShell({
     | 'projects'
     | 'data-sources'
     | 'ingestion'
+    | 'members'
     | 'parser-profiles'
     | 'reports';
   readonly children: React.ReactNode;
 }) {
   const projectSlug = project?.slug;
-
-  return (
-    <div className="app-shell">
-      <aside className="global-nav" data-testid="global-nav">
-        <Link className="brand" href="/projects" data-testid="global-nav-brand">
-          <span className="brand-mark">PL</span>
-          <span>
-            <strong>Pufu Lens</strong>
-            <small>Operations</small>
-          </span>
+  const session = await auth();
+  const appRole = session?.user?.id ? await getAppUserRole(session.user.id) : undefined;
+  const canShowProjectNav = Boolean(projectSlug);
+  const isGuest = !session?.user?.id;
+  const navItems = (
+    <>
+      {projectSlug || session?.user?.id ? (
+        <Link
+          aria-current={active === 'projects' ? 'page' : undefined}
+          className={navClass(active === 'projects')}
+          href="/projects"
+          data-testid="global-nav-projects"
+        >
+          <Database size={18} />
+          Projects
         </Link>
-        <nav aria-label="Primary">
+      ) : null}
+      {canShowProjectNav ? (
+        <>
           <Link
-            aria-current={active === 'projects' ? 'page' : undefined}
-            className={navClass(active === 'projects')}
-            href="/projects"
-            data-testid="global-nav-projects"
+            aria-current={active === 'chat' ? 'page' : undefined}
+            className={navClass(active === 'chat')}
+            href={`/projects/${projectSlug}/chat`}
+            data-testid="global-nav-chat"
           >
-            <Database size={18} />
-            Projects
+            <MessageSquare size={18} />
+            Chat
           </Link>
-          {projectSlug ? (
+          <Link
+            aria-current={active === 'reports' ? 'page' : undefined}
+            className={navClass(active === 'reports')}
+            href={`/projects/${projectSlug}/reports`}
+            data-testid="global-nav-reports"
+          >
+            <FileText size={18} />
+            Reports
+          </Link>
+          {session?.user?.id ? (
             <>
+              <Link
+                aria-current={active === 'members' ? 'page' : undefined}
+                className={navClass(active === 'members')}
+                href={`/projects/${projectSlug}/members`}
+                data-testid="global-nav-project-members"
+              >
+                <Users size={18} />
+                Members
+              </Link>
               <Link
                 aria-current={active === 'data-sources' ? 'page' : undefined}
                 className={navClass(active === 'data-sources')}
@@ -102,27 +135,84 @@ export function AppShell({
                 <FileSearch size={18} />
                 Parsers
               </Link>
-              <Link
-                aria-current={active === 'chat' ? 'page' : undefined}
-                className={navClass(active === 'chat')}
-                href={`/projects/${projectSlug}/chat`}
-                data-testid="global-nav-chat"
-              >
-                <MessageSquare size={18} />
-                Chat
-              </Link>
-              <Link
-                aria-current={active === 'reports' ? 'page' : undefined}
-                className={navClass(active === 'reports')}
-                href={`/projects/${projectSlug}/reports`}
-                data-testid="global-nav-reports"
-              >
-                <FileText size={18} />
-                Reports
-              </Link>
             </>
           ) : null}
-        </nav>
+        </>
+      ) : null}
+      {!projectSlug && (appRole === 'admin' || appRole === 'member') ? (
+        <Link
+          aria-current={active === 'members' ? 'page' : undefined}
+          className={navClass(active === 'members')}
+          href="/members"
+          data-testid="global-nav-members"
+        >
+          <Users size={18} />
+          Accounts
+        </Link>
+      ) : null}
+    </>
+  );
+
+  return (
+    <div className={isGuest ? 'app-shell guest-app-shell' : 'app-shell'}>
+      <aside
+        className={isGuest ? 'global-nav guest-global-nav' : 'global-nav'}
+        data-testid="global-nav"
+      >
+        {isGuest ? (
+          <details className="guest-menu" data-testid="guest-menu" open>
+            <summary className="guest-menu-toggle" data-testid="guest-menu-toggle">
+              <Menu className="guest-menu-open-icon" size={22} />
+              <ArrowLeft className="guest-menu-close-icon" size={22} />
+              <span className="brand-mark">PL</span>
+              <strong className="guest-brand-name">Pufu Lens</strong>
+            </summary>
+            <nav aria-label="Primary" className="guest-side-menu" data-testid="guest-side-menu">
+              {navItems}
+            </nav>
+          </details>
+        ) : (
+          <details className="guest-menu" data-testid="app-menu" open>
+            <summary className="guest-menu-toggle" data-testid="app-menu-toggle">
+              <Menu className="guest-menu-open-icon" size={22} />
+              <ArrowLeft className="guest-menu-close-icon" size={22} />
+              <span className="brand-mark">PL</span>
+              <strong className="guest-brand-name">Pufu Lens</strong>
+            </summary>
+            <nav aria-label="Primary" className="guest-side-menu" data-testid="app-side-menu">
+              {navItems}
+            </nav>
+          </details>
+        )}
+        <div
+          className={isGuest ? 'account-panel guest-account-panel' : 'account-panel'}
+          data-testid="account-panel"
+        >
+          {session?.user?.id ? (
+            <>
+              <span className="account-identity" data-testid="account-identity">
+                <strong>{session.user.name ?? session.user.email ?? 'Signed in'}</strong>
+                <small>{appRole ?? session.user.role ?? 'member'}</small>
+              </span>
+              <form
+                action={async () => {
+                  'use server';
+                  await signOut({ redirectTo: '/projects' });
+                }}
+              >
+                <button className="nav-link-button" data-testid="logout-button" type="submit">
+                  <LogOut size={18} />
+                  Logout
+                </button>
+              </form>
+            </>
+          ) : (
+            <Link className="nav-link-button" data-testid="login-link" href="/login">
+              <LogIn size={18} />
+              Login
+            </Link>
+          )}
+        </div>
       </aside>
       <main className="main-surface">{children}</main>
     </div>
@@ -141,7 +231,6 @@ export function PageHeader({
   return (
     <header className="page-header">
       <div>
-        <p className="eyebrow">Admin Console</p>
         <h1>{title}</h1>
         <p>{subtitle}</p>
       </div>

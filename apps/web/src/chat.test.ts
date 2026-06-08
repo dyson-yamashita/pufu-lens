@@ -30,7 +30,7 @@ function createRepository(): ChatRepository & {
   return {
     rawFetchInputs,
     async lookupProjectMember({ projectSlug, userId }) {
-      return projectSlug === 'sample-a' && userId === 'user-a'
+      return projectSlug === 'sample-a' && (userId === 'user-a' || userId === 'admin-a')
         ? { id: 'project-a', slug: 'sample-a' }
         : undefined;
     },
@@ -73,6 +73,12 @@ assert.deepEqual(
   ['vector-search', 'graph-query', 'document-fetch', 'raw-document-fetch', 'parsed-doc-fetch'],
 );
 assert.equal(repository.rawFetchInputs[0]?.maxBytes, 64 * 1024);
+
+const adminResponse = await runPrivateChat(
+  { projectSlug: 'sample-a', question: 'admin は?', userId: 'admin-a' },
+  { provider: createExtractiveChatProvider(), repository: createRepository() },
+);
+assert.equal(adminResponse.status, 'answered');
 
 await assert.rejects(
   () =>

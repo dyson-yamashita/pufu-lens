@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
+import { listVisiblePublicProjects } from './admin-db';
 import {
   createExtractivePublicChatProvider,
   createGeminiPublicChatProvider,
@@ -125,6 +126,35 @@ export async function handlePublicChatPost(
       500,
     );
   }
+}
+
+export async function handlePublicProjectChatPost(
+  request: NextRequest,
+  input: {
+    readonly projectSlug: string;
+  },
+) {
+  const publicProject = (await listVisiblePublicProjects()).find(
+    (project) => project.slug === input.projectSlug,
+  );
+  if (!publicProject) {
+    return publicChatErrorResponse('public_project_not_found', 'Public project not found', 404);
+  }
+  const latestReport = publicProject.reports[0];
+  if (!latestReport) {
+    return NextResponse.json({
+      answer: '公開 chat で利用できる report context はまだありません。',
+      projectSlug: input.projectSlug,
+      reportId: '',
+      sources: [],
+      status: 'no_public_report',
+      toolCalls: [],
+    });
+  }
+  return handlePublicChatPost(request, {
+    projectSlug: input.projectSlug,
+    reportId: latestReport.id,
+  });
 }
 
 function trustedClientIp(request: NextRequest & { readonly ip?: string }): string {

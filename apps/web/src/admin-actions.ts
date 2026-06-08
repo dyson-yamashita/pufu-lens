@@ -21,7 +21,10 @@ import {
 } from '../../../packages/project-tenancy/src/project-tenancy.ts';
 import { LocalFsObjectStorage } from '../../../packages/storage/src/local-fs.ts';
 import type { ProjectVisibility, SourceType } from './admin-data';
+import type { AppMemberRole } from './admin-db';
 import { getRequiredAdminSql } from './admin-sql';
+import { requireSessionUserId } from './auth-session';
+import { hashPassword } from './password-auth';
 import {
   createExtractiveReportProvider,
   createGeminiReportProvider,
@@ -49,7 +52,7 @@ export async function createProject(formData: FormData): Promise<void> {
   const identifiers = deriveProjectIdentifiers(slug);
 
   await withSql(async (sql) => {
-    const adminUserId = requireAdminUserId();
+    const adminUserId = await requireAdminUserId();
     await sql.begin(async (tx) => {
       await tx`LOAD 'age'`;
       await tx`SET search_path = ag_catalog, "$user", public`;
@@ -119,6 +122,122 @@ export async function updateProjectVisibility(formData: FormData): Promise<void>
   });
 
   revalidateProject(projectSlug);
+}
+
+export async function createMember(formData: FormData): Promise<void> {
+  const email = normalizeEmail(requireFormValue(formData, 'email'));
+  const name = formData.get('name')?.toString().trim() || null;
+  const role = requireAppMemberRole(requireFormValue(formData, 'role'));
+  const password = formData.get('password')?.toString() ?? '';
+  const passwordConfirm = formData.get('passwordConfirm')?.toString() ?? '';
+
+  if (!email) {
+    throw new Error('email is required.');
+  }
+  validateOptionalPassword(password, passwordConfirm);
+
+  await withSql(async (sql) => {
+    await requireGlobalAdmin(sql);
+    await sql.begin(async (tx) => {
+      const rows = (await tx`
+        INSERT INTO public.users (email, name, role)
+        VALUES (${email}, ${name}, ${role})
+        ON CONFLICT (email)
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          role = EXCLUDED.role
+        RETURNING id::text
+      `) as Array<{ id: string }>;
+      const user = rows[0];
+      if (!user) {
+        throw new Error('Member creation failed.');
+      }
+      if (password) {
+        const passwordHash = await hashPassword(password);
+        await tx`
+          INSERT INTO public.auth_password_credentials (user_id, password_hash)
+          VALUES (${user.id}, ${passwordHash})
+          ON CONFLICT (user_id)
+          DO UPDATE SET password_hash = EXCLUDED.password_hash, updated_at = now()
+        `;
+      }
+    });
+  });
+
+  revalidatePath('/members');
+}
+
+export async function updateMember(formData: FormData): Promise<void> {
+  const userId = requireFormValue(formData, 'userId');
+  const name = formData.get('name')?.toString().trim() || null;
+  const role = requireAppMemberRole(requireFormValue(formData, 'role'));
+  const password = formData.get('password')?.toString() ?? '';
+  const passwordConfirm = formData.get('passwordConfirm')?.toString() ?? '';
+
+  validateOptionalPassword(password, passwordConfirm);
+
+  await withSql(async (sql) => {
+    await requireGlobalAdmin(sql);
+    await sql.begin(async (tx) => {
+      await tx`
+        UPDATE public.users
+        SET name = ${name},
+            role = ${role}
+        WHERE id = ${userId}
+      `;
+      if (password) {
+        const passwordHash = await hashPassword(password);
+        await tx`
+          INSERT INTO public.auth_password_credentials (user_id, password_hash)
+          VALUES (${userId}, ${passwordHash})
+          ON CONFLICT (user_id)
+          DO UPDATE SET password_hash = EXCLUDED.password_hash, updated_at = now()
+        `;
+      }
+    });
+  });
+
+  revalidatePath('/members');
+  revalidatePath('/projects');
+}
+
+export async function addProjectMember(formData: FormData): Promise<void> {
+  const projectSlug = requireFormValue(formData, 'projectSlug');
+  const userId = requireFormValue(formData, 'userId');
+
+  await withSql(async (sql) => {
+    const project = await requireProjectMemberManager(sql, projectSlug);
+    await sql`
+      INSERT INTO public.project_members (project_id, user_id, role)
+      VALUES (${project.id}, ${userId}, 'member')
+      ON CONFLICT (project_id, user_id)
+      DO UPDATE SET role = 'member'
+    `;
+  });
+
+  revalidatePath(`/projects/${projectSlug}/members`);
+  revalidatePath('/projects');
+}
+
+export async function removeProjectMember(formData: FormData): Promise<void> {
+  const projectSlug = requireFormValue(formData, 'projectSlug');
+  const userId = requireFormValue(formData, 'userId');
+
+  await withSql(async (sql) => {
+    const project = await requireProjectMemberManager(sql, projectSlug);
+    await sql`
+      DELETE FROM public.project_members
+      USING public.users
+      WHERE project_members.project_id = ${project.id}
+        AND project_members.user_id = ${userId}
+        AND users.id = project_members.user_id
+        AND users.role <> 'admin'
+        AND project_members.role = 'member'
+    `;
+  });
+
+  revalidatePath(`/projects/${projectSlug}/members`);
+  revalidatePath('/projects');
 }
 
 export async function createDataSource(formData: FormData): Promise<void> {
@@ -640,18 +759,20 @@ async function requireAdminProject(
   if (process.env.PUFU_LENS_ENABLE_ADMIN_ACTIONS !== 'true') {
     throw new Error('Admin actions are disabled.');
   }
-  const adminUserId = requireAdminUserId();
+  const adminUserId = await requireAdminUserId();
   const rows = (await sql`
     SELECT
       projects.id::text AS id,
       projects.slug,
       COALESCE(projects.visibility, 'private') AS visibility,
-      project_members.user_id::text AS admin_user_id
+      users.id::text AS admin_user_id
     FROM public.projects
-    JOIN public.project_members ON project_members.project_id = projects.id
+    JOIN public.users ON users.id = ${adminUserId}
+    LEFT JOIN public.project_members
+      ON project_members.project_id = projects.id
+     AND project_members.user_id = users.id
     WHERE projects.slug = ${projectSlug}
-      AND project_members.user_id = ${adminUserId}
-      AND project_members.role = 'admin'
+      AND (users.role = 'admin' OR project_members.role = 'admin')
   `) as Array<{
     admin_user_id: string;
     id: string;
@@ -670,15 +791,56 @@ async function requireAdminProject(
   };
 }
 
-function requireAdminUserId(): string {
+async function requireAdminUserId(): Promise<string> {
   if (process.env.PUFU_LENS_ENABLE_ADMIN_ACTIONS !== 'true') {
     throw new Error('Admin actions are disabled.');
   }
-  const adminUserId = process.env.PUFU_LENS_ADMIN_USER_ID;
-  if (!adminUserId) {
-    throw new Error('PUFU_LENS_ADMIN_USER_ID is required for admin actions.');
+  const sessionUserId = await requireSessionUserId();
+  if (sessionUserId) {
+    return sessionUserId;
   }
-  return adminUserId;
+  throw new Error('Authentication is required for admin actions.');
+}
+
+async function requireGlobalAdmin(sql: postgres.Sql | postgres.TransactionSql): Promise<string> {
+  const userId = await requireSessionUserId();
+  const rows = (await sql`
+    SELECT id::text
+    FROM public.users
+    WHERE id = ${userId}
+      AND role = 'admin'
+  `) as Array<{ id: string }>;
+  const user = rows[0];
+  if (!user) {
+    throw new Error('Admin access is required.');
+  }
+  return user.id;
+}
+
+async function requireProjectMemberManager(
+  sql: postgres.Sql | postgres.TransactionSql,
+  projectSlug: string,
+): Promise<{
+  readonly id: string;
+  readonly slug: string;
+}> {
+  const userId = await requireSessionUserId();
+  const rows = (await sql`
+    SELECT projects.id::text AS id, projects.slug
+    FROM public.projects
+    JOIN public.users
+      ON users.id = ${userId}
+    LEFT JOIN public.project_members
+      ON project_members.project_id = projects.id
+     AND project_members.user_id = users.id
+    WHERE projects.slug = ${projectSlug}
+      AND (users.role = 'admin' OR project_members.role = 'admin')
+  `) as Array<{ id: string; slug: string }>;
+  const project = rows[0];
+  if (!project) {
+    throw new Error(`Member management denied for project slug: ${projectSlug}`);
+  }
+  return project;
 }
 
 function requireSourceType(value: string): SourceType {
@@ -693,6 +855,29 @@ function requireProjectVisibility(value: string): ProjectVisibility {
     return value;
   }
   throw new Error(`Unsupported project visibility: ${value}`);
+}
+
+function requireAppMemberRole(value: string): AppMemberRole {
+  if (value === 'admin' || value === 'member') {
+    return value;
+  }
+  throw new Error(`Unsupported member role: ${value}`);
+}
+
+function validateOptionalPassword(password: string, passwordConfirm: string): void {
+  if (!password && !passwordConfirm) {
+    return;
+  }
+  if (password !== passwordConfirm) {
+    throw new Error('password confirmation does not match.');
+  }
+  if (password.length < 8) {
+    throw new Error('password must be at least 8 characters.');
+  }
+}
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
 }
 
 async function updateProjectVisibilityRow(

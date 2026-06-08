@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getRequiredAdminSql } from '../../../../../../src/admin-sql';
+import { AuthRequiredError, requireSessionUserId } from '../../../../../../src/auth-session';
 import {
   businessHoursFromEnv,
   isWithinBusinessHours,
@@ -23,16 +24,9 @@ export async function GET(
   }: { readonly params: Promise<{ readonly projectSlug: string; readonly reportId: string }> },
 ) {
   const { projectSlug, reportId } = await params;
-  const userId = process.env.PUFU_LENS_REPORT_USER_ID ?? process.env.PUFU_LENS_ADMIN_USER_ID;
-  if (!userId) {
-    return reportErrorResponse(
-      'report_user_not_configured',
-      'PUFU_LENS_REPORT_USER_ID is required',
-      503,
-    );
-  }
 
   try {
+    const userId = await requireSessionUserId();
     const businessHours = businessHoursFromEnv(process.env);
     const now = reportNowFromEnv(process.env) ?? new Date();
     if (!isWithinBusinessHours(now, businessHours)) {
@@ -57,6 +51,9 @@ export async function GET(
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof AuthRequiredError) {
+      return reportErrorResponse('auth_required', message, 401);
+    }
     if (error instanceof ProjectAccessDeniedError) {
       return reportErrorResponse('project_access_denied', message, 403);
     }
@@ -88,16 +85,8 @@ export async function PATCH(
     return reportErrorResponse('report_invalid_request', 'isPublic must be boolean', 400);
   }
 
-  const userId = process.env.PUFU_LENS_REPORT_USER_ID ?? process.env.PUFU_LENS_ADMIN_USER_ID;
-  if (!userId) {
-    return reportErrorResponse(
-      'report_user_not_configured',
-      'PUFU_LENS_REPORT_USER_ID is required',
-      503,
-    );
-  }
-
   try {
+    const userId = await requireSessionUserId();
     const businessHours = businessHoursFromEnv(process.env);
     const now = reportNowFromEnv(process.env) ?? new Date();
     if (!isWithinBusinessHours(now, businessHours)) {
@@ -118,6 +107,9 @@ export async function PATCH(
     return NextResponse.json(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof AuthRequiredError) {
+      return reportErrorResponse('auth_required', message, 401);
+    }
     if (error instanceof ProjectAccessDeniedError) {
       return reportErrorResponse('project_access_denied', message, 403);
     }

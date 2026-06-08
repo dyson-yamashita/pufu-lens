@@ -1,6 +1,8 @@
+import { redirect } from 'next/navigation';
+import { auth } from '../../../../auth';
 import { getAdminProject } from '../../../../src/admin-db';
 import { businessHoursFromEnv, chatNowFromEnv, isWithinBusinessHours } from '../../../../src/chat';
-import { ChatPanel } from '../../../../src/chat-client';
+import { ChatPanel, PublicProjectChatPanel } from '../../../../src/chat-client';
 import { AppShell, PageHeader } from '../../../../src/ui';
 
 export default async function ProjectChatPage({
@@ -9,7 +11,22 @@ export default async function ProjectChatPage({
   readonly params: Promise<{ readonly projectSlug: string }>;
 }) {
   const { projectSlug } = await params;
-  const project = await getAdminProject(projectSlug);
+  const [project, session] = await Promise.all([getAdminProject(projectSlug), auth()]);
+  const userId = session?.user?.id;
+  if (!userId) {
+    if (project.visibility !== 'public') {
+      redirect('/login');
+    }
+    return (
+      <AppShell active="chat" project={project}>
+        <PageHeader
+          title={`${project.name} Chat`}
+          subtitle="公開 project の chat を public API で確認します。"
+        />
+        <PublicProjectChatPanel projectSlug={project.slug} />
+      </AppShell>
+    );
+  }
   const businessHours = businessHoursFromEnv(process.env);
   let available = false;
   try {

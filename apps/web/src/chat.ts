@@ -48,7 +48,7 @@ export interface PublicChatResponse {
   readonly projectSlug: string;
   readonly reportId: string;
   readonly sources: readonly PublicChatSource[];
-  readonly status: 'answered' | 'rate_limited' | 'refused';
+  readonly status: 'answered' | 'no_public_report' | 'rate_limited' | 'refused';
   readonly toolCalls: readonly PublicChatToolCall[];
 }
 
@@ -538,9 +538,12 @@ export function createPostgresChatRepository(sql: postgres.Sql): ChatRepository 
       const rows = (await sql`
         SELECT p.id::text AS id, p.slug
         FROM public.projects p
-        JOIN public.project_members pm ON pm.project_id = p.id
+        JOIN public.users app_user ON app_user.id = ${userId}
+        LEFT JOIN public.project_members pm
+          ON pm.project_id = p.id
+         AND pm.user_id = app_user.id
         WHERE p.slug = ${projectSlug}
-          AND pm.user_id = ${userId}
+          AND (app_user.role = 'admin' OR pm.user_id IS NOT NULL)
       `) as Array<{ id: string; slug: string }>;
       return rows[0];
     },

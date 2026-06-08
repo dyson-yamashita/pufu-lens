@@ -22,13 +22,18 @@ API key、DB password は記録しない。
 - [ ] Cloud Run / Cloud Run Jobs / Firebase App Hosting の service account を確認した。
 - [ ] Secret Manager に runtime secret を作成した。
 - [ ] Google AI API key または Vertex AI 認証方式を設定した。
-- [ ] Google OAuth / GitHub App の callback URL を設定した。
+- [ ] Auth.js アプリログイン用の Google OAuth / GitHub OAuth callback URL を設定した。
+- [ ] Google / GitHub data source 連携用の callback URL を設定した。
 - [ ] Cloud Scheduler の OIDC service account を作成した。
 
 ## Secret 記録
 
 - `DATABASE_URL`: PostgreSQL 接続。実値は記録しない。
 - `AUTH_SECRET`: Auth.js。実値は記録しない。
+- `AUTH_URL`: Auth.js callback URL の origin。例: `https://app.example.com`。
+- `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET`: GitHub アプリログイン用 OAuth。実値は記録しない。
+- `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`: Google アプリログイン用 OAuth。実値は記録しない。
+- `AUTH_CREDENTIALS_EMAIL` / `AUTH_CREDENTIALS_PASSWORD`: Credentials user 作成時だけローカル環境で使う。実値は記録しない。
 - `GEMINI_API_KEY`: Google AI API key 利用時のみ。実値は記録しない。
 - `GEMINI_CHAT_MODEL`: Chat / report model。モデル名のみ記録可。
 - `GEMINI_EMBEDDING_MODEL`: embedding model。モデル名のみ記録可。
@@ -45,12 +50,15 @@ API key、DB password は記録しない。
 
 ```bash
 pnpm deploy:dry-run
+pnpm auth:migrate
 pnpm report:backfill-project-manifests -- --dry-run
 pnpm infra:check --env staging
 pnpm deploy:smoke --env staging
 ```
 
 - `deploy:dry-run`: `curate-workflow`、`ingest-workflow`、`generate-report` の `WORKFLOW_ID` / `WORKFLOW_INPUT_JSON` entrypoint 計画をローカル dry-run で検査する。
+- `auth:migrate`: 既存 DB に `auth_accounts` を idempotent に作成し、Auth.js session から `users.id` を解決するための provider account 対応表を用意する。
+- `auth:create-user`: OAuth を使わない環境で Credentials login 用 user と password hash を作成する。実 password は DB / docs / log に保存しない。
 - `report:backfill-project-manifests`: 既存の `projects.visibility = 'public'` project に対して、公開レポート API が参照する `project-public-state.json` を Object Storage に作成する。初回は `--dry-run` で対象を確認し、問題なければ `--dry-run` なしで一度だけ実行する。
 - `infra:check`:
 - `deploy:smoke`:
