@@ -183,6 +183,40 @@ test('web parser reads JSON-LD datePublished without decoding script text entiti
   }
 });
 
+test('web parser reads JSON-LD datePublished from root arrays', async () => {
+  const rawPath = await writeTempRawFixture(
+    'web-json-ld-root-array.html',
+    `<!doctype html>
+<html>
+  <head>
+    <title>JSON-LD root array</title>
+    <script type="application/ld+json">
+      [
+        {
+          "@type": "BreadcrumbList"
+        },
+        {
+          "@type": "BlogPosting",
+          "datePublished": "2019-05-07T10:50:58.000+09:00"
+        }
+      ]
+    </script>
+  </head>
+  <body>body</body>
+</html>`,
+  );
+
+  try {
+    const parsed = await parseRawFixture(
+      buildFixtureCase('web-json-ld-root-array', 'web', rawPath),
+    );
+
+    assert.equal(parsed.occurredAt, '2019-05-07T01:50:58.000Z');
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
 test('web parser falls back to fetchedAt when published date is missing', async () => {
   const rawPath = await writeTempRawFixture(
     'web-no-published-date.html',

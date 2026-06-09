@@ -138,6 +138,7 @@ export async function handlePublicChatPost(
       ),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
+      signal: request.signal,
     });
     if (!mastraResponse.ok) {
       const errorText = await mastraResponse.text().catch(() => '');

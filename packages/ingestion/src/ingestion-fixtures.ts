@@ -279,6 +279,15 @@ function extractJsonLdPublishedAt(html: string): string | undefined {
 }
 
 function findJsonLdDatePublished(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const date = findJsonLdDatePublished(item);
+      if (date) {
+        return date;
+      }
+    }
+    return undefined;
+  }
   if (!isRecord(value)) {
     return undefined;
   }

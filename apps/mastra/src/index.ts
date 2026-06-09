@@ -457,19 +457,23 @@ export function createProjectChatAgent(input: {
 }
 
 export function createPublicReportChatTools() {
+  const hasRequestContextGetter = (
+    value: object,
+  ): value is { get<T>(key: keyof MastraPublicReportContext): T } =>
+    'get' in value && typeof value.get === 'function';
   const contextFromRequest = (
     context:
       | {
-          requestContext?: { get<T>(key: string): T } | Partial<MastraPublicReportContext>;
+          requestContext?: unknown;
         }
       | undefined,
   ): MastraPublicReportContext => {
     const requestContext = context?.requestContext;
     const getValue = <T>(key: keyof MastraPublicReportContext): T | undefined => {
-      if (!requestContext) {
+      if (!requestContext || typeof requestContext !== 'object') {
         return undefined;
       }
-      if ('get' in requestContext && typeof requestContext.get === 'function') {
+      if (hasRequestContextGetter(requestContext)) {
         return requestContext.get<T>(key);
       }
       const objectContext = requestContext as Partial<MastraPublicReportContext>;

@@ -73,6 +73,7 @@ export async function POST(
       body: JSON.stringify(createMastraProjectChatBody({ projectId: project.id, question })),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
+      signal: request.signal,
     });
     if (!mastraResponse.ok) {
       const errorText = await mastraResponse.text().catch(() => '');
