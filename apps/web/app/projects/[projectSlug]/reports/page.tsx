@@ -7,8 +7,8 @@ import {
   getProjectMembership,
   getVisiblePublicProject,
 } from '../../../../src/admin-db';
-import { ActionForm, PendingSubmitButton } from '../../../../src/form-buttons';
-import { ReportsList } from '../../../../src/report-client';
+import { reportNowFromEnv, resolveReportPeriod } from '../../../../src/report';
+import { ReportGenerateForm, ReportsList } from '../../../../src/report-client';
 import { AppShell, PageHeader } from '../../../../src/ui';
 
 export default async function ReportsPage({
@@ -75,6 +75,8 @@ export default async function ReportsPage({
     );
   }
 
+  const defaultPeriod = resolveReportPeriod(reportNowFromEnv(process.env) ?? new Date(), 'weekly');
+
   return (
     <AppShell active="reports" project={project}>
       <PageHeader
@@ -87,16 +89,11 @@ export default async function ReportsPage({
             <h2>Private Reports</h2>
             <p className="mono">GET /api/projects/{project.slug}/reports</p>
           </div>
-          <ActionForm action={generatePrivateReport}>
-            <input name="projectSlug" type="hidden" value={project.slug} />
-            <PendingSubmitButton
-              className="secondary-link"
-              testId="reports-generate-button"
-              title="Generate private report"
-            >
-              Generate Report
-            </PendingSubmitButton>
-          </ActionForm>
+          <ReportGenerateForm
+            action={generatePrivateReport}
+            defaultPeriod={defaultPeriod}
+            projectSlug={project.slug}
+          />
         </div>
         <ReportsList projectSlug={project.slug} />
       </section>

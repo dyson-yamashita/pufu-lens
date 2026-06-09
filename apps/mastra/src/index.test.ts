@@ -7,6 +7,7 @@ import {
   type CrossProjectInvestigationRepository,
   createPufuLensMastraRuntime,
   type MastraProjectContext,
+  type MastraPublicReportContext,
   mastraAgentIds,
   mastraToolIds,
   mastraWorkflowIds,
@@ -204,6 +205,34 @@ const chatRepository = createChatRepository();
 const crossProjectInvestigationRepository = createCrossProjectInvestigationRepository();
 const reportRepository = createReportRepository();
 const storage = new MemoryStorage();
+const publicReport = {
+  period: { end: '2026-06-07', start: '2026-06-01' },
+  published_at: '2026-06-04T10:00:00.000Z',
+  report_id: 'report-a',
+  schema_version: 'public-v1',
+  sections: [
+    {
+      id: 'activity',
+      markdown: '- Spec Update',
+      sources: [{ label: '公開ソース 1 (web_page)', public_source_id: 'src_activity_001' }],
+      title: 'アクティビティ',
+    },
+  ],
+  summary: '公開可能な概要です。',
+  title: '週次レポート',
+} as const;
+const publicContextBundle = {
+  report_id: 'report-a',
+  schema_version: 'public-context-v1',
+  sections: [
+    {
+      id: 'activity',
+      markdown: '- Spec Update',
+      public_source_ids: ['src_activity_001'],
+      title: 'アクティビティ',
+    },
+  ],
+} as const;
 const runtime = createPufuLensMastraRuntime({
   chatRepository,
   crossProjectInvestigationRepository,
@@ -213,9 +242,11 @@ const runtime = createPufuLensMastraRuntime({
 
 assert.equal(runtime.crossProjectResearchAgent?.id, mastraAgentIds.crossProjectResearch);
 assert.equal(runtime.projectChatAgent.id, mastraAgentIds.projectChat);
+assert.equal(runtime.publicReportChatAgent.id, mastraAgentIds.publicReportChat);
 assert.equal(runtime.generateReportWorkflow.id, mastraWorkflowIds.generateReport);
 assert.ok(runtime.mastra.getAgentById(mastraAgentIds.crossProjectResearch));
 assert.ok(runtime.mastra.getAgentById(mastraAgentIds.projectChat));
+assert.ok(runtime.mastra.getAgentById(mastraAgentIds.publicReportChat));
 assert.ok(runtime.mastra.getWorkflow('generateReportWorkflow'));
 
 assert.deepEqual(
@@ -230,6 +261,13 @@ assert.deepEqual(
     mastraToolIds.rawDocumentFetch,
     mastraToolIds.vectorSearch,
   ].sort(),
+);
+
+assert.deepEqual(
+  Object.values(runtime.publicReportChatTools)
+    .map((tool) => tool.id)
+    .sort(),
+  [mastraToolIds.publicContextFetch, mastraToolIds.publicReportFetch].sort(),
 );
 
 assert.deepEqual(
@@ -358,6 +396,30 @@ const parsedDocFetch = await runtime.projectChatTools.parsedDocFetch.execute?.({
 assert.equal(parsedDocFetch?.sources[0]?.documentId, 'doc-parsed');
 
 assert.ok(chatRepository.projectIds.every((projectId) => projectId === 'project-a'));
+
+const publicRequestContext = new RequestContext<MastraPublicReportContext>([
+  ['contextBundle', publicContextBundle],
+  ['projectSlug', 'sample-a'],
+  ['report', publicReport],
+  ['reportId', 'report-a'],
+]);
+const publicReportFetch = await runtime.publicReportChatTools.publicReportFetch.execute?.({}, {
+  requestContext: publicRequestContext,
+} as never);
+assert.equal(publicReportFetch?.resultCount, 1);
+assert.equal(publicReportFetch?.report, publicReport);
+
+const publicContextFetch = await runtime.publicReportChatTools.publicContextFetch.execute?.({}, {
+  requestContext: publicRequestContext,
+} as never);
+assert.equal(publicContextFetch?.resultCount, 1);
+assert.deepEqual(publicContextFetch?.sources, [
+  {
+    label: '公開ソース 1 (web_page)',
+    publicSourceId: 'src_activity_001',
+    sectionId: 'activity',
+  },
+]);
 
 const run = await runtime.generateReportWorkflow.createRun();
 const report = await run.start({

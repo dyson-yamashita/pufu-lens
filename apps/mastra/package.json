@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "mastra dev",
+    "dev": "DATABASE_URL=${DATABASE_URL:-postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens} GOOGLE_API_KEY=${GOOGLE_API_KEY:-$GEMINI_API_KEY} GOOGLE_GENERATIVE_AI_API_KEY=${GOOGLE_GENERATIVE_AI_API_KEY:-$GEMINI_API_KEY} mastra dev",
     "mastra:build": "mastra build",
     "mastra:lint": "mastra lint",
     "test": "node --experimental-strip-types src/index.test.ts",

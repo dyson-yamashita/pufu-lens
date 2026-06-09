@@ -16,7 +16,14 @@ import {
   createGenerateReportWorkflow,
   createProjectChatAgent,
   createProjectChatTools,
+  createPublicReportChatAgent,
+  createPublicReportChatTools,
 } from '../index.ts';
+
+if (process.env.GEMINI_API_KEY) {
+  process.env.GOOGLE_API_KEY ??= process.env.GEMINI_API_KEY;
+  process.env.GOOGLE_GENERATIVE_AI_API_KEY ??= process.env.GEMINI_API_KEY;
+}
 
 const databaseUrl = process.env.DATABASE_URL;
 const sql = postgres(databaseUrl ?? 'postgresql://localhost/pufu_lens_mastra_build', { max: 5 });
@@ -37,6 +44,8 @@ const crossProjectResearchAgent = createCrossProjectResearchAgent({
 });
 const projectChatTools = createProjectChatTools(chatRepository);
 const projectChatAgent = createProjectChatAgent({ tools: projectChatTools });
+const publicReportChatTools = createPublicReportChatTools();
+const publicReportChatAgent = createPublicReportChatAgent({ tools: publicReportChatTools });
 const generateReportWorkflow = createGenerateReportWorkflow({
   provider: createExtractiveReportProvider(),
   repository: reportRepository,
@@ -44,7 +53,7 @@ const generateReportWorkflow = createGenerateReportWorkflow({
 });
 
 export const mastra = new Mastra({
-  agents: { crossProjectResearchAgent, projectChatAgent },
+  agents: { crossProjectResearchAgent, projectChatAgent, publicReportChatAgent },
   workflows: { generateReportWorkflow },
 });
 

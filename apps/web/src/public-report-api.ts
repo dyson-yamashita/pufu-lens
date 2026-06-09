@@ -1,11 +1,15 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { getVisiblePublicProject } from './admin-db';
 import {
-  createExtractivePublicChatProvider,
-  createGeminiPublicChatProvider,
   createPublicChatMemoryRateLimiter,
-  runPublicChat,
+  publicChatSources,
+  shouldRefusePublicQuestion,
 } from './chat';
+import {
+  createMastraPublicReportChatBody,
+  mastraGenerateToPublicChatResponse,
+  mastraPublicReportChatGenerateUrl,
+} from './mastra-chat';
 import {
   createReportStorageFromEnv,
   getPublicReport,
@@ -92,29 +96,66 @@ export async function handlePublicChatPost(
       reportId: input.reportId,
       storage: createReportStorageFromEnv(),
     });
-    const provider =
-      process.env.GEMINI_API_KEY && process.env.GEMINI_CHAT_MODEL
-        ? createGeminiPublicChatProvider({
-            apiKey: process.env.GEMINI_API_KEY,
-            model: process.env.GEMINI_CHAT_MODEL,
-          })
-        : createExtractivePublicChatProvider();
-    const response = await runPublicChat(
-      {
-        clientIp: trustedClientIp(request),
+    for (const rateLimiter of [hourlyRateLimiter, dailyRateLimiter]) {
+      if (!rateLimiter.check({ clientIp: trustedClientIp(request), reportId: input.reportId })) {
+        return NextResponse.json(
+          {
+            answer: 'rate limit exceeded',
+            projectSlug: input.projectSlug,
+            reportId: input.reportId,
+            sources: [],
+            status: 'rate_limited',
+            toolCalls: [],
+          },
+          { status: 429 },
+        );
+      }
+    }
+    const toolCalls = [
+      { name: 'public-report-fetch', resultCount: 1 },
+      { name: 'public-context-fetch', resultCount: artifacts.contextBundle.sections.length },
+    ] as const;
+    if (shouldRefusePublicQuestion(question)) {
+      return NextResponse.json({
+        answer:
+          '公開レポートの範囲外、または未公開情報の要求には回答できません。公開済み section id / public source id に基づく質問をしてください。',
         projectSlug: input.projectSlug,
-        question,
         reportId: input.reportId,
-      },
-      {
-        contextBundle: artifacts.contextBundle,
-        provider,
-        rateLimiters: [hourlyRateLimiter, dailyRateLimiter],
-        report: artifacts.report,
-      },
+        sources: [],
+        status: 'refused',
+        toolCalls,
+      });
+    }
+    const mastraResponse = await fetch(mastraPublicReportChatGenerateUrl(), {
+      body: JSON.stringify(
+        createMastraPublicReportChatBody({
+          contextBundle: artifacts.contextBundle,
+          projectSlug: input.projectSlug,
+          question,
+          report: artifacts.report,
+          reportId: input.reportId,
+        }),
+      ),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+    const mastraBody = (await mastraResponse.json()) as unknown;
+    if (!mastraResponse.ok) {
+      throw new Error(
+        `Mastra public report chat agent failed: HTTP ${mastraResponse.status} ${JSON.stringify(mastraBody)}`,
+      );
+    }
+    return NextResponse.json(
+      withPublicFallbackSources(
+        mastraGenerateToPublicChatResponse({
+          mastraResponse: mastraBody,
+          projectSlug: input.projectSlug,
+          reportId: input.reportId,
+        }),
+        publicChatSources(artifacts.report, artifacts.contextBundle),
+        toolCalls,
+      ),
     );
-    const status = response.status === 'rate_limited' ? 429 : 200;
-    return NextResponse.json(response, { status });
   } catch (error) {
     if (error instanceof PublicReportNotFoundError) {
       return publicChatNotFound();
@@ -126,6 +167,25 @@ export async function handlePublicChatPost(
       500,
     );
   }
+}
+
+function withPublicFallbackSources(
+  response: ReturnType<typeof mastraGenerateToPublicChatResponse>,
+  sources: ReturnType<typeof publicChatSources>,
+  toolCalls: readonly [
+    { readonly name: 'public-report-fetch'; readonly resultCount: number },
+    { readonly name: 'public-context-fetch'; readonly resultCount: number },
+  ],
+) {
+  const toolCallNames = new Set(response.toolCalls.map((toolCall) => toolCall.name));
+  return {
+    ...response,
+    sources: response.sources.length ? response.sources : sources,
+    toolCalls: [
+      ...response.toolCalls,
+      ...toolCalls.filter((toolCall) => !toolCallNames.has(toolCall.name)),
+    ],
+  };
 }
 
 export async function handlePublicProjectChatPost(

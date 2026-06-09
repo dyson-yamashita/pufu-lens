@@ -21,7 +21,12 @@ async function main(): Promise<void> {
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   const storage = createLocalObjectStorageFromEnv();
-  const repository = new PostgresGraphRelationsRepository(sql, storage, options.source);
+  const repository = new PostgresGraphRelationsRepository(
+    sql,
+    storage,
+    options.source,
+    options.dataSourceId,
+  );
 
   try {
     const result = await storeGraphRelations({
@@ -52,6 +57,7 @@ type InsertedEmailQuoteRow = {
 };
 
 class PostgresGraphRelationsRepository implements GraphRelationsRepository {
+  private dataSourceId: string | undefined;
   private sql: postgres.Sql;
   private storage: LocalFsObjectStorage;
   private sourceType: SourceType | undefined;
@@ -60,7 +66,9 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
     sql: postgres.Sql,
     storage: LocalFsObjectStorage,
     sourceType: SourceType | undefined,
+    dataSourceId: string | undefined,
   ) {
+    this.dataSourceId = dataSourceId;
     this.sql = sql;
     this.storage = storage;
     this.sourceType = sourceType;
@@ -103,6 +111,15 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
         AND rd.parsed_uri IS NOT NULL
         AND rd.ingest_status IN ('parsed', 'indexed')
         AND (${this.sourceType ?? null}::text IS NULL OR rd.source_type = ${this.sourceType ?? null})
+        AND (
+          ${this.dataSourceId ?? null}::uuid IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM public.raw_document_data_sources rdds
+            WHERE rdds.raw_document_id = rd.id
+              AND rdds.data_source_id = ${this.dataSourceId ?? null}::uuid
+          )
+        )
       ORDER BY rd.parsed_at NULLS LAST, rd.fetched_at, rd.id
       LIMIT ${input.limit}
     `) as GraphTargetRow[];
@@ -334,11 +351,13 @@ async function executeCypher(
 }
 
 function parseArgs(argv: string[]): {
+  dataSourceId?: string;
   project?: string;
   source?: SourceType;
   limit?: number;
 } {
   const options: {
+    dataSourceId?: string;
     project?: string;
     source?: SourceType;
     limit?: number;
@@ -347,6 +366,8 @@ function parseArgs(argv: string[]): {
     const arg = argv[index];
     if (arg === '--project') {
       options.project = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--data-source-id') {
+      options.dataSourceId = readOptionValue(argv, ++index, arg);
     } else if (arg === '--source') {
       options.source = readSourceType(readOptionValue(argv, ++index, arg));
     } else if (arg === '--limit') {

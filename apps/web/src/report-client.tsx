@@ -2,20 +2,82 @@
 
 import { Send } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { PublicChatResponse } from './chat';
+import { ActionForm, PendingSubmitButton } from './form-buttons';
 import { PufuReportViewer } from './pufu-report-viewer';
-import type { PrivateReportJsonV1, PublicReportJsonV1, ReportListItem } from './report';
+import type {
+  PrivateReportJsonV1,
+  PublicReportJsonV1,
+  ReportListItem,
+  ReportPeriod,
+} from './report';
 
 type ReportApiError = {
   readonly error?: { readonly code?: string; readonly message?: string };
 };
 
+type ReportGenerateAction = (formData: FormData) => Promise<void>;
+
+const reportsUpdatedEvent = 'pufu:reports-updated';
+
+export function ReportGenerateForm({
+  action,
+  defaultPeriod,
+  projectSlug,
+}: {
+  readonly action: ReportGenerateAction;
+  readonly defaultPeriod: ReportPeriod;
+  readonly projectSlug: string;
+}) {
+  return (
+    <ActionForm
+      action={action}
+      className="report-generate-form"
+      onSuccess={() => {
+        window.dispatchEvent(new CustomEvent(reportsUpdatedEvent, { detail: { projectSlug } }));
+      }}
+    >
+      <input name="projectSlug" type="hidden" value={projectSlug} />
+      <label>
+        <span>Start</span>
+        <input
+          aria-label="Report period start"
+          data-testid="reports-period-start-input"
+          defaultValue={defaultPeriod.start}
+          name="periodStart"
+          required
+          type="date"
+        />
+      </label>
+      <label>
+        <span>End</span>
+        <input
+          aria-label="Report period end"
+          data-testid="reports-period-end-input"
+          defaultValue={defaultPeriod.end}
+          name="periodEnd"
+          required
+          type="date"
+        />
+      </label>
+      <PendingSubmitButton
+        className="primary-button report-generate-button"
+        pendingLabel="Generating..."
+        testId="reports-generate-button"
+        title="Generate private report"
+      >
+        Generate Report
+      </PendingSubmitButton>
+    </ActionForm>
+  );
+}
+
 export function ReportsList({ projectSlug }: { readonly projectSlug: string }) {
   const [reports, setReports] = useState<readonly ReportListItem[]>([]);
   const [status, setStatus] = useState('loading');
 
-  useEffect(() => {
+  const loadReports = useCallback(() => {
     let cancelled = false;
     setReports([]);
     setStatus('loading');
@@ -45,6 +107,21 @@ export function ReportsList({ projectSlug }: { readonly projectSlug: string }) {
       cancelled = true;
     };
   }, [projectSlug]);
+
+  useEffect(() => loadReports(), [loadReports]);
+
+  useEffect(() => {
+    const handleReportsUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ readonly projectSlug?: string }>).detail;
+      if (!detail?.projectSlug || detail.projectSlug === projectSlug) {
+        loadReports();
+      }
+    };
+    window.addEventListener(reportsUpdatedEvent, handleReportsUpdated);
+    return () => {
+      window.removeEventListener(reportsUpdatedEvent, handleReportsUpdated);
+    };
+  }, [loadReports, projectSlug]);
 
   if (status === 'loading') {
     return <p className="notice">loading</p>;
