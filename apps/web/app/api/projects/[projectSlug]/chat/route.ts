@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getRequiredAdminSql } from '../../../../../src/admin-sql';
+import { AuthRequiredError, requireSessionUserId } from '../../../../../src/auth-session';
 import {
   businessHoursFromEnv,
   chatNowFromEnv,
@@ -29,12 +30,8 @@ export async function POST(
     return chatErrorResponse('invalid_request', 'question is required', 400);
   }
 
-  const userId = process.env.PUFU_LENS_CHAT_USER_ID ?? process.env.PUFU_LENS_ADMIN_USER_ID;
-  if (!userId) {
-    return chatErrorResponse('chat_user_not_configured', 'PUFU_LENS_CHAT_USER_ID is required', 503);
-  }
-
   try {
+    const userId = await requireSessionUserId();
     const provider =
       process.env.GEMINI_API_KEY && process.env.GEMINI_CHAT_MODEL
         ? createGeminiChatProvider({
@@ -60,6 +57,9 @@ export async function POST(
     return NextResponse.json(response, { status });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof AuthRequiredError) {
+      return chatErrorResponse('auth_required', message, 401);
+    }
     if (error instanceof ProjectAccessDeniedError) {
       return chatErrorResponse('project_access_denied', message, 403);
     }

@@ -57,13 +57,30 @@ class MemoryStorage implements ObjectStorage {
 }
 
 function createRepository(): ReportRepository & { insertedChunks: number; storageUri?: string } {
-  const reports = new Map<string, { isPublic: boolean; storageUri: string; title: string }>();
+  const reports = new Map<
+    string,
+    { isPublic: boolean; projectId: string; storageUri: string; title: string }
+  >([
+    [
+      'project-b-report',
+      {
+        isPublic: false,
+        projectId: 'project-b',
+        storageUri: 'project-b/reports/private/project-b-report.json',
+        title: 'Project B report',
+      },
+    ],
+  ]);
   return {
     insertedChunks: 0,
     async lookupProjectMember({ projectSlug, userId }) {
-      return projectSlug === 'sample-a' && userId === 'user-a'
-        ? { id: 'project-a', slug: 'sample-a', visibility: 'public' }
-        : undefined;
+      if (projectSlug === 'sample-a' && userId === 'user-a') {
+        return { id: 'project-a', slug: 'sample-a', visibility: 'public' };
+      }
+      if (projectSlug === 'sample-b' && userId === 'user-b') {
+        return { id: 'project-b', slug: 'sample-b', visibility: 'private' };
+      }
+      return undefined;
     },
     async lookupProject({ projectSlug }) {
       return projectSlug === 'sample-a'
@@ -94,23 +111,30 @@ function createRepository(): ReportRepository & { insertedChunks: number; storag
     async insertReport({ chunks, report, storageUri }) {
       this.insertedChunks = chunks.length;
       this.storageUri = storageUri;
-      reports.set(report.report_id, { isPublic: false, storageUri, title: report.title });
-    },
-    async listReports() {
-      return [...reports.entries()].map(([id, report]) => ({
-        createdAt: '2026-06-04T00:00:00.000Z',
-        id,
-        isPublic: report.isPublic,
-        period: { end: '2026-06-07', start: '2026-06-01' },
-        schemaVersion: 'v1',
-        storageUri: report.storageUri,
-        summary: 'summary',
+      reports.set(report.report_id, {
+        isPublic: false,
+        projectId: report.project_id,
+        storageUri,
         title: report.title,
-      }));
+      });
     },
-    async readReportMetadata({ reportId }) {
+    async listReports({ projectId }) {
+      return [...reports.entries()]
+        .filter(([, report]) => report.projectId === projectId)
+        .map(([id, report]) => ({
+          createdAt: '2026-06-04T00:00:00.000Z',
+          id,
+          isPublic: report.isPublic,
+          period: { end: '2026-06-07', start: '2026-06-01' },
+          schemaVersion: 'v1',
+          storageUri: report.storageUri,
+          summary: 'summary',
+          title: report.title,
+        }));
+    },
+    async readReportMetadata({ projectId, reportId }) {
       const report = reports.get(reportId);
-      return report
+      return report && report.projectId === projectId
         ? {
             createdAt: '2026-06-04T00:00:00.000Z',
             id: reportId,
@@ -183,6 +207,27 @@ assert.doesNotMatch(JSON.stringify(pufuScore), /データソースから|根拠�
 assert.equal(repository.insertedChunks, 4);
 assert.ok(repository.storageUri?.includes('/sample-a/reports/private/'));
 validatePrivateReportJson(JSON.parse(await storage.getText(generated.storageUri)));
+
+const sampleAReports = await listPrivateReports({
+  options: { repository },
+  projectSlug: 'sample-a',
+  userId: 'user-a',
+});
+assert.equal(sampleAReports.status, 'ok');
+assert.deepEqual(
+  sampleAReports.reports.map((report) => report.id),
+  [generated.report.report_id],
+);
+await assert.rejects(
+  () =>
+    getPrivateReport({
+      options: { repository, storage },
+      projectSlug: 'sample-a',
+      reportId: 'project-b-report',
+      userId: 'user-a',
+    }),
+  ReportNotFoundError,
+);
 
 const privateReport = JSON.parse(await storage.getText(generated.storageUri));
 privateReport.summary = '公開前の概要 contact@example.com https://internal.example.com/roadmap';

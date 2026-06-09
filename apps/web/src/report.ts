@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type postgres from 'postgres';
 import { LocalFsObjectStorage } from '../../../packages/storage/src/local-fs.ts';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
@@ -737,11 +739,22 @@ export function createReportStorageFromEnv(): ObjectStorage {
   if (driver !== 'local') {
     throw new Error(`Unsupported object storage driver for report API: ${driver}`);
   }
-  const root = process.env.STORAGE_ROOT ?? process.env.LOCAL_STORAGE_ROOT;
+  const root = process.env.STORAGE_ROOT ?? process.env.LOCAL_STORAGE_ROOT ?? localDevStorageRoot();
   if (!root) {
     throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required for local object storage.');
   }
   return new LocalFsObjectStorage(root);
+}
+
+function localDevStorageRoot(): string | undefined {
+  if (process.env.NODE_ENV === 'production') {
+    return undefined;
+  }
+  const candidates = [
+    resolve(process.cwd(), 'infra/volumes/pufu-lens-data'),
+    resolve(process.cwd(), '../../infra/volumes/pufu-lens-data'),
+  ];
+  return candidates.find((candidate) => existsSync(candidate));
 }
 
 export function createPostgresReportRepository(sql: postgres.Sql): ReportRepository {
@@ -750,9 +763,12 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
       const rows = (await sql`
         SELECT p.id::text AS id, p.slug, COALESCE(p.visibility, 'private') AS visibility
         FROM public.projects p
-        JOIN public.project_members pm ON pm.project_id = p.id
+        JOIN public.users app_user ON app_user.id = ${userId}
+        LEFT JOIN public.project_members pm
+          ON pm.project_id = p.id
+         AND pm.user_id = app_user.id
         WHERE p.slug = ${projectSlug}
-          AND pm.user_id = ${userId}
+          AND (app_user.role = 'admin' OR pm.user_id IS NOT NULL)
       `) as Array<{ id: string; slug: string; visibility: 'private' | 'public' }>;
       return rows[0];
     },

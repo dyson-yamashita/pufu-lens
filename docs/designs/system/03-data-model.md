@@ -28,8 +28,32 @@ CREATE TABLE users (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email      TEXT NOT NULL UNIQUE,
   name       TEXT,
-  role       TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin', 'system')),
+  role       TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
   created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- アプリログイン用 provider account 対応
+-- provider token / refresh token は保存せず、Auth.js JWT session から users.id を解決するための
+-- 安定した対応表だけを保持する。既存 email への自動 link は provider 側の検証済み email を必須にする。
+CREATE TABLE auth_accounts (
+  provider            TEXT NOT NULL CHECK (provider IN ('google', 'github')),
+  provider_account_id TEXT NOT NULL,
+  user_id             UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  email               TEXT NOT NULL,
+  email_verified      BOOLEAN NOT NULL DEFAULT false,
+  created_at          TIMESTAMPTZ DEFAULT now(),
+  updated_at          TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (provider, provider_account_id),
+  UNIQUE (provider, user_id)
+);
+
+-- OAuth を使わない環境向けの Credentials provider 用 password hash。
+-- password の実値は保存せず、アプリログイン用途だけに使う。
+CREATE TABLE auth_password_credentials (
+  user_id       UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  password_hash TEXT NOT NULL,
+  created_at    TIMESTAMPTZ DEFAULT now(),
+  updated_at    TIMESTAMPTZ DEFAULT now()
 );
 
 -- プロジェクト（論理テナント）
@@ -50,7 +74,7 @@ CREATE TABLE projects (
 CREATE TABLE project_members (
   project_id   UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  role         TEXT NOT NULL DEFAULT 'admin', -- admin | editor | viewer
+  role         TEXT NOT NULL DEFAULT 'member', -- admin | member
   created_at   TIMESTAMPTZ DEFAULT now(),
   PRIMARY KEY (project_id, user_id)
 );

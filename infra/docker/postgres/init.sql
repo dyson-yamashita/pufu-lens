@@ -10,8 +10,28 @@ CREATE TABLE public.users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT NOT NULL UNIQUE,
   name TEXT,
-  role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin', 'system')),
+  role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.auth_accounts (
+  provider TEXT NOT NULL CHECK (provider IN ('google', 'github')),
+  provider_account_id TEXT NOT NULL,
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  email_verified BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (provider, provider_account_id),
+  UNIQUE (provider, user_id)
+);
+CREATE INDEX auth_accounts_user_idx ON public.auth_accounts (user_id);
+
+CREATE TABLE public.auth_password_credentials (
+  user_id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE public.projects (
@@ -30,7 +50,7 @@ CREATE TABLE public.projects (
 CREATE TABLE public.project_members (
   project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  role TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('admin', 'editor', 'viewer')),
+  role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (project_id, user_id)
 );
@@ -372,7 +392,7 @@ CREATE TRIGGER actors_set_updated_at
   EXECUTE FUNCTION public.set_updated_at();
 
 INSERT INTO public.users (id, email, name, role)
-VALUES ('00000000-0000-0000-0000-000000000001', 'system@pufu-lens.local', 'Pufu Lens System', 'system')
+VALUES ('00000000-0000-0000-0000-000000000001', 'system@pufu-lens.local', 'Pufu Lens System', 'member')
 ON CONFLICT (email) DO NOTHING;
 
 INSERT INTO public.projects (id, slug, name, description, graph_name, storage_prefix, visibility)

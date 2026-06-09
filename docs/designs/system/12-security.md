@@ -43,6 +43,8 @@ API は以下の認可をかける：
 
 - すべての `/api/projects/[projectSlug]/...` で `projectSlug` を UUID の `projectId` に解決し、`project_members` を確認して、ログインユーザーが対象プロジェクトのメンバーであることを検証する。
 - Admin API は `project_members.role IN ('admin')` のユーザーのみ可。
+- `/members` の Accounts 一覧は `users.role IN ('admin', 'member')` のログインユーザーのみ可。ユーザー登録、全体 role 変更、Credentials password 更新は `users.role = 'admin'` の global admin のみ可とし、server action 側でも再検証する。
+- `/projects/[projectSlug]/members` の閲覧は、global admin または対象 project の `project_members` に含まれるログインユーザーのみ可。プロジェクトへの紐付け追加は global admin または対象 project の `project_members.role = 'admin'` のみ可。解除は `project_members.role = 'member'` の紐付けだけを対象にし、global admin と project admin は解除不可とする。
 - Mastra のツール呼び出しは `projectId` 必須、context にない場合エラー。
 - 公開レポートは通常の `/api/projects/[projectSlug]/...` とは別に、未ログイン用の `/api/public/projects/[projectSlug]/reports/[reportId]` を用意する。公開ページの正規 URL は `/reports/public/[projectSlug]/[reportId]` とする。
 - `/api/public/projects/[projectSlug]/reports/[reportId]` は API entrypoint で `projectSlug` と `reportId` を storage-safe pattern に validate し、Object Storage 上の公開用 manifest / metadata で公開可否を確認できた場合だけ redaction 済み public report JSON を取得して返す。private report JSON は直接公開しない。`is_public = false`、存在しない、または project が無効な場合は同じ `404` を返し、非公開レポートの存在有無を漏らさない。

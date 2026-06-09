@@ -1,5 +1,12 @@
+import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { auth } from '../../../../auth';
 import { generatePrivateReport } from '../../../../src/admin-actions';
-import { getAdminProject } from '../../../../src/admin-db';
+import {
+  getAdminProject,
+  getProjectMembership,
+  getVisiblePublicProject,
+} from '../../../../src/admin-db';
 import { ActionForm, PendingSubmitButton } from '../../../../src/form-buttons';
 import { ReportsList } from '../../../../src/report-client';
 import { AppShell, PageHeader } from '../../../../src/ui';
@@ -10,7 +17,63 @@ export default async function ReportsPage({
   readonly params: Promise<{ readonly projectSlug: string }>;
 }) {
   const { projectSlug } = await params;
-  const project = await getAdminProject(projectSlug);
+  const [project, session] = await Promise.all([getAdminProject(projectSlug), auth()]);
+  const userId = session?.user?.id;
+
+  let isMember = false;
+  if (userId) {
+    try {
+      await getProjectMembership(projectSlug, userId);
+      isMember = true;
+    } catch {
+      if (project.visibility !== 'public') {
+        redirect('/projects');
+      }
+    }
+  } else if (project.visibility !== 'public') {
+    redirect('/login');
+  }
+
+  if (!isMember) {
+    const publicProject = await getVisiblePublicProject(project.slug);
+
+    return (
+      <AppShell active="reports" project={project}>
+        <PageHeader
+          title={`${project.name} Reports`}
+          subtitle="公開されている report を確認します。"
+        />
+        <section className="panel report-list-panel" data-testid="public-reports-list-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Public Reports</h2>
+              <p className="mono">{project.slug}</p>
+            </div>
+          </div>
+          {publicProject?.reports.length ? (
+            <div className="source-list">
+              {publicProject.reports.map((report) => (
+                <Link
+                  className="source-chip"
+                  data-testid={`public-report-${project.slug}-${report.id}`}
+                  href={`/reports/public/${project.slug}/${report.id}`}
+                  key={report.id}
+                >
+                  <strong>{report.title}</strong>
+                  <span>{report.summary}</span>
+                  <small>{report.publishedAt}</small>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="notice" data-testid="public-reports-empty">
+              公開されている report はまだありません。
+            </p>
+          )}
+        </section>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell active="reports" project={project}>

@@ -32,14 +32,62 @@ type PublicProjectReportRow = {
   description: string | null;
   name: string;
   published_at: Date | string | null;
-  report_id: string;
+  report_id: string | null;
   report_summary: string | null;
-  report_title: string;
+  report_title: string | null;
   slug: string;
 };
 
 type MutablePublicProjectSummary = Omit<PublicProjectSummary, 'reports'> & {
   reports: PublicProjectReportSummary[];
+};
+
+export type AppMemberRole = 'admin' | 'member';
+
+export type AppMemberSummary = {
+  readonly createdAt: string;
+  readonly email: string;
+  readonly id: string;
+  readonly name: string | null;
+  readonly role: AppMemberRole;
+};
+
+export type ProjectMemberRole = 'admin' | 'member';
+
+export type ProjectMemberSummary = {
+  readonly createdAt: string;
+  readonly email: string;
+  readonly id: string;
+  readonly name: string | null;
+  readonly projectRole: ProjectMemberRole;
+  readonly removable: boolean;
+  readonly role: AppMemberRole;
+};
+
+export type ProjectMembershipSummary = {
+  readonly canManageMembers: boolean;
+  readonly members: readonly ProjectMemberSummary[];
+  readonly project: ProjectSummary;
+  readonly users: readonly AppMemberSummary[];
+};
+
+export type GlobalMemberDirectory = {
+  readonly canManageMembers: boolean;
+  readonly members: readonly AppMemberSummary[];
+};
+
+type AppMemberRow = {
+  created_at: Date | string;
+  email: string;
+  id: string;
+  name: string | null;
+  role: AppMemberRole;
+};
+
+type ProjectMemberRow = AppMemberRow & {
+  membership_created_at: Date | string | null;
+  project_role: ProjectMemberRole;
+  removable: boolean;
 };
 
 type DataSourceRow = {
@@ -120,6 +168,55 @@ export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
   }, fallbackProjects);
 }
 
+export async function listMemberProjects(userId: string): Promise<readonly ProjectSummary[]> {
+  return withOptionalSql(async (sql) => {
+    const rows = (await sql`
+      SELECT
+        p.id::text AS id,
+        p.slug,
+        p.name,
+        p.description,
+        p.visibility,
+        (SELECT count(*)::int FROM public.project_members pm WHERE pm.project_id = p.id) AS member_count,
+        (SELECT count(*)::int FROM public.raw_documents rd WHERE rd.project_id = p.id) AS raw_count,
+        (SELECT count(*)::int FROM public.ingestion_queue iq WHERE iq.project_id = p.id) AS queue_count,
+        (
+          SELECT count(*)::int
+          FROM public.raw_documents rd
+          WHERE rd.project_id = p.id AND rd.ingest_status = 'failed'
+        ) AS failed_count,
+        (
+          SELECT count(*)::int
+          FROM public.raw_documents rd
+          WHERE rd.project_id = p.id AND rd.ingest_status = 'held'
+        ) AS held_count,
+        (SELECT max(rd.indexed_at) FROM public.raw_documents rd WHERE rd.project_id = p.id) AS last_indexed
+      FROM public.projects p
+      JOIN public.users app_user
+        ON app_user.id = ${userId}
+      LEFT JOIN public.project_members current_member
+        ON current_member.project_id = p.id
+       AND current_member.user_id = app_user.id
+      WHERE app_user.role = 'admin'
+         OR current_member.user_id IS NOT NULL
+      ORDER BY p.slug
+    `) as ProjectRow[];
+
+    const projectIds = rows.map((row) => row.id);
+    const [dataSourcesByProject, parserProfilesByProject] = await Promise.all([
+      listDataSourcesByProject(sql, projectIds),
+      listParserProfilesByProject(sql, projectIds),
+    ]);
+    return rows.map((row) =>
+      projectFromRow(
+        row,
+        dataSourcesByProject.get(row.id) ?? [],
+        parserProfilesByProject.get(row.id) ?? [],
+      ),
+    );
+  }, []);
+}
+
 export async function listPublicProjects(): Promise<readonly PublicProjectSummary[]> {
   return withOptionalSql(async (sql) => {
     const rows = (await sql`
@@ -145,6 +242,216 @@ export async function listPublicProjects(): Promise<readonly PublicProjectSummar
     `) as PublicProjectReportRow[];
     return publicProjectsFromRows(rows);
   }, publicProjectsFallback());
+}
+
+export async function listVisiblePublicProjects(): Promise<readonly PublicProjectSummary[]> {
+  return withOptionalSql(async (sql) => {
+    const rows = (await sql`
+      SELECT
+        p.slug,
+        p.name,
+        p.description,
+        r.id::text AS report_id,
+        r.title AS report_title,
+        r.summary AS report_summary,
+        r.created_at AS published_at
+      FROM public.projects p
+      LEFT JOIN LATERAL (
+        SELECT id, title, summary, created_at
+        FROM public.reports
+        WHERE project_id = p.id
+          AND is_public = true
+        ORDER BY created_at DESC
+        LIMIT 3
+      ) r ON true
+      WHERE p.visibility = 'public'
+      ORDER BY p.slug, r.created_at DESC NULLS LAST
+    `) as PublicProjectReportRow[];
+    return publicProjectsFromRows(rows);
+  }, publicProjectsFallback());
+}
+
+export async function getVisiblePublicProject(
+  slug: string,
+): Promise<PublicProjectSummary | undefined> {
+  return withOptionalSql(
+    async (sql) => {
+      const rows = (await sql`
+      SELECT
+        p.slug,
+        p.name,
+        p.description,
+        r.id::text AS report_id,
+        r.title AS report_title,
+        r.summary AS report_summary,
+        r.created_at AS published_at
+      FROM public.projects p
+      LEFT JOIN LATERAL (
+        SELECT id, title, summary, created_at
+        FROM public.reports
+        WHERE project_id = p.id
+          AND is_public = true
+        ORDER BY created_at DESC
+        LIMIT 3
+      ) r ON true
+      WHERE p.visibility = 'public'
+        AND p.slug = ${slug}
+      ORDER BY r.created_at DESC NULLS LAST
+    `) as PublicProjectReportRow[];
+      return publicProjectsFromRows(rows)[0];
+    },
+    publicProjectsFallback().find((project) => project.slug === slug),
+  );
+}
+
+export async function listAppMembersForUser(userId: string): Promise<GlobalMemberDirectory> {
+  return withOptionalSql(
+    async (sql) => {
+      const accessRows = (await sql`
+      SELECT role
+      FROM public.users
+      WHERE id = ${userId}
+        AND role IN ('admin', 'member')
+    `) as Array<{ role: AppMemberRole }>;
+      const access = accessRows[0];
+      if (!access) {
+        throw new Error('Members access is required.');
+      }
+      const rows = (await sql`
+      SELECT id::text, email, name, role, created_at
+      FROM public.users
+      ORDER BY email
+    `) as AppMemberRow[];
+      return {
+        canManageMembers: access.role === 'admin',
+        members: rows.map(memberFromRow),
+      };
+    },
+    { canManageMembers: false, members: [] },
+  );
+}
+
+export async function isGlobalAdminUser(userId: string): Promise<boolean> {
+  return withOptionalSql(async (sql) => {
+    const rows = (await sql`
+      SELECT id::text
+      FROM public.users
+      WHERE id = ${userId}
+        AND role = 'admin'
+    `) as Array<{ id: string }>;
+    return Boolean(rows[0]);
+  }, false);
+}
+
+export async function getAppUserRole(userId: string): Promise<AppMemberRole | undefined> {
+  return withOptionalSql(async (sql) => {
+    const rows = (await sql`
+      SELECT role
+      FROM public.users
+      WHERE id = ${userId}
+        AND role IN ('admin', 'member')
+    `) as Array<{ role: AppMemberRole }>;
+    return rows[0]?.role;
+  }, undefined);
+}
+
+export async function getProjectMembership(
+  slug: string,
+  userId: string,
+): Promise<ProjectMembershipSummary> {
+  const sql = getOptionalAdminSql();
+  if (!sql) {
+    throw new Error('DATABASE_URL is required for project members.');
+  }
+
+  const accessRows = (await sql`
+    SELECT
+      p.id::text AS project_id,
+      app_user.role AS app_role,
+      pm.role AS project_role
+    FROM public.projects p
+    JOIN public.users app_user
+      ON app_user.id = ${userId}
+    LEFT JOIN public.project_members pm
+      ON pm.project_id = p.id
+     AND pm.user_id = app_user.id
+    WHERE p.slug = ${slug}
+      AND (app_user.role = 'admin' OR pm.user_id IS NOT NULL)
+  `) as Array<{
+    app_role: AppMemberRole;
+    project_id: string;
+    project_role: ProjectMemberRole | null;
+  }>;
+  const access = accessRows[0];
+  if (!access) {
+    throw new Error(`Member access denied for project slug: ${slug}`);
+  }
+
+  const project = await getAdminProject(slug);
+  const [memberRows, userRows] = await Promise.all([
+    sql`
+      WITH project_member_rows AS (
+        SELECT
+          users.id,
+          users.email,
+          users.name,
+          users.role,
+          project_members.role AS project_role,
+          project_members.created_at AS membership_created_at,
+          project_members.role = 'member' AND users.role <> 'admin' AS removable
+        FROM public.project_members
+        JOIN public.users
+          ON users.id = project_members.user_id
+        WHERE project_members.project_id = ${access.project_id}
+      ),
+      global_admin_rows AS (
+        SELECT
+          users.id,
+          users.email,
+          users.name,
+          users.role,
+          'admin'::text AS project_role,
+          users.created_at AS membership_created_at,
+          false AS removable
+        FROM public.users
+        WHERE users.role = 'admin'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM public.project_members
+            WHERE project_members.project_id = ${access.project_id}
+              AND project_members.user_id = users.id
+          )
+      )
+      SELECT
+        id::text,
+        email,
+        name,
+        role,
+        project_role,
+        membership_created_at,
+        removable
+      FROM (
+        SELECT * FROM project_member_rows
+        UNION ALL
+        SELECT * FROM global_admin_rows
+      ) members
+      ORDER BY email
+    ` as Promise<ProjectMemberRow[]>,
+    access.app_role === 'admin' || access.project_role === 'admin'
+      ? (sql`
+          SELECT id::text, email, name, role, created_at
+          FROM public.users
+          ORDER BY email
+        ` as Promise<AppMemberRow[]>)
+      : Promise.resolve([]),
+  ]);
+
+  return {
+    canManageMembers: access.app_role === 'admin' || access.project_role === 'admin',
+    members: memberRows.map(projectMemberFromRow),
+    project,
+    users: userRows.map(memberFromRow),
+  };
 }
 
 export async function getAdminProject(slug: string): Promise<ProjectSummary> {
@@ -195,6 +502,28 @@ export async function getAdminProject(slug: string): Promise<ProjectSummary> {
     }
     throw error;
   }
+}
+
+function memberFromRow(row: AppMemberRow): AppMemberSummary {
+  return {
+    createdAt: formatDate(row.created_at),
+    email: row.email,
+    id: row.id,
+    name: row.name,
+    role: row.role,
+  };
+}
+
+function projectMemberFromRow(row: ProjectMemberRow): ProjectMemberSummary {
+  return {
+    createdAt: formatDate(row.membership_created_at),
+    email: row.email,
+    id: row.id,
+    name: row.name,
+    projectRole: row.project_role,
+    removable: row.removable,
+    role: row.role,
+  };
 }
 
 export function getSourceTypeCounts(project: ProjectSummary): Record<SourceType, number> {
@@ -493,12 +822,14 @@ function publicProjectsFromRows(
       reports: [],
       slug: row.slug,
     };
-    project.reports.push({
-      id: row.report_id,
-      publishedAt: formatDate(row.published_at),
-      summary: row.report_summary ?? '',
-      title: row.report_title,
-    });
+    if (row.report_id && row.report_title) {
+      project.reports.push({
+        id: row.report_id,
+        publishedAt: formatDate(row.published_at),
+        summary: row.report_summary ?? '',
+        title: row.report_title,
+      });
+    }
     projects.set(row.slug, project);
   }
   return Array.from(projects.values());
