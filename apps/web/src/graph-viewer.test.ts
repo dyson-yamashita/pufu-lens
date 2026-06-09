@@ -4,25 +4,25 @@ import {
   GraphPresetNotFoundError,
   type GraphViewerRepository,
   normalizeGraphRows,
-  runGraphPresetQuery
+  runGraphPresetQuery,
 } from './graph-viewer.ts';
 
 const actor = {
   id: '1',
   label: 'Actor',
-  properties: { displayName: 'Ada', graphNodeId: 'actor:ada' }
+  properties: { displayName: 'Ada', graphNodeId: 'actor:ada' },
 };
 const document = {
   id: '2',
   label: 'Document',
-  properties: { graphNodeId: 'document:spec', title: 'Spec' }
+  properties: { graphNodeId: 'document:spec', title: 'Spec' },
 };
 const edge = {
   end_id: '2',
   id: '3',
   label: 'AUTHORED',
   properties: { sourceType: 'github' },
-  start_id: '1'
+  start_id: '1',
 };
 
 const normalized = normalizeGraphRows(
@@ -30,10 +30,10 @@ const normalized = normalizeGraphRows(
     {
       relation: `${JSON.stringify(edge)}::edge`,
       source: `${JSON.stringify(actor)}::vertex`,
-      target: `${JSON.stringify(document)}::vertex`
-    }
+      target: `${JSON.stringify(document)}::vertex`,
+    },
   ],
-  { maxEdges: 10, maxNodes: 10 }
+  { maxEdges: 10, maxNodes: 10 },
 );
 
 assert.equal(normalized.nodes.length, 2);
@@ -45,9 +45,9 @@ assert.equal(normalized.edges[0]?.label, 'AUTHORED');
 const limited = normalizeGraphRows(
   [
     { first: `${JSON.stringify(actor)}::vertex` },
-    { second: `${JSON.stringify(document)}::vertex` }
+    { second: `${JSON.stringify(document)}::vertex` },
   ],
-  { maxEdges: 10, maxNodes: 1 }
+  { maxEdges: 10, maxNodes: 1 },
 );
 assert.equal(limited.nodes.length, 1);
 assert.equal(limited.truncated, true);
@@ -61,21 +61,21 @@ function createRepository(): GraphViewerRepository {
         {
           relation: `${JSON.stringify(edge)}::edge`,
           source: `${JSON.stringify(actor)}::vertex`,
-          target: `${JSON.stringify(document)}::vertex`
-        }
+          target: `${JSON.stringify(document)}::vertex`,
+        },
       ];
     },
     async lookupProjectMember({ projectSlug, userId }) {
       return projectSlug === 'sample-a' && userId === 'user-a'
         ? { graphName: 'graph_sample_a', id: 'project-a', name: 'Sample A', slug: 'sample-a' }
         : undefined;
-    }
+    },
   };
 }
 
 const result = await runGraphPresetQuery(
   { projectSlug: 'sample-a', queryId: 'recent-relations', userId: 'user-a' },
-  { repository: createRepository() }
+  { repository: createRepository() },
 );
 assert.equal(result.graphName, 'graph_sample_a');
 assert.equal(result.nodes.length, 2);
@@ -86,18 +86,18 @@ await assert.rejects(
   () =>
     runGraphPresetQuery(
       { projectSlug: 'sample-a', queryId: 'missing', userId: 'user-a' },
-      { repository: createRepository() }
+      { repository: createRepository() },
     ),
-  GraphPresetNotFoundError
+  GraphPresetNotFoundError,
 );
 
 await assert.rejects(
   () =>
     runGraphPresetQuery(
       { projectSlug: 'sample-b', queryId: 'recent-relations', userId: 'user-a' },
-      { repository: createRepository() }
+      { repository: createRepository() },
     ),
-  GraphAccessDeniedError
+  GraphAccessDeniedError,
 );
 
 console.log('web graph viewer tests passed');

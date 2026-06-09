@@ -7,12 +7,18 @@
       "!**/node_modules",
       "!.turbo",
       "!**/.turbo",
+      "!.mastra",
+      "!**/.mastra",
       "!**/.next",
       "!**/next-env.d.ts",
       "!**/dist",
       "!**/build",
       "!**/coverage",
       "!**/test-results",
+      "!tmp",
+      "!**/tmp",
+      "!apps/web/infra",
+      "!**/infra/volumes",
       "!infra/volumes",
       "!.infisical.json"
     ]

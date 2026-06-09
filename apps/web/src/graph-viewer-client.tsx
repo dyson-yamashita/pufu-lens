@@ -7,7 +7,7 @@ import type {
   GraphPresetSummary,
   GraphQueryResult,
   GraphViewerEdge,
-  GraphViewerNode
+  GraphViewerNode,
 } from './graph-viewer';
 
 type GraphSelection =
@@ -17,7 +17,7 @@ type GraphSelection =
 export function GraphViewerPanel({
   initialPresetId,
   presets,
-  projectSlug
+  projectSlug,
 }: {
   readonly initialPresetId: GraphPresetId;
   readonly presets: readonly GraphPresetSummary[];
@@ -38,7 +38,7 @@ export function GraphViewerPanel({
       const response = await fetch(`/api/projects/${projectSlug}/graph`, {
         body: JSON.stringify({ queryId }),
         headers: { 'content-type': 'application/json' },
-        method: 'POST'
+        method: 'POST',
       });
       const body = (await response.json()) as GraphQueryResult | GraphErrorBody;
       if (!response.ok || 'error' in body) {
@@ -155,7 +155,7 @@ export function GraphViewerPanel({
 function GraphCanvas({
   edges,
   nodes,
-  onSelect
+  onSelect,
 }: {
   readonly edges: readonly GraphViewerEdge[];
   readonly nodes: readonly GraphViewerNode[];
@@ -175,13 +175,13 @@ function GraphCanvas({
       container,
       elements: [
         ...nodes.map((node) => ({
-          data: { id: node.id, label: node.label, type: node.labels[0] ?? 'Node' }
+          data: { id: node.id, label: node.label, type: node.labels[0] ?? 'Node' },
         })),
         ...edges
           .filter((edge) => nodesById.has(edge.source) && nodesById.has(edge.target))
           .map((edge) => ({
-            data: { id: edge.id, label: edge.label, source: edge.source, target: edge.target }
-          }))
+            data: { id: edge.id, label: edge.label, source: edge.source, target: edge.target },
+          })),
       ],
       layout: { name: 'cose', animate: false, fit: true, padding: 24 },
       style: [
@@ -198,16 +198,16 @@ function GraphCanvas({
             'text-valign': 'bottom',
             'text-wrap': 'wrap',
             width: '34px',
-            height: '34px'
-          }
+            height: '34px',
+          },
         },
         {
           selector: 'node[type = "Document"]',
-          style: { 'background-color': '#0066ff' }
+          style: { 'background-color': '#0066ff' },
         },
         {
           selector: 'node[type = "Actor"]',
-          style: { 'background-color': '#d8b9ff' }
+          style: { 'background-color': '#d8b9ff' },
         },
         {
           selector: 'edge',
@@ -218,18 +218,18 @@ function GraphCanvas({
             'line-color': '#8c90a1',
             'target-arrow-color': '#8c90a1',
             'target-arrow-shape': 'triangle',
-            width: '1.5px'
-          }
+            width: '1.5px',
+          },
         },
         {
           selector: ':selected',
           style: {
             'background-color': '#ffb4ab',
             'line-color': '#ffb4ab',
-            'target-arrow-color': '#ffb4ab'
-          }
-        }
-      ]
+            'target-arrow-color': '#ffb4ab',
+          },
+        },
+      ],
     });
     cyRef.current = cy;
     cy.on('tap', 'node', (event) => {

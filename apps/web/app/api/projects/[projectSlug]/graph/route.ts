@@ -4,12 +4,12 @@ import {
   createPostgresGraphViewerRepository,
   GraphAccessDeniedError,
   GraphPresetNotFoundError,
-  runGraphPresetQuery
+  runGraphPresetQuery,
 } from '../../../../../src/graph-viewer';
 
 export async function POST(
   request: Request,
-  { params }: { readonly params: Promise<{ readonly projectSlug: string }> }
+  { params }: { readonly params: Promise<{ readonly projectSlug: string }> },
 ) {
   const { projectSlug } = await params;
   let queryId = '';
@@ -30,7 +30,7 @@ export async function POST(
     const userId = await requireSessionUserId();
     const response = await runGraphPresetQuery(
       { projectSlug, queryId, userId },
-      { repository: createPostgresGraphViewerRepository() }
+      { repository: createPostgresGraphViewerRepository() },
     );
     return NextResponse.json(response);
   } catch (error) {

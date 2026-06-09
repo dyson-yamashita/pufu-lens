@@ -1,12 +1,12 @@
 import { redirect } from 'next/navigation';
 import { auth } from '../../../../auth';
 import { getAdminProject, getProjectMembership } from '../../../../src/admin-db';
-import { GraphViewerPanel } from '../../../../src/graph-viewer-client';
 import { listGraphPresets } from '../../../../src/graph-viewer';
+import { GraphViewerPanel } from '../../../../src/graph-viewer-client';
 import { AppShell, PageHeader } from '../../../../src/ui';
 
 export default async function ProjectGraphPage({
-  params
+  params,
 }: {
   readonly params: Promise<{ readonly projectSlug: string }>;
 }) {

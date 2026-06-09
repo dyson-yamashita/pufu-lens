@@ -16,7 +16,7 @@ import {
   RefreshCw,
   ShieldCheck,
   TriangleAlert,
-  Users
+  Users,
 } from 'lucide-react';
 import Link from 'next/link';
 import { auth, signOut } from '../auth';
@@ -25,7 +25,7 @@ import type {
   ParserProfileSummary,
   ProjectSummary,
   SourceStatus,
-  SourceType
+  SourceType,
 } from './admin-data';
 import { ActionForm, PendingSubmitButton } from './form-buttons';
 
@@ -33,20 +33,20 @@ const sourceLabels: Record<SourceType, string> = {
   drive: 'Drive',
   github: 'GitHub',
   gmail: 'Gmail',
-  web: 'Web'
+  web: 'Web',
 };
 
 const statusLabels: Record<SourceStatus, string> = {
   failed: 'Failed',
   healthy: 'Healthy',
   held: 'Held',
-  syncing: 'Syncing'
+  syncing: 'Syncing',
 };
 
 export async function AppShell({
   project,
   active,
-  children
+  children,
 }: {
   readonly project?: ProjectSummary;
   readonly active?:
@@ -234,7 +234,7 @@ export async function AppShell({
 export function PageHeader({
   title,
   subtitle,
-  action
+  action,
 }: {
   readonly title: string;
   readonly subtitle: string;
@@ -271,7 +271,7 @@ export function MetricStrip({ project }: { readonly project: ProjectSummary }) {
 }
 
 export function StatusBadge({
-  status
+  status,
 }: {
   readonly status: SourceStatus | ParserProfileSummary['status'];
 }) {
@@ -292,7 +292,7 @@ export function SourceIcon({ sourceType }: { readonly sourceType: SourceType }) 
 
 export function SourceTypeTabs({
   activeType,
-  projectSlug
+  projectSlug,
 }: {
   readonly activeType?: SourceType;
   readonly projectSlug: string;
@@ -328,7 +328,7 @@ export function DataSourceTable({
   activeSourceId,
   activeType,
   projectSlug,
-  sources
+  sources,
 }: {
   readonly activeSourceId?: string;
   readonly activeType?: SourceType;
@@ -388,7 +388,7 @@ export function DataSourceTable({
 function dataSourceDetailHref(
   projectSlug: string,
   dataSourceId: string,
-  activeType: SourceType | undefined
+  activeType: SourceType | undefined,
 ): string {
   const params = new URLSearchParams();
   if (activeType) {
@@ -402,7 +402,7 @@ export function RetryButton({
   action,
   dataSourceId,
   projectSlug,
-  testId
+  testId,
 }: {
   readonly action?: (formData: FormData) => Promise<void>;
   readonly dataSourceId?: string;
@@ -434,7 +434,7 @@ export function ParserActionButtons({
   approveAction,
   profile,
   projectSlug,
-  rejectAction
+  rejectAction,
 }: {
   readonly approveAction?: (formData: FormData) => Promise<void>;
   readonly profile: ParserProfileSummary;
@@ -504,7 +504,7 @@ export function ParserActionButtons({
 function Metric({
   label,
   value,
-  tone
+  tone,
 }: {
   readonly label: string;
   readonly value: number;

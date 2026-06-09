@@ -90,7 +90,7 @@ LIMIT 100`,
 RETURN source, relation, target
 LIMIT 100`,
     recordDefinition: 'source agtype, relation agtype, target agtype',
-    rowLimit: 100
+    rowLimit: 100,
   },
   {
     cypher: `MATCH (source:Actor)-[relation]->(target:Document)
@@ -105,7 +105,7 @@ LIMIT 100`,
 RETURN source, relation, target
 LIMIT 100`,
     recordDefinition: 'source agtype, relation agtype, target agtype',
-    rowLimit: 100
+    rowLimit: 100,
   },
   {
     cypher: `MATCH (source)-[relation:SAME_AS]->(target)
@@ -120,8 +120,8 @@ LIMIT 100`,
 RETURN source, relation, target
 LIMIT 100`,
     recordDefinition: 'source agtype, relation agtype, target agtype',
-    rowLimit: 100
-  }
+    rowLimit: 100,
+  },
 ];
 
 export function listGraphPresets(): readonly GraphPresetSummary[] {
@@ -129,7 +129,7 @@ export function listGraphPresets(): readonly GraphPresetSummary[] {
     description,
     id,
     label,
-    preview
+    preview,
   }));
 }
 
@@ -143,12 +143,12 @@ export function getGraphPreset(queryId: string): GraphPreset {
 
 export async function runGraphPresetQuery(
   input: { projectSlug: string; queryId: string; userId: string },
-  options: { repository: GraphViewerRepository }
+  options: { repository: GraphViewerRepository },
 ): Promise<GraphQueryResult> {
   const preset = getGraphPreset(input.queryId);
   const project = await options.repository.lookupProjectMember({
     projectSlug: input.projectSlug,
-    userId: input.userId
+    userId: input.userId,
   });
   if (!project) {
     throw new GraphAccessDeniedError(input.projectSlug);
@@ -156,11 +156,11 @@ export async function runGraphPresetQuery(
 
   const rows = await options.repository.executePreset({
     graphName: project.graphName,
-    preset
+    preset,
   });
   const normalized = normalizeGraphRows(rows, {
     maxEdges: preset.maxEdges,
-    maxNodes: preset.maxNodes
+    maxNodes: preset.maxNodes,
   });
 
   return {
@@ -170,15 +170,15 @@ export async function runGraphPresetQuery(
       description: preset.description,
       id: preset.id,
       label: preset.label,
-      preview: preset.preview
+      preview: preset.preview,
     },
     rawRows: rows.map(safeRawRow),
-    rowCount: rows.length
+    rowCount: rows.length,
   };
 }
 
 export function createPostgresGraphViewerRepository(
-  sql: postgres.Sql = getRequiredAdminSql()
+  sql: postgres.Sql = getRequiredAdminSql(),
 ): GraphViewerRepository {
   return {
     async executePreset({ graphName, preset }) {
@@ -191,8 +191,8 @@ export function createPostgresGraphViewerRepository(
         await transaction`SET LOCAL statement_timeout = '5000ms'`;
         return transaction.unsafe(
           `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
-            preset.cypher
-          )}) AS (${safeRecordDefinition})`
+            preset.cypher,
+          )}) AS (${safeRecordDefinition})`,
         ) as Promise<readonly Record<string, unknown>[]>;
       });
     },
@@ -223,16 +223,16 @@ export function createPostgresGraphViewerRepository(
             graphName: validateGraphName(row.graph_name),
             id: row.id,
             name: row.name,
-            slug: row.slug
+            slug: row.slug,
           }
         : undefined;
-    }
+    },
   };
 }
 
 export function normalizeGraphRows(
   rows: readonly Record<string, unknown>[],
-  limits: { maxEdges: number; maxNodes: number }
+  limits: { maxEdges: number; maxNodes: number },
 ): Pick<GraphQueryResult, 'edges' | 'nodes' | 'truncated'> {
   const nodes = new Map<string, GraphViewerNode>();
   const edges = new Map<string, GraphViewerEdge>();
@@ -247,7 +247,7 @@ export function normalizeGraphRows(
   return {
     edges: [...edges.values()],
     nodes: [...nodes.values()],
-    truncated
+    truncated,
   };
 }
 
@@ -258,7 +258,7 @@ function collectGraphValue(
     limits: { maxEdges: number; maxNodes: number };
     nodes: Map<string, GraphViewerNode>;
     truncated: () => void;
-  }
+  },
 ): void {
   const parsed = parseGraphValue(value);
   if (!parsed) {
@@ -288,7 +288,7 @@ function collectGraphValue(
 }
 
 function parseGraphValue(
-  value: unknown
+  value: unknown,
 ): GraphViewerNode | GraphViewerEdge | unknown[] | undefined {
   if (typeof value === 'string') {
     return parseTypedAgtype(value.trim());
@@ -308,26 +308,26 @@ function parseGraphValue(
   if (Array.isArray(value.vertices) || Array.isArray(value.edges)) {
     return [
       ...((value.vertices as unknown[] | undefined) ?? []),
-      ...((value.edges as unknown[] | undefined) ?? [])
+      ...((value.edges as unknown[] | undefined) ?? []),
     ];
   }
   return undefined;
 }
 
 function parseTypedAgtype(
-  value: string
+  value: string,
 ): GraphViewerNode | GraphViewerEdge | unknown[] | undefined {
   if (!value) {
     return undefined;
   }
   if (value.endsWith('::vertex')) {
     return vertexRecordToNode(
-      JSON.parse(value.slice(0, -'::vertex'.length)) as Record<string, unknown>
+      JSON.parse(value.slice(0, -'::vertex'.length)) as Record<string, unknown>,
     );
   }
   if (value.endsWith('::edge')) {
     return edgeRecordToEdge(
-      JSON.parse(value.slice(0, -'::edge'.length)) as Record<string, unknown>
+      JSON.parse(value.slice(0, -'::edge'.length)) as Record<string, unknown>,
     );
   }
   if (value.endsWith('::path')) {
@@ -359,7 +359,7 @@ function vertexRecordToNode(value: Record<string, unknown>): GraphViewerNode {
     id,
     label: displayNodeLabel(label, properties),
     labels: [label],
-    properties: { ...properties, ageId: id, graphNodeId }
+    properties: { ...properties, ageId: id, graphNodeId },
   };
 }
 
@@ -372,7 +372,7 @@ function edgeRecordToEdge(value: Record<string, unknown>): GraphViewerEdge {
     label,
     properties,
     source: String(value.start_id ?? value.startId ?? value.source ?? ''),
-    target: String(value.end_id ?? value.endId ?? value.target ?? '')
+    target: String(value.end_id ?? value.endId ?? value.target ?? ''),
   };
 }
 
@@ -417,7 +417,7 @@ function isParsedEdge(value: unknown): value is GraphViewerEdge {
 
 function safeRawRow(row: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
-    Object.entries(row).map(([key, value]) => [key, rawValuePreview(value)])
+    Object.entries(row).map(([key, value]) => [key, rawValuePreview(value)]),
   );
 }
 
@@ -432,7 +432,7 @@ function rawValuePreview(value: unknown): unknown {
     return Object.fromEntries(
       Object.entries(value)
         .slice(0, 40)
-        .map(([key, nested]) => [key, rawValuePreview(nested)])
+        .map(([key, nested]) => [key, rawValuePreview(nested)]),
     );
   }
   return value;

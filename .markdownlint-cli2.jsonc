@@ -17,5 +17,15 @@
     "MD058": false
   },
   "globs": ["**/*.md"],
-  "ignores": ["**/node_modules/**", "**/.turbo/**", "**/.next/**", "**/dist/**", "**/build/**"]
+  "ignores": [
+    "**/node_modules/**",
+    "**/.turbo/**",
+    "**/.mastra/**",
+    "**/.next/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/test-results/**",
+    "**/infra/volumes/**",
+    "tmp/**"
+  ]
 }
