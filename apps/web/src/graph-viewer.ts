@@ -299,6 +299,9 @@ function parseGraphValue(
   if (!isRecord(value)) {
     return undefined;
   }
+  if (isParsedNode(value) || isParsedEdge(value)) {
+    return value;
+  }
   if (isAgeVertexRecord(value)) {
     return vertexRecordToNode(value);
   }
@@ -339,14 +342,60 @@ function parseTypedAgtype(
 
 function parsePathItems(value: string): unknown[] {
   const items: unknown[] = [];
-  const pattern = /(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}::(?:vertex|edge))/g;
-  for (const match of value.matchAll(pattern)) {
-    const parsed = parseTypedAgtype(match[1] ?? '');
-    if (parsed) {
-      items.push(parsed);
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (character === '"' && !isEscaped(value, index)) {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (character === '{') {
+      if (depth === 0) {
+        start = index;
+      }
+      depth += 1;
+      continue;
+    }
+    if (character !== '}') {
+      continue;
+    }
+    depth -= 1;
+    if (depth < 0) {
+      depth = 0;
+      start = -1;
+      continue;
+    }
+    if (depth === 0 && start !== -1) {
+      const suffix = value.slice(index + 1).match(/^::(?:vertex|edge)/)?.[0];
+      if (suffix) {
+        try {
+          const parsed = parseTypedAgtype(`${value.slice(start, index + 1)}${suffix}`);
+          if (parsed) {
+            items.push(parsed);
+          }
+        } catch {
+          // Ignore malformed path fragments and continue parsing later items.
+        }
+        index += suffix.length;
+      }
+      start = -1;
     }
   }
   return items;
+}
+
+function isEscaped(value: string, index: number): boolean {
+  let backslashCount = 0;
+  for (let cursor = index - 1; cursor >= 0 && value[cursor] === '\\'; cursor -= 1) {
+    backslashCount += 1;
+  }
+  return backslashCount % 2 === 1;
 }
 
 function vertexRecordToNode(value: Record<string, unknown>): GraphViewerNode {

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { auth } from '../../../../auth';
-import { getAdminProject, getProjectMembership } from '../../../../src/admin-db';
+import type { ProjectSummary } from '../../../../src/admin-data';
+import { getProjectMembership } from '../../../../src/admin-db';
 import { listGraphPresets } from '../../../../src/graph-viewer';
 import { GraphViewerPanel } from '../../../../src/graph-viewer-client';
 import { AppShell, PageHeader } from '../../../../src/ui';
@@ -11,13 +12,15 @@ export default async function ProjectGraphPage({
   readonly params: Promise<{ readonly projectSlug: string }>;
 }) {
   const { projectSlug } = await params;
-  const [project, session] = await Promise.all([getAdminProject(projectSlug), auth()]);
+  const session = await auth();
   const userId = session?.user?.id;
   if (!userId) {
     redirect('/login');
   }
+  let project: ProjectSummary;
   try {
-    await getProjectMembership(projectSlug, userId);
+    const membership = await getProjectMembership(projectSlug, userId);
+    project = membership.project;
   } catch {
     redirect('/projects');
   }

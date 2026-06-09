@@ -14,9 +14,13 @@ export async function POST(
   const { projectSlug } = await params;
   let queryId = '';
   try {
-    const body = (await request.json()) as { queryId?: unknown };
-    queryId = typeof body.queryId === 'string' ? body.queryId.trim() : '';
-    if ('cypher' in body) {
+    const body = (await request.json()) as unknown;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return graphErrorResponse('invalid_json', 'Invalid JSON body.', 400);
+    }
+    const typedBody = body as { queryId?: unknown };
+    queryId = typeof typedBody.queryId === 'string' ? typedBody.queryId.trim() : '';
+    if ('cypher' in typedBody) {
       return graphErrorResponse('cypher_not_allowed', 'Cypher body field is not allowed.', 400);
     }
   } catch {

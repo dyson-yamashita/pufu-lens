@@ -42,6 +42,50 @@ assert.equal(normalized.nodes[0]?.id, '1');
 assert.equal(normalized.nodes[1]?.label, 'Spec');
 assert.equal(normalized.edges[0]?.label, 'AUTHORED');
 
+const nestedActor = {
+  id: '10',
+  label: 'Actor',
+  properties: {
+    displayName: 'Nested Ada',
+    graphNodeId: 'actor:nested-ada',
+    metadata: {
+      author: {
+        note: 'literal { brace } and escaped "quote"',
+      },
+    },
+  },
+};
+const nestedDocument = {
+  id: '11',
+  label: 'Document',
+  properties: {
+    graphNodeId: 'document:nested-spec',
+    title: 'Nested Spec',
+  },
+};
+const nestedEdge = {
+  end_id: '11',
+  id: '12',
+  label: 'REFERENCES',
+  properties: { metadata: { confidence: { score: 0.9 } } },
+  start_id: '10',
+};
+const normalizedPath = normalizeGraphRows(
+  [
+    {
+      path: `[${JSON.stringify(nestedActor)}::vertex, ${JSON.stringify(
+        nestedEdge,
+      )}::edge, ${JSON.stringify(nestedDocument)}::vertex]::path`,
+    },
+  ],
+  { maxEdges: 10, maxNodes: 10 },
+);
+assert.equal(normalizedPath.nodes.length, 2);
+assert.equal(normalizedPath.edges.length, 1);
+assert.equal(normalizedPath.nodes[0]?.label, 'Nested Ada');
+assert.equal(normalizedPath.edges[0]?.source, '10');
+assert.equal(normalizedPath.edges[0]?.target, '11');
+
 const limited = normalizeGraphRows(
   [
     { first: `${JSON.stringify(actor)}::vertex` },
