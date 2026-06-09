@@ -74,12 +74,13 @@ export async function POST(
       headers: { 'content-type': 'application/json' },
       method: 'POST',
     });
-    const mastraBody = (await mastraResponse.json()) as unknown;
     if (!mastraResponse.ok) {
+      const errorText = await mastraResponse.text().catch(() => '');
       throw new Error(
-        `Mastra project chat agent failed: HTTP ${mastraResponse.status} ${JSON.stringify(mastraBody)}`,
+        `Mastra project chat agent failed: HTTP ${mastraResponse.status} - ${errorText}`,
       );
     }
+    const mastraBody = (await mastraResponse.json()) as unknown;
     return NextResponse.json(
       mastraGenerateToChatResponse({ mastraResponse: mastraBody, projectSlug }),
     );

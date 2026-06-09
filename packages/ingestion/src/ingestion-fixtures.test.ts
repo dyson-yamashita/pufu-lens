@@ -135,6 +135,54 @@ test('web parser prefers schema.org datePublished over fetchedAt', async () => {
   }
 });
 
+test('web parser keeps escaped angle bracket text while stripping tags', async () => {
+  const rawPath = await writeTempRawFixture(
+    'web-escaped-angle-brackets.html',
+    '<!doctype html><html><head><title>Escaped text</title></head><body>a &lt; b &gt; c <span>tag</span></body></html>',
+  );
+
+  try {
+    const parsed = await parseRawFixture(
+      buildFixtureCase('web-escaped-angle-brackets', 'web', rawPath),
+    );
+
+    assert.match(parsed.bodyText, /a < b > c/);
+    assert.match(parsed.bodyText, /tag/);
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
+test('web parser reads JSON-LD datePublished without decoding script text entities', async () => {
+  const rawPath = await writeTempRawFixture(
+    'web-json-ld-entity-text.html',
+    `<!doctype html>
+<html>
+  <head>
+    <title>JSON-LD entity text</title>
+    <script type="application/ld+json">
+      {
+        "@type": "BlogPosting",
+        "description": "He said &quot;hello&quot;",
+        "datePublished": "2019-05-07T10:50:58.000+09:00"
+      }
+    </script>
+  </head>
+  <body>body</body>
+</html>`,
+  );
+
+  try {
+    const parsed = await parseRawFixture(
+      buildFixtureCase('web-json-ld-entity-text', 'web', rawPath),
+    );
+
+    assert.equal(parsed.occurredAt, '2019-05-07T01:50:58.000Z');
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
 test('web parser falls back to fetchedAt when published date is missing', async () => {
   const rawPath = await writeTempRawFixture(
     'web-no-published-date.html',

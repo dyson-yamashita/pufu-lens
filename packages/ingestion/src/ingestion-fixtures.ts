@@ -261,7 +261,7 @@ function extractJsonLdPublishedAt(html: string): string | undefined {
   for (const script of html.matchAll(
     /<script\s+[^>]*type=["']application\/ld\+json["'][^>]*>(?<json>[\s\S]*?)<\/script>/gi,
   )) {
-    const jsonText = htmlEntityDecode(script.groups?.json ?? '').trim();
+    const jsonText = (script.groups?.json ?? '').trim();
     if (!jsonText) {
       continue;
     }
@@ -412,8 +412,7 @@ function parseDrive(
 }
 
 function textFromHtml(value: string): string {
-  return htmlEntityDecode(value)
-    .replace(/<(?:[^"'>]|"[^"]*"|'[^']*')*>/g, ' ')
+  return htmlEntityDecode(value.replace(/<(?:[^"'>]|"[^"]*"|'[^']*')*>/g, ' '))
     .replace(/\s+/g, ' ')
     .trim();
 }

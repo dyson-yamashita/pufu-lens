@@ -2,7 +2,7 @@
 
 import { Send } from 'lucide-react';
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PublicChatResponse } from './chat';
 import { ActionForm, PendingSubmitButton } from './form-buttons';
 import { PufuReportViewer } from './pufu-report-viewer';
@@ -74,21 +74,27 @@ export function ReportGenerateForm({
 }
 
 export function ReportsList({ projectSlug }: { readonly projectSlug: string }) {
+  const abortControllerRef = useRef<AbortController | undefined>(undefined);
+  const fetchIdRef = useRef(0);
   const [reports, setReports] = useState<readonly ReportListItem[]>([]);
   const [status, setStatus] = useState('loading');
 
   const loadReports = useCallback(() => {
-    let cancelled = false;
+    abortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    const fetchId = fetchIdRef.current + 1;
+    fetchIdRef.current = fetchId;
     setReports([]);
     setStatus('loading');
-    fetch(`/api/projects/${projectSlug}/reports`)
+    fetch(`/api/projects/${projectSlug}/reports`, { signal: abortController.signal })
       .then(async (response) => {
         const body = (await response.json()) as {
           readonly error?: { readonly code?: string; readonly message?: string };
           readonly reports?: readonly ReportListItem[];
           readonly status?: string;
         };
-        if (!cancelled) {
+        if (fetchId === fetchIdRef.current) {
           if (!response.ok && body.error) {
             setReports([]);
             setStatus(reportErrorStatus(body, response.status));
@@ -99,12 +105,18 @@ export function ReportsList({ projectSlug }: { readonly projectSlug: string }) {
         }
       })
       .catch((error: unknown) => {
-        if (!cancelled) {
+        if (abortController.signal.aborted) {
+          return;
+        }
+        if (fetchId === fetchIdRef.current) {
           setStatus(error instanceof Error ? error.message : String(error));
         }
       });
     return () => {
-      cancelled = true;
+      abortController.abort();
+      if (fetchId === fetchIdRef.current) {
+        fetchIdRef.current += 1;
+      }
     };
   }, [projectSlug]);
 

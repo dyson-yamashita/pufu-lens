@@ -139,12 +139,13 @@ export async function handlePublicChatPost(
       headers: { 'content-type': 'application/json' },
       method: 'POST',
     });
-    const mastraBody = (await mastraResponse.json()) as unknown;
     if (!mastraResponse.ok) {
+      const errorText = await mastraResponse.text().catch(() => '');
       throw new Error(
-        `Mastra public report chat agent failed: HTTP ${mastraResponse.status} ${JSON.stringify(mastraBody)}`,
+        `Mastra public report chat agent failed: HTTP ${mastraResponse.status} - ${errorText}`,
       );
     }
+    const mastraBody = (await mastraResponse.json()) as unknown;
     return NextResponse.json(
       withPublicFallbackSources(
         mastraGenerateToPublicChatResponse({
