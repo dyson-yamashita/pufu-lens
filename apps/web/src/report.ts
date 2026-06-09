@@ -165,6 +165,7 @@ export interface ReportGenerationProvider {
 export interface RunGenerateReportOptions {
   readonly generatedBy?: string;
   readonly now?: Date;
+  readonly period?: ReportPeriod;
   readonly periodKind?: ReportPeriodKind;
   readonly provider: ReportGenerationProvider;
   readonly repository: ReportRepository;
@@ -213,7 +214,8 @@ export async function runGenerateReport(input: {
   readonly projectSlug: string;
 }): Promise<GenerateReportResult> {
   const now = input.options.now ?? new Date();
-  const period = resolveReportPeriod(now, input.options.periodKind ?? 'weekly');
+  const period =
+    input.options.period ?? resolveReportPeriod(now, input.options.periodKind ?? 'weekly');
   const project = await input.options.repository.lookupProject({
     projectSlug: input.projectSlug,
   });
@@ -257,6 +259,15 @@ export async function runGenerateReport(input: {
     report,
     storageUri: put.uri,
   });
+  if (project.visibility === 'public') {
+    await publishGeneratedPublicReport({
+      project,
+      publishedAt: now.toISOString(),
+      report,
+      repository: input.options.repository,
+      storage: input.options.storage,
+    });
+  }
 
   return {
     report,
@@ -342,11 +353,38 @@ export async function publishPublicReport(input: {
     storage: input.options.storage,
     visibility: project.visibility,
   });
-  const publicReport = buildPublicReport(privateReport, publishedAt);
+  const { manifest, publicReport } = await publishGeneratedPublicReport({
+    project,
+    publishedAt,
+    report: privateReport,
+    repository: input.options.repository,
+    storage: input.options.storage,
+  });
+
+  return { manifest, publicReport, status: 'ok' };
+}
+
+async function publishGeneratedPublicReport(input: {
+  readonly project: ProjectLookupResult;
+  readonly publishedAt: string;
+  readonly report: PrivateReportJsonV1;
+  readonly repository: ReportRepository;
+  readonly storage: ObjectStorage;
+}): Promise<{
+  readonly manifest: PublicReportManifestV1;
+  readonly publicReport: PublicReportJsonV1;
+}> {
+  await writePublicProjectManifest({
+    projectSlug: input.project.slug,
+    publishedAt: input.project.visibility === 'public' ? input.publishedAt : null,
+    storage: input.storage,
+    visibility: input.project.visibility,
+  });
+  const publicReport = buildPublicReport(input.report, input.publishedAt);
   const contextBundle = buildPublicContextBundle(publicReport);
-  const artifactVersion = buildArtifactVersion(publicReport, publishedAt);
-  const baseUri = `${project.slug}/reports/public/${input.reportId}/${artifactVersion}`;
-  const reportPut = await input.options.storage.put(
+  const artifactVersion = buildArtifactVersion(publicReport, input.publishedAt);
+  const baseUri = `${input.project.slug}/reports/public/${input.report.report_id}/${artifactVersion}`;
+  const reportPut = await input.storage.put(
     `${baseUri}/report.json`,
     `${JSON.stringify(publicReport, null, 2)}\n`,
     {
@@ -354,7 +392,7 @@ export async function publishPublicReport(input: {
       contentType: 'application/json; charset=utf-8',
     },
   );
-  const contextPut = await input.options.storage.put(
+  const contextPut = await input.storage.put(
     `${baseUri}/context-bundle.json`,
     `${JSON.stringify(contextBundle, null, 2)}\n`,
     {
@@ -365,31 +403,30 @@ export async function publishPublicReport(input: {
   const manifest: PublicReportManifestV1 = {
     artifact_version: artifactVersion,
     etag: digestJson(publicReport),
-    project_slug: project.slug,
+    project_slug: input.project.slug,
     public_context_bundle_uri: contextPut.uri,
     public_report_uri: reportPut.uri,
-    published_at: publishedAt,
-    report_id: input.reportId,
+    published_at: input.publishedAt,
+    report_id: input.report.report_id,
     revoked_at: null,
     schema_version: 'public-report-manifest-v1',
   };
   validatePublicReportJson(publicReport);
-  validatePublicReportManifest(manifest, project.slug, input.reportId);
-  await input.options.storage.put(
-    publicReportManifestPath(project.slug, input.reportId),
+  validatePublicReportManifest(manifest, input.project.slug, input.report.report_id);
+  await input.storage.put(
+    publicReportManifestPath(input.project.slug, input.report.report_id),
     `${JSON.stringify(manifest, null, 2)}\n`,
     {
       cacheControl: 'no-store',
       contentType: 'application/json; charset=utf-8',
     },
   );
-  await input.options.repository.setReportPublicState?.({
+  await input.repository.setReportPublicState?.({
     isPublic: true,
-    projectId: project.id,
-    reportId: input.reportId,
+    projectId: input.project.id,
+    reportId: input.report.report_id,
   });
-
-  return { manifest, publicReport, status: 'ok' };
+  return { manifest, publicReport };
 }
 
 export async function revokePublicReport(input: {

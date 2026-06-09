@@ -448,9 +448,27 @@ tr.selected-row {
   color: var(--muted);
 }
 
+.primary-button:disabled,
+.secondary-link:disabled,
 .icon-button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.button-spinner {
+  animation: spin 760ms linear infinite;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-radius: 9999px;
+  border-top-color: white;
+  display: inline-block;
+  height: 14px;
+  width: 14px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .project-grid,
@@ -561,6 +579,50 @@ tr.selected-row {
 
 .inline-action-form {
   margin: 0;
+}
+
+.report-generate-form {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(130px, 160px)) auto;
+  margin: 0;
+}
+
+.report-generate-button {
+  color: white;
+  font-weight: 700;
+  min-width: 156px;
+}
+
+.report-generate-button[data-pending="true"] {
+  cursor: progress;
+  opacity: 1;
+}
+
+.report-generate-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.report-generate-form span {
+  color: var(--muted);
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.report-generate-form input {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  min-height: 40px;
+  min-width: 0;
+  padding: 9px 10px;
 }
 
 .project-create-form textarea {

@@ -207,6 +207,64 @@ assert.doesNotMatch(JSON.stringify(pufuScore), /データソースから|根拠�
 assert.equal(repository.insertedChunks, 4);
 assert.ok(repository.storageUri?.includes('/sample-a/reports/private/'));
 validatePrivateReportJson(JSON.parse(await storage.getText(generated.storageUri)));
+const generatedMetadata = await repository.readReportMetadata({
+  projectId: 'project-a',
+  reportId: generated.report.report_id,
+});
+assert.equal(generatedMetadata?.isPublic, true);
+assert.ok(
+  await storage.exists(`sample-a/reports/public/${generated.report.report_id}/manifest.json`),
+);
+assert.ok(await storage.exists('sample-a/project-public-state.json'));
+
+const explicitPeriodRepository = createRepository();
+let providerPeriod: { readonly end: string; readonly start: string } | undefined;
+const explicitPeriodReport = await runGenerateReport({
+  options: {
+    period: { end: '2026-05-07', start: '2026-05-01' },
+    provider: {
+      async generate({ documents, period }) {
+        providerPeriod = period;
+        assert.equal(documents.length, 2);
+        return createExtractiveReportProvider().generate({
+          documents,
+          period,
+          projectSlug: 'sample-a',
+        });
+      },
+    },
+    repository: {
+      ...explicitPeriodRepository,
+      async listRecentDocuments({ period, projectId }) {
+        assert.equal(projectId, 'project-a');
+        assert.deepEqual(period, { end: '2026-05-07', start: '2026-05-01' });
+        return [
+          {
+            canonicalUri: 'https://example.com/may-a',
+            docType: 'web_page',
+            documentId: 'doc-may-a',
+            occurredAt: '2026-05-07T00:00:00.000Z',
+            summary: 'May report source A',
+            title: 'May Source A',
+          },
+          {
+            canonicalUri: 'https://example.com/may-b',
+            docType: 'web_page',
+            documentId: 'doc-may-b',
+            occurredAt: '2026-05-01T00:00:00.000Z',
+            summary: 'May report source B',
+            title: 'May Source B',
+          },
+        ];
+      },
+    },
+    storage: new MemoryStorage(),
+  },
+  projectSlug: 'sample-a',
+});
+assert.deepEqual(providerPeriod, { end: '2026-05-07', start: '2026-05-01' });
+assert.deepEqual(explicitPeriodReport.report.period, { end: '2026-05-07', start: '2026-05-01' });
+assert.equal(explicitPeriodReport.report.pufu_sources?.length, 2);
 
 const sampleAReports = await listPrivateReports({
   options: { repository },

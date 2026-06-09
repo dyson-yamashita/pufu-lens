@@ -2,31 +2,99 @@
 
 import { Send } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PublicChatResponse } from './chat';
+import { ActionForm, PendingSubmitButton } from './form-buttons';
 import { PufuReportViewer } from './pufu-report-viewer';
-import type { PrivateReportJsonV1, PublicReportJsonV1, ReportListItem } from './report';
+import type {
+  PrivateReportJsonV1,
+  PublicReportJsonV1,
+  ReportListItem,
+  ReportPeriod,
+} from './report';
 
 type ReportApiError = {
   readonly error?: { readonly code?: string; readonly message?: string };
 };
 
+type ReportGenerateAction = (formData: FormData) => Promise<void>;
+
+const reportsUpdatedEvent = 'pufu:reports-updated';
+
+export function ReportGenerateForm({
+  action,
+  defaultPeriod,
+  projectSlug,
+}: {
+  readonly action: ReportGenerateAction;
+  readonly defaultPeriod: ReportPeriod;
+  readonly projectSlug: string;
+}) {
+  return (
+    <ActionForm
+      action={action}
+      className="report-generate-form"
+      onSuccess={() => {
+        window.dispatchEvent(new CustomEvent(reportsUpdatedEvent, { detail: { projectSlug } }));
+      }}
+    >
+      <input name="projectSlug" type="hidden" value={projectSlug} />
+      <label>
+        <span>Start</span>
+        <input
+          aria-label="Report period start"
+          data-testid="reports-period-start-input"
+          defaultValue={defaultPeriod.start}
+          name="periodStart"
+          required
+          type="date"
+        />
+      </label>
+      <label>
+        <span>End</span>
+        <input
+          aria-label="Report period end"
+          data-testid="reports-period-end-input"
+          defaultValue={defaultPeriod.end}
+          name="periodEnd"
+          required
+          type="date"
+        />
+      </label>
+      <PendingSubmitButton
+        className="primary-button report-generate-button"
+        pendingLabel="Generating..."
+        testId="reports-generate-button"
+        title="Generate private report"
+      >
+        Generate Report
+      </PendingSubmitButton>
+    </ActionForm>
+  );
+}
+
 export function ReportsList({ projectSlug }: { readonly projectSlug: string }) {
+  const abortControllerRef = useRef<AbortController | undefined>(undefined);
+  const fetchIdRef = useRef(0);
   const [reports, setReports] = useState<readonly ReportListItem[]>([]);
   const [status, setStatus] = useState('loading');
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadReports = useCallback(() => {
+    abortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    const fetchId = fetchIdRef.current + 1;
+    fetchIdRef.current = fetchId;
     setReports([]);
     setStatus('loading');
-    fetch(`/api/projects/${projectSlug}/reports`)
+    fetch(`/api/projects/${projectSlug}/reports`, { signal: abortController.signal })
       .then(async (response) => {
         const body = (await response.json()) as {
           readonly error?: { readonly code?: string; readonly message?: string };
           readonly reports?: readonly ReportListItem[];
           readonly status?: string;
         };
-        if (!cancelled) {
+        if (fetchId === fetchIdRef.current) {
           if (!response.ok && body.error) {
             setReports([]);
             setStatus(reportErrorStatus(body, response.status));
@@ -37,14 +105,35 @@ export function ReportsList({ projectSlug }: { readonly projectSlug: string }) {
         }
       })
       .catch((error: unknown) => {
-        if (!cancelled) {
+        if (abortController.signal.aborted) {
+          return;
+        }
+        if (fetchId === fetchIdRef.current) {
           setStatus(error instanceof Error ? error.message : String(error));
         }
       });
     return () => {
-      cancelled = true;
+      abortController.abort();
+      if (fetchId === fetchIdRef.current) {
+        fetchIdRef.current += 1;
+      }
     };
   }, [projectSlug]);
+
+  useEffect(() => loadReports(), [loadReports]);
+
+  useEffect(() => {
+    const handleReportsUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ readonly projectSlug?: string }>).detail;
+      if (!detail?.projectSlug || detail.projectSlug === projectSlug) {
+        loadReports();
+      }
+    };
+    window.addEventListener(reportsUpdatedEvent, handleReportsUpdated);
+    return () => {
+      window.removeEventListener(reportsUpdatedEvent, handleReportsUpdated);
+    };
+  }, [loadReports, projectSlug]);
 
   if (status === 'loading') {
     return <p className="notice">loading</p>;

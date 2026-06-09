@@ -672,7 +672,7 @@ function publicChatResponse(input: {
   };
 }
 
-function publicChatSources(
+export function publicChatSources(
   report: PublicReportJsonV1,
   contextBundle: PublicContextBundleV1,
 ): PublicChatSource[] {
@@ -690,7 +690,7 @@ function publicChatSources(
   );
 }
 
-function shouldRefusePublicQuestion(question: string): boolean {
+export function shouldRefusePublicQuestion(question: string): boolean {
   return /raw|parsed|全文|元メール|メール本文|document[_\s-]?id|project[_\s-]?id|storage[_\s-]?uri|source[_\s-]?uri|別プロジェクト|他プロジェクト|未公開|社内|private|secret|oauth/i.test(
     question,
   );

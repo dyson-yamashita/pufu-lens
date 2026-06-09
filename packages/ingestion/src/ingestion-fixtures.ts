@@ -232,6 +232,7 @@ function parseWeb(
   const bodyText = textFromHtml(
     html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, ''),
   );
+  const publishedAt = extractPublishedAt(html) ?? String(fixtureCase.raw.metadata.fetchedAt);
 
   return validateParsedDocument({
     actors: [],
@@ -239,13 +240,111 @@ function parseWeb(
     canonicalUri,
     docType: 'web_page',
     metadata: fixtureCase.raw.metadata,
-    occurredAt: String(fixtureCase.raw.metadata.fetchedAt),
+    occurredAt: publishedAt,
     relations: extractLinks(html).map((href) => ({ target: href, type: 'LINKS_TO' })),
     schemaVersion: 1,
     sourceId: fixtureCase.raw.sourceId,
     sourceType: 'web',
     title,
   });
+}
+
+function extractPublishedAt(html: string): string | undefined {
+  return (
+    extractJsonLdPublishedAt(html) ??
+    extractMetaDate(html, ['article:published_time', 'datePublished', 'date']) ??
+    extractTimeDateTime(html)
+  );
+}
+
+function extractJsonLdPublishedAt(html: string): string | undefined {
+  for (const script of html.matchAll(
+    /<script\s+[^>]*type=["']application\/ld\+json["'][^>]*>(?<json>[\s\S]*?)<\/script>/gi,
+  )) {
+    const jsonText = (script.groups?.json ?? '').trim();
+    if (!jsonText) {
+      continue;
+    }
+    try {
+      const value = JSON.parse(jsonText) as unknown;
+      const date = findJsonLdDatePublished(value);
+      if (date) {
+        return date;
+      }
+    } catch {
+      // Ignore malformed or framework-injected JSON-LD and try the next date source.
+    }
+  }
+  return undefined;
+}
+
+function findJsonLdDatePublished(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const date = findJsonLdDatePublished(item);
+      if (date) {
+        return date;
+      }
+    }
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const direct = parseIsoDateValue(value.datePublished);
+  if (direct) {
+    return direct;
+  }
+  const graph = value['@graph'];
+  if (Array.isArray(graph)) {
+    for (const item of graph) {
+      const date = findJsonLdDatePublished(item);
+      if (date) {
+        return date;
+      }
+    }
+  }
+  return undefined;
+}
+
+function extractMetaDate(html: string, names: readonly string[]): string | undefined {
+  const wanted = new Set(names.map((name) => name.toLowerCase()));
+  for (const meta of html.matchAll(/<meta\s+[^>]*>/gi)) {
+    const tag = meta[0];
+    const key =
+      getHtmlAttribute(tag, 'property')?.toLowerCase() ??
+      getHtmlAttribute(tag, 'name')?.toLowerCase();
+    if (!key || !wanted.has(key)) {
+      continue;
+    }
+    const parsed = parseIsoDateValue(getHtmlAttribute(tag, 'content'));
+    if (parsed) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function extractTimeDateTime(html: string): string | undefined {
+  for (const time of html.matchAll(/<time\s+[^>]*>/gi)) {
+    const parsed = parseIsoDateValue(getHtmlAttribute(time[0], 'datetime'));
+    if (parsed) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function parseIsoDateValue(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) {
+    return undefined;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 function parseGmail(
@@ -322,16 +421,57 @@ function parseDrive(
 }
 
 function textFromHtml(value: string): string {
+  return htmlEntityDecode(stripHtmlTags(value)).replace(/\s+/g, ' ').trim();
+}
+
+function stripHtmlTags(value: string): string {
+  let output = '';
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (char !== '<') {
+      output += char;
+      continue;
+    }
+    const tagEnd = findHtmlTagEnd(value, index + 1);
+    if (tagEnd === -1) {
+      output += char;
+      continue;
+    }
+    output += ' ';
+    index = tagEnd;
+  }
+  return output;
+}
+
+function findHtmlTagEnd(value: string, startIndex: number): number {
+  let quote: '"' | "'" | undefined;
+  for (let index = startIndex; index < value.length; index += 1) {
+    const char = value[index];
+    if (quote) {
+      if (char === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === '>') {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function htmlEntityDecode(value: string): string {
   return value
-    .replace(/<(?:[^"'>]|"[^"]*"|'[^']*')*>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/&(apos|#39);/g, "'")
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/&(apos|#39);/g, "'");
 }
 
 function extractLinks(html: string): string[] {

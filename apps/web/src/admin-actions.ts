@@ -1,5 +1,9 @@
 'use server';
 
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { revalidatePath } from 'next/cache';
 import type postgres from 'postgres';
 import {
@@ -389,14 +393,53 @@ export async function collectDataSource(formData: FormData): Promise<void> {
   revalidateProject(projectSlug);
 }
 
+export async function ingestDataSource(formData: FormData): Promise<void> {
+  const projectSlug = requireFormValue(formData, 'projectSlug');
+  const dataSourceId = requireFormValue(formData, 'dataSourceId');
+  let storageRoot: string | undefined;
+  await withSql(async (sql) => {
+    const project = await requireAdminProject(sql, projectSlug);
+    const rows = (await sql`
+      SELECT
+        ds.id::text,
+        ds.source_type,
+        (
+          SELECT rd.storage_uri
+          FROM public.raw_document_data_sources rdds
+          JOIN public.raw_documents rd ON rd.id = rdds.raw_document_id
+          WHERE rdds.data_source_id = ds.id
+            AND rd.storage_uri IS NOT NULL
+          ORDER BY rd.updated_at DESC
+          LIMIT 1
+        ) AS storage_uri
+      FROM public.data_sources ds
+      WHERE ds.id = ${dataSourceId}
+        AND ds.project_id = ${project.id}
+        AND ds.enabled = true
+    `) as Array<{ id: string; source_type: SourceType; storage_uri: string | null }>;
+    const dataSource = rows[0];
+    if (!dataSource) {
+      throw new Error('Data source not found in project.');
+    }
+    if (dataSource.source_type !== 'web') {
+      throw new Error(`Ingest from admin UI is not supported for ${dataSource.source_type} yet.`);
+    }
+    storageRoot = storageRootFromObjectUri(dataSource.storage_uri, projectSlug);
+  });
+  await runIngestWorkflow({ dataSourceId, projectSlug, sourceType: 'web', storageRoot });
+  revalidateProject(projectSlug);
+}
+
 export async function generatePrivateReport(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
+  const period = requireReportPeriod(formData);
   await withSql(async (sql) => {
     await requireAdminProject(sql, projectSlug);
     await runGenerateReport({
       options: {
         generatedBy: 'admin-ui',
         now: reportNowFromEnv(process.env),
+        period,
         provider: createReportProvider(),
         repository: createPostgresReportRepository(sql),
         storage: createReportStorageFromEnv(),
@@ -755,9 +798,6 @@ async function requireAdminProject(
   readonly slug: string;
   readonly visibility: ProjectVisibility;
 }> {
-  if (process.env.PUFU_LENS_ENABLE_ADMIN_ACTIONS !== 'true') {
-    throw new Error('Admin actions are disabled.');
-  }
   const adminUserId = await requireAdminUserId();
   const rows = (await sql`
     SELECT
@@ -791,14 +831,32 @@ async function requireAdminProject(
 }
 
 async function requireAdminUserId(): Promise<string> {
-  if (process.env.PUFU_LENS_ENABLE_ADMIN_ACTIONS !== 'true') {
-    throw new Error('Admin actions are disabled.');
-  }
   const sessionUserId = await requireSessionUserId();
   if (sessionUserId) {
     return sessionUserId;
   }
   throw new Error('Authentication is required for admin actions.');
+}
+
+function requireReportPeriod(formData: FormData): { readonly end: string; readonly start: string } {
+  const start = requireIsoDate(requireFormValue(formData, 'periodStart'), 'periodStart');
+  const end = requireIsoDate(requireFormValue(formData, 'periodEnd'), 'periodEnd');
+  if (start > end) {
+    throw new Error('periodStart must be before or equal to periodEnd.');
+  }
+  return { end, start };
+}
+
+function requireIsoDate(value: string, fieldName: string): string {
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    throw new Error(`${fieldName} must be YYYY-MM-DD.`);
+  }
+  const parsed = new Date(`${trimmed}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== trimmed) {
+    throw new Error(`${fieldName} must be a valid date.`);
+  }
+  return trimmed;
 }
 
 async function requireGlobalAdmin(sql: postgres.Sql | postgres.TransactionSql): Promise<string> {
@@ -814,6 +872,101 @@ async function requireGlobalAdmin(sql: postgres.Sql | postgres.TransactionSql): 
     throw new Error('Admin access is required.');
   }
   return user.id;
+}
+
+async function runIngestWorkflow(input: {
+  readonly dataSourceId: string;
+  readonly projectSlug: string;
+  readonly sourceType: SourceType;
+  readonly storageRoot?: string;
+}): Promise<void> {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'Admin UI ingest is only available in local development. Use the ingest worker or CLI in production.',
+    );
+  }
+  const repoRoot = resolveRepoRoot();
+  const workflowScript = resolve(repoRoot, 'scripts/ingest-workflow.ts');
+  if (!existsSync(workflowScript)) {
+    throw new Error('Cannot locate scripts/ingest-workflow.ts for local ingest workflow.');
+  }
+  const child = spawn(
+    process.execPath,
+    [
+      '--experimental-strip-types',
+      workflowScript,
+      'run',
+      '--project',
+      input.projectSlug,
+      '--source',
+      input.sourceType,
+      '--data-source-id',
+      input.dataSourceId,
+      '--resume-from',
+      'parse',
+      '--embedding-provider',
+      process.env.PUFU_LENS_ADMIN_INGEST_EMBEDDING_PROVIDER ?? 'deterministic',
+    ],
+    {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        DATABASE_URL:
+          process.env.DATABASE_URL ?? 'postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens',
+        STORAGE_DRIVER: process.env.STORAGE_DRIVER ?? 'local',
+        STORAGE_ROOT:
+          input.storageRoot ??
+          process.env.STORAGE_ROOT ??
+          resolve(repoRoot, 'infra/volumes/pufu-lens-data'),
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+  const output: string[] = [];
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (chunk) => output.push(chunk));
+  child.stderr.on('data', (chunk) => output.push(chunk));
+  const exitCode = await new Promise<number | null>((resolveExit, reject) => {
+    child.on('error', reject);
+    child.on('close', resolveExit);
+  });
+  if (exitCode !== 0) {
+    throw new Error(
+      `Ingest workflow failed with exit code ${exitCode ?? 'unknown'}: ${truncateWorkflowOutput(
+        output.join(''),
+      )}`,
+    );
+  }
+}
+
+function storageRootFromObjectUri(uri: string | null, projectSlug: string): string | undefined {
+  if (!uri?.startsWith('file://')) {
+    return undefined;
+  }
+  const path = fileURLToPath(uri);
+  const marker = `/${projectSlug}/`;
+  const markerIndex = path.indexOf(marker);
+  return markerIndex > 0 ? path.slice(0, markerIndex) : undefined;
+}
+
+function resolveRepoRoot(): string {
+  const candidates = [process.cwd(), resolve(process.cwd(), '../..')];
+  const repoRoot = candidates.find((candidate) =>
+    existsSync(resolve(candidate, 'scripts/ingest-workflow.ts')),
+  );
+  if (!repoRoot) {
+    throw new Error('Cannot locate repository root for ingest workflow.');
+  }
+  return repoRoot;
+}
+
+function truncateWorkflowOutput(output: string): string {
+  const trimmed = output.trim();
+  if (trimmed.length <= 2000) {
+    return trimmed;
+  }
+  return trimmed.slice(-2000);
 }
 
 async function assertAdminRemainsAfterRoleChange(

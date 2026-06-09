@@ -101,6 +101,137 @@ test('drive parser accepts missing owners', async () => {
   }
 });
 
+test('web parser prefers schema.org datePublished over fetchedAt', async () => {
+  const rawPath = await writeTempRawFixture(
+    'web-date-published.html',
+    `<!doctype html>
+<html>
+  <head>
+    <title>Published web fixture</title>
+    <link rel="canonical" href="https://note.example.test/published">
+    <script type="application/ld+json">
+      {
+        "@context": "http://schema.org",
+        "@graph": [
+          {
+            "@type": "BlogPosting",
+            "datePublished": "2019-05-07T10:50:58.000+09:00"
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body><article>Published body</article></body>
+</html>`,
+  );
+
+  try {
+    const parsed = await parseRawFixture(buildFixtureCase('web-date-published', 'web', rawPath));
+
+    assert.equal(parsed.occurredAt, '2019-05-07T01:50:58.000Z');
+    assert.equal(parsed.canonicalUri, 'https://note.example.test/published');
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
+test('web parser keeps escaped angle bracket text while stripping tags', async () => {
+  const rawPath = await writeTempRawFixture(
+    'web-escaped-angle-brackets.html',
+    '<!doctype html><html><head><title>Escaped text</title></head><body>a &lt; b &gt; c <span>tag</span></body></html>',
+  );
+
+  try {
+    const parsed = await parseRawFixture(
+      buildFixtureCase('web-escaped-angle-brackets', 'web', rawPath),
+    );
+
+    assert.match(parsed.bodyText, /a < b > c/);
+    assert.match(parsed.bodyText, /tag/);
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
+test('web parser reads JSON-LD datePublished without decoding script text entities', async () => {
+  const rawPath = await writeTempRawFixture(
+    'web-json-ld-entity-text.html',
+    `<!doctype html>
+<html>
+  <head>
+    <title>JSON-LD entity text</title>
+    <script type="application/ld+json">
+      {
+        "@type": "BlogPosting",
+        "description": "He said &quot;hello&quot;",
+        "datePublished": "2019-05-07T10:50:58.000+09:00"
+      }
+    </script>
+  </head>
+  <body>body</body>
+</html>`,
+  );
+
+  try {
+    const parsed = await parseRawFixture(
+      buildFixtureCase('web-json-ld-entity-text', 'web', rawPath),
+    );
+
+    assert.equal(parsed.occurredAt, '2019-05-07T01:50:58.000Z');
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
+test('web parser reads JSON-LD datePublished from root arrays', async () => {
+  const rawPath = await writeTempRawFixture(
+    'web-json-ld-root-array.html',
+    `<!doctype html>
+<html>
+  <head>
+    <title>JSON-LD root array</title>
+    <script type="application/ld+json">
+      [
+        {
+          "@type": "BreadcrumbList"
+        },
+        {
+          "@type": "BlogPosting",
+          "datePublished": "2019-05-07T10:50:58.000+09:00"
+        }
+      ]
+    </script>
+  </head>
+  <body>body</body>
+</html>`,
+  );
+
+  try {
+    const parsed = await parseRawFixture(
+      buildFixtureCase('web-json-ld-root-array', 'web', rawPath),
+    );
+
+    assert.equal(parsed.occurredAt, '2019-05-07T01:50:58.000Z');
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
+test('web parser falls back to fetchedAt when published date is missing', async () => {
+  const rawPath = await writeTempRawFixture(
+    'web-no-published-date.html',
+    '<!doctype html><html><head><title>No published date</title></head><body>body</body></html>',
+  );
+
+  try {
+    const parsed = await parseRawFixture(buildFixtureCase('web-no-published-date', 'web', rawPath));
+
+    assert.equal(parsed.occurredAt, '2026-05-08T00:00:00.000Z');
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
 test('parser accepts empty document bodies from real-world sources', async () => {
   const rawPath = await writeTempRawFixture(
     'github-empty-body.json',

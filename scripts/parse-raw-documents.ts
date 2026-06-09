@@ -23,7 +23,7 @@ async function main(): Promise<void> {
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   const storage = createLocalObjectStorageFromEnv();
-  const repository = new PostgresRawParseRepository(sql, options.source);
+  const repository = new PostgresRawParseRepository(sql, options.source, options.dataSourceId);
 
   try {
     if (options.seedBuiltInParsers !== false) {
@@ -44,9 +44,15 @@ async function main(): Promise<void> {
 }
 
 class PostgresRawParseRepository implements RawParseRepository {
+  private dataSourceId: string | undefined;
   private sql: postgres.Sql;
   private sourceType: SourceType | undefined;
-  constructor(sql: postgres.Sql, sourceType: SourceType | undefined) {
+  constructor(
+    sql: postgres.Sql,
+    sourceType: SourceType | undefined,
+    dataSourceId: string | undefined,
+  ) {
+    this.dataSourceId = dataSourceId;
     this.sql = sql;
     this.sourceType = sourceType;
   }
@@ -71,6 +77,7 @@ class PostgresRawParseRepository implements RawParseRepository {
           AND q.status IN ('pending', 'failed')
           AND rd.ingest_status IN ('fetched', 'failed')
           AND (${this.sourceType ?? null}::text IS NULL OR rd.source_type = ${this.sourceType ?? null})
+          AND (${this.dataSourceId ?? null}::uuid IS NULL OR q.data_source_id = ${this.dataSourceId ?? null}::uuid)
         ORDER BY q.priority DESC, q.scheduled_at, q.created_at
         LIMIT ${input.limit}
         FOR UPDATE OF q SKIP LOCKED
@@ -311,12 +318,14 @@ async function ensureBuiltInParserVersions(input: {
 }
 
 function parseArgs(argv: string[]): {
+  dataSourceId?: string;
   project?: string;
   source?: SourceType;
   limit?: number;
   seedBuiltInParsers?: boolean;
 } {
   const options: {
+    dataSourceId?: string;
     project?: string;
     source?: SourceType;
     limit?: number;
@@ -326,6 +335,8 @@ function parseArgs(argv: string[]): {
     const arg = argv[index];
     if (arg === '--project') {
       options.project = readOptionValue(argv[++index], arg);
+    } else if (arg === '--data-source-id') {
+      options.dataSourceId = readOptionValue(argv[++index], arg);
     } else if (arg === '--source') {
       options.source = readSourceType(argv[++index], arg);
     } else if (arg === '--limit') {

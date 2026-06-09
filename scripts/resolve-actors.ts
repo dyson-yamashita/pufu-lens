@@ -19,7 +19,12 @@ async function main(): Promise<void> {
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   const storage = createLocalObjectStorageFromEnv();
-  const repository = new PostgresActorResolutionRepository(sql, storage, options.source);
+  const repository = new PostgresActorResolutionRepository(
+    sql,
+    storage,
+    options.source,
+    options.dataSourceId,
+  );
 
   try {
     const result = await resolveActors({
@@ -35,6 +40,7 @@ async function main(): Promise<void> {
 }
 
 class PostgresActorResolutionRepository implements ActorResolutionRepository {
+  private dataSourceId: string | undefined;
   private sql: postgres.Sql;
   private storage: LocalFsObjectStorage;
   private sourceType: SourceType | undefined;
@@ -42,7 +48,9 @@ class PostgresActorResolutionRepository implements ActorResolutionRepository {
     sql: postgres.Sql,
     storage: LocalFsObjectStorage,
     sourceType: SourceType | undefined,
+    dataSourceId: string | undefined,
   ) {
+    this.dataSourceId = dataSourceId;
     this.sql = sql;
     this.storage = storage;
     this.sourceType = sourceType;
@@ -71,6 +79,15 @@ class PostgresActorResolutionRepository implements ActorResolutionRepository {
         AND ingest_status = 'parsed'
         AND parsed_uri IS NOT NULL
         AND (${this.sourceType ?? null}::text IS NULL OR source_type = ${this.sourceType ?? null})
+        AND (
+          ${this.dataSourceId ?? null}::uuid IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM public.raw_document_data_sources rdds
+            WHERE rdds.raw_document_id = raw_documents.id
+              AND rdds.data_source_id = ${this.dataSourceId ?? null}::uuid
+          )
+        )
       ORDER BY parsed_at NULLS LAST, fetched_at, id
       LIMIT ${input.limit}
     `) as Array<{ parsedUri: string; rawDocumentId: string }>;
@@ -213,11 +230,13 @@ function createLocalObjectStorageFromEnv(
 }
 
 function parseArgs(argv: string[]): {
+  dataSourceId?: string;
   project?: string;
   source?: SourceType;
   limit?: number;
 } {
   const options: {
+    dataSourceId?: string;
     project?: string;
     source?: SourceType;
     limit?: number;
@@ -226,6 +245,8 @@ function parseArgs(argv: string[]): {
     const arg = argv[index];
     if (arg === '--project') {
       options.project = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--data-source-id') {
+      options.dataSourceId = readOptionValue(argv, ++index, arg);
     } else if (arg === '--source') {
       options.source = readSourceType(readOptionValue(argv, ++index, arg));
     } else if (arg === '--limit') {

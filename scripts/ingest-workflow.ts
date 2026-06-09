@@ -13,6 +13,7 @@ type WorkflowStep = (typeof STEP_ORDER)[number];
 type WorkflowCommand = 'run' | 'retry';
 
 type WorkflowOptions = {
+  dataSourceId?: string;
   dryRun?: boolean;
   embeddingProvider?: string;
   failedOnly?: boolean;
@@ -298,6 +299,7 @@ function buildStepCommand(
     if (options.source) {
       args.push('--source', options.source);
     }
+    appendDataSourceId(args, options.dataSourceId);
     appendLimit(args, options.limit);
     return { args };
   }
@@ -306,6 +308,7 @@ function buildStepCommand(
     if (options.source) {
       args.push('--source', options.source);
     }
+    appendDataSourceId(args, options.dataSourceId);
     appendLimit(args, options.limit);
     return { args };
   }
@@ -314,6 +317,7 @@ function buildStepCommand(
     if (options.source) {
       args.push('--source', options.source);
     }
+    appendDataSourceId(args, options.dataSourceId);
     appendLimit(args, options.limit);
     args.push('--embedding-provider', options.embeddingProvider ?? 'deterministic');
     return { args };
@@ -323,6 +327,7 @@ function buildStepCommand(
     if (options.source) {
       args.push('--source', options.source);
     }
+    appendDataSourceId(args, options.dataSourceId);
     appendLimit(args, options.limit);
     return { args };
   }
@@ -332,6 +337,12 @@ function buildStepCommand(
 function appendLimit(args: string[], limit: number | undefined): void {
   if (limit !== undefined) {
     args.push('--limit', String(limit));
+  }
+}
+
+function appendDataSourceId(args: string[], dataSourceId: string | undefined): void {
+  if (dataSourceId !== undefined) {
+    args.push('--data-source-id', dataSourceId);
   }
 }
 
@@ -649,6 +660,8 @@ function parseArgs(argv: string[]): WorkflowOptions {
     const arg = argv[index];
     if (arg === '--project') {
       options.project = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--data-source-id') {
+      options.dataSourceId = readOptionValue(argv, ++index, arg);
     } else if (arg === '--source') {
       options.source = readSourceType(readOptionValue(argv, ++index, arg));
     } else if (arg === '--fixture') {

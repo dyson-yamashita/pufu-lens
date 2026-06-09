@@ -4,13 +4,16 @@ import { AuthRequiredError, requireSessionUserId } from '../../../../../src/auth
 import {
   businessHoursFromEnv,
   chatNowFromEnv,
-  createExtractiveChatProvider,
-  createGeminiChatProvider,
   createMemoryRateLimiter,
   createPostgresChatRepository,
+  isWithinBusinessHours,
   ProjectAccessDeniedError,
-  runPrivateChat,
 } from '../../../../../src/chat';
+import {
+  createMastraProjectChatBody,
+  mastraGenerateToChatResponse,
+  mastraProjectChatGenerateUrl,
+} from '../../../../../src/mastra-chat';
 
 const rateLimiter = createMemoryRateLimiter({ limit: 20, windowMs: 60_000 });
 
@@ -32,29 +35,56 @@ export async function POST(
 
   try {
     const userId = await requireSessionUserId();
-    const provider =
-      process.env.GEMINI_API_KEY && process.env.GEMINI_CHAT_MODEL
-        ? createGeminiChatProvider({
-            apiKey: process.env.GEMINI_API_KEY,
-            model: process.env.GEMINI_CHAT_MODEL,
-          })
-        : createExtractiveChatProvider();
-    const response = await runPrivateChat(
-      { now: chatNowFromEnv(process.env), projectSlug, question, userId },
-      {
-        businessHours: businessHoursFromEnv(process.env),
-        provider,
-        rateLimiter,
-        repository: createPostgresChatRepository(getRequiredAdminSql()),
-      },
+    if (
+      !isWithinBusinessHours(
+        chatNowFromEnv(process.env) ?? new Date(),
+        businessHoursFromEnv(process.env),
+      )
+    ) {
+      return NextResponse.json(
+        {
+          answer: 'db_outside_business_hours',
+          projectSlug,
+          sources: [],
+          status: 'db_outside_business_hours',
+          toolCalls: [],
+        },
+        { status: 503 },
+      );
+    }
+    if (!rateLimiter.check({ projectSlug, userId })) {
+      return NextResponse.json(
+        {
+          answer: 'rate limit exceeded',
+          projectSlug,
+          sources: [],
+          status: 'rate_limited',
+          toolCalls: [],
+        },
+        { status: 429 },
+      );
+    }
+    const repository = createPostgresChatRepository(getRequiredAdminSql());
+    const project = await repository.lookupProjectMember({ projectSlug, userId });
+    if (!project) {
+      throw new ProjectAccessDeniedError(projectSlug);
+    }
+    const mastraResponse = await fetch(mastraProjectChatGenerateUrl(), {
+      body: JSON.stringify(createMastraProjectChatBody({ projectId: project.id, question })),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+      signal: request.signal,
+    });
+    if (!mastraResponse.ok) {
+      const errorText = await mastraResponse.text().catch(() => '');
+      throw new Error(
+        `Mastra project chat agent failed: HTTP ${mastraResponse.status} - ${errorText}`,
+      );
+    }
+    const mastraBody = (await mastraResponse.json()) as unknown;
+    return NextResponse.json(
+      mastraGenerateToChatResponse({ mastraResponse: mastraBody, projectSlug }),
     );
-    const status =
-      response.status === 'db_outside_business_hours'
-        ? 503
-        : response.status === 'rate_limited'
-          ? 429
-          : 200;
-    return NextResponse.json(response, { status });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (error instanceof AuthRequiredError) {

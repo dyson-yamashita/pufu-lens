@@ -5,9 +5,12 @@ import { createStep, createWorkflow } from '@mastra/core/workflows';
 import { z } from 'zod';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import type { ChatRepository } from '../../web/src/chat.ts';
+import { publicChatSources } from '../../web/src/chat.ts';
 import { createPufuScoreFromReport } from '../../web/src/pufu-score.ts';
 import {
   createExtractiveReportProvider,
+  type PublicContextBundleV1,
+  type PublicReportJsonV1,
   type ReportGenerationProvider,
   type ReportPeriodKind,
   type ReportRepository,
@@ -20,6 +23,7 @@ export const mastraAppName = 'pufu-lens-mastra';
 export const mastraAgentIds = {
   crossProjectResearch: 'cross-project-research-agent',
   projectChat: 'project-chat-agent',
+  publicReportChat: 'public-report-chat-agent',
 } as const;
 
 export const mastraWorkflowIds = {
@@ -34,12 +38,21 @@ export const mastraToolIds = {
   graphQuery: 'graph-query',
   parsedDocFetch: 'parsed-doc-fetch',
   pufuScoreGenerate: 'pufu-score-generate',
+  publicContextFetch: 'public-context-fetch',
+  publicReportFetch: 'public-report-fetch',
   rawDocumentFetch: 'raw-document-fetch',
   vectorSearch: 'vector-search',
 } as const;
 
 export interface MastraProjectContext {
   readonly projectId: string;
+}
+
+export interface MastraPublicReportContext {
+  readonly contextBundle: PublicContextBundleV1;
+  readonly projectSlug: string;
+  readonly report: PublicReportJsonV1;
+  readonly reportId: string;
 }
 
 export interface ProjectChatAgentInput {
@@ -113,6 +126,8 @@ export interface PufuLensMastraRuntime {
   readonly mastra: Mastra;
   readonly projectChatTools: ReturnType<typeof createProjectChatTools>;
   readonly projectChatAgent: Agent;
+  readonly publicReportChatTools: ReturnType<typeof createPublicReportChatTools>;
+  readonly publicReportChatAgent: Agent;
   readonly generateReportWorkflow: ReturnType<typeof createGenerateReportWorkflow>;
 }
 
@@ -126,6 +141,19 @@ const chatSourceSchema = z.object({
 
 const chatSourceListSchema = z.object({
   sources: z.array(chatSourceSchema),
+});
+
+const publicChatSourceSchema = z.object({
+  label: z.string(),
+  publicSourceId: z.string(),
+  sectionId: z.string(),
+});
+
+const publicReportContextSchema = z.object({
+  contextBundle: z.unknown(),
+  projectSlug: z.string().min(1),
+  report: z.unknown(),
+  reportId: z.string().min(1),
 });
 
 const crossProjectSummarySchema = z.object({
@@ -428,6 +456,105 @@ export function createProjectChatAgent(input: {
   });
 }
 
+export function createPublicReportChatTools() {
+  const hasRequestContextGetter = (
+    value: object,
+  ): value is { get<T>(key: keyof MastraPublicReportContext): T } =>
+    'get' in value && typeof value.get === 'function';
+  const contextFromRequest = (
+    context:
+      | {
+          requestContext?: unknown;
+        }
+      | undefined,
+  ): MastraPublicReportContext => {
+    const requestContext = context?.requestContext;
+    const getValue = <T>(key: keyof MastraPublicReportContext): T | undefined => {
+      if (!requestContext || typeof requestContext !== 'object') {
+        return undefined;
+      }
+      if (hasRequestContextGetter(requestContext)) {
+        return requestContext.get<T>(key);
+      }
+      const objectContext = requestContext as Partial<MastraPublicReportContext>;
+      return key in objectContext ? (objectContext[key] as T) : undefined;
+    };
+    const projectSlug = getValue<string>('projectSlug');
+    const reportId = getValue<string>('reportId');
+    const report = getValue<PublicReportJsonV1>('report');
+    const contextBundle = getValue<PublicContextBundleV1>('contextBundle');
+    if (!projectSlug || !reportId || !report || !contextBundle) {
+      throw new Error(
+        'Mastra public report tool requires requestContext.projectSlug, reportId, report, and contextBundle.',
+      );
+    }
+    return { contextBundle, projectSlug, report, reportId };
+  };
+
+  return {
+    publicContextFetch: createTool({
+      id: mastraToolIds.publicContextFetch,
+      description:
+        'Fetch the redacted public context bundle already resolved by Next.js. Never accepts storage URI, project ID, source URI, or raw document input.',
+      inputSchema: z.object({}),
+      outputSchema: z.object({
+        contextBundle: z.unknown(),
+        resultCount: z.number().int().min(0),
+        sources: z.array(publicChatSourceSchema),
+      }),
+      requestContextSchema: publicReportContextSchema,
+      execute: async (_input, context) => {
+        const publicContext = contextFromRequest(context);
+        return {
+          contextBundle: publicContext.contextBundle,
+          resultCount: publicContext.contextBundle.sections.length,
+          sources: publicChatSources(publicContext.report, publicContext.contextBundle),
+        };
+      },
+    }),
+    publicReportFetch: createTool({
+      id: mastraToolIds.publicReportFetch,
+      description:
+        'Fetch the redacted public report already resolved by Next.js. Never accepts storage URI, project ID, source URI, or raw document input.',
+      inputSchema: z.object({}),
+      outputSchema: z.object({
+        report: z.unknown(),
+        resultCount: z.number().int().min(0),
+      }),
+      requestContextSchema: publicReportContextSchema,
+      execute: async (_input, context) => {
+        const publicContext = contextFromRequest(context);
+        return { report: publicContext.report, resultCount: 1 };
+      },
+    }),
+  };
+}
+
+export function createPublicReportChatAgent(input: {
+  readonly model?: string;
+  readonly tools: ReturnType<typeof createPublicReportChatTools>;
+}): Agent {
+  return new Agent({
+    id: mastraAgentIds.publicReportChat,
+    name: 'Public Report Chat Agent',
+    instructions: [
+      'あなたは公開レポートの読者向けアシスタントです。',
+      '回答に使える情報は requestContext に固定された redaction 済み public report JSON と public context bundle だけです。',
+      '回答前に必ず 1) public-report-fetch、2) public-context-fetch の順で両方の tool を呼び出します。',
+      'public-context-fetch の sources を確認してから、section id または public source id を根拠に回答します。',
+      'public-report-fetch だけで回答してはいけません。',
+      '個人情報、メールアドレス、OAuth 情報、secret、未公開 URL、raw / parsed の本文全文を出してはいけません。',
+      'report の内容と対象 project の公開済み情報に関係しない質問には回答しません。',
+      '他 project、内部データ、未公開資料、一般雑談、外部調査、コード生成の依頼には回答しません。',
+      '根拠は public report の section id または公開 source id だけで示します。',
+      'tool に URI、projectId、storageUri、sourceUri を指定しようとしてはいけません。',
+      '不明な内容は推測せず、公開情報だけでは回答できないと伝えます。',
+    ].join('\n'),
+    model: input.model ?? 'google/gemini-2.5-flash',
+    tools: input.tools,
+  });
+}
+
 export function createGenerateReportWorkflow(options: RunGenerateReportOptions) {
   const inputSchema = z.object({
     nowIso: z.string().datetime().optional(),
@@ -483,6 +610,8 @@ export function createPufuLensMastraRuntime(
     : undefined;
   const projectChatTools = createProjectChatTools(dependencies.chatRepository);
   const projectChatAgent = createProjectChatAgent({ tools: projectChatTools });
+  const publicReportChatTools = createPublicReportChatTools();
+  const publicReportChatAgent = createPublicReportChatAgent({ tools: publicReportChatTools });
   const generateReportWorkflow = createGenerateReportWorkflow({
     provider: reportProvider,
     repository: dependencies.reportRepository,
@@ -492,6 +621,7 @@ export function createPufuLensMastraRuntime(
     agents: {
       ...(crossProjectResearchAgent ? { crossProjectResearchAgent } : {}),
       projectChatAgent,
+      publicReportChatAgent,
     },
     workflows: { generateReportWorkflow },
   });
@@ -503,5 +633,7 @@ export function createPufuLensMastraRuntime(
     mastra,
     projectChatAgent,
     projectChatTools,
+    publicReportChatAgent,
+    publicReportChatTools,
   };
 }

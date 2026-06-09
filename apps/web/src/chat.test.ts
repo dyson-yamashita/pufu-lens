@@ -13,6 +13,14 @@ import {
   runPrivateChat,
   runPublicChat,
 } from './chat.ts';
+import {
+  createMastraProjectChatBody,
+  createMastraPublicReportChatBody,
+  mastraGenerateToChatResponse,
+  mastraGenerateToPublicChatResponse,
+  mastraProjectChatGenerateUrl,
+  mastraPublicReportChatGenerateUrl,
+} from './mastra-chat.ts';
 import type { PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 
 const sampleSource = {
@@ -122,6 +130,55 @@ const limited = await runPrivateChat(
   },
 );
 assert.equal(limited.status, 'rate_limited');
+
+assert.equal(
+  mastraProjectChatGenerateUrl({ MASTRA_SERVER_URL: 'http://localhost:4111/' }),
+  'http://localhost:4111/api/agents/project-chat-agent/generate',
+);
+assert.equal(
+  mastraProjectChatGenerateUrl({ MASTRA_API_URL: 'https://mastra.example.com/api' }),
+  'https://mastra.example.com/api/agents/project-chat-agent/generate',
+);
+assert.deepEqual(createMastraProjectChatBody({ projectId: 'project-a', question: '仕様変更は?' }), {
+  messages: [{ content: '仕様変更は?', role: 'user' }],
+  requestContext: { projectId: 'project-a' },
+});
+
+const mastraChatResponse = mastraGenerateToChatResponse({
+  mastraResponse: {
+    steps: [
+      {
+        content: [
+          {
+            output: { value: { sources: [sampleSource, sampleSource] } },
+            toolName: 'parsedDocFetch',
+            type: 'tool-result',
+          },
+          {
+            output: {
+              value: {
+                sources: [{ ...sampleSource, documentId: 'doc-graph', title: 'Related Issue' }],
+              },
+            },
+            toolName: 'graphQuery',
+            type: 'tool-result',
+          },
+        ],
+      },
+    ],
+    text: 'Mastra agent answer',
+  },
+  projectSlug: 'sample-a',
+});
+assert.equal(mastraChatResponse.answer, 'Mastra agent answer');
+assert.deepEqual(
+  mastraChatResponse.toolCalls.map((toolCall) => toolCall.name),
+  ['parsed-doc-fetch', 'graph-query'],
+);
+assert.deepEqual(
+  mastraChatResponse.sources.map((source) => source.documentId),
+  ['doc-a', 'doc-graph'],
+);
 
 let clock = 0;
 const expiringLimiter = createMemoryRateLimiter({
@@ -234,6 +291,81 @@ assert.deepEqual(
   ['public-report-fetch', 'public-context-fetch'],
 );
 assert.equal(publicChat.sources[0]?.publicSourceId, 'src_activity_001');
+
+assert.equal(
+  mastraPublicReportChatGenerateUrl({ MASTRA_SERVER_URL: 'http://localhost:4111/' }),
+  'http://localhost:4111/api/agents/public-report-chat-agent/generate',
+);
+assert.deepEqual(
+  createMastraPublicReportChatBody({
+    contextBundle: publicContextBundle,
+    projectSlug: 'sample-a',
+    question: '公開レポートの主な進捗は?',
+    report: publicReport,
+    reportId: 'report-a',
+  }),
+  {
+    messages: [{ content: '公開レポートの主な進捗は?', role: 'user' }],
+    requestContext: {
+      contextBundle: publicContextBundle,
+      projectSlug: 'sample-a',
+      report: publicReport,
+      reportId: 'report-a',
+    },
+  },
+);
+
+const mastraPublicChatResponse = mastraGenerateToPublicChatResponse({
+  mastraResponse: {
+    steps: [
+      {
+        content: [
+          {
+            output: { value: { report: publicReport, resultCount: 1 } },
+            toolName: 'publicReportFetch',
+            type: 'tool-result',
+          },
+          {
+            output: {
+              value: {
+                resultCount: 2,
+                sources: [
+                  {
+                    label: '公開ソース 1 (web_page)',
+                    publicSourceId: 'src_activity_001',
+                    sectionId: 'activity',
+                  },
+                  {
+                    label: '公開ソース 1 (web_page)',
+                    publicSourceId: 'src_activity_001',
+                    sectionId: 'activity',
+                  },
+                ],
+              },
+            },
+            toolName: 'publicContextFetch',
+            type: 'tool-result',
+          },
+        ],
+      },
+    ],
+    text: 'Mastra public agent answer',
+  },
+  projectSlug: 'sample-a',
+  reportId: 'report-a',
+});
+assert.equal(mastraPublicChatResponse.answer, 'Mastra public agent answer');
+assert.deepEqual(
+  mastraPublicChatResponse.toolCalls.map((toolCall) => toolCall.name),
+  ['public-report-fetch', 'public-context-fetch'],
+);
+assert.deepEqual(mastraPublicChatResponse.sources, [
+  {
+    label: '公開ソース 1 (web_page)',
+    publicSourceId: 'src_activity_001',
+    sectionId: 'activity',
+  },
+]);
 
 const refusedPublicChat = await runPublicChat(
   {
