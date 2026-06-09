@@ -16,15 +16,18 @@ export default async function ProjectOverviewPage({
   const { projectSlug } = await params;
   const [project, session] = await Promise.all([getAdminProject(projectSlug), auth()]);
   const userId = session?.user?.id;
-  if (project.visibility !== 'public') {
-    if (!userId) {
-      redirect('/login');
-    }
+  let isMember = false;
+  if (userId) {
     try {
       await getProjectMembership(projectSlug, userId);
+      isMember = true;
     } catch {
-      redirect('/projects');
+      if (project.visibility !== 'public') {
+        redirect('/projects');
+      }
     }
+  } else if (project.visibility !== 'public') {
+    redirect('/login');
   }
   const publicProject =
     project.visibility === 'public' ? await getVisiblePublicProject(project.slug) : undefined;
@@ -45,7 +48,7 @@ export default async function ProjectOverviewPage({
             {project.visibility}
           </span>
         </div>
-        {userId ? <MetricStrip project={project} /> : null}
+        {isMember ? <MetricStrip project={project} /> : null}
         <p className="notice" data-testid="project-overview-tab-notice">
           Reports と Chat は左のタブから開けます。
         </p>

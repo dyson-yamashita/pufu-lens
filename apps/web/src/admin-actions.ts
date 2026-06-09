@@ -131,8 +131,8 @@ export async function createMember(formData: FormData): Promise<void> {
   const password = formData.get('password')?.toString() ?? '';
   const passwordConfirm = formData.get('passwordConfirm')?.toString() ?? '';
 
-  if (!email) {
-    throw new Error('email is required.');
+  if (!isValidEmail(email)) {
+    throw new Error('Invalid email address.');
   }
   validateOptionalPassword(password, passwordConfirm);
 
@@ -889,6 +889,10 @@ function validateOptionalPassword(password: string, passwordConfirm: string): vo
   if (password.length < 8) {
     throw new Error('password must be at least 8 characters.');
   }
+}
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function normalizeEmail(email: string): string {

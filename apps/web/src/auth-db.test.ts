@@ -89,6 +89,7 @@ const linkedUser = await resolveAuthUser(
   existingRepository,
 );
 assert.equal(linkedUser.id, 'user-owner');
+assert.equal(linkedUser.name, 'Verified Owner');
 assert.equal(existingRepository.accounts.get('google:google-1'), 'user-owner');
 
 const returningUser = await resolveAuthUser(
@@ -102,6 +103,9 @@ const returningUser = await resolveAuthUser(
   existingRepository,
 );
 assert.equal(returningUser.id, 'user-owner');
+assert.equal(returningUser.email, 'updated@example.com');
+assert.equal(returningUser.name, 'Updated Owner');
 assert.equal(existingRepository.users.get('user-owner')?.email, 'updated@example.com');
+assert.equal(existingRepository.users.get('user-owner')?.name, 'Updated Owner');
 
 console.log('web auth db tests passed');

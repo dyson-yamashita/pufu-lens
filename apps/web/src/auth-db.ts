@@ -62,11 +62,17 @@ export async function resolveAuthUser(
 
   if (existingAccountUser) {
     if (normalizedEmail) {
+      const updatedName = normalizeName(input.name) ?? existingAccountUser.name;
       await repository.updateUserProfile({
         email: normalizedEmail,
-        name: normalizeName(input.name) ?? existingAccountUser.name,
+        name: updatedName,
         userId: existingAccountUser.id,
       });
+      return {
+        ...existingAccountUser,
+        email: normalizedEmail,
+        name: updatedName,
+      };
     }
     return existingAccountUser;
   }
@@ -94,13 +100,18 @@ export async function resolveAuthUser(
     providerAccountId: input.providerAccountId,
     userId: user.id,
   });
+  const updatedName = normalizeName(input.name) ?? user.name;
   await repository.updateUserProfile({
     email: normalizedEmail,
-    name: normalizeName(input.name) ?? user.name,
+    name: updatedName,
     userId: user.id,
   });
 
-  return user;
+  return {
+    ...user,
+    email: normalizedEmail,
+    name: updatedName,
+  };
 }
 
 export function createPostgresAuthUserRepository(sql: SqlExecutor): AuthUserRepository {
