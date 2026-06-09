@@ -26,7 +26,6 @@ import type {
   SourceStatus,
   SourceType,
 } from './admin-data';
-import { getAppUserRole } from './admin-db';
 import { ActionForm, PendingSubmitButton } from './form-buttons';
 
 const sourceLabels: Record<SourceType, string> = {
@@ -61,7 +60,7 @@ export async function AppShell({
 }) {
   const projectSlug = project?.slug;
   const session = await auth();
-  const appRole = session?.user?.id ? await getAppUserRole(session.user.id) : undefined;
+  const appRole = session?.user?.role;
   const canShowProjectNav = Boolean(projectSlug);
   const isGuest = !session?.user?.id;
   const navItems = (

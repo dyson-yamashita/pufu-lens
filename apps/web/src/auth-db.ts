@@ -63,11 +63,16 @@ export async function resolveAuthUser(
   if (existingAccountUser) {
     if (normalizedEmail) {
       const updatedName = normalizeName(input.name) ?? existingAccountUser.name;
-      await repository.updateUserProfile({
-        email: normalizedEmail,
-        name: updatedName,
-        userId: existingAccountUser.id,
-      });
+      if (
+        updatedName !== existingAccountUser.name ||
+        normalizedEmail !== existingAccountUser.email
+      ) {
+        await repository.updateUserProfile({
+          email: normalizedEmail,
+          name: updatedName,
+          userId: existingAccountUser.id,
+        });
+      }
       return {
         ...existingAccountUser,
         email: normalizedEmail,
@@ -101,11 +106,13 @@ export async function resolveAuthUser(
     userId: user.id,
   });
   const updatedName = normalizeName(input.name) ?? user.name;
-  await repository.updateUserProfile({
-    email: normalizedEmail,
-    name: updatedName,
-    userId: user.id,
-  });
+  if (existingEmailUser && (updatedName !== user.name || normalizedEmail !== user.email)) {
+    await repository.updateUserProfile({
+      email: normalizedEmail,
+      name: updatedName,
+      userId: user.id,
+    });
+  }
 
   return {
     ...user,

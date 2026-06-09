@@ -18,7 +18,9 @@ export default async function LoginPage({
   const loginError =
     params?.error === 'CredentialsSignin'
       ? 'メールアドレスまたはパスワードが違います。'
-      : undefined;
+      : params?.error
+        ? 'ログインに失敗しました。再度お試しください。'
+        : undefined;
 
   return (
     <main className="login-page">
