@@ -850,6 +850,74 @@ tr.selected-row {
   grid-template-columns: minmax(0, 1.6fr) minmax(320px, 0.9fr);
 }
 
+.graph-workspace {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(280px, 0.45fr) minmax(0, 1fr);
+}
+
+.graph-control-panel,
+.graph-detail-panel,
+.graph-raw-panel {
+  align-self: start;
+}
+
+.graph-canvas-panel {
+  min-height: 560px;
+}
+
+.graph-canvas-wrap {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-height: 460px;
+  overflow: hidden;
+}
+
+.graph-canvas,
+.graph-empty {
+  min-height: 460px;
+  width: 100%;
+}
+
+.graph-empty {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+}
+
+.graph-preset-detail {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.graph-preset-detail p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.graph-preset-detail pre,
+.json-preview {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font: 12px / 18px var(--font-mono);
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+.graph-raw-panel {
+  grid-column: 1 / -1;
+}
+
 .table-frame {
   overflow-x: auto;
 }
@@ -1284,10 +1352,18 @@ th {
   }
 
   .split-layout,
+  .graph-workspace,
   .chat-input-row,
   .project-create-form,
   .status-row {
     grid-template-columns: 1fr;
+  }
+
+  .graph-canvas-panel,
+  .graph-canvas-wrap,
+  .graph-canvas,
+  .graph-empty {
+    min-height: 360px;
   }
 }
 
