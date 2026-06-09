@@ -170,11 +170,45 @@ export function mastraGenerateToPublicChatResponse(input: {
 }
 
 function asMastraGenerateResponse(value: unknown): MastraGenerateResponse {
-  return typeof value === 'object' && value !== null ? (value as MastraGenerateResponse) : {};
+  if (!isRecord(value)) {
+    return {};
+  }
+  return {
+    steps: parseMastraSteps(value.steps),
+    text: typeof value.text === 'string' ? value.text : undefined,
+  };
 }
 
 function asMastraPublicGenerateResponse(value: unknown): MastraPublicGenerateResponse {
-  return typeof value === 'object' && value !== null ? (value as MastraPublicGenerateResponse) : {};
+  if (!isRecord(value)) {
+    return {};
+  }
+  return {
+    steps: parseMastraPublicSteps(value.steps),
+    text: typeof value.text === 'string' ? value.text : undefined,
+  };
+}
+
+function parseMastraSteps(value: unknown): MastraGenerateStep[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value.map((step) => ({
+    content: isRecord(step) && Array.isArray(step.content) ? step.content : undefined,
+  }));
+}
+
+function parseMastraPublicSteps(value: unknown): MastraPublicGenerateStep[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value.map((step) => ({
+    content: isRecord(step) && Array.isArray(step.content) ? step.content : undefined,
+  }));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 function uniqueSources(sources: readonly ChatSource[]): ChatSource[] {

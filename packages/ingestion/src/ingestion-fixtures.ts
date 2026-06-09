@@ -412,9 +412,47 @@ function parseDrive(
 }
 
 function textFromHtml(value: string): string {
-  return htmlEntityDecode(value.replace(/<(?:[^"'>]|"[^"]*"|'[^']*')*>/g, ' '))
-    .replace(/\s+/g, ' ')
-    .trim();
+  return htmlEntityDecode(stripHtmlTags(value)).replace(/\s+/g, ' ').trim();
+}
+
+function stripHtmlTags(value: string): string {
+  let output = '';
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (char !== '<') {
+      output += char;
+      continue;
+    }
+    const tagEnd = findHtmlTagEnd(value, index + 1);
+    if (tagEnd === -1) {
+      output += char;
+      continue;
+    }
+    output += ' ';
+    index = tagEnd;
+  }
+  return output;
+}
+
+function findHtmlTagEnd(value: string, startIndex: number): number {
+  let quote: '"' | "'" | undefined;
+  for (let index = startIndex; index < value.length; index += 1) {
+    const char = value[index];
+    if (quote) {
+      if (char === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === '>') {
+      return index;
+    }
+  }
+  return -1;
 }
 
 function htmlEntityDecode(value: string): string {

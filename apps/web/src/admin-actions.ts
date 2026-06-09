@@ -880,12 +880,21 @@ async function runIngestWorkflow(input: {
   readonly sourceType: SourceType;
   readonly storageRoot?: string;
 }): Promise<void> {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'Admin UI ingest is only available in local development. Use the ingest worker or CLI in production.',
+    );
+  }
   const repoRoot = resolveRepoRoot();
+  const workflowScript = resolve(repoRoot, 'scripts/ingest-workflow.ts');
+  if (!existsSync(workflowScript)) {
+    throw new Error('Cannot locate scripts/ingest-workflow.ts for local ingest workflow.');
+  }
   const child = spawn(
     process.execPath,
     [
       '--experimental-strip-types',
-      resolve(repoRoot, 'scripts/ingest-workflow.ts'),
+      workflowScript,
       'run',
       '--project',
       input.projectSlug,
