@@ -86,6 +86,19 @@ assert.equal(normalizedPath.nodes[0]?.label, 'Nested Ada');
 assert.equal(normalizedPath.edges[0]?.source, '10');
 assert.equal(normalizedPath.edges[0]?.target, '11');
 
+const malformedAgtype = normalizeGraphRows(
+  [
+    {
+      brokenEdge: '{"id": "::edge',
+      brokenVertex: '{"id": "::vertex',
+      source: `${JSON.stringify(actor)}::vertex`,
+    },
+  ],
+  { maxEdges: 10, maxNodes: 10 },
+);
+assert.equal(malformedAgtype.nodes.length, 1);
+assert.equal(malformedAgtype.edges.length, 0);
+
 const limited = normalizeGraphRows(
   [
     { first: `${JSON.stringify(actor)}::vertex` },

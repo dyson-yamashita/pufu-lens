@@ -212,20 +212,21 @@ export function createPostgresGraphViewerRepository(
         WHERE p.slug = ${projectSlug}
           AND (app_user.role = 'admin' OR pm.user_id IS NOT NULL)
       `) as Array<{
-        graph_name: string;
+        graph_name: string | null;
         id: string;
         name: string;
         slug: string;
       }>;
       const row = rows[0];
-      return row
-        ? {
-            graphName: validateGraphName(row.graph_name),
-            id: row.id,
-            name: row.name,
-            slug: row.slug,
-          }
-        : undefined;
+      if (!row?.graph_name) {
+        return undefined;
+      }
+      return {
+        graphName: validateGraphName(row.graph_name),
+        id: row.id,
+        name: row.name,
+        slug: row.slug,
+      };
     },
   };
 }
@@ -323,15 +324,19 @@ function parseTypedAgtype(
   if (!value) {
     return undefined;
   }
-  if (value.endsWith('::vertex')) {
-    return vertexRecordToNode(
-      JSON.parse(value.slice(0, -'::vertex'.length)) as Record<string, unknown>,
-    );
-  }
-  if (value.endsWith('::edge')) {
-    return edgeRecordToEdge(
-      JSON.parse(value.slice(0, -'::edge'.length)) as Record<string, unknown>,
-    );
+  try {
+    if (value.endsWith('::vertex')) {
+      return vertexRecordToNode(
+        JSON.parse(value.slice(0, -'::vertex'.length)) as Record<string, unknown>,
+      );
+    }
+    if (value.endsWith('::edge')) {
+      return edgeRecordToEdge(
+        JSON.parse(value.slice(0, -'::edge'.length)) as Record<string, unknown>,
+      );
+    }
+  } catch {
+    return undefined;
   }
   if (value.endsWith('::path')) {
     const body = value.slice(0, -'::path'.length);
