@@ -13,9 +13,10 @@ test('scenario: public user discovers public projects without private admin link
   await expect(page.getByTestId('project-card-sample-a')).toHaveCount(0);
   await expect(page.getByTestId('public-project-list')).toBeVisible();
   await expect(page.getByTestId('public-project-sample-a')).toBeVisible();
-  await expect(page.getByTestId('public-report-sample-a-report-a')).toHaveAttribute(
+  await expect(page.getByTestId('public-report-sample-a-report-a')).toHaveCount(0);
+  await expect(page.getByTestId('public-project-open-sample-a')).toHaveAttribute(
     'href',
-    '/reports/public/sample-a/report-a',
+    '/projects/sample-a',
   );
 });
 
