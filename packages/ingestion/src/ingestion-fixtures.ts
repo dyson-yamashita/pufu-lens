@@ -30,6 +30,12 @@ export interface ParsedRelation {
   metadata?: Record<string, unknown>;
 }
 
+export interface ParsedTopic {
+  topicType: 'keyword';
+  target: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface ParsedDocument {
   schemaVersion: 1;
   sourceType: SourceType;
@@ -41,6 +47,7 @@ export interface ParsedDocument {
   bodyText: string;
   actors: ActorMention[];
   relations: ParsedRelation[];
+  topics?: ParsedTopic[];
   emailQuotes?: Array<{
     messageId: string;
     from: string;
@@ -161,6 +168,11 @@ export function validateParsedDocument(parsed: ParsedDocument): ParsedDocument {
   if (!parsed.canonicalUri.includes(':')) {
     throw new Error(`Parsed document canonicalUri must include a scheme: ${parsed.sourceId}`);
   }
+  for (const topic of parsed.topics ?? []) {
+    if (topic.target.trim() === '') {
+      throw new Error(`Parsed document topic target is required: ${parsed.sourceId}`);
+    }
+  }
   return parsed;
 }
 
@@ -241,11 +253,12 @@ function parseWeb(
     docType: 'web_page',
     metadata: fixtureCase.raw.metadata,
     occurredAt: publishedAt,
-    relations: extractLinks(html).map((href) => ({ target: href, type: 'LINKS_TO' })),
+    relations: [],
     schemaVersion: 1,
     sourceId: fixtureCase.raw.sourceId,
     sourceType: 'web',
     title,
+    topics: extractWebTopics({ bodyText, html, title }),
   });
 }
 
@@ -474,11 +487,82 @@ function htmlEntityDecode(value: string): string {
     .replace(/&(apos|#39);/g, "'");
 }
 
-function extractLinks(html: string): string[] {
-  const links = [...html.matchAll(/<a\s+[^>]*href=["'](?<href>[^"']+)["']/gi)].map(
-    (match) => match.groups?.href ?? '',
+function extractWebTopics(input: { bodyText: string; html: string; title: string }): ParsedTopic[] {
+  const candidates: Array<{ source: string; target: string }> = [];
+
+  for (const target of titleTopicCandidates(input.title)) {
+    candidates.push({ source: 'title', target });
+  }
+  for (const target of extractMetaKeywords(input.html)) {
+    candidates.push({ source: 'meta_keywords', target });
+  }
+  for (const target of extractQuotedTopicPhrases(input.bodyText)) {
+    candidates.push({ source: 'quoted_phrase', target });
+  }
+
+  const topics: ParsedTopic[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const target = normalizeTopicTarget(candidate.target);
+    const key = target.toLowerCase();
+    if (!target || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    topics.push({
+      metadata: { source: candidate.source },
+      target,
+      topicType: 'keyword',
+    });
+    if (topics.length >= 10) {
+      break;
+    }
+  }
+  return topics;
+}
+
+function titleTopicCandidates(title: string): string[] {
+  const normalized = normalizeTopicTarget(title);
+  if (!normalized) {
+    return [];
+  }
+  const parts = normalized
+    .split(/[|｜]/)
+    .map((part) => normalizeTopicTarget(part))
+    .filter((part) => part.length >= 2);
+  return [normalized, ...parts];
+}
+
+function extractMetaKeywords(html: string): string[] {
+  const keywords: string[] = [];
+  for (const meta of html.matchAll(/<meta\s+[^>]*>/gi)) {
+    const tag = meta[0];
+    const key =
+      getHtmlAttribute(tag, 'name')?.toLowerCase() ??
+      getHtmlAttribute(tag, 'property')?.toLowerCase();
+    if (key !== 'keywords' && key !== 'article:tag') {
+      continue;
+    }
+    const content = getHtmlAttribute(tag, 'content');
+    if (!content) {
+      continue;
+    }
+    keywords.push(...content.split(/[,、]/));
+  }
+  return keywords;
+}
+
+function extractQuotedTopicPhrases(bodyText: string): string[] {
+  return [...bodyText.matchAll(/"(?<phrase>[^"]{2,80})"/g)].map(
+    (match) => match.groups?.phrase ?? '',
   );
-  return [...new Set(links.filter((href) => href.startsWith('http')))];
+}
+
+function normalizeTopicTarget(value: string): string {
+  return htmlEntityDecode(value)
+    .replace(/[【】]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function getHtmlAttribute(tag: string, attributeName: string): string | undefined {

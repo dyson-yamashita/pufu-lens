@@ -24,7 +24,8 @@ pnpm ingest:index --project sample-a --limit 10
 - `documents.graph_node_id` と parsed JSON から再計算した graph key の一致確認
 - AGE graph への Document / Actor / Topic node の MERGE
 - Actor から Document への `SENT` / `AUTHORED` / `COMMENTED_ON` / `REVIEWED` / `OWNS` edge の MERGE
-- parsed relation から `MENTIONS` / `REPLY_TO` edge の MERGE
+- parsed `topics` から keyword Topic node と `MENTIONS` edge の MERGE
+- parsed relation の `REPLY_TO` から message Topic node と `REPLY_TO` edge の MERGE
 - `email_quotes` の置き換え保存
 - `content_hash` が一致する別 source type の Document への `SAME_AS` edge の MERGE
 - `raw_documents.ingest_status` と `ingestion_queue.status` の `indexed` 更新

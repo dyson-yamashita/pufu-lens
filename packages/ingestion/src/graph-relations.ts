@@ -202,9 +202,9 @@ async function storeGraphTarget(
     actorEdgeCount += 1;
   }
 
-  for (const relationNodeEdge of relationNodesAndEdges(context.project, parsed, target)) {
-    await context.repository.upsertGraphNode(relationNodeEdge.node);
-    await context.repository.upsertGraphEdge(relationNodeEdge.edge);
+  for (const topicNodeEdge of topicNodesAndEdges(context.project, parsed, target)) {
+    await context.repository.upsertGraphNode(topicNodeEdge.node);
+    await context.repository.upsertGraphEdge(topicNodeEdge.edge);
     graphNodeCount += 1;
     graphEdgeCount += 1;
   }
@@ -312,22 +312,60 @@ async function actorEdges(
   return edges.filter(isGraphNodeEdge);
 }
 
-function relationNodesAndEdges(
+function topicNodesAndEdges(
+  project: GraphRelationProjectRecord,
+  parsed: ParsedDocument,
+  target: GraphRelationTarget,
+): Array<{ edge: GraphEdgeInput; node: GraphNodeInput }> {
+  return [
+    ...parsedTopicNodesAndEdges(project, parsed, target),
+    ...replyTopicNodesAndEdges(project, parsed, target),
+  ];
+}
+
+function parsedTopicNodesAndEdges(
+  project: GraphRelationProjectRecord,
+  parsed: ParsedDocument,
+  target: GraphRelationTarget,
+): Array<{ edge: GraphEdgeInput; node: GraphNodeInput }> {
+  return (parsed.topics ?? [])
+    .filter((topic) => topic.target.trim() !== '')
+    .map((topic) => {
+      const topicGraphNodeId = `topic:${topic.topicType}:${encodeURIComponent(topic.target)}`;
+      return {
+        edge: {
+          fromGraphNodeId: target.document.graphNodeId,
+          properties: {
+            ...topic.metadata,
+            projectId: project.id,
+            relationTarget: topic.target,
+            relationType: 'TOPIC',
+          },
+          toGraphNodeId: topicGraphNodeId,
+          type: 'MENTIONS',
+        },
+        node: {
+          graphNodeId: topicGraphNodeId,
+          labels: ['Topic'],
+          properties: {
+            projectId: project.id,
+            target: topic.target,
+            topicType: topic.topicType,
+          },
+        },
+      };
+    });
+}
+
+function replyTopicNodesAndEdges(
   project: GraphRelationProjectRecord,
   parsed: ParsedDocument,
   target: GraphRelationTarget,
 ): Array<{ edge: GraphEdgeInput; node: GraphNodeInput }> {
   return parsed.relations
-    .filter(
-      (relation) =>
-        (relation.type === 'LINKS_TO' || relation.type === 'REPLY_TO') &&
-        relation.target.trim() !== '',
-    )
+    .filter((relation) => relation.type === 'REPLY_TO' && relation.target.trim() !== '')
     .map((relation) => {
-      const topicGraphNodeId =
-        relation.type === 'REPLY_TO'
-          ? `topic:message:${encodeURIComponent(relation.target)}`
-          : `topic:uri:${encodeURIComponent(relation.target)}`;
+      const topicGraphNodeId = `topic:message:${encodeURIComponent(relation.target)}`;
       return {
         edge: {
           fromGraphNodeId: target.document.graphNodeId,
@@ -338,7 +376,7 @@ function relationNodesAndEdges(
             relationType: relation.type,
           },
           toGraphNodeId: topicGraphNodeId,
-          type: relation.type === 'REPLY_TO' ? 'REPLY_TO' : 'MENTIONS',
+          type: 'REPLY_TO',
         },
         node: {
           graphNodeId: topicGraphNodeId,
@@ -346,7 +384,7 @@ function relationNodesAndEdges(
           properties: {
             projectId: project.id,
             target: relation.target,
-            topicType: relation.type === 'REPLY_TO' ? 'message' : 'uri',
+            topicType: 'message',
           },
         },
       };

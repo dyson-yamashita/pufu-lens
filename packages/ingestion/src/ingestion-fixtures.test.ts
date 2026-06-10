@@ -217,6 +217,49 @@ test('web parser reads JSON-LD datePublished from root arrays', async () => {
   }
 });
 
+test('web parser generates keyword topics instead of link relations', async () => {
+  const rawPath = await writeTempRawFixture(
+    'web-topic-keywords.html',
+    `<!doctype html>
+<html>
+  <head>
+    <title>Topic Fixture｜Author</title>
+    <meta name="keywords" content="Pufu, Graph">
+  </head>
+  <body>
+    <article>
+      <h1>Topic Fixture</h1>
+      <p>This article explains &quot;semantic topics&quot;.</p>
+      <a href="https://example.test/login">Login</a>
+      <a href="https://note.example.test/hashtag/%E3%83%97%E8%AD%9C">link tag</a>
+    </article>
+  </body>
+</html>`,
+  );
+
+  try {
+    const parsed = await parseRawFixture(buildFixtureCase('web-topic-keywords', 'web', rawPath));
+
+    assert.deepEqual(parsed.relations, []);
+    assert.deepEqual(
+      parsed.topics?.map((topic) => ({
+        target: topic.target,
+        topicType: topic.topicType,
+      })),
+      [
+        { target: 'Topic Fixture｜Author', topicType: 'keyword' },
+        { target: 'Topic Fixture', topicType: 'keyword' },
+        { target: 'Author', topicType: 'keyword' },
+        { target: 'Pufu', topicType: 'keyword' },
+        { target: 'Graph', topicType: 'keyword' },
+        { target: 'semantic topics', topicType: 'keyword' },
+      ],
+    );
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
 test('web parser falls back to fetchedAt when published date is missing', async () => {
   const rawPath = await writeTempRawFixture(
     'web-no-published-date.html',
