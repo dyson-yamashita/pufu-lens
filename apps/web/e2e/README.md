@@ -15,16 +15,16 @@ pnpm --filter @pufu-lens/web test:e2e -- --grep "scenario:"
 
 ## シナリオ一覧
 
-| シナリオ                          | spec                | ロール                  | 対象                                       | viewport         | データ境界         | 期待結果                                                                         |
-| --------------------------------- | ------------------- | ----------------------- | ------------------------------------------ | ---------------- | ------------------ | -------------------------------------------------------------------------------- |
-| Public project discovery          | `admin-ui.spec.ts`  | public user             | `/projects`                                | desktop / mobile | fixture DB         | public project と public report 入口が見え、admin / private project 導線は出ない |
-| Admin operation controls          | `admin-ui.spec.ts`  | admin user              | data sources / ingestion / parser profiles | desktop / mobile | fixture DB         | 運用画面の主要 control が安定した `data-testid` で操作・確認できる               |
-| Private chat answer rendering     | `chat-ui.spec.ts`   | member user             | private chat UI                            | desktop / mobile | API mock           | 質問送信後に answer、source、tool call が表示される                              |
-| Private report list to detail     | `report-ui.spec.ts` | member user             | private report list / detail               | desktop / mobile | API mock           | 一覧から詳細へ遷移し、summary、section、pufu score が表示される                  |
-| Private report mobile readability | `report-ui.spec.ts` | member user             | private report detail                      | mobile focused   | API mock           | 主要 section が mobile viewport で表示される                                     |
-| Private report error visibility   | `report-ui.spec.ts` | member user             | private report list / detail               | desktop / mobile | API mock           | API error code が UI に表示される                                                |
-| Public report redaction and chat  | `report-ui.spec.ts` | public user             | public report / public chat                | desktop / mobile | API mock           | redacted artifact のみ表示し、公開範囲内質問に回答し、未公開情報要求を拒否する   |
-| Public API unsafe input rejection | `report-ui.spec.ts` | public / hostile client | public report/chat API、publish API        | API only         | real route handler | path traversal、過長質問、不正 body を拒否する                                   |
+| シナリオ                          | spec                | ロール                  | 対象                                       | viewport         | データ境界         | 期待結果                                                                             |
+| --------------------------------- | ------------------- | ----------------------- | ------------------------------------------ | ---------------- | ------------------ | ------------------------------------------------------------------------------------ |
+| Public project discovery          | `admin-ui.spec.ts`  | public user             | `/projects`                                | desktop / mobile | fixture DB         | public project が見え、カード内の report 一覧と admin / private project 導線は出ない |
+| Admin operation controls          | `admin-ui.spec.ts`  | admin user              | data sources / ingestion / parser profiles | desktop / mobile | fixture DB         | 運用画面の主要 control が安定した `data-testid` で操作・確認できる                   |
+| Private chat answer rendering     | `chat-ui.spec.ts`   | member user             | private chat UI                            | desktop / mobile | API mock           | 質問送信後に answer、source、tool call が表示される                                  |
+| Private report list to detail     | `report-ui.spec.ts` | member user             | private report list / detail               | desktop / mobile | API mock           | 一覧から詳細へ遷移し、summary、section、pufu score が表示される                      |
+| Private report mobile readability | `report-ui.spec.ts` | member user             | private report detail                      | mobile focused   | API mock           | 主要 section が mobile viewport で表示される                                         |
+| Private report error visibility   | `report-ui.spec.ts` | member user             | private report list / detail               | desktop / mobile | API mock           | API error code が UI に表示される                                                    |
+| Public report redaction and chat  | `report-ui.spec.ts` | public user             | public report / public chat                | desktop / mobile | API mock           | redacted artifact のみ表示し、公開範囲内質問に回答し、未公開情報要求を拒否する       |
+| Public API unsafe input rejection | `report-ui.spec.ts` | public / hostile client | public report/chat API、publish API        | API only         | real route handler | path traversal、過長質問、不正 body を拒否する                                       |
 
 ## 不足観点
 

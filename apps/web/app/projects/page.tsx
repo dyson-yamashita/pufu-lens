@@ -6,15 +6,15 @@ import {
   listMemberProjects,
   listVisiblePublicProjects,
 } from '../../src/admin-db';
-import { ActionForm, PendingSubmitButton } from '../../src/form-buttons';
+import { ProjectCreateDialog } from '../../src/project-create-dialog';
 import { AppShell, PageHeader, StatusBadge } from '../../src/ui';
 
 export default async function ProjectsPage() {
   const session = await auth();
   const userId = session?.user?.id;
+  const isAdmin = session?.user?.role === 'admin';
   const canShowAdminProjects = process.env.PUFU_LENS_ENABLE_ADMIN_PROJECT_LIST === 'true';
-  const canCreateProject =
-    Boolean(userId) && process.env.PUFU_LENS_ENABLE_PROJECT_CREATE_UI === 'true';
+  const canCreateProject = isAdmin;
   const [projects, publicProjects] = await Promise.all([
     userId
       ? listMemberProjects(userId)
@@ -31,43 +31,12 @@ export default async function ProjectsPage() {
         subtitle="プロジェクトごとの状態を確認し、カードからレポート一覧を開きます。"
       />
       {canCreateProject ? (
-        <details className="panel create-project-panel" data-testid="project-create-panel">
-          <summary className="primary-button" data-testid="project-create-button">
-            Add Project
-          </summary>
-          <ActionForm action={createProject} className="project-create-form">
-            <label>
-              <span>Name</span>
-              <input data-testid="project-name-input" name="name" required type="text" />
-            </label>
-            <label>
-              <span>Slug</span>
-              <input
-                data-testid="project-slug-input"
-                name="slug"
-                pattern="[a-z0-9][a-z0-9-]*[a-z0-9]"
-                placeholder="project-alpha"
-                required
-                type="text"
-              />
-            </label>
-            <label className="project-create-description">
-              <span>Description</span>
-              <textarea data-testid="project-description-input" name="description" rows={2} />
-            </label>
-            <PendingSubmitButton
-              className="primary-button"
-              testId="project-submit-button"
-              title="Create project"
-            >
-              Create Project
-            </PendingSubmitButton>
-          </ActionForm>
-        </details>
+        <div className="create-project-panel" data-testid="project-create-panel">
+          <ProjectCreateDialog action={createProject} />
+        </div>
       ) : null}
       <div className="section-heading project-section-heading">
         <div>
-          <p className="eyebrow">Public</p>
           <h2>Public Projects</h2>
         </div>
       </div>
@@ -95,20 +64,6 @@ export default async function ProjectsPage() {
                 </div>
               </div>
               <p>{project.description}</p>
-              <div className="source-list project-card-actions">
-                {project.reports.map((report) => (
-                  <Link
-                    className="source-chip"
-                    data-testid={`public-report-${project.slug}-${report.id}`}
-                    href={`/reports/public/${project.slug}/${report.id}`}
-                    key={report.id}
-                  >
-                    <strong>{report.title}</strong>
-                    <span>{report.summary}</span>
-                    <small>{report.publishedAt}</small>
-                  </Link>
-                ))}
-              </div>
               <Link
                 aria-label={`${project.name} を開く`}
                 className="project-card-stretched-link"
@@ -124,53 +79,60 @@ export default async function ProjectsPage() {
         )}
       </section>
       {userId ? (
-        <section className="project-grid" data-testid="project-list">
-          {projects.length > 0 ? (
-            projects.map((project) => (
-              <article
-                className="project-card project-card-link"
-                data-testid={`project-card-${project.slug}`}
-                key={project.slug}
-              >
-                <div className="project-card-header">
-                  <div>
-                    <p className="eyebrow">{project.slug}</p>
-                    <h2>{project.name}</h2>
+        <>
+          <div className="section-heading project-section-heading">
+            <div>
+              <h2>Private Projects</h2>
+            </div>
+          </div>
+          <section className="project-grid" data-testid="project-list">
+            {projects.length > 0 ? (
+              projects.map((project) => (
+                <article
+                  className="project-card project-card-link"
+                  data-testid={`project-card-${project.slug}`}
+                  key={project.slug}
+                >
+                  <div className="project-card-header">
+                    <div>
+                      <p className="eyebrow">{project.slug}</p>
+                      <h2>{project.name}</h2>
+                    </div>
+                    <div className="status-stack">
+                      <StatusBadge status={project.status === 'active' ? 'healthy' : 'failed'} />
+                      <span
+                        className={`status-badge status-visibility-${project.visibility}`}
+                        data-testid={`project-visibility-${project.slug}`}
+                      >
+                        {project.visibility}
+                      </span>
+                    </div>
                   </div>
-                  <div className="status-stack">
-                    <StatusBadge status={project.status === 'active' ? 'healthy' : 'failed'} />
-                    <span
-                      className={`status-badge status-visibility-${project.visibility}`}
-                      data-testid={`project-visibility-${project.slug}`}
-                    >
-                      {project.visibility}
-                    </span>
-                  </div>
-                </div>
-                <dl className="detail-list">
-                  <div>
-                    <dt>Members</dt>
-                    <dd>{project.memberCount}</dd>
-                  </div>
-                  <div>
-                    <dt>Last indexed</dt>
-                    <dd>{project.lastIndexed}</dd>
-                  </div>
-                </dl>
-                <Link
-                  aria-label={`${project.name} のレポート一覧`}
-                  className="project-card-stretched-link"
-                  data-testid={`project-reports-link-${project.slug}`}
-                  href={`/projects/${project.slug}`}
-                />
-              </article>
-            ))
-          ) : (
-            <p className="notice" data-testid="member-project-empty">
-              参加している project はまだありません。
-            </p>
-          )}
-        </section>
+                  <dl className="detail-list">
+                    <div>
+                      <dt>Members</dt>
+                      <dd>{project.memberCount}</dd>
+                    </div>
+                    <div>
+                      <dt>Last indexed</dt>
+                      <dd>{project.lastIndexed}</dd>
+                    </div>
+                  </dl>
+                  <Link
+                    aria-label={`${project.name} のレポート一覧`}
+                    className="project-card-stretched-link"
+                    data-testid={`project-reports-link-${project.slug}`}
+                    href={`/projects/${project.slug}`}
+                  />
+                </article>
+              ))
+            ) : (
+              <p className="notice" data-testid="member-project-empty">
+                参加している project はまだありません。
+              </p>
+            )}
+          </section>
+        </>
       ) : null}
     </AppShell>
   );

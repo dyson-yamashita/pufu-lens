@@ -43,16 +43,15 @@ import {
 type SqlExecutor = postgres.Sql | postgres.TransactionSql;
 
 export async function createProject(formData: FormData): Promise<void> {
-  if (process.env.PUFU_LENS_ENABLE_PROJECT_CREATE_UI !== 'true') {
-    throw new Error('Project creation is disabled.');
-  }
-
   const name = requireFormValue(formData, 'name').trim();
   if (!name) {
     throw new Error('name is required.');
   }
   const slug = validateProjectSlug(requireFormValue(formData, 'slug').trim());
   const description = formData.get('description')?.toString().trim() || null;
+  const visibility = requireProjectVisibility(
+    formData.get('visibility')?.toString().trim() || 'private',
+  );
   const identifiers = deriveProjectIdentifiers(slug);
 
   await withSql(async (sql) => {
@@ -69,13 +68,14 @@ export async function createProject(formData: FormData): Promise<void> {
       }
 
       const projects = (await tx`
-        INSERT INTO public.projects (slug, name, description, graph_name, storage_prefix)
+        INSERT INTO public.projects (slug, name, description, graph_name, storage_prefix, visibility)
         VALUES (
           ${slug},
           ${name},
           ${description},
           ${identifiers.graphName},
-          ${identifiers.storagePrefix}
+          ${identifiers.storagePrefix},
+          ${visibility}
         )
         RETURNING id::text
       `) as Array<{ id: string }>;
@@ -100,7 +100,7 @@ export async function createProject(formData: FormData): Promise<void> {
   });
 
   await ensureProjectStoragePrefixes(slug);
-  await writePublicProjectVisibilityManifest(slug, 'private');
+  await writePublicProjectVisibilityManifest(slug, visibility);
   revalidatePath('/projects');
 }
 
