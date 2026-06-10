@@ -796,6 +796,7 @@ function projectFromRow(
   const queueCount = toNumber(row.queue_count);
   return {
     dataSources,
+    description: row.description,
     failedCount,
     heldCount,
     lastIndexed: formatDate(row.last_indexed),

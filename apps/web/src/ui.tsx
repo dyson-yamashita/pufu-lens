@@ -7,6 +7,7 @@ import {
   GitBranch,
   Globe,
   HardDrive,
+  Home,
   LogIn,
   LogOut,
   Mail,
@@ -14,6 +15,7 @@ import {
   MessageSquare,
   Network,
   RefreshCw,
+  Settings,
   ShieldCheck,
   TriangleAlert,
   Users,
@@ -56,8 +58,10 @@ export async function AppShell({
     | 'graph'
     | 'ingestion'
     | 'members'
+    | 'overview'
     | 'parser-profiles'
-    | 'reports';
+    | 'reports'
+    | 'settings';
   readonly children: React.ReactNode;
 }) {
   const projectSlug = project?.slug;
@@ -80,6 +84,15 @@ export async function AppShell({
       ) : null}
       {canShowProjectNav ? (
         <>
+          <Link
+            aria-current={active === 'overview' ? 'page' : undefined}
+            className={navClass(active === 'overview')}
+            href={`/projects/${projectSlug}`}
+            data-testid="global-nav-overview"
+          >
+            <Home size={18} />
+            Overview
+          </Link>
           <Link
             aria-current={active === 'chat' ? 'page' : undefined}
             className={navClass(active === 'chat')}
@@ -146,6 +159,15 @@ export async function AppShell({
               >
                 <FileSearch size={18} />
                 Parsers
+              </Link>
+              <Link
+                aria-current={active === 'settings' ? 'page' : undefined}
+                className={navClass(active === 'settings')}
+                href={`/projects/${projectSlug}/admin/settings`}
+                data-testid="global-nav-settings"
+              >
+                <Settings size={18} />
+                Settings
               </Link>
             </>
           ) : null}

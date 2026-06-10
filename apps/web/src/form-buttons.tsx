@@ -16,11 +16,13 @@ export function ActionForm({
   children,
   className,
   onSuccess,
+  testId,
 }: {
   readonly action: FormAction;
   readonly children: React.ReactNode;
   readonly className?: string;
   readonly onSuccess?: () => void;
+  readonly testId?: string;
 }) {
   const [state, formAction] = useActionState(
     async (_previousState: ActionFormState, formData: FormData): Promise<ActionFormState> => {
@@ -36,7 +38,7 @@ export function ActionForm({
   );
 
   return (
-    <form action={formAction} className={className}>
+    <form action={formAction} className={className} data-testid={testId}>
       {children}
       {state.error ? (
         <p className="action-error" role="alert">

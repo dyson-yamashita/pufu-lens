@@ -108,6 +108,7 @@ export default async function ProjectsPage() {
                       </span>
                     </div>
                   </div>
+                  {project.description ? <p>{project.description}</p> : null}
                   <dl className="detail-list">
                     <div>
                       <dt>Members</dt>
