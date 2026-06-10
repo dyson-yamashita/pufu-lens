@@ -1,9 +1,17 @@
 'use client';
 
-import { Send } from 'lucide-react';
+import { ArrowUp, Mic } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PublicChatResponse } from './chat';
+import {
+  appendPendingAssistant,
+  appendUserMessage,
+  type ChatThreadMessage,
+  createMessageId,
+  PublicChatThread,
+  replacePendingAssistant,
+} from './chat-thread';
 import { ActionForm, PendingSubmitButton } from './form-buttons';
 import { PufuReportViewer } from './pufu-report-viewer';
 import type {
@@ -12,6 +20,7 @@ import type {
   ReportListItem,
   ReportPeriod,
 } from './report';
+import { useSpeechInput } from './speech-input';
 
 type ReportApiError = {
   readonly error?: { readonly code?: string; readonly message?: string };
@@ -410,9 +419,13 @@ function PublicReportChatPanel({
   readonly reportId: string;
 }) {
   const [question, setQuestion] = useState('');
-  const [response, setResponse] = useState<PublicChatResponse | undefined>();
-  const [error, setError] = useState<string | undefined>();
+  const [messages, setMessages] = useState<ChatThreadMessage<PublicChatResponse>[]>([]);
   const [pending, setPending] = useState(false);
+  const speechInput = useSpeechInput({
+    disabled: pending,
+    setValue: setQuestion,
+    value: question,
+  });
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -420,9 +433,13 @@ function PublicReportChatPanel({
     if (!trimmedQuestion || pending) {
       return;
     }
+
+    const nextMessages = appendUserMessage(messages, trimmedQuestion);
+    const { messages: messagesWithPending, pendingId } = appendPendingAssistant(nextMessages);
+    setMessages(messagesWithPending);
+    setQuestion('');
     setPending(true);
-    setError(undefined);
-    setResponse(undefined);
+
     try {
       const result = await fetch(`/api/public/projects/${projectSlug}/reports/${reportId}/chat`, {
         body: JSON.stringify({ question: trimmedQuestion }),
@@ -440,9 +457,24 @@ function PublicReportChatPanel({
       if (!body || !('status' in body)) {
         throw new Error('Public Chat API returned an invalid response.');
       }
-      setResponse(body);
+      setMessages((current) =>
+        replacePendingAssistant(current, pendingId, {
+          id: createMessageId('assistant'),
+          role: 'assistant',
+          response: body,
+          status: 'complete',
+        }),
+      );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      const errorMessage = caught instanceof Error ? caught.message : String(caught);
+      setMessages((current) =>
+        replacePendingAssistant(current, pendingId, {
+          error: errorMessage,
+          id: createMessageId('assistant'),
+          role: 'assistant',
+          status: 'error',
+        }),
+      );
     } finally {
       setPending(false);
     }
@@ -450,6 +482,7 @@ function PublicReportChatPanel({
 
   return (
     <section className="panel public-chat-panel" data-testid="public-chat-panel">
+      <PublicChatThread messages={messages} resultTestId="public-chat-result" />
       <form className="chat-form" onSubmit={submit}>
         <label htmlFor="public-chat-question">Public report question</label>
         <div className="chat-input-row">
@@ -461,46 +494,32 @@ function PublicReportChatPanel({
             rows={3}
             value={question}
           />
-          <button
-            className="primary-button"
-            data-testid="public-chat-submit-button"
-            disabled={pending || !question.trim()}
-            type="submit"
-          >
-            <Send size={16} />
-            Send
-          </button>
+          <div className="chat-composer-actions">
+            <button
+              aria-label="Voice input"
+              aria-pressed={speechInput.listening}
+              className={`chat-icon-button${speechInput.listening ? ' chat-icon-button-active' : ''}`}
+              data-testid="public-chat-mic-button"
+              disabled={pending || !speechInput.supported}
+              onClick={speechInput.toggle}
+              title={speechInput.supported ? 'Voice input' : 'Voice input is not supported'}
+              type="button"
+            >
+              <Mic size={18} />
+            </button>
+            <button
+              aria-label="Send"
+              className="chat-icon-button chat-send-button"
+              data-testid="public-chat-submit-button"
+              disabled={pending || !question.trim()}
+              title="Send"
+              type="submit"
+            >
+              <ArrowUp size={20} />
+            </button>
+          </div>
         </div>
       </form>
-      {error ? (
-        <p className="notice error" data-testid="public-chat-error">
-          {error}
-        </p>
-      ) : null}
-      {response ? (
-        <div className="chat-result" data-testid="public-chat-result">
-          <h2>Answer</h2>
-          <p>{response.answer}</p>
-          <h3>Public Sources</h3>
-          <div className="source-list">
-            {response.sources.map((source) => (
-              <article className="source-chip" key={`${source.sectionId}-${source.publicSourceId}`}>
-                <strong>{source.publicSourceId}</strong>
-                <span>{source.sectionId}</span>
-                <small>{source.label}</small>
-              </article>
-            ))}
-          </div>
-          <h3>Tool Calls</h3>
-          <div className="tool-call-list">
-            {response.toolCalls.map((toolCall) => (
-              <span className="status-badge" key={toolCall.name}>
-                {toolCall.name}: {toolCall.resultCount}
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : null}
     </section>
   );
 }
