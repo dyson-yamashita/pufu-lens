@@ -21,6 +21,7 @@ cd apps/web && pnpm dev
 `.infisical.json` がある開発環境では、secret を shell や `.env` に直接置かず Infisical から注入して起動する。初回は `infisical login` を済ませ、`defaultEnvironment` が未設定の場合は `--env=dev` のように利用する環境名を明示する。
 
 ```bash
+# リポジトリルートで実行
 # Mastra のみ（Infisical 経由）
 infisical run --env=dev --path=/ -- pnpm --filter @pufu-lens/mastra dev
 
