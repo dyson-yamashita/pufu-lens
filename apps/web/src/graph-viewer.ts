@@ -438,6 +438,7 @@ function displayNodeLabel(label: string, properties: Record<string, unknown>): s
     propertyString(properties, 'name') ??
     propertyString(properties, 'canonicalUri') ??
     propertyString(properties, 'canonical_uri') ??
+    propertyString(properties, 'target') ??
     propertyString(properties, 'graphNodeId') ??
     label
   );

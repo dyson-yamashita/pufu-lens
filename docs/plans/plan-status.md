@@ -19,7 +19,7 @@
 | ---------------------------------------------------------- | -------- | ---------- | --------------------------------------------------------------------------------------------------- |
 | `docs/plans/001-step-by-step-build-plan/overview.md`       | `active` | 2026-05-29 | Pufu Lens の段階的な構築計画。Step 別 plan は同ディレクトリ配下で管理する。                         |
 | `docs/plans/002-account-login-public-projects/overview.md` | `active` | 2026-06-08 | Issue #63 から派生し、Step 2 は Issue #76 で Auth.js ログイン基盤を実装中。                         |
-| `docs/plans/003-admin-age-viewer/overview.md`              | `active` | 2026-06-09 | Issue #80 で、プロジェクトごとの Graph と固定 query preset による Apache AGE graph 可視化を実装中。 |
+| `docs/plans/003-admin-age-viewer/overview.md`              | `active` | 2026-06-10 | Issue #80 で、プロジェクトごとの Graph と固定 query preset による Apache AGE graph 可視化を実装中。 |
 
 ## 運用ルール
 

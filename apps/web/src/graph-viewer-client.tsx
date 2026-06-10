@@ -1,7 +1,7 @@
 'use client';
 
-import cytoscape, { type Core, type EdgeSingular, type NodeSingular } from 'cytoscape';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import cytoscape, { type EdgeSingular, type NodeSingular } from 'cytoscape';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   GraphPresetId,
   GraphPresetSummary,
@@ -30,13 +30,16 @@ export function GraphViewerPanel({
   const [isLoading, setIsLoading] = useState(false);
   const selectedPreset = presets.find((preset) => preset.id === queryId) ?? presets[0];
 
-  async function runQuery() {
+  const runQuery = useCallback(async () => {
+    if (!selectedPreset) {
+      return;
+    }
     setError(undefined);
     setSelection(undefined);
     setIsLoading(true);
     try {
       const response = await fetch(`/api/projects/${projectSlug}/graph`, {
-        body: JSON.stringify({ queryId }),
+        body: JSON.stringify({ queryId: selectedPreset.id }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
       });
@@ -51,7 +54,11 @@ export function GraphViewerPanel({
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [projectSlug, selectedPreset]);
+
+  useEffect(() => {
+    void runQuery();
+  }, [runQuery]);
 
   return (
     <div className="graph-workspace" data-testid="graph-viewer-panel">
@@ -61,6 +68,7 @@ export function GraphViewerPanel({
             <h2>Graph Query</h2>
             <p className="mono">project: {projectSlug}</p>
           </div>
+          {isLoading ? <span className="status-badge status-held">Running</span> : null}
           {result ? (
             <span className="status-badge status-healthy" data-testid="graph-result-count">
               {result.rowCount} rows
@@ -71,6 +79,7 @@ export function GraphViewerPanel({
           <span>Preset</span>
           <select
             data-testid="graph-preset-select"
+            disabled={isLoading}
             id="graph-preset-select"
             onChange={(event) => setQueryId(event.target.value as GraphPresetId)}
             value={queryId}
@@ -85,18 +94,8 @@ export function GraphViewerPanel({
         {selectedPreset ? (
           <div className="graph-preset-detail" data-testid="graph-preset-detail">
             <p>{selectedPreset.description}</p>
-            <pre>{selectedPreset.preview}</pre>
           </div>
         ) : null}
-        <button
-          className="primary-button"
-          data-testid="graph-run-button"
-          disabled={isLoading}
-          onClick={runQuery}
-          type="button"
-        >
-          {isLoading ? 'Running...' : 'Run'}
-        </button>
         {error ? (
           <p className="action-error" data-testid="graph-error">
             {error}
@@ -108,7 +107,7 @@ export function GraphViewerPanel({
         <div className="panel-heading">
           <div>
             <h2>Graph</h2>
-            <p className="mono">{result?.graphName ?? 'Run a preset to render graph.'}</p>
+            <p className="mono">{result?.graphName ?? 'Loading project graph.'}</p>
           </div>
           {result?.truncated ? <span className="status-badge status-held">Limited</span> : null}
         </div>
@@ -161,13 +160,12 @@ function GraphCanvas({
   readonly nodes: readonly GraphViewerNode[];
   readonly onSelect: (selection: GraphSelection | undefined) => void;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const cyRef = useRef<Core | undefined>(undefined);
+  const [containerElement, setContainerElement] = useState<HTMLDivElement | null>(null);
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const edgesById = useMemo(() => new Map(edges.map((edge) => [edge.id, edge])), [edges]);
 
   useEffect(() => {
-    const container = containerRef.current;
+    const container = containerElement;
     if (!container) {
       return;
     }
@@ -175,7 +173,12 @@ function GraphCanvas({
       container,
       elements: [
         ...nodes.map((node) => ({
-          data: { id: node.id, label: node.label, type: node.labels[0] ?? 'Node' },
+          data: {
+            fullLabel: node.label,
+            id: node.id,
+            label: truncateGraphLabel(node.label),
+            type: node.labels[0] ?? 'Node',
+          },
         })),
         ...edges
           .filter((edge) => nodesById.has(edge.source) && nodesById.has(edge.target))
@@ -183,7 +186,20 @@ function GraphCanvas({
             data: { id: edge.id, label: edge.label, source: edge.source, target: edge.target },
           })),
       ],
-      layout: { name: 'cose', animate: false, fit: true, padding: 24 },
+      layout: {
+        name: 'cose',
+        animate: false,
+        componentSpacing: 260,
+        fit: true,
+        gravity: 30,
+        idealEdgeLength: 300,
+        nodeDimensionsIncludeLabels: true,
+        nodeOverlap: 64,
+        nodeRepulsion: 220000,
+        numIter: 2000,
+        padding: 56,
+      },
+      minZoom: 0.45,
       style: [
         {
           selector: 'node',
@@ -195,6 +211,7 @@ function GraphCanvas({
             'text-background-color': '#0b1326',
             'text-background-opacity': 0.8,
             'text-background-padding': '3px',
+            'text-max-width': '132px',
             'text-valign': 'bottom',
             'text-wrap': 'wrap',
             width: '34px',
@@ -210,14 +227,24 @@ function GraphCanvas({
           style: { 'background-color': '#d8b9ff' },
         },
         {
+          selector: 'node:selected',
+          style: {
+            label: 'data(fullLabel)',
+          },
+        },
+        {
           selector: 'edge',
           style: {
+            color: '#ffffff',
             'curve-style': 'bezier',
             'font-size': '10px',
             label: 'data(label)',
             'line-color': '#8c90a1',
             'target-arrow-color': '#8c90a1',
             'target-arrow-shape': 'triangle',
+            'text-background-color': '#0b1326',
+            'text-background-opacity': 0.85,
+            'text-background-padding': '2px',
             width: '1.5px',
           },
         },
@@ -231,7 +258,6 @@ function GraphCanvas({
         },
       ],
     });
-    cyRef.current = cy;
     cy.on('tap', 'node', (event) => {
       const node = nodesById.get((event.target as NodeSingular).id());
       onSelect(node ? { item: node, type: 'node' } : undefined);
@@ -247,21 +273,28 @@ function GraphCanvas({
     });
     return () => {
       cy.destroy();
-      cyRef.current = undefined;
     };
-  }, [edges, edgesById, nodes, nodesById, onSelect]);
+  }, [containerElement, edges, edgesById, nodes, nodesById, onSelect]);
 
   return (
     <div className="graph-canvas-wrap">
       {nodes.length ? (
-        <div className="graph-canvas" data-testid="graph-canvas" ref={containerRef} />
+        <div className="graph-canvas" data-testid="graph-canvas" ref={setContainerElement} />
       ) : (
         <div className="graph-empty" data-testid="graph-empty">
-          Run a preset to render nodes and edges.
+          Loading graph nodes and edges.
         </div>
       )}
     </div>
   );
+}
+
+function truncateGraphLabel(value: string): string {
+  const characters = Array.from(value);
+  if (characters.length <= 16) {
+    return value;
+  }
+  return `${characters.slice(0, 8).join('')}...${characters.slice(-8).join('')}`;
 }
 
 function PropertyList({ item }: { readonly item: GraphViewerEdge | GraphViewerNode }) {
