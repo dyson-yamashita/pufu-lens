@@ -20,7 +20,12 @@ export function ProjectCreateDialog({ action }: { readonly action: FormAction })
         <Plus size={18} />
         Add project
       </button>
-      <dialog className="modal-dialog" data-testid="project-create-dialog" ref={dialogRef}>
+      <dialog
+        className="modal-dialog"
+        data-testid="project-create-dialog"
+        onClose={(event) => event.currentTarget.querySelector('form')?.reset()}
+        ref={dialogRef}
+      >
         <div className="modal-card">
           <div className="panel-heading">
             <div>

@@ -483,7 +483,7 @@ tr.selected-row {
 .parser-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
 }
 
 .create-project-panel {
@@ -501,7 +501,6 @@ tr.selected-row {
 }
 
 [data-testid="public-project-list"] {
-  grid-template-columns: repeat(2, minmax(300px, 1fr));
   margin-bottom: 24px;
 }
 
@@ -1585,7 +1584,6 @@ th {
   .graph-workspace,
   .chat-input-row,
   .project-create-form,
-  [data-testid="public-project-list"],
   .status-row {
     grid-template-columns: 1fr;
   }
