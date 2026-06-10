@@ -55,7 +55,7 @@ export async function createProject(formData: FormData): Promise<void> {
   const identifiers = deriveProjectIdentifiers(slug);
 
   await withSql(async (sql) => {
-    const adminUserId = await requireAdminUserId();
+    const adminUserId = await requireGlobalAdmin(sql);
     await sql.begin(async (tx) => {
       await tx`LOAD 'age'`;
       await tx`SET search_path = ag_catalog, "$user", public`;
