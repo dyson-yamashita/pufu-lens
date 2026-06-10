@@ -81,10 +81,11 @@ export function createGeminiTopicExtractionAgent(
       if (!response.ok) {
         throw new Error(`Gemini topic extraction request failed: HTTP ${response.status}`);
       }
-      const body = (await response.json()) as {
-        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-      };
-      const text = body.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('');
+      const body = (await response.json()) as unknown;
+      if (!isRecord(body)) {
+        throw new Error('Gemini topic extraction response is not a valid JSON object.');
+      }
+      const text = geminiResponseText(body);
       if (!text) {
         throw new Error('Gemini topic extraction response did not include JSON text.');
       }
@@ -255,6 +256,24 @@ function getHtmlAttribute(tag: string, attributeName: string): string | undefine
 
 function looksLikeUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
+}
+
+function geminiResponseText(body: Record<string, unknown>): string {
+  const candidates = body.candidates;
+  if (!Array.isArray(candidates)) {
+    return '';
+  }
+  const [first] = candidates;
+  if (!isRecord(first) || !isRecord(first.content)) {
+    return '';
+  }
+  const parts = first.content.parts;
+  if (!Array.isArray(parts)) {
+    return '';
+  }
+  return parts
+    .map((part) => (isRecord(part) && typeof part.text === 'string' ? part.text : ''))
+    .join('');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

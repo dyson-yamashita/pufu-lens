@@ -285,6 +285,38 @@ test('parsed document validation rejects unknown topic types', () => {
   );
 });
 
+test('parsed document validation rejects malformed topic entries safely', () => {
+  const nullTopicParsed = {
+    actors: [],
+    bodyText: 'Body',
+    canonicalUri: 'https://example.test/topic',
+    docType: 'web_page',
+    metadata: {},
+    occurredAt: '2026-05-08T00:00:00.000Z',
+    relations: [],
+    schemaVersion: 1,
+    sourceId: 'https://example.test/topic',
+    sourceType: 'web',
+    title: 'Topic validation',
+    topics: [null],
+  } as unknown as ParsedDocument;
+
+  assert.throws(
+    () => validateParsedDocument(nullTopicParsed),
+    /Parsed document topicType must be 'keyword'/,
+  );
+
+  const invalidTargetParsed = {
+    ...nullTopicParsed,
+    topics: [{ target: 42, topicType: 'keyword' }],
+  } as unknown as ParsedDocument;
+
+  assert.throws(
+    () => validateParsedDocument(invalidTargetParsed),
+    /Parsed document topic target is required/,
+  );
+});
+
 test('web parser stops topic extraction after the first ten candidates', async () => {
   const rawPath = await writeTempRawFixture(
     'web-topic-limit.html',

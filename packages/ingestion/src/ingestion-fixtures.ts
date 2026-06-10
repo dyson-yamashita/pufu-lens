@@ -181,10 +181,10 @@ export function validateParsedDocument(parsed: ParsedDocument): ParsedDocument {
     throw new Error(`Parsed document canonicalUri must include a scheme: ${parsed.sourceId}`);
   }
   for (const topic of parsed.topics ?? []) {
-    if (topic.topicType !== 'keyword') {
+    if (!topic || typeof topic !== 'object' || topic.topicType !== 'keyword') {
       throw new Error(`Parsed document topicType must be 'keyword': ${parsed.sourceId}`);
     }
-    if (topic.target.trim() === '') {
+    if (typeof topic.target !== 'string' || topic.target.trim() === '') {
       throw new Error(`Parsed document topic target is required: ${parsed.sourceId}`);
     }
   }

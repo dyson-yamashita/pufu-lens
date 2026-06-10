@@ -47,3 +47,24 @@ test('Gemini TopicExtractionAgent sends web article context and parses JSON topi
   assert.match(JSON.stringify(requests[0]?.body), /TopicExtractionAgent/);
   assert.match(JSON.stringify(requests[0]?.body), /hashtag/);
 });
+
+test('Gemini TopicExtractionAgent rejects non-object JSON responses safely', async () => {
+  const agent = createGeminiTopicExtractionAgent({
+    apiKey: 'test-key',
+    endpoint: 'https://gemini.example.test/model:generateContent',
+    fetchImpl: async () =>
+      new Response('null', { headers: { 'content-type': 'application/json' }, status: 200 }),
+    model: 'gemini-test',
+  });
+
+  await assert.rejects(
+    () =>
+      agent.extractTopics({
+        bodyText: '本文',
+        canonicalUri: 'https://note.example.test/n/abc',
+        html: '<html></html>',
+        title: '記事',
+      }),
+    /Gemini topic extraction response is not a valid JSON object/,
+  );
+});
