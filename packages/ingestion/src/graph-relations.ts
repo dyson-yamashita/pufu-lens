@@ -331,7 +331,9 @@ function parsedTopicNodesAndEdges(
   return (parsed.topics ?? [])
     .filter((topic) => topic.target.trim() !== '')
     .map((topic) => {
-      const topicGraphNodeId = `topic:${topic.topicType}:${encodeURIComponent(topic.target)}`;
+      const topicGraphKeyTarget =
+        topic.topicType === 'keyword' ? topic.target.toLowerCase() : topic.target;
+      const topicGraphNodeId = `topic:${topic.topicType}:${encodeURIComponent(topicGraphKeyTarget)}`;
       return {
         edge: {
           fromGraphNodeId: target.document.graphNodeId,

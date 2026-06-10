@@ -774,7 +774,7 @@ erDiagram
 - Step 8 の実装では AGE 互換性を優先し、実際の primary label は `Document` / `Actor` / `Topic` に寄せる。
 - `Email` / `Issue` / `PullRequest` / `DriveDoc` / `WebPage` などの詳細種別は `graphLabels` property と `documents.doc_type` に保持する。
 - `Actor` — 人物・組織・Bot（メール送信者、PR 作成者、PR レビュアー等）。`actors.id` と 1:1。
-- `Topic` — 文書から抽出した意味キーワード / 概念。Web ページは parsed `topics`（`topicType: "keyword"`）から `topic:keyword:<encoded target>` として作成し、`(Document)-[:MENTIONS]->(Topic)` で接続する。URL リンクは Topic ノードにしない。メールの `REPLY_TO` relation は `topic:message:<encoded target>` として `(Document)-[:REPLY_TO]->(Topic {topicType: "message"})` を作成する。
+- `Topic` — 文書から抽出した意味キーワード / 概念。Web ページは parsed `topics`（`topicType: "keyword"`）から `topic:keyword:<encoded lowercase target>` として作成し、`(Document)-[:MENTIONS]->(Topic)` で接続する。`target` property には元の表記を保持する。URL リンクは Topic ノードにしない。メールの `REPLY_TO` relation は `topic:message:<encoded target>` として `(Document)-[:REPLY_TO]->(Topic {topicType: "message"})` を作成する。
 
 #### 4.1. Actor と名寄せ
 

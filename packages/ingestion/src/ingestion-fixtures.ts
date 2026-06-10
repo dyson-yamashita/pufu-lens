@@ -491,36 +491,36 @@ function htmlEntityDecode(value: string): string {
 }
 
 function extractWebTopics(input: { bodyText: string; html: string; title: string }): ParsedTopic[] {
-  const candidates: Array<{ source: string; target: string }> = [];
-
-  for (const target of titleTopicCandidates(input.title)) {
-    candidates.push({ source: 'title', target });
-  }
-  for (const target of extractMetaKeywords(input.html)) {
-    candidates.push({ source: 'meta_keywords', target });
-  }
-  for (const target of extractQuotedTopicPhrases(input.bodyText)) {
-    candidates.push({ source: 'quoted_phrase', target });
-  }
-
   const topics: ParsedTopic[] = [];
   const seen = new Set<string>();
-  for (const candidate of candidates) {
-    const target = normalizeTopicTarget(candidate.target);
-    const key = target.toLowerCase();
-    if (!target || seen.has(key)) {
-      continue;
+
+  const addCandidates = (candidates: Iterable<string>, source: string) => {
+    for (const candidate of candidates) {
+      if (topics.length >= 10) {
+        break;
+      }
+      const target = normalizeTopicTarget(candidate);
+      const key = target.toLowerCase();
+      if (!target || seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      topics.push({
+        metadata: { source },
+        target,
+        topicType: 'keyword',
+      });
     }
-    seen.add(key);
-    topics.push({
-      metadata: { source: candidate.source },
-      target,
-      topicType: 'keyword',
-    });
-    if (topics.length >= 10) {
-      break;
-    }
+  };
+
+  addCandidates(titleTopicCandidates(input.title), 'title');
+  if (topics.length < 10) {
+    addCandidates(extractMetaKeywords(input.html), 'meta_keywords');
   }
+  if (topics.length < 10) {
+    addCandidates(extractQuotedTopicPhrases(input.bodyText), 'quoted_phrase');
+  }
+
   return topics;
 }
 
@@ -536,8 +536,7 @@ function titleTopicCandidates(title: string): string[] {
   return [normalized, ...parts];
 }
 
-function extractMetaKeywords(html: string): string[] {
-  const keywords: string[] = [];
+function* extractMetaKeywords(html: string): Generator<string> {
   for (const meta of html.matchAll(/<meta\s+[^>]*>/gi)) {
     const tag = meta[0];
     const key =
@@ -550,16 +549,15 @@ function extractMetaKeywords(html: string): string[] {
     if (!content) {
       continue;
     }
-    keywords.push(...content.split(/[,、]/));
+    yield* content.split(/[,、]/);
   }
-  return keywords;
 }
 
-function extractQuotedTopicPhrases(bodyText: string): string[] {
+function* extractQuotedTopicPhrases(bodyText: string): Generator<string> {
   const regex = /"([^"]{2,80})"|「([^」]{2,80})」|『([^』]{2,80})』|“([^”]{2,80})”/g;
-  return [...bodyText.matchAll(regex)].map(
-    (match) => match[1] ?? match[2] ?? match[3] ?? match[4] ?? '',
-  );
+  for (const match of bodyText.matchAll(regex)) {
+    yield match[1] ?? match[2] ?? match[3] ?? match[4] ?? '';
+  }
 }
 
 function normalizeTopicTarget(value: string): string {

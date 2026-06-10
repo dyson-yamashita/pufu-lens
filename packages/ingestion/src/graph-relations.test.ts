@@ -191,13 +191,17 @@ test('storeGraphRelations materializes parsed keyword topics as mentions', async
     repository,
   });
 
-  assert.ok(repository.nodes.has('topic:keyword:Release%20Notes'));
+  assert.ok(repository.nodes.has('topic:keyword:release%20notes'));
   assert.ok(
     repository.hasEdge(
       'document:email:thread-alpha%3Amsg-alpha-003',
       'MENTIONS',
-      'topic:keyword:Release%20Notes',
+      'topic:keyword:release%20notes',
     ),
+  );
+  assert.equal(
+    repository.nodes.get('topic:keyword:release%20notes')?.properties.target,
+    'Release Notes',
   );
   assert.equal(repository.nodes.has('topic:uri:https%3A%2F%2Fexample.test%2Fignored'), false);
 });

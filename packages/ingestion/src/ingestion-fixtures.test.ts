@@ -284,6 +284,36 @@ test('parsed document validation rejects unknown topic types', () => {
   );
 });
 
+test('web parser stops topic extraction after the first ten candidates', async () => {
+  const rawPath = await writeTempRawFixture(
+    'web-topic-limit.html',
+    `<!doctype html>
+<html>
+  <head>
+    <title>Topic Cap</title>
+    <meta name="keywords" content="one,two,three,four,five,six,seven,eight,nine,ten">
+  </head>
+  <body>
+    <article>
+      <p>This late body phrase should not be selected: &quot;late quoted phrase&quot;.</p>
+    </article>
+  </body>
+</html>`,
+  );
+
+  try {
+    const parsed = await parseRawFixture(buildFixtureCase('web-topic-limit', 'web', rawPath));
+
+    assert.equal(parsed.topics?.length, 10);
+    assert.deepEqual(
+      parsed.topics?.map((topic) => topic.target),
+      ['Topic Cap', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'],
+    );
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
 test('web parser falls back to fetchedAt when published date is missing', async () => {
   const rawPath = await writeTempRawFixture(
     'web-no-published-date.html',
