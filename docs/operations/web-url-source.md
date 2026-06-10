@@ -1,7 +1,10 @@
 # Web URL 実データソース収集
 
-Step 10 の Web URL 収集は、外部 API / Agent / chat model を使わず、指定された URL を
+Step 10 の Web URL 収集は、Agent / chat model を使わず、指定された URL を
 HTML raw contract に変換して local object storage、`raw_documents`、`ingestion_queue` に保存する。
+parse step では `TopicExtractionAgent` が Web 記事の topic を抽出する。`GEMINI_API_KEY`
+と `GEMINI_CHAT_MODEL` が設定されている場合は Gemini を使い、未設定時はローカル検証用の
+deterministic fallback を使う。
 
 ## 前提
 
@@ -9,6 +12,7 @@ HTML raw contract に変換して local object storage、`raw_documents`、`inge
 - `DATABASE_URL` がローカル DB を指している。
 - `STORAGE_ROOT` または `LOCAL_STORAGE_ROOT` が local object storage の root を指している。
 - 対象 project は `pnpm seed:projects` または `pnpm create-project` で作成済み。
+- Gemini による Web topic 抽出を使う場合は `GEMINI_API_KEY` と `GEMINI_CHAT_MODEL` が設定されている。
 
 ## 実行例
 

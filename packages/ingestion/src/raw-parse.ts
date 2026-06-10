@@ -6,6 +6,7 @@ import {
   type RawDocumentContract,
   validateParsedDocument,
 } from './ingestion-fixtures.js';
+import type { TopicExtractionAgent } from './topic-extraction-agent.js';
 
 export const PARSED_SCHEMA_VERSION = 1;
 export const BUILT_IN_PARSER_ARTIFACT = JSON.stringify(
@@ -122,6 +123,7 @@ export interface ParseRawOptions {
   projectSlug: string;
   repository: RawParseRepository;
   storage: ParseObjectStorage;
+  topicExtractionAgent?: TopicExtractionAgent;
 }
 
 export interface ParseRawResult {
@@ -187,6 +189,7 @@ async function parseQueueTarget(input: {
   repository: RawParseRepository;
   storage: ParseObjectStorage;
   target: ParseQueueTarget;
+  topicExtractionAgent?: TopicExtractionAgent;
 }): Promise<ParseRawDecision> {
   const rawDocument = input.target.rawDocument;
   const parserVersion = await input.repository.selectActiveParserVersion({
@@ -248,11 +251,12 @@ async function parseQueueTarget(input: {
   }
 
   try {
-    const parsed = buildParsedDocument({
+    const parsed = await buildParsedDocument({
       parserVersion,
       projectSlug: input.project.slug,
       rawDocument,
       rawText,
+      topicExtractionAgent: input.topicExtractionAgent,
     });
     const parsedUri = parsedStorageUri(input.project.slug, rawDocument);
     const parsedBody = `${JSON.stringify(parsed, null, 2)}\n`;
@@ -307,12 +311,13 @@ async function parseQueueTarget(input: {
   }
 }
 
-function buildParsedDocument(input: {
+async function buildParsedDocument(input: {
   parserVersion: ParserVersionRecord;
   projectSlug: string;
   rawDocument: ParseRawDocumentRecord;
   rawText: string;
-}): ParsedDocument {
+  topicExtractionAgent?: TopicExtractionAgent;
+}): Promise<ParsedDocument> {
   const rawContract: RawDocumentContract = {
     contentHash: input.rawDocument.contentHash,
     metadata: input.rawDocument.metadata,
@@ -324,7 +329,11 @@ function buildParsedDocument(input: {
     storageUri: input.rawDocument.storageUri,
   };
   const parsed = validateParsedDocument(
-    parseRawContent({ raw: rawContract, sourceType: input.rawDocument.sourceType }, input.rawText),
+    await parseRawContent(
+      { raw: rawContract, sourceType: input.rawDocument.sourceType },
+      input.rawText,
+      { topicExtractionAgent: input.topicExtractionAgent },
+    ),
   );
 
   return {

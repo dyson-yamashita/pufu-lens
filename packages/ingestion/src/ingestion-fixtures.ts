@@ -2,6 +2,10 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  createDeterministicTopicExtractionAgent,
+  type TopicExtractionAgent,
+} from './topic-extraction-agent.js';
 
 export type SourceType = 'github' | 'web' | 'gmail' | 'drive';
 export type ParsedDocumentType = 'issue' | 'pull_request' | 'web_page' | 'email' | 'drive_doc';
@@ -64,6 +68,10 @@ export interface IngestionFixtureCase {
   rawPath: string;
   snapshotPath: string;
   raw: RawDocumentContract;
+}
+
+export interface ParseRawContentOptions {
+  topicExtractionAgent?: TopicExtractionAgent;
 }
 
 interface GitHubRaw {
@@ -134,20 +142,24 @@ export function validateRawFixtureCase(fixtureCase: IngestionFixtureCase): Inges
   return fixtureCase;
 }
 
-export async function parseRawFixture(fixtureCase: IngestionFixtureCase): Promise<ParsedDocument> {
+export async function parseRawFixture(
+  fixtureCase: IngestionFixtureCase,
+  options: ParseRawContentOptions = {},
+): Promise<ParsedDocument> {
   const rawText = await readFile(join(repoRoot, fixtureCase.rawPath), 'utf8');
-  return parseRawContent(fixtureCase, rawText);
+  return parseRawContent(fixtureCase, rawText, options);
 }
 
-export function parseRawContent(
+export async function parseRawContent(
   fixtureCase: Pick<IngestionFixtureCase, 'raw' | 'sourceType'>,
   rawText: string,
-): ParsedDocument {
+  options: ParseRawContentOptions = {},
+): Promise<ParsedDocument> {
   switch (fixtureCase.sourceType) {
     case 'github':
       return parseGitHub(fixtureCase, JSON.parse(rawText) as GitHubRaw);
     case 'web':
-      return parseWeb(fixtureCase, rawText);
+      return parseWeb(fixtureCase, rawText, options.topicExtractionAgent);
     case 'gmail':
       return parseGmail(fixtureCase, JSON.parse(rawText) as GmailRaw);
     case 'drive':
@@ -232,10 +244,11 @@ function parseGitHub(
   });
 }
 
-function parseWeb(
+async function parseWeb(
   fixtureCase: Pick<IngestionFixtureCase, 'raw' | 'sourceType'>,
   html: string,
-): ParsedDocument {
+  topicExtractionAgent: TopicExtractionAgent = createDeterministicTopicExtractionAgent(),
+): Promise<ParsedDocument> {
   const title = textFromHtml(html.match(/<title>(?<title>.*?)<\/title>/is)?.groups?.title ?? '');
   const canonicalLink = [...html.matchAll(/<link\s+[^>]*>/gi)]
     .map((match) => match[0])
@@ -261,7 +274,7 @@ function parseWeb(
     sourceId: fixtureCase.raw.sourceId,
     sourceType: 'web',
     title,
-    topics: extractWebTopics({ bodyText, html, title }),
+    topics: await topicExtractionAgent.extractTopics({ bodyText, canonicalUri, html, title }),
   });
 }
 
@@ -488,83 +501,6 @@ function htmlEntityDecode(value: string): string {
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&(apos|#39);/g, "'");
-}
-
-function extractWebTopics(input: { bodyText: string; html: string; title: string }): ParsedTopic[] {
-  const topics: ParsedTopic[] = [];
-  const seen = new Set<string>();
-
-  const addCandidates = (candidates: Iterable<string>, source: string) => {
-    for (const candidate of candidates) {
-      if (topics.length >= 10) {
-        break;
-      }
-      const target = normalizeTopicTarget(candidate);
-      const key = target.toLowerCase();
-      if (!target || seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      topics.push({
-        metadata: { source },
-        target,
-        topicType: 'keyword',
-      });
-    }
-  };
-
-  addCandidates(titleTopicCandidates(input.title), 'title');
-  if (topics.length < 10) {
-    addCandidates(extractMetaKeywords(input.html), 'meta_keywords');
-  }
-  if (topics.length < 10) {
-    addCandidates(extractQuotedTopicPhrases(input.bodyText), 'quoted_phrase');
-  }
-
-  return topics;
-}
-
-function titleTopicCandidates(title: string): string[] {
-  const normalized = normalizeTopicTarget(title);
-  if (!normalized) {
-    return [];
-  }
-  const parts = normalized
-    .split(/[|｜：]|\s+[-–—:]\s+/)
-    .map((part) => normalizeTopicTarget(part))
-    .filter((part) => part.length >= 2);
-  return [normalized, ...parts];
-}
-
-function* extractMetaKeywords(html: string): Generator<string> {
-  for (const meta of html.matchAll(/<meta\s+[^>]*>/gi)) {
-    const tag = meta[0];
-    const key =
-      getHtmlAttribute(tag, 'name')?.toLowerCase() ??
-      getHtmlAttribute(tag, 'property')?.toLowerCase();
-    if (key !== 'keywords' && key !== 'article:tag') {
-      continue;
-    }
-    const content = getHtmlAttribute(tag, 'content');
-    if (!content) {
-      continue;
-    }
-    yield* content.split(/[,、]/);
-  }
-}
-
-function* extractQuotedTopicPhrases(bodyText: string): Generator<string> {
-  const regex = /"([^"]{2,80})"|「([^」]{2,80})」|『([^』]{2,80})』|“([^”]{2,80})”/g;
-  for (const match of bodyText.matchAll(regex)) {
-    yield match[1] ?? match[2] ?? match[3] ?? match[4] ?? '';
-  }
-}
-
-function normalizeTopicTarget(value: string): string {
-  return htmlEntityDecode(value)
-    .replace(/[【】]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 function getHtmlAttribute(tag: string, attributeName: string): string | undefined {

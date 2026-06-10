@@ -156,7 +156,7 @@ async function validateRawDocument(input: {
 
   try {
     const parsed = validateParsedDocument(
-      parseRawContent(
+      await parseRawContent(
         {
           raw: {
             contentHash: input.row.contentHash,

@@ -144,6 +144,7 @@ export type {
   ParsedDocument,
   ParsedDocumentType,
   ParsedRelation,
+  ParsedTopic,
   RawDocumentContract,
   SourceType,
 } from './ingestion-fixtures.js';
@@ -182,6 +183,16 @@ export {
   parseRawDocuments,
   validateParserContract,
 } from './raw-parse.js';
+export type {
+  GeminiTopicExtractionAgentOptions,
+  TopicExtractionAgent,
+  TopicExtractionInput,
+} from './topic-extraction-agent.js';
+export {
+  createDeterministicTopicExtractionAgent,
+  createGeminiTopicExtractionAgent,
+  topicsFromGeminiJson,
+} from './topic-extraction-agent.js';
 export type {
   CollectWebUrlSourceOptions,
   CollectWebUrlSourceResult,

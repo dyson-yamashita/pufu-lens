@@ -247,6 +247,7 @@ test('web parser generates keyword topics instead of link relations', async () =
         topicType: topic.topicType,
       })),
       [
+        { target: 'プ譜', topicType: 'keyword' },
         { target: 'Topic Fixture - Author：Series', topicType: 'keyword' },
         { target: 'Topic Fixture', topicType: 'keyword' },
         { target: 'Author', topicType: 'keyword' },

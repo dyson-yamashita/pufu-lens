@@ -6,7 +6,7 @@ Step 9 では、既存の fixture collection / parse / actor resolution / chunk 
 
 - `DATABASE_URL` が PostgreSQL / AGE / pgvector 入りの DB を指している。
 - `STORAGE_ROOT` または `LOCAL_STORAGE_ROOT` が local object storage の root を指している。
-- fixture ingest は外部 API、Agent、chat model を呼ばない。
+- fixture ingest は外部 API、Agent、chat model を呼ばない。Web 実データ parse では、環境変数が設定されている場合に `TopicExtractionAgent` が Gemini で topic を抽出する。
 
 ```bash
 export DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens
