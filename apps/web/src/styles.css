@@ -853,7 +853,7 @@ tr.selected-row {
 .graph-workspace {
   display: grid;
   gap: 16px;
-  grid-template-columns: minmax(280px, 0.45fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .graph-control-panel,
@@ -912,10 +912,6 @@ tr.selected-row {
   overflow: auto;
   padding: 12px;
   white-space: pre-wrap;
-}
-
-.graph-raw-panel {
-  grid-column: 1 / -1;
 }
 
 .table-frame {

@@ -86,6 +86,21 @@ assert.equal(normalizedPath.nodes[0]?.label, 'Nested Ada');
 assert.equal(normalizedPath.edges[0]?.source, '10');
 assert.equal(normalizedPath.edges[0]?.target, '11');
 
+const topicNode = {
+  id: '20',
+  label: 'Topic',
+  properties: {
+    graphNodeId: 'topic:uri:https%3A%2F%2Fnote.com%2Fhashtag%2Fsample',
+    target: 'https://note.com/hashtag/sample',
+    topicType: 'uri',
+  },
+};
+const normalizedTopic = normalizeGraphRows([{ topic: `${JSON.stringify(topicNode)}::vertex` }], {
+  maxEdges: 10,
+  maxNodes: 10,
+});
+assert.equal(normalizedTopic.nodes[0]?.label, 'https://note.com/hashtag/sample');
+
 const malformedAgtype = normalizeGraphRows(
   [
     {

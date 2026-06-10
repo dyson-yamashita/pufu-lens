@@ -26,6 +26,10 @@ export default async function ProjectGraphPage({
   }
 
   const presets = listGraphPresets();
+  const initialPreset = presets[0];
+  if (!initialPreset) {
+    throw new Error('Graph preset is not configured.');
+  }
 
   return (
     <AppShell active="graph" project={project}>
@@ -34,7 +38,7 @@ export default async function ProjectGraphPage({
         subtitle="固定 query preset で project graph の node / edge を確認します。"
       />
       <GraphViewerPanel
-        initialPresetId={presets[0]?.id ?? 'recent-relations'}
+        initialPresetId={initialPreset.id}
         presets={presets}
         projectSlug={project.slug}
       />

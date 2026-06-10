@@ -2,7 +2,7 @@
 
 ## 目的
 
-プロジェクトごとのサイドメニューに **Graph** を追加し、ログイン済み project member が固定 query preset を選択して、対象 project の AGE graph に対するクエリ結果をノード・エッジとして可視化できるようにする。
+プロジェクトごとのサイドメニューに **Graph** を追加し、ログイン済み project member が固定 query preset を開いたタイミングや preset 変更時に実行して、対象 project の AGE graph に対するクエリ結果をノード・エッジとして可視化できるようにする。
 
 この機能は project member がプロジェクト内の関係構造を確認するための閲覧・探索機能であり、Chat Agent の `graph-query` を置き換えるものではない。member が ingestion 後の graph relation、actor resolution、document relation を UI 上で確認し、データ不整合や関係の欠落を調査できる状態を目指す。
 
@@ -25,8 +25,7 @@
 - current project 表示
 - graph name 表示。ただし project から解決した読み取り専用表示で、ユーザーが別 graph を直接指定できない
 - fixed query preset selector
-- query description / read-only query preview
-- 実行ボタン
+- 開いたタイミングと preset 変更時の自動実行
 - graph canvas
 - selected node / edge detail panel
 - raw result table / JSON preview
@@ -34,16 +33,16 @@
 
 ### Cypher 実行境界
 
-初期実装は固定 query preset だけを実行する読み取り専用 Viewer とする。ユーザー入力の Cypher editor は置かず、URL の `projectSlug`、request body の `queryId`、preset ごとに許可された parameter だけを受け取る。
+初期実装は固定 query preset だけを実行する読み取り専用 Viewer とする。ユーザー入力の Cypher editor は置かず、URL の `projectSlug` と request body の `queryId` だけを受け取る。
 
-query preset は server side の registry で `queryId`、説明、Cypher 本体、record definition、parameter schema、row / node / edge limit を定義する。Cypher 本体はコード管理された固定文字列だけを実行対象にし、DB 実行時も read-only transaction、timeout、row / node / edge limit、project 固定の graph name 解決で制限する。
+query preset は server side の registry で `queryId`、Cypher 本体、record definition、row / node / edge limit を定義する。Cypher 本体はコード管理された固定文字列だけを実行対象にし、DB 実行時も read-only transaction、timeout、row / node / edge limit、project 固定の graph name 解決で制限する。
 
 server action または route handler は次を保証する。
 
 - URL の `projectSlug` から project を解決し、session user id で対象 project の membership を検証する
 - URL / body の graph name や Cypher 文字列を受け取らず、`projects.graph_name` と server side preset から解決する
-- preset ごとの parameter schema、実行 timeout、返却 row limit、node / edge limit を設ける
-- unknown `queryId`、許可外 parameter、過長 parameter、別 project の指定を拒否する
+- 実行 timeout、返却 row limit、node / edge limit を設ける
+- unknown `queryId`、別 project の指定、request body の Cypher 文字列を拒否する
 - `RETURN` 句が visualization 用の agtype 値を返せるよう、初期 contract を固定する
 - SQL injection を避けるため、graph name と Cypher query は SQL template / driver の parameter として渡す
 - query id、実行者、project、成功 / 失敗、所要時間、返却件数を audit log または構造化ログに残す。ただし raw / parsed 本文全文、secret、query parameter の全文は記録しない
@@ -85,7 +84,7 @@ type AgeViewerEdge = {
 - node は label / source type / entity type で色や形を分ける
 - edge は relation type を label として表示し、hover / selected 状態を持つ
 - zoom、pan、fit-to-view、selection、search in result、layout reset を提供する
-- mobile では preset selector、result table、detail panel を縦積みにし、canvas の高さを固定して操作領域を確保する
+- desktop / mobile ともに Graph Query、Graph、detail panel、raw result を縦積みにし、canvas の高さを固定して操作領域を確保する
 - 主要操作には `data-testid` を付与する
 
 ### ライブラリ方針
@@ -98,7 +97,7 @@ React / Next.js 側では Cytoscape instance を canvas 領域に閉じ込め、
 
 | step   | status    | 内容                                                                    | 完了条件                                                                                          |
 | ------ | --------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Step 1 | `planned` | Graph Viewer の UI / API contract と固定 query preset registry を固める | system / UI design docs に route、権限、query preset、結果 schema が反映される                    |
+| Step 1 | `planned` | Graph Viewer の UI / API contract と固定 query preset registry を固める | system / UI design docs に route、権限、固定 query preset、結果 schema が反映される               |
 | Step 2 | `planned` | server side の fixed query 実行 API と agtype 正規化を実装する          | project membership 認可、graph_name 解決、queryId 検証、limit / timeout、unit / route test が通る |
 | Step 3 | `planned` | project UI に Graph 入口、preset selector、result table を追加する      | project サイドメニューから Graph を開き、query 結果とエラー状態を確認できる                       |
 | Step 4 | `planned` | graph canvas と detail panel を追加する                                 | vertex / edge / path が node / edge として可視化され、重複排除される                              |
@@ -110,20 +109,19 @@ React / Next.js 側では Cytoscape instance を canvas 領域に閉じ込め、
 
 - `docs/designs/system/*` に Graph Viewer の API boundary、project membership authorization、query policy、audit log 方針を追加する。
 - `docs/designs/ui/ui-layout.md` に `/projects/[projectSlug]/graph` と画面構成を追加する。
-- 固定 query preset registry の仕様、`queryId`、parameter schema、record definition、limit を定義する。
+- 固定 query preset registry の仕様、`queryId`、record definition、limit を定義する。
 - 初期 preset を定義する。
-  - 最近 indexed された Document と隣接関係
-  - Actor と Document の関係
-  - SAME_AS / quote / mention など関係種別の探索
-  - orphan node / relation 欠落の調査
+  - `MATCH (source)-[relation]->(target) RETURN source, relation, target LIMIT 100`
+  - `MATCH (source:Actor)-[relation]->(target:Document) RETURN source, relation, target LIMIT 100`
+  - `MATCH (source)-[relation:SAME_AS]->(target) RETURN source, relation, target LIMIT 100`
 - result schema と error response を定義する。
 
 ### 受け入れ条件
 
 - Viewer が URL の `projectSlug` から解決した project graph だけを対象にすることが明示される。
 - ユーザー入力 Cypher を初期実装では扱わず、server side の固定 preset だけを実行することが明示される。
-- max rows、max nodes、max edges、timeout、preset parameter の初期値が決まる。
-- query preset が Pufu Lens の既存 graph relation と対応し、各 preset の record definition が明示される。
+- max rows、max nodes、max edges、timeout の初期値が決まる。
+- query preset が Pufu Lens の既存 graph relation と対応し、record definition が明示される。
 - AGE 公式ドキュメントの `cypher()` 呼び出し形式と record definition の制約を踏まえた API contract になっている。
 
 ## Step 2: Server API / agtype Normalizer
@@ -134,8 +132,7 @@ React / Next.js 側では Cytoscape instance を canvas 領域に閉じ込め、
 - URL の `projectSlug` から project を解決し、query 実行時に project membership を再検証する。
 - `projects.graph_name` を DB から解決し、ユーザー入力の graph name を受け取らない。
 - AGE 接続初期化で `LOAD 'age'` と search path を保証する。
-- request の `queryId` を server side preset registry に照合し、Cypher 文字列は request から受け取らない。
-- preset parameter を schema で検証する。
+- request の `queryId` を server side registry に照合し、Cypher 文字列は request から受け取らない。
 - `cypher()` の返却 agtype を `AgeViewerNode` / `AgeViewerEdge` / raw rows に正規化する。
 - read-only transaction、query timeout、row limit、node / edge limit、エラー正規化を実装する。
 
@@ -143,7 +140,7 @@ React / Next.js 側では Cytoscape instance を canvas 領域に閉じ込め、
 
 - 未ログインユーザーと対象 project の member ではないユーザーは API を実行できない。
 - 存在しない project、member でない project の結果が過剰に漏れない。
-- unknown `queryId`、request body の Cypher 文字列、許可外 parameter、過長 parameter が拒否される。
+- unknown `queryId`、request body の Cypher 文字列が拒否される。
 - vertex / edge / path / scalar / map / list を含む fixture test が通る。
 - query 失敗時も DB 接続や UI が不安定にならない。
 
@@ -153,16 +150,16 @@ React / Next.js 側では Cytoscape instance を canvas 領域に閉じ込め、
 
 - `/projects/[projectSlug]/graph` を追加する。
 - project navigation に **Graph** 入口を追加する。
-- current project 表示、preset selector、preset parameter form、read-only query preview、run button、loading / error / empty state を実装する。
+- current project 表示、preset selector、自動実行、loading / error / empty state を実装する。
 - raw result table と JSON preview を実装する。
-- graph nav item / preset / parameter form / run / table / error に `data-testid` を付与する。
+- graph nav item / preset selector / table / error に `data-testid` を付与する。
 
 ### 受け入れ条件
 
-- project サイドメニューから Graph を開き、preset を選んで実行できる。
+- project サイドメニューから Graph を開き、preset query が自動実行される。
 - query 成功時に raw result、所要時間、row count、limit 到達有無が表示される。
 - query 失敗時に安全なエラー文だけを表示する。
-- desktop / mobile で current project、preset selector、button、result table が重ならない。
+- desktop / mobile で current project、preset selector、result table が重ならない。
 
 ## Step 4: Graph Canvas / Detail Panel
 
@@ -204,12 +201,11 @@ React / Next.js 側では Cytoscape instance を canvas 領域に閉じ込め、
 
 - unit / route test:
   - fixed query registry の `queryId` 解決と unknown `queryId` 拒否。
-  - preset parameter schema の許可 / 拒否。
   - `projects.graph_name` 解決と project membership 認可。
   - agtype normalizer の vertex / edge / path / scalar / list / map。
   - limit / timeout / error response。
 - e2e:
-  - project member が project サイドメニューから Graph を開き、preset query を選択して実行する。
+  - project member が project サイドメニューから Graph を開き、preset query が自動実行される。
   - non-member は Graph の実行を拒否される。
   - desktop / mobile で current project、preset selector、canvas、detail panel、raw table が重ならない。
 - DB smoke:
