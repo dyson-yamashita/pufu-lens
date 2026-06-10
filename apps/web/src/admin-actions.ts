@@ -139,13 +139,7 @@ export async function updateProjectSettings(formData: FormData): Promise<void> {
     const settings = { description, name, visibility };
 
     if (visibility === project.visibility) {
-      await sql`
-        UPDATE public.projects
-        SET name = ${name},
-            description = ${description},
-            updated_at = now()
-        WHERE id = ${project.id}
-      `;
+      await updateProjectSettingsRow(sql, project.id, settings);
       return;
     }
 
