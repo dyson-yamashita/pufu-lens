@@ -1,5 +1,7 @@
+import { redirect } from 'next/navigation';
 import { updateProjectSettings } from '../../../../../src/admin-actions';
-import { getAdminProject } from '../../../../../src/admin-db';
+import { getProjectMembership } from '../../../../../src/admin-db';
+import { getSessionUserId } from '../../../../../src/auth-session';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
 import { AppShell, PageHeader, StatusBadge } from '../../../../../src/ui';
 
@@ -9,7 +11,21 @@ export default async function ProjectSettingsPage({
   readonly params: Promise<{ readonly projectSlug: string }>;
 }) {
   const { projectSlug } = await params;
-  const project = await getAdminProject(projectSlug);
+  const userId = await getSessionUserId();
+  if (!userId) {
+    redirect('/login');
+  }
+
+  let membership: Awaited<ReturnType<typeof getProjectMembership>>;
+  try {
+    membership = await getProjectMembership(projectSlug, userId);
+  } catch {
+    redirect('/projects');
+  }
+  if (!membership.canManageMembers) {
+    redirect(`/projects/${projectSlug}`);
+  }
+  const project = membership.project;
 
   return (
     <AppShell active="settings" project={project}>

@@ -1112,7 +1112,12 @@ async function applyProjectVisibilityChange(
 ): Promise<void> {
   if (visibility === 'private') {
     await writePublicProjectVisibilityManifest(project.slug, visibility);
-    await updateRow();
+    try {
+      await updateRow();
+    } catch (error) {
+      await writePublicProjectVisibilityManifest(project.slug, project.visibility);
+      throw error;
+    }
     return;
   }
 

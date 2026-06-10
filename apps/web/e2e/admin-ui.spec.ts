@@ -79,10 +79,7 @@ test('scenario: admin user can inspect stable operation controls', async ({ page
   await expect(page.getByTestId('parser-profile-create-button')).toBeVisible();
 
   await page.goto('/projects/sample-a/admin/settings');
-  await expect(page.getByTestId('project-settings-form')).toBeVisible();
-  await expect(page.getByTestId('project-settings-name-input')).toBeVisible();
-  await expect(page.getByTestId('project-settings-description-input')).toBeVisible();
-  await expect(page.getByTestId('project-settings-visibility-select')).toBeVisible();
-  await expect(page.getByTestId('project-settings-save-button')).toBeEnabled();
-  await expect(page.getByTestId('project-settings-visibility-sample-a')).toHaveText('public');
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByTestId('login-panel')).toBeVisible();
+  await expect(page.getByTestId('project-settings-form')).toHaveCount(0);
 });
