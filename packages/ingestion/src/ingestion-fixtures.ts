@@ -2,6 +2,10 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  createDeterministicTopicExtractionAgent,
+  type TopicExtractionAgent,
+} from './topic-extraction-agent.js';
 
 export type SourceType = 'github' | 'web' | 'gmail' | 'drive';
 export type ParsedDocumentType = 'issue' | 'pull_request' | 'web_page' | 'email' | 'drive_doc';
@@ -30,6 +34,12 @@ export interface ParsedRelation {
   metadata?: Record<string, unknown>;
 }
 
+export interface ParsedTopic {
+  topicType: 'keyword';
+  target: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface ParsedDocument {
   schemaVersion: 1;
   sourceType: SourceType;
@@ -41,6 +51,7 @@ export interface ParsedDocument {
   bodyText: string;
   actors: ActorMention[];
   relations: ParsedRelation[];
+  topics?: ParsedTopic[];
   emailQuotes?: Array<{
     messageId: string;
     from: string;
@@ -57,6 +68,10 @@ export interface IngestionFixtureCase {
   rawPath: string;
   snapshotPath: string;
   raw: RawDocumentContract;
+}
+
+export interface ParseRawContentOptions {
+  topicExtractionAgent?: TopicExtractionAgent;
 }
 
 interface GitHubRaw {
@@ -127,20 +142,24 @@ export function validateRawFixtureCase(fixtureCase: IngestionFixtureCase): Inges
   return fixtureCase;
 }
 
-export async function parseRawFixture(fixtureCase: IngestionFixtureCase): Promise<ParsedDocument> {
+export async function parseRawFixture(
+  fixtureCase: IngestionFixtureCase,
+  options: ParseRawContentOptions = {},
+): Promise<ParsedDocument> {
   const rawText = await readFile(join(repoRoot, fixtureCase.rawPath), 'utf8');
-  return parseRawContent(fixtureCase, rawText);
+  return parseRawContent(fixtureCase, rawText, options);
 }
 
-export function parseRawContent(
+export async function parseRawContent(
   fixtureCase: Pick<IngestionFixtureCase, 'raw' | 'sourceType'>,
   rawText: string,
-): ParsedDocument {
+  options: ParseRawContentOptions = {},
+): Promise<ParsedDocument> {
   switch (fixtureCase.sourceType) {
     case 'github':
       return parseGitHub(fixtureCase, JSON.parse(rawText) as GitHubRaw);
     case 'web':
-      return parseWeb(fixtureCase, rawText);
+      return parseWeb(fixtureCase, rawText, options.topicExtractionAgent);
     case 'gmail':
       return parseGmail(fixtureCase, JSON.parse(rawText) as GmailRaw);
     case 'drive':
@@ -160,6 +179,14 @@ export function validateParsedDocument(parsed: ParsedDocument): ParsedDocument {
   }
   if (!parsed.canonicalUri.includes(':')) {
     throw new Error(`Parsed document canonicalUri must include a scheme: ${parsed.sourceId}`);
+  }
+  for (const topic of parsed.topics ?? []) {
+    if (!topic || typeof topic !== 'object' || topic.topicType !== 'keyword') {
+      throw new Error(`Parsed document topicType must be 'keyword': ${parsed.sourceId}`);
+    }
+    if (typeof topic.target !== 'string' || topic.target.trim() === '') {
+      throw new Error(`Parsed document topic target is required: ${parsed.sourceId}`);
+    }
   }
   return parsed;
 }
@@ -217,10 +244,11 @@ function parseGitHub(
   });
 }
 
-function parseWeb(
+async function parseWeb(
   fixtureCase: Pick<IngestionFixtureCase, 'raw' | 'sourceType'>,
   html: string,
-): ParsedDocument {
+  topicExtractionAgent: TopicExtractionAgent = createDeterministicTopicExtractionAgent(),
+): Promise<ParsedDocument> {
   const title = textFromHtml(html.match(/<title>(?<title>.*?)<\/title>/is)?.groups?.title ?? '');
   const canonicalLink = [...html.matchAll(/<link\s+[^>]*>/gi)]
     .map((match) => match[0])
@@ -241,11 +269,12 @@ function parseWeb(
     docType: 'web_page',
     metadata: fixtureCase.raw.metadata,
     occurredAt: publishedAt,
-    relations: extractLinks(html).map((href) => ({ target: href, type: 'LINKS_TO' })),
+    relations: [],
     schemaVersion: 1,
     sourceId: fixtureCase.raw.sourceId,
     sourceType: 'web',
     title,
+    topics: await topicExtractionAgent.extractTopics({ bodyText, canonicalUri, html, title }),
   });
 }
 
@@ -472,13 +501,6 @@ function htmlEntityDecode(value: string): string {
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&(apos|#39);/g, "'");
-}
-
-function extractLinks(html: string): string[] {
-  const links = [...html.matchAll(/<a\s+[^>]*href=["'](?<href>[^"']+)["']/gi)].map(
-    (match) => match.groups?.href ?? '',
-  );
-  return [...new Set(links.filter((href) => href.startsWith('http')))];
 }
 
 function getHtmlAttribute(tag: string, attributeName: string): string | undefined {

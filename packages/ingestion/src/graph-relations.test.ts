@@ -166,14 +166,18 @@ test('storeGraphRelations creates SAME_AS only for another source type in the sa
   );
 });
 
-test('storeGraphRelations skips blank relation targets', async () => {
+test('storeGraphRelations materializes parsed keyword topics as mentions', async () => {
   const repository = new InMemoryGraphRelationsRepository([
     {
       document: documentRecord(),
       parsed: gmailParsed({
-        relations: [
-          { target: '   ', type: 'REPLY_TO' },
-          { target: 'https://example.test/valid', type: 'LINKS_TO' },
+        relations: [{ target: 'https://example.test/ignored', type: 'LINKS_TO' }],
+        topics: [
+          {
+            metadata: { source: 'title' },
+            target: 'Release Notes',
+            topicType: 'keyword',
+          },
         ],
       }),
       rawContentHash: 'same-hash',
@@ -187,8 +191,40 @@ test('storeGraphRelations skips blank relation targets', async () => {
     repository,
   });
 
-  assert.equal([...repository.nodes.keys()].filter((key) => key.startsWith('topic:')).length, 1);
-  assert.ok(repository.nodes.has('topic:uri:https%3A%2F%2Fexample.test%2Fvalid'));
+  assert.ok(repository.nodes.has('topic:keyword:release%20notes'));
+  assert.ok(
+    repository.hasEdge(
+      'document:email:thread-alpha%3Amsg-alpha-003',
+      'MENTIONS',
+      'topic:keyword:release%20notes',
+    ),
+  );
+  assert.equal(
+    repository.nodes.get('topic:keyword:release%20notes')?.properties.target,
+    'Release Notes',
+  );
+  assert.equal(repository.nodes.has('topic:uri:https%3A%2F%2Fexample.test%2Fignored'), false);
+});
+
+test('storeGraphRelations skips blank reply relation targets', async () => {
+  const repository = new InMemoryGraphRelationsRepository([
+    {
+      document: documentRecord(),
+      parsed: gmailParsed({
+        relations: [{ target: '   ', type: 'REPLY_TO' }],
+      }),
+      rawContentHash: 'same-hash',
+      rawDocumentId: 'raw-email-1',
+    },
+  ]);
+
+  await storeGraphRelations({
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  });
+
+  assert.equal([...repository.nodes.keys()].filter((key) => key.startsWith('topic:')).length, 0);
 });
 
 test('storeGraphRelations rejects stale document graph keys before writing graph data', async () => {
@@ -387,7 +423,7 @@ function documentRecord(
 }
 
 function gmailParsed(
-  input: Partial<Pick<ParsedDocument, 'emailQuotes' | 'relations'>> = {},
+  input: Partial<Pick<ParsedDocument, 'emailQuotes' | 'relations' | 'topics'>> = {},
 ): ParsedDocument {
   return {
     actors: [
@@ -412,6 +448,7 @@ function gmailParsed(
     sourceId: 'thread-alpha:msg-alpha-003',
     sourceType: 'gmail',
     title: 'Fixture ingestion review',
+    topics: input.topics,
   };
 }
 

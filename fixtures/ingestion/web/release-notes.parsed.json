@@ -7,14 +7,25 @@
     "fetchedAt": "2026-05-07T10:00:00.000Z"
   },
   "occurredAt": "2026-05-07T10:00:00.000Z",
-  "relations": [
-    {
-      "target": "https://example.test/pufu/contract",
-      "type": "LINKS_TO"
-    }
-  ],
+  "relations": [],
   "schemaVersion": 1,
   "sourceId": "https://example.test/pufu/release-notes",
   "sourceType": "web",
-  "title": "Pufu Sample Release Notes"
+  "title": "Pufu Sample Release Notes",
+  "topics": [
+    {
+      "metadata": {
+        "source": "title"
+      },
+      "target": "Pufu Sample Release Notes",
+      "topicType": "keyword"
+    },
+    {
+      "metadata": {
+        "source": "quoted_phrase"
+      },
+      "target": "local ingestion",
+      "topicType": "keyword"
+    }
+  ]
 }

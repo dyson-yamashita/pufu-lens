@@ -191,7 +191,7 @@ async function inspectRow(input: {
   const parsed = input.row.parsedUri
     ? await safeReadParsed(input.storage, input.row.parsedUri)
     : null;
-  const parsedFromRaw = rawText === undefined ? null : parseRawSafely(input.row, rawText);
+  const parsedFromRaw = rawText === undefined ? null : await parseRawSafely(input.row, rawText);
   const sourceContract = validateSourceContract({
     actualContentHash,
     parsed,
@@ -367,10 +367,10 @@ async function safeReadParsed(
   }
 }
 
-function parseRawSafely(row: InspectRow, rawText: string): ParsedDocument | null {
+async function parseRawSafely(row: InspectRow, rawText: string): Promise<ParsedDocument | null> {
   try {
     return validateParsedDocument(
-      parseRawContent(
+      await parseRawContent(
         {
           raw: {
             contentHash: row.contentHash,

@@ -757,12 +757,11 @@ erDiagram
 「**1 ドキュメント = 1 グラフノード**」を基本ルールにする。ベクトル検索用のチャンクは別テーブル `document_chunks` に格納し、`document_id` で親ドキュメント＝グラフノードへ追跡できるようにする。1 つの Document に対し N 個のチャンクが紐づく（N=1 もあり得る）。
 
 ```
-(Actor)-[:SENT]->(Document)-[:MENTIONS]->(Topic)
+(Actor)-[:SENT]->(Document)-[:MENTIONS]->(Topic)   // parsed topic の keyword/concept target
 (Document)-[:REPLY_TO]->(Topic)                    // parsed relation の message target
 (Issue)-[:LINKED_TO]->(PullRequest)
 (Actor)-[:AUTHORED]->(PullRequest)-[:CLOSES]->(Issue)
 (Actor)-[:OWNS]->(DriveDoc)-[:REFERENCES]->(Issue)
-(WebPage)-[:DESCRIBES]->(Topic)
 (Document)-[:SAME_AS]->(Document)                  // ソースをまたぐ意味的同一
                                                     // 例: 同じ仕様書の DriveDoc と WebPage
 (Document)-[:HAS_CHUNK]->(Chunk?)                  // チャンクはアプリ層 (document_chunks) で 1:N 管理
@@ -775,7 +774,7 @@ erDiagram
 - Step 8 の実装では AGE 互換性を優先し、実際の primary label は `Document` / `Actor` / `Topic` に寄せる。
 - `Email` / `Issue` / `PullRequest` / `DriveDoc` / `WebPage` などの詳細種別は `graphLabels` property と `documents.doc_type` に保持する。
 - `Actor` — 人物・組織・Bot（メール送信者、PR 作成者、PR レビュアー等）。`actors.id` と 1:1。
-- `Topic` — parsed relation の target。`LINKS_TO` は `topic:uri:<encoded target>`、`REPLY_TO` は `topic:message:<encoded target>` として作成する。
+- `Topic` — 文書から抽出した意味キーワード / 概念。Web ページは `TopicExtractionAgent` が生成した parsed `topics`（`topicType: "keyword"`）から `topic:keyword:<encoded lowercase target>` として作成し、`(Document)-[:MENTIONS]->(Topic)` で接続する。`target` property には元の表記を保持する。URL リンクは Topic ノードにしない。メールの `REPLY_TO` relation は `topic:message:<encoded target>` として `(Document)-[:REPLY_TO]->(Topic {topicType: "message"})` を作成する。
 
 #### 4.1. Actor と名寄せ
 

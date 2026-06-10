@@ -11,6 +11,8 @@ import type {
 } from '../packages/ingestion/dist/index.js';
 import {
   BUILT_IN_PARSER_ARTIFACT_HASH,
+  createDeterministicTopicExtractionAgent,
+  createGeminiTopicExtractionAgent,
   defaultParserContract,
   parseRawDocuments,
 } from '../packages/ingestion/dist/index.js';
@@ -35,12 +37,22 @@ async function main(): Promise<void> {
       projectSlug,
       repository,
       storage,
+      topicExtractionAgent: createTopicExtractionAgentFromEnv(),
     });
 
     console.log(JSON.stringify(result, null, 2));
   } finally {
     await sql.end();
   }
+}
+
+function createTopicExtractionAgentFromEnv() {
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  const model = process.env.GEMINI_CHAT_MODEL?.trim();
+  if (apiKey && model) {
+    return createGeminiTopicExtractionAgent({ apiKey, model });
+  }
+  return createDeterministicTopicExtractionAgent();
 }
 
 class PostgresRawParseRepository implements RawParseRepository {

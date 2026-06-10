@@ -4,7 +4,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import type { IngestionFixtureCase } from './ingestion-fixtures.js';
+import type { IngestionFixtureCase, ParsedDocument } from './ingestion-fixtures.js';
 import {
   loadIngestionFixtureCases,
   parseRawFixture,
@@ -212,6 +212,136 @@ test('web parser reads JSON-LD datePublished from root arrays', async () => {
     );
 
     assert.equal(parsed.occurredAt, '2019-05-07T01:50:58.000Z');
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
+test('web parser generates keyword topics instead of link relations', async () => {
+  const rawPath = await writeTempRawFixture(
+    'web-topic-keywords.html',
+    `<!doctype html>
+<html>
+  <head>
+    <title>Topic Fixture - Author：Series</title>
+    <meta name="keywords" content="Pufu, Graph">
+  </head>
+  <body>
+    <article>
+      <h1>Topic Fixture</h1>
+      <p>This article explains &quot;semantic topics&quot; and 「日本語トピック」.</p>
+      <a href="https://example.test/login">Login</a>
+      <a href="https://note.example.test/hashtag/%E3%83%97%E8%AD%9C">link tag</a>
+    </article>
+  </body>
+</html>`,
+  );
+
+  try {
+    const parsed = await parseRawFixture(buildFixtureCase('web-topic-keywords', 'web', rawPath));
+
+    assert.deepEqual(parsed.relations, []);
+    assert.deepEqual(
+      parsed.topics?.map((topic) => ({
+        target: topic.target,
+        topicType: topic.topicType,
+      })),
+      [
+        { target: 'プ譜', topicType: 'keyword' },
+        { target: 'Topic Fixture - Author：Series', topicType: 'keyword' },
+        { target: 'Topic Fixture', topicType: 'keyword' },
+        { target: 'Author', topicType: 'keyword' },
+        { target: 'Series', topicType: 'keyword' },
+        { target: 'Pufu', topicType: 'keyword' },
+        { target: 'Graph', topicType: 'keyword' },
+        { target: 'semantic topics', topicType: 'keyword' },
+        { target: '日本語トピック', topicType: 'keyword' },
+      ],
+    );
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
+test('parsed document validation rejects unknown topic types', () => {
+  const parsed = {
+    actors: [],
+    bodyText: 'Body',
+    canonicalUri: 'https://example.test/topic',
+    docType: 'web_page',
+    metadata: {},
+    occurredAt: '2026-05-08T00:00:00.000Z',
+    relations: [],
+    schemaVersion: 1,
+    sourceId: 'https://example.test/topic',
+    sourceType: 'web',
+    title: 'Topic validation',
+    topics: [{ target: 'Topic', topicType: 'uri' }],
+  } as unknown as ParsedDocument;
+
+  assert.throws(
+    () => validateParsedDocument(parsed),
+    /Parsed document topicType must be 'keyword'/,
+  );
+});
+
+test('parsed document validation rejects malformed topic entries safely', () => {
+  const nullTopicParsed = {
+    actors: [],
+    bodyText: 'Body',
+    canonicalUri: 'https://example.test/topic',
+    docType: 'web_page',
+    metadata: {},
+    occurredAt: '2026-05-08T00:00:00.000Z',
+    relations: [],
+    schemaVersion: 1,
+    sourceId: 'https://example.test/topic',
+    sourceType: 'web',
+    title: 'Topic validation',
+    topics: [null],
+  } as unknown as ParsedDocument;
+
+  assert.throws(
+    () => validateParsedDocument(nullTopicParsed),
+    /Parsed document topicType must be 'keyword'/,
+  );
+
+  const invalidTargetParsed = {
+    ...nullTopicParsed,
+    topics: [{ target: 42, topicType: 'keyword' }],
+  } as unknown as ParsedDocument;
+
+  assert.throws(
+    () => validateParsedDocument(invalidTargetParsed),
+    /Parsed document topic target is required/,
+  );
+});
+
+test('web parser stops topic extraction after the first ten candidates', async () => {
+  const rawPath = await writeTempRawFixture(
+    'web-topic-limit.html',
+    `<!doctype html>
+<html>
+  <head>
+    <title>Topic Cap</title>
+    <meta name="keywords" content="one,two,three,four,five,six,seven,eight,nine,ten">
+  </head>
+  <body>
+    <article>
+      <p>This late body phrase should not be selected: &quot;late quoted phrase&quot;.</p>
+    </article>
+  </body>
+</html>`,
+  );
+
+  try {
+    const parsed = await parseRawFixture(buildFixtureCase('web-topic-limit', 'web', rawPath));
+
+    assert.equal(parsed.topics?.length, 10);
+    assert.deepEqual(
+      parsed.topics?.map((topic) => topic.target),
+      ['Topic Cap', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'],
+    );
   } finally {
     await rm(join(repoRoot, rawPath), { force: true });
   }
