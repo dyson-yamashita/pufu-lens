@@ -4,7 +4,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import type { IngestionFixtureCase } from './ingestion-fixtures.js';
+import type { IngestionFixtureCase, ParsedDocument } from './ingestion-fixtures.js';
 import {
   loadIngestionFixtureCases,
   parseRawFixture,
@@ -223,13 +223,13 @@ test('web parser generates keyword topics instead of link relations', async () =
     `<!doctype html>
 <html>
   <head>
-    <title>Topic Fixture｜Author</title>
+    <title>Topic Fixture - Author：Series</title>
     <meta name="keywords" content="Pufu, Graph">
   </head>
   <body>
     <article>
       <h1>Topic Fixture</h1>
-      <p>This article explains &quot;semantic topics&quot;.</p>
+      <p>This article explains &quot;semantic topics&quot; and 「日本語トピック」.</p>
       <a href="https://example.test/login">Login</a>
       <a href="https://note.example.test/hashtag/%E3%83%97%E8%AD%9C">link tag</a>
     </article>
@@ -247,17 +247,41 @@ test('web parser generates keyword topics instead of link relations', async () =
         topicType: topic.topicType,
       })),
       [
-        { target: 'Topic Fixture｜Author', topicType: 'keyword' },
+        { target: 'Topic Fixture - Author：Series', topicType: 'keyword' },
         { target: 'Topic Fixture', topicType: 'keyword' },
         { target: 'Author', topicType: 'keyword' },
+        { target: 'Series', topicType: 'keyword' },
         { target: 'Pufu', topicType: 'keyword' },
         { target: 'Graph', topicType: 'keyword' },
         { target: 'semantic topics', topicType: 'keyword' },
+        { target: '日本語トピック', topicType: 'keyword' },
       ],
     );
   } finally {
     await rm(join(repoRoot, rawPath), { force: true });
   }
+});
+
+test('parsed document validation rejects unknown topic types', () => {
+  const parsed = {
+    actors: [],
+    bodyText: 'Body',
+    canonicalUri: 'https://example.test/topic',
+    docType: 'web_page',
+    metadata: {},
+    occurredAt: '2026-05-08T00:00:00.000Z',
+    relations: [],
+    schemaVersion: 1,
+    sourceId: 'https://example.test/topic',
+    sourceType: 'web',
+    title: 'Topic validation',
+    topics: [{ target: 'Topic', topicType: 'uri' }],
+  } as unknown as ParsedDocument;
+
+  assert.throws(
+    () => validateParsedDocument(parsed),
+    /Parsed document topicType must be 'keyword'/,
+  );
 });
 
 test('web parser falls back to fetchedAt when published date is missing', async () => {

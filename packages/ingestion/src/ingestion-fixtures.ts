@@ -169,6 +169,9 @@ export function validateParsedDocument(parsed: ParsedDocument): ParsedDocument {
     throw new Error(`Parsed document canonicalUri must include a scheme: ${parsed.sourceId}`);
   }
   for (const topic of parsed.topics ?? []) {
+    if (topic.topicType !== 'keyword') {
+      throw new Error(`Parsed document topicType must be 'keyword': ${parsed.sourceId}`);
+    }
     if (topic.target.trim() === '') {
       throw new Error(`Parsed document topic target is required: ${parsed.sourceId}`);
     }
@@ -527,7 +530,7 @@ function titleTopicCandidates(title: string): string[] {
     return [];
   }
   const parts = normalized
-    .split(/[|｜]/)
+    .split(/[|｜：]|\s+[-–—:]\s+/)
     .map((part) => normalizeTopicTarget(part))
     .filter((part) => part.length >= 2);
   return [normalized, ...parts];
@@ -553,8 +556,9 @@ function extractMetaKeywords(html: string): string[] {
 }
 
 function extractQuotedTopicPhrases(bodyText: string): string[] {
-  return [...bodyText.matchAll(/"(?<phrase>[^"]{2,80})"/g)].map(
-    (match) => match.groups?.phrase ?? '',
+  const regex = /"([^"]{2,80})"|「([^」]{2,80})」|『([^』]{2,80})』|“([^”]{2,80})”/g;
+  return [...bodyText.matchAll(regex)].map(
+    (match) => match[1] ?? match[2] ?? match[3] ?? match[4] ?? '',
   );
 }
 
