@@ -33,7 +33,7 @@ export default async function ProjectOverviewPage({
     project.visibility === 'public' ? await getVisiblePublicProject(project.slug) : undefined;
 
   return (
-    <AppShell active="projects" project={project}>
+    <AppShell active="overview" project={project}>
       <PageHeader title={project.name} subtitle="プロジェクトの report と chat への入口です。" />
       <section className="panel" data-testid="project-overview-panel">
         <div className="project-card-header">
@@ -49,6 +49,9 @@ export default async function ProjectOverviewPage({
           </span>
         </div>
         {isMember ? <MetricStrip project={project} /> : null}
+        {project.description ? (
+          <p data-testid="project-overview-description">{project.description}</p>
+        ) : null}
         <p className="notice" data-testid="project-overview-tab-notice">
           Reports と Chat は左のタブから開けます。
         </p>

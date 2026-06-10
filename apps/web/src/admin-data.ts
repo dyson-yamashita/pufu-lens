@@ -46,6 +46,7 @@ export interface ParserProfileSummary {
 }
 
 export interface ProjectSummary {
+  readonly description: string | null;
   readonly slug: string;
   readonly name: string;
   readonly status: 'active' | 'attention';
@@ -64,6 +65,7 @@ export const fallbackProjects = [
   {
     slug: 'sample-a',
     name: 'Sample A',
+    description: '公開レポートと Public Chat を確認できるサンプルプロジェクトです。',
     status: 'attention',
     memberCount: 4,
     rawCount: 42,
@@ -145,6 +147,7 @@ export const fallbackProjects = [
   {
     slug: 'sample-b',
     name: 'Sample B',
+    description: 'private project の操作確認に使うサンプルプロジェクトです。',
     status: 'active',
     memberCount: 2,
     rawCount: 17,

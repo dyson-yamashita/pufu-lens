@@ -110,19 +110,53 @@ export async function updateProjectVisibility(formData: FormData): Promise<void>
 
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
-    if (visibility === 'private') {
-      await writePublicProjectVisibilityManifest(projectSlug, visibility);
-      await updateProjectVisibilityRow(sql, project.id, visibility);
+    await applyProjectVisibilityChange(
+      project,
+      visibility,
+      async () => {
+        await updateProjectVisibilityRow(sql, project.id, visibility);
+      },
+      async () => {
+        await updateProjectVisibilityRow(sql, project.id, project.visibility);
+      },
+    );
+  });
+
+  revalidateProject(projectSlug);
+}
+
+export async function updateProjectSettings(formData: FormData): Promise<void> {
+  const projectSlug = requireFormValue(formData, 'projectSlug');
+  const name = requireFormValue(formData, 'name').trim();
+  if (!name) {
+    throw new Error('name is required.');
+  }
+  const description = formData.get('description')?.toString().trim() || null;
+  const visibility = requireProjectVisibility(requireFormValue(formData, 'visibility'));
+
+  await withSql(async (sql) => {
+    const project = await requireAdminProject(sql, projectSlug);
+    const settings = { description, name, visibility };
+
+    if (visibility === project.visibility) {
+      await updateProjectSettingsRow(sql, project.id, settings);
       return;
     }
 
-    await updateProjectVisibilityRow(sql, project.id, visibility);
-    try {
-      await writePublicProjectVisibilityManifest(projectSlug, visibility);
-    } catch (error) {
-      await updateProjectVisibilityRow(sql, project.id, project.visibility);
-      throw error;
-    }
+    await applyProjectVisibilityChange(
+      project,
+      visibility,
+      async () => {
+        await updateProjectSettingsRow(sql, project.id, settings);
+      },
+      async () => {
+        await updateProjectSettingsRow(sql, project.id, {
+          description: project.description,
+          name: project.name,
+          visibility: project.visibility,
+        });
+      },
+    );
   });
 
   revalidateProject(projectSlug);
@@ -794,7 +828,9 @@ async function requireAdminProject(
   projectSlug: string,
 ): Promise<{
   readonly adminUserId: string;
+  readonly description: string | null;
   readonly id: string;
+  readonly name: string;
   readonly slug: string;
   readonly visibility: ProjectVisibility;
 }> {
@@ -803,6 +839,8 @@ async function requireAdminProject(
     SELECT
       projects.id::text AS id,
       projects.slug,
+      projects.name,
+      projects.description,
       COALESCE(projects.visibility, 'private') AS visibility,
       users.id::text AS admin_user_id
     FROM public.projects
@@ -814,7 +852,9 @@ async function requireAdminProject(
       AND (users.role = 'admin' OR project_members.role = 'admin')
   `) as Array<{
     admin_user_id: string;
+    description: string | null;
     id: string;
+    name: string;
     slug: string;
     visibility: ProjectVisibility;
   }>;
@@ -824,7 +864,9 @@ async function requireAdminProject(
   }
   return {
     adminUserId: project.admin_user_id,
+    description: project.description,
     id: project.id,
+    name: project.name,
     slug: project.slug,
     visibility: project.visibility,
   };
@@ -1052,6 +1094,36 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+async function applyProjectVisibilityChange(
+  project: {
+    readonly id: string;
+    readonly slug: string;
+    readonly visibility: ProjectVisibility;
+  },
+  visibility: ProjectVisibility,
+  updateRow: () => Promise<void>,
+  rollbackRow: () => Promise<void>,
+): Promise<void> {
+  if (visibility === 'private') {
+    await writePublicProjectVisibilityManifest(project.slug, visibility);
+    try {
+      await updateRow();
+    } catch (error) {
+      await writePublicProjectVisibilityManifest(project.slug, project.visibility);
+      throw error;
+    }
+    return;
+  }
+
+  await updateRow();
+  try {
+    await writePublicProjectVisibilityManifest(project.slug, visibility);
+  } catch (error) {
+    await rollbackRow();
+    throw error;
+  }
+}
+
 async function updateProjectVisibilityRow(
   sql: postgres.Sql,
   projectId: string,
@@ -1060,6 +1132,25 @@ async function updateProjectVisibilityRow(
   await sql`
     UPDATE public.projects
     SET visibility = ${visibility},
+        updated_at = now()
+    WHERE id = ${projectId}
+  `;
+}
+
+async function updateProjectSettingsRow(
+  sql: postgres.Sql,
+  projectId: string,
+  input: {
+    readonly description: string | null;
+    readonly name: string;
+    readonly visibility: ProjectVisibility;
+  },
+): Promise<void> {
+  await sql`
+    UPDATE public.projects
+    SET name = ${input.name},
+        description = ${input.description},
+        visibility = ${input.visibility},
         updated_at = now()
     WHERE id = ${projectId}
   `;
@@ -1209,8 +1300,13 @@ function requireFormValue(formData: FormData, key: string): string {
 
 function revalidateProject(projectSlug: string): void {
   revalidatePath('/projects');
+  revalidatePath(`/projects/${projectSlug}`);
+  revalidatePath(`/projects/${projectSlug}/chat`);
+  revalidatePath(`/projects/${projectSlug}/graph`);
+  revalidatePath(`/projects/${projectSlug}/members`);
   revalidatePath(`/projects/${projectSlug}/admin/data-sources`);
   revalidatePath(`/projects/${projectSlug}/admin/ingestion`);
   revalidatePath(`/projects/${projectSlug}/admin/parser-profiles`);
+  revalidatePath(`/projects/${projectSlug}/admin/settings`);
   revalidatePath(`/projects/${projectSlug}/reports`);
 }

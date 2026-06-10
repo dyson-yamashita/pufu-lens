@@ -8,6 +8,14 @@ assert.equal(getProject('sample-a').failedCount, 2);
 assert.equal(getProject('sample-b').failedCount, 0);
 assert.equal(getProject('sample-a').visibility, 'public');
 assert.equal(getProject('sample-b').visibility, 'private');
+assert.equal(
+  getProject('sample-a').description,
+  '公開レポートと Public Chat を確認できるサンプルプロジェクトです。',
+);
+assert.equal(
+  getProject('sample-b').description,
+  'private project の操作確認に使うサンプルプロジェクトです。',
+);
 assert.notDeepEqual(
   getProject('sample-a').dataSources.map((source) => source.id),
   getProject('sample-b').dataSources.map((source) => source.id),
