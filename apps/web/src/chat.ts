@@ -16,6 +16,7 @@ export interface ChatSource {
   readonly documentId: string;
   readonly docType: string;
   readonly rawDocumentId: string;
+  readonly snippet?: string;
   readonly title: string;
 }
 
@@ -127,6 +128,23 @@ export interface PublicChatProvider {
     readonly report: PublicReportJsonV1;
     readonly sources: readonly PublicChatSource[];
   }): Promise<string>;
+}
+
+export function graphQuerySearchPatterns(query: string): string[] {
+  const normalized = query.replace(/\s+/g, ' ').trim();
+  const withoutRequestSuffix = normalized
+    .replace(/(について|に関する|を|の)?(結果|情報)?(を)?(ください|教えて|知りたいです?)。?$/u, '')
+    .trim();
+  const candidates = [
+    normalized,
+    normalized.replace(/の?グラフクエリ.*$/u, '').replace(/graph query.*$/iu, ''),
+    normalized.replace(/(について|に関する).*$/u, ''),
+    withoutRequestSuffix.replace(/の?グラフクエリ.*$/u, '').replace(/graph query.*$/iu, ''),
+    withoutRequestSuffix.replace(/(について|に関する).*$/u, ''),
+  ]
+    .map((candidate) => candidate.replace(/^(現在|最新)?の?/u, '').trim())
+    .filter((candidate) => candidate.length > 0);
+  return [...new Set(candidates)].slice(0, 5).map((candidate) => `%${candidate}%`);
 }
 
 export interface RunPublicChatOptions {
@@ -557,13 +575,14 @@ export function createPostgresChatRepository(sql: postgres.Sql): ChatRepository 
             d.doc_type,
             coalesce(d.title, 'Untitled') AS title,
             coalesce(d.canonical_uri, '') AS canonical_uri,
+            left(coalesce(dc.content, d.summary, ''), 700) AS snippet,
             dc.embedding <=> ${vector}::vector AS distance
           FROM public.document_chunks dc
           JOIN public.documents d ON d.id = dc.document_id
           WHERE dc.project_id = ${projectId}
           ORDER BY d.id, dc.embedding <=> ${vector}::vector
         )
-        SELECT document_id, raw_document_id, doc_type, title, canonical_uri
+        SELECT document_id, raw_document_id, doc_type, title, canonical_uri, snippet
         FROM distinct_chunks
         ORDER BY distance
         LIMIT ${limit}
@@ -571,18 +590,29 @@ export function createPostgresChatRepository(sql: postgres.Sql): ChatRepository 
       return rows.map(sourceFromRow);
     },
     async graphQuery({ limit, projectId, query }) {
+      const patterns = graphQuerySearchPatterns(query);
+      const searchPatterns = patterns.length > 0 ? patterns : [`%${query}%`];
       const rows = (await sql`
         SELECT
           d.id::text AS document_id,
           d.raw_document_id::text AS raw_document_id,
           d.doc_type,
           coalesce(d.title, 'Untitled') AS title,
-          coalesce(d.canonical_uri, '') AS canonical_uri
+          coalesce(d.canonical_uri, '') AS canonical_uri,
+          left(coalesce(d.summary, dc.content, ''), 700) AS snippet
         FROM public.documents d
+        LEFT JOIN LATERAL (
+          SELECT content
+          FROM public.document_chunks
+          WHERE project_id = d.project_id
+            AND document_id = d.id
+          ORDER BY chunk_index ASC
+          LIMIT 1
+        ) dc ON true
         WHERE d.project_id = ${projectId}
           AND (
-            d.title ILIKE ${`%${query}%`}
-            OR d.summary ILIKE ${`%${query}%`}
+            d.title ILIKE ANY (${searchPatterns})
+            OR d.summary ILIKE ANY (${searchPatterns})
           )
         ORDER BY d.occurred_at DESC NULLS LAST, d.updated_at DESC
         LIMIT ${limit}
@@ -599,8 +629,17 @@ export function createPostgresChatRepository(sql: postgres.Sql): ChatRepository 
           d.raw_document_id::text AS raw_document_id,
           d.doc_type,
           coalesce(d.title, 'Untitled') AS title,
-          coalesce(d.canonical_uri, '') AS canonical_uri
+          coalesce(d.canonical_uri, '') AS canonical_uri,
+          left(coalesce(d.summary, dc.content, ''), 700) AS snippet
         FROM public.documents d
+        LEFT JOIN LATERAL (
+          SELECT content
+          FROM public.document_chunks
+          WHERE project_id = d.project_id
+            AND document_id = d.id
+          ORDER BY chunk_index ASC
+          LIMIT 1
+        ) dc ON true
         WHERE d.project_id = ${projectId}
           AND d.id IN ${sql(documentIds)}
         ORDER BY d.occurred_at DESC NULLS LAST, d.updated_at DESC
@@ -614,9 +653,18 @@ export function createPostgresChatRepository(sql: postgres.Sql): ChatRepository 
           d.raw_document_id::text AS raw_document_id,
           d.doc_type,
           coalesce(d.title, 'Untitled') AS title,
-          coalesce(d.canonical_uri, rd.source_uri, '') AS canonical_uri
+          coalesce(d.canonical_uri, rd.source_uri, '') AS canonical_uri,
+          left(coalesce(d.summary, dc.content, ''), 700) AS snippet
         FROM public.documents d
         JOIN public.raw_documents rd ON rd.id = d.raw_document_id
+        LEFT JOIN LATERAL (
+          SELECT content
+          FROM public.document_chunks
+          WHERE project_id = d.project_id
+            AND document_id = d.id
+          ORDER BY chunk_index ASC
+          LIMIT 1
+        ) dc ON true
         WHERE d.project_id = ${projectId}
           AND coalesce(rd.byte_size, 0) <= ${maxBytes}
         ORDER BY rd.fetched_at DESC
@@ -631,9 +679,18 @@ export function createPostgresChatRepository(sql: postgres.Sql): ChatRepository 
           d.raw_document_id::text AS raw_document_id,
           d.doc_type,
           coalesce(d.title, 'Untitled') AS title,
-          coalesce(d.canonical_uri, rd.parsed_uri, '') AS canonical_uri
+          coalesce(d.canonical_uri, rd.parsed_uri, '') AS canonical_uri,
+          left(coalesce(d.summary, dc.content, ''), 700) AS snippet
         FROM public.documents d
         JOIN public.raw_documents rd ON rd.id = d.raw_document_id
+        LEFT JOIN LATERAL (
+          SELECT content
+          FROM public.document_chunks
+          WHERE project_id = d.project_id
+            AND document_id = d.id
+          ORDER BY chunk_index ASC
+          LIMIT 1
+        ) dc ON true
         WHERE d.project_id = ${projectId}
           AND rd.parsed_uri IS NOT NULL
         ORDER BY rd.parsed_at DESC NULLS LAST
@@ -724,6 +781,7 @@ interface ChatSourceRow {
   readonly document_id: string;
   readonly doc_type: string;
   readonly raw_document_id: string;
+  readonly snippet?: string | null;
   readonly title: string;
 }
 
@@ -733,6 +791,7 @@ function sourceFromRow(row: ChatSourceRow): ChatSource {
     documentId: row.document_id,
     docType: row.doc_type,
     rawDocumentId: row.raw_document_id,
+    snippet: row.snippet?.trim() || undefined,
     title: row.title,
   };
 }

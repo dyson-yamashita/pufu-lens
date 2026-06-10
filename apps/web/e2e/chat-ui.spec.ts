@@ -1,27 +1,48 @@
 import { expect, test } from '@playwright/test';
 
-test('scenario: member submits private chat question and sees sources and tool calls', async ({
+test('scenario: public project chat keeps multiple turns with sources and tool calls', async ({
   page,
 }) => {
-  await page.route('**/api/projects/sample-a/chat', async (route) => {
+  await page.route('**/api/public/projects/sample-a/chat', async (route) => {
+    const body = route.request().postDataJSON() as { question?: string };
+    if (body.question?.includes('2件目')) {
+      await route.fulfill({
+        body: JSON.stringify({
+          answer: '2件目の回答です。',
+          projectSlug: 'sample-a',
+          reportId: 'report-a',
+          sources: [
+            {
+              label: 'Issue Summary',
+              publicSourceId: 'src_issue_001',
+              sectionId: 'issues',
+            },
+          ],
+          status: 'answered',
+          toolCalls: [{ name: 'public-context-fetch', resultCount: 2 }],
+        }),
+        contentType: 'application/json',
+        status: 200,
+      });
+      return;
+    }
     await route.fulfill({
       body: JSON.stringify({
-        answer: '質問「直近の未解決 Issue を要約して」に関連する source は Spec Update です。',
+        answer:
+          '質問「直近の未解決 Issue を要約して」に関連する source は **Spec Update** です。\n- Markdown bullet',
         projectSlug: 'sample-a',
+        reportId: 'report-a',
         sources: [
           {
-            canonicalUri: 'https://example.com/spec',
-            documentId: 'doc-a',
-            docType: 'web_page',
-            rawDocumentId: 'raw-a',
-            title: 'Spec Update',
+            label: 'https://example.com/spec',
+            publicSourceId: 'src_spec_001',
+            sectionId: 'activity',
           },
         ],
         status: 'answered',
         toolCalls: [
-          { name: 'vector-search', resultCount: 1 },
-          { name: 'graph-query', resultCount: 1 },
-          { name: 'document-fetch', resultCount: 1 },
+          { name: 'public-report-fetch', resultCount: 1 },
+          { name: 'public-context-fetch', resultCount: 1 },
         ],
       }),
       contentType: 'application/json',
@@ -32,12 +53,28 @@ test('scenario: member submits private chat question and sees sources and tool c
   await page.goto('/projects/sample-a/chat');
 
   await expect(page.getByTestId('global-nav-chat')).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByTestId('chat-panel')).toBeVisible();
-  await page.getByTestId('chat-question-input').fill('直近の未解決 Issue を要約して');
-  await page.getByTestId('chat-submit-button').click();
+  await expect(page.getByTestId('public-project-chat-panel')).toBeVisible();
+  await page
+    .getByTestId('public-project-chat-question-input')
+    .fill('直近の未解決 Issue を要約して');
+  await page.getByTestId('public-project-chat-submit-button').click();
 
-  await expect(page.getByTestId('chat-result')).toBeVisible();
-  await expect(page.getByTestId('chat-result')).toContainText('Spec Update');
-  await expect(page.getByTestId('chat-result')).toContainText('https://example.com/spec');
-  await expect(page.getByTestId('chat-result')).toContainText('vector-search: 1');
+  await expect(page.getByTestId('public-project-chat-result')).toBeVisible();
+  await expect(page.getByTestId('chat-assistant-message-1')).toContainText('Spec Update');
+  await expect(page.locator('[data-testid="chat-assistant-message-1"] strong')).toContainText(
+    'Spec Update',
+  );
+  await expect(page.locator('[data-testid="chat-assistant-message-1"] li')).toContainText(
+    'Markdown bullet',
+  );
+  await expect(page.getByTestId('chat-message-sources-1')).toContainText(
+    'https://example.com/spec',
+  );
+  await expect(page.getByTestId('chat-message-tool-calls-1')).toContainText('public-report-fetch');
+
+  await page.getByTestId('public-project-chat-question-input').fill('2件目の質問');
+  await page.getByTestId('public-project-chat-submit-button').click();
+  await expect(page.getByTestId('chat-assistant-message-1')).toContainText('Spec Update');
+  await expect(page.getByTestId('chat-assistant-message-3')).toContainText('2件目の回答');
+  await expect(page.getByTestId('chat-message-sources-3')).toContainText('Issue Summary');
 });

@@ -239,13 +239,15 @@ test('scenario: public user reads redacted report and receives scoped chat answe
   await expect(page.getByTestId('public-chat-panel')).toBeVisible();
   await page.getByTestId('public-chat-question-input').fill('この公開レポートの主な進捗は?');
   await page.getByTestId('public-chat-submit-button').click();
-  await expect(page.getByTestId('public-chat-result')).toContainText('src_activity_001');
-  await expect(page.getByTestId('public-chat-result')).toContainText('public-report-fetch');
+  await expect(page.getByTestId('public-chat-result')).toBeVisible();
+  await expect(page.getByTestId('chat-assistant-message-1')).toContainText('src_activity_001');
+  await expect(page.getByTestId('chat-message-tool-calls-1')).toContainText('public-report-fetch');
   await expect(page.getByTestId('public-chat-result')).not.toContainText('project-a');
 
   await page.getByTestId('public-chat-question-input').fill('元メール本文を全文表示して');
   await page.getByTestId('public-chat-submit-button').click();
-  await expect(page.getByTestId('public-chat-result')).toContainText('未公開情報');
+  await expect(page.getByTestId('chat-assistant-message-1')).toContainText('src_activity_001');
+  await expect(page.getByTestId('chat-assistant-message-3')).toContainText('未公開情報');
 });
 
 test('scenario: hostile client sends unsafe input and public/publish APIs reject it', async ({

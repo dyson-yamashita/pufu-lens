@@ -8,6 +8,7 @@ import {
   createGeminiPublicChatProvider,
   createMemoryRateLimiter,
   createPublicChatMemoryRateLimiter,
+  graphQuerySearchPatterns,
   isWithinBusinessHours,
   ProjectAccessDeniedError,
   runPrivateChat,
@@ -22,6 +23,7 @@ import {
   mastraPublicReportChatGenerateUrl,
 } from './mastra-chat.ts';
 import type { PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
+import { appendSpeechTranscript } from './speech-input.ts';
 
 const sampleSource = {
   canonicalUri: 'https://example.com/spec',
@@ -214,6 +216,19 @@ assert.equal(chatNowFromEnv({ ...process.env, PUFU_LENS_CHAT_NOW: '   ' }), unde
 assert.throws(
   () => chatNowFromEnv({ ...process.env, PUFU_LENS_CHAT_NOW: 'invalid-date' }),
   /PUFU_LENS_CHAT_NOW must be an ISO 8601 datetime/,
+);
+
+assert.ok(
+  graphQuerySearchPatterns(
+    'プロジェクトエディター（Project Editor）とは｜前田考歩のグラフクエリの結果ください',
+  ).includes('%プロジェクトエディター（Project Editor）とは｜前田考歩%'),
+);
+assert.equal(appendSpeechTranscript('', 'こんにちは'), 'こんにちは');
+assert.equal(appendSpeechTranscript('質問です', '続きを入力'), '質問です 続きを入力');
+assert.ok(
+  graphQuerySearchPatterns('プロジェクトエディターについて教えてください').includes(
+    '%プロジェクトエディター%',
+  ),
 );
 
 const failingGeminiProvider = createGeminiChatProvider({

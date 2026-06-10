@@ -136,6 +136,7 @@ const chatSourceSchema = z.object({
   documentId: z.string(),
   docType: z.string(),
   rawDocumentId: z.string(),
+  snippet: z.string().optional(),
   title: z.string(),
 });
 
@@ -319,7 +320,8 @@ export function createProjectChatTools(repository: ChatRepository) {
   return {
     documentFetch: createTool({
       id: mastraToolIds.documentFetch,
-      description: 'Fetch document metadata for the active project by document id.',
+      description:
+        'Fetch document metadata and a short summary snippet for the active project by document id.',
       inputSchema: z.object({ documentIds: z.array(z.string()).max(10) }),
       outputSchema: chatSourceListSchema,
       requestContextSchema: mastraProjectContextSchema,
@@ -332,7 +334,8 @@ export function createProjectChatTools(repository: ChatRepository) {
     }),
     graphQuery: createTool({
       id: mastraToolIds.graphQuery,
-      description: 'Query graph-backed document metadata for the active project.',
+      description:
+        'Query graph-backed document metadata and short summary snippets for the active project.',
       inputSchema: z.object({ limit: z.number().int().min(1).max(10), query: z.string() }),
       outputSchema: chatSourceListSchema,
       requestContextSchema: mastraProjectContextSchema,
@@ -346,7 +349,8 @@ export function createProjectChatTools(repository: ChatRepository) {
     }),
     parsedDocFetch: createTool({
       id: mastraToolIds.parsedDocFetch,
-      description: 'Fetch parsed document metadata for the active project.',
+      description:
+        'Fetch parsed document metadata and short summary snippets for the active project.',
       inputSchema: z.object({ limit: z.number().int().min(1).max(10) }),
       outputSchema: chatSourceListSchema,
       requestContextSchema: mastraProjectContextSchema,
@@ -396,7 +400,7 @@ export function createProjectChatTools(repository: ChatRepository) {
     rawDocumentFetch: createTool({
       id: mastraToolIds.rawDocumentFetch,
       description:
-        'Fetch raw document metadata for the active project without returning raw body text.',
+        'Fetch raw document metadata and a short summary snippet for the active project without returning raw body text.',
       inputSchema: z.object({
         limit: z.number().int().min(1).max(10),
         maxBytes: z
@@ -417,7 +421,8 @@ export function createProjectChatTools(repository: ChatRepository) {
     }),
     vectorSearch: createTool({
       id: mastraToolIds.vectorSearch,
-      description: 'Search vector-indexed document metadata for the active project.',
+      description:
+        'Search vector-indexed document metadata and relevant short snippets for the active project.',
       inputSchema: z.object({
         embedding: z.array(z.number()).min(1),
         limit: z.number().int().min(1).max(10),
@@ -449,6 +454,7 @@ export function createProjectChatAgent(input: {
       '回答に使えるのは requestContext.projectId で固定された project の data だけです。',
       '他 project の id、raw body、parsed body、secret、OAuth token、Gemini API key を出してはいけません。',
       '必要に応じて vector-search、graph-query、document-fetch、raw-document-fetch、parsed-doc-fetch を使い、source を明示します。',
+      'tool が返す snippet は回答根拠として使えます。snippet がある場合は、メタデータだけで回答不能とは言わず、snippet と title から分かる範囲を明示して回答します。',
       'プ譜データを作る場合は、レポート本文ではなく data source の title、snippet、doc_type、canonical_uri を pufu-score-generate の pufuSources に渡し、獲得目標、勝利条件、中間目的、施策、廟算八要素として再構成します。',
     ].join('\n'),
     model: input.model ?? 'google/gemini-2.5-flash',

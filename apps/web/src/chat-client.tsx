@@ -1,8 +1,18 @@
 'use client';
 
-import { Send } from 'lucide-react';
+import { ArrowUp, Mic } from 'lucide-react';
 import { useState } from 'react';
 import type { ChatResponse, PublicChatResponse } from './chat';
+import {
+  appendPendingAssistant,
+  appendUserMessage,
+  type ChatThreadMessage,
+  createMessageId,
+  PrivateChatThread,
+  PublicChatThread,
+  replacePendingAssistant,
+} from './chat-thread';
+import { useSpeechInput } from './speech-input';
 
 export function ChatPanel({
   disabled,
@@ -12,9 +22,13 @@ export function ChatPanel({
   readonly projectSlug: string;
 }) {
   const [question, setQuestion] = useState('');
-  const [response, setResponse] = useState<ChatResponse | undefined>();
-  const [error, setError] = useState<string | undefined>();
+  const [messages, setMessages] = useState<ChatThreadMessage<ChatResponse>[]>([]);
   const [pending, setPending] = useState(false);
+  const speechInput = useSpeechInput({
+    disabled: disabled || pending,
+    setValue: setQuestion,
+    value: question,
+  });
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -22,8 +36,13 @@ export function ChatPanel({
     if (!trimmedQuestion || disabled || pending) {
       return;
     }
+
+    const nextMessages = appendUserMessage(messages, trimmedQuestion);
+    const { messages: messagesWithPending, pendingId } = appendPendingAssistant(nextMessages);
+    setMessages(messagesWithPending);
+    setQuestion('');
     setPending(true);
-    setError(undefined);
+
     try {
       const result = await fetch(`/api/projects/${projectSlug}/chat`, {
         body: JSON.stringify({ question: trimmedQuestion }),
@@ -38,9 +57,24 @@ export function ChatPanel({
       if (!body || !('status' in body)) {
         throw new Error('Chat API returned an invalid response.');
       }
-      setResponse(body);
+      setMessages((current) =>
+        replacePendingAssistant(current, pendingId, {
+          id: createMessageId('assistant'),
+          role: 'assistant',
+          response: body,
+          status: 'complete',
+        }),
+      );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      const errorMessage = caught instanceof Error ? caught.message : String(caught);
+      setMessages((current) =>
+        replacePendingAssistant(current, pendingId, {
+          error: errorMessage,
+          id: createMessageId('assistant'),
+          role: 'assistant',
+          status: 'error',
+        }),
+      );
     } finally {
       setPending(false);
     }
@@ -48,6 +82,7 @@ export function ChatPanel({
 
   return (
     <section className="panel chat-panel" data-testid="chat-panel">
+      <PrivateChatThread messages={messages} resultTestId="chat-result" />
       <form className="chat-form" onSubmit={submit}>
         <label htmlFor="chat-question">Question</label>
         <div className="chat-input-row">
@@ -59,15 +94,30 @@ export function ChatPanel({
             rows={3}
             value={question}
           />
-          <button
-            className="primary-button"
-            data-testid="chat-submit-button"
-            disabled={disabled || pending || !question.trim()}
-            type="submit"
-          >
-            <Send size={16} />
-            Send
-          </button>
+          <div className="chat-composer-actions">
+            <button
+              aria-label="Voice input"
+              aria-pressed={speechInput.listening}
+              className={`chat-icon-button${speechInput.listening ? ' chat-icon-button-active' : ''}`}
+              data-testid="chat-mic-button"
+              disabled={disabled || pending || !speechInput.supported}
+              onClick={speechInput.toggle}
+              title={speechInput.supported ? 'Voice input' : 'Voice input is not supported'}
+              type="button"
+            >
+              <Mic size={18} />
+            </button>
+            <button
+              aria-label="Send"
+              className="chat-icon-button chat-send-button"
+              data-testid="chat-submit-button"
+              disabled={disabled || pending || !question.trim()}
+              title="Send"
+              type="submit"
+            >
+              <ArrowUp size={20} />
+            </button>
+          </div>
         </div>
       </form>
       {disabled ? (
@@ -75,44 +125,19 @@ export function ChatPanel({
           db_outside_business_hours
         </p>
       ) : null}
-      {error ? (
-        <p className="notice error" data-testid="chat-error">
-          {error}
-        </p>
-      ) : null}
-      {response ? (
-        <div className="chat-result" data-testid="chat-result">
-          <h2>Answer</h2>
-          <p>{response.answer}</p>
-          <h3>Sources</h3>
-          <div className="source-list">
-            {response.sources.map((source) => (
-              <article className="source-chip" key={source.documentId}>
-                <strong>{source.title}</strong>
-                <span>{source.docType}</span>
-                <small>{source.canonicalUri || source.documentId}</small>
-              </article>
-            ))}
-          </div>
-          <h3>Tool Calls</h3>
-          <div className="tool-call-list">
-            {response.toolCalls.map((toolCall) => (
-              <span className="status-badge" key={toolCall.name}>
-                {toolCall.name}: {toolCall.resultCount}
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : null}
     </section>
   );
 }
 
 export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: string }) {
   const [question, setQuestion] = useState('');
-  const [response, setResponse] = useState<PublicChatResponse | undefined>();
-  const [error, setError] = useState<string | undefined>();
+  const [messages, setMessages] = useState<ChatThreadMessage<PublicChatResponse>[]>([]);
   const [pending, setPending] = useState(false);
+  const speechInput = useSpeechInput({
+    disabled: pending,
+    setValue: setQuestion,
+    value: question,
+  });
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -120,9 +145,13 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
     if (!trimmedQuestion || pending) {
       return;
     }
+
+    const nextMessages = appendUserMessage(messages, trimmedQuestion);
+    const { messages: messagesWithPending, pendingId } = appendPendingAssistant(nextMessages);
+    setMessages(messagesWithPending);
+    setQuestion('');
     setPending(true);
-    setError(undefined);
-    setResponse(undefined);
+
     try {
       const result = await fetch(`/api/public/projects/${projectSlug}/chat`, {
         body: JSON.stringify({ question: trimmedQuestion }),
@@ -139,9 +168,24 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
       if (!body || !('status' in body)) {
         throw new Error('Public Chat API returned an invalid response.');
       }
-      setResponse(body);
+      setMessages((current) =>
+        replacePendingAssistant(current, pendingId, {
+          id: createMessageId('assistant'),
+          role: 'assistant',
+          response: body,
+          status: 'complete',
+        }),
+      );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      const errorMessage = caught instanceof Error ? caught.message : String(caught);
+      setMessages((current) =>
+        replacePendingAssistant(current, pendingId, {
+          error: errorMessage,
+          id: createMessageId('assistant'),
+          role: 'assistant',
+          status: 'error',
+        }),
+      );
     } finally {
       setPending(false);
     }
@@ -149,6 +193,7 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
 
   return (
     <section className="panel public-chat-panel" data-testid="public-project-chat-panel">
+      <PublicChatThread messages={messages} resultTestId="public-project-chat-result" />
       <form className="chat-form" onSubmit={submit}>
         <label htmlFor="public-project-chat-question">Question</label>
         <div className="chat-input-row">
@@ -160,53 +205,32 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
             rows={3}
             value={question}
           />
-          <button
-            className="primary-button"
-            data-testid="public-project-chat-submit-button"
-            disabled={pending || !question.trim()}
-            type="submit"
-          >
-            <Send size={16} />
-            Send
-          </button>
-        </div>
-      </form>
-      {error ? (
-        <p className="notice error" data-testid="public-project-chat-error">
-          {error}
-        </p>
-      ) : null}
-      {response ? (
-        <div className="chat-result" data-testid="public-project-chat-result">
-          <h2>Answer</h2>
-          <p>{response.answer}</p>
-          <h3>Public Sources</h3>
-          {response.sources.length > 0 ? (
-            <div className="source-list">
-              {response.sources.map((source) => (
-                <article
-                  className="source-chip"
-                  key={`${source.sectionId}-${source.publicSourceId}`}
-                >
-                  <strong>{source.publicSourceId}</strong>
-                  <span>{source.sectionId}</span>
-                  <small>{source.label}</small>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <p className="notice">公開 source はありません。</p>
-          )}
-          <h3>Tool Calls</h3>
-          <div className="tool-call-list">
-            {response.toolCalls.map((toolCall) => (
-              <span className="status-badge" key={toolCall.name}>
-                {toolCall.name}: {toolCall.resultCount}
-              </span>
-            ))}
+          <div className="chat-composer-actions">
+            <button
+              aria-label="Voice input"
+              aria-pressed={speechInput.listening}
+              className={`chat-icon-button${speechInput.listening ? ' chat-icon-button-active' : ''}`}
+              data-testid="public-project-chat-mic-button"
+              disabled={pending || !speechInput.supported}
+              onClick={speechInput.toggle}
+              title={speechInput.supported ? 'Voice input' : 'Voice input is not supported'}
+              type="button"
+            >
+              <Mic size={18} />
+            </button>
+            <button
+              aria-label="Send"
+              className="chat-icon-button chat-send-button"
+              data-testid="public-project-chat-submit-button"
+              disabled={pending || !question.trim()}
+              title="Send"
+              type="submit"
+            >
+              <ArrowUp size={20} />
+            </button>
           </div>
         </div>
-      ) : null}
+      </form>
     </section>
   );
 }
