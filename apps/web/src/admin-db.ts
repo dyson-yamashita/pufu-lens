@@ -13,7 +13,7 @@ import {
   type SourceType,
 } from './admin-data';
 import { getOptionalAdminSql } from './admin-sql';
-import { isFixtureFallbackEnabled, isProductionRuntime } from './runtime-guards';
+import { isFixtureFallbackEnabled } from './runtime-guards';
 
 type ProjectRow = {
   description: string | null;
@@ -850,7 +850,7 @@ async function withOptionalSql<T>(
 ): Promise<T> {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
-    if (isProductionRuntime()) {
+    if (!isFixtureFallbackEnabled()) {
       throw new Error('DATABASE_URL is required.');
     }
     return fallback;
@@ -858,7 +858,7 @@ async function withOptionalSql<T>(
 
   const sql = getOptionalAdminSql();
   if (!sql) {
-    if (isProductionRuntime()) {
+    if (!isFixtureFallbackEnabled()) {
       throw new Error('DATABASE_URL is required.');
     }
     return fallback;
@@ -866,7 +866,7 @@ async function withOptionalSql<T>(
   try {
     return await callback(sql);
   } catch (error) {
-    if (isProductionRuntime()) {
+    if (!isFixtureFallbackEnabled()) {
       throw error;
     }
     console.warn(error instanceof Error ? error.message : String(error));
