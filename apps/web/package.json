@@ -8,7 +8,7 @@
     "dev": "DATABASE_URL=${DATABASE_URL:-postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens} STORAGE_DRIVER=${STORAGE_DRIVER:-local} STORAGE_ROOT=${STORAGE_ROOT:-../../infra/volumes/pufu-lens-data} next dev",
     "dev:lan": "DATABASE_URL=${DATABASE_URL:-postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens} STORAGE_DRIVER=${STORAGE_DRIVER:-local} STORAGE_ROOT=${STORAGE_ROOT:-../../infra/volumes/pufu-lens-data} next dev -H 0.0.0.0",
     "start": "next start",
-    "test": "node --experimental-strip-types src/admin-data.test.ts && node --experimental-strip-types src/auth-db.test.ts && node --experimental-strip-types src/password-auth.test.ts && node --experimental-strip-types src/chat.test.ts && node --experimental-strip-types src/report.test.ts && node --experimental-strip-types src/graph-viewer.test.ts",
+    "test": "node --experimental-strip-types src/admin-data.test.ts && node --experimental-strip-types src/auth-db.test.ts && node --experimental-strip-types src/password-auth.test.ts && node --experimental-strip-types src/chat.test.ts && node --experimental-strip-types src/public-report-api.test.ts && node --experimental-strip-types src/report.test.ts && node --experimental-strip-types src/graph-viewer.test.ts",
     "test:e2e": "playwright test",
     "typecheck": "next typegen && tsc --noEmit -p tsconfig.json"
   },
