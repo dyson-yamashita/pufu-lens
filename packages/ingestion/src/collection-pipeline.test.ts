@@ -873,6 +873,7 @@ test('collectGmailSource continues after a thread fetch failure with sanitized l
     assert.equal(result.failureCount, 1);
     assert.equal(result.decisions.length, 1);
     assert.equal(result.decisions[0]?.decision, 'failed');
+    assert.equal(result.decisions[0]?.sourceId, 'thread-alpha:msg-alpha-002');
     assert.match(String(result.decisions[0]?.error), /temporary Gmail failure/);
     assert.doesNotMatch(String(result.decisions[0]?.error), /token=secret/);
     assert.equal(repository.rawDocuments.size, 0);

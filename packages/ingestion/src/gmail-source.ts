@@ -154,7 +154,10 @@ export async function collectGmailSource(
           dataSourceId: dataSource.id,
           decision: 'failed',
           error: sanitizedError,
-          sourceId: normalizeSourceId('gmail', candidate.message.threadId),
+          sourceId: normalizeSourceId(
+            'gmail',
+            `${candidate.message.threadId}:${candidate.message.id}`,
+          ),
           sourceType: 'gmail',
         });
         continue;
