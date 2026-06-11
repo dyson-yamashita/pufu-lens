@@ -24,11 +24,21 @@ const REQUIRED_BY_ENV = {
 } as const;
 
 type DeployEnv = keyof typeof REQUIRED_BY_ENV;
+type Profile = 'deploy' | 'collect-drive' | 'collect-gmail' | 'collect-github' | 'workflow-job';
+
+const PROFILE_REQUIREMENTS = {
+  'collect-drive': ['DATABASE_URL', 'GOOGLE_DRIVE_ACCESS_TOKEN'],
+  'collect-gmail': ['DATABASE_URL', 'GMAIL_ACCESS_TOKEN'],
+  'collect-github': ['DATABASE_URL', 'GITHUB_TOKEN'],
+  'workflow-job': ['DATABASE_URL', 'WORKFLOW_ID'],
+} as const satisfies Record<Exclude<Profile, 'deploy'>, readonly string[]>;
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const required = REQUIRED_BY_ENV[options.env];
-  const missing = required.filter((name) => !process.env[name]);
+  const profileRequired = profileRequirements(options.profile);
+  const allRequired = [...required, ...profileRequired];
+  const missing = missingEnv(allRequired);
   const gemini = checkGeminiAuth();
   const status = missing.length === 0 && gemini.status === 'passed' ? 'passed' : 'blocked';
 
@@ -39,7 +49,9 @@ async function main(): Promise<void> {
         env: options.env,
         gemini,
         missing,
-        required,
+        profile: options.profile,
+        profileRequired,
+        required: allRequired,
         status,
       },
       null,
@@ -60,20 +72,36 @@ function checkGeminiAuth():
     return {
       mode: 'vertex-ai',
       required,
-      status: required.every((name) => process.env[name]) ? 'passed' : 'blocked',
+      status: missingEnv(required).length === 0 ? 'passed' : 'blocked',
     };
   }
   const required = ['GEMINI_API_KEY_SECRET', 'GEMINI_CHAT_MODEL', 'GEMINI_EMBEDDING_MODEL'];
   return {
     mode: 'google-ai',
     required,
-    status: required.every((name) => process.env[name]) ? 'passed' : 'blocked',
+    status: missingEnv(required).length === 0 ? 'passed' : 'blocked',
   };
 }
 
-function parseArgs(argv: readonly string[]): { allowMissing: boolean; env: DeployEnv } {
+function missingEnv(required: readonly string[]): string[] {
+  return [...new Set(required)].filter((name) => !process.env[name]);
+}
+
+function profileRequirements(profile: Profile): readonly string[] {
+  if (profile === 'deploy') {
+    return [];
+  }
+  return PROFILE_REQUIREMENTS[profile];
+}
+
+function parseArgs(argv: readonly string[]): {
+  allowMissing: boolean;
+  env: DeployEnv;
+  profile: Profile;
+} {
   let allowMissing = false;
   let env: DeployEnv | undefined;
+  let profile: Profile = 'deploy';
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--allow-missing') {
@@ -84,6 +112,14 @@ function parseArgs(argv: readonly string[]): { allowMissing: boolean; env: Deplo
         throw new Error('--env must be staging or production.');
       }
       env = value;
+    } else if (arg === '--profile') {
+      const value = argv[++index];
+      if (!isProfile(value)) {
+        throw new Error(
+          '--profile must be deploy, collect-drive, collect-gmail, collect-github, or workflow-job.',
+        );
+      }
+      profile = value;
     } else {
       throw new Error(`Unknown option: ${arg}`);
     }
@@ -91,7 +127,17 @@ function parseArgs(argv: readonly string[]): { allowMissing: boolean; env: Deplo
   if (!env) {
     throw new Error('--env is required.');
   }
-  return { allowMissing, env };
+  return { allowMissing, env, profile };
+}
+
+function isProfile(value: string | undefined): value is Profile {
+  return (
+    value === 'deploy' ||
+    value === 'collect-drive' ||
+    value === 'collect-gmail' ||
+    value === 'collect-github' ||
+    value === 'workflow-job'
+  );
 }
 
 main().catch((error: unknown): void => {
