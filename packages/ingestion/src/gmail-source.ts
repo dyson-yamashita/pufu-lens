@@ -383,8 +383,7 @@ async function fetchGmailThread(input: {
   token?: string;
 }): Promise<GmailThreadResponse> {
   const searchParams = new URLSearchParams({
-    fields:
-      'id,messages(id,threadId,labelIds,internalDate,snippet,payload(mimeType,headers(name,value),body(data),parts(mimeType,headers(name,value),body(data),parts(mimeType,headers(name,value),body(data))))',
+    fields: 'id,messages(id,threadId,labelIds,internalDate,snippet,payload)',
     format: 'full',
   });
   for (const header of HEADER_NAMES) {
