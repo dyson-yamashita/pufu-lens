@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import type postgres from 'postgres';
 import { LocalFsObjectStorage } from '../../../packages/storage/src/local-fs.ts';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
+import { lookupProjectMemberAccess } from './authz.ts';
 import {
   type BusinessHoursConfig,
   isWithinBusinessHours,
@@ -797,17 +798,10 @@ function localDevStorageRoot(): string | undefined {
 export function createPostgresReportRepository(sql: postgres.Sql): ReportRepository {
   return {
     async lookupProjectMember({ projectSlug, userId }) {
-      const rows = (await sql`
-        SELECT p.id::text AS id, p.slug, COALESCE(p.visibility, 'private') AS visibility
-        FROM public.projects p
-        JOIN public.users app_user ON app_user.id = ${userId}
-        LEFT JOIN public.project_members pm
-          ON pm.project_id = p.id
-         AND pm.user_id = app_user.id
-        WHERE p.slug = ${projectSlug}
-          AND (app_user.role = 'admin' OR pm.user_id IS NOT NULL)
-      `) as Array<{ id: string; slug: string; visibility: 'private' | 'public' }>;
-      return rows[0];
+      const access = await lookupProjectMemberAccess(sql, { projectSlug, userId });
+      return access
+        ? { id: access.id, slug: access.slug, visibility: access.visibility }
+        : undefined;
     },
     async lookupProject({ projectSlug }) {
       const rows = (await sql`
