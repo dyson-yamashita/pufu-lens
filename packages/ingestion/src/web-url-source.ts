@@ -80,7 +80,7 @@ export async function collectWebUrlSource(
       }
 
       let rawCandidate: WebUrlRawCandidate;
-      const fallbackSourceId = normalizeSourceId('web', candidate.sourceUri);
+      const fallbackSourceId = webFailureSourceId(candidate.sourceUri);
       try {
         rawCandidate = await buildWebUrlRawCandidate({
           candidate,
@@ -392,6 +392,14 @@ function redactUrl(value: string): string {
     return url.toString();
   } catch {
     return '<invalid-url>';
+  }
+}
+
+function webFailureSourceId(sourceUri: string): string {
+  try {
+    return normalizeSourceId('web', sourceUri);
+  } catch {
+    return `invalid-web-url:${sha256Hex(sourceUri).slice(0, 16)}`;
   }
 }
 
