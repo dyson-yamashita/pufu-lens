@@ -39,11 +39,13 @@ export interface CollectWebUrlSourceResult {
   decisions: Array<{
     dataSourceId: string;
     decision: CollectDecision | 'would_collect' | 'would_skip_existing';
+    error?: string;
     rawDocumentId?: string;
     sourceId: string;
     sourceType: 'web';
   }>;
   dryRun: boolean;
+  failureCount: number;
   projectSlug: string;
 }
 
@@ -78,6 +80,7 @@ export async function collectWebUrlSource(
       }
 
       let rawCandidate: WebUrlRawCandidate;
+      const fallbackSourceId = normalizeSourceId('web', candidate.sourceUri);
       try {
         rawCandidate = await buildWebUrlRawCandidate({
           candidate,
@@ -87,11 +90,19 @@ export async function collectWebUrlSource(
           projectSlug: project.slug,
         });
       } catch (error) {
+        const sanitizedError = sanitizeError(error);
         console.error(
-          `Failed to build raw web candidate for ${redactUrl(candidate.sourceUri)}: ${sanitizeError(
-            error,
-          )}`,
+          `Failed to build raw web candidate for ${redactUrl(
+            candidate.sourceUri,
+          )}: ${sanitizedError}`,
         );
+        decisions.push({
+          dataSourceId: dataSource.id,
+          decision: 'failed',
+          error: sanitizedError,
+          sourceId: fallbackSourceId,
+          sourceType: 'web',
+        });
         continue;
       }
       const sourceId = rawCandidate.raw.sourceId;
@@ -192,7 +203,16 @@ export async function collectWebUrlSource(
     }
   }
 
-  return { decisions, dryRun: options.dryRun ?? false, projectSlug: project.slug };
+  return {
+    decisions,
+    dryRun: options.dryRun ?? false,
+    failureCount: countFailedDecisions(decisions),
+    projectSlug: project.slug,
+  };
+}
+
+function countFailedDecisions(decisions: CollectWebUrlSourceResult['decisions']): number {
+  return decisions.filter((decision) => decision.decision === 'failed').length;
 }
 
 export function scanWebUrlDataSource(
@@ -213,7 +233,9 @@ export function scanWebUrlDataSource(
   for (const url of urls) {
     try {
       normalizedUrls.push(normalizeHttpUrl(url));
-    } catch {}
+    } catch (error) {
+      console.warn(`Skipped invalid web URL ${redactUrl(url)}: ${sanitizeError(error)}`);
+    }
   }
   const uniqueUrls = [...new Set(normalizedUrls)];
   return uniqueUrls.slice(0, limit ?? uniqueUrls.length).map((sourceUri) => ({ sourceUri }));

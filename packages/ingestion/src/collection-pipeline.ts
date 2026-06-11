@@ -16,6 +16,7 @@ export interface CollectionObjectStorage {
 
 export type CollectDecision =
   | 'collected'
+  | 'failed'
   | 'linked_existing'
   | 'queued_failed'
   | 'skipped_existing';
