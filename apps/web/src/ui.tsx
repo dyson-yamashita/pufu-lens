@@ -29,6 +29,7 @@ import type {
   SourceStatus,
   SourceType,
 } from './admin-data';
+import { getProjectMembership } from './admin-db';
 import { ActionForm, PendingSubmitButton } from './form-buttons';
 
 const sourceLabels: Record<SourceType, string> = {
@@ -48,6 +49,7 @@ const statusLabels: Record<SourceStatus, string> = {
 export async function AppShell({
   project,
   active,
+  canManageProject,
   children,
 }: {
   readonly project?: ProjectSummary;
@@ -62,6 +64,7 @@ export async function AppShell({
     | 'parser-profiles'
     | 'reports'
     | 'settings';
+  readonly canManageProject?: boolean;
   readonly children: React.ReactNode;
 }) {
   const projectSlug = project?.slug;
@@ -69,6 +72,11 @@ export async function AppShell({
   const appRole = session?.user?.role;
   const canShowProjectNav = Boolean(projectSlug);
   const isGuest = !session?.user?.id;
+  const canShowAdminNav =
+    canManageProject ??
+    (projectSlug && session?.user?.id
+      ? await canManageProjectNavigation(projectSlug, session.user.id)
+      : false);
   const navItems = (
     <>
       {projectSlug || session?.user?.id ? (
@@ -122,7 +130,7 @@ export async function AppShell({
               Graph
             </Link>
           ) : null}
-          {session?.user?.id ? (
+          {canShowAdminNav ? (
             <>
               <Link
                 aria-current={active === 'members' ? 'page' : undefined}
@@ -271,6 +279,15 @@ export function PageHeader({
       {action}
     </header>
   );
+}
+
+async function canManageProjectNavigation(projectSlug: string, userId: string): Promise<boolean> {
+  try {
+    const membership = await getProjectMembership(projectSlug, userId);
+    return membership.canManageMembers;
+  } catch {
+    return false;
+  }
 }
 
 export function MetricStrip({ project }: { readonly project: ProjectSummary }) {

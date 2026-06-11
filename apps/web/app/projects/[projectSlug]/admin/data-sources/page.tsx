@@ -1,7 +1,8 @@
 import { createDataSource, updateDataSource } from '../../../../../src/admin-actions';
 import type { SourceType } from '../../../../../src/admin-data';
-import { getAdminProject, getSourceTypeCounts } from '../../../../../src/admin-db';
+import { getSourceTypeCounts } from '../../../../../src/admin-db';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
+import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
 import {
   AppShell,
   DataSourceTable,
@@ -21,7 +22,7 @@ export default async function DataSourcesPage({
   const { projectSlug } = await params;
   const { dataSourceId, sourceType } = await searchParams;
   const activeSourceType = parseSourceType(sourceType);
-  const project = await getAdminProject(projectSlug);
+  const project = await requireProjectAdminPage(projectSlug);
   const visibleSources = activeSourceType
     ? project.dataSources.filter((source) => source.sourceType === activeSourceType)
     : project.dataSources;
@@ -30,7 +31,7 @@ export default async function DataSourcesPage({
   const counts = getSourceTypeCounts(project);
 
   return (
-    <AppShell active="data-sources" project={project}>
+    <AppShell active="data-sources" canManageProject project={project}>
       <PageHeader
         title={`${project.name} Data Sources`}
         subtitle="収集対象、設定、queue の状態を source type ごとに確認します。"

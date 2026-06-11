@@ -1,8 +1,6 @@
-import { redirect } from 'next/navigation';
 import { updateProjectSettings } from '../../../../../src/admin-actions';
-import { getProjectMembership } from '../../../../../src/admin-db';
-import { getSessionUserId } from '../../../../../src/auth-session';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
+import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
 import { AppShell, PageHeader, StatusBadge } from '../../../../../src/ui';
 
 export default async function ProjectSettingsPage({
@@ -11,24 +9,10 @@ export default async function ProjectSettingsPage({
   readonly params: Promise<{ readonly projectSlug: string }>;
 }) {
   const { projectSlug } = await params;
-  const userId = await getSessionUserId();
-  if (!userId) {
-    redirect('/login');
-  }
-
-  let membership: Awaited<ReturnType<typeof getProjectMembership>>;
-  try {
-    membership = await getProjectMembership(projectSlug, userId);
-  } catch {
-    redirect('/projects');
-  }
-  if (!membership.canManageMembers) {
-    redirect(`/projects/${projectSlug}`);
-  }
-  const project = membership.project;
+  const project = await requireProjectAdminPage(projectSlug);
 
   return (
-    <AppShell active="settings" project={project}>
+    <AppShell active="settings" canManageProject project={project}>
       <PageHeader
         title={`${project.name} Settings`}
         subtitle="プロジェクトの基本情報と公開範囲を管理します。"

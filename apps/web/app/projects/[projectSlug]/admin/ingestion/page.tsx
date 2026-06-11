@@ -3,8 +3,8 @@ import {
   ingestDataSource,
   retryFailedQueue,
 } from '../../../../../src/admin-actions';
-import { getAdminProject } from '../../../../../src/admin-db';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
+import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
 import { AppShell, MetricStrip, PageHeader, RetryButton, StatusBadge } from '../../../../../src/ui';
 
 export default async function IngestionPage({
@@ -13,10 +13,10 @@ export default async function IngestionPage({
   readonly params: Promise<{ readonly projectSlug: string }>;
 }) {
   const { projectSlug } = await params;
-  const project = await getAdminProject(projectSlug);
+  const project = await requireProjectAdminPage(projectSlug);
 
   return (
-    <AppShell active="ingestion" project={project}>
+    <AppShell active="ingestion" canManageProject project={project}>
       <PageHeader
         title={`${project.name} Ingestion`}
         subtitle="raw document、queue、failed、held の状態をプロジェクト単位で確認します。"
