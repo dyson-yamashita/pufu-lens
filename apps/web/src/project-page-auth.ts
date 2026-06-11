@@ -16,7 +16,7 @@ export async function requireProjectAdminPage(projectSlug: string) {
   }
 
   if (!membership.canManageMembers) {
-    redirect(`/projects/${projectSlug}`);
+    redirect(`/projects/${membership.project.slug}`);
   }
   return membership.project;
 }

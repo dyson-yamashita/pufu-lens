@@ -29,7 +29,7 @@ import type {
   SourceStatus,
   SourceType,
 } from './admin-data';
-import { getProjectMembership } from './admin-db';
+import { canManageProject } from './admin-db';
 import { ActionForm, PendingSubmitButton } from './form-buttons';
 
 const sourceLabels: Record<SourceType, string> = {
@@ -283,8 +283,7 @@ export function PageHeader({
 
 async function canManageProjectNavigation(projectSlug: string, userId: string): Promise<boolean> {
   try {
-    const membership = await getProjectMembership(projectSlug, userId);
-    return membership.canManageMembers;
+    return await canManageProject(projectSlug, userId);
   } catch {
     return false;
   }
