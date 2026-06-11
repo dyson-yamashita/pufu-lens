@@ -1,4 +1,5 @@
 import { auth } from '../auth';
+import { isDevelopmentBypassEnabled } from './runtime-guards';
 
 export async function getSessionUserId(): Promise<string | undefined> {
   const session = await auth();
@@ -10,7 +11,7 @@ export async function requireSessionUserId(): Promise<string> {
   if (userId) {
     return userId;
   }
-  if (process.env.PUFU_LENS_ALLOW_FIXED_USER_FALLBACK === 'true') {
+  if (isDevelopmentBypassEnabled('PUFU_LENS_ALLOW_FIXED_USER_FALLBACK')) {
     const fallbackUserId =
       process.env.PUFU_LENS_CHAT_USER_ID ??
       process.env.PUFU_LENS_REPORT_USER_ID ??

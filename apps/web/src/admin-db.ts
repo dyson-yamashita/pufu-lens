@@ -19,6 +19,7 @@ import {
   type SourceType,
 } from './admin-data';
 import { getOptionalAdminSql } from './admin-sql';
+import { isFixtureFallbackEnabled } from './runtime-guards';
 
 type ProjectRow = {
   description: string | null;
@@ -132,7 +133,7 @@ type AdminConfig = Record<string, unknown> & {
 };
 
 export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
-  return withOptionalSql(async (sql) => {
+  return withOptionalSql<readonly ProjectSummary[]>(async (sql) => {
     const rows = (await sql`
       SELECT
         p.id::text AS id,
@@ -170,7 +171,7 @@ export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
         parserProfilesByProject.get(row.id) ?? [],
       ),
     );
-    return projects.length > 0 ? projects : fallbackProjects;
+    return projects;
   }, fallbackProjects);
 }
 
@@ -576,6 +577,9 @@ export async function getAdminProject(slug: string): Promise<ProjectSummary> {
     ]);
     return projectFromRow(row, dataSources, parserProfiles);
   } catch (error) {
+    if (!isFixtureFallbackEnabled()) {
+      throw error;
+    }
     const fallback = fallbackProjects.find((candidate) => candidate.slug === slug);
     if (fallback) {
       console.warn(error instanceof Error ? error.message : String(error));
@@ -918,7 +922,7 @@ function publicProjectsFromRows(
 }
 
 function publicProjectsFallback(): readonly PublicProjectSummary[] {
-  return process.env.NODE_ENV === 'production' ? [] : fallbackPublicProjects;
+  return isFixtureFallbackEnabled() ? fallbackPublicProjects : [];
 }
 
 async function withOptionalSql<T>(
@@ -927,16 +931,25 @@ async function withOptionalSql<T>(
 ): Promise<T> {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
+    if (!isFixtureFallbackEnabled()) {
+      throw new Error('DATABASE_URL is required.');
+    }
     return fallback;
   }
 
   const sql = getOptionalAdminSql();
   if (!sql) {
+    if (!isFixtureFallbackEnabled()) {
+      throw new Error('DATABASE_URL is required.');
+    }
     return fallback;
   }
   try {
     return await callback(sql);
   } catch (error) {
+    if (!isFixtureFallbackEnabled()) {
+      throw error;
+    }
     console.warn(error instanceof Error ? error.message : String(error));
     return fallback;
   }
