@@ -14,8 +14,13 @@ import {
   mastraGenerateToChatResponse,
   mastraProjectChatGenerateUrl,
 } from '../../../../../src/mastra-chat';
+import { parsePositiveEnvInt } from '../../../../../src/request-client';
 
 const rateLimiter = createMemoryRateLimiter({ limit: 20, windowMs: 60_000 });
+const privateChatQuestionMaxLength = parsePositiveEnvInt(
+  process.env.PUFU_LENS_PRIVATE_CHAT_QUESTION_MAX_LENGTH,
+  2000,
+);
 
 export async function POST(
   request: Request,
@@ -31,6 +36,13 @@ export async function POST(
   }
   if (!question) {
     return chatErrorResponse('invalid_request', 'question is required', 400);
+  }
+  if (question.length > privateChatQuestionMaxLength) {
+    return chatErrorResponse(
+      'private_chat_question_too_long',
+      `question must be ${privateChatQuestionMaxLength} characters or less`,
+      413,
+    );
   }
 
   try {
