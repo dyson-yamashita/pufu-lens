@@ -260,6 +260,7 @@ function target(
   queueId = 'queue-1',
 ): ParseQueueTarget {
   return {
+    attempts: 1,
     dataSourceId: 'data-source-1',
     id: queueId,
     projectId: rawDocument.projectId,

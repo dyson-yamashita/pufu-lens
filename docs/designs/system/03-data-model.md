@@ -171,6 +171,7 @@ CREATE TABLE ingestion_queue (
   parser_version_id UUID,               -- retry 時に固定した parser version（FK は後述）
   attempts        INTEGER NOT NULL DEFAULT 0,
   last_error      TEXT,
+  lease_expires_at TIMESTAMPTZ,          -- parsing worker の lease 期限。期限切れは再取得可能
   scheduled_at    TIMESTAMPTZ DEFAULT now(),
   created_at      TIMESTAMPTZ DEFAULT now(),
   updated_at      TIMESTAMPTZ DEFAULT now(),
@@ -178,6 +179,7 @@ CREATE TABLE ingestion_queue (
   UNIQUE (project_id, data_source_id, target_id)
 );
 CREATE INDEX ON ingestion_queue (project_id, status, priority DESC, scheduled_at);
+CREATE INDEX ON ingestion_queue (project_id, status, lease_expires_at) WHERE status = 'parsing';
 
 -- 既存 init.sql から更新する場合は、held status を許可するため CHECK 制約を再作成する。
 ALTER TABLE raw_documents

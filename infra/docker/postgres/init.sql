@@ -181,6 +181,7 @@ CREATE TABLE public.ingestion_queue (
   reason TEXT,
   attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
   last_error TEXT,
+  lease_expires_at TIMESTAMPTZ,
   hold_reason TEXT CHECK (hold_reason IN ('parser_approval_required', 'parser_contract_mismatch')),
   parser_profile_id UUID REFERENCES public.parser_profiles(id) ON DELETE SET NULL,
   parser_version_id UUID REFERENCES public.parser_versions(id) ON DELETE SET NULL,
@@ -192,6 +193,9 @@ CREATE TABLE public.ingestion_queue (
   UNIQUE (project_id, data_source_id, target_id)
 );
 CREATE INDEX ingestion_queue_project_status_idx ON public.ingestion_queue (project_id, status, priority DESC, scheduled_at);
+CREATE INDEX ingestion_queue_project_lease_idx
+  ON public.ingestion_queue (project_id, status, lease_expires_at)
+  WHERE status = 'parsing';
 
 CREATE TABLE public.documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

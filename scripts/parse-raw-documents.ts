@@ -17,17 +17,25 @@ import {
   parseRawDocuments,
 } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
+import { ensureIngestionQueueLeaseColumn } from './ingestion-queue-lease.ts';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
+const DEFAULT_PARSE_LEASE_SECONDS = 15 * 60;
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   const storage = createLocalObjectStorageFromEnv();
-  const repository = new PostgresRawParseRepository(sql, options.source, options.dataSourceId);
+  const repository = new PostgresRawParseRepository(
+    sql,
+    options.source,
+    options.dataSourceId,
+    parsePositiveInt(process.env.PUFU_LENS_PARSE_LEASE_SECONDS, DEFAULT_PARSE_LEASE_SECONDS),
+  );
 
   try {
+    await ensureIngestionQueueLeaseColumn(sql);
     if (options.seedBuiltInParsers !== false) {
       await ensureBuiltInParserVersions({ projectSlug, sourceType: options.source, sql });
     }
@@ -57,14 +65,17 @@ function createTopicExtractionAgentFromEnv() {
 
 class PostgresRawParseRepository implements RawParseRepository {
   private dataSourceId: string | undefined;
+  private leaseSeconds: number;
   private sql: postgres.Sql;
   private sourceType: SourceType | undefined;
   constructor(
     sql: postgres.Sql,
     sourceType: SourceType | undefined,
     dataSourceId: string | undefined,
+    leaseSeconds: number,
   ) {
     this.dataSourceId = dataSourceId;
+    this.leaseSeconds = leaseSeconds;
     this.sql = sql;
     this.sourceType = sourceType;
   }
@@ -86,7 +97,10 @@ class PostgresRawParseRepository implements RawParseRepository {
         FROM public.ingestion_queue q
         JOIN public.raw_documents rd ON rd.id = q.raw_document_id
         WHERE q.project_id = ${input.projectId}
-          AND q.status IN ('pending', 'failed')
+          AND (
+            q.status IN ('pending', 'failed')
+            OR (q.status = 'parsing' AND (q.lease_expires_at IS NULL OR q.lease_expires_at <= now()))
+          )
           AND rd.ingest_status IN ('fetched', 'failed')
           AND (${this.sourceType ?? null}::text IS NULL OR rd.source_type = ${this.sourceType ?? null})
           AND (${this.dataSourceId ?? null}::uuid IS NULL OR q.data_source_id = ${this.dataSourceId ?? null}::uuid)
@@ -101,16 +115,19 @@ class PostgresRawParseRepository implements RawParseRepository {
           attempts = attempts + 1,
           last_error = null,
           hold_reason = null,
-          sanitized_sample_uri = null
+          sanitized_sample_uri = null,
+          lease_expires_at = now() + (${this.leaseSeconds} * interval '1 second')
         FROM candidates c
         WHERE q.id = c.queue_id
         RETURNING
           q.id,
+          q.attempts,
           q.data_source_id,
           q.project_id,
           q.raw_document_id
       )
       SELECT
+        updated.attempts::int AS attempts,
         updated.data_source_id::text AS "dataSourceId",
         updated.id::text AS id,
         updated.project_id::text AS "projectId",
@@ -162,6 +179,21 @@ class PostgresRawParseRepository implements RawParseRepository {
 
   async markParsed(input: MarkParsedInput): Promise<void> {
     await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
+      const updatedQueue = await transaction`
+        UPDATE public.ingestion_queue
+        SET
+          status = 'parsed',
+          last_error = null,
+          hold_reason = null,
+          parser_profile_id = ${input.parserProfileId},
+          parser_version_id = ${input.parserVersionId},
+          lease_expires_at = null
+        WHERE id = ${input.queueId}
+          AND status = 'parsing'
+          AND attempts = ${input.expectedAttempts}
+        RETURNING id
+      `;
+      assertActiveQueueLease(updatedQueue, input.queueId);
       await transaction`
         UPDATE public.raw_documents
         SET
@@ -176,21 +208,27 @@ class PostgresRawParseRepository implements RawParseRepository {
           parsed_schema_version = ${input.schemaVersion}
         WHERE id = ${input.rawDocumentId}
       `;
-      await transaction`
-        UPDATE public.ingestion_queue
-        SET
-          status = 'parsed',
-          last_error = null,
-          hold_reason = null,
-          parser_profile_id = ${input.parserProfileId},
-          parser_version_id = ${input.parserVersionId}
-        WHERE id = ${input.queueId}
-      `;
     });
   }
 
   async markFailed(input: MarkFailedInput): Promise<void> {
     await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
+      const updatedQueue = await transaction`
+        UPDATE public.ingestion_queue
+        SET
+          status = 'failed',
+          last_error = ${input.lastError},
+          hold_reason = null,
+          parser_profile_id = ${input.parserProfileId ?? null},
+          parser_version_id = ${input.parserVersionId ?? null},
+          sanitized_sample_uri = ${input.sanitizedSampleUri ?? null},
+          lease_expires_at = null
+        WHERE id = ${input.queueId}
+          AND status = 'parsing'
+          AND attempts = ${input.expectedAttempts}
+        RETURNING id
+      `;
+      assertActiveQueueLease(updatedQueue, input.queueId);
       await transaction`
         UPDATE public.raw_documents
         SET
@@ -202,22 +240,26 @@ class PostgresRawParseRepository implements RawParseRepository {
           sanitized_sample_uri = ${input.sanitizedSampleUri ?? null}
         WHERE id = ${input.rawDocumentId}
       `;
-      await transaction`
-        UPDATE public.ingestion_queue
-        SET
-          status = 'failed',
-          last_error = ${input.lastError},
-          hold_reason = null,
-          parser_profile_id = ${input.parserProfileId ?? null},
-          parser_version_id = ${input.parserVersionId ?? null},
-          sanitized_sample_uri = ${input.sanitizedSampleUri ?? null}
-        WHERE id = ${input.queueId}
-      `;
     });
   }
 
   async markHeld(input: MarkHeldInput): Promise<void> {
     await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
+      const updatedQueue = await transaction`
+        UPDATE public.ingestion_queue
+        SET
+          status = 'held',
+          last_error = ${input.lastError},
+          hold_reason = ${input.holdReason},
+          parser_profile_id = ${input.parserProfileId ?? null},
+          parser_version_id = ${input.parserVersionId ?? null},
+          lease_expires_at = null
+        WHERE id = ${input.queueId}
+          AND status = 'parsing'
+          AND attempts = ${input.expectedAttempts}
+        RETURNING id
+      `;
+      assertActiveQueueLease(updatedQueue, input.queueId);
       await transaction`
         UPDATE public.raw_documents
         SET
@@ -228,17 +270,13 @@ class PostgresRawParseRepository implements RawParseRepository {
           parser_version_id = ${input.parserVersionId ?? null}
         WHERE id = ${input.rawDocumentId}
       `;
-      await transaction`
-        UPDATE public.ingestion_queue
-        SET
-          status = 'held',
-          last_error = ${input.lastError},
-          hold_reason = ${input.holdReason},
-          parser_profile_id = ${input.parserProfileId ?? null},
-          parser_version_id = ${input.parserVersionId ?? null}
-        WHERE id = ${input.queueId}
-      `;
     });
+  }
+}
+
+function assertActiveQueueLease(rows: readonly unknown[], queueId: string): void {
+  if (rows.length === 0) {
+    throw new Error(`Queue lease is no longer active: ${queueId}`);
   }
 }
 
@@ -393,6 +431,14 @@ function requiredEnv(name: string): string {
     throw new Error(`${name} is required.`);
   }
   return value;
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  if (!value?.trim()) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function requiredOption(value: string | undefined, name: string): string {
