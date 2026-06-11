@@ -10,6 +10,10 @@ assert.equal(
   trustedClientIp(requestHeaders({ 'x-forwarded-for': '203.0.113.10, 198.51.100.20' })),
   '198.51.100.20',
 );
+assert.equal(
+  trustedClientIp(requestHeaders({ 'x-forwarded-for': '203.0.113.10, 10.0.0.1' })),
+  '203.0.113.10',
+);
 assert.equal(trustedClientIp(requestHeaders({ 'x-real-ip': '203.0.113.20' })), '203.0.113.20');
 assert.equal(
   trustedClientIp(requestHeaders({ 'x-forwarded-for': 'unknown', 'x-real-ip': '203.0.113.30' })),
