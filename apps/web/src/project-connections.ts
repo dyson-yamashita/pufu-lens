@@ -8,7 +8,7 @@ import {
   randomBytes,
   timingSafeEqual,
 } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { NextRequest } from 'next/server';
 import type postgres from 'postgres';
@@ -18,6 +18,7 @@ import { getRequiredAdminSql } from './admin-sql';
 import { getSessionUserId } from './auth-session';
 
 const CONNECTION_STATE_MAX_AGE_MS = 10 * 60 * 1000;
+const ENCRYPTED_CONNECTION_SECRET_PREFIX = 'encrypted:';
 const GOOGLE_BASE_SCOPES = ['openid', 'email', 'profile'] as const;
 const GOOGLE_SOURCE_SCOPES: Partial<Record<SourceType, readonly string[]>> = {
   drive: ['https://www.googleapis.com/auth/drive.readonly'],
@@ -104,8 +105,11 @@ export async function completeGoogleConnection(request: NextRequest): Promise<st
   const connectedByUserId = await requireProjectAdmin(state.projectSlug);
   const code = readRequiredSearchParam(request, 'code');
   const token = await exchangeGoogleCode(code);
+  if (!token.access_token) {
+    throw new Error('Google token exchange did not return an access token.');
+  }
   const scopes = token.scope?.split(/\s+/).filter(Boolean) ?? googleScopes(state.sourceType);
-  const userInfo = token.access_token ? await fetchGoogleUserInfo(token.access_token) : {};
+  const userInfo = await fetchGoogleUserInfo(token.access_token);
   await upsertProjectConnection({
     accountEmail: userInfo.email ?? null,
     accountLogin: null,
@@ -333,7 +337,7 @@ async function fetchGoogleUserInfo(accessToken: string): Promise<GoogleUserInfo>
     headers: { authorization: `Bearer ${accessToken}` },
   });
   if (!response.ok) {
-    return {};
+    throw new Error(`Failed to fetch Google user info with status ${response.status}.`);
   }
   return (await response.json()) as GoogleUserInfo;
 }
@@ -352,14 +356,8 @@ async function upsertProjectConnection(input: {
   readonly scopes: readonly string[];
 }): Promise<void> {
   const sql = getRequiredAdminSql();
-  const accessTokenSecret = `${input.provider}:project:${input.projectSlug}:access-token`;
-  const refreshTokenSecret = `${input.provider}:project:${input.projectSlug}:refresh-token`;
-  if (input.accessToken) {
-    await writeLocalConnectionSecret(accessTokenSecret, input.accessToken);
-  }
-  if (input.refreshToken) {
-    await writeLocalConnectionSecret(refreshTokenSecret, input.refreshToken);
-  }
+  const accessTokenSecret = input.accessToken ? encodeConnectionSecret(input.accessToken) : null;
+  const refreshTokenSecret = input.refreshToken ? encodeConnectionSecret(input.refreshToken) : null;
   await sql`
     INSERT INTO public.oauth_connections (
       project_id,
@@ -384,7 +382,7 @@ async function upsertProjectConnection(input: {
       ${input.scopes},
       ${sql.json(input.metadata as postgres.JSONValue)},
       ${accessTokenSecret},
-      ${input.refreshToken ? refreshTokenSecret : null},
+      ${refreshTokenSecret},
       ${input.expiresAt}
     FROM public.projects
     WHERE projects.slug = ${input.projectSlug}
@@ -432,10 +430,10 @@ export async function readProjectConnectionAccessToken(input: {
     return null;
   }
   if (!isExpired(connection.expires_at)) {
-    return readLocalConnectionSecret(secretRef);
+    return readConnectionSecret(secretRef);
   }
   const refreshToken = connection.refresh_token_secret
-    ? await readLocalConnectionSecret(connection.refresh_token_secret)
+    ? await readConnectionSecret(connection.refresh_token_secret)
     : null;
   if (input.provider !== 'google' || !refreshToken) {
     return null;
@@ -448,10 +446,11 @@ export async function readProjectConnectionAccessToken(input: {
     typeof refreshed.expires_in === 'number'
       ? new Date(Date.now() + refreshed.expires_in * 1000).toISOString()
       : null;
-  await writeLocalConnectionSecret(secretRef, refreshed.access_token);
+  const refreshedAccessTokenSecret = encodeConnectionSecret(refreshed.access_token);
   await input.sql`
     UPDATE public.oauth_connections
     SET
+      access_token_secret = ${refreshedAccessTokenSecret},
       expires_at = ${expiresAt},
       updated_at = now()
     WHERE project_id = ${input.projectId}
@@ -629,6 +628,25 @@ async function refreshGoogleAccessToken(refreshToken: string): Promise<GoogleTok
   return (await response.json()) as GoogleTokenResponse;
 }
 
+function encodeConnectionSecret(value: string): string {
+  return `${ENCRYPTED_CONNECTION_SECRET_PREFIX}${Buffer.from(
+    JSON.stringify(encryptConnectionSecret(value)),
+    'utf8',
+  ).toString('base64url')}`;
+}
+
+async function readConnectionSecret(secretValue: string): Promise<string | null> {
+  if (secretValue.startsWith(ENCRYPTED_CONNECTION_SECRET_PREFIX)) {
+    const encoded = secretValue.slice(ENCRYPTED_CONNECTION_SECRET_PREFIX.length);
+    const parsed = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as unknown;
+    if (!isEncryptedConnectionSecret(parsed)) {
+      throw new Error('Connection secret payload is invalid.');
+    }
+    return decryptConnectionSecret(parsed);
+  }
+  return readLegacyLocalConnectionSecret(secretValue);
+}
+
 function isExpired(value: Date | string | null): boolean {
   if (!value) {
     return false;
@@ -637,13 +655,7 @@ function isExpired(value: Date | string | null): boolean {
   return Number.isNaN(expiresAt.getTime()) ? false : expiresAt.getTime() <= Date.now() + 60_000;
 }
 
-async function writeLocalConnectionSecret(secretRef: string, value: string): Promise<void> {
-  const root = localConnectionSecretRoot();
-  await mkdir(root, { recursive: true, mode: 0o700 });
-  await writeFile(localConnectionSecretPath(secretRef), value, { encoding: 'utf8', mode: 0o600 });
-}
-
-async function readLocalConnectionSecret(secretRef: string): Promise<string | null> {
+async function readLegacyLocalConnectionSecret(secretRef: string): Promise<string | null> {
   try {
     return await readFile(localConnectionSecretPath(secretRef), 'utf8');
   } catch (error) {

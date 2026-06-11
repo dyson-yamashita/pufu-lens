@@ -27,7 +27,13 @@ import {
   validateProjectSlug,
 } from '../../../packages/project-tenancy/src/project-tenancy.ts';
 import { LocalFsObjectStorage } from '../../../packages/storage/src/local-fs.ts';
-import { isSourceTypeAvailable, type ProjectVisibility, type SourceType } from './admin-data';
+import {
+  isAdminUiCollectionSupported,
+  isAdminUiIngestSupported,
+  isSourceTypeAvailable,
+  type ProjectVisibility,
+  type SourceType,
+} from './admin-data';
 import { type AppMemberRole, listProjectConnectionsForProjectId } from './admin-db';
 import { getRequiredAdminSql } from './admin-sql';
 import { requireSessionUserId } from './auth-session';
@@ -454,7 +460,7 @@ export async function collectDataSource(formData: FormData): Promise<void> {
       });
       if (!token) {
         throw new Error(
-          `Google ${googleSourceLabel(dataSource.source_type)} access token is not available locally. Reconnect ${googleSourceLabel(
+          `Google ${googleSourceLabel(dataSource.source_type)} access token is not available. Reconnect ${googleSourceLabel(
             dataSource.source_type,
           )} in Settings and try again.`,
         );
@@ -1257,24 +1263,6 @@ function buildDataSourceConfig(sourceType: SourceType, scope: string): Record<st
     query: scope,
     source: 'admin-ui',
   };
-}
-
-function isAdminUiCollectionSupported(sourceType: SourceType): boolean {
-  return (
-    sourceType === 'web' ||
-    sourceType === 'drive' ||
-    sourceType === 'gmail' ||
-    sourceType === 'github'
-  );
-}
-
-function isAdminUiIngestSupported(sourceType: SourceType): boolean {
-  return (
-    sourceType === 'web' ||
-    sourceType === 'drive' ||
-    sourceType === 'gmail' ||
-    sourceType === 'github'
-  );
 }
 
 function googleSourceLabel(sourceType: SourceType): string {

@@ -3,6 +3,10 @@ import {
   ingestDataSource,
   retryFailedQueue,
 } from '../../../../../src/admin-actions';
+import {
+  isAdminUiCollectionSupported,
+  isAdminUiIngestSupported,
+} from '../../../../../src/admin-data';
 import { getAdminProject } from '../../../../../src/admin-db';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
 import { AppShell, MetricStrip, PageHeader, RetryButton, StatusBadge } from '../../../../../src/ui';
@@ -99,23 +103,5 @@ export default async function IngestionPage({
         </div>
       </section>
     </AppShell>
-  );
-}
-
-function isAdminUiCollectionSupported(sourceType: string): boolean {
-  return (
-    sourceType === 'web' ||
-    sourceType === 'drive' ||
-    sourceType === 'gmail' ||
-    sourceType === 'github'
-  );
-}
-
-function isAdminUiIngestSupported(sourceType: string): boolean {
-  return (
-    sourceType === 'web' ||
-    sourceType === 'drive' ||
-    sourceType === 'gmail' ||
-    sourceType === 'github'
   );
 }

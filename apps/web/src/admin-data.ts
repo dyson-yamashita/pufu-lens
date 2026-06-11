@@ -81,6 +81,24 @@ export function availabilityFromConnections(
   };
 }
 
+export function isAdminUiCollectionSupported(sourceType: SourceType): boolean {
+  return (
+    sourceType === 'web' ||
+    sourceType === 'drive' ||
+    sourceType === 'gmail' ||
+    sourceType === 'github'
+  );
+}
+
+export function isAdminUiIngestSupported(sourceType: SourceType): boolean {
+  return (
+    sourceType === 'web' ||
+    sourceType === 'drive' ||
+    sourceType === 'gmail' ||
+    sourceType === 'github'
+  );
+}
+
 export function notConnectedProjectConnections(): readonly ProjectConnectionSummary[] {
   return CONNECTION_PROVIDERS.map((provider) => notConnectedSummary(provider));
 }
