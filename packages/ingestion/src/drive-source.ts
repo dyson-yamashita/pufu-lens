@@ -73,11 +73,13 @@ export interface CollectDriveSourceResult {
   decisions: Array<{
     dataSourceId: string;
     decision: CollectDecision | 'would_collect' | 'would_skip_existing';
+    error?: string;
     rawDocumentId?: string;
     sourceId: string;
     sourceType: 'drive';
   }>;
   dryRun: boolean;
+  failureCount: number;
   projectSlug: string;
 }
 
@@ -85,6 +87,7 @@ const DEFAULT_PAGE_SIZE = 100;
 const DEFAULT_USER_AGENT = 'pufu-lens-drive-collector/0.1';
 const GOOGLE_DOC_MIME_TYPES = new Set([
   'application/vnd.google-apps.document',
+  'application/vnd.google-apps.presentation',
   'application/vnd.google-apps.spreadsheet',
 ]);
 const TEXT_FILE_MIME_TYPES = new Set([
@@ -191,11 +194,19 @@ export async function collectDriveSource(
           token: options.token,
         });
       } catch (error) {
+        const sanitizedError = sanitizeError(error);
         console.error(
           `Failed to build raw Drive candidate for ${redactDriveUri(
             driveWebViewLink(candidate.file),
-          )}: ${sanitizeError(error)}`,
+          )}: ${sanitizedError}`,
         );
+        decisions.push({
+          dataSourceId: dataSource.id,
+          decision: 'failed',
+          error: sanitizedError,
+          sourceId,
+          sourceType: 'drive',
+        });
         continue;
       }
 
@@ -245,7 +256,16 @@ export async function collectDriveSource(
     }
   }
 
-  return { decisions, dryRun: options.dryRun ?? false, projectSlug: project.slug };
+  return {
+    decisions,
+    dryRun: options.dryRun ?? false,
+    failureCount: countFailedDecisions(decisions),
+    projectSlug: project.slug,
+  };
+}
+
+function countFailedDecisions(decisions: CollectDriveSourceResult['decisions']): number {
+  return decisions.filter((decision) => decision.decision === 'failed').length;
 }
 
 export async function scanDriveDataSource(input: {
@@ -410,6 +430,9 @@ function isDriveTextReadableMimeType(mimeType: string): boolean {
 function driveTextFetchPath(file: DriveFileResponse): string {
   const encodedFileId = encodeURIComponent(file.id);
   if (file.mimeType === 'application/vnd.google-apps.document') {
+    return `/drive/v3/files/${encodedFileId}/export?mimeType=text/plain`;
+  }
+  if (file.mimeType === 'application/vnd.google-apps.presentation') {
     return `/drive/v3/files/${encodedFileId}/export?mimeType=text/plain`;
   }
   if (file.mimeType === 'application/vnd.google-apps.spreadsheet') {

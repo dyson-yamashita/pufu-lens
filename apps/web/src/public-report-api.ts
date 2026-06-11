@@ -17,16 +17,17 @@ import {
   isSafePublicReportLocator,
   PublicReportNotFoundError,
 } from './report';
+import { parsePositiveEnvInt, trustedClientIp } from './request-client';
 
 const hourlyRateLimiter = createPublicChatMemoryRateLimiter({
-  limit: parseEnvInt(process.env.PUFU_LENS_PUBLIC_CHAT_HOURLY_LIMIT, 10),
+  limit: parsePositiveEnvInt(process.env.PUFU_LENS_PUBLIC_CHAT_HOURLY_LIMIT, 10),
   windowMs: 60 * 60_000,
 });
 const dailyRateLimiter = createPublicChatMemoryRateLimiter({
-  limit: parseEnvInt(process.env.PUFU_LENS_PUBLIC_CHAT_DAILY_LIMIT, 50),
+  limit: parsePositiveEnvInt(process.env.PUFU_LENS_PUBLIC_CHAT_DAILY_LIMIT, 50),
   windowMs: 24 * 60 * 60_000,
 });
-const publicChatQuestionMaxLength = parseEnvInt(
+const publicChatQuestionMaxLength = parsePositiveEnvInt(
   process.env.PUFU_LENS_PUBLIC_CHAT_QUESTION_MAX_LENGTH,
   2000,
 );
@@ -97,7 +98,9 @@ export async function handlePublicChatPost(
       storage: createReportStorageFromEnv(),
     });
     for (const rateLimiter of [hourlyRateLimiter, dailyRateLimiter]) {
-      if (!rateLimiter.check({ clientIp: trustedClientIp(request), reportId: input.reportId })) {
+      if (
+        !rateLimiter.check({ clientIp: trustedClientIp(request.headers), reportId: input.reportId })
+      ) {
         return NextResponse.json(
           {
             answer: 'rate limit exceeded',
@@ -215,18 +218,6 @@ export async function handlePublicProjectChatPost(
     projectSlug: input.projectSlug,
     reportId: latestReport.id,
   });
-}
-
-function trustedClientIp(request: NextRequest & { readonly ip?: string }): string {
-  return request.ip?.trim() || 'anonymous';
-}
-
-function parseEnvInt(value: string | undefined, fallback: number): number {
-  if (!value?.trim()) {
-    return fallback;
-  }
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function publicReportNotFound() {

@@ -1,5 +1,5 @@
 import { approveParserVersion, rejectParserVersion } from '../../../../../src/admin-actions';
-import { getAdminProject } from '../../../../../src/admin-db';
+import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
 import { AppShell, PageHeader, ParserActionButtons, StatusBadge } from '../../../../../src/ui';
 
 export default async function ParserProfilesPage({
@@ -8,10 +8,10 @@ export default async function ParserProfilesPage({
   readonly params: Promise<{ readonly projectSlug: string }>;
 }) {
   const { projectSlug } = await params;
-  const project = await getAdminProject(projectSlug);
+  const project = await requireProjectAdminPage(projectSlug);
 
   return (
-    <AppShell active="parser-profiles" project={project}>
+    <AppShell active="parser-profiles" canManageProject project={project}>
       <PageHeader
         title={`${project.name} Parser Profiles`}
         subtitle="active version、draft、validation report、held queue を確認します。"

@@ -423,8 +423,12 @@ test('collectWebUrlSource continues after a candidate fetch failure', async () =
       storage,
     });
 
-    assert.equal(result.decisions.length, 1);
-    assert.equal(result.decisions[0]?.decision, 'collected');
+    assert.equal(result.failureCount, 1);
+    assert.equal(result.decisions.length, 2);
+    assert.equal(result.decisions[0]?.decision, 'failed');
+    assert.match(String(result.decisions[0]?.error), /temporary network failure/);
+    assert.doesNotMatch(String(result.decisions[0]?.error), /token=secret/);
+    assert.equal(result.decisions[1]?.decision, 'collected');
     assert.equal(repository.rawDocuments.size, 1);
     assert.equal(storage.objects.size, 1);
     assert.match(String(errors[0]), /Failed to build raw web candidate/);
@@ -606,7 +610,11 @@ test('collectGitHubSource does not store incomplete PR raw when diff fetch fails
       storage,
     });
 
-    assert.equal(result.decisions.length, 0);
+    assert.equal(result.failureCount, 1);
+    assert.equal(result.decisions.length, 1);
+    assert.equal(result.decisions[0]?.decision, 'failed');
+    assert.match(String(result.decisions[0]?.error), /temporary diff failure/);
+    assert.doesNotMatch(String(result.decisions[0]?.error), /token=secret/);
     assert.equal(repository.rawDocuments.size, 0);
     assert.equal(repository.queue.size, 0);
     assert.equal(storage.objects.size, 0);
@@ -648,7 +656,11 @@ test('collectGitHubSource continues after a candidate fetch failure with sanitiz
       storage,
     });
 
-    assert.equal(result.decisions.length, 0);
+    assert.equal(result.failureCount, 1);
+    assert.equal(result.decisions.length, 1);
+    assert.equal(result.decisions[0]?.decision, 'failed');
+    assert.match(String(result.decisions[0]?.error), /temporary GitHub failure/);
+    assert.doesNotMatch(String(result.decisions[0]?.error), /token=secret/);
     assert.equal(repository.rawDocuments.size, 0);
     assert.match(String(errors[0]), /Failed to build raw GitHub candidate/);
     assert.doesNotMatch(JSON.stringify(errors), /token=secret/);
@@ -858,7 +870,12 @@ test('collectGmailSource continues after a thread fetch failure with sanitized l
       storage,
     });
 
-    assert.equal(result.decisions.length, 0);
+    assert.equal(result.failureCount, 1);
+    assert.equal(result.decisions.length, 1);
+    assert.equal(result.decisions[0]?.decision, 'failed');
+    assert.equal(result.decisions[0]?.sourceId, 'thread-alpha:msg-alpha-002');
+    assert.match(String(result.decisions[0]?.error), /temporary Gmail failure/);
+    assert.doesNotMatch(String(result.decisions[0]?.error), /token=secret/);
     assert.equal(repository.rawDocuments.size, 0);
     assert.equal(storage.objects.size, 0);
     assert.match(String(errors[0]), /Failed to fetch Gmail thread/);
@@ -1060,16 +1077,12 @@ test('fetchDriveText uses source-specific export formats for Google apps', async
         mimeType: 'application/vnd.google-apps.spreadsheet',
       }),
     });
-    await assert.rejects(
-      () =>
-        fetchDriveText({
-          file: driveFile({
-            id: 'drive-slide-1',
-            mimeType: 'application/vnd.google-apps.presentation',
-          }),
-        }),
-      /Unsupported Drive MIME type/,
-    );
+    await fetchDriveText({
+      file: driveFile({
+        id: 'drive-slide-1',
+        mimeType: 'application/vnd.google-apps.presentation',
+      }),
+    });
 
     assert.equal(
       urls[0],
@@ -1079,7 +1092,11 @@ test('fetchDriveText uses source-specific export formats for Google apps', async
       urls[1],
       'https://www.googleapis.com/drive/v3/files/drive-sheet-1/export?mimeType=text/csv',
     );
-    assert.equal(urls.length, 2);
+    assert.equal(
+      urls[2],
+      'https://www.googleapis.com/drive/v3/files/drive-slide-1/export?mimeType=text/plain',
+    );
+    assert.equal(urls.length, 3);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -1128,7 +1145,7 @@ test('collectDriveSource preserves message from non-Error failures while redacti
   };
 
   try {
-    await collectDriveSource({
+    const result = await collectDriveSource({
       fetcher: driveListFetcher(),
       projectSlug: 'sample-a',
       repository,
@@ -1138,6 +1155,10 @@ test('collectDriveSource preserves message from non-Error failures while redacti
       },
     });
 
+    assert.equal(result.failureCount, 1);
+    assert.equal(result.decisions[0]?.decision, 'failed');
+    assert.match(String(result.decisions[0]?.error), /custom Drive error/);
+    assert.doesNotMatch(String(result.decisions[0]?.error), /secret-token/);
     assert.match(JSON.stringify(errors), /custom Drive error/);
     assert.doesNotMatch(JSON.stringify(errors), /secret-token/);
   } finally {
@@ -1226,7 +1247,11 @@ test('collectDriveSource continues after a text fetch failure with sanitized log
       },
     });
 
-    assert.equal(result.decisions.length, 0);
+    assert.equal(result.failureCount, 1);
+    assert.equal(result.decisions.length, 1);
+    assert.equal(result.decisions[0]?.decision, 'failed');
+    assert.match(String(result.decisions[0]?.error), /temporary Drive failure/);
+    assert.doesNotMatch(String(result.decisions[0]?.error), /token=secret/);
     assert.equal(repository.rawDocuments.size, 0);
     assert.equal(storage.objects.size, 0);
     assert.match(String(errors[0]), /Failed to build raw Drive candidate/);

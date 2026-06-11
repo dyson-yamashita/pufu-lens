@@ -25,10 +25,12 @@ import { auth, signOut } from '../auth';
 import type {
   DataSourceSummary,
   ParserProfileSummary,
+  ProjectSourceAvailability,
   ProjectSummary,
   SourceStatus,
   SourceType,
 } from './admin-data';
+import { canManageProject as canManageProjectDb } from './admin-db';
 import { ActionForm, PendingSubmitButton } from './form-buttons';
 
 const sourceLabels: Record<SourceType, string> = {
@@ -48,6 +50,7 @@ const statusLabels: Record<SourceStatus, string> = {
 export async function AppShell({
   project,
   active,
+  canManageProject,
   children,
 }: {
   readonly project?: ProjectSummary;
@@ -62,6 +65,7 @@ export async function AppShell({
     | 'parser-profiles'
     | 'reports'
     | 'settings';
+  readonly canManageProject?: boolean;
   readonly children: React.ReactNode;
 }) {
   const projectSlug = project?.slug;
@@ -69,6 +73,11 @@ export async function AppShell({
   const appRole = session?.user?.role;
   const canShowProjectNav = Boolean(projectSlug);
   const isGuest = !session?.user?.id;
+  const canShowAdminNav =
+    canManageProject ??
+    (projectSlug && session?.user?.id
+      ? await canManageProjectNavigation(projectSlug, session.user.id)
+      : false);
   const navItems = (
     <>
       {projectSlug || session?.user?.id ? (
@@ -122,7 +131,7 @@ export async function AppShell({
               Graph
             </Link>
           ) : null}
-          {session?.user?.id ? (
+          {canShowAdminNav ? (
             <>
               <Link
                 aria-current={active === 'members' ? 'page' : undefined}
@@ -273,6 +282,14 @@ export function PageHeader({
   );
 }
 
+async function canManageProjectNavigation(projectSlug: string, userId: string): Promise<boolean> {
+  try {
+    return await canManageProjectDb(projectSlug, userId);
+  } catch {
+    return false;
+  }
+}
+
 export function MetricStrip({ project }: { readonly project: ProjectSummary }) {
   return (
     <section className="metric-strip" aria-label="Project ingestion metrics">
@@ -314,9 +331,11 @@ export function SourceIcon({ sourceType }: { readonly sourceType: SourceType }) 
 
 export function SourceTypeTabs({
   activeType,
+  availability,
   projectSlug,
 }: {
   readonly activeType?: SourceType;
+  readonly availability?: ProjectSourceAvailability;
   readonly projectSlug: string;
 }) {
   return (
@@ -330,18 +349,37 @@ export function SourceTypeTabs({
       >
         All
       </Link>
-      {(['gmail', 'drive', 'github', 'web'] as const).map((sourceType) => (
-        <Link
-          aria-selected={activeType === sourceType}
-          className={activeType === sourceType ? 'selected' : ''}
-          data-testid={`source-type-${sourceType}-tab`}
-          href={`/projects/${projectSlug}/admin/data-sources?sourceType=${sourceType}`}
-          key={sourceType}
-          role="tab"
-        >
-          {sourceLabels[sourceType]}
-        </Link>
-      ))}
+      {(['gmail', 'drive', 'github', 'web'] as const).map((sourceType) => {
+        const available = availability?.[sourceType] ?? true;
+        if (!available) {
+          return (
+            <span
+              aria-disabled="true"
+              aria-selected="false"
+              className="disabled"
+              data-testid={`source-type-${sourceType}-tab-disabled`}
+              key={sourceType}
+              role="tab"
+              tabIndex={0}
+              title={`${sourceLabels[sourceType]} requires a project connection`}
+            >
+              {sourceLabels[sourceType]}
+            </span>
+          );
+        }
+        return (
+          <Link
+            aria-selected={activeType === sourceType}
+            className={activeType === sourceType ? 'selected' : ''}
+            data-testid={`source-type-${sourceType}-tab`}
+            href={`/projects/${projectSlug}/admin/data-sources?sourceType=${sourceType}`}
+            key={sourceType}
+            role="tab"
+          >
+            {sourceLabels[sourceType]}
+          </Link>
+        );
+      })}
     </div>
   );
 }
