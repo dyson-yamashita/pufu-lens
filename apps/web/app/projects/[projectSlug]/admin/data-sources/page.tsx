@@ -1,6 +1,11 @@
+import Link from 'next/link';
 import { createDataSource, updateDataSource } from '../../../../../src/admin-actions';
 import type { SourceType } from '../../../../../src/admin-data';
-import { getAdminProject, getSourceTypeCounts } from '../../../../../src/admin-db';
+import {
+  getAdminProject,
+  getProjectSourceAvailability,
+  getSourceTypeCounts,
+} from '../../../../../src/admin-db';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
 import {
   AppShell,
@@ -20,8 +25,12 @@ export default async function DataSourcesPage({
 }) {
   const { projectSlug } = await params;
   const { dataSourceId, sourceType } = await searchParams;
-  const activeSourceType = parseSourceType(sourceType);
+  const requestedSourceType = parseSourceType(sourceType);
   const project = await getAdminProject(projectSlug);
+  const availability = await getProjectSourceAvailability(projectSlug);
+  const activeSourceType =
+    requestedSourceType && availability[requestedSourceType] ? requestedSourceType : undefined;
+  const defaultSourceType = resolveDefaultSourceType(activeSourceType, availability);
   const visibleSources = activeSourceType
     ? project.dataSources.filter((source) => source.sourceType === activeSourceType)
     : project.dataSources;
@@ -36,11 +45,24 @@ export default async function DataSourcesPage({
         subtitle="収集対象、設定、queue の状態を source type ごとに確認します。"
       />
       <MetricStrip project={project} />
-      <SourceTypeTabs activeType={activeSourceType} projectSlug={project.slug} />
+      <SourceTypeTabs
+        activeType={activeSourceType}
+        availability={availability}
+        projectSlug={project.slug}
+      />
       <details className="panel create-project-panel" data-testid="data-source-create-panel">
         <summary className="primary-button" data-testid="data-source-add-button">
           Add Source
         </summary>
+        {requestedSourceType && !availability[requestedSourceType] ? (
+          <p
+            className="connection-required-notice"
+            data-testid={`data-source-connection-notice-${requestedSourceType}`}
+          >
+            {sourceTypeLabel(requestedSourceType)} の作成には Settings での接続が必要です。{' '}
+            <Link href={connectionStartHref(project.slug, requestedSourceType)}>接続を開始</Link>
+          </p>
+        ) : null}
         <ActionForm action={createDataSource} className="project-create-form">
           <input name="projectSlug" type="hidden" value={project.slug} />
           <label>
@@ -51,16 +73,38 @@ export default async function DataSourcesPage({
             <span>Type</span>
             <select
               data-testid="data-source-type-input"
-              defaultValue={activeSourceType ?? 'web'}
+              defaultValue={defaultSourceType}
               name="sourceType"
               required
             >
-              <option value="web">Web</option>
-              <option value="github">GitHub</option>
-              <option value="drive">Drive</option>
-              <option value="gmail">Gmail</option>
+              <DataSourceTypeOption availability={availability} label="Web" sourceType="web" />
+              <DataSourceTypeOption
+                availability={availability}
+                label="GitHub"
+                sourceType="github"
+              />
+              <DataSourceTypeOption availability={availability} label="Drive" sourceType="drive" />
+              <DataSourceTypeOption availability={availability} label="Gmail" sourceType="gmail" />
             </select>
           </label>
+          {!availability.github || !availability.gmail || !availability.drive ? (
+            <p className="connection-required-notice" data-testid="data-source-connection-notice">
+              未接続または scope 不足の provider があるため、一部の source type は選択できません。{' '}
+              {!availability.drive ? (
+                <>
+                  <Link href={connectionStartHref(project.slug, 'drive')}>Drive を接続</Link>{' '}
+                </>
+              ) : null}
+              {!availability.gmail ? (
+                <>
+                  <Link href={connectionStartHref(project.slug, 'gmail')}>Gmail を接続</Link>{' '}
+                </>
+              ) : null}
+              {!availability.github ? (
+                <Link href={connectionStartHref(project.slug, 'github')}>GitHub を接続</Link>
+              ) : null}
+            </p>
+          ) : null}
           <label className="project-create-description">
             <span>Scope</span>
             <textarea
@@ -185,4 +229,62 @@ function parseSourceType(value: string | undefined): SourceType | undefined {
     return value;
   }
   return undefined;
+}
+
+function resolveDefaultSourceType(
+  activeSourceType: SourceType | undefined,
+  availability: Record<SourceType, boolean>,
+): SourceType {
+  if (activeSourceType && availability[activeSourceType]) {
+    return activeSourceType;
+  }
+  return 'web';
+}
+
+function sourceTypeLabel(sourceType: SourceType): string {
+  switch (sourceType) {
+    case 'github':
+      return 'GitHub';
+    case 'drive':
+      return 'Drive';
+    case 'gmail':
+      return 'Gmail';
+    default:
+      return 'Web';
+  }
+}
+
+function connectionStartHref(projectSlug: string, sourceType: SourceType): string {
+  const provider = sourceType === 'github' ? 'github' : 'google';
+  const params = new URLSearchParams({ projectSlug });
+  if (sourceType === 'drive' || sourceType === 'gmail') {
+    params.set('sourceType', sourceType);
+  }
+  return `/api/connections/${provider}/start?${params.toString()}`;
+}
+
+function DataSourceTypeOption({
+  availability,
+  label,
+  sourceType,
+}: {
+  readonly availability: Record<SourceType, boolean>;
+  readonly label: string;
+  readonly sourceType: SourceType;
+}) {
+  const enabled = availability[sourceType];
+  return (
+    <option
+      data-testid={
+        enabled
+          ? `data-source-type-option-${sourceType}`
+          : `data-source-type-option-${sourceType}-disabled`
+      }
+      disabled={!enabled}
+      value={sourceType}
+    >
+      {label}
+      {!enabled ? ' (connection required)' : ''}
+    </option>
+  );
 }

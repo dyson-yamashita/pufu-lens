@@ -809,6 +809,91 @@ tr.selected-row {
   color: var(--amber);
 }
 
+.status-connection-connected {
+  background: rgba(57, 212, 154, 0.12);
+  color: var(--green);
+}
+
+.status-connection-not_connected {
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--muted);
+}
+
+.status-connection-expired,
+.status-connection-scope_missing {
+  background: rgba(243, 186, 77, 0.14);
+  color: var(--amber);
+}
+
+.status-connection-error {
+  background: rgba(248, 113, 113, 0.13);
+  color: var(--red);
+}
+
+.connections-panel {
+  margin-top: 16px;
+}
+
+.connections-panel-copy {
+  color: var(--muted);
+  margin: 0 0 16px;
+}
+
+.connection-card-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.connection-card {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.connection-card-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.connection-card h3 {
+  margin: 4px 0 0;
+}
+
+.connection-detail-list {
+  margin: 0 0 16px;
+}
+
+.connection-config-form {
+  border-top: 1px solid var(--line);
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.connection-metadata-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.connection-metadata-list li + li {
+  margin-top: 4px;
+}
+
+.connection-required-notice {
+  color: var(--amber);
+  margin: 0 0 12px;
+}
+
+.connection-required-notice a {
+  color: var(--blue);
+}
+
 .segmented-control {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -820,7 +905,8 @@ tr.selected-row {
   padding: 4px;
 }
 
-.segmented-control a {
+.segmented-control a,
+.segmented-control .disabled {
   background: transparent;
   border: 0;
   border-radius: 6px;
@@ -831,6 +917,11 @@ tr.selected-row {
   min-height: 36px;
   padding: 0 14px;
   text-decoration: none;
+}
+
+.segmented-control .disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .segmented-control a.selected {
@@ -1620,6 +1711,10 @@ th {
   }
 
   .global-nav nav {
+    grid-template-columns: 1fr;
+  }
+
+  .connection-card-grid {
     grid-template-columns: 1fr;
   }
 

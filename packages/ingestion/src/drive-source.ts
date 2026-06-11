@@ -85,6 +85,7 @@ const DEFAULT_PAGE_SIZE = 100;
 const DEFAULT_USER_AGENT = 'pufu-lens-drive-collector/0.1';
 const GOOGLE_DOC_MIME_TYPES = new Set([
   'application/vnd.google-apps.document',
+  'application/vnd.google-apps.presentation',
   'application/vnd.google-apps.spreadsheet',
 ]);
 const TEXT_FILE_MIME_TYPES = new Set([
@@ -410,6 +411,9 @@ function isDriveTextReadableMimeType(mimeType: string): boolean {
 function driveTextFetchPath(file: DriveFileResponse): string {
   const encodedFileId = encodeURIComponent(file.id);
   if (file.mimeType === 'application/vnd.google-apps.document') {
+    return `/drive/v3/files/${encodedFileId}/export?mimeType=text/plain`;
+  }
+  if (file.mimeType === 'application/vnd.google-apps.presentation') {
     return `/drive/v3/files/${encodedFileId}/export?mimeType=text/plain`;
   }
   if (file.mimeType === 'application/vnd.google-apps.spreadsheet') {

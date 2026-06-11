@@ -1060,16 +1060,12 @@ test('fetchDriveText uses source-specific export formats for Google apps', async
         mimeType: 'application/vnd.google-apps.spreadsheet',
       }),
     });
-    await assert.rejects(
-      () =>
-        fetchDriveText({
-          file: driveFile({
-            id: 'drive-slide-1',
-            mimeType: 'application/vnd.google-apps.presentation',
-          }),
-        }),
-      /Unsupported Drive MIME type/,
-    );
+    await fetchDriveText({
+      file: driveFile({
+        id: 'drive-slide-1',
+        mimeType: 'application/vnd.google-apps.presentation',
+      }),
+    });
 
     assert.equal(
       urls[0],
@@ -1079,7 +1075,11 @@ test('fetchDriveText uses source-specific export formats for Google apps', async
       urls[1],
       'https://www.googleapis.com/drive/v3/files/drive-sheet-1/export?mimeType=text/csv',
     );
-    assert.equal(urls.length, 2);
+    assert.equal(
+      urls[2],
+      'https://www.googleapis.com/drive/v3/files/drive-slide-1/export?mimeType=text/plain',
+    );
+    assert.equal(urls.length, 3);
   } finally {
     globalThis.fetch = originalFetch;
   }

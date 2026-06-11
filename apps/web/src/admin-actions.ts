@@ -9,6 +9,9 @@ import type postgres from 'postgres';
 import {
   BUILT_IN_PARSER_ARTIFACT_HASH,
   type CollectionRepository,
+  collectDriveSource,
+  collectGitHubSource,
+  collectGmailSource,
   collectWebUrlSource,
   type DataSourceRecord,
   defaultParserContract,
@@ -24,11 +27,22 @@ import {
   validateProjectSlug,
 } from '../../../packages/project-tenancy/src/project-tenancy.ts';
 import { LocalFsObjectStorage } from '../../../packages/storage/src/local-fs.ts';
-import type { ProjectVisibility, SourceType } from './admin-data';
-import type { AppMemberRole } from './admin-db';
+import {
+  isAdminUiCollectionSupported,
+  isAdminUiIngestSupported,
+  isSourceTypeAvailable,
+  type ProjectVisibility,
+  type SourceType,
+} from './admin-data';
+import { type AppMemberRole, listProjectConnectionsForProjectId } from './admin-db';
 import { getRequiredAdminSql } from './admin-sql';
 import { requireSessionUserId } from './auth-session';
 import { hashPassword } from './password-auth';
+import {
+  createGitHubInstallationAccessToken,
+  readProjectConnectionAccessToken,
+  saveGithubAppConnectionConfig,
+} from './project-connections';
 import {
   createExtractiveReportProvider,
   createGeminiReportProvider,
@@ -162,6 +176,20 @@ export async function updateProjectSettings(formData: FormData): Promise<void> {
   revalidateProject(projectSlug);
 }
 
+export async function updateGithubAppConnectionSettings(formData: FormData): Promise<void> {
+  const projectSlug = requireFormValue(formData, 'projectSlug');
+  const appSlug = requireFormValue(formData, 'githubAppSlug');
+  const appId = requireFormValue(formData, 'githubAppId');
+  const privateKey = formData.get('githubAppPrivateKey')?.toString() ?? '';
+  await saveGithubAppConnectionConfig({
+    appId,
+    appSlug,
+    privateKey,
+    projectSlug,
+  });
+  revalidateProject(projectSlug);
+}
+
 export async function createMember(formData: FormData): Promise<void> {
   const email = normalizeEmail(requireFormValue(formData, 'email'));
   const name = formData.get('name')?.toString().trim() || null;
@@ -292,6 +320,12 @@ export async function createDataSource(formData: FormData): Promise<void> {
 
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
+    const connections = await listProjectConnectionsForProjectId(sql, project.id);
+    if (!isSourceTypeAvailable(sourceType, connections)) {
+      throw new Error(
+        `Project connection is required before creating a ${sourceType} data source. Connect the provider in Settings.`,
+      );
+    }
     await sql.begin(async (tx) => {
       const dataSources = (await tx`
         INSERT INTO public.data_sources (project_id, owner_user_id, source_type, name, config)
@@ -415,8 +449,56 @@ export async function collectDataSource(formData: FormData): Promise<void> {
     if (!dataSource) {
       throw new Error('Data source not found in project.');
     }
-    if (dataSource.source_type !== 'web') {
+    if (!isAdminUiCollectionSupported(dataSource.source_type)) {
       throw new Error(`Collect from admin UI is not supported for ${dataSource.source_type} yet.`);
+    }
+    if (dataSource.source_type === 'drive' || dataSource.source_type === 'gmail') {
+      const token = await readProjectConnectionAccessToken({
+        projectId: project.id,
+        provider: 'google',
+        sql,
+      });
+      if (!token) {
+        throw new Error(
+          `Google ${googleSourceLabel(dataSource.source_type)} access token is not available. Reconnect ${googleSourceLabel(
+            dataSource.source_type,
+          )} in Settings and try again.`,
+        );
+      }
+      if (dataSource.source_type === 'gmail') {
+        await collectGmailSource({
+          projectSlug,
+          repository: new AdminCollectionRepository(sql, dataSourceId),
+          storage: createCollectionStorageFromEnv(),
+          token,
+        });
+        return;
+      }
+      await collectDriveSource({
+        projectSlug,
+        repository: new AdminCollectionRepository(sql, dataSourceId),
+        storage: createCollectionStorageFromEnv(),
+        token,
+      });
+      return;
+    }
+    if (dataSource.source_type === 'github') {
+      const token = await createGitHubInstallationAccessToken({
+        projectId: project.id,
+        sql,
+      });
+      if (!token) {
+        throw new Error(
+          'GitHub App installation token is not available. Reconnect GitHub in Settings and verify GITHUB_APP_ID / GITHUB_APP_PRIVATE_KEY.',
+        );
+      }
+      await collectGitHubSource({
+        projectSlug,
+        repository: new AdminCollectionRepository(sql, dataSourceId),
+        storage: createCollectionStorageFromEnv(),
+        token,
+      });
+      return;
     }
     await collectWebUrlSource({
       projectSlug,
@@ -431,6 +513,7 @@ export async function ingestDataSource(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
   const dataSourceId = requireFormValue(formData, 'dataSourceId');
   let storageRoot: string | undefined;
+  let sourceType: SourceType = 'web';
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
     const rows = (await sql`
@@ -455,12 +538,13 @@ export async function ingestDataSource(formData: FormData): Promise<void> {
     if (!dataSource) {
       throw new Error('Data source not found in project.');
     }
-    if (dataSource.source_type !== 'web') {
+    if (!isAdminUiIngestSupported(dataSource.source_type)) {
       throw new Error(`Ingest from admin UI is not supported for ${dataSource.source_type} yet.`);
     }
     storageRoot = storageRootFromObjectUri(dataSource.storage_uri, projectSlug);
+    sourceType = dataSource.source_type;
   });
-  await runIngestWorkflow({ dataSourceId, projectSlug, sourceType: 'web', storageRoot });
+  await runIngestWorkflow({ dataSourceId, projectSlug, sourceType, storageRoot });
   revalidateProject(projectSlug);
 }
 
@@ -652,7 +736,7 @@ class AdminCollectionRepository implements CollectionRepository {
   }
 
   async findDataSources(projectId: string, sourceType?: SourceType): Promise<DataSourceRecord[]> {
-    if (sourceType !== 'web') {
+    if (!sourceType) {
       return [];
     }
     return (await this.sql`
@@ -1179,6 +1263,10 @@ function buildDataSourceConfig(sourceType: SourceType, scope: string): Record<st
     query: scope,
     source: 'admin-ui',
   };
+}
+
+function googleSourceLabel(sourceType: SourceType): string {
+  return sourceType === 'gmail' ? 'Gmail' : 'Drive';
 }
 
 function createReportProvider(): ReportGenerationProvider {
