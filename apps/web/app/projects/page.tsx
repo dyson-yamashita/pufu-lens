@@ -7,13 +7,14 @@ import {
   listVisiblePublicProjects,
 } from '../../src/admin-db';
 import { ProjectCreateDialog } from '../../src/project-create-dialog';
+import { isDevelopmentBypassEnabled } from '../../src/runtime-guards';
 import { AppShell, PageHeader, StatusBadge } from '../../src/ui';
 
 export default async function ProjectsPage() {
   const session = await auth();
   const userId = session?.user?.id;
   const isAdmin = session?.user?.role === 'admin';
-  const canShowAdminProjects = process.env.PUFU_LENS_ENABLE_ADMIN_PROJECT_LIST === 'true';
+  const canShowAdminProjects = isDevelopmentBypassEnabled('PUFU_LENS_ENABLE_ADMIN_PROJECT_LIST');
   const canCreateProject = isAdmin;
   const [projects, publicProjects] = await Promise.all([
     userId

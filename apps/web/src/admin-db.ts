@@ -13,6 +13,7 @@ import {
   type SourceType,
 } from './admin-data';
 import { getOptionalAdminSql } from './admin-sql';
+import { isFixtureFallbackEnabled, isProductionRuntime } from './runtime-guards';
 
 type ProjectRow = {
   description: string | null;
@@ -126,8 +127,9 @@ type AdminConfig = Record<string, unknown> & {
 };
 
 export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
-  return withOptionalSql(async (sql) => {
-    const rows = (await sql`
+  return withOptionalSql(
+    async (sql) => {
+      const rows = (await sql`
       SELECT
         p.id::text AS id,
         p.slug,
@@ -152,20 +154,22 @@ export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
       ORDER BY p.slug
     `) as ProjectRow[];
 
-    const projectIds = rows.map((row) => row.id);
-    const [dataSourcesByProject, parserProfilesByProject] = await Promise.all([
-      listDataSourcesByProject(sql, projectIds),
-      listParserProfilesByProject(sql, projectIds),
-    ]);
-    const projects = rows.map((row) =>
-      projectFromRow(
-        row,
-        dataSourcesByProject.get(row.id) ?? [],
-        parserProfilesByProject.get(row.id) ?? [],
-      ),
-    );
-    return projects.length > 0 ? projects : fallbackProjects;
-  }, fallbackProjects);
+      const projectIds = rows.map((row) => row.id);
+      const [dataSourcesByProject, parserProfilesByProject] = await Promise.all([
+        listDataSourcesByProject(sql, projectIds),
+        listParserProfilesByProject(sql, projectIds),
+      ]);
+      const projects = rows.map((row) =>
+        projectFromRow(
+          row,
+          dataSourcesByProject.get(row.id) ?? [],
+          parserProfilesByProject.get(row.id) ?? [],
+        ),
+      );
+      return projects;
+    },
+    fallbackProjects as readonly ProjectSummary[],
+  );
 }
 
 export async function listMemberProjects(userId: string): Promise<readonly ProjectSummary[]> {
@@ -495,6 +499,9 @@ export async function getAdminProject(slug: string): Promise<ProjectSummary> {
     ]);
     return projectFromRow(row, dataSources, parserProfiles);
   } catch (error) {
+    if (!isFixtureFallbackEnabled()) {
+      throw error;
+    }
     const fallback = fallbackProjects.find((candidate) => candidate.slug === slug);
     if (fallback) {
       console.warn(error instanceof Error ? error.message : String(error));
@@ -837,7 +844,7 @@ function publicProjectsFromRows(
 }
 
 function publicProjectsFallback(): readonly PublicProjectSummary[] {
-  return process.env.NODE_ENV === 'production' ? [] : fallbackPublicProjects;
+  return isFixtureFallbackEnabled() ? fallbackPublicProjects : [];
 }
 
 async function withOptionalSql<T>(
@@ -846,16 +853,25 @@ async function withOptionalSql<T>(
 ): Promise<T> {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
+    if (isProductionRuntime()) {
+      throw new Error('DATABASE_URL is required.');
+    }
     return fallback;
   }
 
   const sql = getOptionalAdminSql();
   if (!sql) {
+    if (isProductionRuntime()) {
+      throw new Error('DATABASE_URL is required.');
+    }
     return fallback;
   }
   try {
     return await callback(sql);
   } catch (error) {
+    if (isProductionRuntime()) {
+      throw error;
+    }
     console.warn(error instanceof Error ? error.message : String(error));
     return fallback;
   }

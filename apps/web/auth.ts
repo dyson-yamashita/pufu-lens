@@ -10,6 +10,7 @@ import {
   createPostgresPasswordCredentialRepository,
   verifyPasswordCredential,
 } from './src/password-auth';
+import { isProductionRuntime } from './src/runtime-guards';
 
 const authProviders = buildProviders();
 
@@ -127,7 +128,10 @@ function getAuthSecret(): string | undefined {
   if (process.env.AUTH_SECRET) {
     return process.env.AUTH_SECRET;
   }
-  return process.env.NODE_ENV === 'production' ? undefined : 'pufu-lens-local-development-secret';
+  console.warn(
+    'AUTH_SECRET is not set. Set AUTH_SECRET outside local development to protect Auth.js sessions.',
+  );
+  return isProductionRuntime() ? undefined : 'pufu-lens-local-development-secret';
 }
 
 function getProfileEmail(profile: Profile | undefined, user: User): string | null {
