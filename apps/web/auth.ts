@@ -128,10 +128,13 @@ function getAuthSecret(): string | undefined {
   if (process.env.AUTH_SECRET) {
     return process.env.AUTH_SECRET;
   }
+  if (isProductionRuntime()) {
+    throw new Error('AUTH_SECRET is required in production environment.');
+  }
   console.warn(
     'AUTH_SECRET is not set. Set AUTH_SECRET outside local development to protect Auth.js sessions.',
   );
-  return isProductionRuntime() ? undefined : 'pufu-lens-local-development-secret';
+  return 'pufu-lens-local-development-secret';
 }
 
 function getProfileEmail(profile: Profile | undefined, user: User): string | null {

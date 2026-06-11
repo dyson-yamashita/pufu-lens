@@ -127,9 +127,8 @@ type AdminConfig = Record<string, unknown> & {
 };
 
 export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
-  return withOptionalSql(
-    async (sql) => {
-      const rows = (await sql`
+  return withOptionalSql<readonly ProjectSummary[]>(async (sql) => {
+    const rows = (await sql`
       SELECT
         p.id::text AS id,
         p.slug,
@@ -154,22 +153,20 @@ export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
       ORDER BY p.slug
     `) as ProjectRow[];
 
-      const projectIds = rows.map((row) => row.id);
-      const [dataSourcesByProject, parserProfilesByProject] = await Promise.all([
-        listDataSourcesByProject(sql, projectIds),
-        listParserProfilesByProject(sql, projectIds),
-      ]);
-      const projects = rows.map((row) =>
-        projectFromRow(
-          row,
-          dataSourcesByProject.get(row.id) ?? [],
-          parserProfilesByProject.get(row.id) ?? [],
-        ),
-      );
-      return projects;
-    },
-    fallbackProjects as readonly ProjectSummary[],
-  );
+    const projectIds = rows.map((row) => row.id);
+    const [dataSourcesByProject, parserProfilesByProject] = await Promise.all([
+      listDataSourcesByProject(sql, projectIds),
+      listParserProfilesByProject(sql, projectIds),
+    ]);
+    const projects = rows.map((row) =>
+      projectFromRow(
+        row,
+        dataSourcesByProject.get(row.id) ?? [],
+        parserProfilesByProject.get(row.id) ?? [],
+      ),
+    );
+    return projects;
+  }, fallbackProjects);
 }
 
 export async function listMemberProjects(userId: string): Promise<readonly ProjectSummary[]> {
