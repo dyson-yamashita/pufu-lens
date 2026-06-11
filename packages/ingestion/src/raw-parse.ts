@@ -52,6 +52,7 @@ export interface ParseRawDocumentRecord {
 }
 
 export interface ParseQueueTarget {
+  attempts: number;
   dataSourceId: string;
   id: string;
   projectId: string;
@@ -75,6 +76,7 @@ export interface ParserVersionContract {
 }
 
 export interface MarkParsedInput {
+  expectedAttempts: number;
   parsedAt: string;
   parsedUri: string;
   parserArtifactHash: string;
@@ -88,6 +90,7 @@ export interface MarkParsedInput {
 
 export interface MarkFailedInput {
   errorCode: string;
+  expectedAttempts: number;
   lastError: string;
   parserProfileId?: string;
   parserVersionId?: string;
@@ -97,6 +100,7 @@ export interface MarkFailedInput {
 }
 
 export interface MarkHeldInput {
+  expectedAttempts: number;
   holdReason: HoldReason;
   lastError: string;
   parserProfileId?: string;
@@ -200,6 +204,7 @@ async function parseQueueTarget(input: {
 
   if (!parserVersion) {
     await input.repository.markHeld({
+      expectedAttempts: input.target.attempts,
       holdReason: 'parser_approval_required',
       lastError: 'No approved active parser version was found.',
       queueId: input.target.id,
@@ -220,6 +225,7 @@ async function parseQueueTarget(input: {
   } catch (error) {
     await input.repository.markFailed({
       errorCode: 'parser_artifact_or_raw_read_failed',
+      expectedAttempts: input.target.attempts,
       lastError: sanitizeError(error),
       parserProfileId: parserVersion.parserProfileId,
       parserVersionId: parserVersion.id,
@@ -240,6 +246,7 @@ async function parseQueueTarget(input: {
   const contractResult = validateParserContract(rawText, parserVersion.contract);
   if (!contractResult.ok) {
     await input.repository.markHeld({
+      expectedAttempts: input.target.attempts,
       holdReason: 'parser_contract_mismatch',
       lastError: contractResult.error,
       parserProfileId: parserVersion.parserProfileId,
@@ -271,6 +278,7 @@ async function parseQueueTarget(input: {
     const parsedAt = new Date().toISOString();
 
     await input.repository.markParsed({
+      expectedAttempts: input.target.attempts,
       parsedAt,
       parsedUri: stored.uri,
       parserArtifactHash: artifactHash,
@@ -293,6 +301,7 @@ async function parseQueueTarget(input: {
   } catch (error) {
     await input.repository.markFailed({
       errorCode: 'parse_failed',
+      expectedAttempts: input.target.attempts,
       lastError: sanitizeError(error),
       parserProfileId: parserVersion.parserProfileId,
       parserVersionId: parserVersion.id,

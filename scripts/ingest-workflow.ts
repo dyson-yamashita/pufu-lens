@@ -474,7 +474,7 @@ async function resetFailedQueue(input: {
       JOIN public.raw_documents rd ON rd.id = q.raw_document_id
       WHERE q.project_id = ${project.id}
         AND q.status = 'parsing'
-        AND q.lease_expires_at <= now()
+        AND (q.lease_expires_at IS NULL OR q.lease_expires_at <= now())
         AND rd.ingest_status IN ('fetched', 'failed')
         AND (${input.sourceType ?? null}::text IS NULL OR rd.source_type = ${input.sourceType ?? null})
     ),
@@ -523,10 +523,19 @@ async function resetFailedQueue(input: {
 }
 
 async function ensureIngestionQueueLeaseColumn(sql: postgres.Sql): Promise<void> {
-  await sql`
-    ALTER TABLE public.ingestion_queue
-    ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ
+  const columns = await sql`
+    SELECT 1
+    FROM pg_attribute
+    WHERE attrelid = to_regclass('public.ingestion_queue')
+      AND attname = 'lease_expires_at'
+      AND NOT attisdropped
   `;
+  if (columns.length === 0) {
+    await sql`
+      ALTER TABLE public.ingestion_queue
+      ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ
+    `;
+  }
   await sql`
     CREATE INDEX IF NOT EXISTS ingestion_queue_project_lease_idx
     ON public.ingestion_queue (project_id, status, lease_expires_at)

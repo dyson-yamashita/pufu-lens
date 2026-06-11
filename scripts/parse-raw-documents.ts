@@ -98,7 +98,7 @@ class PostgresRawParseRepository implements RawParseRepository {
         WHERE q.project_id = ${input.projectId}
           AND (
             q.status IN ('pending', 'failed')
-            OR (q.status = 'parsing' AND q.lease_expires_at <= now())
+            OR (q.status = 'parsing' AND (q.lease_expires_at IS NULL OR q.lease_expires_at <= now()))
           )
           AND rd.ingest_status IN ('fetched', 'failed')
           AND (${this.sourceType ?? null}::text IS NULL OR rd.source_type = ${this.sourceType ?? null})
@@ -120,11 +120,13 @@ class PostgresRawParseRepository implements RawParseRepository {
         WHERE q.id = c.queue_id
         RETURNING
           q.id,
+          q.attempts,
           q.data_source_id,
           q.project_id,
           q.raw_document_id
       )
       SELECT
+        updated.attempts::int AS attempts,
         updated.data_source_id::text AS "dataSourceId",
         updated.id::text AS id,
         updated.project_id::text AS "projectId",
@@ -176,6 +178,22 @@ class PostgresRawParseRepository implements RawParseRepository {
 
   async markParsed(input: MarkParsedInput): Promise<void> {
     await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
+      const updatedQueue = await transaction`
+        UPDATE public.ingestion_queue
+        SET
+          status = 'parsed',
+          last_error = null,
+          hold_reason = null,
+          parser_profile_id = ${input.parserProfileId},
+          parser_version_id = ${input.parserVersionId},
+          lease_expires_at = null
+        WHERE id = ${input.queueId}
+          AND status = 'parsing'
+          AND attempts = ${input.expectedAttempts}
+          AND lease_expires_at > now()
+        RETURNING id
+      `;
+      assertActiveQueueLease(updatedQueue, input.queueId);
       await transaction`
         UPDATE public.raw_documents
         SET
@@ -190,22 +208,28 @@ class PostgresRawParseRepository implements RawParseRepository {
           parsed_schema_version = ${input.schemaVersion}
         WHERE id = ${input.rawDocumentId}
       `;
-      await transaction`
-        UPDATE public.ingestion_queue
-        SET
-          status = 'parsed',
-          last_error = null,
-          hold_reason = null,
-          parser_profile_id = ${input.parserProfileId},
-          parser_version_id = ${input.parserVersionId},
-          lease_expires_at = null
-        WHERE id = ${input.queueId}
-      `;
     });
   }
 
   async markFailed(input: MarkFailedInput): Promise<void> {
     await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
+      const updatedQueue = await transaction`
+        UPDATE public.ingestion_queue
+        SET
+          status = 'failed',
+          last_error = ${input.lastError},
+          hold_reason = null,
+          parser_profile_id = ${input.parserProfileId ?? null},
+          parser_version_id = ${input.parserVersionId ?? null},
+          sanitized_sample_uri = ${input.sanitizedSampleUri ?? null},
+          lease_expires_at = null
+        WHERE id = ${input.queueId}
+          AND status = 'parsing'
+          AND attempts = ${input.expectedAttempts}
+          AND lease_expires_at > now()
+        RETURNING id
+      `;
+      assertActiveQueueLease(updatedQueue, input.queueId);
       await transaction`
         UPDATE public.raw_documents
         SET
@@ -217,23 +241,27 @@ class PostgresRawParseRepository implements RawParseRepository {
           sanitized_sample_uri = ${input.sanitizedSampleUri ?? null}
         WHERE id = ${input.rawDocumentId}
       `;
-      await transaction`
-        UPDATE public.ingestion_queue
-        SET
-          status = 'failed',
-          last_error = ${input.lastError},
-          hold_reason = null,
-          parser_profile_id = ${input.parserProfileId ?? null},
-          parser_version_id = ${input.parserVersionId ?? null},
-          sanitized_sample_uri = ${input.sanitizedSampleUri ?? null},
-          lease_expires_at = null
-        WHERE id = ${input.queueId}
-      `;
     });
   }
 
   async markHeld(input: MarkHeldInput): Promise<void> {
     await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
+      const updatedQueue = await transaction`
+        UPDATE public.ingestion_queue
+        SET
+          status = 'held',
+          last_error = ${input.lastError},
+          hold_reason = ${input.holdReason},
+          parser_profile_id = ${input.parserProfileId ?? null},
+          parser_version_id = ${input.parserVersionId ?? null},
+          lease_expires_at = null
+        WHERE id = ${input.queueId}
+          AND status = 'parsing'
+          AND attempts = ${input.expectedAttempts}
+          AND lease_expires_at > now()
+        RETURNING id
+      `;
+      assertActiveQueueLease(updatedQueue, input.queueId);
       await transaction`
         UPDATE public.raw_documents
         SET
@@ -244,31 +272,35 @@ class PostgresRawParseRepository implements RawParseRepository {
           parser_version_id = ${input.parserVersionId ?? null}
         WHERE id = ${input.rawDocumentId}
       `;
-      await transaction`
-        UPDATE public.ingestion_queue
-        SET
-          status = 'held',
-          last_error = ${input.lastError},
-          hold_reason = ${input.holdReason},
-          parser_profile_id = ${input.parserProfileId ?? null},
-          parser_version_id = ${input.parserVersionId ?? null},
-          lease_expires_at = null
-        WHERE id = ${input.queueId}
-      `;
     });
   }
 }
 
 async function ensureIngestionQueueLeaseColumn(sql: postgres.Sql): Promise<void> {
-  await sql`
-    ALTER TABLE public.ingestion_queue
-    ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ
+  const columns = await sql`
+    SELECT 1
+    FROM pg_attribute
+    WHERE attrelid = to_regclass('public.ingestion_queue')
+      AND attname = 'lease_expires_at'
+      AND NOT attisdropped
   `;
+  if (columns.length === 0) {
+    await sql`
+      ALTER TABLE public.ingestion_queue
+      ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ
+    `;
+  }
   await sql`
     CREATE INDEX IF NOT EXISTS ingestion_queue_project_lease_idx
     ON public.ingestion_queue (project_id, status, lease_expires_at)
     WHERE status = 'parsing'
   `;
+}
+
+function assertActiveQueueLease(rows: readonly unknown[], queueId: string): void {
+  if (rows.length === 0) {
+    throw new Error(`Queue lease is no longer active: ${queueId}`);
+  }
 }
 
 async function ensureBuiltInParserVersions(input: {
