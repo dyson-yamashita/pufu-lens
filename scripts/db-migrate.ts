@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import postgres from 'postgres';
 
 const MIGRATIONS_DIR = resolveRepoRoot('infra/db/migrations');
+const MIGRATION_LOCK_KEY = 'pufu_lens_schema_migrations';
 
 export async function migrateDatabase(databaseUrl = process.env.DATABASE_URL): Promise<void> {
   if (!databaseUrl) {
@@ -12,6 +13,7 @@ export async function migrateDatabase(databaseUrl = process.env.DATABASE_URL): P
 
   const sql = postgres(databaseUrl, { max: 1 });
   try {
+    await sql`SELECT pg_advisory_lock(hashtext(${MIGRATION_LOCK_KEY}))`;
     await sql`
       CREATE TABLE IF NOT EXISTS public.schema_migrations (
         version TEXT PRIMARY KEY,
@@ -35,6 +37,7 @@ export async function migrateDatabase(databaseUrl = process.env.DATABASE_URL): P
       console.log(`applied migration ${migration.version}`);
     }
   } finally {
+    await sql`SELECT pg_advisory_unlock(hashtext(${MIGRATION_LOCK_KEY}))`.catch(() => []);
     await sql.end();
   }
 }

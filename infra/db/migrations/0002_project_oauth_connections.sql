@@ -163,9 +163,17 @@ SET project_id = (
 WHERE oc.project_id IS NULL
   AND oc.user_id IS NOT NULL;
 
-DELETE FROM public.oauth_connections
-WHERE project_id IS NULL
-   OR user_id IS NULL;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM public.oauth_connections
+    WHERE project_id IS NULL
+  ) THEN
+    RAISE EXCEPTION 'oauth_connections.project_id is required before applying 0002_project_oauth_connections';
+  END IF;
+END
+$$;
 
 DO $$
 BEGIN
