@@ -398,7 +398,10 @@ async function upsertProjectConnection(input: {
       scopes = EXCLUDED.scopes,
       metadata = EXCLUDED.metadata,
       access_token_secret = EXCLUDED.access_token_secret,
-      refresh_token_secret = EXCLUDED.refresh_token_secret,
+      refresh_token_secret = COALESCE(
+        EXCLUDED.refresh_token_secret,
+        oauth_connections.refresh_token_secret
+      ),
       expires_at = EXCLUDED.expires_at,
       updated_at = now()
   `;
@@ -689,7 +692,8 @@ function readRequiredSearchParam(request: NextRequest, name: string): string {
 }
 
 function appBaseUrl(): string {
-  return process.env.APP_BASE_URL ?? process.env.AUTH_URL ?? 'http://localhost:3000';
+  const url = process.env.APP_BASE_URL ?? process.env.AUTH_URL ?? 'http://localhost:3000';
+  return url.endsWith('/') ? url.slice(0, -1) : url;
 }
 
 function connectionStateSecret(): string {
