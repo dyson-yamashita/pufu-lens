@@ -10,7 +10,7 @@ import {
   createPostgresPasswordCredentialRepository,
   verifyPasswordCredential,
 } from './src/password-auth';
-import { isProductionRuntime } from './src/runtime-guards';
+import { isProductionBuildPhase, isProductionRuntime } from './src/runtime-guards';
 
 const authProviders = buildProviders();
 
@@ -128,7 +128,7 @@ function getAuthSecret(): string | undefined {
   if (process.env.AUTH_SECRET) {
     return process.env.AUTH_SECRET;
   }
-  if (isProductionRuntime()) {
+  if (isProductionRuntime() && !isProductionBuildPhase()) {
     throw new Error('AUTH_SECRET is required in production environment.');
   }
   console.warn(
