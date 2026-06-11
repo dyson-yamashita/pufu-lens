@@ -190,7 +190,6 @@ class PostgresRawParseRepository implements RawParseRepository {
         WHERE id = ${input.queueId}
           AND status = 'parsing'
           AND attempts = ${input.expectedAttempts}
-          AND lease_expires_at > now()
         RETURNING id
       `;
       assertActiveQueueLease(updatedQueue, input.queueId);
@@ -226,7 +225,6 @@ class PostgresRawParseRepository implements RawParseRepository {
         WHERE id = ${input.queueId}
           AND status = 'parsing'
           AND attempts = ${input.expectedAttempts}
-          AND lease_expires_at > now()
         RETURNING id
       `;
       assertActiveQueueLease(updatedQueue, input.queueId);
@@ -258,7 +256,6 @@ class PostgresRawParseRepository implements RawParseRepository {
         WHERE id = ${input.queueId}
           AND status = 'parsing'
           AND attempts = ${input.expectedAttempts}
-          AND lease_expires_at > now()
         RETURNING id
       `;
       assertActiveQueueLease(updatedQueue, input.queueId);
