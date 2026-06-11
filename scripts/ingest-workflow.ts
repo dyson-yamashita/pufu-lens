@@ -146,10 +146,10 @@ async function retryCommand(options: WorkflowOptions): Promise<void> {
   const run = createRunLogger({ command: 'retry', projectSlug, sourceType: options.source });
   const reset = options.dryRun
     ? { planned: true, queueItems: 0, rawDocuments: 0 }
-    : await withSql(
-        (sql: postgres.Sql): Promise<ResetFailedQueueResult> =>
-          resetFailedQueue({ projectSlug, sourceType: options.source, sql }),
-      );
+    : await withSql(async (sql: postgres.Sql): Promise<ResetFailedQueueResult> => {
+        await ensureIngestionQueueLeaseColumn(sql);
+        return resetFailedQueue({ projectSlug, sourceType: options.source, sql });
+      });
   logEvent(run, {
     event: 'failed_queue_reset',
     llm: noLlmUsage(),
@@ -468,7 +468,17 @@ async function resetFailedQueue(input: {
   }
 
   const rows = (await input.sql`
-    WITH failed AS (
+    WITH expired_parsing AS (
+      SELECT q.id AS queue_id, rd.id AS raw_document_id, rd.parsed_uri
+      FROM public.ingestion_queue q
+      JOIN public.raw_documents rd ON rd.id = q.raw_document_id
+      WHERE q.project_id = ${project.id}
+        AND q.status = 'parsing'
+        AND q.lease_expires_at <= now()
+        AND rd.ingest_status IN ('fetched', 'failed')
+        AND (${input.sourceType ?? null}::text IS NULL OR rd.source_type = ${input.sourceType ?? null})
+    ),
+    failed AS (
       SELECT q.id AS queue_id, rd.id AS raw_document_id, rd.parsed_uri
       FROM public.ingestion_queue q
       JOIN public.raw_documents rd ON rd.id = q.raw_document_id
@@ -477,14 +487,19 @@ async function resetFailedQueue(input: {
         AND rd.ingest_status = 'failed'
         AND (${input.sourceType ?? null}::text IS NULL OR rd.source_type = ${input.sourceType ?? null})
     ),
+    resettable AS (
+      SELECT * FROM failed
+      UNION ALL
+      SELECT * FROM expired_parsing
+    ),
     updated_raw AS (
       UPDATE public.raw_documents rd
       SET
-        ingest_status = CASE WHEN failed.parsed_uri IS NULL THEN 'fetched' ELSE 'parsed' END,
+        ingest_status = CASE WHEN resettable.parsed_uri IS NULL THEN 'fetched' ELSE 'parsed' END,
         ingest_error = null,
         hold_reason = null
-      FROM failed
-      WHERE rd.id = failed.raw_document_id
+      FROM resettable
+      WHERE rd.id = resettable.raw_document_id
       RETURNING rd.id
     ),
     updated_queue AS (
@@ -493,9 +508,10 @@ async function resetFailedQueue(input: {
         status = 'pending',
         last_error = null,
         hold_reason = null,
+        lease_expires_at = null,
         scheduled_at = now()
-      FROM failed
-      WHERE q.id = failed.queue_id
+      FROM resettable
+      WHERE q.id = resettable.queue_id
       RETURNING q.id
     )
     SELECT
@@ -504,6 +520,18 @@ async function resetFailedQueue(input: {
   `) as ResetFailedQueueResult[];
 
   return rows[0] ?? { queueItems: 0, rawDocuments: 0 };
+}
+
+async function ensureIngestionQueueLeaseColumn(sql: postgres.Sql): Promise<void> {
+  await sql`
+    ALTER TABLE public.ingestion_queue
+    ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS ingestion_queue_project_lease_idx
+    ON public.ingestion_queue (project_id, status, lease_expires_at)
+    WHERE status = 'parsing'
+  `;
 }
 
 async function lookupProject(sql: postgres.Sql, slug: string): Promise<ProjectRecord | undefined> {

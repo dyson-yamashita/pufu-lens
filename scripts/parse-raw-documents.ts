@@ -19,15 +19,22 @@ import {
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
+const DEFAULT_PARSE_LEASE_SECONDS = 15 * 60;
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   const storage = createLocalObjectStorageFromEnv();
-  const repository = new PostgresRawParseRepository(sql, options.source, options.dataSourceId);
+  const repository = new PostgresRawParseRepository(
+    sql,
+    options.source,
+    options.dataSourceId,
+    parsePositiveInt(process.env.PUFU_LENS_PARSE_LEASE_SECONDS, DEFAULT_PARSE_LEASE_SECONDS),
+  );
 
   try {
+    await ensureIngestionQueueLeaseColumn(sql);
     if (options.seedBuiltInParsers !== false) {
       await ensureBuiltInParserVersions({ projectSlug, sourceType: options.source, sql });
     }
@@ -57,14 +64,17 @@ function createTopicExtractionAgentFromEnv() {
 
 class PostgresRawParseRepository implements RawParseRepository {
   private dataSourceId: string | undefined;
+  private leaseSeconds: number;
   private sql: postgres.Sql;
   private sourceType: SourceType | undefined;
   constructor(
     sql: postgres.Sql,
     sourceType: SourceType | undefined,
     dataSourceId: string | undefined,
+    leaseSeconds: number,
   ) {
     this.dataSourceId = dataSourceId;
+    this.leaseSeconds = leaseSeconds;
     this.sql = sql;
     this.sourceType = sourceType;
   }
@@ -86,7 +96,10 @@ class PostgresRawParseRepository implements RawParseRepository {
         FROM public.ingestion_queue q
         JOIN public.raw_documents rd ON rd.id = q.raw_document_id
         WHERE q.project_id = ${input.projectId}
-          AND q.status IN ('pending', 'failed')
+          AND (
+            q.status IN ('pending', 'failed')
+            OR (q.status = 'parsing' AND q.lease_expires_at <= now())
+          )
           AND rd.ingest_status IN ('fetched', 'failed')
           AND (${this.sourceType ?? null}::text IS NULL OR rd.source_type = ${this.sourceType ?? null})
           AND (${this.dataSourceId ?? null}::uuid IS NULL OR q.data_source_id = ${this.dataSourceId ?? null}::uuid)
@@ -101,7 +114,8 @@ class PostgresRawParseRepository implements RawParseRepository {
           attempts = attempts + 1,
           last_error = null,
           hold_reason = null,
-          sanitized_sample_uri = null
+          sanitized_sample_uri = null,
+          lease_expires_at = now() + (${this.leaseSeconds} * interval '1 second')
         FROM candidates c
         WHERE q.id = c.queue_id
         RETURNING
@@ -183,7 +197,8 @@ class PostgresRawParseRepository implements RawParseRepository {
           last_error = null,
           hold_reason = null,
           parser_profile_id = ${input.parserProfileId},
-          parser_version_id = ${input.parserVersionId}
+          parser_version_id = ${input.parserVersionId},
+          lease_expires_at = null
         WHERE id = ${input.queueId}
       `;
     });
@@ -210,7 +225,8 @@ class PostgresRawParseRepository implements RawParseRepository {
           hold_reason = null,
           parser_profile_id = ${input.parserProfileId ?? null},
           parser_version_id = ${input.parserVersionId ?? null},
-          sanitized_sample_uri = ${input.sanitizedSampleUri ?? null}
+          sanitized_sample_uri = ${input.sanitizedSampleUri ?? null},
+          lease_expires_at = null
         WHERE id = ${input.queueId}
       `;
     });
@@ -235,11 +251,24 @@ class PostgresRawParseRepository implements RawParseRepository {
           last_error = ${input.lastError},
           hold_reason = ${input.holdReason},
           parser_profile_id = ${input.parserProfileId ?? null},
-          parser_version_id = ${input.parserVersionId ?? null}
+          parser_version_id = ${input.parserVersionId ?? null},
+          lease_expires_at = null
         WHERE id = ${input.queueId}
       `;
     });
   }
+}
+
+async function ensureIngestionQueueLeaseColumn(sql: postgres.Sql): Promise<void> {
+  await sql`
+    ALTER TABLE public.ingestion_queue
+    ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS ingestion_queue_project_lease_idx
+    ON public.ingestion_queue (project_id, status, lease_expires_at)
+    WHERE status = 'parsing'
+  `;
 }
 
 async function ensureBuiltInParserVersions(input: {
@@ -393,6 +422,14 @@ function requiredEnv(name: string): string {
     throw new Error(`${name} is required.`);
   }
   return value;
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  if (!value?.trim()) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function requiredOption(value: string | undefined, name: string): string {

@@ -53,7 +53,7 @@ failed queue を原本再取得なしで再処理する。
 pnpm ingest:retry --project sample-a --source github --failed-only --embedding-provider deterministic
 ```
 
-`ingest:retry` は `ingestion_queue.status='failed'` かつ `raw_documents.ingest_status='failed'` の対象を reset する。`parsed_uri` がある raw は `parsed` に戻し、`parsed_uri` がない raw は `fetched` に戻すため、parse 失敗と graph / chunk 失敗のどちらも同じコマンドで再開できる。
+`ingest:retry` は `ingestion_queue.status='failed'` かつ `raw_documents.ingest_status='failed'` の対象を reset する。さらに `ingestion_queue.status='parsing'` で `lease_expires_at <= now()` の対象も `pending` に戻す。`parsed_uri` がある raw は `parsed` に戻し、`parsed_uri` がない raw は `fetched` に戻すため、parse 失敗、worker crash 後の stuck parsing、graph / chunk 失敗のいずれも同じコマンドで再開できる。
 
 ## 確認 SQL
 
