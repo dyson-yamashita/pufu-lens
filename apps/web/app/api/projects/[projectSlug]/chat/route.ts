@@ -14,9 +14,10 @@ import {
   mastraGenerateToChatResponse,
   mastraProjectChatGenerateUrl,
 } from '../../../../../src/mastra-chat';
+import { parsePositiveEnvInt } from '../../../../../src/request-client';
 
 const rateLimiter = createMemoryRateLimiter({ limit: 20, windowMs: 60_000 });
-const privateChatQuestionMaxLength = parseEnvInt(
+const privateChatQuestionMaxLength = parsePositiveEnvInt(
   process.env.PUFU_LENS_PRIVATE_CHAT_QUESTION_MAX_LENGTH,
   2000,
 );
@@ -110,12 +111,4 @@ export async function POST(
 
 function chatErrorResponse(code: string, message: string, status: number) {
   return NextResponse.json({ error: { code, message } }, { status });
-}
-
-function parseEnvInt(value: string | undefined, fallback: number): number {
-  if (!value?.trim()) {
-    return fallback;
-  }
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
