@@ -83,11 +83,13 @@ export interface CollectGitHubSourceResult {
   decisions: Array<{
     dataSourceId: string;
     decision: CollectDecision | 'would_collect' | 'would_skip_existing';
+    error?: string;
     rawDocumentId?: string;
     sourceId: string;
     sourceType: 'github';
   }>;
   dryRun: boolean;
+  failureCount: number;
   projectSlug: string;
 }
 
@@ -193,11 +195,19 @@ export async function collectGitHubSource(
           token: options.token,
         });
       } catch (error) {
+        const sanitizedError = sanitizeError(error);
         console.error(
           `Failed to build raw GitHub candidate for ${redactGitHubUri(
             candidate.issue.html_url,
-          )}: ${sanitizeError(error)}`,
+          )}: ${sanitizedError}`,
         );
+        decisions.push({
+          dataSourceId: dataSource.id,
+          decision: 'failed',
+          error: sanitizedError,
+          sourceId,
+          sourceType: 'github',
+        });
         continue;
       }
 
@@ -247,7 +257,16 @@ export async function collectGitHubSource(
     }
   }
 
-  return { decisions, dryRun: options.dryRun ?? false, projectSlug: project.slug };
+  return {
+    decisions,
+    dryRun: options.dryRun ?? false,
+    failureCount: countFailedDecisions(decisions),
+    projectSlug: project.slug,
+  };
+}
+
+function countFailedDecisions(decisions: CollectGitHubSourceResult['decisions']): number {
+  return decisions.filter((decision) => decision.decision === 'failed').length;
 }
 
 export async function scanGitHubDataSource(input: {

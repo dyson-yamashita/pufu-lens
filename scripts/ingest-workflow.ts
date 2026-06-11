@@ -70,6 +70,7 @@ type StepCommand = {
 };
 
 type ScriptResult = Record<string, unknown> & {
+  failureCount?: number;
   llm?: LlmUsage;
 };
 
@@ -229,6 +230,7 @@ async function executeWorkflowStep(input: {
 
   try {
     const childResult = await runNodeScript(command.args);
+    const failureCount = childResult.failureCount ?? 0;
     logEvent(input.run, {
       durationMs: Date.now() - startedAt.getTime(),
       event: 'step_completed',
@@ -236,6 +238,15 @@ async function executeWorkflowStep(input: {
       result: childResult,
       step: input.step,
     });
+    if (input.step === 'collect' && failureCount > 0) {
+      const failureThreshold = collectionFailureThreshold();
+      if (failureCount <= failureThreshold) {
+        return;
+      }
+      throw new Error(
+        `Collection step reported ${failureCount} failed candidate(s), threshold is ${failureThreshold}.`,
+      );
+    }
   } catch (error) {
     logEvent(input.run, {
       durationMs: Date.now() - startedAt.getTime(),
@@ -425,6 +436,7 @@ function summarizeScriptResult(result: unknown): ScriptResult {
   return {
     ...(typeof record.projectSlug === 'string' ? { projectSlug: record.projectSlug } : {}),
     ...(typeof record.embeddingModel === 'string' ? { embeddingModel: record.embeddingModel } : {}),
+    ...(typeof record.failureCount === 'number' ? { failureCount: record.failureCount } : {}),
     ...(isLlmUsage(record.llm) ? { llm: record.llm } : {}),
     ...(decisions ? { decisionCount: decisions.length, decisions } : {}),
   };
@@ -443,6 +455,7 @@ function summarizeDecision(decision: unknown): Record<string, unknown> {
     'decision',
     'documentId',
     'emailQuoteCount',
+    'error',
     'graphEdgeCount',
     'graphNodeCount',
     'rawDocumentId',
@@ -773,6 +786,22 @@ function safeErrorMessage(value: unknown): string {
     .replace(/(token|secret|api[_-]?key)=\S+/gi, '$1=<redacted>')
     .replace(/(postgres(?:ql)?:\/\/[^:]+:)[^@]+@/gi, '$1<redacted>@')
     .slice(0, 1000);
+}
+
+function collectionFailureThreshold(): number {
+  const value = process.env.PUFU_LENS_INGEST_FAILURE_THRESHOLD;
+  if (value === undefined || value.trim() === '') {
+    return 0;
+  }
+  return readNonNegativeInteger(value, 'PUFU_LENS_INGEST_FAILURE_THRESHOLD');
+}
+
+function readNonNegativeInteger(value: string, name: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`Invalid ${name} value: ${value}`);
+  }
+  return parsed;
 }
 
 function requiredEnv(name: string): string {

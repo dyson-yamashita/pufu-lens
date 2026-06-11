@@ -91,11 +91,13 @@ export interface CollectGmailSourceResult {
   decisions: Array<{
     dataSourceId: string;
     decision: CollectDecision | 'would_collect' | 'would_skip_existing';
+    error?: string;
     rawDocumentId?: string;
     sourceId: string;
     sourceType: 'gmail';
   }>;
   dryRun: boolean;
+  failureCount: number;
   projectSlug: string;
 }
 
@@ -144,9 +146,20 @@ export async function collectGmailSource(
           token: options.token,
         });
       } catch (error) {
+        const sanitizedError = sanitizeError(error);
         console.error(
-          `Failed to fetch Gmail thread ${candidate.message.threadId}: ${sanitizeError(error)}`,
+          `Failed to fetch Gmail thread ${candidate.message.threadId}: ${sanitizedError}`,
         );
+        decisions.push({
+          dataSourceId: dataSource.id,
+          decision: 'failed',
+          error: sanitizedError,
+          sourceId: normalizeSourceId(
+            'gmail',
+            `${candidate.message.threadId}:${candidate.message.id}`,
+          ),
+          sourceType: 'gmail',
+        });
         continue;
       }
       const latestMessage = latestThreadMessage(thread);
@@ -211,11 +224,19 @@ export async function collectGmailSource(
           thread,
         });
       } catch (error) {
+        const sanitizedError = sanitizeError(error);
         console.error(
           `Failed to build raw Gmail candidate for ${redactGmailUri(
             gmailMessageUri(latestMessage),
-          )}: ${sanitizeError(error)}`,
+          )}: ${sanitizedError}`,
         );
+        decisions.push({
+          dataSourceId: dataSource.id,
+          decision: 'failed',
+          error: sanitizedError,
+          sourceId,
+          sourceType: 'gmail',
+        });
         continue;
       }
 
@@ -265,7 +286,16 @@ export async function collectGmailSource(
     }
   }
 
-  return { decisions, dryRun: options.dryRun ?? false, projectSlug: project.slug };
+  return {
+    decisions,
+    dryRun: options.dryRun ?? false,
+    failureCount: countFailedDecisions(decisions),
+    projectSlug: project.slug,
+  };
+}
+
+function countFailedDecisions(decisions: CollectGmailSourceResult['decisions']): number {
+  return decisions.filter((decision) => decision.decision === 'failed').length;
 }
 
 export async function scanGmailDataSource(input: {
