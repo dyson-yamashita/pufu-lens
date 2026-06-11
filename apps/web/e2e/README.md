@@ -12,25 +12,28 @@ pnpm --filter @pufu-lens/web test:e2e -- --grep "scenario:"
 ```
 
 `apps/web/playwright.config.ts` は `desktop` と `mobile` の 2 project を定義し、`http://localhost:3000` の Next.js dev server を起動または再利用する。
+admin user シナリオは credentials login を使うため、実行環境に
+`PUFU_LENS_E2E_ADMIN_EMAIL` と `PUFU_LENS_E2E_ADMIN_PASSWORD` がない場合は skip される。
 
 ## シナリオ一覧
 
-| シナリオ                          | spec                | ロール                  | 対象                                       | viewport         | データ境界         | 期待結果                                                                             |
-| --------------------------------- | ------------------- | ----------------------- | ------------------------------------------ | ---------------- | ------------------ | ------------------------------------------------------------------------------------ |
-| Public project discovery          | `admin-ui.spec.ts`  | public user             | `/projects`                                | desktop / mobile | fixture DB         | public project が見え、カード内の report 一覧と admin / private project 導線は出ない |
-| Admin operation controls          | `admin-ui.spec.ts`  | admin user              | data sources / ingestion / parser profiles | desktop / mobile | fixture DB         | 運用画面の主要 control が安定した `data-testid` で操作・確認できる                   |
-| Private chat answer rendering     | `chat-ui.spec.ts`   | member user             | private chat UI                            | desktop / mobile | API mock           | 質問送信後に answer、source、tool call が表示される                                  |
-| Private report list to detail     | `report-ui.spec.ts` | member user             | private report list / detail               | desktop / mobile | API mock           | 一覧から詳細へ遷移し、summary、section、pufu score が表示される                      |
-| Private report mobile readability | `report-ui.spec.ts` | member user             | private report detail                      | mobile focused   | API mock           | 主要 section が mobile viewport で表示される                                         |
-| Private report error visibility   | `report-ui.spec.ts` | member user             | private report list / detail               | desktop / mobile | API mock           | API error code が UI に表示される                                                    |
-| Public report redaction and chat  | `report-ui.spec.ts` | public user             | public report / public chat                | desktop / mobile | API mock           | redacted artifact のみ表示し、公開範囲内質問に回答し、未公開情報要求を拒否する       |
-| Public API unsafe input rejection | `report-ui.spec.ts` | public / hostile client | public report/chat API、publish API        | API only         | real route handler | path traversal、過長質問、不正 body を拒否する                                       |
+| シナリオ                          | spec                | ロール                  | 対象                                                        | viewport         | データ境界            | 期待結果                                                                             |
+| --------------------------------- | ------------------- | ----------------------- | ----------------------------------------------------------- | ---------------- | --------------------- | ------------------------------------------------------------------------------------ |
+| Public project discovery          | `admin-ui.spec.ts`  | public user             | `/projects`                                                 | desktop / mobile | fixture DB            | public project が見え、カード内の report 一覧と admin / private project 導線は出ない |
+| Admin route rejection             | `admin-ui.spec.ts`  | public user             | admin data sources / ingestion / parser profiles / settings | desktop / mobile | fixture DB            | 未ログインでは login に戻り、管理情報が描画されない                                  |
+| Admin operation controls          | `admin-ui.spec.ts`  | admin user              | data sources / ingestion / parser profiles / settings       | desktop / mobile | real DB + credentials | 運用画面の主要 control が安定した `data-testid` で操作・確認できる                   |
+| Private chat answer rendering     | `chat-ui.spec.ts`   | member user             | private chat UI                                             | desktop / mobile | API mock              | 質問送信後に answer、source、tool call が表示される                                  |
+| Private report list to detail     | `report-ui.spec.ts` | member user             | private report list / detail                                | desktop / mobile | API mock              | 一覧から詳細へ遷移し、summary、section、pufu score が表示される                      |
+| Private report mobile readability | `report-ui.spec.ts` | member user             | private report detail                                       | mobile focused   | API mock              | 主要 section が mobile viewport で表示される                                         |
+| Private report error visibility   | `report-ui.spec.ts` | member user             | private report list / detail                                | desktop / mobile | API mock              | API error code が UI に表示される                                                    |
+| Public report redaction and chat  | `report-ui.spec.ts` | public user             | public report / public chat                                 | desktop / mobile | API mock              | redacted artifact のみ表示し、公開範囲内質問に回答し、未公開情報要求を拒否する       |
+| Public API unsafe input rejection | `report-ui.spec.ts` | public / hostile client | public report/chat API、publish API                         | API only         | real route handler    | path traversal、過長質問、不正 body を拒否する                                       |
 
 ## 不足観点
 
-- 認証導入後のログイン済み member 表示は未実装のため、現時点では `Public project discovery` が未ログイン相当の表示を担保する。
+- ログイン済み admin の E2E は credentials 環境変数がある場合に実行する。member / 非 admin の project 境界は追加の fixture user 整備後に拡張する。
 - `/projects` のログイン状態別 matrix は `docs/plans/002-account-login-public-projects/overview.md` の Step 4 / Step 5 と同期して追加する。
-- private route / private API への未ログイン、非 member、非 admin アクセス拒否は、認証境界の実装と合わせて E2E または route test に追加する。
+- private route / private API への非 member、非 admin アクセス拒否は、認証境界の実装と合わせて E2E または route test に追加する。
 - report 生成、公開、public report 閲覧、public chat までを実 API / fixture DB でつなぐ統合シナリオは未整備。現在は UI シナリオを API mock で安定化し、API 安全性は route handler で確認している。
 - viewport ごとのレイアウト崩れは Playwright の `desktop` / `mobile` project で全 spec を走らせているが、スクリーンショット比較は導入していない。
 

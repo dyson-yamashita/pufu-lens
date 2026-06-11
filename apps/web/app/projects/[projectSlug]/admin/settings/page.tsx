@@ -1,13 +1,12 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import {
   updateGithubAppConnectionSettings,
   updateProjectSettings,
 } from '../../../../../src/admin-actions';
 import type { ProjectConnectionStatus } from '../../../../../src/admin-data';
-import { getProjectMembership, listProjectConnections } from '../../../../../src/admin-db';
-import { getSessionUserId } from '../../../../../src/auth-session';
+import { listProjectConnections } from '../../../../../src/admin-db';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
+import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
 import { AppShell, PageHeader, StatusBadge } from '../../../../../src/ui';
 
 export default async function ProjectSettingsPage({
@@ -22,25 +21,11 @@ export default async function ProjectSettingsPage({
 }) {
   const { projectSlug } = await params;
   const connectionParams = await searchParams;
-  const userId = await getSessionUserId();
-  if (!userId) {
-    redirect('/login');
-  }
-
-  let membership: Awaited<ReturnType<typeof getProjectMembership>>;
-  try {
-    membership = await getProjectMembership(projectSlug, userId);
-  } catch {
-    redirect('/projects');
-  }
-  if (!membership.canManageMembers) {
-    redirect(`/projects/${projectSlug}`);
-  }
-  const project = membership.project;
+  const project = await requireProjectAdminPage(projectSlug);
   const connections = await listProjectConnections(projectSlug);
 
   return (
-    <AppShell active="settings" project={project}>
+    <AppShell active="settings" canManageProject project={project}>
       <PageHeader
         title={`${project.name} Settings`}
         subtitle="プロジェクトの基本情報と公開範囲を管理します。"

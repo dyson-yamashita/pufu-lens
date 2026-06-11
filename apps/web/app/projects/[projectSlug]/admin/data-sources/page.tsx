@@ -1,12 +1,9 @@
 import Link from 'next/link';
 import { createDataSource, updateDataSource } from '../../../../../src/admin-actions';
 import type { SourceType } from '../../../../../src/admin-data';
-import {
-  getAdminProject,
-  getProjectSourceAvailability,
-  getSourceTypeCounts,
-} from '../../../../../src/admin-db';
+import { getProjectSourceAvailability, getSourceTypeCounts } from '../../../../../src/admin-db';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
+import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
 import {
   AppShell,
   DataSourceTable,
@@ -25,8 +22,8 @@ export default async function DataSourcesPage({
 }) {
   const { projectSlug } = await params;
   const { dataSourceId, sourceType } = await searchParams;
+  const project = await requireProjectAdminPage(projectSlug);
   const requestedSourceType = parseSourceType(sourceType);
-  const project = await getAdminProject(projectSlug);
   const availability = await getProjectSourceAvailability(projectSlug);
   const activeSourceType =
     requestedSourceType && availability[requestedSourceType] ? requestedSourceType : undefined;
@@ -39,7 +36,7 @@ export default async function DataSourcesPage({
   const counts = getSourceTypeCounts(project);
 
   return (
-    <AppShell active="data-sources" project={project}>
+    <AppShell active="data-sources" canManageProject project={project}>
       <PageHeader
         title={`${project.name} Data Sources`}
         subtitle="収集対象、設定、queue の状態を source type ごとに確認します。"
