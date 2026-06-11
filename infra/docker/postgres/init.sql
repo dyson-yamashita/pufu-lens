@@ -57,21 +57,23 @@ CREATE TABLE public.project_members (
 
 CREATE TABLE public.oauth_connections (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   provider TEXT NOT NULL CHECK (provider IN ('google', 'github')),
-  provider_account_id TEXT NOT NULL,
+  provider_account_id TEXT NOT NULL DEFAULT '',
   account_email TEXT,
   account_login TEXT,
   scopes TEXT[] NOT NULL DEFAULT '{}',
   metadata JSONB NOT NULL DEFAULT '{}',
-  access_token_secret TEXT NOT NULL,
+  access_token_secret TEXT,
   refresh_token_secret TEXT,
   expires_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (user_id, provider, provider_account_id),
+  UNIQUE (project_id, provider),
   UNIQUE (id, user_id)
 );
+CREATE INDEX oauth_connections_project_id_idx ON public.oauth_connections (project_id);
 
 CREATE TABLE public.data_sources (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

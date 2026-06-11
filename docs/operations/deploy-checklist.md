@@ -57,7 +57,7 @@ pnpm deploy:smoke --env staging
 ```
 
 - `deploy:dry-run`: `curate-workflow`、`ingest-workflow`、`generate-report` の `WORKFLOW_ID` / `WORKFLOW_INPUT_JSON` entrypoint 計画をローカル dry-run で検査する。
-- `auth:migrate`: 既存 DB に `auth_accounts` を idempotent に作成し、Auth.js session から `users.id` を解決するための provider account 対応表を用意する。
+- `db:migrate`: `infra/db/migrations/*.sql` を番号順に適用し、`auth_accounts`、`auth_password_credentials`、project scoped `oauth_connections` など既存 DB に必要な schema を用意する。既存互換の `auth:migrate` も同じ migration runner を呼び出す。
 - `auth:create-user`: OAuth を使わない環境で Credentials login 用 user と password hash を作成する。実 password は DB / docs / log に保存しない。
 - `report:backfill-project-manifests`: 既存の `projects.visibility = 'public'` project に対して、公開レポート API が参照する `project-public-state.json` を Object Storage に作成する。初回は `--dry-run` で対象を確認し、問題なければ `--dry-run` なしで一度だけ実行する。
 - `infra:check`:

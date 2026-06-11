@@ -33,6 +33,7 @@
     "report:backfill-project-manifests": "pnpm --filter @pufu-lens/storage build && node --experimental-strip-types scripts/backfill-public-project-manifests.ts",
     "report:publish": "pnpm --filter @pufu-lens/storage build && node --experimental-strip-types scripts/publish-report.ts",
     "lint": "biome ci . && markdownlint-cli2",
+    "db:migrate": "node --experimental-strip-types scripts/db-migrate.ts",
     "auth:migrate": "node --experimental-strip-types scripts/migrate-auth-login.ts",
     "auth:create-user": "node --experimental-strip-types scripts/create-credentials-user.ts",
     "seed:projects": "node --experimental-strip-types scripts/create-project.ts --seed-samples",

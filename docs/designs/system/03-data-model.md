@@ -79,22 +79,23 @@ CREATE TABLE project_members (
   PRIMARY KEY (project_id, user_id)
 );
 
--- Google / GitHub 連携（ユーザー単位）
+-- Google / GitHub 連携（プロジェクト単位）
 CREATE TABLE oauth_connections (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id      UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   provider        TEXT NOT NULL, -- 'google' | 'github'
-  provider_account_id TEXT NOT NULL,
+  provider_account_id TEXT NOT NULL DEFAULT '',
   account_email   TEXT,
   account_login   TEXT,
   scopes          TEXT[] NOT NULL DEFAULT '{}',
-  metadata        JSONB DEFAULT '{}',
-  access_token_secret  TEXT NOT NULL,
+  metadata        JSONB NOT NULL DEFAULT '{}',
+  access_token_secret  TEXT,
   refresh_token_secret TEXT,
   expires_at      TIMESTAMPTZ,
-  created_at      TIMESTAMPTZ DEFAULT now(),
-  updated_at      TIMESTAMPTZ DEFAULT now(),
-  UNIQUE (user_id, provider, provider_account_id),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (project_id, provider),
   UNIQUE (id, user_id)
 );
 
@@ -701,9 +702,10 @@ erDiagram
 
 `web` は `connection_id` を持たない公開 URL のデータソースとして登録できる。
 
-`gmail` / `drive` / `github` のように OAuth / GitHub App 連携を使う data_source では、`connection_id` は `owner_user_id` が所有する `oauth_connections` のみ参照できる。DB では `FOREIGN KEY (connection_id, owner_user_id) REFERENCES oauth_connections(id, user_id)` で最低限の所有者整合を保証し、作成 API ではさらに以下を検証する。
+`gmail` / `drive` / `github` のように OAuth / GitHub App 連携を使う data_source では、`connection_id` は対象 project に属し、かつ `owner_user_id` が所有する `oauth_connections` のみ参照できる。DB では `oauth_connections.project_id` と `UNIQUE (project_id, provider)` で project 単位の共有 connection を一意にし、`FOREIGN KEY (connection_id, owner_user_id) REFERENCES oauth_connections(id, user_id)` で最低限の所有者整合を保証する。作成 API ではさらに以下を検証する。
 
 - `owner_user_id` が対象 `project_id` の `project_members` に存在すること。
+- `connection_id` が対象 `project_id` に属すること。
 - data_source の `source_type` と `oauth_connections.provider` が対応すること（`gmail` / `drive` は `google`、`github` は `github`）。
 - `oauth_connections.scopes` が対象 source_type の読み取りに必要な scope を満たすこと。
 - `web` data_source では `connection_id` を `NULL` にすること。
