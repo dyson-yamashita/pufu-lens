@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 import type { SourceType } from '../packages/ingestion/dist/index.js';
+import { ensureIngestionQueueLeaseColumn } from './ingestion-queue-lease.ts';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
 const STEP_ORDER = ['collect', 'parse', 'resolve', 'chunk', 'graph'] as const;
@@ -520,27 +521,6 @@ async function resetFailedQueue(input: {
   `) as ResetFailedQueueResult[];
 
   return rows[0] ?? { queueItems: 0, rawDocuments: 0 };
-}
-
-async function ensureIngestionQueueLeaseColumn(sql: postgres.Sql): Promise<void> {
-  const columns = await sql`
-    SELECT 1
-    FROM pg_attribute
-    WHERE attrelid = to_regclass('public.ingestion_queue')
-      AND attname = 'lease_expires_at'
-      AND NOT attisdropped
-  `;
-  if (columns.length === 0) {
-    await sql`
-      ALTER TABLE public.ingestion_queue
-      ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ
-    `;
-  }
-  await sql`
-    CREATE INDEX IF NOT EXISTS ingestion_queue_project_lease_idx
-    ON public.ingestion_queue (project_id, status, lease_expires_at)
-    WHERE status = 'parsing'
-  `;
 }
 
 async function lookupProject(sql: postgres.Sql, slug: string): Promise<ProjectRecord | undefined> {

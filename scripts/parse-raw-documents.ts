@@ -17,6 +17,7 @@ import {
   parseRawDocuments,
 } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
+import { ensureIngestionQueueLeaseColumn } from './ingestion-queue-lease.ts';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
 const DEFAULT_PARSE_LEASE_SECONDS = 15 * 60;
@@ -271,27 +272,6 @@ class PostgresRawParseRepository implements RawParseRepository {
       `;
     });
   }
-}
-
-async function ensureIngestionQueueLeaseColumn(sql: postgres.Sql): Promise<void> {
-  const columns = await sql`
-    SELECT 1
-    FROM pg_attribute
-    WHERE attrelid = to_regclass('public.ingestion_queue')
-      AND attname = 'lease_expires_at'
-      AND NOT attisdropped
-  `;
-  if (columns.length === 0) {
-    await sql`
-      ALTER TABLE public.ingestion_queue
-      ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ
-    `;
-  }
-  await sql`
-    CREATE INDEX IF NOT EXISTS ingestion_queue_project_lease_idx
-    ON public.ingestion_queue (project_id, status, lease_expires_at)
-    WHERE status = 'parsing'
-  `;
 }
 
 function assertActiveQueueLease(rows: readonly unknown[], queueId: string): void {
