@@ -2,6 +2,8 @@
 
 ## デプロイメント
 
+> 現状（2026-06-11）はローカル `docker compose`、Node scripts、Next.js dev/build を中心に検証している。以下の GCP / Firebase App Hosting / Cloud Run Jobs / GCS 構成は目標構成であり、実装済みの deploy automation ではない。クラウド手順を有効化する変更では `scripts/deploy-dry-run.ts`、`scripts/deploy-smoke.ts`、CI、Secret Manager 設計を同時に確認する。
+
 ### 1. ローカル開発
 
 ```bash

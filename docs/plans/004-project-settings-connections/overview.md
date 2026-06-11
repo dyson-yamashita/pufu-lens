@@ -66,15 +66,15 @@ UI は補助にすぎないため、以下でも同じ制約を検証する。
 
 ## Step 一覧
 
-| step   | status    | 内容                                                                                | 完了条件                                                                       |
-| ------ | --------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Step 1 | `planned` | connection 状態 contract と Settings UI 設計を確定する                              | system / UI design に connection card、状態、scope、非表示情報が反映される     |
-| Step 2 | `planned` | `oauth_connections` migration / repository / project connection 境界を実装する      | connection 一覧取得、作成、更新、解除の unit test が通る                       |
-| Step 3 | `planned` | Google OAuth と GitHub App installation の start / callback / disconnect を実装する | callback が token / app secret を secret 管理し、画面やログへ実値を出さない    |
-| Step 4 | `planned` | Settings に Connections セクションを追加する                                        | project admin が connection 状態を確認し、Connect / Reconnect へ進める         |
-| Step 5 | `planned` | Data Source 作成 UI で未連携 source type を選択不可にする                           | 未連携 provider の option / tab / submit が e2e で選択不可と確認できる         |
-| Step 6 | `planned` | server action / API / workflow 側の connection 必須検証を入れる                     | 直接 form submit / API 呼び出しでも未連携 source type の作成・実行が拒否される |
-| Step 7 | `planned` | 失効・scope 不足・解除済み connection の運用表示と検証を追加する                    | expired / scope_missing の表示、再接続導線、secret 漏れ検査が通る              |
+| step   | status      | 内容                                                                                | 完了条件                                                                       |
+| ------ | ----------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Step 1 | `completed` | connection 状態 contract と Settings UI 設計を確定する                              | system / UI design に connection card、状態、scope、非表示情報が反映される     |
+| Step 2 | `completed` | `oauth_connections` migration / repository / project connection 境界を実装する      | connection 一覧取得、作成、更新、解除の unit test が通る                       |
+| Step 3 | `completed` | Google OAuth と GitHub App installation の start / callback / disconnect を実装する | callback が token / app secret を secret 管理し、画面やログへ実値を出さない    |
+| Step 4 | `completed` | Settings に Connections セクションを追加する                                        | project admin が connection 状態を確認し、Connect / Reconnect へ進める         |
+| Step 5 | `completed` | Data Source 作成 UI で未連携 source type を選択不可にする                           | 未連携 provider の option / tab / submit が e2e で選択不可と確認できる         |
+| Step 6 | `planned`   | server action / API / workflow 側の connection 必須検証を入れる                     | 直接 form submit / API 呼び出しでも未連携 source type の作成・実行が拒否される |
+| Step 7 | `planned`   | 失効・scope 不足・解除済み connection の運用表示と検証を追加する                    | expired / scope_missing の表示、再接続導線、secret 漏れ検査が通る              |
 
 ## Step 1: Connection Contract と UI 設計
 

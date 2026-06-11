@@ -2,190 +2,94 @@
 
 ## API デザイン
 
-この章は、Next.js API Route、Mastra Server の Agent API、内部管理 API の入口と契約を集約する。詳細な業務処理は各設計章に残し、API の一覧性、認可、エラー形式、サイズ上限、project 分離の確認はこの章を基準にする。
+この章は Browser / public / internal / CLI / server action の入口を一覧する。現状（2026-06-11）は、管理操作の多くが Next.js server action と Node CLI で実装されており、REST API として未実装の項目もある。表の `実装状況` を正とし、未実装 API を現在形で扱わない。
 
-### 1. API レイヤ
+### 1. 共通ルール
 
-| レイヤ             | 公開範囲                 | 役割                                                                                                      |
-| ------------------ | ------------------------ | --------------------------------------------------------------------------------------------------------- |
-| Next.js API        | Browser からアクセス可能 | Auth.js セッションを検証し、project 認可後に DB / Storage / Mastra Server へアクセスする                  |
-| Mastra Agent API   | Cloud Run private        | Chat Agent / Workflow / Tool 実行。Next.js または内部 Job から OIDC 付きで呼ぶ                            |
-| Internal Admin API | Cloud Run private        | Cloud Scheduler から workflow / job を起動する。OIDC service account と input schema を検証する           |
-| Public API         | 未ログインアクセス可能   | 公開レポートと公開レポートに紐づく public chat だけを返す。非公開 report / project の存在有無は漏らさない |
+- Browser から呼ばれる project 配下の入口は URL の `projectSlug` を受け取り、server side で `projects.id` に解決する。
+- Private 入口は Auth.js session と `project_members` を検証する。admin 操作は `project_members.role = 'admin'` を要求する。
+- Public 入口は private project / private report の存在有無を漏らさない。
+- OAuth token、refresh token、cookie、DB password、Gemini API key は response / log / trace に出さない。
+- DB 依存の private chat / private report は業務時間外に DB 接続を試みず、`db_outside_business_hours` を返す。
+- public report / public chat は公開用 manifest / public artifact / public context bundle のみを参照し、raw / parsed / DB / AGE / pgvector へ未ログインでアクセスしない。
 
-### 2. 共通ルール
+### 2. 実装済み Next.js API Route
 
-- Browser から呼ばれる project 配下 API は `/api/projects/[projectSlug]/...` を使う。Next.js API は最初に `projectSlug` を `projects.id` に解決し、以降の DB / Storage / Mastra 呼び出しでは UUID の `projectId` だけを使う。
-- すべての `/api/projects/[projectSlug]/...` は `project_members` を確認し、ログインユーザーが対象 project の member であることを検証する。
-- Admin API は `project_members.role = 'admin'` のユーザーだけ許可する。
-- Mastra tool / workflow は `projectId` を必須 context とし、project をまたぐ DB / Storage / Graph 参照を禁止する。
-- API key、OAuth token、refresh token、cookie、DB password、GCP credential は response / log / trace に出さない。
-- raw / parsed document の取得 API はサイズ上限を持つ。上限超過や binary は本文を返さず、metadata と取得不可理由を返す。
-- PostgreSQL は業務時間のみ起動する。DB 依存 API は業務時間外に DB 接続を試みず、`503 Service Unavailable` と `db_outside_business_hours` を返す。
-- 公開レポート API は DB 稼働確認に依存させない。`is_public=true` として公開用 manifest / metadata に記録された redaction 済み public report JSON は Object Storage から取得し、業務時間外でも閲覧できる。private report JSON をそのまま公開しない。
-- private レポート API は project member 認可のため DB 依存 API として扱う。業務時間外は DB 接続を試みず、チャットと同様に `503 Service Unavailable` と `db_outside_business_hours` を返す。
-- public chat は公開済み report に紐づく限定機能とし、公開用 manifest / metadata、redaction 済み public report JSON、public context bundle だけを参照する。DB / AGE / pgvector / raw document / parsed document にはアクセスしない。
-- pagination は `limit` + `cursor` を基本にする。`limit` の既定値は 50、最大値は 200 とする。
-- 日時は ISO 8601 文字列、ID は UUID、project の URL / Browser API には `projectSlug`、DB / Mastra / Job / audit log の正規キーには `projectId` を使う。Browser から渡された `projectId` は信用しない。
-- エラーは共通 JSON で返す。
+| Method  | Path                                                         | 認可           | 実装状況      | 用途                                                    |
+| ------- | ------------------------------------------------------------ | -------------- | ------------- | ------------------------------------------------------- |
+| `GET`   | `/api/public/projects`                                       | public         | implemented   | public project と公開済み report の一覧                 |
+| `GET`   | `/api/public/projects/[projectSlug]/reports/[reportId]`      | public         | implemented   | project-scoped public report JSON                       |
+| `POST`  | `/api/public/projects/[projectSlug]/reports/[reportId]/chat` | public         | implemented   | project-scoped public report chat                       |
+| `GET`   | `/api/public/reports/[reportId]`                             | public         | compatibility | 旧 public report alias。正規 API は project-scoped path |
+| `POST`  | `/api/public/reports/[reportId]/chat`                        | public         | compatibility | 旧 public chat alias。正規 API は project-scoped path   |
+| `POST`  | `/api/projects/[projectSlug]/chat`                           | project member | implemented   | private chat                                            |
+| `GET`   | `/api/projects/[projectSlug]/reports`                        | project member | implemented   | private report 一覧                                     |
+| `GET`   | `/api/projects/[projectSlug]/reports/[reportId]`             | project member | implemented   | private report 取得                                     |
+| `PATCH` | `/api/projects/[projectSlug]/reports/[reportId]`             | project admin  | implemented   | report 公開/非公開 metadata 更新                        |
+| `POST`  | `/api/projects/[projectSlug]/graph`                          | project member | implemented   | Graph Viewer fixed preset 実行                          |
+| `GET`   | `/api/connections/google/start`                              | login required | implemented   | Google connection 開始                                  |
+| `GET`   | `/api/connections/google/callback`                           | login required | implemented   | Google connection callback                              |
+| `GET`   | `/api/connections/github/start`                              | login required | implemented   | GitHub connection 開始                                  |
+| `GET`   | `/api/connections/github/callback`                           | login required | implemented   | GitHub connection callback                              |
+| `POST`  | `/api/public/projects/[projectSlug]/chat`                    | public         | implemented   | public project chat 互換入口                            |
 
-```json
-{
-  "error": {
-    "code": "project_not_found",
-    "message": "Project not found",
-    "request_id": "req_..."
-  }
-}
-```
+### 3. Server Action / UI 内部入口
 
-業務時間外の DB 依存 API は次の形式を返す。
+| 入口                                           | 認可                  | 実装状況      | 用途                                                                    |
+| ---------------------------------------------- | --------------------- | ------------- | ----------------------------------------------------------------------- |
+| `apps/web/src/admin-actions.ts`                | project admin         | server-action | project、member、data source、parser、report、collection 実行の管理操作 |
+| `apps/web/src/ui.tsx` 内 server action         | session / action ごと | server-action | UI からの軽量操作                                                       |
+| `apps/web/app/login/page.tsx` 内 server action | public                | server-action | credentials sign-in                                                     |
 
-```json
-{
-  "error": {
-    "code": "db_outside_business_hours",
-    "message": "現在は営業時間外のため、この機能を利用できません。公開済みレポートは引き続き閲覧できます。",
-    "request_id": "req_..."
-  }
-}
-```
+管理 API として REST 化されていない操作は、現状では server action を正規入口として扱う。将来 REST API を追加する場合は、server action と同じ認可 SQL / runtime validation を共有する。
 
-### 3. Project API
+### 4. CLI / Job 入口
 
-| Method  | Path                          | 認可                            | 用途                                           |
-| ------- | ----------------------------- | ------------------------------- | ---------------------------------------------- |
-| `GET`   | `/api/projects`               | login required                  | ユーザーが member の project 一覧              |
-| `POST`  | `/api/projects`               | admin bootstrap / service admin | project 作成、graph name / storage prefix 作成 |
-| `GET`   | `/api/projects/[projectSlug]` | project member                  | project 詳細                                   |
-| `PATCH` | `/api/projects/[projectSlug]` | project admin                   | project 設定更新                               |
+| コマンド / script                                                 | 実装状況           | 用途                                                           |
+| ----------------------------------------------------------------- | ------------------ | -------------------------------------------------------------- |
+| `scripts/create-project.ts`                                       | cli                | project 作成、graph name / storage prefix 初期化               |
+| `scripts/collect-source.ts` / `scripts/collect-fixture-source.ts` | cli                | source 収集、raw 保存、queue 投入                              |
+| `scripts/parse-raw-documents.ts`                                  | cli                | raw parse                                                      |
+| `scripts/resolve-actors.ts`                                       | cli                | actor / alias 解決                                             |
+| `scripts/chunk-and-embed.ts`                                      | cli                | chunk / embedding 保存                                         |
+| `scripts/index-graph-relations.ts`                                | cli                | AGE graph relation 生成                                        |
+| `scripts/ingest-workflow.ts`                                      | cli                | collect 後の ingestion workflow orchestration                  |
+| `scripts/workflow-job.ts`                                         | cli/job-entrypoint | Cloud Run Job 目標の entrypoint。現状は Node script として実行 |
+| `scripts/generate-report.ts` / `scripts/publish-report.ts`        | cli                | report 生成 / 公開 artifact 更新                               |
+| `scripts/deploy-dry-run.ts` / `scripts/deploy-smoke.ts`           | cli                | deploy 前検査 / smoke                                          |
 
-`POST /api/projects` は `scripts/create-project.ts` と同じ validation を使い、`slug` から `graph_name` と `storage_prefix` を生成する。
+### 5. Planned API
 
-### 4. Data Source / Connection API
+| Method  | Path                                                      | 認可           | 実装状況 | 用途                                                           |
+| ------- | --------------------------------------------------------- | -------------- | -------- | -------------------------------------------------------------- |
+| `GET`   | `/api/projects`                                           | login required | planned  | member project 一覧。現状は server-side loader / UI 経路で扱う |
+| `POST`  | `/api/projects`                                           | service/admin  | planned  | project 作成。現状は CLI / admin action                        |
+| `GET`   | `/api/projects/[projectSlug]/data-sources`                | project member | planned  | data source 一覧。現状は admin data loader                     |
+| `POST`  | `/api/projects/[projectSlug]/data-sources`                | project admin  | planned  | data source 作成。現状は server action                         |
+| `PATCH` | `/api/projects/[projectSlug]/data-sources/[dataSourceId]` | project admin  | planned  | data source 更新。現状は server action                         |
+| `POST`  | `/api/projects/[projectSlug]/ingestion/run`               | project admin  | planned  | ingestion 起動。現状は server action / CLI                     |
+| `POST`  | `/internal/schedules/[workflowId]:run`                    | scheduler OIDC | planned  | Cloud Scheduler から workflow 起動                             |
+| `POST`  | `/internal/jobs/[workflowId]:run`                         | internal OIDC  | planned  | internal service から Cloud Run Job 起動                       |
 
-| Method   | Path                                                      | 認可           | 用途                            |
-| -------- | --------------------------------------------------------- | -------------- | ------------------------------- |
-| `GET`    | `/api/projects/[projectSlug]/data-sources`                | project member | data source 一覧                |
-| `POST`   | `/api/projects/[projectSlug]/data-sources`                | project admin  | data source 作成                |
-| `PATCH`  | `/api/projects/[projectSlug]/data-sources/[dataSourceId]` | project admin  | data source 更新 / enabled 切替 |
-| `DELETE` | `/api/projects/[projectSlug]/data-sources/[dataSourceId]` | project admin  | data source 無効化または削除    |
-| `POST`   | `/api/connections/google/start`                           | login required | Google OAuth 開始               |
-| `GET`    | `/api/connections/google/callback`                        | login required | Google OAuth callback           |
-| `POST`   | `/api/connections/github/start`                           | login required | GitHub App / OAuth 開始         |
-| `GET`    | `/api/connections/github/callback`                        | login required | GitHub callback                 |
+### 6. レート制限
 
-data source 作成時は次を検証する。
+- Public Chat API は `PUFU_LENS_PUBLIC_CHAT_HOURLY_LIMIT`（既定 10）、`PUFU_LENS_PUBLIC_CHAT_DAILY_LIMIT`（既定 50）、`PUFU_LENS_PUBLIC_CHAT_QUESTION_MAX_LENGTH` で制御する。
+- Private Chat API は `PUFU_LENS_PRIVATE_CHAT_QUESTION_MAX_LENGTH` で質問長を制御する。request 数の永続 rate limit は未実装。
+- Public Report API の永続 rate limit は未実装。必要になった時点で trusted proxy IP の扱いと storage-only 経路の rate limit store を設計する。
 
-- `owner_user_id` が対象 project の member であること。
-- `gmail` / `drive` は Google connection、`github` は GitHub connection を使うこと。
-- connection の scope が source type の読み取りに必要な権限を満たすこと。
-- `web` data source は `connection_id = null` であること。
-- `config` と `ingest_window` は source type ごとの schema に合うこと。
+### 7. Graph API
 
-### 5. Ingestion 管理 API
+`POST /api/projects/[projectSlug]/graph` は Graph Viewer の fixed preset 実行 API である。
 
-| Method | Path                                                                | 認可           | 用途                                               |
-| ------ | ------------------------------------------------------------------- | -------------- | -------------------------------------------------- |
-| `GET`  | `/api/projects/[projectSlug]/ingestion/status`                      | project member | raw / queue / failed / indexed 件数と最終実行時刻  |
-| `GET`  | `/api/projects/[projectSlug]/ingestion/queue`                       | project member | queue 一覧                                         |
-| `POST` | `/api/projects/[projectSlug]/ingestion/collect`                     | project admin  | 手動 collect 起動                                  |
-| `POST` | `/api/projects/[projectSlug]/ingestion/run`                         | project admin  | collect 済み対象の ingestion 起動                  |
-| `POST` | `/api/projects/[projectSlug]/ingestion/retry`                       | project admin  | failed queue の再試行                              |
-| `GET`  | `/api/projects/[projectSlug]/parser-profiles`                       | project member | parser profile / active version 一覧               |
-| `POST` | `/api/projects/[projectSlug]/parser-profiles`                       | project admin  | parser profile 作成                                |
-| `POST` | `/api/projects/[projectSlug]/parser-profiles/[profileId]/versions`  | project admin  | draft parser version 作成                          |
-| `POST` | `/api/projects/[projectSlug]/parser-versions/[versionId]/validate`  | project admin  | held raw / fixture に対する validation report 作成 |
-| `POST` | `/api/projects/[projectSlug]/parser-versions/[versionId]/approve`   | project admin  | parser version 承認と active 化                    |
-| `POST` | `/api/projects/[projectSlug]/parser-versions/[versionId]/reject`    | project admin  | parser version 却下                                |
-| `GET`  | `/api/projects/[projectSlug]/raw-documents/[rawDocumentId]`         | project member | raw document metadata                              |
-| `GET`  | `/api/projects/[projectSlug]/raw-documents/[rawDocumentId]/content` | project member | サイズ上限内の原本取得                             |
-| `GET`  | `/api/projects/[projectSlug]/documents/[documentId]`                | project member | document metadata / summary                        |
-| `GET`  | `/api/projects/[projectSlug]/documents/[documentId]/parsed`         | project member | parsed JSON 取得                                   |
+- request では `queryId` だけを受け取り、Cypher 文字列や graph name は受け取らない。
+- server side registry の preset だけを実行する。
+- project membership を検証し、`projects.graph_name` から対象 graph を解決する。
+- row / node / edge limit と timeout を持つ。
 
-`raw-documents/.../content` と `documents/.../parsed` は、通常ログに本文全文を出さない。PII を含む可能性があるため、監査ログには user id、project id、document id、byte size、結果 status のみを残す。
+### 8. Public API
 
-### 6. Chat API
+public report / chat は `projectSlug` と `reportId` を path で受け取る project-scoped path を正規 API とする。旧 `/api/public/reports/[reportId]?projectSlug=...` は互換 alias として扱う。
 
-| Method | Path                                                         | 認可           | 用途                               |
-| ------ | ------------------------------------------------------------ | -------------- | ---------------------------------- |
-| `POST` | `/api/projects/[projectSlug]/chat`                           | project member | Private Chat Agent へ stream proxy |
-| `POST` | `/api/public/projects/[projectSlug]/reports/[reportId]/chat` | public         | Public Chat Agent へ stream proxy  |
-
-Private Chat API では、Next.js は Auth.js session と project membership を検証した後、Mastra Server の Agent API へ OIDC 付きで proxy する。
-
-Private Chat API は DB / AGE / pgvector に依存するため、業務時間外は Mastra Server へ proxy せず `503 Service Unavailable` を返す。
-
-```text
-Browser -> Next.js /api/projects/[projectSlug]/chat
-Next.js -> Mastra Server /api/agents/project-chat-agent/stream
-```
-
-request body には `messages` と UI 側 metadata を受け取り、Next.js が `projectSlug` から解決した `projectId` を server side で追加する。ブラウザから渡された `projectId` は信用しない。
-
-Public Chat API は未ログインで利用できるが、対象は `projects.visibility='public'` かつ `is_public=true` の report に限定する。正規 API は `projectSlug` と `reportId` の両方を path parameter で受け取り、Next.js は API entrypoint で slug / report id を storage-safe pattern に validate してから公開用 manifest / metadata を参照する。ブラウザから渡された `projectId`、`storageUri`、`sourceUri`、`artifactVersion` は信用しない。
-
-Public Chat Agent の tool は、ユーザー入力や LLM が指定した URI を読まない。Next.js が検証済み manifest から解決した `reportId`、`artifactVersion`、`public_report_uri`、`public_context_bundle_uri` のみを内部 context として渡し、tool 側でも対象 report、許可 prefix、etag / artifact version の一致を確認する。
-
-Public Chat Agent のルール：
-
-- redaction 済み public report JSON、公開用 summary、公開許可された source snippet だけを根拠にする。
-- 個人情報、メールアドレス、OAuth 情報、未公開 URL、raw / parsed の本文全文を出さない。
-- 公開 report の内容と対象 project の公開済み情報に関係しない質問には回答しない。
-- project 内部の未公開データ、他 project、一般雑談、コード生成、外部調査の依頼は拒否する。
-- 回答には report section id や公開 source id など、公開可能な根拠だけを含める。
-
-### 7. Report API
-
-| Method  | Path                                                        | 認可           | 用途                                                    |
-| ------- | ----------------------------------------------------------- | -------------- | ------------------------------------------------------- |
-| `GET`   | `/api/projects/[projectSlug]/reports`                       | project member | report 一覧                                             |
-| `POST`  | `/api/projects/[projectSlug]/reports/generate`              | project admin  | report 手動生成                                         |
-| `GET`   | `/api/projects/[projectSlug]/reports/[reportId]`            | project member | report JSON 本体                                        |
-| `GET`   | `/api/projects/[projectSlug]/reports/[reportId]/signed-url` | project member | private report の短時間 signed URL                      |
-| `PATCH` | `/api/projects/[projectSlug]/reports/[reportId]`            | project admin  | `is_public` など metadata 更新                          |
-| `GET`   | `/api/public/projects`                                      | public         | public project と公開済み report の一覧                 |
-| `GET`   | `/api/public/projects/[projectSlug]/reports/[reportId]`     | public         | public project 配下の redaction 済み public report JSON |
-
-private report の閲覧・一覧・signed URL 発行・公開状態更新は DB 依存 API として扱う。ログイン済み session と `project_members` を PostgreSQL で検証し、業務時間外は DB 接続を試みず `503 Service Unavailable` と `db_outside_business_hours` を返す。
-
-public report は公開用 manifest または storage metadata で `is_public=true` を判定し、redaction 済み public report JSON を Object Storage から取得して返す。業務時間外でも閲覧可能にするが、非公開・存在しない・無効な場合は同じ `404` を返し、private report の存在有無を漏らさない。既存の `/api/public/reports/[reportId]?projectSlug=...` と `/api/public/reports/[reportId]/chat?projectSlug=...` は短期互換 alias とし、正規 API は project-scoped path とする。
-
-### 8. Internal Scheduler / Job API
-
-| Method | Path                                   | 認可                           | 用途                                    |
-| ------ | -------------------------------------- | ------------------------------ | --------------------------------------- |
-| `POST` | `/internal/schedules/[workflowId]:run` | Scheduler service account OIDC | Cloud Scheduler から workflow 起動      |
-| `POST` | `/internal/jobs/[workflowId]:run`      | internal service account OIDC  | 管理 UI / job runner から workflow 起動 |
-
-Internal API は public ingress から直接使わせない。Mastra Server 側で OIDC issuer / audience / service account を検証し、body を workflow input schema で validate してから Cloud Run Jobs API に渡す。
-
-parser approval API は project admin だけが実行できる。API は `projectSlug` から解決した `project_id` を認可済み project として扱い、request の `profileId` / `versionId` は必ずその `project_id` で scope した query で取得する。`versionId` が指定された場合も、`parser_versions.parser_profile_id` が対象 project の `parser_profiles.id` に属することを backend で検証し、一致しない場合は存在有無を漏らさない `404` を返す。raw ID を直接信頼せず、project をまたいだ parser profile / version の参照や承認を防ぐ。
-
-承認 API は artifact hash、validation report URI、対象 parser profile、対象 source type を監査ログに残し、承認済み version だけを Ingestion Workflow の parser selection 対象にする。未承認 parser version は validation / dry-run にだけ使い、本番 `ingest-workflow` では使用しない。
-
-### 9. Mastra Agent / Tool API
-
-Mastra Server は private Cloud Run とし、Next.js / Jobs / Scheduler からだけ呼ぶ。
-
-| Agent / Workflow           | 呼び出し元                   | 主な用途                                                                |
-| -------------------------- | ---------------------------- | ----------------------------------------------------------------------- |
-| `collection-pipeline`      | Cloud Run Job / Internal API | source contract に基づく候補評価、raw 保存、queue 投入                  |
-| `exception-agent`          | Cloud Run Job / Mastra UI    | 失敗 raw / parsed の調査、parser 修正補助、低 confidence 候補整理       |
-| `ingest-workflow`          | Cloud Run Job / Internal API | parse、Actor 名寄せ、chunk、graph 構築                                  |
-| `project-chat-agent`       | Next.js Private Chat API     | graph / vector / raw / parsed を横断した project member 向け回答        |
-| `public-report-chat-agent` | Next.js Public Chat API      | redaction 済み public report と公開用 context bundle だけを使う限定回答 |
-| `generate-report`          | Cloud Run Job / Report API   | report JSON 生成と保存                                                  |
-
-Mastra UI（Studio / Playground）は開発時の agent / workflow 動作確認に使うが、DB / Storage / Graph の最終整合性は CLI、DB query、自動テストで確認する。
-
-### 10. レート制限と監査ログ
-
-- Private Chat API は user + project 単位で rate limit する。public より緩めにし、初期値は 1 時間 60 request、1 日 300 request を上限にする。
-- Public Chat API は信頼プロキシが付与した `x-forwarded-for` を右端から走査し、private / local IP と無効値を除いた最初の有効値（なければ `x-real-ip`、最後に anonymous bucket）+ report id 単位で厳しめに rate limit する。クライアントが任意に付与できる左端値は rate limit key として信用しない。初期値は 1 時間 10 request、1 日 50 request、質問長 2000 文字を上限にする。
-- Public Report API は信頼済み client IP + report id 単位で rate limit する。
-- Internal API は OIDC service account で認証し、外部 IP からの未認証呼び出しを拒否する。
-- 監査ログには `request_id`、`user_id`、`project_id`、`path`、`method`、`status`、`latency_ms`、`resource_id` を残す。
-- 監査ログに本文全文、raw document body、parsed JSON body、OAuth token、Gemini API key、DB password は出さない。
+public chat は redaction 済み public report、public manifest、public context bundle だけを根拠にする。ブラウザから渡された `projectId`、`storageUri`、`sourceUri`、artifact URI は信用しない。
 
 ---
