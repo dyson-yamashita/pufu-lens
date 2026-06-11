@@ -25,6 +25,7 @@ import { auth, signOut } from '../auth';
 import type {
   DataSourceSummary,
   ParserProfileSummary,
+  ProjectSourceAvailability,
   ProjectSummary,
   SourceStatus,
   SourceType,
@@ -330,9 +331,11 @@ export function SourceIcon({ sourceType }: { readonly sourceType: SourceType }) 
 
 export function SourceTypeTabs({
   activeType,
+  availability,
   projectSlug,
 }: {
   readonly activeType?: SourceType;
+  readonly availability?: ProjectSourceAvailability;
   readonly projectSlug: string;
 }) {
   return (
@@ -346,18 +349,37 @@ export function SourceTypeTabs({
       >
         All
       </Link>
-      {(['gmail', 'drive', 'github', 'web'] as const).map((sourceType) => (
-        <Link
-          aria-selected={activeType === sourceType}
-          className={activeType === sourceType ? 'selected' : ''}
-          data-testid={`source-type-${sourceType}-tab`}
-          href={`/projects/${projectSlug}/admin/data-sources?sourceType=${sourceType}`}
-          key={sourceType}
-          role="tab"
-        >
-          {sourceLabels[sourceType]}
-        </Link>
-      ))}
+      {(['gmail', 'drive', 'github', 'web'] as const).map((sourceType) => {
+        const available = availability?.[sourceType] ?? true;
+        if (!available) {
+          return (
+            <span
+              aria-disabled="true"
+              aria-selected="false"
+              className="disabled"
+              data-testid={`source-type-${sourceType}-tab-disabled`}
+              key={sourceType}
+              role="tab"
+              tabIndex={0}
+              title={`${sourceLabels[sourceType]} requires a project connection`}
+            >
+              {sourceLabels[sourceType]}
+            </span>
+          );
+        }
+        return (
+          <Link
+            aria-selected={activeType === sourceType}
+            className={activeType === sourceType ? 'selected' : ''}
+            data-testid={`source-type-${sourceType}-tab`}
+            href={`/projects/${projectSlug}/admin/data-sources?sourceType=${sourceType}`}
+            key={sourceType}
+            role="tab"
+          >
+            {sourceLabels[sourceType]}
+          </Link>
+        );
+      })}
     </div>
   );
 }

@@ -3,6 +3,10 @@ import {
   ingestDataSource,
   retryFailedQueue,
 } from '../../../../../src/admin-actions';
+import {
+  isAdminUiCollectionSupported,
+  isAdminUiIngestSupported,
+} from '../../../../../src/admin-data';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
 import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
 import { AppShell, MetricStrip, PageHeader, RetryButton, StatusBadge } from '../../../../../src/ui';
@@ -75,7 +79,7 @@ export default async function IngestionPage({
                 <input name="dataSourceId" type="hidden" value={source.id} />
                 <PendingSubmitButton
                   className="icon-button"
-                  disabled={source.sourceType !== 'web'}
+                  disabled={!isAdminUiCollectionSupported(source.sourceType)}
                   testId={`ingestion-collect-${source.id}`}
                   title="Collect source"
                 >
@@ -87,7 +91,7 @@ export default async function IngestionPage({
                 <input name="dataSourceId" type="hidden" value={source.id} />
                 <PendingSubmitButton
                   className="icon-button"
-                  disabled={source.sourceType !== 'web'}
+                  disabled={!isAdminUiIngestSupported(source.sourceType)}
                   testId={`ingestion-ingest-${source.id}`}
                   title="Ingest source"
                 >

@@ -81,6 +81,77 @@ async function main() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       )
     `;
+    await sql`
+      CREATE TABLE IF NOT EXISTS public.oauth_connections (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL CHECK (provider IN ('google', 'github')),
+        provider_account_id TEXT NOT NULL DEFAULT '',
+        account_email TEXT,
+        account_login TEXT,
+        scopes TEXT[] NOT NULL DEFAULT '{}',
+        metadata JSONB NOT NULL DEFAULT '{}',
+        access_token_secret TEXT,
+        refresh_token_secret TEXT,
+        expires_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `;
+    await sql`
+      ALTER TABLE public.oauth_connections
+      ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE
+    `;
+    await sql`
+      ALTER TABLE public.oauth_connections
+      ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES public.users(id) ON DELETE CASCADE
+    `;
+    await sql`
+      ALTER TABLE public.oauth_connections
+      ADD COLUMN IF NOT EXISTS account_email TEXT
+    `;
+    await sql`
+      ALTER TABLE public.oauth_connections
+      ADD COLUMN IF NOT EXISTS account_login TEXT
+    `;
+    await sql`
+      ALTER TABLE public.oauth_connections
+      ADD COLUMN IF NOT EXISTS scopes TEXT[] NOT NULL DEFAULT '{}'
+    `;
+    await sql`
+      ALTER TABLE public.oauth_connections
+      ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'
+    `;
+    await sql`
+      ALTER TABLE public.oauth_connections
+      ADD COLUMN IF NOT EXISTS access_token_secret TEXT
+    `;
+    await sql`
+      ALTER TABLE public.oauth_connections
+      ALTER COLUMN access_token_secret DROP NOT NULL
+    `;
+    await sql`
+      ALTER TABLE public.oauth_connections
+      ADD COLUMN IF NOT EXISTS refresh_token_secret TEXT
+    `;
+    await sql`
+      ALTER TABLE public.oauth_connections
+      ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ
+    `;
+    await sql`
+      CREATE INDEX IF NOT EXISTS oauth_connections_project_id_idx
+      ON public.oauth_connections (project_id)
+    `;
+    await sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS oauth_connections_project_provider_uidx
+      ON public.oauth_connections (project_id, provider)
+      WHERE project_id IS NOT NULL
+    `;
+    await sql`
+      ALTER TABLE public.oauth_connections
+      DROP CONSTRAINT IF EXISTS oauth_connections_user_id_provider_provider_account_id_key
+    `;
   } finally {
     await sql.end();
   }

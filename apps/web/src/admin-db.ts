@@ -1,10 +1,16 @@
 import type postgres from 'postgres';
 import {
+  availabilityFromConnections,
+  type ConnectionProvider,
   type DataSourceSummary,
   fallbackProjects,
   fallbackPublicProjects,
+  notConnectedProjectConnections,
   type ParserProfileStatus,
   type ParserProfileSummary,
+  type ProjectConnectionStatus,
+  type ProjectConnectionSummary,
+  type ProjectSourceAvailability,
   type ProjectSummary,
   type ProjectVisibility,
   type PublicProjectReportSummary,
@@ -470,6 +476,63 @@ export async function getProjectMembership(
     project,
     users: userRows.map(memberFromRow),
   };
+}
+
+type OAuthConnectionRow = {
+  account_email: string | null;
+  account_login: string | null;
+  expires_at: Date | string | null;
+  metadata: unknown;
+  provider: ConnectionProvider;
+  scopes: string[] | null;
+  updated_at: Date | string | null;
+};
+
+export async function listProjectConnections(
+  projectSlug: string,
+): Promise<readonly ProjectConnectionSummary[]> {
+  return withOptionalSql(async (sql) => {
+    const rows = (await sql`
+      SELECT
+        oc.provider,
+        oc.account_email,
+        oc.account_login,
+        oc.scopes,
+        oc.metadata,
+        oc.expires_at,
+        oc.updated_at
+      FROM public.oauth_connections oc
+      JOIN public.projects p ON p.id = oc.project_id
+      WHERE p.slug = ${projectSlug}
+    `) as OAuthConnectionRow[];
+    return projectConnectionsFromRows(rows);
+  }, notConnectedProjectConnections());
+}
+
+export async function listProjectConnectionsForProjectId(
+  sql: postgres.Sql,
+  projectId: string,
+): Promise<readonly ProjectConnectionSummary[]> {
+  const rows = (await sql`
+    SELECT
+      oc.provider,
+      oc.account_email,
+      oc.account_login,
+      oc.scopes,
+      oc.metadata,
+      oc.expires_at,
+      oc.updated_at
+    FROM public.oauth_connections oc
+    WHERE oc.project_id = ${projectId}
+  `) as OAuthConnectionRow[];
+  return projectConnectionsFromRows(rows);
+}
+
+export async function getProjectSourceAvailability(
+  projectSlug: string,
+): Promise<ProjectSourceAvailability> {
+  const connections = await listProjectConnections(projectSlug);
+  return availabilityFromConnections(connections);
 }
 
 export async function getAdminProject(slug: string): Promise<ProjectSummary> {
@@ -981,4 +1044,137 @@ function getFallbackProject(slug: string): ProjectSummary {
     throw new Error(`Unknown project slug: ${slug}`);
   }
   return project;
+}
+
+function projectConnectionsFromRows(
+  rows: readonly OAuthConnectionRow[],
+): readonly ProjectConnectionSummary[] {
+  const byProvider = new Map(rows.map((row) => [row.provider, connectionFromRow(row)]));
+  return (['google', 'github'] as const).map(
+    (provider) => byProvider.get(provider) ?? notConnectedConnection(provider),
+  );
+}
+
+function connectionFromRow(row: OAuthConnectionRow): ProjectConnectionSummary {
+  const metadata = isRecord(row.metadata) ? row.metadata : {};
+  const metadataLabels = metadataLabelsFromRecord(metadata);
+  const scopes = Array.isArray(row.scopes) ? row.scopes.map(String) : [];
+  const status = connectionStatusFromRow(row, scopes, metadata);
+  return {
+    accountLabel: accountLabelFromRow(row),
+    configuration: connectionConfigurationFromMetadata(row.provider, metadata),
+    grantedScopes: scopes,
+    metadataLabels,
+    permissionsSummary: permissionsSummaryFromMetadata(row.provider, metadata),
+    provider: row.provider,
+    scopesSummary: scopesSummaryFromScopes(row.provider, scopes),
+    status,
+    updatedAt: formatDate(row.updated_at),
+  };
+}
+
+function notConnectedConnection(provider: ConnectionProvider): ProjectConnectionSummary {
+  const connection = notConnectedProjectConnections().find(
+    (candidate) => candidate.provider === provider,
+  );
+  if (!connection) {
+    throw new Error(`Unsupported connection provider: ${provider}`);
+  }
+  return connection;
+}
+
+function connectionStatusFromRow(
+  row: OAuthConnectionRow,
+  scopes: readonly string[],
+  metadata: Record<string, unknown>,
+): ProjectConnectionStatus {
+  if (metadata.connectionError === true || metadata.status === 'error') {
+    return 'error';
+  }
+  if (metadata.scopeMissing === true || metadata.status === 'scope_missing') {
+    return 'scope_missing';
+  }
+  if (row.expires_at) {
+    const expiresAt = new Date(row.expires_at);
+    if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() <= Date.now()) {
+      return 'expired';
+    }
+  }
+  if (scopes.length === 0 && row.provider === 'google') {
+    return 'scope_missing';
+  }
+  if (
+    row.provider === 'github' &&
+    typeof metadata.installationId !== 'string' &&
+    typeof metadata.installationId !== 'number'
+  ) {
+    return 'not_connected';
+  }
+  return 'connected';
+}
+
+function connectionConfigurationFromMetadata(
+  provider: ConnectionProvider,
+  metadata: Record<string, unknown>,
+): ProjectConnectionSummary['configuration'] {
+  if (provider !== 'github') {
+    return {};
+  }
+  return {
+    githubAppId: typeof metadata.githubAppId === 'string' ? metadata.githubAppId : undefined,
+    githubAppSlug: typeof metadata.githubAppSlug === 'string' ? metadata.githubAppSlug : undefined,
+    githubPrivateKeyConfigured: metadata.githubPrivateKeyConfigured === true,
+  };
+}
+
+function accountLabelFromRow(row: OAuthConnectionRow): string | null {
+  if (row.provider === 'github') {
+    return row.account_login ?? row.account_email;
+  }
+  return row.account_email ?? row.account_login;
+}
+
+function scopesSummaryFromScopes(provider: ConnectionProvider, scopes: readonly string[]): string {
+  if (scopes.length === 0) {
+    return provider === 'google' ? 'Gmail / Drive scopes pending' : 'Repository read pending';
+  }
+  return scopes.join(', ');
+}
+
+function permissionsSummaryFromMetadata(
+  provider: ConnectionProvider,
+  metadata: Record<string, unknown>,
+): string {
+  if (provider === 'github') {
+    const installationId = metadata.installationId;
+    const repositories = metadata.repositories;
+    if (typeof installationId === 'string' || typeof installationId === 'number') {
+      const repoSummary = Array.isArray(repositories)
+        ? `${repositories.length} repositories selected`
+        : 'Installation active';
+      return `GitHub App installation ${installationId}: ${repoSummary}`;
+    }
+    return 'GitHub App installation not configured';
+  }
+  const enabledServices = [
+    metadata.gmailEnabled === true ? 'Gmail' : null,
+    metadata.driveEnabled === true ? 'Drive' : null,
+  ].filter((value): value is string => Boolean(value));
+  if (enabledServices.length > 0) {
+    return enabledServices.join(' + ');
+  }
+  return 'Google workspace access';
+}
+
+function metadataLabelsFromRecord(metadata: Record<string, unknown>): readonly string[] {
+  const labels: string[] = [];
+  for (const [key, value] of Object.entries(metadata)) {
+    if (key.toLowerCase().includes('token') || key.toLowerCase().includes('secret')) {
+      continue;
+    }
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      labels.push(`${key}: ${String(value)}`);
+    }
+  }
+  return labels;
 }
