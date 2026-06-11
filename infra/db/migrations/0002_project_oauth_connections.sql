@@ -47,18 +47,6 @@ ALTER TABLE public.oauth_connections
 ALTER TABLE public.oauth_connections
   ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
 
-UPDATE public.oauth_connections oc
-SET project_id = ds.project_id
-FROM public.data_sources ds
-WHERE ds.connection_id = oc.id
-  AND oc.project_id IS NULL;
-
-UPDATE public.oauth_connections oc
-SET user_id = ds.owner_user_id
-FROM public.data_sources ds
-WHERE ds.connection_id = oc.id
-  AND oc.user_id IS NULL;
-
 UPDATE public.oauth_connections
 SET provider_account_id = ''
 WHERE provider_account_id IS NULL;
@@ -71,17 +59,113 @@ UPDATE public.oauth_connections
 SET metadata = '{}'
 WHERE metadata IS NULL;
 
-DO $$
-BEGIN
-  IF EXISTS (
+CREATE TEMP TABLE IF NOT EXISTS connection_migration_map (
+  old_id UUID NOT NULL,
+  project_id UUID NOT NULL,
+  owner_user_id UUID NOT NULL,
+  new_id UUID NOT NULL DEFAULT gen_random_uuid(),
+  PRIMARY KEY (old_id, project_id)
+) ON COMMIT DROP;
+
+TRUNCATE connection_migration_map;
+
+INSERT INTO connection_migration_map (old_id, project_id, owner_user_id)
+SELECT DISTINCT ON (ds.connection_id, ds.project_id)
+  ds.connection_id,
+  ds.project_id,
+  ds.owner_user_id
+FROM public.data_sources ds
+JOIN public.oauth_connections oc ON oc.id = ds.connection_id
+WHERE ds.connection_id IS NOT NULL
+  AND (
+    oc.project_id IS DISTINCT FROM ds.project_id
+    OR 1 < (
+      SELECT count(DISTINCT ds_count.project_id)
+      FROM public.data_sources ds_count
+      WHERE ds_count.connection_id = ds.connection_id
+    )
+  )
+ORDER BY ds.connection_id, ds.project_id, ds.created_at, ds.id;
+
+INSERT INTO public.oauth_connections (
+  id,
+  project_id,
+  user_id,
+  provider,
+  provider_account_id,
+  account_email,
+  account_login,
+  scopes,
+  metadata,
+  access_token_secret,
+  refresh_token_secret,
+  expires_at,
+  created_at,
+  updated_at
+)
+SELECT
+  m.new_id,
+  m.project_id,
+  COALESCE(oc.user_id, m.owner_user_id),
+  oc.provider,
+  oc.provider_account_id,
+  oc.account_email,
+  oc.account_login,
+  oc.scopes,
+  oc.metadata,
+  oc.access_token_secret,
+  oc.refresh_token_secret,
+  oc.expires_at,
+  oc.created_at,
+  oc.updated_at
+FROM connection_migration_map m
+JOIN public.oauth_connections oc ON oc.id = m.old_id
+ON CONFLICT (id) DO NOTHING;
+
+UPDATE public.data_sources ds
+SET connection_id = m.new_id
+FROM connection_migration_map m
+WHERE ds.connection_id = m.old_id
+  AND ds.project_id = m.project_id;
+
+DELETE FROM public.oauth_connections oc
+USING (
+  SELECT DISTINCT old_id
+  FROM connection_migration_map
+) migrated
+WHERE oc.id = migrated.old_id
+  AND NOT EXISTS (
     SELECT 1
-    FROM public.oauth_connections
-    WHERE project_id IS NULL
-  ) THEN
-    RAISE EXCEPTION 'oauth_connections.project_id is required before applying 0002_project_oauth_connections';
-  END IF;
-END
-$$;
+    FROM public.data_sources ds
+    WHERE ds.connection_id = oc.id
+  );
+
+UPDATE public.oauth_connections oc
+SET project_id = ds.project_id
+FROM public.data_sources ds
+WHERE ds.connection_id = oc.id
+  AND oc.project_id IS NULL;
+
+UPDATE public.oauth_connections oc
+SET user_id = ds.owner_user_id
+FROM public.data_sources ds
+WHERE ds.connection_id = oc.id
+  AND oc.user_id IS NULL;
+
+UPDATE public.oauth_connections oc
+SET project_id = (
+  SELECT pm.project_id
+  FROM public.project_members pm
+  WHERE pm.user_id = oc.user_id
+  ORDER BY pm.created_at, pm.project_id
+  LIMIT 1
+)
+WHERE oc.project_id IS NULL
+  AND oc.user_id IS NOT NULL;
+
+DELETE FROM public.oauth_connections
+WHERE project_id IS NULL
+   OR user_id IS NULL;
 
 DO $$
 BEGIN
