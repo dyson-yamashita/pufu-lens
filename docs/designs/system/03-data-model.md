@@ -89,12 +89,12 @@ CREATE TABLE oauth_connections (
   account_email   TEXT,
   account_login   TEXT,
   scopes          TEXT[] NOT NULL DEFAULT '{}',
-  metadata        JSONB DEFAULT '{}',
+  metadata        JSONB NOT NULL DEFAULT '{}',
   access_token_secret  TEXT,
   refresh_token_secret TEXT,
   expires_at      TIMESTAMPTZ,
-  created_at      TIMESTAMPTZ DEFAULT now(),
-  updated_at      TIMESTAMPTZ DEFAULT now(),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (project_id, provider),
   UNIQUE (id, user_id)
 );

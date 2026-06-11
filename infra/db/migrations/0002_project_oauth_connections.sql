@@ -132,11 +132,11 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1
     FROM pg_constraint
-    WHERE conname = 'oauth_connections_project_provider_key'
+    WHERE conname = 'oauth_connections_project_id_provider_key'
       AND conrelid = 'public.oauth_connections'::regclass
   ) THEN
     ALTER TABLE public.oauth_connections
-      ADD CONSTRAINT oauth_connections_project_provider_key UNIQUE (project_id, provider);
+      ADD CONSTRAINT oauth_connections_project_id_provider_key UNIQUE (project_id, provider);
   END IF;
 END
 $$;
