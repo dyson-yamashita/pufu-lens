@@ -57,7 +57,7 @@ API は以下の認可をかける：
 - 公開用 manifest / metadata で `is_public = true` のレポートは Next.js の公開ページ `/reports/public/[projectSlug]/[reportId]` から `/api/public/projects/[projectSlug]/reports/[reportId]` 経由で redaction 済み public report JSON を取得・描画
 - `is_public = false` のレポートは `/api/projects/[projectSlug]/reports/[reportId]` で DB による認可チェック後にサーバから JSON を返す、または短時間の signed URL を発行する。DB 停止中は利用不可にする
 - public chat は個人情報、メールアドレス、未公開 URL、raw / parsed 本文全文、secret を回答しない。公開 report と対象 project の公開済み情報に関係しない質問は拒否する
-- レート制限を Cloud Armor または Hono middleware で実装する。public chat は信頼プロキシが付与した `x-forwarded-for` の先頭値（なければ `x-real-ip`、最後に anonymous bucket）+ report id 単位で 1 時間 / 1 日 / 質問長の上限を設け、private chat は user + project 単位で public より緩い上限にする。Mastra 側で使う rate limit 用 header は OIDC 検証済みの Next.js から来たものだけを信頼する
+- レート制限を Cloud Armor または Hono middleware で実装する。public chat は信頼プロキシが付与した `x-forwarded-for` の右端の有効値（なければ `x-real-ip`、最後に anonymous bucket）+ report id 単位で 1 時間 / 1 日 / 質問長の上限を設け、クライアントが任意に付与できる左端値は信用しない。private chat は user + project 単位で public より緩い上限にする。Mastra 側で使う rate limit 用 header は OIDC 検証済みの Next.js から来たものだけを信頼する
 - App Hosting の runtime env と secret は `apphosting.yaml` で参照し、secret 値をリポジトリに含めない。
 
 ---
