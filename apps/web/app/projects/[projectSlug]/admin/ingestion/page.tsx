@@ -75,7 +75,7 @@ export default async function IngestionPage({
                 <input name="dataSourceId" type="hidden" value={source.id} />
                 <PendingSubmitButton
                   className="icon-button"
-                  disabled={source.sourceType !== 'web'}
+                  disabled={!isAdminUiCollectionSupported(source.sourceType)}
                   testId={`ingestion-collect-${source.id}`}
                   title="Collect source"
                 >
@@ -87,7 +87,7 @@ export default async function IngestionPage({
                 <input name="dataSourceId" type="hidden" value={source.id} />
                 <PendingSubmitButton
                   className="icon-button"
-                  disabled={source.sourceType !== 'web'}
+                  disabled={!isAdminUiIngestSupported(source.sourceType)}
                   testId={`ingestion-ingest-${source.id}`}
                   title="Ingest source"
                 >
@@ -99,5 +99,23 @@ export default async function IngestionPage({
         </div>
       </section>
     </AppShell>
+  );
+}
+
+function isAdminUiCollectionSupported(sourceType: string): boolean {
+  return (
+    sourceType === 'web' ||
+    sourceType === 'drive' ||
+    sourceType === 'gmail' ||
+    sourceType === 'github'
+  );
+}
+
+function isAdminUiIngestSupported(sourceType: string): boolean {
+  return (
+    sourceType === 'web' ||
+    sourceType === 'drive' ||
+    sourceType === 'gmail' ||
+    sourceType === 'github'
   );
 }

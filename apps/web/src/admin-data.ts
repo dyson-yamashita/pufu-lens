@@ -2,6 +2,102 @@ export type SourceType = 'gmail' | 'drive' | 'github' | 'web';
 export type SourceStatus = 'healthy' | 'syncing' | 'failed' | 'held';
 export type ParserProfileStatus = 'approved' | 'review_requested' | 'draft' | 'rejected';
 export type ProjectVisibility = 'private' | 'public';
+export type ConnectionProvider = 'google' | 'github';
+export type ProjectConnectionStatus =
+  | 'connected'
+  | 'not_connected'
+  | 'expired'
+  | 'scope_missing'
+  | 'error';
+
+export interface ProjectConnectionSummary {
+  readonly provider: ConnectionProvider;
+  readonly status: ProjectConnectionStatus;
+  readonly accountLabel: string | null;
+  readonly configuration: ProjectConnectionConfiguration;
+  readonly grantedScopes: readonly string[];
+  readonly scopesSummary: string;
+  readonly permissionsSummary: string;
+  readonly updatedAt: string;
+  readonly metadataLabels: readonly string[];
+}
+
+export interface ProjectConnectionConfiguration {
+  readonly githubAppId?: string;
+  readonly githubAppSlug?: string;
+  readonly githubPrivateKeyConfigured?: boolean;
+}
+
+export type ProjectSourceAvailability = Record<SourceType, boolean>;
+
+const CONNECTION_PROVIDERS: readonly ConnectionProvider[] = ['google', 'github'];
+
+export function requiredProviderForSourceType(sourceType: SourceType): ConnectionProvider | null {
+  if (sourceType === 'web') {
+    return null;
+  }
+  if (sourceType === 'github') {
+    return 'github';
+  }
+  if (sourceType === 'gmail' || sourceType === 'drive') {
+    return 'google';
+  }
+  return null;
+}
+
+export function isConnectionUsable(status: ProjectConnectionStatus): boolean {
+  return status === 'connected' || status === 'expired';
+}
+
+export function isSourceTypeAvailable(
+  sourceType: SourceType,
+  connections: readonly ProjectConnectionSummary[],
+): boolean {
+  const provider = requiredProviderForSourceType(sourceType);
+  if (!provider) {
+    return true;
+  }
+  const connection = connections.find((candidate) => candidate.provider === provider);
+  if (!connection || !isConnectionUsable(connection.status)) {
+    return false;
+  }
+  if (sourceType === 'gmail') {
+    return connection.grantedScopes.includes('https://www.googleapis.com/auth/gmail.readonly');
+  }
+  if (sourceType === 'drive') {
+    return connection.grantedScopes.includes('https://www.googleapis.com/auth/drive.readonly');
+  }
+  return true;
+}
+
+export function availabilityFromConnections(
+  connections: readonly ProjectConnectionSummary[],
+): ProjectSourceAvailability {
+  return {
+    drive: isSourceTypeAvailable('drive', connections),
+    github: isSourceTypeAvailable('github', connections),
+    gmail: isSourceTypeAvailable('gmail', connections),
+    web: true,
+  };
+}
+
+export function notConnectedProjectConnections(): readonly ProjectConnectionSummary[] {
+  return CONNECTION_PROVIDERS.map((provider) => notConnectedSummary(provider));
+}
+
+function notConnectedSummary(provider: ConnectionProvider): ProjectConnectionSummary {
+  return {
+    accountLabel: null,
+    configuration: {},
+    grantedScopes: [],
+    metadataLabels: [],
+    permissionsSummary: 'Not configured',
+    provider,
+    scopesSummary: 'No scopes granted',
+    status: 'not_connected',
+    updatedAt: 'not yet',
+  };
+}
 
 export interface PublicProjectReportSummary {
   readonly id: string;
