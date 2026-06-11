@@ -1,3 +1,4 @@
+import { createDecipheriv, createHash } from 'node:crypto';
 import postgres from 'postgres';
 import type {
   CollectionRepository,
@@ -18,6 +19,17 @@ import {
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
 const SOURCE_TYPES = ['drive', 'github', 'gmail', 'web'] as const;
+const ENCRYPTED_CONNECTION_SECRET_PREFIX = 'encrypted:';
+
+type RealSourceType = (typeof SOURCE_TYPES)[number];
+type ConnectionProvider = 'github' | 'google';
+
+interface CollectionConnection {
+  id: string;
+  provider: ConnectionProvider;
+  token: string;
+  userId: string;
+}
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
@@ -29,11 +41,22 @@ async function main(): Promise<void> {
   const repository = new PostgresCollectionRepository(sql);
 
   try {
+    const connection = options.connectionId
+      ? await readCollectionConnection({
+          connectionId: options.connectionId,
+          projectSlug,
+          provider: providerForSource(sourceType),
+          sql,
+        })
+      : undefined;
+
     if (sourceType === 'web' && options.urls.length > 0) {
       await ensureWebUrlDataSource({ projectSlug, sql, urls: options.urls });
     }
     if (sourceType === 'github' && options.repositories.length > 0) {
       await ensureGitHubDataSource({
+        connectionId: connection?.id,
+        ownerUserId: connection?.userId,
         projectSlug,
         repositories: options.repositories,
         sql,
@@ -42,15 +65,19 @@ async function main(): Promise<void> {
     }
     if (sourceType === 'drive' && (options.folderIds.length > 0 || options.folderUrls.length > 0)) {
       await ensureDriveDataSource({
+        connectionId: connection?.id,
         folderIds: options.folderIds,
         folderUrls: options.folderUrls,
+        ownerUserId: connection?.userId,
         projectSlug,
         sql,
       });
     }
     if (sourceType === 'gmail' && (options.labelIds.length > 0 || options.query)) {
       await ensureGmailDataSource({
+        connectionId: connection?.id,
         labelIds: options.labelIds,
+        ownerUserId: connection?.userId,
         projectSlug,
         query: options.query,
         sql,
@@ -65,7 +92,10 @@ async function main(): Promise<void> {
             projectSlug,
             repository,
             storage,
-            token: process.env.GOOGLE_DRIVE_ACCESS_TOKEN ?? process.env.GOOGLE_OAUTH_ACCESS_TOKEN,
+            token:
+              connection?.token ??
+              process.env.GOOGLE_DRIVE_ACCESS_TOKEN ??
+              process.env.GOOGLE_OAUTH_ACCESS_TOKEN,
           })
         : sourceType === 'gmail'
           ? await collectGmailSource({
@@ -74,7 +104,10 @@ async function main(): Promise<void> {
               projectSlug,
               repository,
               storage,
-              token: process.env.GMAIL_ACCESS_TOKEN ?? process.env.GOOGLE_OAUTH_ACCESS_TOKEN,
+              token:
+                connection?.token ??
+                process.env.GMAIL_ACCESS_TOKEN ??
+                process.env.GOOGLE_OAUTH_ACCESS_TOKEN,
             })
           : sourceType === 'github'
             ? await collectGitHubSource({
@@ -83,7 +116,7 @@ async function main(): Promise<void> {
                 projectSlug,
                 repository,
                 storage,
-                token: process.env.GITHUB_TOKEN,
+                token: connection?.token ?? process.env.GITHUB_TOKEN,
               })
             : await collectWebUrlSource({
                 dryRun: options.dryRun,
@@ -325,6 +358,8 @@ async function ensureWebUrlDataSource(input: {
 }
 
 async function ensureGitHubDataSource(input: {
+  connectionId?: string;
+  ownerUserId?: string;
   projectSlug: string;
   repositories: string[];
   sql: postgres.Sql;
@@ -340,30 +375,36 @@ async function ensureGitHubDataSource(input: {
       source_type,
       name,
       config,
-      ingest_window
+      ingest_window,
+      connection_id
     )
     SELECT
       project.id,
-      '00000000-0000-0000-0000-000000000001',
+      ${input.ownerUserId ?? '00000000-0000-0000-0000-000000000001'},
       'github',
       'GitHub repositories',
       ${input.sql.json({
         repositories: input.repositories,
         state: input.state ?? 'open',
       })},
-      ${input.sql.json({})}
+      ${input.sql.json({})},
+      ${input.connectionId ?? null}
     FROM project
     ON CONFLICT (project_id, source_type, name)
     DO UPDATE SET
       enabled = true,
       config = EXCLUDED.config,
-      ingest_window = EXCLUDED.ingest_window
+      ingest_window = EXCLUDED.ingest_window,
+      owner_user_id = EXCLUDED.owner_user_id,
+      connection_id = EXCLUDED.connection_id
   `;
 }
 
 async function ensureDriveDataSource(input: {
+  connectionId?: string;
   folderIds: string[];
   folderUrls: string[];
+  ownerUserId?: string;
   projectSlug: string;
   sql: postgres.Sql;
 }): Promise<void> {
@@ -377,29 +418,35 @@ async function ensureDriveDataSource(input: {
       source_type,
       name,
       config,
-      ingest_window
+      ingest_window,
+      connection_id
     )
     SELECT
       project.id,
-      '00000000-0000-0000-0000-000000000001',
+      ${input.ownerUserId ?? '00000000-0000-0000-0000-000000000001'},
       'drive',
       'Drive folders',
       ${input.sql.json({
         folderIds: input.folderIds,
         folderUrls: input.folderUrls,
       })},
-      ${input.sql.json({})}
+      ${input.sql.json({})},
+      ${input.connectionId ?? null}
     FROM project
     ON CONFLICT (project_id, source_type, name)
     DO UPDATE SET
       enabled = true,
       config = EXCLUDED.config,
-      ingest_window = EXCLUDED.ingest_window
+      ingest_window = EXCLUDED.ingest_window,
+      owner_user_id = EXCLUDED.owner_user_id,
+      connection_id = EXCLUDED.connection_id
   `;
 }
 
 async function ensureGmailDataSource(input: {
+  connectionId?: string;
   labelIds: string[];
+  ownerUserId?: string;
   projectSlug: string;
   query?: string;
   sql: postgres.Sql;
@@ -414,24 +461,28 @@ async function ensureGmailDataSource(input: {
       source_type,
       name,
       config,
-      ingest_window
+      ingest_window,
+      connection_id
     )
     SELECT
       project.id,
-      '00000000-0000-0000-0000-000000000001',
+      ${input.ownerUserId ?? '00000000-0000-0000-0000-000000000001'},
       'gmail',
       'Gmail messages',
       ${input.sql.json({
         labelIds: input.labelIds,
         query: input.query,
       })},
-      ${input.sql.json({})}
+      ${input.sql.json({})},
+      ${input.connectionId ?? null}
     FROM project
     ON CONFLICT (project_id, source_type, name)
     DO UPDATE SET
       enabled = true,
       config = EXCLUDED.config,
-      ingest_window = EXCLUDED.ingest_window
+      ingest_window = EXCLUDED.ingest_window,
+      owner_user_id = EXCLUDED.owner_user_id,
+      connection_id = EXCLUDED.connection_id
   `;
 }
 
@@ -455,10 +506,11 @@ function parseArgs(args: string[]): {
   folderIds: string[];
   folderUrls: string[];
   labelIds: string[];
+  connectionId?: string;
   project?: string;
   query?: string;
   repositories: string[];
-  source?: string;
+  source?: RealSourceType;
   state?: 'all' | 'closed' | 'open';
   urls: string[];
   limit?: number;
@@ -468,10 +520,11 @@ function parseArgs(args: string[]): {
     folderIds: string[];
     folderUrls: string[];
     labelIds: string[];
+    connectionId?: string;
     project?: string;
     query?: string;
     repositories: string[];
-    source?: string;
+    source?: RealSourceType;
     state?: 'all' | 'closed' | 'open';
     urls: string[];
     limit?: number;
@@ -482,6 +535,8 @@ function parseArgs(args: string[]): {
     const arg = args[index];
     if (arg === '--project') {
       options.project = readOptionValue(args, ++index, arg);
+    } else if (arg === '--connection-id') {
+      options.connectionId = readOptionValue(args, ++index, arg);
     } else if (arg === '--source') {
       const sourceType = readOptionValue(args, ++index, arg);
       if (!isRealSourceType(sourceType)) {
@@ -539,6 +594,108 @@ function isRealSourceType(value: string): value is (typeof SOURCE_TYPES)[number]
   return (SOURCE_TYPES as readonly string[]).includes(value);
 }
 
+function providerForSource(sourceType: RealSourceType): ConnectionProvider | undefined {
+  if (sourceType === 'drive' || sourceType === 'gmail') {
+    return 'google';
+  }
+  if (sourceType === 'github') {
+    return 'github';
+  }
+  return undefined;
+}
+
+async function readCollectionConnection(input: {
+  connectionId: string;
+  projectSlug: string;
+  provider?: ConnectionProvider;
+  sql: postgres.Sql;
+}): Promise<CollectionConnection> {
+  if (!input.provider) {
+    throw new Error('--connection-id is supported only for gmail, drive, and github sources.');
+  }
+  const rows = (await input.sql`
+    SELECT
+      oc.id::text AS id,
+      oc.provider,
+      oc.user_id::text AS "userId",
+      oc.access_token_secret AS "accessTokenSecret"
+    FROM public.oauth_connections oc
+    JOIN public.projects p ON p.id = oc.project_id
+    WHERE oc.id = ${input.connectionId}
+      AND p.slug = ${input.projectSlug}
+      AND oc.provider = ${input.provider}
+    LIMIT 1
+  `) as Array<{
+    accessTokenSecret: string | null;
+    id: string;
+    provider: ConnectionProvider;
+    userId: string;
+  }>;
+  const connection = rows[0];
+  if (!connection) {
+    throw new Error('OAuth connection was not found for the project and source type.');
+  }
+  if (!connection.accessTokenSecret) {
+    throw new Error('OAuth connection does not have an access token.');
+  }
+  return {
+    id: connection.id,
+    provider: connection.provider,
+    token: decryptConnectionSecretValue(connection.accessTokenSecret),
+    userId: connection.userId,
+  };
+}
+
+function decryptConnectionSecretValue(secretValue: string): string {
+  if (!secretValue.startsWith(ENCRYPTED_CONNECTION_SECRET_PREFIX)) {
+    throw new Error('OAuth connection token must be encrypted before collection.');
+  }
+  const encoded = secretValue.slice(ENCRYPTED_CONNECTION_SECRET_PREFIX.length);
+  const parsed = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as unknown;
+  if (!isEncryptedConnectionSecret(parsed)) {
+    throw new Error('OAuth connection secret payload is invalid.');
+  }
+  const decipher = createDecipheriv(
+    'aes-256-gcm',
+    connectionSecretKey(),
+    Buffer.from(parsed.iv, 'base64'),
+  );
+  decipher.setAuthTag(Buffer.from(parsed.tag, 'base64'));
+  return Buffer.concat([
+    decipher.update(Buffer.from(parsed.ciphertext, 'base64')),
+    decipher.final(),
+  ]).toString('utf8');
+}
+
+function isEncryptedConnectionSecret(value: unknown): value is {
+  alg: 'aes-256-gcm';
+  ciphertext: string;
+  iv: string;
+  tag: string;
+} {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    'alg' in value &&
+    value.alg === 'aes-256-gcm' &&
+    'ciphertext' in value &&
+    typeof value.ciphertext === 'string' &&
+    'iv' in value &&
+    typeof value.iv === 'string' &&
+    'tag' in value &&
+    typeof value.tag === 'string'
+  );
+}
+
+function connectionSecretKey(): Buffer {
+  const value = process.env.CONNECTION_SECRET_KEY ?? process.env.AUTH_SECRET;
+  if (!value) {
+    throw new Error('CONNECTION_SECRET_KEY is required to decrypt OAuth connection tokens.');
+  }
+  return createHash('sha256').update(value).digest();
+}
+
 function readRepository(value: string, name: string): string {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value)) {
     throw new Error(`${name} must be owner/repo: ${value}`);
@@ -571,7 +728,7 @@ function requiredEnv(name: string): string {
   return value;
 }
 
-function requiredOption(value: string | undefined, optionName: string): string {
+function requiredOption<T extends string>(value: T | undefined, optionName: string): T {
   if (!value) {
     throw new Error(`${optionName} is required.`);
   }
