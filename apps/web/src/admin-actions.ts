@@ -317,6 +317,7 @@ export async function createDataSource(formData: FormData): Promise<void> {
     throw new Error('scope is required.');
   }
   const config = buildDataSourceConfig(sourceType, scope);
+  let createdDataSourceId: string | undefined;
 
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
@@ -342,6 +343,7 @@ export async function createDataSource(formData: FormData): Promise<void> {
       if (!dataSource) {
         throw new Error('Data source creation failed.');
       }
+      createdDataSourceId = dataSource.id;
       await ensureDefaultParserProfile(tx, {
         approvedByUserId: project.adminUserId,
         dataSourceId: dataSource.id,
@@ -351,7 +353,21 @@ export async function createDataSource(formData: FormData): Promise<void> {
     });
   });
 
-  revalidateProject(projectSlug);
+  try {
+    if (createdDataSourceId) {
+      try {
+        await runCollectAndIngestDataSource(projectSlug, createdDataSourceId);
+      } catch (error) {
+        console.warn(
+          `Initial collect and ingest failed after creating data source ${createdDataSourceId} in project ${projectSlug}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+  } finally {
+    revalidateProject(projectSlug);
+  }
 }
 
 export async function updateDataSource(formData: FormData): Promise<void> {
@@ -438,114 +454,33 @@ export async function collectDataSource(formData: FormData): Promise<void> {
   const dataSourceId = requireFormValue(formData, 'dataSourceId');
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
-    const rows = (await sql`
-      SELECT id::text, source_type
-      FROM public.data_sources
-      WHERE id = ${dataSourceId}
-        AND project_id = ${project.id}
-        AND enabled = true
-    `) as Array<{ id: string; source_type: SourceType }>;
-    const dataSource = rows[0];
-    if (!dataSource) {
-      throw new Error('Data source not found in project.');
-    }
-    if (!isAdminUiCollectionSupported(dataSource.source_type)) {
-      throw new Error(`Collect from admin UI is not supported for ${dataSource.source_type} yet.`);
-    }
-    if (dataSource.source_type === 'drive' || dataSource.source_type === 'gmail') {
-      const token = await readProjectConnectionAccessToken({
-        projectId: project.id,
-        provider: 'google',
-        sql,
-      });
-      if (!token) {
-        throw new Error(
-          `Google ${googleSourceLabel(dataSource.source_type)} access token is not available. Reconnect ${googleSourceLabel(
-            dataSource.source_type,
-          )} in Settings and try again.`,
-        );
-      }
-      if (dataSource.source_type === 'gmail') {
-        await collectGmailSource({
-          projectSlug,
-          repository: new AdminCollectionRepository(sql, dataSourceId),
-          storage: createCollectionStorageFromEnv(),
-          token,
-        });
-        return;
-      }
-      await collectDriveSource({
-        projectSlug,
-        repository: new AdminCollectionRepository(sql, dataSourceId),
-        storage: createCollectionStorageFromEnv(),
-        token,
-      });
-      return;
-    }
-    if (dataSource.source_type === 'github') {
-      const token = await createGitHubInstallationAccessToken({
-        projectId: project.id,
-        sql,
-      });
-      if (!token) {
-        throw new Error(
-          'GitHub App installation token is not available. Reconnect GitHub in Settings and verify GITHUB_APP_ID / GITHUB_APP_PRIVATE_KEY.',
-        );
-      }
-      await collectGitHubSource({
-        projectSlug,
-        repository: new AdminCollectionRepository(sql, dataSourceId),
-        storage: createCollectionStorageFromEnv(),
-        token,
-      });
-      return;
-    }
-    await collectWebUrlSource({
-      projectSlug,
-      repository: new AdminCollectionRepository(sql, dataSourceId),
-      storage: createCollectionStorageFromEnv(),
-    });
+    await collectProjectDataSource(sql, project, dataSourceId, projectSlug);
   });
   revalidateProject(projectSlug);
+}
+
+export async function collectAndIngestDataSource(formData: FormData): Promise<void> {
+  const projectSlug = requireFormValue(formData, 'projectSlug');
+  const dataSourceId = requireFormValue(formData, 'dataSourceId');
+  try {
+    await runCollectAndIngestDataSource(projectSlug, dataSourceId);
+  } finally {
+    revalidateProject(projectSlug);
+  }
 }
 
 export async function ingestDataSource(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
   const dataSourceId = requireFormValue(formData, 'dataSourceId');
-  let storageRoot: string | undefined;
-  let sourceType: SourceType = 'web';
-  await withSql(async (sql) => {
-    const project = await requireAdminProject(sql, projectSlug);
-    const rows = (await sql`
-      SELECT
-        ds.id::text,
-        ds.source_type,
-        (
-          SELECT rd.storage_uri
-          FROM public.raw_document_data_sources rdds
-          JOIN public.raw_documents rd ON rd.id = rdds.raw_document_id
-          WHERE rdds.data_source_id = ds.id
-            AND rd.storage_uri IS NOT NULL
-          ORDER BY rd.updated_at DESC
-          LIMIT 1
-        ) AS storage_uri
-      FROM public.data_sources ds
-      WHERE ds.id = ${dataSourceId}
-        AND ds.project_id = ${project.id}
-        AND ds.enabled = true
-    `) as Array<{ id: string; source_type: SourceType; storage_uri: string | null }>;
-    const dataSource = rows[0];
-    if (!dataSource) {
-      throw new Error('Data source not found in project.');
-    }
-    if (!isAdminUiIngestSupported(dataSource.source_type)) {
-      throw new Error(`Ingest from admin UI is not supported for ${dataSource.source_type} yet.`);
-    }
-    storageRoot = storageRootFromObjectUri(dataSource.storage_uri, projectSlug);
-    sourceType = dataSource.source_type;
-  });
-  await runIngestWorkflow({ dataSourceId, projectSlug, sourceType, storageRoot });
-  revalidateProject(projectSlug);
+  const { sourceType, storageRoot } = await getProjectDataSourceIngestInput(
+    projectSlug,
+    dataSourceId,
+  );
+  try {
+    await runIngestWorkflow({ dataSourceId, projectSlug, sourceType, storageRoot });
+  } finally {
+    revalidateProject(projectSlug);
+  }
 }
 
 export async function generatePrivateReport(formData: FormData): Promise<void> {
@@ -998,6 +933,155 @@ async function requireGlobalAdmin(sql: postgres.Sql | postgres.TransactionSql): 
     throw new Error('Admin access is required.');
   }
   return user.id;
+}
+
+async function runCollectAndIngestDataSource(
+  projectSlug: string,
+  dataSourceId: string,
+): Promise<void> {
+  const { sourceType, storageRoot } = await withSql(async (sql) => {
+    const project = await requireAdminProject(sql, projectSlug);
+    await collectProjectDataSource(sql, project, dataSourceId, projectSlug);
+    return lookupProjectDataSourceIngestInput(sql, project.id, dataSourceId, projectSlug);
+  });
+  await runIngestWorkflow({ dataSourceId, projectSlug, sourceType, storageRoot });
+}
+
+async function collectProjectDataSource(
+  sql: postgres.Sql,
+  project: { readonly id: string },
+  dataSourceId: string,
+  projectSlug: string,
+): Promise<void> {
+  const dataSource = await lookupProjectDataSource(sql, project.id, dataSourceId);
+  if (!isAdminUiCollectionSupported(dataSource.source_type)) {
+    throw new Error(`Collect from admin UI is not supported for ${dataSource.source_type} yet.`);
+  }
+  if (dataSource.source_type === 'drive' || dataSource.source_type === 'gmail') {
+    const token = await readProjectConnectionAccessToken({
+      projectId: project.id,
+      provider: 'google',
+      sql,
+    });
+    if (!token) {
+      throw new Error(
+        `Google ${googleSourceLabel(dataSource.source_type)} access token is not available. Reconnect ${googleSourceLabel(
+          dataSource.source_type,
+        )} in Settings and try again.`,
+      );
+    }
+    if (dataSource.source_type === 'gmail') {
+      await collectGmailSource({
+        projectSlug,
+        repository: new AdminCollectionRepository(sql, dataSourceId),
+        storage: createCollectionStorageFromEnv(),
+        token,
+      });
+      return;
+    }
+    await collectDriveSource({
+      projectSlug,
+      repository: new AdminCollectionRepository(sql, dataSourceId),
+      storage: createCollectionStorageFromEnv(),
+      token,
+    });
+    return;
+  }
+  if (dataSource.source_type === 'github') {
+    const token = await createGitHubInstallationAccessToken({
+      projectId: project.id,
+      sql,
+    });
+    if (!token) {
+      throw new Error(
+        'GitHub App installation token is not available. Reconnect GitHub in Settings and verify GITHUB_APP_ID / GITHUB_APP_PRIVATE_KEY.',
+      );
+    }
+    await collectGitHubSource({
+      projectSlug,
+      repository: new AdminCollectionRepository(sql, dataSourceId),
+      storage: createCollectionStorageFromEnv(),
+      token,
+    });
+    return;
+  }
+  await collectWebUrlSource({
+    projectSlug,
+    repository: new AdminCollectionRepository(sql, dataSourceId),
+    storage: createCollectionStorageFromEnv(),
+  });
+}
+
+async function getProjectDataSourceIngestInput(
+  projectSlug: string,
+  dataSourceId: string,
+): Promise<{
+  readonly sourceType: SourceType;
+  readonly storageRoot?: string;
+}> {
+  return withSql(async (sql) => {
+    const project = await requireAdminProject(sql, projectSlug);
+    return lookupProjectDataSourceIngestInput(sql, project.id, dataSourceId, projectSlug);
+  });
+}
+
+async function lookupProjectDataSource(
+  sql: postgres.Sql,
+  projectId: string,
+  dataSourceId: string,
+): Promise<{ readonly id: string; readonly source_type: SourceType }> {
+  const rows = (await sql`
+    SELECT id::text, source_type
+    FROM public.data_sources
+    WHERE id = ${dataSourceId}
+      AND project_id = ${projectId}
+      AND enabled = true
+  `) as Array<{ id: string; source_type: SourceType }>;
+  const dataSource = rows[0];
+  if (!dataSource) {
+    throw new Error('Data source not found in project.');
+  }
+  return dataSource;
+}
+
+async function lookupProjectDataSourceIngestInput(
+  sql: postgres.Sql,
+  projectId: string,
+  dataSourceId: string,
+  projectSlug: string,
+): Promise<{
+  readonly sourceType: SourceType;
+  readonly storageRoot?: string;
+}> {
+  const rows = (await sql`
+    SELECT
+      ds.id::text,
+      ds.source_type,
+      (
+        SELECT rd.storage_uri
+        FROM public.raw_document_data_sources rdds
+        JOIN public.raw_documents rd ON rd.id = rdds.raw_document_id
+        WHERE rdds.data_source_id = ds.id
+          AND rd.storage_uri IS NOT NULL
+        ORDER BY rd.updated_at DESC
+        LIMIT 1
+      ) AS storage_uri
+    FROM public.data_sources ds
+    WHERE ds.id = ${dataSourceId}
+      AND ds.project_id = ${projectId}
+      AND ds.enabled = true
+  `) as Array<{ id: string; source_type: SourceType; storage_uri: string | null }>;
+  const dataSource = rows[0];
+  if (!dataSource) {
+    throw new Error('Data source not found in project.');
+  }
+  if (!isAdminUiIngestSupported(dataSource.source_type)) {
+    throw new Error(`Ingest from admin UI is not supported for ${dataSource.source_type} yet.`);
+  }
+  return {
+    sourceType: dataSource.source_type,
+    storageRoot: storageRootFromObjectUri(dataSource.storage_uri, projectSlug),
+  };
 }
 
 async function runIngestWorkflow(input: {

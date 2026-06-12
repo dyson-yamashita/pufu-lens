@@ -1,6 +1,14 @@
 import Link from 'next/link';
-import { createDataSource, updateDataSource } from '../../../../../src/admin-actions';
-import type { SourceType } from '../../../../../src/admin-data';
+import {
+  collectAndIngestDataSource,
+  createDataSource,
+  updateDataSource,
+} from '../../../../../src/admin-actions';
+import {
+  isAdminUiCollectionSupported,
+  isAdminUiIngestSupported,
+  type SourceType,
+} from '../../../../../src/admin-data';
 import { getProjectSourceAvailability, getSourceTypeCounts } from '../../../../../src/admin-db';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
 import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
@@ -115,9 +123,9 @@ export default async function DataSourcesPage({
           <PendingSubmitButton
             className="primary-button"
             testId="data-source-submit-button"
-            title="Create data source"
+            title="Create data source and run collect and ingest"
           >
-            Create Source
+            Create, Collect & Ingest
           </PendingSubmitButton>
         </ActionForm>
       </details>
@@ -205,13 +213,22 @@ export default async function DataSourcesPage({
                 >
                   Test
                 </button>
-                <button
-                  className="icon-button muted"
-                  data-testid="data-source-run-button"
-                  type="button"
-                >
-                  Collect
-                </button>
+                <ActionForm action={collectAndIngestDataSource} className="inline-action-form">
+                  <input name="projectSlug" type="hidden" value={project.slug} />
+                  <input name="dataSourceId" type="hidden" value={selectedSource.id} />
+                  <PendingSubmitButton
+                    className="icon-button muted"
+                    disabled={
+                      !isAdminUiCollectionSupported(selectedSource.sourceType) ||
+                      !isAdminUiIngestSupported(selectedSource.sourceType)
+                    }
+                    pendingLabel="Running"
+                    testId="data-source-run-button"
+                    title="Collect and ingest data source"
+                  >
+                    Collect & Ingest
+                  </PendingSubmitButton>
+                </ActionForm>
               </div>
             </>
           ) : null}

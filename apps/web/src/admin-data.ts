@@ -139,12 +139,19 @@ export interface DataSourceSummary {
   readonly scope: string;
   readonly editableScope: string;
   readonly rawCount: number;
+  readonly ingestedCount: number;
   readonly queueCount: number;
   readonly failedCount: number;
   readonly heldCount: number;
   readonly lastChecked: string;
   readonly lastIndexed: string;
+  readonly ingestHistory: readonly IngestHistoryEntry[];
   readonly configSummary: string;
+}
+
+export interface IngestHistoryEntry {
+  readonly label: string;
+  readonly value: string;
 }
 
 export interface ParserProfileSummary {
@@ -166,6 +173,7 @@ export interface ProjectSummary {
   readonly status: 'active' | 'attention';
   readonly memberCount: number;
   readonly rawCount: number;
+  readonly ingestedCount: number;
   readonly queueCount: number;
   readonly failedCount: number;
   readonly heldCount: number;
@@ -183,6 +191,7 @@ export const fallbackProjects = [
     status: 'attention',
     memberCount: 4,
     rawCount: 42,
+    ingestedCount: 34,
     queueCount: 6,
     failedCount: 2,
     heldCount: 3,
@@ -196,11 +205,17 @@ export const fallbackProjects = [
         scope: 'https://example.com/docs',
         editableScope: 'https://example.com/docs',
         rawCount: 8,
+        ingestedCount: 8,
         queueCount: 0,
         failedCount: 0,
         heldCount: 0,
         lastChecked: '2026-06-02 09:08',
         lastIndexed: '2026-06-02 09:12',
+        ingestHistory: [
+          { label: 'Last collect', value: '2026-06-02 09:08' },
+          { label: 'Last indexed', value: '2026-06-02 09:12' },
+          { label: 'Raw / Ingested', value: '8 / 8' },
+        ],
         configSummary: 'URL 5 件、canonical URL 検査あり',
       },
       {
@@ -211,11 +226,17 @@ export const fallbackProjects = [
         scope: 'dyson-yamashita/pufu-lens',
         editableScope: 'dyson-yamashita/pufu-lens',
         rawCount: 21,
+        ingestedCount: 17,
         queueCount: 4,
         failedCount: 2,
         heldCount: 1,
         lastChecked: '2026-06-02 08:44',
         lastIndexed: '2026-06-02 08:49',
+        ingestHistory: [
+          { label: 'Last collect', value: '2026-06-02 08:44' },
+          { label: 'Last indexed', value: '2026-06-02 08:49' },
+          { label: 'Raw / Ingested', value: '21 / 17' },
+        ],
         configSummary: 'Issue / PR / comment を収集',
       },
       {
@@ -226,11 +247,17 @@ export const fallbackProjects = [
         scope: 'folder: product-specs',
         editableScope: 'product-specs',
         rawCount: 13,
+        ingestedCount: 9,
         queueCount: 2,
         failedCount: 0,
         heldCount: 2,
         lastChecked: '2026-06-01 18:05',
         lastIndexed: '2026-06-01 18:09',
+        ingestHistory: [
+          { label: 'Last collect', value: '2026-06-01 18:05' },
+          { label: 'Last indexed', value: '2026-06-01 18:09' },
+          { label: 'Raw / Ingested', value: '13 / 9' },
+        ],
         configSummary: 'folder 制限、revision 追跡あり',
       },
     ],
@@ -265,6 +292,7 @@ export const fallbackProjects = [
     status: 'active',
     memberCount: 2,
     rawCount: 17,
+    ingestedCount: 16,
     queueCount: 1,
     failedCount: 0,
     heldCount: 0,
@@ -278,11 +306,17 @@ export const fallbackProjects = [
         scope: 'https://status.example.com',
         editableScope: 'https://status.example.com',
         rawCount: 5,
+        ingestedCount: 5,
         queueCount: 0,
         failedCount: 0,
         heldCount: 0,
         lastChecked: '2026-06-02 07:30',
         lastIndexed: '2026-06-02 07:36',
+        ingestHistory: [
+          { label: 'Last collect', value: '2026-06-02 07:30' },
+          { label: 'Last indexed', value: '2026-06-02 07:36' },
+          { label: 'Raw / Ingested', value: '5 / 5' },
+        ],
         configSummary: 'URL 1 件、再実行重複なし',
       },
       {
@@ -293,11 +327,17 @@ export const fallbackProjects = [
         scope: 'label:support',
         editableScope: 'label:support',
         rawCount: 12,
+        ingestedCount: 11,
         queueCount: 1,
         failedCount: 0,
         heldCount: 0,
         lastChecked: '2026-06-02 07:28',
         lastIndexed: '2026-06-02 07:35',
+        ingestHistory: [
+          { label: 'Last collect', value: '2026-06-02 07:28' },
+          { label: 'Last indexed', value: '2026-06-02 07:35' },
+          { label: 'Raw / Ingested', value: '12 / 11' },
+        ],
         configSummary: 'thread 最新メールと引用を分離',
       },
     ],
