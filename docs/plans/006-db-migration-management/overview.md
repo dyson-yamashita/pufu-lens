@@ -62,7 +62,7 @@ drift check の比較起点は「空 DB」ではなく「baseline 適用済み D
 | step   | status      | 内容                                                                                          | 完了条件                                                                                                   |
 | ------ | ----------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | Step 1 | `completed` | 現状 runner と migration 履歴を監査し、baseline / stamping 方針と運用ルールを設計書へ反映する | Issue #119。`init.sql` / migration / deploy checklist の責務、baseline、変更時チェックリストが明文化される |
-| Step 2 | `planned`   | `db:migrate` の安全機能と開発者向け UX を整える                                               | dry-run、list、命名検査、重複検査、未適用表示の test が通る                                                |
+| Step 2 | `completed` | `db:migrate` の安全機能と開発者向け UX を整える                                               | Issue #121。`--plan` / `--list` / `--check`、offline / online 検査、runner unit test が通る                |
 | Step 3 | `planned`   | migration 作成・レビュー手順を追加する                                                        | 新規 migration template、PR checklist、destructive change 手順が docs に入る                               |
 | Step 4 | `planned`   | CI / deploy 前検証に migration check を組み込む                                               | `pnpm db:migrate --check` 相当が CI または deploy dry-run で実行される                                     |
 | Step 5 | `planned`   | 既存 DB と fresh DB の schema drift 検出を追加する                                            | fresh DB と migrated DB の schema 比較手順が自動または半自動で確認できる                                   |

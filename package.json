@@ -34,11 +34,12 @@
     "report:publish": "pnpm --filter @pufu-lens/storage build && node --experimental-strip-types scripts/publish-report.ts",
     "lint": "biome ci . && markdownlint-cli2",
     "db:migrate": "node --experimental-strip-types scripts/db-migrate.ts",
+    "db:migrate:test": "node --experimental-strip-types --test scripts/db-migrate.test.ts",
     "auth:migrate": "node --experimental-strip-types scripts/migrate-auth-login.ts",
     "auth:create-user": "node --experimental-strip-types scripts/create-credentials-user.ts",
     "seed:projects": "node --experimental-strip-types scripts/create-project.ts --seed-samples",
     "scripts:typecheck": "pnpm build && tsc --noEmit -p tsconfig.scripts.json",
-    "test": "turbo run test",
+    "test": "pnpm db:migrate:test && turbo run test",
     "test:e2e": "pnpm --filter @pufu-lens/web test:e2e",
     "typecheck": "turbo run typecheck && pnpm scripts:typecheck"
   },
