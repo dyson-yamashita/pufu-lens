@@ -79,7 +79,7 @@
 | Next.js             | チャット UI、レポート閲覧（JSON 取得＋描画）、管理者ログイン、連携・データソース・プロジェクト管理           | Firebase App Hosting                    |
 | Mastra Server       | Agent API、ツール実行（グラフ / ベクトル / 原本ストレージ）                                                  | Cloud Run                               |
 | Collection Pipeline | プロジェクトごとのデータソース監視、source contract に基づく収集候補評価、**原本ストレージ保存**、キュー投入 | 現状: Node CLI / 目標: Cloud Run Job    |
-| Exception Agent     | 失敗 raw / parsed の調査、parser / validator 修正補助、低 confidence な名寄せ候補の整理                      | Cloud Run Job / Mastra UI               |
+| Exception Agent     | 失敗 raw / parsed の調査、parser / validator 修正補助、低 confidence な名寄せ候補の整理                      | 現状: Mastra UI / 目標: Cloud Run Job   |
 | Ingestion Workflow  | キュー処理、parse、Actor 名寄せ、グラフ・ベクトル構築                                                        | 現状: Node CLI / 目標: Cloud Run Job    |
 | Report Workflow     | JSON レポート生成、Object Storage 保存、メタデータ DB 登録                                                   | 現状: Node CLI / 目標: Cloud Run Job    |
 | PostgreSQL          | プロジェクト別ナレッジグラフ・メタデータ・チャンク                                                           | GCE VM（Docker）                        |

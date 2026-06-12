@@ -31,7 +31,6 @@
 | `GET`   | `/api/connections/google/callback`                           | login required | implemented   | Google connection callback                              |
 | `GET`   | `/api/connections/github/start`                              | login required | implemented   | GitHub connection 開始                                  |
 | `GET`   | `/api/connections/github/callback`                           | login required | implemented   | GitHub connection callback                              |
-| `POST`  | `/api/public/projects/[projectSlug]/chat`                    | public         | implemented   | public project chat 互換入口                            |
 
 ### 3. Server Action / UI 内部入口
 
@@ -90,6 +89,6 @@
 
 public report / chat は `projectSlug` と `reportId` を path で受け取る project-scoped path を正規 API とする。旧 `/api/public/reports/[reportId]?projectSlug=...` は互換 alias として扱う。
 
-public chat は redaction 済み public report、public manifest、public context bundle だけを根拠にする。ブラウザから渡された `projectId`、`storageUri`、`sourceUri`、artifact URI は信用しない。
+public chat は report-scoped path のみを正規入口とし、redaction 済み public report、public manifest、public context bundle だけを根拠にする。ブラウザから渡された `projectId`、`storageUri`、`sourceUri`、artifact URI は信用しない。
 
 ---
