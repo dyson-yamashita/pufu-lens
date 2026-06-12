@@ -1,4 +1,4 @@
-import { createDecipheriv, createHash } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createSign, randomBytes } from 'node:crypto';
 import postgres from 'postgres';
 import type {
   CollectionRepository,
@@ -30,6 +30,18 @@ interface CollectionConnection {
   token: string;
   userId: string;
 }
+
+interface GoogleTokenResponse {
+  readonly access_token?: string;
+  readonly expires_in?: number;
+}
+
+type EncryptedConnectionSecret = {
+  readonly alg: 'aes-256-gcm';
+  readonly ciphertext: string;
+  readonly iv: string;
+  readonly tag: string;
+};
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
@@ -395,8 +407,11 @@ async function ensureGitHubDataSource(input: {
       enabled = true,
       config = EXCLUDED.config,
       ingest_window = EXCLUDED.ingest_window,
-      owner_user_id = EXCLUDED.owner_user_id,
-      connection_id = EXCLUDED.connection_id
+      owner_user_id = CASE
+        WHEN EXCLUDED.connection_id IS NULL THEN data_sources.owner_user_id
+        ELSE EXCLUDED.owner_user_id
+      END,
+      connection_id = COALESCE(EXCLUDED.connection_id, data_sources.connection_id)
   `;
 }
 
@@ -438,8 +453,11 @@ async function ensureDriveDataSource(input: {
       enabled = true,
       config = EXCLUDED.config,
       ingest_window = EXCLUDED.ingest_window,
-      owner_user_id = EXCLUDED.owner_user_id,
-      connection_id = EXCLUDED.connection_id
+      owner_user_id = CASE
+        WHEN EXCLUDED.connection_id IS NULL THEN data_sources.owner_user_id
+        ELSE EXCLUDED.owner_user_id
+      END,
+      connection_id = COALESCE(EXCLUDED.connection_id, data_sources.connection_id)
   `;
 }
 
@@ -481,8 +499,11 @@ async function ensureGmailDataSource(input: {
       enabled = true,
       config = EXCLUDED.config,
       ingest_window = EXCLUDED.ingest_window,
-      owner_user_id = EXCLUDED.owner_user_id,
-      connection_id = EXCLUDED.connection_id
+      owner_user_id = CASE
+        WHEN EXCLUDED.connection_id IS NULL THEN data_sources.owner_user_id
+        ELSE EXCLUDED.owner_user_id
+      END,
+      connection_id = COALESCE(EXCLUDED.connection_id, data_sources.connection_id)
   `;
 }
 
@@ -618,7 +639,10 @@ async function readCollectionConnection(input: {
       oc.id::text AS id,
       oc.provider,
       oc.user_id::text AS "userId",
-      oc.access_token_secret AS "accessTokenSecret"
+      oc.access_token_secret AS "accessTokenSecret",
+      oc.refresh_token_secret AS "refreshTokenSecret",
+      oc.expires_at AS "expiresAt",
+      oc.metadata
     FROM public.oauth_connections oc
     JOIN public.projects p ON p.id = oc.project_id
     WHERE oc.id = ${input.connectionId}
@@ -627,22 +651,188 @@ async function readCollectionConnection(input: {
     LIMIT 1
   `) as Array<{
     accessTokenSecret: string | null;
+    expiresAt: Date | string | null;
     id: string;
+    metadata: unknown;
     provider: ConnectionProvider;
+    refreshTokenSecret: string | null;
     userId: string;
   }>;
   const connection = rows[0];
   if (!connection) {
     throw new Error('OAuth connection was not found for the project and source type.');
   }
-  if (!connection.accessTokenSecret) {
-    throw new Error('OAuth connection does not have an access token.');
-  }
   return {
     id: connection.id,
     provider: connection.provider,
-    token: decryptConnectionSecretValue(connection.accessTokenSecret),
+    token: await resolveConnectionToken({ connection, sql: input.sql }),
     userId: connection.userId,
+  };
+}
+
+async function resolveConnectionToken(input: {
+  connection: {
+    accessTokenSecret: string | null;
+    expiresAt: Date | string | null;
+    id: string;
+    metadata: unknown;
+    provider: ConnectionProvider;
+    refreshTokenSecret: string | null;
+  };
+  sql: postgres.Sql;
+}): Promise<string> {
+  if (input.connection.provider === 'github') {
+    if (input.connection.accessTokenSecret && !isExpired(input.connection.expiresAt)) {
+      return decryptConnectionSecretValue(input.connection.accessTokenSecret);
+    }
+    return createGitHubInstallationAccessToken(input.connection.metadata);
+  }
+
+  if (input.connection.accessTokenSecret && !isExpired(input.connection.expiresAt)) {
+    return decryptConnectionSecretValue(input.connection.accessTokenSecret);
+  }
+  if (!input.connection.refreshTokenSecret) {
+    throw new Error('Google OAuth connection does not have a refresh token.');
+  }
+
+  const refreshToken = decryptConnectionSecretValue(input.connection.refreshTokenSecret);
+  const refreshed = await refreshGoogleAccessToken(refreshToken);
+  if (!refreshed.access_token) {
+    throw new Error('Google OAuth token refresh did not return an access token.');
+  }
+  const expiresAt =
+    typeof refreshed.expires_in === 'number'
+      ? new Date(Date.now() + refreshed.expires_in * 1000).toISOString()
+      : null;
+  const accessTokenSecret = encryptConnectionSecretValue(refreshed.access_token);
+  await input.sql`
+    UPDATE public.oauth_connections
+    SET
+      access_token_secret = ${accessTokenSecret},
+      expires_at = ${expiresAt},
+      updated_at = now()
+    WHERE id = ${input.connection.id}
+  `;
+  return refreshed.access_token;
+}
+
+async function refreshGoogleAccessToken(refreshToken: string): Promise<GoogleTokenResponse> {
+  const clientId = process.env.GOOGLE_CLIENT_ID ?? process.env.AUTH_GOOGLE_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET ?? process.env.AUTH_GOOGLE_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required for Google token refresh.',
+    );
+  }
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+    }),
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error(`Google OAuth token refresh failed with status ${response.status}.`);
+  }
+  return (await response.json()) as GoogleTokenResponse;
+}
+
+async function createGitHubInstallationAccessToken(metadataValue: unknown): Promise<string> {
+  const metadata = isRecord(metadataValue) ? metadataValue : {};
+  const installationId = metadata.installationId;
+  if (typeof installationId !== 'string' && typeof installationId !== 'number') {
+    throw new Error('GitHub OAuth connection does not have an installation id.');
+  }
+  const appId =
+    (typeof metadata.githubAppId === 'string' ? metadata.githubAppId : null) ??
+    process.env.GITHUB_APP_ID;
+  const privateKey = githubAppPrivateKey(metadata);
+  if (!appId || !privateKey) {
+    throw new Error(
+      'GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY are required for GitHub App collection.',
+    );
+  }
+  const response = await fetch(
+    `https://api.github.com/app/installations/${encodeURIComponent(
+      String(installationId),
+    )}/access_tokens`,
+    {
+      headers: {
+        accept: 'application/vnd.github+json',
+        authorization: `Bearer ${createGitHubAppJwt(appId, privateKey)}`,
+        'user-agent': 'pufu-lens-github-app/0.1',
+        'x-github-api-version': '2022-11-28',
+      },
+      method: 'POST',
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`GitHub installation token request failed with status ${response.status}.`);
+  }
+  const body = (await response.json()) as { token?: unknown };
+  if (typeof body.token !== 'string') {
+    throw new Error('GitHub installation token response did not include a token.');
+  }
+  return body.token;
+}
+
+function createGitHubAppJwt(appId: string, privateKey: string): string {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64UrlJson({ alg: 'RS256', typ: 'JWT' });
+  const payload = base64UrlJson({
+    exp: now + 9 * 60,
+    iat: now - 60,
+    iss: appId,
+  });
+  const signingInput = `${header}.${payload}`;
+  const signature = createSign('RSA-SHA256').update(signingInput).sign(privateKey, 'base64url');
+  return `${signingInput}.${signature}`;
+}
+
+function githubAppPrivateKey(metadata: Record<string, unknown>): string | null {
+  const encrypted = metadata.githubAppPrivateKeyEncrypted;
+  if (isEncryptedConnectionSecret(encrypted)) {
+    return decryptConnectionSecret(encrypted);
+  }
+  const base64Value = process.env.GITHUB_APP_PRIVATE_KEY_BASE64;
+  if (base64Value) {
+    return Buffer.from(base64Value, 'base64').toString('utf8');
+  }
+  const value = process.env.GITHUB_APP_PRIVATE_KEY;
+  return value ? value.replace(/\\n/g, '\n') : null;
+}
+
+function base64UrlJson(value: Record<string, unknown>): string {
+  return Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
+}
+
+function isExpired(value: Date | string | null): boolean {
+  if (!value) {
+    return false;
+  }
+  const expiresAt = new Date(value);
+  return Number.isNaN(expiresAt.getTime()) ? false : expiresAt.getTime() <= Date.now() + 60_000;
+}
+
+function encryptConnectionSecretValue(value: string): string {
+  return `${ENCRYPTED_CONNECTION_SECRET_PREFIX}${Buffer.from(
+    JSON.stringify(encryptConnectionSecret(value)),
+    'utf8',
+  ).toString('base64url')}`;
+}
+
+function encryptConnectionSecret(value: string): EncryptedConnectionSecret {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', connectionSecretKey(), iv);
+  const ciphertext = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return {
+    alg: 'aes-256-gcm',
+    ciphertext: ciphertext.toString('base64'),
+    iv: iv.toString('base64'),
+    tag: tag.toString('base64'),
   };
 }
 
@@ -667,25 +857,31 @@ function decryptConnectionSecretValue(secretValue: string): string {
   ]).toString('utf8');
 }
 
-function isEncryptedConnectionSecret(value: unknown): value is {
-  alg: 'aes-256-gcm';
-  ciphertext: string;
-  iv: string;
-  tag: string;
-} {
+function decryptConnectionSecret(value: EncryptedConnectionSecret): string {
+  const decipher = createDecipheriv(
+    'aes-256-gcm',
+    connectionSecretKey(),
+    Buffer.from(value.iv, 'base64'),
+  );
+  decipher.setAuthTag(Buffer.from(value.tag, 'base64'));
+  return Buffer.concat([
+    decipher.update(Buffer.from(value.ciphertext, 'base64')),
+    decipher.final(),
+  ]).toString('utf8');
+}
+
+function isEncryptedConnectionSecret(value: unknown): value is EncryptedConnectionSecret {
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    'alg' in value &&
+    isRecord(value) &&
     value.alg === 'aes-256-gcm' &&
-    'ciphertext' in value &&
     typeof value.ciphertext === 'string' &&
-    'iv' in value &&
     typeof value.iv === 'string' &&
-    'tag' in value &&
     typeof value.tag === 'string'
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function connectionSecretKey(): Buffer {
