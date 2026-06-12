@@ -56,6 +56,31 @@ test('recovery artifact events are sorted by recordedAt after list', async () =>
   );
 });
 
+test('listRecoveryArtifactEvents reads event objects concurrently', async () => {
+  const storage = new MemoryRecoveryArtifactStorage({ readDelayMs: 5 });
+  await writeRecoveryArtifactEvent(
+    storage,
+    sampleParsedEvent({
+      recordedAt: '2026-06-12T01:00:00.000Z',
+      sourceId: 'https://example.test/a',
+    }),
+  );
+  await writeRecoveryArtifactEvent(
+    storage,
+    sampleParsedEvent({
+      recordedAt: '2026-06-12T02:00:00.000Z',
+      sourceId: 'https://example.test/b',
+    }),
+  );
+
+  await listRecoveryArtifactEvents(storage, {
+    artifactKind: 'parsed-document',
+    projectSlug: 'sample-a',
+  });
+
+  assert.equal(storage.maxConcurrentReads, 2);
+});
+
 test('graph recovery event validates document snapshot, nodes, edges, and email quotes', () => {
   const event = sampleGraphEvent();
 
@@ -115,6 +140,37 @@ test('latest pointer is written, read, and validated', async () => {
     }),
     pointer,
   );
+});
+
+test('recovery artifact event hash is stable across toJSON serialization', () => {
+  const event = sampleRawEvent({
+    metadata: {
+      fetchedAtDate: new Date('2026-06-12T00:00:00.000Z'),
+    },
+  });
+  const roundTripped = JSON.parse(JSON.stringify(event));
+
+  assert.equal(recoveryArtifactEventsSha256([event]), recoveryArtifactEventsSha256([roundTripped]));
+});
+
+test('optional recovery fields accept null from nullable database columns', () => {
+  const event = {
+    ...sampleRawEvent(),
+    byteSize: null,
+    dataSourceKeys: null,
+    fetchedAt: null,
+    mimeType: null,
+    sourceUri: null,
+  };
+
+  assert.deepEqual(validateRecoveryArtifactEvent(event), {
+    ...sampleRawEvent(),
+    byteSize: undefined,
+    dataSourceKeys: undefined,
+    fetchedAt: undefined,
+    mimeType: undefined,
+    sourceUri: undefined,
+  });
 });
 
 test('raw and parsed recovery events do not carry body text fields', () => {
@@ -234,18 +290,31 @@ function sampleGraphEvent(
 }
 
 class MemoryRecoveryArtifactStorage implements RecoveryArtifactStorage {
+  activeReads = 0;
+  maxConcurrentReads = 0;
   readonly metadata = new Map<
     string,
     { contentType?: string; metadata?: Record<string, string> }
   >();
   readonly objects = new Map<string, string>();
 
+  constructor(private readonly options: { readDelayMs?: number } = {}) {}
+
   async getText(uri: string): Promise<string> {
-    const value = this.objects.get(uri);
-    if (value === undefined) {
-      throw new Error(`Object not found: ${uri}`);
+    this.activeReads += 1;
+    this.maxConcurrentReads = Math.max(this.maxConcurrentReads, this.activeReads);
+    try {
+      if (this.options.readDelayMs !== undefined) {
+        await new Promise((resolve) => setTimeout(resolve, this.options.readDelayMs));
+      }
+      const value = this.objects.get(uri);
+      if (value === undefined) {
+        throw new Error(`Object not found: ${uri}`);
+      }
+      return value;
+    } finally {
+      this.activeReads -= 1;
     }
-    return value;
   }
 
   async *list(prefix: string): AsyncIterable<{ uri: string }> {

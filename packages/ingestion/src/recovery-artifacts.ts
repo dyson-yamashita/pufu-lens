@@ -153,17 +153,21 @@ export async function listRecoveryArtifactEvents(
   input: { artifactKind: RecoveryArtifactKind; projectSlug: string },
 ): Promise<RecoveryArtifactEvent[]> {
   const prefix = recoveryArtifactEventPrefix(input);
-  const events: RecoveryArtifactEvent[] = [];
+  const uris: string[] = [];
   for await (const object of storage.list(prefix)) {
-    if (!object.uri.endsWith('.json')) {
-      continue;
+    if (object.uri.endsWith('.json')) {
+      uris.push(object.uri);
     }
-    const event = await readRecoveryArtifactEvent(storage, object.uri);
-    if (event.artifactKind !== input.artifactKind || event.projectSlug !== input.projectSlug) {
-      throw new Error(`Recovery artifact event does not match list prefix: ${object.uri}`);
-    }
-    events.push(event);
   }
+  const events = await Promise.all(
+    uris.map(async (uri) => {
+      const event = await readRecoveryArtifactEvent(storage, uri);
+      if (event.artifactKind !== input.artifactKind || event.projectSlug !== input.projectSlug) {
+        throw new Error(`Recovery artifact event does not match list prefix: ${uri}`);
+      }
+      return event;
+    }),
+  );
   return events.sort((left, right) => left.recordedAt.localeCompare(right.recordedAt));
 }
 
@@ -451,7 +455,7 @@ function requireNonEmptyString(value: unknown, path: string): string {
 }
 
 function optionalString(value: unknown, path: string): string | undefined {
-  if (value === undefined) {
+  if (isNullish(value)) {
     return undefined;
   }
   if (typeof value !== 'string') {
@@ -467,7 +471,7 @@ function requireStringArray(value: unknown, path: string): string[] {
 }
 
 function optionalStringArray(value: unknown, path: string): string[] | undefined {
-  if (value === undefined) {
+  if (isNullish(value)) {
     return undefined;
   }
   return requireStringArray(value, path);
@@ -489,14 +493,14 @@ function requirePositiveInteger(value: unknown, path: string): number {
 }
 
 function optionalPositiveInteger(value: unknown, path: string): number | undefined {
-  if (value === undefined) {
+  if (isNullish(value)) {
     return undefined;
   }
   return requirePositiveInteger(value, path);
 }
 
 function optionalNonNegativeInteger(value: unknown, path: string): number | undefined {
-  if (value === undefined) {
+  if (isNullish(value)) {
     return undefined;
   }
   const number = requireNumber(value, path);
@@ -515,7 +519,7 @@ function requireIsoDate(value: unknown, path: string): string {
 }
 
 function optionalIsoDate(value: unknown, path: string): string | undefined {
-  if (value === undefined) {
+  if (isNullish(value)) {
     return undefined;
   }
   return requireIsoDate(value, path);
@@ -534,6 +538,9 @@ function sha256Hex(value: string): string {
 }
 
 function sortJsonObject(value: unknown): unknown {
+  if (hasToJson(value)) {
+    return sortJsonObject(value.toJSON());
+  }
   if (Array.isArray(value)) {
     return value.map((item) => sortJsonObject(item));
   }
@@ -545,4 +552,17 @@ function sortJsonObject(value: unknown): unknown {
     sorted[key] = sortJsonObject((value as Record<string, unknown>)[key]);
   }
   return sorted;
+}
+
+function hasToJson(value: unknown): value is { toJSON(): unknown } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'toJSON' in value &&
+    typeof value.toJSON === 'function'
+  );
+}
+
+function isNullish(value: unknown): value is null | undefined {
+  return value === undefined || value === null;
 }
