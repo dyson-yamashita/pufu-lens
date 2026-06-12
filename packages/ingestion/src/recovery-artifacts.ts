@@ -3,6 +3,7 @@ import type { GraphEdgeInput, GraphEmailQuoteInput, GraphNodeInput } from './gra
 import type { ParsedDocumentType, SourceType } from './ingestion-fixtures.js';
 
 export const RECOVERY_ARTIFACT_VERSION = 1;
+const RECOVERY_ARTIFACT_READ_CONCURRENCY = 10;
 
 export type RecoveryArtifactKind = 'graph-relation' | 'parsed-document' | 'raw-document';
 
@@ -152,22 +153,27 @@ export async function listRecoveryArtifactEvents(
   storage: RecoveryArtifactStorage,
   input: { artifactKind: RecoveryArtifactKind; projectSlug: string },
 ): Promise<RecoveryArtifactEvent[]> {
-  const prefix = recoveryArtifactEventPrefix(input);
+  const prefix = `${recoveryArtifactEventPrefix(input)}/`;
   const uris: string[] = [];
   for await (const object of storage.list(prefix)) {
     if (object.uri.endsWith('.json')) {
       uris.push(object.uri);
     }
   }
-  const events = await Promise.all(
-    uris.map(async (uri) => {
-      const event = await readRecoveryArtifactEvent(storage, uri);
-      if (event.artifactKind !== input.artifactKind || event.projectSlug !== input.projectSlug) {
-        throw new Error(`Recovery artifact event does not match list prefix: ${uri}`);
-      }
-      return event;
-    }),
-  );
+  const events: RecoveryArtifactEvent[] = [];
+  for (let start = 0; start < uris.length; start += RECOVERY_ARTIFACT_READ_CONCURRENCY) {
+    const chunk = uris.slice(start, start + RECOVERY_ARTIFACT_READ_CONCURRENCY);
+    const chunkEvents = await Promise.all(
+      chunk.map(async (uri) => {
+        const event = await readRecoveryArtifactEvent(storage, uri);
+        if (event.artifactKind !== input.artifactKind || event.projectSlug !== input.projectSlug) {
+          throw new Error(`Recovery artifact event does not match list prefix: ${uri}`);
+        }
+        return event;
+      }),
+    );
+    events.push(...chunkEvents);
+  }
   return events.sort((left, right) => left.recordedAt.localeCompare(right.recordedAt));
 }
 

@@ -56,29 +56,44 @@ test('recovery artifact events are sorted by recordedAt after list', async () =>
   );
 });
 
-test('listRecoveryArtifactEvents reads event objects concurrently', async () => {
+test('listRecoveryArtifactEvents only reads objects under the exact events prefix', async () => {
+  const storage = new MemoryRecoveryArtifactStorage();
+  await writeRecoveryArtifactEvent(storage, sampleRawEvent());
+  storage.objects.set(
+    'sample-a/manifests/raw-documents/events-backup/sibling.json',
+    `${JSON.stringify(sampleRawEvent({ sourceId: 'https://example.test/sibling' }))}\n`,
+  );
+
+  const events = await listRecoveryArtifactEvents(storage, {
+    artifactKind: 'raw-document',
+    projectSlug: 'sample-a',
+  });
+
+  assert.deepEqual(
+    events.map((event) => event.sourceId),
+    ['https://example.test/a'],
+  );
+  assert.deepEqual(storage.listPrefixes, ['sample-a/manifests/raw-documents/events/']);
+});
+
+test('listRecoveryArtifactEvents reads event objects with bounded concurrency', async () => {
   const storage = new MemoryRecoveryArtifactStorage({ readDelayMs: 5 });
-  await writeRecoveryArtifactEvent(
-    storage,
-    sampleParsedEvent({
-      recordedAt: '2026-06-12T01:00:00.000Z',
-      sourceId: 'https://example.test/a',
-    }),
-  );
-  await writeRecoveryArtifactEvent(
-    storage,
-    sampleParsedEvent({
-      recordedAt: '2026-06-12T02:00:00.000Z',
-      sourceId: 'https://example.test/b',
-    }),
-  );
+  for (let index = 0; index < 12; index += 1) {
+    await writeRecoveryArtifactEvent(
+      storage,
+      sampleParsedEvent({
+        recordedAt: `2026-06-12T01:${String(index).padStart(2, '0')}:00.000Z`,
+        sourceId: `https://example.test/${index}`,
+      }),
+    );
+  }
 
   await listRecoveryArtifactEvents(storage, {
     artifactKind: 'parsed-document',
     projectSlug: 'sample-a',
   });
 
-  assert.equal(storage.maxConcurrentReads, 2);
+  assert.equal(storage.maxConcurrentReads, 10);
 });
 
 test('graph recovery event validates document snapshot, nodes, edges, and email quotes', () => {
@@ -291,6 +306,7 @@ function sampleGraphEvent(
 
 class MemoryRecoveryArtifactStorage implements RecoveryArtifactStorage {
   activeReads = 0;
+  readonly listPrefixes: string[] = [];
   maxConcurrentReads = 0;
   readonly metadata = new Map<
     string,
@@ -318,6 +334,7 @@ class MemoryRecoveryArtifactStorage implements RecoveryArtifactStorage {
   }
 
   async *list(prefix: string): AsyncIterable<{ uri: string }> {
+    this.listPrefixes.push(prefix);
     for (const uri of [...this.objects.keys()].sort()) {
       if (uri.startsWith(prefix)) {
         yield { uri };
