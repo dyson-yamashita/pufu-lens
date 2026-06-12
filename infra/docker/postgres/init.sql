@@ -426,7 +426,7 @@ WHERE NOT EXISTS (
   SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'graph_local_dev'
 );
 
-CREATE TABLE public.schema_migrations (
+CREATE TABLE IF NOT EXISTS public.schema_migrations (
   version TEXT PRIMARY KEY,
   applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

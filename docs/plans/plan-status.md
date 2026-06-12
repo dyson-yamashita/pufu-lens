@@ -21,6 +21,7 @@
 | `docs/plans/002-account-login-public-projects/overview.md` | `completed` | 2026-06-11 | Auth.js ログイン基盤、public project / public report / public chat の入口実装は merge 済み。              |
 | `docs/plans/003-admin-age-viewer/overview.md`              | `completed` | 2026-06-11 | Issue #80 の Graph Viewer 実装は merge 済み。                                                             |
 | `docs/plans/004-project-settings-connections/overview.md`  | `active`    | 2026-06-11 | Issue #90 で Project Settings / Connections の実装が進行済み。残作業は後続 Issue で扱う。                 |
+| `docs/plans/005-storage-recovery-artifacts/overview.md`    | `active`    | 2026-06-12 | Issue #117 で Storage Recovery Artifacts Step 1 の event object schema / writer / reader を実装中。       |
 | `docs/plans/006-db-migration-management/overview.md`       | `active`    | 2026-06-12 | Issue #119 で Step 1 完了。Step 2 以降で runner 安全機能、drift 検出、deploy 手順を継続整備する。         |
 
 ## 運用ルール

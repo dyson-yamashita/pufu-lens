@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { fetchWithRetry } from './http-retry.js';
 import type { ParsedDocument, ParsedDocumentType } from './ingestion-fixtures.js';
 import { sha256Hex, validateParsedDocument } from './ingestion-fixtures.js';
 
@@ -52,6 +53,12 @@ export interface DocumentChunkRecord {
   contentHash: string;
   embeddingModel: string;
   id: string;
+}
+
+interface DocumentChunkSignature {
+  chunkIndex: number;
+  contentHash: string;
+  embeddingModel: string;
 }
 
 export interface UpsertDocumentInput {
@@ -212,17 +219,21 @@ export function createGeminiEmbeddingProvider(input: {
       const vectors: number[][] = [];
       for (let start = 0; start < texts.length; start += GEMINI_EMBEDDING_BATCH_SIZE) {
         const batch = texts.slice(start, start + GEMINI_EMBEDDING_BATCH_SIZE);
-        const response = await fetchImpl(`${endpoint}?key=${encodeURIComponent(input.apiKey)}`, {
-          body: JSON.stringify({
-            requests: batch.map((text) => ({
-              content: { parts: [{ text }] },
-              model: geminiModelPath(input.model),
-              outputDimensionality: input.dimensions,
-            })),
-          }),
-          headers: { 'content-type': 'application/json' },
-          method: 'POST',
-        });
+        const response = await fetchWithRetry(
+          endpoint,
+          {
+            body: JSON.stringify({
+              requests: batch.map((text) => ({
+                content: { parts: [{ text }] },
+                model: geminiModelPath(input.model),
+                outputDimensionality: input.dimensions,
+              })),
+            }),
+            headers: { 'content-type': 'application/json', 'x-goog-api-key': input.apiKey },
+            method: 'POST',
+          },
+          { fetchImpl },
+        );
         if (!response.ok) {
           throw new Error(`Gemini embedding request failed: HTTP ${response.status}`);
         }
@@ -325,23 +336,11 @@ async function chunkAndEmbedTarget(input: {
 }): Promise<ChunkAndEmbedDecision> {
   const parsed = parseTargetDocument(input.target.parsed);
   const contents = splitTextIntoChunks(documentText(parsed), input.chunkConfig);
-  const embeddings = await input.embeddingProvider.embedTexts(contents);
-  validateEmbeddingVectors(
-    embeddings,
-    input.embeddingProvider.dimensions,
-    input.embeddingProvider.model,
-  );
-  const chunks = prepareDocumentChunks({
-    chunkConfig: input.chunkConfig,
-    embeddingModel: input.embeddingProvider.model,
-    embeddings,
-    parsed,
-    rawContentHash: input.target.rawContentHash,
-  });
+  const nextSignatures = chunkSignatures(contents, input.embeddingProvider.model);
 
   if (input.dryRun) {
     return {
-      chunkCount: chunks.length,
+      chunkCount: nextSignatures.length,
       decision: 'dry_run',
       rawDocumentId: input.target.rawDocumentId,
       sourceId: parsed.sourceId,
@@ -364,15 +363,29 @@ async function chunkAndEmbedTarget(input: {
     projectId: input.projectId,
   });
 
-  if (chunksMatch(existingChunks, chunks)) {
+  if (chunksMatch(existingChunks, nextSignatures)) {
     return {
-      chunkCount: chunks.length,
+      chunkCount: nextSignatures.length,
       decision: 'unchanged',
       documentId: document.id,
       rawDocumentId: input.target.rawDocumentId,
       sourceId: parsed.sourceId,
     };
   }
+
+  const embeddings = await input.embeddingProvider.embedTexts(contents);
+  validateEmbeddingVectors(
+    embeddings,
+    input.embeddingProvider.dimensions,
+    input.embeddingProvider.model,
+  );
+  const chunks = prepareDocumentChunks({
+    chunkConfig: input.chunkConfig,
+    embeddingModel: input.embeddingProvider.model,
+    embeddings,
+    parsed,
+    rawContentHash: input.target.rawContentHash,
+  });
 
   await input.repository.replaceDocumentChunks({
     archiveReason: archiveReason(existingChunks, chunks, input.embeddingProvider.model),
@@ -533,17 +546,29 @@ function parseTargetDocument(value: ParsedDocument | string): ParsedDocument {
   return validateParsedDocument(parsed);
 }
 
+function chunkSignatures(
+  contents: readonly string[],
+  embeddingModel: string,
+): DocumentChunkSignature[] {
+  return contents.map((content, index) => ({
+    chunkIndex: index,
+    contentHash: sha256Hex(content),
+    embeddingModel,
+  }));
+}
+
 function summarizeText(text: string): string | undefined {
   const normalized = text.replace(/\s+/g, ' ').trim();
   return normalized === '' ? undefined : normalized.slice(0, 240);
 }
 
-function chunksMatch(existing: DocumentChunkRecord[], next: PreparedDocumentChunk[]): boolean {
+function chunksMatch(existing: DocumentChunkRecord[], next: DocumentChunkSignature[]): boolean {
   if (existing.length !== next.length) {
     return false;
   }
+  const sortedExisting = [...existing].sort((left, right) => left.chunkIndex - right.chunkIndex);
   return next.every((chunk, index) => {
-    const current = existing[index];
+    const current = sortedExisting[index];
     return (
       current?.chunkIndex === chunk.chunkIndex &&
       current.contentHash === chunk.contentHash &&
