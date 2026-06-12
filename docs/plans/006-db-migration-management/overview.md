@@ -63,7 +63,7 @@ drift check の比較起点は「空 DB」ではなく「baseline 適用済み D
 | ------ | ----------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | Step 1 | `completed` | 現状 runner と migration 履歴を監査し、baseline / stamping 方針と運用ルールを設計書へ反映する | Issue #119。`init.sql` / migration / deploy checklist の責務、baseline、変更時チェックリストが明文化される |
 | Step 2 | `completed` | `db:migrate` の安全機能と開発者向け UX を整える                                               | Issue #121。`--plan` / `--list` / `--check`、offline / online 検査、runner unit test が通る                |
-| Step 3 | `planned`   | migration 作成・レビュー手順を追加する                                                        | 新規 migration template、PR checklist、destructive change 手順が docs に入る                               |
+| Step 3 | `completed` | migration 作成・レビュー手順を追加する                                                        | Issue #123。新規 migration generator、PR checklist、destructive change 手順が docs に入る                  |
 | Step 4 | `planned`   | CI / deploy 前検証に migration check を組み込む                                               | `pnpm db:migrate --check` 相当が CI または deploy dry-run で実行される                                     |
 | Step 5 | `planned`   | 既存 DB と fresh DB の schema drift 検出を追加する                                            | fresh DB と migrated DB の schema 比較手順が自動または半自動で確認できる                                   |
 | Step 6 | `planned`   | AGE graph / vector / backfill を含む重い変更の運用を定義する                                  | 再index、embedding 再生成、graph 更新、rollback 方針が deploy checklist に残る                             |
@@ -114,8 +114,8 @@ drift check の比較起点は「空 DB」ではなく「baseline 適用済み D
 
 ### 実装範囲
 
-- migration 作成手順を docs に追加する。
-- 新規 migration の template または generator script を追加するか判断する。
+- migration 作成手順を `docs/operations/db-migrations.md` に追加する。
+- 新規 migration の generator script と template を `scripts/create-db-migration.ts` として追加する。
 - PR checklist に次を追加する。
   - `init.sql` 更新有無
   - `schema_migrations` baseline seed 更新有無
@@ -126,10 +126,12 @@ drift check の比較起点は「空 DB」ではなく「baseline 適用済み D
   - PII / secret / token の混入確認
 - migration 番号は、merge 前に main へ rebase して最新の最大番号を確認し、衝突や順序逆転のリスクがある場合は採り直す。
 - rollback 方針は「自動 down migration を必須にしない」前提で、復旧手順、backup、forward fix の判断基準を明記する。
+- `0002_project_oauth_connections.sql` を data migration の既存事例として docs に残す。
 
 ### 受け入れ条件
 
 - 開発者が新しい schema 変更を追加するときの手順が docs から追える。
+- `pnpm db:migration:new <name>` で次の番号の migration template を作成できる。
 - destructive change は単一 migration で即削除しない運用になっている。
 - review 時に既存 DB 影響を確認する項目がある。
 
