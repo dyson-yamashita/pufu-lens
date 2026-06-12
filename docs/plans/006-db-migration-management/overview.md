@@ -65,7 +65,7 @@ drift check の比較起点は「空 DB」ではなく「baseline 適用済み D
 | Step 2 | `completed` | `db:migrate` の安全機能と開発者向け UX を整える                                               | Issue #121。`--plan` / `--list` / `--check`、offline / online 検査、runner unit test が通る                |
 | Step 3 | `completed` | migration 作成・レビュー手順を追加する                                                        | Issue #123。新規 migration generator、PR checklist、destructive change 手順が docs に入る                  |
 | Step 4 | `completed` | CI / deploy 前検証に migration check を組み込む                                               | Issue #127。`pnpm db:migrate --check` が CI と deploy dry-run で実行される                                 |
-| Step 5 | `planned`   | 既存 DB と fresh DB の schema drift 検出を追加する                                            | fresh DB と migrated DB の schema 比較手順が自動または半自動で確認できる                                   |
+| Step 5 | `completed` | 既存 DB と fresh DB の schema drift 検出を追加する                                            | Issue #130。`init.sql` と baseline + migration の schema 比較 script が実行できる                          |
 | Step 6 | `planned`   | AGE graph / vector / backfill を含む重い変更の運用を定義する                                  | 再index、embedding 再生成、graph 更新、rollback 方針が deploy checklist に残る                             |
 
 ## Step 1: 現状監査とルール反映
@@ -155,11 +155,11 @@ drift check の比較起点は「空 DB」ではなく「baseline 適用済み D
 
 ### 実装範囲
 
-- `init.sql` で作った fresh DB と、baseline から全 migration を適用した DB の schema を比較する方法を決める。
+- migration 履歴の起点を `infra/db/baseline/0000_baseline.sql` として保存する。
+- `init.sql` で作った fresh DB と、baseline から全 migration を適用した DB の schema を比較する `pnpm db:schema-drift` を追加する。
 - `schema_migrations` の baseline seed 漏れを drift check で検出できるようにする。
-- 比較対象は table、column、constraint、index、extension を中心にする。
-- AGE graph 内部 table や extension 管理 object など、比較から除外すべき object を明記する。
-- 自動化が重い場合は、まずローカル script と手順書で半自動化する。
+- 比較対象は table、column、constraint、index、trigger、extension、`schema_migrations` version を中心にする。
+- AGE graph 内部 table や extension 管理 object など、比較から除外すべき object を docs に明記する。
 
 ### 受け入れ条件
 
