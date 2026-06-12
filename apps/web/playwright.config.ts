@@ -33,7 +33,9 @@ export default defineConfig({
     command: 'pnpm exec next dev -p 3000',
     env: {
       ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
+      PUFU_LENS_ALLOW_FIXED_USER_FALLBACK: process.env.PUFU_LENS_ALLOW_FIXED_USER_FALLBACK || '',
       PUFU_LENS_ENABLE_FIXTURE_FALLBACK: process.env.PUFU_LENS_ENABLE_FIXTURE_FALLBACK || '',
+      PUFU_LENS_REPORT_USER_ID: process.env.PUFU_LENS_REPORT_USER_ID || '',
       STORAGE_DRIVER: storageDriver,
       STORAGE_ROOT: storageRoot,
     },

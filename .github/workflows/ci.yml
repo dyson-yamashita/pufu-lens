@@ -75,7 +75,9 @@ jobs:
       - name: E2E test
         run: pnpm test:e2e
         env:
+          PUFU_LENS_ALLOW_FIXED_USER_FALLBACK: 'true'
           PUFU_LENS_ENABLE_FIXTURE_FALLBACK: 'true'
+          PUFU_LENS_REPORT_USER_ID: user-a
           STORAGE_DRIVER: local
           STORAGE_ROOT: ../../infra/volumes/pufu-lens-data
 
