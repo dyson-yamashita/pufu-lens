@@ -7,6 +7,7 @@ import type {
   RawDocumentInput,
 } from './collection-pipeline.js';
 import { normalizeSourceId } from './collection-pipeline.js';
+import { fetchWithRetry } from './http-retry.js';
 
 export interface GmailListMessageResponse {
   id: string;
@@ -398,7 +399,7 @@ export function buildGmailRawCandidate(input: {
 
 export async function fetchGmailJson(input: { path: string; token?: string }): Promise<unknown> {
   const url = new URL(input.path, 'https://gmail.googleapis.com');
-  const response = await fetch(url.toString(), {
+  const response = await fetchWithRetry(url.toString(), {
     headers: gmailHeaders(input.token),
   });
   if (!response.ok) {

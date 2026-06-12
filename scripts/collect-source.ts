@@ -18,11 +18,13 @@ import {
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 
 const SOURCE_TYPES = ['drive', 'github', 'gmail', 'web'] as const;
+const DEFAULT_COLLECT_LIMIT = 100;
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sourceType = requiredOption(options.source, '--source');
+  const limit = options.limit ?? DEFAULT_COLLECT_LIMIT;
 
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   const storage = createLocalObjectStorageFromEnv();
@@ -61,7 +63,7 @@ async function main(): Promise<void> {
       sourceType === 'drive'
         ? await collectDriveSource({
             dryRun: options.dryRun,
-            limit: options.limit,
+            limit,
             projectSlug,
             repository,
             storage,
@@ -70,7 +72,7 @@ async function main(): Promise<void> {
         : sourceType === 'gmail'
           ? await collectGmailSource({
               dryRun: options.dryRun,
-              limit: options.limit,
+              limit,
               projectSlug,
               repository,
               storage,
@@ -79,7 +81,7 @@ async function main(): Promise<void> {
           : sourceType === 'github'
             ? await collectGitHubSource({
                 dryRun: options.dryRun,
-                limit: options.limit,
+                limit,
                 projectSlug,
                 repository,
                 storage,
@@ -87,7 +89,7 @@ async function main(): Promise<void> {
               })
             : await collectWebUrlSource({
                 dryRun: options.dryRun,
-                limit: options.limit,
+                limit,
                 projectSlug,
                 repository,
                 storage,

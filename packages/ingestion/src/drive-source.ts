@@ -7,6 +7,7 @@ import type {
   RawDocumentInput,
 } from './collection-pipeline.js';
 import { normalizeSourceId } from './collection-pipeline.js';
+import { fetchWithRetry } from './http-retry.js';
 
 export interface DriveOwnerResponse {
   displayName?: string;
@@ -372,7 +373,7 @@ export async function buildDriveRawCandidate(input: {
 
 export async function fetchDriveJson(input: { path: string; token?: string }): Promise<unknown> {
   const url = new URL(input.path, 'https://www.googleapis.com');
-  const response = await fetch(url.toString(), {
+  const response = await fetchWithRetry(url.toString(), {
     headers: driveHeaders(input.token),
   });
   if (!response.ok) {
@@ -391,7 +392,7 @@ export async function fetchDriveText(input: {
 
   const path = driveTextFetchPath(input.file);
   const url = new URL(path, 'https://www.googleapis.com');
-  const response = await fetch(url.toString(), {
+  const response = await fetchWithRetry(url.toString(), {
     headers: driveHeaders(input.token),
   });
   if (!response.ok) {

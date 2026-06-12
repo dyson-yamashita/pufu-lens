@@ -92,10 +92,14 @@ test('prepareDocumentChunks skips empty normalized document text', () => {
 
 test('Gemini embedding provider batches requests and preserves vector order', async () => {
   const requestSizes: number[] = [];
+  const requestedUrls: string[] = [];
+  const requestedApiKeys: Array<string | null> = [];
   const provider = createGeminiEmbeddingProvider({
     apiKey: 'secret',
     dimensions: 1536,
-    fetchImpl: async (_url, init) => {
+    fetchImpl: async (url, init) => {
+      requestedUrls.push(String(url));
+      requestedApiKeys.push(new Headers(init?.headers).get('x-goog-api-key'));
       const body = JSON.parse(String(init?.body)) as { requests: Array<unknown> };
       requestSizes.push(body.requests.length);
       const offset = requestSizes.slice(0, -1).reduce((sum, size) => sum + size, 0);
@@ -113,6 +117,8 @@ test('Gemini embedding provider batches requests and preserves vector order', as
   const vectors = await provider.embedTexts(texts);
 
   assert.deepEqual(requestSizes, [100, 100, 5]);
+  assert.ok(requestedUrls.every((url) => !url.includes('secret')));
+  assert.deepEqual(requestedApiKeys, ['secret', 'secret', 'secret']);
   assert.equal(vectors.length, 205);
   assert.equal(vectors[0]?.[0], 0);
   assert.equal(vectors[204]?.[0], 204);
@@ -158,6 +164,74 @@ test('chunkAndEmbed upserts a document and does not duplicate unchanged chunks',
   assert.equal(repository.documents.length, 1);
   assert.equal(repository.chunks.length, first.decisions[0]?.chunkCount);
   assert.equal(repository.history.length, 0);
+});
+
+test('chunkAndEmbed skips embedding calls when current chunks are unchanged', async () => {
+  const repository = new InMemoryChunkEmbeddingRepository([
+    {
+      parsed: parsedDocument(),
+      rawContentHash: 'raw-hash-1',
+      rawDocumentId: 'raw-1',
+    },
+  ]);
+  let embedCalls = 0;
+  const provider = createDeterministicEmbeddingProvider({ dimensions: 4 });
+  const embeddingProvider = {
+    ...provider,
+    async embedTexts(texts: string[]) {
+      embedCalls += 1;
+      return provider.embedTexts(texts);
+    },
+  };
+  const options = {
+    chunkConfig: { maxCharacters: 64, overlapCharacters: 8, version: 'test-chunk-v1' },
+    embeddingProvider,
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  };
+
+  await chunkAndEmbed(options);
+  const second = await chunkAndEmbed(options);
+
+  assert.equal(second.decisions[0]?.decision, 'unchanged');
+  assert.equal(embedCalls, 1);
+});
+
+test('chunkAndEmbed treats unchanged chunks as current when repository order differs', async () => {
+  const repository = new InMemoryChunkEmbeddingRepository([
+    {
+      parsed: parsedDocument({
+        bodyText:
+          'First paragraph with enough text to create a chunk. Second paragraph with enough text to create another chunk.',
+      }),
+      rawContentHash: 'raw-hash-1',
+      rawDocumentId: 'raw-1',
+    },
+  ]);
+  let embedCalls = 0;
+  const provider = createDeterministicEmbeddingProvider({ dimensions: 4 });
+  const embeddingProvider = {
+    ...provider,
+    async embedTexts(texts: string[]) {
+      embedCalls += 1;
+      return provider.embedTexts(texts);
+    },
+  };
+  const options = {
+    chunkConfig: { maxCharacters: 48, overlapCharacters: 0, version: 'test-chunk-v1' },
+    embeddingProvider,
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  };
+
+  await chunkAndEmbed(options);
+  repository.chunks.reverse();
+  const second = await chunkAndEmbed(options);
+
+  assert.equal(second.decisions[0]?.decision, 'unchanged');
+  assert.equal(embedCalls, 1);
 });
 
 test('chunkAndEmbed archives old chunks when parsed content changes', async () => {

@@ -7,6 +7,7 @@ import type {
   RawDocumentInput,
 } from './collection-pipeline.js';
 import { normalizeSourceId } from './collection-pipeline.js';
+import { fetchWithRetry } from './http-retry.js';
 
 export interface WebUrlFetchResponse {
   body: string;
@@ -286,7 +287,7 @@ export async function buildWebUrlRawCandidate(input: {
 }
 
 export async function fetchWebUrl(url: string): Promise<WebUrlFetchResponse> {
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     headers: { 'user-agent': DEFAULT_USER_AGENT },
     redirect: 'follow',
   });
