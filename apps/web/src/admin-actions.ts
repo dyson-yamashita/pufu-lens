@@ -353,10 +353,21 @@ export async function createDataSource(formData: FormData): Promise<void> {
     });
   });
 
-  if (createdDataSourceId) {
-    await runCollectAndIngestDataSource(projectSlug, createdDataSourceId);
+  try {
+    if (createdDataSourceId) {
+      try {
+        await runCollectAndIngestDataSource(projectSlug, createdDataSourceId);
+      } catch (error) {
+        console.warn(
+          `Initial collect and ingest failed after creating data source ${createdDataSourceId} in project ${projectSlug}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+  } finally {
+    revalidateProject(projectSlug);
   }
-  revalidateProject(projectSlug);
 }
 
 export async function updateDataSource(formData: FormData): Promise<void> {
@@ -451,8 +462,11 @@ export async function collectDataSource(formData: FormData): Promise<void> {
 export async function collectAndIngestDataSource(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
   const dataSourceId = requireFormValue(formData, 'dataSourceId');
-  await runCollectAndIngestDataSource(projectSlug, dataSourceId);
-  revalidateProject(projectSlug);
+  try {
+    await runCollectAndIngestDataSource(projectSlug, dataSourceId);
+  } finally {
+    revalidateProject(projectSlug);
+  }
 }
 
 export async function ingestDataSource(formData: FormData): Promise<void> {
@@ -462,8 +476,11 @@ export async function ingestDataSource(formData: FormData): Promise<void> {
     projectSlug,
     dataSourceId,
   );
-  await runIngestWorkflow({ dataSourceId, projectSlug, sourceType, storageRoot });
-  revalidateProject(projectSlug);
+  try {
+    await runIngestWorkflow({ dataSourceId, projectSlug, sourceType, storageRoot });
+  } finally {
+    revalidateProject(projectSlug);
+  }
 }
 
 export async function generatePrivateReport(formData: FormData): Promise<void> {

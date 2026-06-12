@@ -1170,7 +1170,7 @@ th {
 }
 
 .ingest-history[open] .detail-list {
-  background: var(--surface-3);
+  background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: var(--shadow);
