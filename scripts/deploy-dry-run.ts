@@ -4,6 +4,11 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
+type DryRunResult = {
+  checkId: string;
+  status: 'failed' | 'passed';
+};
+
 const samples = [
   {
     input: { dryRun: true, fixture: true, limit: 1, projectSlug: 'sample-a', source: 'web' },
@@ -20,7 +25,7 @@ const samples = [
 ] as const;
 
 async function main(): Promise<void> {
-  const results = [];
+  const results: DryRunResult[] = [await runMigrationCheck()];
   for (const sample of samples) {
     const result = await runWorkflowDryRun(sample.workflowId, sample.input);
     results.push(result);
@@ -45,47 +50,83 @@ async function main(): Promise<void> {
   }
 }
 
+async function runMigrationCheck(): Promise<DryRunResult> {
+  try {
+    const exitCode = await runCommand(
+      process.execPath,
+      [...process.execArgv, 'scripts/db-migrate.ts', '--check'],
+      {
+        DATABASE_URL: '',
+      },
+    );
+
+    return { checkId: 'db:migrate --check', status: exitCode === 0 ? 'passed' : 'failed' };
+  } catch (error) {
+    process.stderr.write(error instanceof Error ? (error.stack ?? error.message) : String(error));
+    return { checkId: 'db:migrate --check', status: 'failed' };
+  }
+}
+
 async function runWorkflowDryRun(
   workflowId: string,
   input: Record<string, unknown>,
-): Promise<{ status: 'failed' | 'passed'; workflowId: string }> {
+): Promise<DryRunResult> {
   try {
-    const child = spawn(process.execPath, [...process.execArgv, 'scripts/workflow-job.ts'], {
-      cwd: repoRoot,
-      env: {
-        ...process.env,
+    const exitCode = await runCommand(
+      process.execPath,
+      [...process.execArgv, 'scripts/workflow-job.ts'],
+      {
         DRY_RUN: 'true',
         WORKFLOW_ID: workflowId,
         WORKFLOW_INPUT_JSON: JSON.stringify(input),
       },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    let stderr = '';
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
-    child.stdout.on('data', (chunk: string): void => {
-      stdout += chunk;
-    });
-    child.stderr.on('data', (chunk: string): void => {
-      stderr += chunk;
-    });
-
-    const exitCode = await new Promise<number | null>((resolve, reject) => {
-      child.on('error', reject);
-      child.on('close', resolve);
-    });
+    );
 
     if (exitCode !== 0) {
-      process.stderr.write(stderr || stdout);
-      return { status: 'failed', workflowId };
+      return { checkId: `workflow:${workflowId}`, status: 'failed' };
     }
-    return { status: 'passed', workflowId };
+    return { checkId: `workflow:${workflowId}`, status: 'passed' };
   } catch (error) {
     process.stderr.write(error instanceof Error ? (error.stack ?? error.message) : String(error));
-    return { status: 'failed', workflowId };
+    return { checkId: `workflow:${workflowId}`, status: 'failed' };
   }
+}
+
+async function runCommand(
+  command: string,
+  args: readonly string[],
+  env: Record<string, string> = {},
+): Promise<number | null> {
+  const child = spawn(command, args, {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      ...env,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  let stdout = '';
+  let stderr = '';
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (chunk: string): void => {
+    stdout += chunk;
+  });
+  child.stderr.on('data', (chunk: string): void => {
+    stderr += chunk;
+  });
+
+  const exitCode = await new Promise<number | null>((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', resolve);
+  });
+
+  if (exitCode !== 0) {
+    process.stderr.write(stderr || stdout);
+  }
+
+  return exitCode;
 }
 
 main().catch((error: unknown): void => {

@@ -50,13 +50,17 @@ API key、DB password は記録しない。
 
 ```bash
 pnpm deploy:dry-run
+pnpm db:migrate --check
+pnpm db:migrate --plan
 pnpm db:migrate
 pnpm report:backfill-project-manifests -- --dry-run
 pnpm infra:check --env staging
 pnpm deploy:smoke --env staging
 ```
 
-- `deploy:dry-run`: `curate-workflow`、`ingest-workflow`、`generate-report` の `WORKFLOW_ID` / `WORKFLOW_INPUT_JSON` entrypoint 計画をローカル dry-run で検査する。
+- `deploy:dry-run`: `pnpm db:migrate --check` と、`curate-workflow`、`ingest-workflow`、`generate-report` の `WORKFLOW_ID` / `WORKFLOW_INPUT_JSON` entrypoint 計画をローカル dry-run で検査する。
+- `db:migrate --check`: migration file の命名、番号重複、履歴との整合を検査する。`DATABASE_URL` がある場合は online check として `schema_migrations` も照合する。
+- `db:migrate --plan`: staging / production の `DATABASE_URL` に対して、適用予定 migration を表示する。ここではまだ適用しない。
 - `db:migrate`: `infra/db/migrations/*.sql` を番号順に適用し、`auth_accounts`、`auth_password_credentials`、project scoped `oauth_connections` など既存 DB に必要な schema を用意する。既存互換の `auth:migrate` も同じ migration runner を呼び出す。
 - `auth:create-user`: OAuth を使わない環境で Credentials login 用 user と password hash を作成する。実 password は DB / docs / log に保存しない。
 - `report:backfill-project-manifests`: 既存の `projects.visibility = 'public'` project に対して、公開レポート API が参照する `project-public-state.json` を Object Storage に作成する。初回は `--dry-run` で対象を確認し、問題なければ `--dry-run` なしで一度だけ実行する。
@@ -85,7 +89,8 @@ pnpm deploy:smoke --env staging
 - AGE graph 更新有無:
 - vector / embedding 再生成有無:
 - 実行後 smoke:
-- 失敗時の判断:
+- 失敗時の判断: restore / forward fix / 再実行 / deploy 停止
+- 記録先: PR、Issue、release note、または環境別運用ログの URL
 
 ## 未完了項目
 
