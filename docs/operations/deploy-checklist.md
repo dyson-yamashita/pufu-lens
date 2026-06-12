@@ -72,7 +72,11 @@ pnpm deploy:smoke --env staging
 
 ## DB Migration 記録
 
+作成・レビュー時の判断基準は `docs/operations/db-migrations.md` を参照する。
+
 - 実行前 backup:
+- 実行前 check: `pnpm db:migrate --check`
+- 実行前 plan: `pnpm db:migrate --plan`
 - 実行コマンド: `pnpm db:migrate`
 - 適用対象 migration:
 - `schema_migrations` 確認:

@@ -111,6 +111,7 @@ project-root/
 │
 ├── scripts/
 │   ├── db-migrate.ts              # infra/db/migrations を schema_migrations で管理して適用
+│   ├── create-db-migration.ts     # 次の番号の migration SQL template を生成
 │   ├── deploy-mastra.sh
 │   ├── deploy-web.sh
 │   ├── setup-secrets.sh
@@ -118,6 +119,7 @@ project-root/
 │
 ├── docs/
 │   └── operations/
+│       ├── db-migrations.md       # DB migration の作成・レビュー・rollback 手順
 │       └── deploy-checklist.md    # 初回手動作業と staging / production 検証記録
 │
 ├── .env.local

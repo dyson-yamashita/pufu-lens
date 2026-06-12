@@ -35,6 +35,7 @@
     "lint": "biome ci . && markdownlint-cli2",
     "db:migrate": "node --experimental-strip-types scripts/db-migrate.ts",
     "db:migrate:test": "node --experimental-strip-types --test scripts/db-migrate.test.ts",
+    "db:migration:new": "node --experimental-strip-types scripts/create-db-migration.ts",
     "auth:migrate": "node --experimental-strip-types scripts/migrate-auth-login.ts",
     "auth:create-user": "node --experimental-strip-types scripts/create-credentials-user.ts",
     "seed:projects": "node --experimental-strip-types scripts/create-project.ts --seed-samples",
