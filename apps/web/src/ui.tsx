@@ -1,6 +1,7 @@
 import {
   Activity,
   ArrowLeft,
+  Contact,
   Database,
   FileSearch,
   FileText,
@@ -149,7 +150,7 @@ export async function AppShell({
                 href={`/projects/${projectSlug}/admin/actors`}
                 data-testid="global-nav-actors"
               >
-                <Users size={18} />
+                <Contact size={18} />
                 Actors
               </Link>
               <Link

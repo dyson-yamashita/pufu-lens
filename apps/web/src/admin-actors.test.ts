@@ -79,4 +79,11 @@ assert.equal(
   false,
 );
 
+const missingNameCandidates = buildActorMergeCandidates([
+  { ...baseActor, displayName: undefined as unknown as string, id: 'actor-missing-a' },
+  { ...baseActor, displayName: null as unknown as string, id: 'actor-missing-b' },
+]);
+
+assert.equal(missingNameCandidates.length, 0);
+
 console.log('web admin actors tests passed');

@@ -96,6 +96,6 @@ function mergeCandidateEvidence(
   return Array.from(new Set([...actorA.sourceTypes, ...actorB.sourceTypes])).sort();
 }
 
-function normalizeActorDisplayName(value: string): string {
-  return value.trim().replace(/\s+/g, ' ').toLowerCase();
+function normalizeActorDisplayName(value: string | null | undefined): string {
+  return (value ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
