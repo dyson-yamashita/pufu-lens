@@ -22,7 +22,6 @@ export async function fetchWithRetry(
   const baseDelayMs = Math.max(0, options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS);
   const maxDelayMs = Math.max(0, options.maxDelayMs ?? DEFAULT_MAX_DELAY_MS);
   const jitterRatio = Math.max(0, options.jitterRatio ?? DEFAULT_JITTER_RATIO);
-  let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
@@ -39,11 +38,7 @@ export async function fetchWithRetry(
         ),
       );
     } catch (error) {
-      lastError = error;
-      if (isAbortError(error)) {
-        throw error;
-      }
-      if (attempt === maxAttempts) {
+      if (isAbortError(error) || attempt === maxAttempts) {
         throw error;
       }
       await delay(
@@ -52,7 +47,7 @@ export async function fetchWithRetry(
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  throw new Error('fetchWithRetry exhausted attempts unexpectedly.');
 }
 
 function isRetryableResponse(response: Response): boolean {
@@ -74,17 +69,26 @@ function retryDelayMs(
   maxDelayMs: number,
 ): number {
   const retryAfter = response.headers.get('retry-after');
-  if (retryAfter) {
+  if (retryAfter?.trim()) {
     const parsedSeconds = Number(retryAfter);
     if (Number.isFinite(parsedSeconds) && parsedSeconds >= 0) {
       return clampDelay(parsedSeconds * 1000, maxDelayMs);
     }
     const parsedDate = Date.parse(retryAfter);
     if (!Number.isNaN(parsedDate)) {
-      return clampDelay(parsedDate - Date.now(), maxDelayMs);
+      return clampDelay(parsedDate - responseDateMs(response), maxDelayMs);
     }
   }
   return exponentialDelayMs(attempt, baseDelayMs, maxDelayMs);
+}
+
+function responseDateMs(response: Response): number {
+  const dateHeader = response.headers.get('date');
+  if (!dateHeader) {
+    return Date.now();
+  }
+  const parsedDate = Date.parse(dateHeader);
+  return Number.isNaN(parsedDate) ? Date.now() : parsedDate;
 }
 
 function exponentialDelayMs(attempt: number, baseDelayMs: number, maxDelayMs: number): number {
