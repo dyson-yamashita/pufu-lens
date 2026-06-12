@@ -1130,7 +1130,7 @@ th {
   border-radius: 8px;
   display: grid;
   gap: 16px;
-  grid-template-columns: minmax(220px, 1fr) auto minmax(260px, 0.9fr) auto;
+  grid-template-columns: minmax(220px, 1fr) auto minmax(320px, 0.9fr) auto auto auto;
   padding: 14px;
 }
 
@@ -1143,7 +1143,7 @@ th {
 .queue-numbers {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .queue-numbers span {
@@ -1155,6 +1155,31 @@ th {
   color: var(--text);
   display: block;
   font-size: 18px;
+}
+
+.ingest-history {
+  position: relative;
+}
+
+.ingest-history summary {
+  list-style: none;
+}
+
+.ingest-history summary::-webkit-details-marker {
+  display: none;
+}
+
+.ingest-history[open] .detail-list {
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  min-width: 220px;
+  padding: 12px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 4;
 }
 
 .chat-panel {

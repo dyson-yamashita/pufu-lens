@@ -1,8 +1,5 @@
-import {
-  collectDataSource,
-  ingestDataSource,
-  retryFailedQueue,
-} from '../../../../../src/admin-actions';
+import { Clock3 } from 'lucide-react';
+import { collectAndIngestDataSource, retryFailedQueue } from '../../../../../src/admin-actions';
 import {
   isAdminUiCollectionSupported,
   isAdminUiIngestSupported,
@@ -56,6 +53,10 @@ export default async function IngestionPage({
                   raw
                 </span>
                 <span>
+                  <strong>{source.ingestedCount}</strong>
+                  ingested
+                </span>
+                <span>
                   <strong>{source.queueCount}</strong>
                   queue
                 </span>
@@ -74,28 +75,38 @@ export default async function IngestionPage({
                 projectSlug={project.slug}
                 testId={`ingestion-retry-${source.id}`}
               />
-              <ActionForm action={collectDataSource} className="inline-action-form">
+              <details className="ingest-history">
+                <summary
+                  className="icon-button muted"
+                  data-testid={`ingestion-history-${source.id}`}
+                  title="Show ingest history"
+                >
+                  <Clock3 size={16} />
+                  History
+                </summary>
+                <dl className="detail-list stacked">
+                  {source.ingestHistory.map((entry) => (
+                    <div key={entry.label}>
+                      <dt>{entry.label}</dt>
+                      <dd>{entry.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </details>
+              <ActionForm action={collectAndIngestDataSource} className="inline-action-form">
                 <input name="projectSlug" type="hidden" value={project.slug} />
                 <input name="dataSourceId" type="hidden" value={source.id} />
                 <PendingSubmitButton
                   className="icon-button"
-                  disabled={!isAdminUiCollectionSupported(source.sourceType)}
-                  testId={`ingestion-collect-${source.id}`}
-                  title="Collect source"
+                  disabled={
+                    !isAdminUiCollectionSupported(source.sourceType) ||
+                    !isAdminUiIngestSupported(source.sourceType)
+                  }
+                  pendingLabel="Running"
+                  testId={`ingestion-collect-ingest-${source.id}`}
+                  title="Collect and ingest source"
                 >
-                  Collect
-                </PendingSubmitButton>
-              </ActionForm>
-              <ActionForm action={ingestDataSource} className="inline-action-form">
-                <input name="projectSlug" type="hidden" value={project.slug} />
-                <input name="dataSourceId" type="hidden" value={source.id} />
-                <PendingSubmitButton
-                  className="icon-button"
-                  disabled={!isAdminUiIngestSupported(source.sourceType)}
-                  testId={`ingestion-ingest-${source.id}`}
-                  title="Ingest source"
-                >
-                  Ingest
+                  Collect & Ingest
                 </PendingSubmitButton>
               </ActionForm>
             </article>

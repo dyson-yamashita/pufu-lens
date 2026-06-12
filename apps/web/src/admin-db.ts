@@ -26,6 +26,7 @@ type ProjectRow = {
   failed_count: number | string | bigint;
   held_count: number | string | bigint;
   id: string;
+  ingested_count: number | string | bigint;
   last_indexed: Date | string | null;
   member_count: number | string | bigint;
   name: string;
@@ -102,6 +103,7 @@ type DataSourceRow = {
   failed_count: number | string | bigint;
   held_count: number | string | bigint;
   id: string;
+  ingested_count: number | string | bigint;
   last_checked_at: Date | string | null;
   last_indexed: Date | string | null;
   name: string;
@@ -143,6 +145,11 @@ export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
         p.visibility,
         (SELECT count(*)::int FROM public.project_members pm WHERE pm.project_id = p.id) AS member_count,
         (SELECT count(*)::int FROM public.raw_documents rd WHERE rd.project_id = p.id) AS raw_count,
+        (
+          SELECT count(*)::int
+          FROM public.raw_documents rd
+          WHERE rd.project_id = p.id AND rd.ingest_status = 'indexed'
+        ) AS ingested_count,
         (SELECT count(*)::int FROM public.ingestion_queue iq WHERE iq.project_id = p.id) AS queue_count,
         (
           SELECT count(*)::int
@@ -186,6 +193,11 @@ export async function listMemberProjects(userId: string): Promise<readonly Proje
         p.visibility,
         (SELECT count(*)::int FROM public.project_members pm WHERE pm.project_id = p.id) AS member_count,
         (SELECT count(*)::int FROM public.raw_documents rd WHERE rd.project_id = p.id) AS raw_count,
+        (
+          SELECT count(*)::int
+          FROM public.raw_documents rd
+          WHERE rd.project_id = p.id AND rd.ingest_status = 'indexed'
+        ) AS ingested_count,
         (SELECT count(*)::int FROM public.ingestion_queue iq WHERE iq.project_id = p.id) AS queue_count,
         (
           SELECT count(*)::int
@@ -574,6 +586,11 @@ export async function getAdminProject(slug: string): Promise<ProjectSummary> {
         p.visibility,
         (SELECT count(*)::int FROM public.project_members pm WHERE pm.project_id = p.id) AS member_count,
         (SELECT count(*)::int FROM public.raw_documents rd WHERE rd.project_id = p.id) AS raw_count,
+        (
+          SELECT count(*)::int
+          FROM public.raw_documents rd
+          WHERE rd.project_id = p.id AND rd.ingest_status = 'indexed'
+        ) AS ingested_count,
         (SELECT count(*)::int FROM public.ingestion_queue iq WHERE iq.project_id = p.id) AS queue_count,
         (
           SELECT count(*)::int
@@ -666,6 +683,13 @@ async function listDataSourcesByProject(
       ) AS raw_count,
       (
         SELECT count(*)::int
+        FROM public.raw_document_data_sources rdds
+        JOIN public.raw_documents rd ON rd.id = rdds.raw_document_id
+        WHERE rdds.data_source_id = ds.id
+          AND rd.ingest_status = 'indexed'
+      ) AS ingested_count,
+      (
+        SELECT count(*)::int
         FROM public.ingestion_queue iq
         WHERE iq.data_source_id = ds.id
       ) AS queue_count,
@@ -697,17 +721,27 @@ async function listDataSourcesByProject(
 function dataSourceFromRow(row: DataSourceRow): DataSourceSummary {
   const failedCount = toNumber(row.failed_count);
   const heldCount = toNumber(row.held_count);
+  const ingestedCount = toNumber(row.ingested_count);
   const queueCount = toNumber(row.queue_count);
+  const rawCount = toNumber(row.raw_count);
+  const lastChecked = formatDate(row.last_checked_at);
+  const lastIndexed = formatDate(row.last_indexed);
   return {
     configSummary: summarizeConfig(row.source_type, row.config),
     failedCount,
     heldCount,
     id: row.id,
-    lastChecked: formatDate(row.last_checked_at),
-    lastIndexed: formatDate(row.last_indexed),
+    ingestedCount,
+    ingestHistory: [
+      { label: 'Last collect', value: lastChecked },
+      { label: 'Last indexed', value: lastIndexed },
+      { label: 'Raw / Ingested', value: `${rawCount} / ${ingestedCount}` },
+    ],
+    lastChecked,
+    lastIndexed,
     name: row.name,
     queueCount,
-    rawCount: toNumber(row.raw_count),
+    rawCount,
     editableScope: editableScopeFromConfig(row.source_type, row.config),
     scope: summarizeScope(row.source_type, row.config),
     sourceType: row.source_type,
@@ -732,6 +766,13 @@ async function listDataSources(
         FROM public.raw_document_data_sources rdds
         WHERE rdds.data_source_id = ds.id
       ) AS raw_count,
+      (
+        SELECT count(*)::int
+        FROM public.raw_document_data_sources rdds
+        JOIN public.raw_documents rd ON rd.id = rdds.raw_document_id
+        WHERE rdds.data_source_id = ds.id
+          AND rd.ingest_status = 'indexed'
+      ) AS ingested_count,
       (
         SELECT count(*)::int
         FROM public.ingestion_queue iq
@@ -906,6 +947,7 @@ function projectFromRow(
     description: row.description,
     failedCount,
     heldCount,
+    ingestedCount: toNumber(row.ingested_count),
     lastIndexed: formatDate(row.last_indexed),
     memberCount: toNumber(row.member_count),
     name: row.name,

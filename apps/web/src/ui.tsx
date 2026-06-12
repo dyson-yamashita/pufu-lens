@@ -294,6 +294,7 @@ export function MetricStrip({ project }: { readonly project: ProjectSummary }) {
   return (
     <section className="metric-strip" aria-label="Project ingestion metrics">
       <Metric label="Raw" value={project.rawCount} tone="neutral" />
+      <Metric label="Ingested" value={project.ingestedCount} tone="neutral" />
       <Metric label="Queue" value={project.queueCount} tone="info" />
       <Metric
         label="Failed"
@@ -402,6 +403,7 @@ export function DataSourceTable({
           <tr>
             <th>Source</th>
             <th>Status</th>
+            <th>Ingested</th>
             <th>Queue</th>
             <th>Last checked</th>
             <th>Scope</th>
@@ -429,6 +431,11 @@ export function DataSourceTable({
               </td>
               <td>
                 <StatusBadge status={source.status} />
+              </td>
+              <td>
+                <span className="mono">
+                  {source.ingestedCount} / raw {source.rawCount}
+                </span>
               </td>
               <td>
                 <span className="mono">
