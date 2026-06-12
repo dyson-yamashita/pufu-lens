@@ -557,7 +557,7 @@ function parseArgs(args: string[]): {
     if (arg === '--project') {
       options.project = readOptionValue(args, ++index, arg);
     } else if (arg === '--connection-id') {
-      options.connectionId = readOptionValue(args, ++index, arg);
+      options.connectionId = readUuid(readOptionValue(args, ++index, arg), arg);
     } else if (arg === '--source') {
       const sourceType = readOptionValue(args, ++index, arg);
       if (!isRealSourceType(sourceType)) {
@@ -634,6 +634,7 @@ async function readCollectionConnection(input: {
   if (!input.provider) {
     throw new Error('--connection-id is supported only for gmail, drive, and github sources.');
   }
+  assertUuid(input.connectionId, '--connection-id');
   const rows = (await input.sql`
     SELECT
       oc.id::text AS id,
@@ -845,16 +846,7 @@ function decryptConnectionSecretValue(secretValue: string): string {
   if (!isEncryptedConnectionSecret(parsed)) {
     throw new Error('OAuth connection secret payload is invalid.');
   }
-  const decipher = createDecipheriv(
-    'aes-256-gcm',
-    connectionSecretKey(),
-    Buffer.from(parsed.iv, 'base64'),
-  );
-  decipher.setAuthTag(Buffer.from(parsed.tag, 'base64'));
-  return Buffer.concat([
-    decipher.update(Buffer.from(parsed.ciphertext, 'base64')),
-    decipher.final(),
-  ]).toString('utf8');
+  return decryptConnectionSecret(parsed);
 }
 
 function decryptConnectionSecret(value: EncryptedConnectionSecret): string {
@@ -890,6 +882,17 @@ function connectionSecretKey(): Buffer {
     throw new Error('CONNECTION_SECRET_KEY is required to decrypt OAuth connection tokens.');
   }
   return createHash('sha256').update(value).digest();
+}
+
+function readUuid(value: string, name: string): string {
+  assertUuid(value, name);
+  return value;
+}
+
+function assertUuid(value: string, name: string): void {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+    throw new Error(`${name} must be a valid UUID.`);
+  }
 }
 
 function readRepository(value: string, name: string): string {
