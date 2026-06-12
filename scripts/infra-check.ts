@@ -27,18 +27,27 @@ type DeployEnv = keyof typeof REQUIRED_BY_ENV;
 type Profile = 'deploy' | 'collect-drive' | 'collect-gmail' | 'collect-github' | 'workflow-job';
 
 const PROFILE_REQUIREMENTS = {
-  'collect-drive': ['DATABASE_URL', 'GOOGLE_DRIVE_ACCESS_TOKEN'],
-  'collect-gmail': ['DATABASE_URL', 'GMAIL_ACCESS_TOKEN'],
+  'collect-drive': ['DATABASE_URL'],
+  'collect-gmail': ['DATABASE_URL'],
   'collect-github': ['DATABASE_URL', 'GITHUB_TOKEN'],
-  'workflow-job': ['DATABASE_URL', 'WORKFLOW_ID'],
+  'workflow-job': ['DATABASE_URL', 'WORKFLOW_ID', 'WORKFLOW_INPUT_JSON'],
 } as const satisfies Record<Exclude<Profile, 'deploy'>, readonly string[]>;
+
+const PROFILE_ANY_REQUIREMENTS = {
+  'collect-drive': [['GOOGLE_DRIVE_ACCESS_TOKEN', 'GOOGLE_OAUTH_ACCESS_TOKEN']],
+  'collect-gmail': [['GMAIL_ACCESS_TOKEN', 'GOOGLE_OAUTH_ACCESS_TOKEN']],
+  'collect-github': [],
+  'workflow-job': [],
+} as const satisfies Record<Exclude<Profile, 'deploy'>, readonly (readonly string[])[]>;
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const required = REQUIRED_BY_ENV[options.env];
   const profileRequired = profileRequirements(options.profile);
+  const profileAnyRequired = profileAnyRequirements(options.profile);
   const allRequired = [...required, ...profileRequired];
-  const missing = missingEnv(allRequired);
+  const anyRequiredLabels = profileAnyRequired.map(formatAnyRequirement);
+  const missing = [...missingEnv(allRequired), ...missingAnyEnv(profileAnyRequired)];
   const gemini = checkGeminiAuth();
   const status = missing.length === 0 && gemini.status === 'passed' ? 'passed' : 'blocked';
 
@@ -50,8 +59,8 @@ async function main(): Promise<void> {
         gemini,
         missing,
         profile: options.profile,
-        profileRequired,
-        required: allRequired,
+        profileRequired: [...profileRequired, ...anyRequiredLabels],
+        required: [...allRequired, ...anyRequiredLabels],
         status,
       },
       null,
@@ -87,11 +96,28 @@ function missingEnv(required: readonly string[]): string[] {
   return [...new Set(required)].filter((name) => !process.env[name]);
 }
 
+function missingAnyEnv(requiredGroups: readonly (readonly string[])[]): string[] {
+  return requiredGroups
+    .filter((group) => group.every((name) => !process.env[name]))
+    .map(formatAnyRequirement);
+}
+
+function formatAnyRequirement(requiredGroup: readonly string[]): string {
+  return requiredGroup.join(' or ');
+}
+
 function profileRequirements(profile: Profile): readonly string[] {
   if (profile === 'deploy') {
     return [];
   }
   return PROFILE_REQUIREMENTS[profile];
+}
+
+function profileAnyRequirements(profile: Profile): readonly (readonly string[])[] {
+  if (profile === 'deploy') {
+    return [];
+  }
+  return PROFILE_ANY_REQUIREMENTS[profile];
 }
 
 function parseArgs(argv: readonly string[]): {
@@ -107,13 +133,13 @@ function parseArgs(argv: readonly string[]): {
     if (arg === '--allow-missing') {
       allowMissing = true;
     } else if (arg === '--env') {
-      const value = argv[++index];
+      const value = readArgValue(argv, ++index, '--env');
       if (value !== 'staging' && value !== 'production') {
         throw new Error('--env must be staging or production.');
       }
       env = value;
     } else if (arg === '--profile') {
-      const value = argv[++index];
+      const value = readArgValue(argv, ++index, '--profile');
       if (!isProfile(value)) {
         throw new Error(
           '--profile must be deploy, collect-drive, collect-gmail, collect-github, or workflow-job.',
@@ -128,6 +154,14 @@ function parseArgs(argv: readonly string[]): {
     throw new Error('--env is required.');
   }
   return { allowMissing, env, profile };
+}
+
+function readArgValue(argv: readonly string[], index: number, optionName: string): string {
+  const value = argv[index];
+  if (!value || value.startsWith('--')) {
+    throw new Error(`${optionName} requires a value.`);
+  }
+  return value;
 }
 
 function isProfile(value: string | undefined): value is Profile {
