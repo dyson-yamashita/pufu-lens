@@ -271,7 +271,7 @@ export async function addProjectMember(formData: FormData): Promise<void> {
   const userId = requireFormValue(formData, 'userId');
 
   await withSql(async (sql) => {
-    const project = await requireProjectMemberManager(sql, projectSlug);
+    const project = await requireProjectAdminForMemberManagement(sql, projectSlug);
     await sql`
       INSERT INTO public.project_members (project_id, user_id, role)
       VALUES (${project.id}, ${userId}, 'member')
@@ -289,7 +289,7 @@ export async function removeProjectMember(formData: FormData): Promise<void> {
   const userId = requireFormValue(formData, 'userId');
 
   await withSql(async (sql) => {
-    const project = await requireProjectMemberManager(sql, projectSlug);
+    const project = await requireProjectAdminForMemberManagement(sql, projectSlug);
     await sql`
       DELETE FROM public.project_members
       USING public.users
@@ -1111,7 +1111,7 @@ async function assertAdminRemainsAfterRoleChange(
   }
 }
 
-async function requireProjectMemberManager(
+async function requireProjectAdminForMemberManagement(
   sql: postgres.Sql | postgres.TransactionSql,
   projectSlug: string,
 ): Promise<{

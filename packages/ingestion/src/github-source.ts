@@ -7,6 +7,7 @@ import type {
   RawDocumentInput,
 } from './collection-pipeline.js';
 import { normalizeSourceId } from './collection-pipeline.js';
+import { fetchWithRetry } from './http-retry.js';
 
 export interface GitHubIssueResponse {
   body?: string | null;
@@ -418,7 +419,7 @@ function githubCandidateSourceId(candidate: GitHubCandidate): string {
 }
 
 export async function fetchGitHubJson(input: { path: string; token?: string }): Promise<unknown> {
-  const response = await fetch(`https://api.github.com${input.path}`, {
+  const response = await fetchWithRetry(`https://api.github.com${input.path}`, {
     headers: githubHeaders(input.token),
   });
   if (!response.ok) {
@@ -428,7 +429,7 @@ export async function fetchGitHubJson(input: { path: string; token?: string }): 
 }
 
 export async function fetchGitHubText(input: { path: string; token?: string }): Promise<string> {
-  const response = await fetch(`https://api.github.com${input.path}`, {
+  const response = await fetchWithRetry(`https://api.github.com${input.path}`, {
     headers: { ...githubHeaders(input.token), accept: 'application/vnd.github.v3.diff' },
   });
   if (!response.ok) {

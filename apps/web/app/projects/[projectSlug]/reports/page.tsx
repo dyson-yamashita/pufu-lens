@@ -1,12 +1,12 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { auth } from '../../../../auth';
 import { generatePrivateReport } from '../../../../src/admin-actions';
 import {
   getAdminProject,
   getProjectMembership,
   getVisiblePublicProject,
 } from '../../../../src/admin-db';
+import { AuthRequiredError, requireSessionUserId } from '../../../../src/auth-session';
 import { reportNowFromEnv, resolveReportPeriod } from '../../../../src/report';
 import { ReportGenerateForm, ReportsList } from '../../../../src/report-client';
 import { AppShell, PageHeader } from '../../../../src/ui';
@@ -17,8 +17,15 @@ export default async function ReportsPage({
   readonly params: Promise<{ readonly projectSlug: string }>;
 }) {
   const { projectSlug } = await params;
-  const [project, session] = await Promise.all([getAdminProject(projectSlug), auth()]);
-  const userId = session?.user?.id;
+  const project = await getAdminProject(projectSlug);
+  let userId: string | undefined;
+  try {
+    userId = await requireSessionUserId();
+  } catch (error) {
+    if (!(error instanceof AuthRequiredError)) {
+      throw error;
+    }
+  }
 
   let isMember = false;
   if (userId) {

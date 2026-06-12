@@ -15,12 +15,12 @@
 
 ## Plan 一覧
 
-| plan                                                       | status    | 更新日     | メモ                                                                                                |
-| ---------------------------------------------------------- | --------- | ---------- | --------------------------------------------------------------------------------------------------- |
-| `docs/plans/001-step-by-step-build-plan/overview.md`       | `active`  | 2026-05-29 | Pufu Lens の段階的な構築計画。Step 別 plan は同ディレクトリ配下で管理する。                         |
-| `docs/plans/002-account-login-public-projects/overview.md` | `active`  | 2026-06-08 | Issue #63 から派生し、Step 2 は Issue #76 で Auth.js ログイン基盤を実装中。                         |
-| `docs/plans/003-admin-age-viewer/overview.md`              | `active`  | 2026-06-10 | Issue #80 で、プロジェクトごとの Graph と固定 query preset による Apache AGE graph 可視化を実装中。 |
-| `docs/plans/004-project-settings-connections/overview.md`  | `planned` | 2026-06-11 | Project Settings で Google / GitHub 連携を管理し、未連携 data source の選択・実行を制御する。       |
+| plan                                                       | status      | 更新日     | メモ                                                                                                      |
+| ---------------------------------------------------------- | ----------- | ---------- | --------------------------------------------------------------------------------------------------------- |
+| `docs/plans/001-step-by-step-build-plan/overview.md`       | `active`    | 2026-06-11 | Pufu Lens の段階的な構築計画。Step 別 plan は同ディレクトリ配下で管理する。旧インデックスファイルは廃止。 |
+| `docs/plans/002-account-login-public-projects/overview.md` | `completed` | 2026-06-11 | Auth.js ログイン基盤、public project / public report / public chat の入口実装は merge 済み。              |
+| `docs/plans/003-admin-age-viewer/overview.md`              | `completed` | 2026-06-11 | Issue #80 の Graph Viewer 実装は merge 済み。                                                             |
+| `docs/plans/004-project-settings-connections/overview.md`  | `active`    | 2026-06-11 | Issue #90 で Project Settings / Connections の実装が進行済み。残作業は後続 Issue で扱う。                 |
 
 ## 運用ルール
 
