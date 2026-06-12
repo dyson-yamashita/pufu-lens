@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type postgres from 'postgres';
 import { getRequiredAdminSql } from './admin-sql.ts';
+import { lookupProjectMemberAccess } from './authz.ts';
 
 export type GraphPresetId = 'actor-documents' | 'recent-relations' | 'same-as';
 
@@ -197,35 +198,15 @@ export function createPostgresGraphViewerRepository(
       });
     },
     async lookupProjectMember({ projectSlug, userId }) {
-      const rows = (await sql`
-        SELECT
-          p.id::text AS id,
-          p.slug,
-          p.name,
-          p.graph_name AS graph_name
-        FROM public.projects p
-        JOIN public.users app_user
-          ON app_user.id = ${userId}
-        LEFT JOIN public.project_members pm
-          ON pm.project_id = p.id
-         AND pm.user_id = app_user.id
-        WHERE p.slug = ${projectSlug}
-          AND (app_user.role = 'admin' OR pm.user_id IS NOT NULL)
-      `) as Array<{
-        graph_name: string | null;
-        id: string;
-        name: string;
-        slug: string;
-      }>;
-      const row = rows[0];
-      if (!row?.graph_name) {
+      const access = await lookupProjectMemberAccess(sql, { projectSlug, userId });
+      if (!access?.graphName) {
         return undefined;
       }
       return {
-        graphName: validateGraphName(row.graph_name),
-        id: row.id,
-        name: row.name,
-        slug: row.slug,
+        graphName: validateGraphName(access.graphName),
+        id: access.id,
+        name: access.name,
+        slug: access.slug,
       };
     },
   };

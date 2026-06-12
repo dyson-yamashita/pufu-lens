@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type postgres from 'postgres';
+import { lookupProjectMemberAccess } from './authz.ts';
 import type { PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 
 export type ChatToolName =
@@ -553,17 +554,8 @@ export function isWithinBusinessHours(date: Date, config: BusinessHoursConfig): 
 export function createPostgresChatRepository(sql: postgres.Sql): ChatRepository {
   return {
     async lookupProjectMember({ projectSlug, userId }) {
-      const rows = (await sql`
-        SELECT p.id::text AS id, p.slug
-        FROM public.projects p
-        JOIN public.users app_user ON app_user.id = ${userId}
-        LEFT JOIN public.project_members pm
-          ON pm.project_id = p.id
-         AND pm.user_id = app_user.id
-        WHERE p.slug = ${projectSlug}
-          AND (app_user.role = 'admin' OR pm.user_id IS NOT NULL)
-      `) as Array<{ id: string; slug: string }>;
-      return rows[0];
+      const access = await lookupProjectMemberAccess(sql, { projectSlug, userId });
+      return access ? { id: access.id, slug: access.slug } : undefined;
     },
     async vectorSearch({ embedding, limit, projectId }) {
       const vector = `[${embedding.join(',')}]`;
