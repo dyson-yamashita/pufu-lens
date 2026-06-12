@@ -566,8 +566,9 @@ function chunksMatch(existing: DocumentChunkRecord[], next: DocumentChunkSignatu
   if (existing.length !== next.length) {
     return false;
   }
+  const sortedExisting = [...existing].sort((left, right) => left.chunkIndex - right.chunkIndex);
   return next.every((chunk, index) => {
-    const current = existing[index];
+    const current = sortedExisting[index];
     return (
       current?.chunkIndex === chunk.chunkIndex &&
       current.contentHash === chunk.contentHash &&

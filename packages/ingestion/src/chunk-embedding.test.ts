@@ -198,6 +198,42 @@ test('chunkAndEmbed skips embedding calls when current chunks are unchanged', as
   assert.equal(embedCalls, 1);
 });
 
+test('chunkAndEmbed treats unchanged chunks as current when repository order differs', async () => {
+  const repository = new InMemoryChunkEmbeddingRepository([
+    {
+      parsed: parsedDocument({
+        bodyText:
+          'First paragraph with enough text to create a chunk. Second paragraph with enough text to create another chunk.',
+      }),
+      rawContentHash: 'raw-hash-1',
+      rawDocumentId: 'raw-1',
+    },
+  ]);
+  let embedCalls = 0;
+  const provider = createDeterministicEmbeddingProvider({ dimensions: 4 });
+  const embeddingProvider = {
+    ...provider,
+    async embedTexts(texts: string[]) {
+      embedCalls += 1;
+      return provider.embedTexts(texts);
+    },
+  };
+  const options = {
+    chunkConfig: { maxCharacters: 48, overlapCharacters: 0, version: 'test-chunk-v1' },
+    embeddingProvider,
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  };
+
+  await chunkAndEmbed(options);
+  repository.chunks.reverse();
+  const second = await chunkAndEmbed(options);
+
+  assert.equal(second.decisions[0]?.decision, 'unchanged');
+  assert.equal(embedCalls, 1);
+});
+
 test('chunkAndEmbed archives old chunks when parsed content changes', async () => {
   const repository = new InMemoryChunkEmbeddingRepository([
     {
