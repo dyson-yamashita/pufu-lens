@@ -2,7 +2,7 @@
 
 ## データモデル
 
-この章はテーブルの役割、分離方針、設計意図を説明する。実際の DDL は `infra/docker/postgres/init.sql` を唯一の正とし、この文書にはフル DDL を写さない。制約、カラム、index を変更する場合は `init.sql` と migration を更新し、この文書は意図や運用上の注意だけを同期する。
+この章はテーブルの役割、分離方針、設計意図を説明する。fresh DB の実際の DDL は `infra/docker/postgres/init.sql` を正とし、既存 DB への差分適用履歴は `infra/db/migrations/*.sql` を正とする。この文書にはフル DDL を写さない。制約、カラム、index を変更する場合は `init.sql` と migration を更新し、この文書は意図や運用上の注意だけを同期する。
 
 ### 1. マルチプロジェクト方針
 
@@ -12,11 +12,21 @@
 - Object Storage は project ごとの prefix（例: `<project_slug>/raw/...`, `<project_slug>/parsed/...`, `<project_slug>/reports/...`）で分離する。
 - Browser から渡された `projectId` は信用せず、URL の `projectSlug` から server side で `projects.id` を解決する。
 
-### 2. DDL 正本
+### 2. DDL / Migration 正本
 
-DDL 正本:
+fresh DB の DDL 正本:
 
 - `infra/docker/postgres/init.sql`
+
+既存 DB の migration 履歴:
+
+- `infra/db/migrations/*.sql`
+- `scripts/db-migrate.ts`
+- `public.schema_migrations`
+
+`init.sql` は最新 schema を直接作成する。`infra/db/migrations` は既存 DB を段階的に最新 schema へ近づけるための履歴であり、現時点では空 DB から再生できる完全履歴ではない。たとえば `0001_auth_login.sql` は `init.sql` で `users`、`projects`、`project_members` が作成済みであることを前提にする。
+
+fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し、`init.sql` に取り込み済みの migration version を seed する。これにより、fresh DB に `pnpm db:migrate` を実行しても、過去 migration が再適用され続けない。
 
 現在の主なテーブル:
 
@@ -38,6 +48,7 @@ DDL 正本:
 | `actors` / `actor_aliases`                   | email / GitHub login などの actor と alias を project scope で管理する。                                                   |
 | `email_quotes`                               | Gmail の引用チェーンを document と分離して保持する。                                                                       |
 | `reports` / `report_chunks`                  | private/public report metadata、artifact URI、検索用 chunk を保持する。                                                    |
+| `schema_migrations`                          | `pnpm db:migrate` が適用済み migration version を記録する。fresh DB では `init.sql` に取り込み済み version を seed する。  |
 
 ### 3. OAuth connection と data source
 
@@ -64,7 +75,12 @@ DDL 正本:
 ### 6. 変更時の同期ルール
 
 - テーブル、制約、index の正確な定義は `init.sql` を更新する。
-- 既存環境の更新が必要な場合は migration script を追加する。
+- 既存環境の更新が必要な場合は `infra/db/migrations/NNNN_short_description.sql` を追加する。
+- 新規に migration を追加、または既存のものを変更した場合は、`init.sql` にスキーマを反映するとともに、末尾の `schema_migrations` seed にも該当する migration version を追加・更新する。
+- main に入った migration の中身は原則変更せず、後続の番号で forward migration を追加する。
+- 複数 PR が migration を追加する場合は、merge 前に main へ rebase して番号衝突と順序を確認する。
+- destructive change は互換期間、backfill、参照コード切替、削除を分ける。
+- 大量 backfill、AGE graph 更新、embedding / vector 次元変更は通常 schema migration と分け、deploy checklist に再生成・再index・停止要否を残す。
 - この文書には、変更の意図、認可境界、運用上の注意を反映する。
 - DDL をこの文書へ全文コピーしない。コピーが必要なレビューでは `init.sql` へのリンクまたは該当行の抜粋で扱う。
 
