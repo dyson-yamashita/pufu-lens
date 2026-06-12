@@ -75,7 +75,7 @@ jobs:
       - name: E2E test
         run: pnpm test:e2e
         env:
-          DATABASE_URL: postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens
+          PUFU_LENS_ENABLE_FIXTURE_FALLBACK: "true"
           STORAGE_DRIVER: local
           STORAGE_ROOT: ../../infra/volumes/pufu-lens-data
 

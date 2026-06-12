@@ -1,9 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const databaseUrl =
-  process.env.DATABASE_URL ?? 'postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens';
-const storageDriver = process.env.STORAGE_DRIVER ?? 'local';
-const storageRoot = process.env.STORAGE_ROOT ?? '../../infra/volumes/pufu-lens-data';
+const isCi = process.env.CI === 'true';
+const useFixtureFallback = process.env.PUFU_LENS_ENABLE_FIXTURE_FALLBACK === 'true';
+const databaseUrl = process.env.DATABASE_URL
+  ? process.env.DATABASE_URL
+  : useFixtureFallback
+    ? undefined
+    : 'postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens';
+const storageDriver = process.env.STORAGE_DRIVER || 'local';
+const storageRoot = process.env.STORAGE_ROOT || '../../infra/volumes/pufu-lens-data';
 
 export default defineConfig({
   expect: {
@@ -27,11 +32,12 @@ export default defineConfig({
   webServer: {
     command: 'pnpm exec next dev -p 3000',
     env: {
-      DATABASE_URL: databaseUrl,
+      ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
+      PUFU_LENS_ENABLE_FIXTURE_FALLBACK: process.env.PUFU_LENS_ENABLE_FIXTURE_FALLBACK || '',
       STORAGE_DRIVER: storageDriver,
       STORAGE_ROOT: storageRoot,
     },
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !isCi,
     timeout: 30_000,
     url: 'http://localhost:3000/projects',
   },
