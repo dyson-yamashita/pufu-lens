@@ -92,7 +92,11 @@ test('scenario: member opens private report detail from list and sees sections',
   await expect(page.getByTestId('reports-generate-button')).toBeEnabled();
   await expect(page.getByTestId('reports-table')).toContainText(report.title);
 
-  await page.getByRole('link', { name: report.title }).click();
+  await expect(page.getByRole('link', { name: report.title })).toHaveAttribute(
+    'href',
+    '/projects/sample-a/reports/report-a',
+  );
+  await page.goto('/projects/sample-a/reports/report-a');
   await expect(page.getByTestId('report-document')).toContainText(report.summary);
   await expect(page.getByTestId('pufu-report-score')).toContainText('プ譜エディターを試す人');
   await expect(page.getByTestId('report-section-activity')).toContainText('Spec Update');

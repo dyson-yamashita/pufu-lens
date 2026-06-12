@@ -386,6 +386,9 @@ export async function getProjectMembership(
 ): Promise<ProjectMembershipSummary> {
   const sql = getOptionalAdminSql();
   if (!sql) {
+    if (isFixtureFallbackEnabled()) {
+      return fallbackProjectMembership(slug, userId);
+    }
     throw new Error('DATABASE_URL is required for project members.');
   }
 
@@ -476,6 +479,25 @@ export async function getProjectMembership(
     members: memberRows.map(projectMemberFromRow),
     project,
     users: userRows.map(memberFromRow),
+  };
+}
+
+function fallbackProjectMembership(slug: string, userId: string): ProjectMembershipSummary {
+  const project = getFallbackProject(slug);
+  const member: ProjectMemberSummary = {
+    createdAt: '',
+    email: `${userId}@example.test`,
+    id: userId,
+    name: userId,
+    projectRole: 'member',
+    removable: false,
+    role: 'member',
+  };
+  return {
+    canManageMembers: false,
+    members: [member],
+    project,
+    users: [],
   };
 }
 
