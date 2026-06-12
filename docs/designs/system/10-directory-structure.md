@@ -96,10 +96,12 @@ project-root/
 │       └── package.json
 │
 ├── infra/
+│   ├── db/
+│   │   └── migrations/            # 既存 DB 向けの番号付き migration SQL
 │   ├── docker/
 │   │   └── postgres/
 │   │       ├── Dockerfile
-│   │       └── init.sql           # スキーマ + projects ごとの create_graph
+│   │       └── init.sql           # fresh DB 用スキーマ + schema_migrations baseline stamp
 │   ├── volumes/
 │   │   └── pufu-lens-data/        # ローカル運用時の元データ保管場所（gitignore）
 │   └── scheduler/
@@ -108,6 +110,7 @@ project-root/
 │       └── report-weekly.json
 │
 ├── scripts/
+│   ├── db-migrate.ts              # infra/db/migrations を schema_migrations で管理して適用
 │   ├── deploy-mastra.sh
 │   ├── deploy-web.sh
 │   ├── setup-secrets.sh

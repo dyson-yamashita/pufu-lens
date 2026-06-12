@@ -425,3 +425,14 @@ SELECT create_graph('graph_local_dev')
 WHERE NOT EXISTS (
   SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'graph_local_dev'
 );
+
+CREATE TABLE public.schema_migrations (
+  version TEXT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+INSERT INTO public.schema_migrations (version)
+VALUES
+  ('0001_auth_login'),
+  ('0002_project_oauth_connections')
+ON CONFLICT (version) DO NOTHING;

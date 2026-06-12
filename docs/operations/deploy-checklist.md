@@ -50,7 +50,7 @@ API key、DB password は記録しない。
 
 ```bash
 pnpm deploy:dry-run
-pnpm auth:migrate
+pnpm db:migrate
 pnpm report:backfill-project-manifests -- --dry-run
 pnpm infra:check --env staging
 pnpm deploy:smoke --env staging
@@ -69,6 +69,19 @@ pnpm deploy:smoke --env staging
 - PostgreSQL VPC 内接続:
 - public report manifest 解決:
 - secret / token / PII のログ漏れ確認:
+
+## DB Migration 記録
+
+- 実行前 backup:
+- 実行コマンド: `pnpm db:migrate`
+- 適用対象 migration:
+- `schema_migrations` 確認:
+- fresh DB の `init.sql` baseline stamp 更新確認:
+- data backfill 有無:
+- AGE graph 更新有無:
+- vector / embedding 再生成有無:
+- 実行後 smoke:
+- 失敗時の判断:
 
 ## 未完了項目
 
