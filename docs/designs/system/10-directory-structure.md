@@ -97,6 +97,7 @@ project-root/
 │
 ├── infra/
 │   ├── db/
+│   │   ├── baseline/              # schema drift check 用の migration 起点 SQL
 │   │   └── migrations/            # 既存 DB 向けの番号付き migration SQL
 │   ├── docker/
 │   │   └── postgres/
@@ -112,6 +113,7 @@ project-root/
 ├── scripts/
 │   ├── db-migrate.ts              # infra/db/migrations を schema_migrations で管理して適用
 │   ├── create-db-migration.ts     # 次の番号の migration SQL template を生成
+│   ├── check-schema-drift.ts      # init.sql と baseline + migration の schema 差分を検出
 │   ├── deploy-mastra.sh
 │   ├── deploy-web.sh
 │   ├── setup-secrets.sh
