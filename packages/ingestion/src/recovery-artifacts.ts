@@ -240,9 +240,7 @@ export function validateRecoveryArtifactLatestPointer(
   };
 }
 
-function validateRawRecoveryEvent(
-  event: Record<string, unknown>,
-): RawRecoveryArtifactEvent {
+function validateRawRecoveryEvent(event: Record<string, unknown>): RawRecoveryArtifactEvent {
   return {
     artifactKind: 'raw-document',
     artifactVersion: RECOVERY_ARTIFACT_VERSION,
@@ -261,9 +259,7 @@ function validateRawRecoveryEvent(
   };
 }
 
-function validateParsedRecoveryEvent(
-  event: Record<string, unknown>,
-): ParsedRecoveryArtifactEvent {
+function validateParsedRecoveryEvent(event: Record<string, unknown>): ParsedRecoveryArtifactEvent {
   return {
     artifactKind: 'parsed-document',
     artifactVersion: RECOVERY_ARTIFACT_VERSION,
@@ -284,9 +280,7 @@ function validateParsedRecoveryEvent(
   };
 }
 
-function validateGraphRecoveryEvent(
-  event: Record<string, unknown>,
-): GraphRecoveryArtifactEvent {
+function validateGraphRecoveryEvent(event: Record<string, unknown>): GraphRecoveryArtifactEvent {
   return {
     artifactKind: 'graph-relation',
     artifactVersion: RECOVERY_ARTIFACT_VERSION,

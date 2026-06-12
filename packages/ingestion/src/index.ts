@@ -196,13 +196,13 @@ export type {
 } from './recovery-artifacts.js';
 export {
   listRecoveryArtifactEvents,
+  RECOVERY_ARTIFACT_VERSION,
   readRecoveryArtifactEvent,
   readRecoveryArtifactLatestPointer,
   recoveryArtifactEventPrefix,
   recoveryArtifactEventsSha256,
   recoveryArtifactEventUri,
   recoveryArtifactLatestUri,
-  RECOVERY_ARTIFACT_VERSION,
   validateRecoveryArtifactEvent,
   validateRecoveryArtifactLatestPointer,
   writeRecoveryArtifactEvent,

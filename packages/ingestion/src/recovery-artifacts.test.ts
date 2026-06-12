@@ -1,20 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  type GraphRecoveryArtifactEvent,
   listRecoveryArtifactEvents,
+  type ParsedRecoveryArtifactEvent,
+  type RawRecoveryArtifactEvent,
+  RECOVERY_ARTIFACT_VERSION,
+  type RecoveryArtifactLatestPointer,
+  type RecoveryArtifactStorage,
   readRecoveryArtifactEvent,
   readRecoveryArtifactLatestPointer,
   recoveryArtifactEventsSha256,
   recoveryArtifactEventUri,
-  RECOVERY_ARTIFACT_VERSION,
   validateRecoveryArtifactEvent,
   writeRecoveryArtifactEvent,
   writeRecoveryArtifactLatestPointer,
-  type GraphRecoveryArtifactEvent,
-  type ParsedRecoveryArtifactEvent,
-  type RawRecoveryArtifactEvent,
-  type RecoveryArtifactLatestPointer,
-  type RecoveryArtifactStorage,
 } from './recovery-artifacts.js';
 
 const rawHash = 'a'.repeat(64);
@@ -234,7 +234,10 @@ function sampleGraphEvent(
 }
 
 class MemoryRecoveryArtifactStorage implements RecoveryArtifactStorage {
-  readonly metadata = new Map<string, { contentType?: string; metadata?: Record<string, string> }>();
+  readonly metadata = new Map<
+    string,
+    { contentType?: string; metadata?: Record<string, string> }
+  >();
   readonly objects = new Map<string, string>();
 
   async getText(uri: string): Promise<string> {
