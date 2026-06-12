@@ -57,6 +57,11 @@ jobs:
             pufu-lens-postgres-ci \
             psql -v ON_ERROR_STOP=1 -U pufu_lens -d pufu_lens -f /tmp/init.sql
 
+      - name: DB migration check
+        run: pnpm db:migrate --check
+        env:
+          DATABASE_URL: postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens
+
       - name: Format check
         run: pnpm format:check
 
