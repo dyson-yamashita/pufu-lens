@@ -184,6 +184,31 @@ export {
   validateParserContract,
 } from './raw-parse.js';
 export type {
+  GraphRecoveryArtifactEvent,
+  ParsedRecoveryArtifactEvent,
+  RawRecoveryArtifactEvent,
+  RecoveryArtifactBaseEvent,
+  RecoveryArtifactDocumentSnapshot,
+  RecoveryArtifactEvent,
+  RecoveryArtifactKind,
+  RecoveryArtifactLatestPointer,
+  RecoveryArtifactStorage,
+} from './recovery-artifacts.js';
+export {
+  listRecoveryArtifactEvents,
+  readRecoveryArtifactEvent,
+  readRecoveryArtifactLatestPointer,
+  recoveryArtifactEventPrefix,
+  recoveryArtifactEventsSha256,
+  recoveryArtifactEventUri,
+  recoveryArtifactLatestUri,
+  RECOVERY_ARTIFACT_VERSION,
+  validateRecoveryArtifactEvent,
+  validateRecoveryArtifactLatestPointer,
+  writeRecoveryArtifactEvent,
+  writeRecoveryArtifactLatestPointer,
+} from './recovery-artifacts.js';
+export type {
   GeminiTopicExtractionAgentOptions,
   TopicExtractionAgent,
   TopicExtractionInput,
