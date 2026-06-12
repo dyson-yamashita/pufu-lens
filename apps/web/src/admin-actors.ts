@@ -37,6 +37,8 @@ export type ProjectActorDirectory = {
   readonly mergeCandidates: readonly ActorMergeCandidateSummary[];
 };
 
+const maxMergeCandidateGroupSize = 15;
+
 export function buildActorMergeCandidates(
   actors: readonly ProjectActorSummary[],
 ): readonly ActorMergeCandidateSummary[] {
@@ -59,10 +61,11 @@ export function buildActorMergeCandidates(
     if (group.length < 2) {
       continue;
     }
-    for (let first = 0; first < group.length - 1; first += 1) {
-      for (let second = first + 1; second < group.length; second += 1) {
-        const actorA = group[first];
-        const actorB = group[second];
+    const limitedGroup = group.slice(0, maxMergeCandidateGroupSize);
+    for (let first = 0; first < limitedGroup.length - 1; first += 1) {
+      for (let second = first + 1; second < limitedGroup.length; second += 1) {
+        const actorA = limitedGroup[first];
+        const actorB = limitedGroup[second];
         if (!actorA || !actorB) {
           continue;
         }

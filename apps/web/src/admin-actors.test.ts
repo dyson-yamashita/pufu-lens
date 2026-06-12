@@ -63,4 +63,20 @@ assert.equal(candidates[0]?.confidence, 0.4);
 assert.deepEqual(candidates[0]?.reasons, ['display_name が一致']);
 assert.deepEqual(candidates[0]?.evidence, ['github', 'web']);
 
+const commonNameCandidates = buildActorMergeCandidates(
+  Array.from({ length: 20 }, (_, index) => ({
+    ...baseActor,
+    displayName: 'Support',
+    id: `actor-support-${index}`,
+  })),
+);
+
+assert.equal(commonNameCandidates.length, 105);
+assert.equal(commonNameCandidates.at(-1)?.actorA.id, 'actor-support-13');
+assert.equal(commonNameCandidates.at(-1)?.actorB.id, 'actor-support-14');
+assert.equal(
+  commonNameCandidates.some((candidate) => candidate.actorB.id === 'actor-support-15'),
+  false,
+);
+
 console.log('web admin actors tests passed');

@@ -677,7 +677,6 @@ export async function getProjectActorDirectory(
       return { actors: [], mergeCandidates: [] };
     }
 
-    const actorIds = actorRows.map((row) => row.id);
     const aliasRows = (await sql`
       SELECT
         actor_aliases.actor_id::text AS actor_id,
@@ -686,7 +685,9 @@ export async function getProjectActorDirectory(
         actor_aliases.confidence,
         actor_aliases.source
       FROM public.actor_aliases
-      WHERE actor_aliases.actor_id IN ${sql(actorIds)}
+      JOIN public.actors ON actors.id = actor_aliases.actor_id
+      JOIN public.projects ON projects.id = actors.project_id
+      WHERE projects.slug = ${projectSlug}
       ORDER BY actor_aliases.alias_type, actor_aliases.alias_value
     `) as ActorAliasRow[];
     const aliasesByActor = groupAliasesByActor(aliasRows);
