@@ -95,13 +95,13 @@ React / Next.js 側では Cytoscape instance を canvas 領域に閉じ込め、
 
 ## Step 一覧
 
-| step   | status    | 内容                                                                    | 完了条件                                                                                          |
-| ------ | --------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Step 1 | `planned` | Graph Viewer の UI / API contract と固定 query preset registry を固める | system / UI design docs に route、権限、固定 query preset、結果 schema が反映される               |
-| Step 2 | `planned` | server side の fixed query 実行 API と agtype 正規化を実装する          | project membership 認可、graph_name 解決、queryId 検証、limit / timeout、unit / route test が通る |
-| Step 3 | `planned` | project UI に Graph 入口、preset selector、result table を追加する      | project サイドメニューから Graph を開き、query 結果とエラー状態を確認できる                       |
-| Step 4 | `planned` | graph canvas と detail panel を追加する                                 | vertex / edge / path が node / edge として可視化され、重複排除される                              |
-| Step 5 | `planned` | 安全性、監査、E2E、運用手順を整備する                                   | 非 member 拒否、preset bypass 拒否、secret / 本文全文非露出、desktop / mobile e2e が通る          |
+| step   | status      | 内容                                                                    | 完了条件                                                                                          |
+| ------ | ----------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Step 1 | `completed` | Graph Viewer の UI / API contract と固定 query preset registry を固める | system / UI design docs に route、権限、固定 query preset、結果 schema が反映される               |
+| Step 2 | `completed` | server side の fixed query 実行 API と agtype 正規化を実装する          | project membership 認可、graph_name 解決、queryId 検証、limit / timeout、unit / route test が通る |
+| Step 3 | `completed` | project UI に Graph 入口、preset selector、result table を追加する      | project サイドメニューから Graph を開き、query 結果とエラー状態を確認できる                       |
+| Step 4 | `completed` | graph canvas と detail panel を追加する                                 | vertex / edge / path が node / edge として可視化され、重複排除される                              |
+| Step 5 | `completed` | 安全性、監査、E2E、運用手順を整備する                                   | 非 member 拒否、preset bypass 拒否、secret / 本文全文非露出、desktop / mobile e2e が通る          |
 
 ## Step 1: Contract / Policy
 
