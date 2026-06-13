@@ -88,6 +88,13 @@ pnpm deploy:smoke --env staging
 - data backfill 有無:
 - AGE graph 更新有無:
 - vector / embedding 再生成有無:
+- heavy migration plan:
+- read-only / maintenance window:
+- batch script dry-run:
+- batch script command:
+- progress query:
+- retry / resume 条件:
+- graph / embedding smoke:
 - 実行後 smoke:
 - 失敗時の判断: restore / forward fix / 再実行 / deploy 停止
 - 記録先: PR、Issue、release note、または環境別運用ログの URL

@@ -79,11 +79,54 @@ DATABASE_URL=postgres://... pnpm db:schema-drift
 
 既存の `0002_project_oauth_connections.sql` は、temporary table、backfill、検証 `DO` block を 1 transaction にまとめた事例である。新しい data migration では、この事例を参照しつつ、対象件数が増える場合は batch 化や read-only window を検討する。
 
+次のいずれかに当てはまる場合は、通常 migration SQL だけで完結させない。
+
+- 対象行数が環境ごとに大きく変わり、単一 transaction の実行時間を事前に見積もれない。
+- 外部 API、Object Storage、embedding provider、AGE graph 更新を呼び出す。
+- retry / resume / progress 確認が必要である。
+- lock が user-facing workflow、collection、ingestion、report generation に影響する。
+
+この場合は、schema migration、batch script、アプリコード切替、cleanup migration を分ける。batch script は idempotent にし、`--dry-run`、`--limit`、対象 project / data source の絞り込み、進捗確認 query、再実行時の skip 条件を持たせる。
+
 ## AGE / Vector / Embedding
 
-- AGE graph の node / edge label、property、index を変更する場合は、graph ごとの更新対象と再実行手順を明記する。
-- `vector(1536)` の次元や embedding model を変更する場合は、既存 embedding の再生成範囲、検索互換性、切替順序を明記する。
-- 再生成や再index が必要な変更は、`docs/operations/deploy-checklist.md` の DB Migration 記録へ実施結果を残す。
+AGE graph、vector、embedding の変更は、schema とデータ再生成の適用順を分けて設計する。
+
+### Vector / Embedding
+
+- `vector(1536)` の次元を変える場合は、既存 column を直接型変更しない。新しい column / table を追加し、アプリコードで dual read / dual write または read fallback できる期間を作る。
+- embedding model を変える場合は、`embedding_model` に新旧 model 名が混在する期間を許容し、検索 query が対象 model / dimension を明示できるようにする。
+- 再生成は migration SQL ではなく batch script で行う。対象件数、project、document、chunk 範囲、provider、rate limit、失敗時 resume 方法を deploy checklist に記録する。
+- HNSW index の再作成や大規模 rebuild が必要な場合は、staging で所要時間を測り、production では read-only window または degraded search window の要否を判断する。
+- cleanup は、全対象の再生成と smoke test 後に別 migration で旧 column / index を削除する。
+
+適用順の基本形:
+
+1. 新 schema を追加する migration を適用する。
+2. アプリコードを dual write / fallback 可能な状態で deploy する。
+3. `--dry-run` で対象件数と provider 設定を確認する。
+4. batch script で embedding を再生成し、進捗 query と error log を確認する。
+5. search / report / chat smoke test を行う。
+6. 後続 PR で旧 schema を削除する。
+
+### AGE Graph
+
+- graph label、edge type、property の変更は project graph ごとに適用される。対象 project と graph name の一覧、再実行対象 document、再index 要否を明記する。
+- AGE graph の再構築は migration transaction に入れない。`pnpm ingest:index` または専用 batch script で project / limit を絞って再実行する。
+- property rename / edge rename は、新旧 property / edge を一時的に併存させ、reader が両方を読める期間を作る。
+- graph 全削除・再作成が必要な場合は、事前 backup、read-only / maintenance window、復旧手順、再構築完了判定を deploy checklist に残す。
+- graph 更新中に検索や可視化が不完全になる場合は、UI / API の degraded behavior と smoke test を明記する。
+
+### 失敗時判断
+
+| 状況                                 | 標準判断                                                  |
+| ------------------------------------ | --------------------------------------------------------- |
+| schema migration 前に検出した不備    | deploy 停止。migration / docs / checklist を修正する。    |
+| schema migration 適用後の軽微な不備  | forward fix migration を優先する。                        |
+| batch script の途中失敗              | idempotent な再実行または `--limit` 付き resume を行う。  |
+| データ破損、広範な誤更新             | backup restore を検討し、原因を修正して再実行する。       |
+| 外部 API rate limit / 一時障害       | deploy は停止または read-only 継続し、時間を置いて再開。  |
+| graph / embedding の検索品質劣化のみ | degraded window として扱い、forward regeneration を行う。 |
 
 ## Rollback
 

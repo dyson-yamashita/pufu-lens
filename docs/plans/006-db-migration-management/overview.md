@@ -66,7 +66,7 @@ drift check の比較起点は「空 DB」ではなく「baseline 適用済み D
 | Step 3 | `completed` | migration 作成・レビュー手順を追加する                                                        | Issue #123。新規 migration generator、PR checklist、destructive change 手順が docs に入る                  |
 | Step 4 | `completed` | CI / deploy 前検証に migration check を組み込む                                               | Issue #127。`pnpm db:migrate --check` が CI と deploy dry-run で実行される                                 |
 | Step 5 | `completed` | 既存 DB と fresh DB の schema drift 検出を追加する                                            | Issue #130。`init.sql` と baseline + migration の schema 比較 script が実行できる                          |
-| Step 6 | `planned`   | AGE graph / vector / backfill を含む重い変更の運用を定義する                                  | 再index、embedding 再生成、graph 更新、rollback 方針が deploy checklist に残る                             |
+| Step 6 | `completed` | AGE graph / vector / backfill を含む重い変更の運用を定義する                                  | Issue #133。再index、embedding 再生成、graph 更新、rollback 方針が deploy checklist に残る                 |
 
 ## Step 1: 現状監査とルール反映
 
@@ -172,10 +172,10 @@ drift check の比較起点は「空 DB」ではなく「baseline 適用済み D
 
 ### 実装範囲
 
-- `vector(1536)` の次元変更、embedding model 変更、再生成が必要な migration の手順を定義する。
-- AGE graph の node / edge label 追加、property backfill、再index の手順を定義する。
-- large table backfill は batch script と schema migration を分ける方針を明記する。
-- downtime 要否、read-only window、retry、進捗確認 query を deploy checklist に残せるようにする。
+- `docs/operations/db-migrations.md` に、large table backfill、vector / embedding、AGE graph の重い変更を通常 migration と分ける基準を追加する。
+- `docs/operations/chunk-embedding.md` に、embedding dimension / model 変更時の dual schema、batch regeneration、smoke test の記録項目を追加する。
+- `docs/operations/graph-relations.md` に、AGE graph schema 変更時の project 単位再構築、reader 互換、smoke test の記録項目を追加する。
+- `docs/operations/deploy-checklist.md` に、read-only window、batch dry-run、progress query、retry / resume、graph / embedding smoke の記録欄を追加する。
 
 ### 受け入れ条件
 
