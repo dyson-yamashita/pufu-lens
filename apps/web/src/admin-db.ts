@@ -25,6 +25,7 @@ import {
   type SourceType,
 } from './admin-data';
 import { getOptionalAdminSql } from './admin-sql';
+import { lookupProjectMemberAccess } from './authz.ts';
 import { isFixtureFallbackEnabled } from './runtime-guards';
 
 type ProjectRow = {
@@ -429,28 +430,11 @@ export async function getProjectMembership(
     throw new Error('DATABASE_URL is required for project members.');
   }
 
-  const accessRows = (await sql`
-    SELECT
-      p.id::text AS project_id,
-      app_user.role AS app_role,
-      pm.role AS project_role
-    FROM public.projects p
-    JOIN public.users app_user
-      ON app_user.id = ${userId}
-    LEFT JOIN public.project_members pm
-      ON pm.project_id = p.id
-     AND pm.user_id = app_user.id
-    WHERE p.slug = ${slug}
-      AND (app_user.role = 'admin' OR pm.user_id IS NOT NULL)
-  `) as Array<{
-    app_role: AppMemberRole;
-    project_id: string;
-    project_role: ProjectMemberRole | null;
-  }>;
-  const access = accessRows[0];
+  const access = await lookupProjectMemberAccess(sql, { projectSlug: slug, userId });
   if (!access) {
     throw new Error(`Member access denied for project slug: ${slug}`);
   }
+  const canManageMembers = access.appRole === 'admin' || access.projectRole === 'admin';
 
   const project = await getAdminProject(slug);
   const [memberRows, userRows] = await Promise.all([
@@ -467,7 +451,7 @@ export async function getProjectMembership(
         FROM public.project_members
         JOIN public.users
           ON users.id = project_members.user_id
-        WHERE project_members.project_id = ${access.project_id}
+        WHERE project_members.project_id = ${access.id}
       ),
       global_admin_rows AS (
         SELECT
@@ -483,7 +467,7 @@ export async function getProjectMembership(
           AND NOT EXISTS (
             SELECT 1
             FROM public.project_members
-            WHERE project_members.project_id = ${access.project_id}
+            WHERE project_members.project_id = ${access.id}
               AND project_members.user_id = users.id
           )
       )
@@ -502,7 +486,7 @@ export async function getProjectMembership(
       ) members
       ORDER BY email
     ` as Promise<ProjectMemberRow[]>,
-    access.app_role === 'admin' || access.project_role === 'admin'
+    canManageMembers
       ? (sql`
           SELECT id::text, email, name, role, created_at
           FROM public.users
@@ -512,7 +496,7 @@ export async function getProjectMembership(
   ]);
 
   return {
-    canManageMembers: access.app_role === 'admin' || access.project_role === 'admin',
+    canManageMembers,
     members: memberRows.map(projectMemberFromRow),
     project,
     users: userRows.map(memberFromRow),
