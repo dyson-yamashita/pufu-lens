@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@mastra/core": "^1.40.0",
+    "@pufu-lens/storage": "workspace:*",
+    "@pufu-lens/web": "workspace:*",
     "zod": "^4.4.3"
   },
   "devDependencies": {

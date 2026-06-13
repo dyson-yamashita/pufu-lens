@@ -8,12 +8,5 @@
     "rewriteRelativeImportExtensions": true,
     "rootDir": "../.."
   },
-  "include": [
-    "src/**/*.ts",
-    "../web/src/authz.ts",
-    "../web/src/chat.ts",
-    "../web/src/pufu-score.ts",
-    "../web/src/report.ts",
-    "../../packages/storage/src/**/*.ts"
-  ]
+  "include": ["src/**/*.ts", "../../packages/storage/src/**/*.ts"]
 }

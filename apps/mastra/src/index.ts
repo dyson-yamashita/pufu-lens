@@ -2,11 +2,9 @@ import { Agent } from '@mastra/core/agent';
 import { Mastra } from '@mastra/core/mastra';
 import { createTool } from '@mastra/core/tools';
 import { createStep, createWorkflow } from '@mastra/core/workflows';
-import { z } from 'zod';
-import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
-import type { ChatRepository } from '../../web/src/chat.ts';
-import { publicChatSources } from '../../web/src/chat.ts';
-import { createPufuScoreFromReport } from '../../web/src/pufu-score.ts';
+import type { ChatRepository } from '@pufu-lens/web/chat';
+import { publicChatSources } from '@pufu-lens/web/chat';
+import { createPufuScoreFromReport } from '@pufu-lens/web/pufu-score';
 import {
   createExtractiveReportProvider,
   type PublicContextBundleV1,
@@ -16,7 +14,9 @@ import {
   type ReportRepository,
   type RunGenerateReportOptions,
   runGenerateReport,
-} from '../../web/src/report.ts';
+} from '@pufu-lens/web/report';
+import { z } from 'zod';
+import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 
 export const mastraAppName = 'pufu-lens-mastra';
 

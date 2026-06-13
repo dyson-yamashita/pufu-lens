@@ -3,6 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./chat": "./src/chat.ts",
+    "./pufu-score": "./src/pufu-score.ts",
+    "./report": "./src/report.ts"
+  },
   "scripts": {
     "build": "next build",
     "dev": "DATABASE_URL=${DATABASE_URL:-postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens} STORAGE_DRIVER=${STORAGE_DRIVER:-local} STORAGE_ROOT=${STORAGE_ROOT:-../../infra/volumes/pufu-lens-data} next dev",
