@@ -18,6 +18,7 @@ import {
 } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 import { ensureIngestionQueueLeaseColumn } from './ingestion-queue-lease.ts';
+import { requiredEnv } from './lib/cli.ts';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
 const DEFAULT_PARSE_LEASE_SECONDS = 15 * 60;
@@ -423,14 +424,6 @@ function createLocalObjectStorageFromEnv(
     throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
   }
   return new LocalFsObjectStorage(root);
-}
-
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required.`);
-  }
-  return value;
 }
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {

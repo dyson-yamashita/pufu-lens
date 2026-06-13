@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import postgres from 'postgres';
+import { requiredEnv, validateGraphName } from './lib/cli.ts';
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
@@ -63,14 +64,6 @@ function readOptionValue(argv: string[], index: number, optionName: string): str
   return value;
 }
 
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required.`);
-  }
-  return value;
-}
-
 function requiredOption(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(`${name} is required.`);
@@ -89,13 +82,6 @@ function sqlString(value: string): string {
 function dollarQuote(value: string): string {
   const tag = `$pufu_${createHash('sha256').update(value).digest('hex')}$`;
   return `${tag}${value}${tag}`;
-}
-
-function validateGraphName(graphName: string): string {
-  if (!/^graph_[a-z0-9_]+$/.test(graphName) || graphName.length > 63) {
-    throw new Error(`Invalid AGE graph name: ${graphName}`);
-  }
-  return graphName;
 }
 
 main().catch((error: unknown): void => {

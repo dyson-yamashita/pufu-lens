@@ -17,6 +17,7 @@ import {
   DEFAULT_GEMINI_EMBEDDING_MODEL,
 } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
+import { requiredEnv } from './lib/cli.ts';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 
@@ -353,14 +354,6 @@ function readPositiveInteger(value: string, name: string): number {
     throw new Error(`Invalid ${name} value: ${value}`);
   }
   return parsed;
-}
-
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required.`);
-  }
-  return value;
 }
 
 function requiredOption(value: string | undefined, name: string): string {

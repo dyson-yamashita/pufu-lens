@@ -4,6 +4,7 @@ import {
   createGeminiEmbeddingProvider,
   DEFAULT_GEMINI_EMBEDDING_MODEL,
 } from '../packages/ingestion/dist/index.js';
+import { requiredEnv } from './lib/cli.ts';
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
@@ -58,14 +59,6 @@ function readPositiveInteger(value: string, name: string): number {
     throw new Error(`Invalid ${name} value: ${value}`);
   }
   return parsed;
-}
-
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required.`);
-  }
-  return value;
 }
 
 main().catch((error: unknown): void => {

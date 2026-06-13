@@ -13,6 +13,7 @@ import type {
 } from '../packages/ingestion/dist/index.js';
 import { storeGraphRelations } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
+import { requiredEnv, validateGraphName } from './lib/cli.ts';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 
@@ -412,14 +413,6 @@ function readPositiveInteger(value: string, name: string): number {
   return parsed;
 }
 
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required.`);
-  }
-  return value;
-}
-
 function requiredGraphName(value: string | undefined): string {
   if (!value) {
     throw new Error('Graph name is not initialized.');
@@ -440,13 +433,6 @@ function singleJson<T>(rows: T[]): T | undefined {
 
 function sqlString(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
-}
-
-function validateGraphName(graphName: string): string {
-  if (!/^graph_[a-z0-9_]+$/.test(graphName) || graphName.length > 63) {
-    throw new Error(`Invalid AGE graph name: ${graphName}`);
-  }
-  return graphName;
 }
 
 function validateLabel(label: string): string {
