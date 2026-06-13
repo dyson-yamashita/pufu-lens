@@ -41,4 +41,7 @@ test('validateGraphName rejects invalid AGE graph names', () => {
   assert.throws(() => validateGraphName('project_123'), /Invalid AGE graph name/);
   assert.throws(() => validateGraphName('graph_Project'), /Invalid AGE graph name/);
   assert.throws(() => validateGraphName(`graph_${'a'.repeat(60)}`), /Invalid AGE graph name/);
+  assert.throws(() => validateGraphName(null), /Invalid AGE graph name/);
+  assert.throws(() => validateGraphName(undefined), /Invalid AGE graph name/);
+  assert.throws(() => validateGraphName(''), /Invalid AGE graph name/);
 });

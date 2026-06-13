@@ -6,8 +6,12 @@ export function requiredEnv(name: string): string {
   return value;
 }
 
-export function validateGraphName(graphName: string): string {
-  if (!/^graph_[a-z0-9_]+$/.test(graphName) || graphName.length > 63) {
+export function validateGraphName(graphName: unknown): string {
+  if (
+    typeof graphName !== 'string' ||
+    !/^graph_[a-z0-9_]+$/.test(graphName) ||
+    graphName.length > 63
+  ) {
     throw new Error(`Invalid AGE graph name: ${graphName}`);
   }
   return graphName;
