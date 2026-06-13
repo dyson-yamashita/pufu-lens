@@ -36,6 +36,12 @@ importers:
       '@mastra/core':
         specifier: ^1.40.0
         version: 1.40.0(express@5.2.1)(zod@4.4.3)
+      '@pufu-lens/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
+      '@pufu-lens/web':
+        specifier: workspace:*
+        version: link:../web
       zod:
         specifier: ^4.4.3
         version: 4.4.3

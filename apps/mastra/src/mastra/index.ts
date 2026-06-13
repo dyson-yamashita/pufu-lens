@@ -1,14 +1,14 @@
 import { Mastra } from '@mastra/core/mastra';
-import postgres from 'postgres';
-import type { ObjectStorage } from '../../../../packages/storage/src/object-storage.ts';
-import type { ChatRepository } from '../../../web/src/chat.ts';
-import { createPostgresChatRepository } from '../../../web/src/chat.ts';
-import type { ReportRepository } from '../../../web/src/report.ts';
+import type { ChatRepository } from '@pufu-lens/web/chat';
+import { createPostgresChatRepository } from '@pufu-lens/web/chat';
+import type { ReportRepository } from '@pufu-lens/web/report';
 import {
   createExtractiveReportProvider,
   createPostgresReportRepository,
   createReportStorageFromEnv,
-} from '../../../web/src/report.ts';
+} from '@pufu-lens/web/report';
+import postgres from 'postgres';
+import type { ObjectStorage } from '../../../../packages/storage/src/object-storage.ts';
 import {
   type CrossProjectInvestigationRepository,
   createCrossProjectResearchAgent,
