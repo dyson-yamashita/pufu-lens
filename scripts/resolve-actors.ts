@@ -11,6 +11,7 @@ import type {
 } from '../packages/ingestion/dist/index.js';
 import { resolveActors } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
+import { requiredEnv } from './lib/cli.ts';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 
@@ -274,14 +275,6 @@ function readOptionValue(argv: string[], index: number, optionName: string): str
   const value = argv[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
-  }
-  return value;
-}
-
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required.`);
   }
   return value;
 }

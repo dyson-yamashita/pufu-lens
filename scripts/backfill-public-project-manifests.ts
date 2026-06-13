@@ -1,5 +1,6 @@
 import postgres from 'postgres';
 import { createReportStorageFromEnv, writePublicProjectManifest } from '../apps/web/src/report.ts';
+import { requiredEnv } from './lib/cli.ts';
 
 type PublicProjectRow = {
   last_published_at: Date | string | null;
@@ -73,14 +74,6 @@ function formatPublishedAt(value: Date | string | null): string {
     return new Date(value).toISOString();
   }
   return new Date().toISOString();
-}
-
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required.`);
-  }
-  return value;
 }
 
 main().catch((error: unknown): void => {

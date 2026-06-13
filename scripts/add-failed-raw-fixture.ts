@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import postgres from 'postgres';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
+import { requiredEnv } from './lib/cli.ts';
 
 interface Args {
   dryRun: boolean;
@@ -140,14 +141,6 @@ function createLocalObjectStorageFromEnv(
     throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
   }
   return new LocalFsObjectStorage(root);
-}
-
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required.`);
-  }
-  return value;
 }
 
 function sanitizeRaw(raw: string): string {

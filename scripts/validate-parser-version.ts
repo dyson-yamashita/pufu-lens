@@ -7,6 +7,7 @@ import {
   validateParserContract,
 } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
+import { requiredEnv } from './lib/cli.ts';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
 
@@ -310,14 +311,6 @@ function readPositiveInteger(value: string, name: string): number {
     throw new Error(`Invalid ${name} value: ${value}`);
   }
   return parsed;
-}
-
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required.`);
-  }
-  return value;
 }
 
 function requiredOption<T extends string>(value: T | undefined, name: string): T {

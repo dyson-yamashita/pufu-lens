@@ -7,6 +7,7 @@ import {
   reportNowFromEnv,
   revokePublicReport,
 } from '../apps/web/src/report.ts';
+import { requiredEnv } from './lib/cli.ts';
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
@@ -93,14 +94,6 @@ function readOptionValue(argv: readonly string[], index: number, optionName: str
   const value = argv[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
-  }
-  return value;
-}
-
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required.`);
   }
   return value;
 }

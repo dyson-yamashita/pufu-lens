@@ -13,6 +13,7 @@ import type {
   SourceType,
 } from '../packages/ingestion/dist/index.js';
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
+import { requiredEnv } from './lib/cli.ts';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -333,15 +334,6 @@ function readOptionValue(args: string[], index: number, optionName: string): str
   const value = args[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
-  }
-
-  return value;
-}
-
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required.`);
   }
 
   return value;
