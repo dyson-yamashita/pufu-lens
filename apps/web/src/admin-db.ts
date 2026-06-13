@@ -25,7 +25,7 @@ import {
   type SourceType,
 } from './admin-data';
 import { getOptionalAdminSql } from './admin-sql';
-import { lookupProjectMemberAccess } from './authz.ts';
+import { lookupProjectMemberAccess } from './authz';
 import { isFixtureFallbackEnabled } from './runtime-guards';
 
 type ProjectRow = {
