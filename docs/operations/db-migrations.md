@@ -107,7 +107,7 @@ AGE graph、vector、embedding の変更は、schema とデータ再生成の適
 3. `--dry-run` で対象件数と provider 設定を確認する。
 4. batch script で embedding を再生成し、進捗 query と error log を確認する。
 5. search / report / chat smoke test を行う。
-6. 後続 PR で旧 schema を削除する。
+6. アプリコードから dual write / fallback 処理を削除し、後続 PR で旧 schema を削除する。
 
 ### AGE Graph
 

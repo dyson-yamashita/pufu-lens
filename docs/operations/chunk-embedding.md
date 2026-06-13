@@ -57,11 +57,9 @@ pnpm embedding:check --provider gemini --dimensions 1536
 
 `vector(1536)` の次元や embedding model を変更する場合は、通常 migration だけで既存 column を直接変更しない。`docs/operations/db-migrations.md` の Vector / Embedding 方針に従い、新旧 schema の併存、batch regeneration、search smoke test、cleanup migration を分ける。
 
-deploy checklist には次を残す。
+deploy checklist の「DB Migration 記録」欄には、以下のように対応付けて記録を残す。
 
-- 対象 embedding model / dimension
-- 対象 project / document / chunk 件数
-- dry-run 結果
-- rate limit / retry / resume 条件
-- HNSW index rebuild 要否と所要時間
-- search / report / chat smoke test 結果
+- heavy migration plan: 対象 embedding model / dimension、対象 project / document / chunk 件数、HNSW index rebuild 要否と所要時間
+- batch script dry-run: dry-run 結果
+- retry / resume 条件: rate limit / retry / resume 条件
+- graph / embedding smoke: search / report / chat smoke test 結果
