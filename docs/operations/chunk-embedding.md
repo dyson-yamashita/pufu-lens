@@ -60,6 +60,9 @@ pnpm embedding:check --provider gemini --dimensions 1536
 deploy checklist の「DB Migration 記録」欄には、以下のように対応付けて記録を残す。
 
 - heavy migration plan: 対象 embedding model / dimension、対象 project / document / chunk 件数、HNSW index rebuild 要否と所要時間
+- read-only / maintenance window: read-only / maintenance window 要否（HNSW index rebuild 時など）
 - batch script dry-run: dry-run 結果
+- batch script command: 実行する `pnpm ingest:chunk` コマンド
+- progress query: 進捗確認用の SQL（`document_chunks` の件数確認など）
 - retry / resume 条件: rate limit / retry / resume 条件
 - graph / embedding smoke: search / report / chat smoke test 結果
