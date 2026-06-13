@@ -1,5 +1,11 @@
 import type postgres from 'postgres';
 import {
+  buildActorMergeCandidates,
+  type ProjectActorAliasSummary,
+  type ProjectActorDirectory,
+  type ProjectActorSummary,
+} from './admin-actors';
+import {
   availabilityFromConnections,
   type ConnectionProvider,
   type DataSourceSummary,
@@ -124,6 +130,25 @@ type ParserProfileRow = {
   review_version_id: string | null;
   project_id: string;
   source_type: SourceType;
+};
+
+type ActorRow = {
+  actor_type: string;
+  created_at: Date | string;
+  display_name: string;
+  graph_node_id: string;
+  id: string;
+  primary_email: string | null;
+  primary_login: string | null;
+  updated_at: Date | string;
+};
+
+type ActorAliasRow = {
+  actor_id: string;
+  alias_type: string;
+  alias_value: string;
+  confidence: number | string;
+  source: string | null;
 };
 
 type AdminConfig = Record<string, unknown> & {
@@ -626,6 +651,202 @@ export async function getAdminProject(slug: string): Promise<ProjectSummary> {
     }
     throw error;
   }
+}
+
+export async function getProjectActorDirectory(
+  projectSlug: string,
+): Promise<ProjectActorDirectory> {
+  return withOptionalSql(async (sql) => {
+    const actorRows = (await sql`
+      SELECT
+        actors.id::text AS id,
+        actors.actor_type,
+        actors.display_name,
+        actors.primary_email,
+        actors.primary_login,
+        actors.graph_node_id,
+        actors.created_at,
+        actors.updated_at
+      FROM public.actors
+      JOIN public.projects ON projects.id = actors.project_id
+      WHERE projects.slug = ${projectSlug}
+      ORDER BY lower(actors.display_name), actors.created_at
+    `) as ActorRow[];
+
+    if (actorRows.length === 0) {
+      return { actors: [], mergeCandidates: [] };
+    }
+
+    const aliasRows = (await sql`
+      SELECT
+        actor_aliases.actor_id::text AS actor_id,
+        actor_aliases.alias_type,
+        actor_aliases.alias_value,
+        actor_aliases.confidence,
+        actor_aliases.source
+      FROM public.actor_aliases
+      JOIN public.actors ON actors.id = actor_aliases.actor_id
+      JOIN public.projects ON projects.id = actors.project_id
+      WHERE projects.slug = ${projectSlug}
+      ORDER BY actor_aliases.alias_type, actor_aliases.alias_value
+    `) as ActorAliasRow[];
+    const aliasesByActor = groupAliasesByActor(aliasRows);
+    const actors = actorRows.map((row) => actorFromRow(row, aliasesByActor.get(row.id) ?? []));
+
+    return {
+      actors,
+      mergeCandidates: buildActorMergeCandidates(actors),
+    };
+  }, fallbackActorDirectory(projectSlug));
+}
+
+function groupAliasesByActor(
+  rows: readonly ActorAliasRow[],
+): ReadonlyMap<string, readonly ProjectActorAliasSummary[]> {
+  const aliasesByActor = new Map<string, ProjectActorAliasSummary[]>();
+  for (const row of rows) {
+    const alias = aliasFromRow(row);
+    const aliases = aliasesByActor.get(row.actor_id);
+    if (aliases) {
+      aliases.push(alias);
+      continue;
+    }
+    aliasesByActor.set(row.actor_id, [alias]);
+  }
+  return aliasesByActor;
+}
+
+function actorFromRow(
+  row: ActorRow,
+  aliases: readonly ProjectActorAliasSummary[],
+): ProjectActorSummary {
+  const strongAliasCount = aliases.filter((alias) => alias.strength === 'strong').length;
+  const weakAliasCount = aliases.length - strongAliasCount;
+  return {
+    actorType: row.actor_type,
+    aliases,
+    createdAt: formatDate(row.created_at),
+    displayName: row.display_name,
+    graphNodeId: row.graph_node_id,
+    id: row.id,
+    primaryEmail: row.primary_email ?? 'none',
+    primaryLogin: row.primary_login ?? 'none',
+    sourceTypes: sourceTypesFromAliases(aliases),
+    strongAliasCount,
+    updatedAt: formatDate(row.updated_at),
+    weakAliasCount,
+  };
+}
+
+function aliasFromRow(row: ActorAliasRow): ProjectActorAliasSummary {
+  return {
+    aliasType: row.alias_type,
+    aliasValue: row.alias_value,
+    confidence: Number(row.confidence),
+    source: row.source ?? 'unknown',
+    strength: isStrongActorAlias(row.alias_type) ? 'strong' : 'weak',
+  };
+}
+
+function fallbackActorDirectory(projectSlug: string): ProjectActorDirectory {
+  const actors = projectSlug === 'sample-a' ? sampleAActors() : [];
+  return {
+    actors,
+    mergeCandidates: buildActorMergeCandidates(actors),
+  };
+}
+
+function sampleAActors(): readonly ProjectActorSummary[] {
+  return [
+    sampleActor({
+      aliases: [
+        {
+          aliasType: 'display_name',
+          aliasValue: '前田考歩',
+          confidence: 0.4,
+          source: 'web:author',
+          strength: 'weak',
+        },
+      ],
+      displayName: '前田考歩',
+      graphNodeId: 'actor:unresolved:https%3A%2F%2Fnote.com%2Fkodomonogatari:author:maeda',
+      id: 'sample-a-actor-web-maeda',
+      sourceTypes: ['web'],
+      weakAliasCount: 1,
+    }),
+    sampleActor({
+      aliases: [
+        {
+          aliasType: 'github_login',
+          aliasValue: 'kodomonogatari',
+          confidence: 1,
+          source: 'github:author',
+          strength: 'strong',
+        },
+      ],
+      displayName: '前田考歩',
+      graphNodeId: 'actor:github_login:kodomonogatari',
+      id: 'sample-a-actor-github-maeda',
+      primaryLogin: 'kodomonogatari',
+      sourceTypes: ['github'],
+      strongAliasCount: 1,
+    }),
+    sampleActor({
+      aliases: [
+        {
+          aliasType: 'email',
+          aliasValue: 'support@example.com',
+          confidence: 1,
+          source: 'gmail:sender',
+          strength: 'strong',
+        },
+      ],
+      displayName: 'Support Team',
+      graphNodeId: 'actor:email:support%40example.com',
+      id: 'sample-a-actor-support',
+      primaryEmail: 'support@example.com',
+      sourceTypes: ['gmail'],
+      strongAliasCount: 1,
+    }),
+  ];
+}
+
+function sampleActor(
+  actor: Pick<ProjectActorSummary, 'displayName' | 'graphNodeId' | 'id'> &
+    Partial<ProjectActorSummary>,
+): ProjectActorSummary {
+  const aliases = actor.aliases ?? [];
+  return {
+    actorType: actor.actorType ?? 'person',
+    aliases,
+    createdAt: actor.createdAt ?? '2026-06-13 08:00',
+    displayName: actor.displayName,
+    graphNodeId: actor.graphNodeId,
+    id: actor.id,
+    primaryEmail: actor.primaryEmail ?? 'none',
+    primaryLogin: actor.primaryLogin ?? 'none',
+    sourceTypes: actor.sourceTypes ?? sourceTypesFromAliases(aliases),
+    strongAliasCount:
+      actor.strongAliasCount ?? aliases.filter((alias) => alias.strength === 'strong').length,
+    updatedAt: actor.updatedAt ?? '2026-06-13 08:00',
+    weakAliasCount:
+      actor.weakAliasCount ?? aliases.filter((alias) => alias.strength === 'weak').length,
+  };
+}
+
+function sourceTypesFromAliases(aliases: readonly ProjectActorAliasSummary[]): readonly string[] {
+  const sourceTypes = new Set<string>();
+  for (const alias of aliases) {
+    const sourceType = alias.source.split(':')[0]?.trim();
+    if (sourceType && sourceType !== 'unknown') {
+      sourceTypes.add(sourceType);
+    }
+  }
+  return Array.from(sourceTypes).sort();
+}
+
+function isStrongActorAlias(aliasType: string): boolean {
+  return aliasType === 'email' || aliasType === 'github_login';
 }
 
 function memberFromRow(row: AppMemberRow): AppMemberSummary {

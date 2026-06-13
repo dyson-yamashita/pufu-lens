@@ -1,6 +1,7 @@
 import {
   Activity,
   ArrowLeft,
+  Contact,
   Database,
   FileSearch,
   FileText,
@@ -57,6 +58,7 @@ export async function AppShell({
   readonly active?:
     | 'chat'
     | 'projects'
+    | 'actors'
     | 'data-sources'
     | 'graph'
     | 'ingestion'
@@ -141,6 +143,15 @@ export async function AppShell({
               >
                 <Users size={18} />
                 Members
+              </Link>
+              <Link
+                aria-current={active === 'actors' ? 'page' : undefined}
+                className={navClass(active === 'actors')}
+                href={`/projects/${projectSlug}/admin/actors`}
+                data-testid="global-nav-actors"
+              >
+                <Contact size={18} />
+                Actors
               </Link>
               <Link
                 aria-current={active === 'data-sources' ? 'page' : undefined}
