@@ -15,14 +15,14 @@
 
 ## Plan 一覧
 
-| plan                                                       | status      | 更新日     | メモ                                                                                                                 |
-| ---------------------------------------------------------- | ----------- | ---------- | -------------------------------------------------------------------------------------------------------------------- |
-| `docs/plans/001-step-by-step-build-plan/overview.md`       | `blocked`   | 2026-06-13 | Step 10 は Drive / Gmail 実 API smoke 待ち。Step 14 は local dry-run 完了後、staging GCP identifier / 権限設定待ち。 |
-| `docs/plans/002-account-login-public-projects/overview.md` | `completed` | 2026-06-11 | Auth.js ログイン基盤、public project / public report / public chat の入口実装は merge 済み。                         |
-| `docs/plans/003-admin-age-viewer/overview.md`              | `completed` | 2026-06-11 | Issue #80 の Graph Viewer 実装は merge 済み。                                                                        |
-| `docs/plans/004-project-settings-connections/overview.md`  | `active`    | 2026-06-13 | Project Settings / Connections は Step 1-5 完了。Step 6 / 7 の server enforcement と失効・scope 不足運用が残作業。   |
-| `docs/plans/005-storage-recovery-artifacts/overview.md`    | `active`    | 2026-06-13 | Issue #117 / PR #118 で Step 1 完了。Step 2 以降の artifact 統合、reconcile、restore は未着手。                      |
-| `docs/plans/006-db-migration-management/overview.md`       | `completed` | 2026-06-13 | Issue #119 / #121 / #123 / #127 / #130 / #133 で DB migration 運用、検証、drift 検出、重い DB 変更方針を整備済み。   |
+| plan                                                       | status      | 更新日     | メモ                                                                                                                   |
+| ---------------------------------------------------------- | ----------- | ---------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `docs/plans/001-step-by-step-build-plan/overview.md`       | `blocked`   | 2026-06-13 | Step 10 は Drive / Gmail 実 API smoke 待ち。Step 14 は local dry-run 完了済み、staging GCP identifier / 権限設定待ち。 |
+| `docs/plans/002-account-login-public-projects/overview.md` | `completed` | 2026-06-11 | Auth.js ログイン基盤、public project / public report / public chat の入口実装は merge 済み。                           |
+| `docs/plans/003-admin-age-viewer/overview.md`              | `completed` | 2026-06-11 | Issue #80 の Graph Viewer 実装は merge 済み。                                                                          |
+| `docs/plans/004-project-settings-connections/overview.md`  | `active`    | 2026-06-13 | Project Settings / Connections は Step 1-5 完了。Step 6 / 7 の server enforcement と失効・scope 不足運用が残作業。     |
+| `docs/plans/005-storage-recovery-artifacts/overview.md`    | `active`    | 2026-06-13 | Issue #117 / PR #118 で Step 1 完了。Step 2 以降の artifact 統合、reconcile、restore は未着手。                        |
+| `docs/plans/006-db-migration-management/overview.md`       | `completed` | 2026-06-13 | Issue #119 / #121 / #123 / #127 / #130 / #133 で DB migration 運用、検証、drift 検出、重い DB 変更方針を整備済み。     |
 
 ## 運用ルール
 
