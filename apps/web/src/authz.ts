@@ -66,7 +66,7 @@ export async function lookupProjectAdminAccess(
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function parseRequiredString(value: unknown, fieldName: string): string {

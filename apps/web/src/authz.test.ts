@@ -31,6 +31,7 @@ assert.deepEqual(
 );
 
 assert.throws(() => parseProjectMemberAccess(null), /Invalid project member access row/);
+assert.throws(() => parseProjectMemberAccess([]), /Invalid project member access row/);
 assert.throws(
   () => parseProjectMemberAccess({ ...validAccessRow, appRole: 'owner' }),
   /Invalid project member access field: appRole/,
