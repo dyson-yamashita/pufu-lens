@@ -13,6 +13,21 @@ export interface ProjectMemberAccess {
   visibility: 'private' | 'public';
 }
 
+export function parseProjectMemberAccess(value: unknown): ProjectMemberAccess {
+  if (!isRecord(value)) {
+    throw new Error('Invalid project member access row.');
+  }
+  return {
+    appRole: parseAppMemberRole(value.appRole, 'appRole'),
+    graphName: parseNullableString(value.graphName, 'graphName'),
+    id: parseRequiredString(value.id, 'id'),
+    name: parseRequiredString(value.name, 'name'),
+    projectRole: parseNullableProjectMemberRole(value.projectRole, 'projectRole'),
+    slug: parseRequiredString(value.slug, 'slug'),
+    visibility: parseProjectVisibility(value.visibility, 'visibility'),
+  };
+}
+
 export async function lookupProjectMemberAccess(
   sql: postgres.Sql | postgres.TransactionSql,
   input: { projectSlug: string; userId: string },
@@ -35,8 +50,8 @@ export async function lookupProjectMemberAccess(
     WHERE p.slug = ${input.projectSlug}
       AND (app_user.role = 'admin' OR pm.user_id IS NOT NULL)
     LIMIT 1
-  `) as ProjectMemberAccess[];
-  return rows[0];
+  `) as readonly unknown[];
+  return rows[0] ? parseProjectMemberAccess(rows[0]) : undefined;
 }
 
 export async function lookupProjectAdminAccess(
@@ -48,4 +63,46 @@ export async function lookupProjectAdminAccess(
     return undefined;
   }
   return access.appRole === 'admin' || access.projectRole === 'admin' ? access : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function parseRequiredString(value: unknown, fieldName: string): string {
+  if (typeof value !== 'string') {
+    throw new Error(`Invalid project member access field: ${fieldName}`);
+  }
+  return value;
+}
+
+function parseNullableString(value: unknown, fieldName: string): string | null {
+  if (value === null || typeof value === 'string') {
+    return value;
+  }
+  throw new Error(`Invalid project member access field: ${fieldName}`);
+}
+
+function parseAppMemberRole(value: unknown, fieldName: string): AppMemberRole {
+  if (value === 'admin' || value === 'member') {
+    return value;
+  }
+  throw new Error(`Invalid project member access field: ${fieldName}`);
+}
+
+function parseNullableProjectMemberRole(
+  value: unknown,
+  fieldName: string,
+): ProjectMemberRole | null {
+  if (value === null || value === 'admin' || value === 'member') {
+    return value;
+  }
+  throw new Error(`Invalid project member access field: ${fieldName}`);
+}
+
+function parseProjectVisibility(value: unknown, fieldName: string): 'private' | 'public' {
+  if (value === 'private' || value === 'public') {
+    return value;
+  }
+  throw new Error(`Invalid project member access field: ${fieldName}`);
 }
