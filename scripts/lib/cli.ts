@@ -12,7 +12,7 @@ export function validateGraphName(graphName: unknown): string {
     !/^graph_[a-z0-9_]+$/.test(graphName) ||
     graphName.length > 63
   ) {
-    throw new Error(`Invalid AGE graph name: ${graphName}`);
+    throw new Error(`Invalid AGE graph name: ${String(graphName)}`);
   }
   return graphName;
 }
