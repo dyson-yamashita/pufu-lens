@@ -398,3 +398,253 @@ export function getSourceTypeCounts(project: ProjectSummary): Record<SourceType,
     { drive: 0, github: 0, gmail: 0, web: 0 },
   );
 }
+
+export const DATA_SOURCE_SNIPPET_MAX_LENGTH = 240;
+
+export interface DataSourceContentPreviewSummary {
+  readonly rawCount: number;
+  readonly indexedCount: number;
+  readonly queueCount: number;
+  readonly failedCount: number;
+  readonly heldCount: number;
+  readonly lastChecked: string;
+  readonly lastIndexed: string;
+}
+
+export interface DataSourceDocumentPreviewRow {
+  readonly rawDocumentId: string;
+  readonly documentId?: string;
+  readonly title: string;
+  readonly docType: string;
+  readonly ingestStatus: string;
+  readonly canonicalUri: string;
+  readonly snippet: string;
+  readonly fetchedAt: string;
+  readonly indexedAt: string;
+}
+
+export interface DataSourceQueuePreviewRow {
+  readonly id: string;
+  readonly status: string;
+  readonly attempts: number;
+  readonly lastErrorSummary?: string;
+  readonly updatedAt: string;
+}
+
+export interface DataSourceContentPreview {
+  readonly summary: DataSourceContentPreviewSummary;
+  readonly documents: readonly DataSourceDocumentPreviewRow[];
+  readonly queue: readonly DataSourceQueuePreviewRow[];
+}
+
+export function truncateSnippet(text: string, maxLen: number): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLen) {
+    return normalized;
+  }
+  if (maxLen <= 1) {
+    return '…';
+  }
+  return `${normalized.slice(0, maxLen - 1)}…`;
+}
+
+const fallbackContentPreviews: Readonly<Record<string, DataSourceContentPreview>> = {
+  'sample-a-web-docs': {
+    summary: {
+      failedCount: 0,
+      heldCount: 0,
+      indexedCount: 8,
+      lastChecked: '2026-06-02 09:08',
+      lastIndexed: '2026-06-02 09:12',
+      queueCount: 0,
+      rawCount: 8,
+    },
+    documents: [
+      {
+        canonicalUri: 'https://example.com/docs/getting-started',
+        docType: 'web_page',
+        documentId: 'sample-a-doc-web-1',
+        fetchedAt: '2026-06-02 09:06',
+        indexedAt: '2026-06-02 09:12',
+        ingestStatus: 'indexed',
+        rawDocumentId: 'sample-a-raw-web-1',
+        snippet: truncateSnippet(
+          'Getting started with Pufu Lens: project setup, data source registration, and first collect run.',
+          DATA_SOURCE_SNIPPET_MAX_LENGTH,
+        ),
+        title: 'Getting Started',
+      },
+      {
+        canonicalUri: 'https://example.com/docs/ingestion',
+        docType: 'web_page',
+        documentId: 'sample-a-doc-web-2',
+        fetchedAt: '2026-06-02 09:05',
+        indexedAt: '2026-06-02 09:11',
+        ingestStatus: 'indexed',
+        rawDocumentId: 'sample-a-raw-web-2',
+        snippet: truncateSnippet(
+          'Ingestion workflow covers collect, parse, chunk, embed, and graph indexing with queue retries.',
+          DATA_SOURCE_SNIPPET_MAX_LENGTH,
+        ),
+        title: 'Ingestion Workflow',
+      },
+    ],
+    queue: [],
+  },
+  'sample-a-github-main': {
+    summary: {
+      failedCount: 2,
+      heldCount: 1,
+      indexedCount: 17,
+      lastChecked: '2026-06-02 08:44',
+      lastIndexed: '2026-06-02 08:49',
+      queueCount: 4,
+      rawCount: 21,
+    },
+    documents: [
+      {
+        canonicalUri: 'https://github.com/dyson-yamashita/pufu-lens/issues/148',
+        docType: 'issue',
+        documentId: 'sample-a-doc-github-1',
+        fetchedAt: '2026-06-02 08:40',
+        indexedAt: '2026-06-02 08:49',
+        ingestStatus: 'indexed',
+        rawDocumentId: 'sample-a-raw-github-1',
+        snippet: truncateSnippet(
+          'Add data source content preview to admin UI with document snippets and queue status.',
+          DATA_SOURCE_SNIPPET_MAX_LENGTH,
+        ),
+        title: 'Issue #148: Data source content preview',
+      },
+      {
+        canonicalUri: 'https://github.com/dyson-yamashita/pufu-lens/pull/120',
+        docType: 'pull_request',
+        fetchedAt: '2026-06-02 08:38',
+        indexedAt: 'not yet',
+        ingestStatus: 'parsed',
+        rawDocumentId: 'sample-a-raw-github-2',
+        snippet: '',
+        title: 'PR #120: Parser registry cleanup',
+      },
+    ],
+    queue: [
+      {
+        attempts: 2,
+        id: 'sample-a-queue-github-1',
+        lastErrorSummary: 'Parser contract mismatch on issue comment body',
+        status: 'failed',
+        updatedAt: '2026-06-02 08:45',
+      },
+      {
+        attempts: 0,
+        id: 'sample-a-queue-github-2',
+        status: 'held',
+        updatedAt: '2026-06-02 08:44',
+      },
+    ],
+  },
+  'sample-a-drive-product': {
+    summary: {
+      failedCount: 0,
+      heldCount: 2,
+      indexedCount: 9,
+      lastChecked: '2026-06-01 18:05',
+      lastIndexed: '2026-06-01 18:09',
+      queueCount: 2,
+      rawCount: 13,
+    },
+    documents: [
+      {
+        canonicalUri: 'drive://product-specs/roadmap-2026',
+        docType: 'drive_doc',
+        documentId: 'sample-a-doc-drive-1',
+        fetchedAt: '2026-06-01 18:02',
+        indexedAt: '2026-06-01 18:09',
+        ingestStatus: 'indexed',
+        rawDocumentId: 'sample-a-raw-drive-1',
+        snippet: truncateSnippet(
+          'Product roadmap highlights ingestion reliability, admin preview, and public report polish.',
+          DATA_SOURCE_SNIPPET_MAX_LENGTH,
+        ),
+        title: 'Roadmap 2026',
+      },
+    ],
+    queue: [
+      {
+        attempts: 1,
+        id: 'sample-a-queue-drive-1',
+        status: 'held',
+        updatedAt: '2026-06-01 18:06',
+      },
+    ],
+  },
+  'sample-b-web-status': {
+    summary: {
+      failedCount: 0,
+      heldCount: 0,
+      indexedCount: 5,
+      lastChecked: '2026-06-02 07:30',
+      lastIndexed: '2026-06-02 07:36',
+      queueCount: 0,
+      rawCount: 5,
+    },
+    documents: [
+      {
+        canonicalUri: 'https://status.example.com/incidents/42',
+        docType: 'web_page',
+        documentId: 'sample-b-doc-web-1',
+        fetchedAt: '2026-06-02 07:28',
+        indexedAt: '2026-06-02 07:36',
+        ingestStatus: 'indexed',
+        rawDocumentId: 'sample-b-raw-web-1',
+        snippet: truncateSnippet(
+          'All systems operational. Scheduled maintenance completed without customer impact.',
+          DATA_SOURCE_SNIPPET_MAX_LENGTH,
+        ),
+        title: 'Status: All systems operational',
+      },
+    ],
+    queue: [],
+  },
+  'sample-b-gmail-support': {
+    summary: {
+      failedCount: 0,
+      heldCount: 0,
+      indexedCount: 11,
+      lastChecked: '2026-06-02 07:28',
+      lastIndexed: '2026-06-02 07:35',
+      queueCount: 1,
+      rawCount: 12,
+    },
+    documents: [
+      {
+        canonicalUri: 'gmail://thread/support-2026-06-02',
+        docType: 'email',
+        documentId: 'sample-b-doc-gmail-1',
+        fetchedAt: '2026-06-02 07:25',
+        indexedAt: '2026-06-02 07:35',
+        ingestStatus: 'indexed',
+        rawDocumentId: 'sample-b-raw-gmail-1',
+        snippet: truncateSnippet(
+          'Customer asked about ingestion retries and queue visibility in the admin console.',
+          DATA_SOURCE_SNIPPET_MAX_LENGTH,
+        ),
+        title: 'Re: Support queue visibility',
+      },
+    ],
+    queue: [
+      {
+        attempts: 0,
+        id: 'sample-b-queue-gmail-1',
+        status: 'pending',
+        updatedAt: '2026-06-02 07:28',
+      },
+    ],
+  },
+};
+
+export function getFallbackDataSourceContentPreview(
+  dataSourceId: string,
+): DataSourceContentPreview | null {
+  return fallbackContentPreviews[dataSourceId] ?? null;
+}

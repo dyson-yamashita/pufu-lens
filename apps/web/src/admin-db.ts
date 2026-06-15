@@ -8,9 +8,14 @@ import {
 import {
   availabilityFromConnections,
   type ConnectionProvider,
+  DATA_SOURCE_SNIPPET_MAX_LENGTH,
+  type DataSourceContentPreview,
+  type DataSourceDocumentPreviewRow,
+  type DataSourceQueuePreviewRow,
   type DataSourceSummary,
   fallbackProjects,
   fallbackPublicProjects,
+  getFallbackDataSourceContentPreview,
   notConnectedProjectConnections,
   type ParserProfileStatus,
   type ParserProfileSummary,
@@ -23,6 +28,7 @@ import {
   type PublicProjectSummary,
   type SourceStatus,
   type SourceType,
+  truncateSnippet,
 } from './admin-data';
 import { getOptionalAdminSql } from './admin-sql';
 import { lookupProjectMemberAccess } from './authz';
@@ -1459,4 +1465,207 @@ function metadataLabelsFromRecord(metadata: Record<string, unknown>): readonly s
     }
   }
   return labels;
+}
+
+type DataSourcePreviewScopeRow = {
+  id: string;
+  last_checked_at: Date | string | null;
+  project_id: string;
+};
+
+type DataSourcePreviewSummaryRow = {
+  failed_count: number | string | bigint;
+  held_count: number | string | bigint;
+  indexed_count: number | string | bigint;
+  last_checked_at: Date | string | null;
+  last_indexed: Date | string | null;
+  queue_count: number | string | bigint;
+  raw_count: number | string | bigint;
+};
+
+type DataSourcePreviewDocumentRow = {
+  canonical_uri: string | null;
+  doc_type: string | null;
+  document_id: string | null;
+  document_summary: string | null;
+  fetched_at: Date | string;
+  first_chunk_content: string | null;
+  indexed_at: Date | string | null;
+  ingest_status: string;
+  raw_document_id: string;
+  source_id: string;
+  title: string | null;
+};
+
+type DataSourcePreviewQueueRow = {
+  attempts: number | string | bigint;
+  id: string;
+  last_error: string | null;
+  status: string;
+  updated_at: Date | string;
+};
+
+const DATA_SOURCE_PREVIEW_DOCUMENT_LIMIT = 20;
+const DATA_SOURCE_PREVIEW_QUEUE_LIMIT = 10;
+const DATA_SOURCE_PREVIEW_ERROR_MAX_LENGTH = 120;
+
+export async function getDataSourceContentPreview(
+  projectSlug: string,
+  dataSourceId: string,
+): Promise<DataSourceContentPreview | null> {
+  return withOptionalSql(async (sql) => {
+    const scopeRows = (await sql`
+      SELECT
+        ds.id::text AS id,
+        ds.project_id::text AS project_id,
+        ds.last_checked_at
+      FROM public.data_sources ds
+      JOIN public.projects p ON p.id = ds.project_id
+      WHERE p.slug = ${projectSlug}
+        AND ds.id = ${dataSourceId}
+        AND ds.enabled = true
+      LIMIT 1
+    `) as DataSourcePreviewScopeRow[];
+    const scope = scopeRows[0];
+    if (!scope) {
+      return null;
+    }
+
+    const [summaryRows, documentRows, queueRows] = await Promise.all([
+      sql`
+        SELECT
+          (
+            SELECT count(*)::int
+            FROM public.raw_document_data_sources rdds
+            WHERE rdds.data_source_id = ${dataSourceId}
+              AND rdds.project_id = ${scope.project_id}
+          ) AS raw_count,
+          (
+            SELECT count(*)::int
+            FROM public.raw_document_data_sources rdds
+            JOIN public.raw_documents rd ON rd.id = rdds.raw_document_id
+            WHERE rdds.data_source_id = ${dataSourceId}
+              AND rdds.project_id = ${scope.project_id}
+              AND rd.ingest_status = 'indexed'
+          ) AS indexed_count,
+          (
+            SELECT count(*)::int
+            FROM public.ingestion_queue iq
+            WHERE iq.data_source_id = ${dataSourceId}
+              AND iq.project_id = ${scope.project_id}
+          ) AS queue_count,
+          (
+            SELECT count(*)::int
+            FROM public.ingestion_queue iq
+            WHERE iq.data_source_id = ${dataSourceId}
+              AND iq.project_id = ${scope.project_id}
+              AND iq.status = 'failed'
+          ) AS failed_count,
+          (
+            SELECT count(*)::int
+            FROM public.ingestion_queue iq
+            WHERE iq.data_source_id = ${dataSourceId}
+              AND iq.project_id = ${scope.project_id}
+              AND iq.status = 'held'
+          ) AS held_count,
+          ds.last_checked_at,
+          (
+            SELECT max(rd.indexed_at)
+            FROM public.raw_document_data_sources rdds
+            JOIN public.raw_documents rd ON rd.id = rdds.raw_document_id
+            WHERE rdds.data_source_id = ${dataSourceId}
+              AND rdds.project_id = ${scope.project_id}
+          ) AS last_indexed
+        FROM public.data_sources ds
+        WHERE ds.id = ${dataSourceId}
+        LIMIT 1
+      ` as Promise<DataSourcePreviewSummaryRow[]>,
+      sql`
+        SELECT
+          rd.id::text AS raw_document_id,
+          d.id::text AS document_id,
+          rd.source_id,
+          COALESCE(d.title, rd.source_id) AS title,
+          COALESCE(d.doc_type::text, rd.source_type) AS doc_type,
+          rd.ingest_status,
+          COALESCE(d.canonical_uri, rd.source_uri, '') AS canonical_uri,
+          rd.fetched_at,
+          rd.indexed_at,
+          d.summary AS document_summary,
+          (
+            SELECT dc.content
+            FROM public.document_chunks dc
+            WHERE dc.document_id = d.id
+            ORDER BY dc.chunk_index ASC
+            LIMIT 1
+          ) AS first_chunk_content
+        FROM public.raw_document_data_sources rdds
+        JOIN public.raw_documents rd ON rd.id = rdds.raw_document_id
+        LEFT JOIN public.documents d ON d.raw_document_id = rd.id
+        WHERE rdds.data_source_id = ${dataSourceId}
+          AND rdds.project_id = ${scope.project_id}
+        ORDER BY rd.fetched_at DESC
+        LIMIT ${DATA_SOURCE_PREVIEW_DOCUMENT_LIMIT}
+      ` as Promise<DataSourcePreviewDocumentRow[]>,
+      sql`
+        SELECT
+          iq.id::text AS id,
+          iq.status,
+          iq.attempts,
+          iq.last_error,
+          iq.updated_at
+        FROM public.ingestion_queue iq
+        WHERE iq.data_source_id = ${dataSourceId}
+          AND iq.project_id = ${scope.project_id}
+        ORDER BY iq.updated_at DESC
+        LIMIT ${DATA_SOURCE_PREVIEW_QUEUE_LIMIT}
+      ` as Promise<DataSourcePreviewQueueRow[]>,
+    ]);
+
+    const summaryRow = summaryRows[0];
+    if (!summaryRow) {
+      return null;
+    }
+
+    return {
+      documents: documentRows.map(documentPreviewFromRow),
+      queue: queueRows.map(queuePreviewFromRow),
+      summary: {
+        failedCount: toNumber(summaryRow.failed_count),
+        heldCount: toNumber(summaryRow.held_count),
+        indexedCount: toNumber(summaryRow.indexed_count),
+        lastChecked: formatDate(summaryRow.last_checked_at),
+        lastIndexed: formatDate(summaryRow.last_indexed),
+        queueCount: toNumber(summaryRow.queue_count),
+        rawCount: toNumber(summaryRow.raw_count),
+      },
+    };
+  }, getFallbackDataSourceContentPreview(dataSourceId));
+}
+
+function documentPreviewFromRow(row: DataSourcePreviewDocumentRow): DataSourceDocumentPreviewRow {
+  const snippetSource = row.document_summary ?? row.first_chunk_content ?? '';
+  return {
+    canonicalUri: row.canonical_uri ?? '',
+    docType: row.doc_type ?? 'unknown',
+    documentId: row.document_id ?? undefined,
+    fetchedAt: formatDate(row.fetched_at),
+    indexedAt: formatDate(row.indexed_at),
+    ingestStatus: row.ingest_status,
+    rawDocumentId: row.raw_document_id,
+    snippet: snippetSource ? truncateSnippet(snippetSource, DATA_SOURCE_SNIPPET_MAX_LENGTH) : '',
+    title: row.title ?? row.source_id,
+  };
+}
+
+function queuePreviewFromRow(row: DataSourcePreviewQueueRow): DataSourceQueuePreviewRow {
+  return {
+    attempts: toNumber(row.attempts),
+    id: row.id,
+    lastErrorSummary: row.last_error
+      ? truncateSnippet(row.last_error, DATA_SOURCE_PREVIEW_ERROR_MAX_LENGTH)
+      : undefined,
+    status: row.status,
+    updatedAt: formatDate(row.updated_at),
+  };
 }

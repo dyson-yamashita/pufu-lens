@@ -24,6 +24,7 @@ import {
 import Link from 'next/link';
 import { auth, signOut } from '../auth';
 import type {
+  DataSourceContentPreview,
   DataSourceSummary,
   ParserProfileSummary,
   ProjectSourceAvailability,
@@ -577,6 +578,121 @@ export function ParserActionButtons({
       </button>
     </div>
   );
+}
+
+export function DataSourceContentPreviewPanel({
+  preview,
+}: {
+  readonly preview: DataSourceContentPreview;
+}) {
+  const { documents, summary } = preview;
+
+  return (
+    <section className="data-source-detail-section" data-testid="data-source-content-panel">
+      <h3 className="data-source-section-title">Content</h3>
+      <dl className="detail-list stacked content-preview-metrics">
+        <div>
+          <dt>Raw / Indexed</dt>
+          <dd className="mono">
+            {summary.rawCount} / {summary.indexedCount}
+          </dd>
+        </div>
+        <div>
+          <dt>Queue</dt>
+          <dd className="mono">
+            {summary.queueCount} / failed {summary.failedCount} / held {summary.heldCount}
+          </dd>
+        </div>
+        <div>
+          <dt>Last checked</dt>
+          <dd>{summary.lastChecked}</dd>
+        </div>
+        <div>
+          <dt>Last indexed</dt>
+          <dd>{summary.lastIndexed}</dd>
+        </div>
+      </dl>
+      {documents.length === 0 ? (
+        <p className="content-preview-empty" data-testid="data-source-content-empty">
+          このデータソースに紐づく document はまだありません。
+        </p>
+      ) : (
+        <ul className="content-preview-list">
+          {documents.map((document) => (
+            <li
+              className="content-preview-row"
+              data-testid="data-source-content-document-row"
+              key={document.rawDocumentId}
+            >
+              <div className="content-preview-row-header">
+                <strong>{document.title}</strong>
+                <span className="mono content-preview-status">{document.ingestStatus}</span>
+              </div>
+              <p className="content-preview-meta mono">
+                {document.docType}
+                {document.documentId ? ` · doc ${compactId(document.documentId)}` : ''}
+                {` · raw ${compactId(document.rawDocumentId)}`}
+              </p>
+              {document.canonicalUri ? (
+                <p className="content-preview-uri truncate">{document.canonicalUri}</p>
+              ) : null}
+              {document.snippet ? (
+                <p className="content-preview-snippet" data-testid="data-source-content-snippet">
+                  {document.snippet}
+                </p>
+              ) : null}
+              <p className="content-preview-timestamps mono">
+                fetched {document.fetchedAt} · indexed {document.indexedAt}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+export function DataSourceQueuePreviewPanel({
+  preview,
+}: {
+  readonly preview: DataSourceContentPreview;
+}) {
+  const { queue } = preview;
+
+  return (
+    <section className="data-source-detail-section" data-testid="data-source-queue-preview">
+      <h3 className="data-source-section-title">Queue</h3>
+      {queue.length === 0 ? (
+        <p className="content-preview-empty">
+          failed / held / pending の queue item はありません。
+        </p>
+      ) : (
+        <ul className="content-preview-list queue-preview-list">
+          {queue.map((item) => (
+            <li className="content-preview-row queue-preview-row" key={item.id}>
+              <div className="content-preview-row-header">
+                <span className="mono">{compactId(item.id)}</span>
+                <span className="mono content-preview-status">{item.status}</span>
+              </div>
+              <p className="content-preview-meta mono">
+                attempts {item.attempts} · updated {item.updatedAt}
+              </p>
+              {item.lastErrorSummary ? (
+                <p className="content-preview-snippet">{item.lastErrorSummary}</p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function compactId(value: string): string {
+  if (value.length <= 12) {
+    return value;
+  }
+  return `${value.slice(0, 8)}…`;
 }
 
 function Metric({

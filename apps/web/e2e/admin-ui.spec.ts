@@ -108,6 +108,17 @@ test.describe('authenticated admin operation controls', () => {
       page.getByTestId('data-source-table').getByText('Drive プロダクト資料'),
     ).toHaveCount(0);
 
+    await page.goto(
+      '/projects/sample-a/admin/data-sources?dataSourceId=sample-a-web-docs&sourceType=web',
+    );
+    await expect(page.getByTestId('data-source-content-panel')).toBeVisible();
+    await expect(page.getByTestId('data-source-content-document-row').first()).toBeVisible();
+    await expect(page.getByTestId('data-source-content-snippet').first()).toBeVisible();
+    await expect(page.getByTestId('data-source-queue-preview')).toBeVisible();
+    await expect(page.getByTestId('data-source-settings-section')).toBeVisible();
+    await expect(page.getByTestId('data-source-edit-name-input')).toBeVisible();
+    await expect(page.getByTestId('data-source-save-button')).toBeEnabled();
+
     await page.goto('/projects/sample-a/admin/ingestion');
     await expect(page.getByTestId('ingestion-status-list')).toBeVisible();
     await expect(page.getByTestId('ingestion-retry-failed-button')).toBeVisible();
