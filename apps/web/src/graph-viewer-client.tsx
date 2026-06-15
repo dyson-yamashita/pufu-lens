@@ -161,14 +161,26 @@ function GraphCanvas({
   readonly onSelect: (selection: GraphSelection | undefined) => void;
 }) {
   const [containerElement, setContainerElement] = useState<HTMLDivElement | null>(null);
+  const [theme, setTheme] = useState('dark');
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const edgesById = useMemo(() => new Map(edges.map((edge) => [edge.id, edge])), [edges]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const updateTheme = () => setTheme(root.dataset.theme ?? 'dark');
+    updateTheme();
+
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(root, { attributeFilter: ['data-theme'], attributes: true });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const container = containerElement;
     if (!container) {
       return;
     }
+    const graphTheme = readGraphTheme(container);
     const cy = cytoscape({
       container,
       elements: [
@@ -204,11 +216,11 @@ function GraphCanvas({
         {
           selector: 'node',
           style: {
-            'background-color': '#4edea3',
-            color: '#dae2fd',
+            'background-color': graphTheme.node,
+            color: graphTheme.text,
             'font-size': '11px',
             label: 'data(label)',
-            'text-background-color': '#0b1326',
+            'text-background-color': graphTheme.labelBackground,
             'text-background-opacity': 0.8,
             'text-background-padding': '3px',
             'text-max-width': '132px',
@@ -220,11 +232,11 @@ function GraphCanvas({
         },
         {
           selector: 'node[type = "Document"]',
-          style: { 'background-color': '#0066ff' },
+          style: { 'background-color': graphTheme.document },
         },
         {
           selector: 'node[type = "Actor"]',
-          style: { 'background-color': '#d8b9ff' },
+          style: { 'background-color': graphTheme.actor },
         },
         {
           selector: 'node:selected',
@@ -235,14 +247,14 @@ function GraphCanvas({
         {
           selector: 'edge',
           style: {
-            color: '#ffffff',
+            color: graphTheme.text,
             'curve-style': 'bezier',
             'font-size': '10px',
             label: 'data(label)',
-            'line-color': '#8c90a1',
-            'target-arrow-color': '#8c90a1',
+            'line-color': graphTheme.line,
+            'target-arrow-color': graphTheme.line,
             'target-arrow-shape': 'triangle',
-            'text-background-color': '#0b1326',
+            'text-background-color': graphTheme.labelBackground,
             'text-background-opacity': 0.85,
             'text-background-padding': '2px',
             width: '1.5px',
@@ -251,9 +263,9 @@ function GraphCanvas({
         {
           selector: ':selected',
           style: {
-            'background-color': '#ffb4ab',
-            'line-color': '#ffb4ab',
-            'target-arrow-color': '#ffb4ab',
+            'background-color': graphTheme.selected,
+            'line-color': graphTheme.selected,
+            'target-arrow-color': graphTheme.selected,
           },
         },
       ],
@@ -274,7 +286,7 @@ function GraphCanvas({
     return () => {
       cy.destroy();
     };
-  }, [containerElement, edges, edgesById, nodes, nodesById, onSelect]);
+  }, [containerElement, edges, edgesById, nodes, nodesById, onSelect, theme]);
 
   return (
     <div className="graph-canvas-wrap">
@@ -328,6 +340,23 @@ function PropertyList({ item }: { readonly item: GraphViewerEdge | GraphViewerNo
       </div>
     </dl>
   );
+}
+
+function readGraphTheme(container: HTMLElement) {
+  const style = getComputedStyle(container);
+  return {
+    actor: readCssVariable(style, '--graph-actor'),
+    document: readCssVariable(style, '--graph-document'),
+    labelBackground: readCssVariable(style, '--graph-label-bg'),
+    line: readCssVariable(style, '--graph-line'),
+    node: readCssVariable(style, '--graph-node'),
+    selected: readCssVariable(style, '--graph-selected'),
+    text: readCssVariable(style, '--text'),
+  };
+}
+
+function readCssVariable(style: CSSStyleDeclaration, name: string) {
+  return style.getPropertyValue(name).trim();
 }
 
 type GraphErrorBody = {

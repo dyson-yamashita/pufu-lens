@@ -33,6 +33,7 @@ import type {
 } from './admin-data';
 import { canManageProject as canManageProjectDb } from './admin-db';
 import { ActionForm, PendingSubmitButton } from './form-buttons';
+import { ThemeToggle } from './theme-toggle';
 
 const sourceLabels: Record<SourceType, string> = {
   drive: 'Drive',
@@ -242,6 +243,7 @@ export async function AppShell({
           className={isGuest ? 'account-panel guest-account-panel' : 'account-panel'}
           data-testid="account-panel"
         >
+          <ThemeToggle />
           {session?.user?.id ? (
             <>
               <span className="account-identity" data-testid="account-identity">

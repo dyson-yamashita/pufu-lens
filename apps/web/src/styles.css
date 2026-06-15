@@ -1,6 +1,7 @@
 @import "../node_modules/@goto-lab/pufu-editor/dist/index.css";
 
-:root {
+:root,
+:root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #080f1f;
   --surface: #111827;
@@ -14,7 +15,94 @@
   --green: #39d49a;
   --amber: #f3ba4d;
   --red: #f87171;
+  --primary: #b3c5ff;
+  --inverse-surface: #f8fafc;
+  --inverse-on-surface: #111827;
+  --body-gradient: linear-gradient(180deg, rgba(47, 125, 255, 0.08), transparent 280px);
+  --nav-bg: rgba(13, 21, 38, 0.98);
+  --panel-overlay: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent);
+  --selected-row-bg: rgba(47, 125, 255, 0.12);
+  --spinner-border: rgba(255, 255, 255, 0.35);
+  --spinner-accent: #ffffff;
+  --modal-backdrop: rgba(3, 7, 18, 0.68);
+  --chat-form-bg: linear-gradient(180deg, rgba(17, 24, 39, 0.64), var(--surface) 28%);
+  --chat-icon-hover-bg: rgba(255, 255, 255, 0.06);
+  --chat-icon-active-bg: rgba(74, 144, 226, 0.18);
+  --chat-icon-active-border: rgba(137, 180, 250, 0.52);
+  --chat-code-bg: rgba(255, 255, 255, 0.08);
+  --chat-assistant-bg: rgba(167, 139, 250, 0.08);
+  --chat-assistant-border: rgba(167, 139, 250, 0.22);
+  --notice-bg: rgba(243, 186, 77, 0.12);
+  --notice-border: rgba(243, 186, 77, 0.36);
+  --notice-error-bg: rgba(248, 113, 113, 0.12);
+  --notice-error-border: rgba(248, 113, 113, 0.32);
+  --status-success-bg: rgba(57, 212, 154, 0.12);
+  --status-agent-bg: rgba(166, 107, 255, 0.14);
+  --status-danger-bg: rgba(248, 113, 113, 0.13);
+  --status-info-bg: rgba(0, 102, 255, 0.16);
+  --status-muted-bg: rgba(148, 163, 184, 0.14);
+  --status-warning-bg: rgba(243, 186, 77, 0.14);
+  --input-focus-ring: rgba(47, 125, 255, 0.22);
+  --input-bg: #0b1222;
+  --graph-node: #4edea3;
+  --graph-document: #0066ff;
+  --graph-actor: #d8b9ff;
+  --graph-label-bg: #0b1326;
+  --graph-line: #8c90a1;
+  --graph-selected: #ffb4ab;
   --shadow: 0 18px 44px -28px rgba(0, 0, 0, 0.8);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f8fc;
+  --surface: #ffffff;
+  --surface-2: #eef2f7;
+  --line: #cfd7e6;
+  --text: #111827;
+  --muted: #526070;
+  --blue: #005bd8;
+  --blue-strong: #0066ff;
+  --amethyst: #7c3aed;
+  --green: #047857;
+  --amber: #b45309;
+  --red: #dc2626;
+  --primary: #005bd8;
+  --inverse-surface: #111827;
+  --inverse-on-surface: #f8fafc;
+  --body-gradient: linear-gradient(180deg, rgba(0, 91, 216, 0.1), transparent 300px);
+  --nav-bg: rgba(255, 255, 255, 0.96);
+  --panel-overlay: linear-gradient(180deg, rgba(0, 91, 216, 0.025), transparent);
+  --selected-row-bg: rgba(0, 91, 216, 0.1);
+  --spinner-border: rgba(255, 255, 255, 0.55);
+  --spinner-accent: #ffffff;
+  --modal-backdrop: rgba(15, 23, 42, 0.34);
+  --chat-form-bg: linear-gradient(180deg, rgba(246, 248, 252, 0.76), var(--surface) 28%);
+  --chat-icon-hover-bg: rgba(0, 91, 216, 0.08);
+  --chat-icon-active-bg: rgba(0, 91, 216, 0.12);
+  --chat-icon-active-border: rgba(0, 91, 216, 0.3);
+  --chat-code-bg: rgba(17, 24, 39, 0.06);
+  --chat-assistant-bg: rgba(124, 58, 237, 0.07);
+  --chat-assistant-border: rgba(124, 58, 237, 0.22);
+  --notice-bg: rgba(180, 83, 9, 0.1);
+  --notice-border: rgba(180, 83, 9, 0.28);
+  --notice-error-bg: rgba(220, 38, 38, 0.1);
+  --notice-error-border: rgba(220, 38, 38, 0.26);
+  --status-success-bg: rgba(4, 120, 87, 0.11);
+  --status-agent-bg: rgba(124, 58, 237, 0.1);
+  --status-danger-bg: rgba(220, 38, 38, 0.1);
+  --status-info-bg: rgba(0, 91, 216, 0.11);
+  --status-muted-bg: rgba(82, 96, 112, 0.12);
+  --status-warning-bg: rgba(180, 83, 9, 0.11);
+  --input-focus-ring: rgba(0, 91, 216, 0.18);
+  --input-bg: #ffffff;
+  --graph-node: #047857;
+  --graph-document: #005bd8;
+  --graph-actor: #7c3aed;
+  --graph-label-bg: #ffffff;
+  --graph-line: #64748b;
+  --graph-selected: #dc2626;
+  --shadow: 0 18px 44px -32px rgba(15, 23, 42, 0.32);
 }
 
 * {
@@ -28,7 +116,7 @@ body {
 
 body {
   margin: 0;
-  background: linear-gradient(180deg, rgba(47, 125, 255, 0.08), transparent 280px), var(--bg);
+  background: var(--body-gradient), var(--bg);
   color: var(--text);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -70,7 +158,7 @@ button {
 }
 
 .global-nav {
-  background: rgba(13, 21, 38, 0.98);
+  background: var(--nav-bg);
   border-right: 1px solid var(--line);
   display: flex;
   flex-direction: column;
@@ -178,8 +266,48 @@ button {
   padding-top: 16px;
 }
 
+.theme-toggle {
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: inline-grid;
+  grid-template-columns: repeat(2, 32px);
+  height: 36px;
+  padding: 2px;
+  width: max-content;
+}
+
+.theme-toggle-option {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  padding: 0;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+  width: 30px;
+}
+
+.theme-toggle-option:hover,
+.theme-toggle-option.active {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--text);
+}
+
 .guest-account-panel {
+  align-items: center;
   border-top: 0;
+  display: flex;
+  gap: 8px;
   margin: 0;
   padding: 0;
   position: fixed;
@@ -301,7 +429,7 @@ button {
 }
 
 tr.selected-row {
-  background: rgba(47, 125, 255, 0.12);
+  background: var(--selected-row-bg);
 }
 
 .source-name-link:hover strong {
@@ -465,9 +593,9 @@ tr.selected-row {
 
 .button-spinner {
   animation: spin 760ms linear infinite;
-  border: 2px solid rgba(255, 255, 255, 0.35);
+  border: 2px solid var(--spinner-border);
   border-radius: 9999px;
-  border-top-color: white;
+  border-top-color: var(--spinner-accent);
   display: inline-block;
   height: 14px;
   width: 14px;
@@ -632,7 +760,7 @@ tr.selected-row {
 
 .project-card,
 .panel {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent), var(--surface);
+  background: var(--panel-overlay), var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: var(--shadow);
@@ -752,42 +880,42 @@ tr.selected-row {
 
 .status-healthy,
 .status-approved {
-  background: rgba(57, 212, 154, 0.12);
+  background: var(--status-success-bg);
   color: var(--green);
 }
 
 .status-syncing,
 .status-review_requested,
 .status-draft {
-  background: rgba(166, 107, 255, 0.14);
+  background: var(--status-agent-bg);
   color: var(--amethyst);
 }
 
 .status-failed,
 .status-rejected {
-  background: rgba(248, 113, 113, 0.13);
+  background: var(--status-danger-bg);
   color: var(--red);
 }
 
 .status-visibility-public {
-  background: rgba(0, 102, 255, 0.16);
+  background: var(--status-info-bg);
   color: var(--blue);
 }
 
 .status-visibility-private {
-  background: rgba(148, 163, 184, 0.14);
+  background: var(--status-muted-bg);
   color: var(--muted);
 }
 
 .status-member-admin,
 .status-project-member-admin {
-  background: rgba(0, 102, 255, 0.16);
+  background: var(--status-info-bg);
   color: var(--blue);
 }
 
 .status-member-member,
 .status-project-member-member {
-  background: rgba(148, 163, 184, 0.14);
+  background: var(--status-muted-bg);
   color: var(--muted);
 }
 
@@ -805,28 +933,28 @@ tr.selected-row {
 }
 
 .status-held {
-  background: rgba(243, 186, 77, 0.14);
+  background: var(--status-warning-bg);
   color: var(--amber);
 }
 
 .status-connection-connected {
-  background: rgba(57, 212, 154, 0.12);
+  background: var(--status-success-bg);
   color: var(--green);
 }
 
 .status-connection-not_connected {
-  background: rgba(148, 163, 184, 0.14);
+  background: var(--status-muted-bg);
   color: var(--muted);
 }
 
 .status-connection-expired,
 .status-connection-scope_missing {
-  background: rgba(243, 186, 77, 0.14);
+  background: var(--status-warning-bg);
   color: var(--amber);
 }
 
 .status-connection-error {
-  background: rgba(248, 113, 113, 0.13);
+  background: var(--status-danger-bg);
   color: var(--red);
 }
 
@@ -941,7 +1069,7 @@ tr.selected-row {
 }
 
 .alias-chip {
-  background: rgba(148, 163, 184, 0.14);
+  background: var(--status-muted-bg);
   border-radius: 999px;
   color: var(--muted);
   display: inline-flex;
@@ -1116,7 +1244,7 @@ table {
 }
 
 .modal-dialog::backdrop {
-  background: rgba(3, 7, 18, 0.68);
+  background: var(--modal-backdrop);
   backdrop-filter: blur(8px);
 }
 
@@ -1265,7 +1393,7 @@ th {
 
 .chat-form {
   align-self: end;
-  background: linear-gradient(180deg, rgba(17, 24, 39, 0.64), var(--surface) 28%);
+  background: var(--chat-form-bg);
   display: grid;
   gap: 8px;
   margin: 0 -2px -2px;
@@ -1335,20 +1463,20 @@ th {
 }
 
 .chat-icon-button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--chat-icon-hover-bg);
   border-color: var(--line);
   color: var(--text);
 }
 
 .chat-icon-button-active {
-  background: rgba(74, 144, 226, 0.18);
-  border-color: rgba(137, 180, 250, 0.52);
+  background: var(--chat-icon-active-bg);
+  border-color: var(--chat-icon-active-border);
   color: var(--text);
 }
 
 .chat-send-button {
-  background: var(--inverse-surface, #f8fafc);
-  color: var(--inverse-on-surface, #111827);
+  background: var(--inverse-surface);
+  color: var(--inverse-on-surface);
 }
 
 .chat-send-button:hover:not(:disabled) {
@@ -1363,8 +1491,8 @@ th {
 }
 
 .notice {
-  background: rgba(243, 186, 77, 0.12);
-  border: 1px solid rgba(243, 186, 77, 0.36);
+  background: var(--notice-bg);
+  border: 1px solid var(--notice-border);
   border-radius: 8px;
   color: var(--amber);
   margin: 0;
@@ -1372,8 +1500,8 @@ th {
 }
 
 .notice.error {
-  background: rgba(248, 113, 113, 0.12);
-  border-color: rgba(248, 113, 113, 0.32);
+  background: var(--notice-error-bg);
+  border-color: var(--notice-error-border);
   color: var(--red);
 }
 
@@ -1434,7 +1562,7 @@ th {
 }
 
 .chat-markdown code {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--chat-code-bg);
   border: 1px solid var(--line);
   border-radius: 4px;
   font-family: "JetBrains Mono", ui-monospace, monospace;
@@ -1443,7 +1571,7 @@ th {
 }
 
 .chat-markdown a {
-  color: var(--primary, #b3c5ff);
+  color: var(--primary);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -1457,8 +1585,8 @@ th {
 }
 
 .chat-message-assistant {
-  background: rgba(167, 139, 250, 0.08);
-  border: 1px solid rgba(167, 139, 250, 0.22);
+  background: var(--chat-assistant-bg);
+  border: 1px solid var(--chat-assistant-border);
   border-left: 3px solid var(--amethyst);
   justify-self: start;
   max-width: min(100%, 760px);
@@ -1691,7 +1819,7 @@ th {
 }
 
 .credentials-form input {
-  background: #0b1222;
+  background: var(--input-bg);
   border: 1px solid var(--line);
   border-radius: 6px;
   color: var(--text);
@@ -1702,7 +1830,7 @@ th {
 
 .credentials-form input:focus {
   border-color: var(--blue);
-  box-shadow: 0 0 0 3px rgba(47, 125, 255, 0.22);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
   outline: none;
 }
 
