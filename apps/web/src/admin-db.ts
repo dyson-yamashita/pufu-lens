@@ -1522,7 +1522,7 @@ export async function getDataSourceContentPreview(
       FROM public.data_sources ds
       JOIN public.projects p ON p.id = ds.project_id
       WHERE p.slug = ${projectSlug}
-        AND ds.id = ${dataSourceId}
+        AND ds.id::text = ${dataSourceId}
         AND ds.enabled = true
       LIMIT 1
     `) as DataSourcePreviewScopeRow[];

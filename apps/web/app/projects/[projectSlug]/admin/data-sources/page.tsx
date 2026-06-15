@@ -48,9 +48,14 @@ export default async function DataSourcesPage({
   const selectedSource =
     visibleSources.find((source) => source.id === dataSourceId) ?? visibleSources[0];
   const counts = getSourceTypeCounts(project);
-  const contentPreview = selectedSource
-    ? await getDataSourceContentPreview(projectSlug, selectedSource.id)
-    : null;
+  let contentPreview = null;
+  if (selectedSource) {
+    try {
+      contentPreview = await getDataSourceContentPreview(projectSlug, selectedSource.id);
+    } catch (error) {
+      console.error('Failed to load data source content preview:', error);
+    }
+  }
 
   return (
     <AppShell active="data-sources" canManageProject project={project}>
