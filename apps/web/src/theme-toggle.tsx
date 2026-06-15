@@ -12,8 +12,20 @@ function normalizeTheme(value: string | undefined): Theme {
   return value === 'light' || value === 'dark' ? value : 'dark';
 }
 
-function persistTheme(theme: Theme) {
+async function persistTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
+  if ('cookieStore' in window) {
+    await window.cookieStore.set({
+      expires: Date.now() + maxAgeSeconds * 1000,
+      name: cookieName,
+      path: '/',
+      sameSite: 'lax',
+      value: theme,
+    });
+    return;
+  }
+
+  // biome-ignore lint/suspicious/noDocumentCookie: Cookie Store API 非対応ブラウザ向けの永続化 fallback。
   document.cookie = `${cookieName}=${theme}; path=/; max-age=${maxAgeSeconds}; SameSite=Lax`;
 }
 
@@ -26,11 +38,12 @@ export function ThemeToggle() {
 
   const selectTheme = (nextTheme: Theme) => {
     setTheme(nextTheme);
-    persistTheme(nextTheme);
+    void persistTheme(nextTheme);
   };
 
   return (
-    <div className="theme-toggle" data-testid="theme-toggle" role="group" aria-label="テーマ切替">
+    <fieldset className="theme-toggle" data-testid="theme-toggle">
+      <legend className="theme-toggle-label">テーマ切替</legend>
       <button
         aria-label="ライトテーマに切り替える"
         aria-pressed={theme === 'light'}
@@ -53,6 +66,6 @@ export function ThemeToggle() {
       >
         <Moon size={16} />
       </button>
-    </div>
+    </fieldset>
   );
 }

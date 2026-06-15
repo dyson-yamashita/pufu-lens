@@ -1,7 +1,12 @@
 'use client';
 
-import cytoscape, { type EdgeSingular, type NodeSingular } from 'cytoscape';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import cytoscape, {
+  type Core,
+  type EdgeSingular,
+  type NodeSingular,
+  type StylesheetJson,
+} from 'cytoscape';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   GraphPresetId,
   GraphPresetSummary,
@@ -161,19 +166,28 @@ function GraphCanvas({
   readonly onSelect: (selection: GraphSelection | undefined) => void;
 }) {
   const [containerElement, setContainerElement] = useState<HTMLDivElement | null>(null);
-  const [theme, setTheme] = useState('dark');
+  const cytoscapeRef = useRef<Core | null>(null);
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const edgesById = useMemo(() => new Map(edges.map((edge) => [edge.id, edge])), [edges]);
 
   useEffect(() => {
+    const container = containerElement;
+    if (!container) {
+      return;
+    }
+
     const root = document.documentElement;
-    const updateTheme = () => setTheme(root.dataset.theme ?? 'dark');
-    updateTheme();
+    const updateTheme = () => {
+      const cy = cytoscapeRef.current;
+      if (cy) {
+        cy.style(buildGraphStyles(readGraphTheme(container))).update();
+      }
+    };
 
     const observer = new MutationObserver(updateTheme);
     observer.observe(root, { attributeFilter: ['data-theme'], attributes: true });
     return () => observer.disconnect();
-  }, []);
+  }, [containerElement]);
 
   useEffect(() => {
     const container = containerElement;
@@ -212,64 +226,9 @@ function GraphCanvas({
         padding: 56,
       },
       minZoom: 0.45,
-      style: [
-        {
-          selector: 'node',
-          style: {
-            'background-color': graphTheme.node,
-            color: graphTheme.text,
-            'font-size': '11px',
-            label: 'data(label)',
-            'text-background-color': graphTheme.labelBackground,
-            'text-background-opacity': 0.8,
-            'text-background-padding': '3px',
-            'text-max-width': '132px',
-            'text-valign': 'bottom',
-            'text-wrap': 'wrap',
-            width: '34px',
-            height: '34px',
-          },
-        },
-        {
-          selector: 'node[type = "Document"]',
-          style: { 'background-color': graphTheme.document },
-        },
-        {
-          selector: 'node[type = "Actor"]',
-          style: { 'background-color': graphTheme.actor },
-        },
-        {
-          selector: 'node:selected',
-          style: {
-            label: 'data(fullLabel)',
-          },
-        },
-        {
-          selector: 'edge',
-          style: {
-            color: graphTheme.text,
-            'curve-style': 'bezier',
-            'font-size': '10px',
-            label: 'data(label)',
-            'line-color': graphTheme.line,
-            'target-arrow-color': graphTheme.line,
-            'target-arrow-shape': 'triangle',
-            'text-background-color': graphTheme.labelBackground,
-            'text-background-opacity': 0.85,
-            'text-background-padding': '2px',
-            width: '1.5px',
-          },
-        },
-        {
-          selector: ':selected',
-          style: {
-            'background-color': graphTheme.selected,
-            'line-color': graphTheme.selected,
-            'target-arrow-color': graphTheme.selected,
-          },
-        },
-      ],
+      style: buildGraphStyles(graphTheme),
     });
+    cytoscapeRef.current = cy;
     cy.on('tap', 'node', (event) => {
       const node = nodesById.get((event.target as NodeSingular).id());
       onSelect(node ? { item: node, type: 'node' } : undefined);
@@ -284,9 +243,10 @@ function GraphCanvas({
       }
     });
     return () => {
+      cytoscapeRef.current = null;
       cy.destroy();
     };
-  }, [containerElement, edges, edgesById, nodes, nodesById, onSelect, theme]);
+  }, [containerElement, edges, edgesById, nodes, nodesById, onSelect]);
 
   return (
     <div className="graph-canvas-wrap">
@@ -353,6 +313,66 @@ function readGraphTheme(container: HTMLElement) {
     selected: readCssVariable(style, '--graph-selected'),
     text: readCssVariable(style, '--text'),
   };
+}
+
+function buildGraphStyles(graphTheme: ReturnType<typeof readGraphTheme>): StylesheetJson {
+  return [
+    {
+      selector: 'node',
+      style: {
+        'background-color': graphTheme.node,
+        color: graphTheme.text,
+        'font-size': '11px',
+        label: 'data(label)',
+        'text-background-color': graphTheme.labelBackground,
+        'text-background-opacity': 0.8,
+        'text-background-padding': '3px',
+        'text-max-width': '132px',
+        'text-valign': 'bottom',
+        'text-wrap': 'wrap',
+        width: '34px',
+        height: '34px',
+      },
+    },
+    {
+      selector: 'node[type = "Document"]',
+      style: { 'background-color': graphTheme.document },
+    },
+    {
+      selector: 'node[type = "Actor"]',
+      style: { 'background-color': graphTheme.actor },
+    },
+    {
+      selector: 'node:selected',
+      style: {
+        label: 'data(fullLabel)',
+      },
+    },
+    {
+      selector: 'edge',
+      style: {
+        color: graphTheme.text,
+        'curve-style': 'bezier',
+        'font-size': '10px',
+        label: 'data(label)',
+        'line-color': graphTheme.line,
+        'target-arrow-color': graphTheme.line,
+        'target-arrow-shape': 'triangle',
+        'text-background-color': graphTheme.labelBackground,
+        'text-background-opacity': 0.85,
+        'text-background-padding': '2px',
+        width: '1.5px',
+      },
+    },
+    {
+      selector: ':selected',
+      style: {
+        'background-color': graphTheme.selected,
+        'line-color': graphTheme.selected,
+        'target-arrow-color': graphTheme.selected,
+      },
+    },
+  ];
 }
 
 function readCssVariable(style: CSSStyleDeclaration, name: string) {
