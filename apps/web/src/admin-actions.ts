@@ -35,7 +35,6 @@ import {
   parseAdminActionDataSourceRow,
   parseAdminActionIdRow,
   parseAdminActionParserVersionRow,
-  parseAdminActionProjectRow,
 } from './admin-actions-guards.ts';
 import {
   isAdminUiCollectionSupported,
@@ -49,7 +48,7 @@ import {
 import { type AppMemberRole, listProjectConnectionsForProjectId } from './admin-db';
 import { getRequiredAdminSql } from './admin-sql';
 import { requireSessionUserId } from './auth-session';
-import { lookupProjectAdminAccess } from './authz';
+import { lookupProjectAdminAccess } from './authz.ts';
 import { hashPassword } from './password-auth';
 import {
   createGitHubInstallationAccessToken,
@@ -871,33 +870,17 @@ async function requireAdminProject(
   readonly visibility: ProjectVisibility;
 }> {
   const adminUserId = await requireAdminUserId();
-  const rows = (await sql`
-    SELECT
-      projects.id::text AS id,
-      projects.slug,
-      projects.name,
-      projects.description,
-      COALESCE(projects.visibility, 'private') AS visibility,
-      users.id::text AS admin_user_id
-    FROM public.projects
-    JOIN public.users ON users.id = ${adminUserId}
-    LEFT JOIN public.project_members
-      ON project_members.project_id = projects.id
-     AND project_members.user_id = users.id
-    WHERE projects.slug = ${projectSlug}
-      AND (users.role = 'admin' OR project_members.role = 'admin')
-  `) as readonly unknown[];
-  const project = rows[0] ? parseAdminActionProjectRow(rows[0]) : undefined;
-  if (!project) {
+  const access = await lookupProjectAdminAccess(sql, { projectSlug, userId: adminUserId });
+  if (!access) {
     throw new Error(`Admin access denied for project slug: ${projectSlug}`);
   }
   return {
-    adminUserId: project.admin_user_id,
-    description: project.description,
-    id: project.id,
-    name: project.name,
-    slug: project.slug,
-    visibility: project.visibility,
+    adminUserId,
+    description: access.description,
+    id: access.id,
+    name: access.name,
+    slug: access.slug,
+    visibility: access.visibility,
   };
 }
 

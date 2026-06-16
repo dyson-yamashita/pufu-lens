@@ -1,9 +1,4 @@
-import {
-  isProjectVisibility,
-  isSourceType,
-  type ProjectVisibility,
-  type SourceType,
-} from './admin-data.ts';
+import { isSourceType, type SourceType } from './admin-data.ts';
 
 export interface AdminActionIdRow {
   readonly id: string;
@@ -18,15 +13,6 @@ export interface AdminActionDataSourceIngestRow extends AdminActionDataSourceRow
   readonly storage_uri: string | null;
 }
 
-export interface AdminActionProjectRow {
-  readonly admin_user_id: string;
-  readonly description: string | null;
-  readonly id: string;
-  readonly name: string;
-  readonly slug: string;
-  readonly visibility: ProjectVisibility;
-}
-
 export interface AdminActionParserVersionRow {
   readonly id: string;
   readonly status: string;
@@ -35,18 +21,6 @@ export interface AdminActionParserVersionRow {
 export function parseAdminActionIdRow(value: unknown, context: string): AdminActionIdRow {
   const row = requireRecord(value, context);
   return { id: requireString(row.id, context, 'id') };
-}
-
-export function parseAdminActionProjectRow(value: unknown): AdminActionProjectRow {
-  const row = requireRecord(value, 'admin project row');
-  return {
-    admin_user_id: requireString(row.admin_user_id, 'admin project row', 'admin_user_id'),
-    description: requireNullableString(row.description, 'admin project row', 'description'),
-    id: requireString(row.id, 'admin project row', 'id'),
-    name: requireString(row.name, 'admin project row', 'name'),
-    slug: requireString(row.slug, 'admin project row', 'slug'),
-    visibility: requireProjectVisibility(row.visibility, 'admin project row', 'visibility'),
-  };
 }
 
 export function parseAdminActionDataSourceRow(value: unknown): AdminActionDataSourceRow {
@@ -112,17 +86,6 @@ function requireString(value: unknown, context: string, fieldName: string): stri
 function requireNullableString(value: unknown, context: string, fieldName: string): string | null {
   if (value === null || value === undefined || typeof value === 'string') {
     return value ?? null;
-  }
-  throw new Error(`Invalid ${context} field: ${fieldName}`);
-}
-
-function requireProjectVisibility(
-  value: unknown,
-  context: string,
-  fieldName: string,
-): ProjectVisibility {
-  if (isProjectVisibility(value)) {
-    return value;
   }
   throw new Error(`Invalid ${context} field: ${fieldName}`);
 }

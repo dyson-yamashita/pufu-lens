@@ -3,6 +3,7 @@ import { parseProjectMemberAccess } from './authz.ts';
 
 const validAccessRow = {
   appRole: 'member',
+  description: 'Sample description',
   graphName: 'graph_sample',
   id: 'project-a',
   name: 'Sample Project',
@@ -17,6 +18,7 @@ assert.deepEqual(
   parseProjectMemberAccess({
     ...validAccessRow,
     appRole: 'admin',
+    description: null,
     graphName: null,
     projectRole: null,
     visibility: 'public',
@@ -24,10 +26,16 @@ assert.deepEqual(
   {
     ...validAccessRow,
     appRole: 'admin',
+    description: null,
     graphName: null,
     projectRole: null,
     visibility: 'public',
   },
+);
+
+assert.throws(
+  () => parseProjectMemberAccess({ ...validAccessRow, description: 123 }),
+  /Invalid project member access field: description/,
 );
 
 assert.throws(() => parseProjectMemberAccess(null), /Invalid project member access row/);
