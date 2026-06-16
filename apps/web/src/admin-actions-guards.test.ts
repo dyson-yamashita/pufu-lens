@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import {
   parseAdminActionAdminCountRow,
   parseAdminActionDataSourceIngestRow,
+  parseAdminActionDataSourceRecordRow,
   parseAdminActionDataSourceRow,
   parseAdminActionIdRow,
   parseAdminActionParserVersionRow,
+  parseAdminActionProjectRecordRow,
+  parseAdminActionRawDocumentRecordRow,
   parseAdminActionSameHashCandidateRow,
 } from './admin-actions-guards.ts';
 
@@ -15,6 +18,15 @@ assert.throws(
   /Invalid sample row field: id/,
 );
 
+assert.deepEqual(parseAdminActionProjectRecordRow({ id: 'project-a', slug: 'sample-a' }), {
+  id: 'project-a',
+  slug: 'sample-a',
+});
+assert.throws(
+  () => parseAdminActionProjectRecordRow({ id: 'project-a', slug: null }),
+  /Invalid collection project row field: slug/,
+);
+
 assert.deepEqual(parseAdminActionDataSourceRow({ id: 'source-a', source_type: 'github' }), {
   id: 'source-a',
   source_type: 'github',
@@ -22,6 +34,96 @@ assert.deepEqual(parseAdminActionDataSourceRow({ id: 'source-a', source_type: 'g
 assert.throws(
   () => parseAdminActionDataSourceRow({ id: 'source-a', source_type: 'slack' }),
   /Invalid admin data source row field: source_type/,
+);
+
+assert.deepEqual(
+  parseAdminActionDataSourceRecordRow({
+    config: { repository: 'owner/repo' },
+    enabled: true,
+    id: 'source-a',
+    ingestWindow: {},
+    projectId: 'project-a',
+    sourceType: 'github',
+  }),
+  {
+    config: { repository: 'owner/repo' },
+    enabled: true,
+    id: 'source-a',
+    ingestWindow: {},
+    projectId: 'project-a',
+    sourceType: 'github',
+  },
+);
+assert.throws(
+  () =>
+    parseAdminActionDataSourceRecordRow({
+      config: null,
+      enabled: true,
+      id: 'source-a',
+      ingestWindow: {},
+      projectId: 'project-a',
+      sourceType: 'github',
+    }),
+  /Invalid collection data source row field: config/,
+);
+assert.deepEqual(
+  parseAdminActionDataSourceRecordRow({
+    config: { repository: 'owner/repo' },
+    enabled: true,
+    id: 'source-a',
+    ingestWindow: null,
+    projectId: 'project-a',
+    sourceType: 'github',
+  }),
+  {
+    config: { repository: 'owner/repo' },
+    enabled: true,
+    id: 'source-a',
+    ingestWindow: {},
+    projectId: 'project-a',
+    sourceType: 'github',
+  },
+);
+assert.deepEqual(
+  parseAdminActionDataSourceRecordRow({
+    config: { repository: 'owner/repo' },
+    enabled: true,
+    id: 'source-b',
+    projectId: 'project-a',
+    sourceType: 'github',
+  }),
+  {
+    config: { repository: 'owner/repo' },
+    enabled: true,
+    id: 'source-b',
+    ingestWindow: {},
+    projectId: 'project-a',
+    sourceType: 'github',
+  },
+);
+assert.throws(
+  () =>
+    parseAdminActionDataSourceRecordRow({
+      config: {},
+      enabled: 'true',
+      id: 'source-a',
+      ingestWindow: {},
+      projectId: 'project-a',
+      sourceType: 'github',
+    }),
+  /Invalid collection data source row field: enabled/,
+);
+assert.throws(
+  () =>
+    parseAdminActionDataSourceRecordRow({
+      config: {},
+      enabled: true,
+      id: 'source-a',
+      ingestWindow: {},
+      projectId: 'project-a',
+      sourceType: 'slack',
+    }),
+  /Invalid collection data source row field: sourceType/,
 );
 
 assert.deepEqual(
@@ -39,6 +141,41 @@ assert.throws(
       storage_uri: 123,
     }),
   /Invalid admin data source ingest row field: storage_uri/,
+);
+
+assert.deepEqual(
+  parseAdminActionRawDocumentRecordRow({
+    id: 'raw-a',
+    ingestStatus: 'fetched',
+    sourceId: 'issue-1',
+    sourceType: 'github',
+  }),
+  {
+    id: 'raw-a',
+    ingestStatus: 'fetched',
+    sourceId: 'issue-1',
+    sourceType: 'github',
+  },
+);
+assert.throws(
+  () =>
+    parseAdminActionRawDocumentRecordRow({
+      id: 'raw-a',
+      ingestStatus: 'archived',
+      sourceId: 'issue-1',
+      sourceType: 'github',
+    }),
+  /Invalid collection raw document row field: ingestStatus/,
+);
+assert.throws(
+  () =>
+    parseAdminActionRawDocumentRecordRow({
+      id: 'raw-a',
+      ingestStatus: 'fetched',
+      sourceId: 123,
+      sourceType: 'github',
+    }),
+  /Invalid collection raw document row field: sourceId/,
 );
 
 assert.equal(parseAdminActionAdminCountRow({ admin_count: 2 }), 2);

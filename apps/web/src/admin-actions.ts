@@ -32,9 +32,12 @@ import {
   type AdminActionParserVersionRow,
   parseAdminActionAdminCountRow,
   parseAdminActionDataSourceIngestRow,
+  parseAdminActionDataSourceRecordRow,
   parseAdminActionDataSourceRow,
   parseAdminActionIdRow,
   parseAdminActionParserVersionRow,
+  parseAdminActionProjectRecordRow,
+  parseAdminActionRawDocumentRecordRow,
   parseAdminActionSameHashCandidateRow,
 } from './admin-actions-guards.ts';
 import {
@@ -683,15 +686,15 @@ class AdminCollectionRepository implements CollectionRepository {
       SELECT id::text AS id, slug
       FROM public.projects
       WHERE slug = ${slug}
-    `) as ProjectRecord[];
-    return rows[0];
+    `) as readonly unknown[];
+    return rows[0] ? parseAdminActionProjectRecordRow(rows[0]) : undefined;
   }
 
   async findDataSources(projectId: string, sourceType?: SourceType): Promise<DataSourceRecord[]> {
     if (!sourceType) {
       return [];
     }
-    return (await this.sql`
+    const rows = (await this.sql`
       SELECT
         config,
         enabled,
@@ -704,7 +707,8 @@ class AdminCollectionRepository implements CollectionRepository {
         AND enabled = true
         AND source_type = ${sourceType}
         AND id = ${this.dataSourceId}
-    `) as DataSourceRecord[];
+    `) as readonly unknown[];
+    return rows.map(parseAdminActionDataSourceRecordRow);
   }
 
   async lookupRawDocument(input: {
@@ -722,8 +726,8 @@ class AdminCollectionRepository implements CollectionRepository {
       WHERE project_id = ${input.projectId}
         AND source_type = ${input.sourceType}
         AND source_id = ${input.sourceId}
-    `) as RawDocumentRecord[];
-    return rows[0];
+    `) as readonly unknown[];
+    return rows[0] ? parseAdminActionRawDocumentRecordRow(rows[0]) : undefined;
   }
 
   async findSameHashCandidates(input: {
@@ -784,12 +788,12 @@ class AdminCollectionRepository implements CollectionRepository {
         ingest_status AS "ingestStatus",
         source_id AS "sourceId",
         source_type AS "sourceType"
-    `) as RawDocumentRecord[];
+    `) as readonly unknown[];
     const rawDocument = rows[0];
     if (!rawDocument) {
       throw new Error(`Failed to upsert raw document: ${input.sourceType}:${input.sourceId}`);
     }
-    return rawDocument;
+    return parseAdminActionRawDocumentRecordRow(rawDocument);
   }
 
   async linkDataSource(input: LinkDataSourceInput): Promise<void> {
