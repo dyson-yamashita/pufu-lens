@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
+import { normalizeTheme, themeCookieName } from '../src/theme';
 import '../src/styles.css';
 
 export const metadata: Metadata = {
@@ -6,9 +8,12 @@ export const metadata: Metadata = {
   description: 'Project ingestion operations console',
 };
 
-export default function RootLayout({ children }: { readonly children: React.ReactNode }) {
+export default async function RootLayout({ children }: { readonly children: React.ReactNode }) {
+  const cookieStore = await cookies();
+  const theme = normalizeTheme(cookieStore.get(themeCookieName)?.value);
+
   return (
-    <html lang="ja">
+    <html lang="ja" data-theme={theme}>
       <body>{children}</body>
     </html>
   );

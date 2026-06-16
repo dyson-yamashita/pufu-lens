@@ -5,6 +5,23 @@ const adminCredentials = {
   password: process.env.PUFU_LENS_E2E_ADMIN_PASSWORD,
 };
 
+test('scenario: user can switch theme and keep it after reload', async ({ page }) => {
+  await page.context().clearCookies();
+  await page.goto('/projects');
+
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(page.getByTestId('theme-toggle')).toBeVisible();
+
+  await page.getByTestId('theme-toggle-light').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+
+  await page.getByTestId('theme-toggle-dark').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+});
+
 test('scenario: public user discovers public projects without private admin links', async ({
   page,
 }) => {

@@ -145,6 +145,23 @@ spacing:
 - **Tertiary（Status Emerald）:** `#10B981`。成功状態、「アクティブ」なプロジェクト状態、正常なデータ同期に使用します。
 - **Neutrals（Navy/Charcoal）:** 基本スケールでは、背景に Deep Navy（`#020617`）系を、コンテナに Slate/Charcoal 系を使用します。
 
+テーマは dark を既定とし、ユーザーが明示的に light / dark を切り替えた場合は選択を cookie に保存して初回描画から反映します。ライトテーマは白一色ではなく、業務 UI 向けの低彩度な明色面を使い、同じ意味の CSS トークンを維持します。
+
+**Light theme tokens:**
+
+- **Background:** `#F6F8FC`
+- **Surface:** `#FFFFFF`
+- **Surface 2:** `#EEF2F7`
+- **Line:** `#CFD7E6`
+- **Text:** `#111827`
+- **Muted:** `#526070`
+- **Primary Blue:** `#005BD8`
+- **Strong Blue:** `#0066FF`
+- **Agent Amethyst:** `#7C3AED`
+- **Status Emerald:** `#047857`
+- **Warning Amber:** `#B45309`
+- **Error Red:** `#DC2626`
+
 **機能別のカラー適用:**
 
 - AI が「思考中」である状態を示す場合のみ、**Amethyst** のグラデーションを控えめに使用します。

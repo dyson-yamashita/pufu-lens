@@ -21,6 +21,7 @@ import {
   TriangleAlert,
   Users,
 } from 'lucide-react';
+import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { auth, signOut } from '../auth';
 import type {
@@ -33,6 +34,8 @@ import type {
 } from './admin-data';
 import { canManageProject as canManageProjectDb } from './admin-db';
 import { ActionForm, PendingSubmitButton } from './form-buttons';
+import { normalizeTheme, themeCookieName } from './theme';
+import { ThemeToggle } from './theme-toggle';
 
 const sourceLabels: Record<SourceType, string> = {
   drive: 'Drive',
@@ -75,6 +78,8 @@ export async function AppShell({
   const appRole = session?.user?.role;
   const canShowProjectNav = Boolean(projectSlug);
   const isGuest = !session?.user?.id;
+  const cookieStore = await cookies();
+  const initialTheme = normalizeTheme(cookieStore.get(themeCookieName)?.value);
   const canShowAdminNav =
     canManageProject ??
     (projectSlug && session?.user?.id
@@ -242,6 +247,7 @@ export async function AppShell({
           className={isGuest ? 'account-panel guest-account-panel' : 'account-panel'}
           data-testid="account-panel"
         >
+          <ThemeToggle initialTheme={initialTheme} />
           {session?.user?.id ? (
             <>
               <span className="account-identity" data-testid="account-identity">
