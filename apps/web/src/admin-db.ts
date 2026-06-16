@@ -30,7 +30,11 @@ import {
   type SourceType,
   truncateSnippet,
 } from './admin-data';
-import { parseAppMemberRoleRow, parseCanManageProjectRow } from './admin-db-guards';
+import {
+  parseAdminDbIdRow,
+  parseAppMemberRoleRow,
+  parseCanManageProjectRow,
+} from './admin-db-guards';
 import { getOptionalAdminSql } from './admin-sql';
 import { lookupProjectMemberAccess } from './authz';
 import { isFixtureFallbackEnabled } from './runtime-guards';
@@ -390,8 +394,12 @@ export async function isGlobalAdminUser(userId: string): Promise<boolean> {
       FROM public.users
       WHERE id = ${userId}
         AND role = 'admin'
-    `) as Array<{ id: string }>;
-    return Boolean(rows[0]);
+    `) as readonly unknown[];
+    if (!rows[0]) {
+      return false;
+    }
+    parseAdminDbIdRow(rows[0], 'global admin user');
+    return true;
   }, false);
 }
 

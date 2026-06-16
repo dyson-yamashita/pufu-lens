@@ -1,5 +1,16 @@
 import type { AppMemberRole } from './admin-db';
 
+export function parseAdminDbIdRow(value: unknown, context: string): string {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${context} row.`);
+  }
+  const id = value.id;
+  if (typeof id !== 'string') {
+    throw new Error(`Invalid ${context} row field: id`);
+  }
+  return id;
+}
+
 export function parseAppMemberRoleRow(value: unknown): AppMemberRole {
   if (!isRecord(value)) {
     throw new Error('Invalid app member role row.');
