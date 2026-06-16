@@ -5,7 +5,6 @@ import {
   parseAdminActionDataSourceRow,
   parseAdminActionIdRow,
   parseAdminActionParserVersionRow,
-  parseAdminActionProjectRow,
 } from './admin-actions-guards.ts';
 
 assert.deepEqual(parseAdminActionIdRow({ id: 'row-a' }, 'sample row'), { id: 'row-a' });
@@ -13,36 +12,6 @@ assert.throws(() => parseAdminActionIdRow(null, 'sample row'), /Invalid sample r
 assert.throws(
   () => parseAdminActionIdRow({ id: 123 }, 'sample row'),
   /Invalid sample row field: id/,
-);
-
-assert.deepEqual(
-  parseAdminActionProjectRow({
-    admin_user_id: 'user-a',
-    id: 'project-a',
-    name: 'Project A',
-    slug: 'project-a',
-    visibility: 'private',
-  }),
-  {
-    admin_user_id: 'user-a',
-    description: null,
-    id: 'project-a',
-    name: 'Project A',
-    slug: 'project-a',
-    visibility: 'private',
-  },
-);
-assert.throws(
-  () =>
-    parseAdminActionProjectRow({
-      admin_user_id: 'user-a',
-      description: null,
-      id: 'project-a',
-      name: 'Project A',
-      slug: 'project-a',
-      visibility: 'internal',
-    }),
-  /Invalid admin project row field: visibility/,
 );
 
 assert.deepEqual(parseAdminActionDataSourceRow({ id: 'source-a', source_type: 'github' }), {

@@ -6,6 +6,7 @@ export type AppMemberRole = 'admin' | 'member';
 
 export interface ProjectMemberAccess {
   appRole: AppMemberRole;
+  description: string | null;
   graphName: string | null;
   id: string;
   name: string;
@@ -20,6 +21,7 @@ export function parseProjectMemberAccess(value: unknown): ProjectMemberAccess {
   }
   return {
     appRole: parseAppMemberRole(value.appRole, 'appRole'),
+    description: parseNullableString(value.description, 'description'),
     graphName: parseNullableString(value.graphName, 'graphName'),
     id: parseRequiredString(value.id, 'id'),
     name: parseRequiredString(value.name, 'name'),
@@ -38,6 +40,7 @@ export async function lookupProjectMemberAccess(
       p.id::text AS id,
       p.slug,
       p.name,
+      p.description,
       p.graph_name AS "graphName",
       COALESCE(p.visibility, 'private') AS visibility,
       app_user.role AS "appRole",
