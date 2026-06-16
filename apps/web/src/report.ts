@@ -201,19 +201,20 @@ export function parseReportProjectLookupRow(value: unknown): ProjectLookupResult
   if (!isRecord(value)) {
     throw new Error('Invalid project lookup row.');
   }
-  if (typeof value.id !== 'string') {
+  const { id, slug, visibility } = value;
+  if (typeof id !== 'string') {
     throw new Error('Invalid project lookup field: id');
   }
-  if (typeof value.slug !== 'string') {
+  if (typeof slug !== 'string') {
     throw new Error('Invalid project lookup field: slug');
   }
-  if (!isProjectVisibility(value.visibility)) {
+  if (!isProjectVisibility(visibility)) {
     throw new Error('Invalid project lookup field: visibility');
   }
   return {
-    id: value.id,
-    slug: value.slug,
-    visibility: value.visibility,
+    id,
+    slug,
+    visibility,
   };
 }
 
