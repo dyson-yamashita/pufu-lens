@@ -24,6 +24,7 @@ import {
   type SourceStatus,
   type SourceType,
 } from './admin-data';
+import { parseAppMemberRoleRow, parseCanManageProjectRow } from './admin-db-guards';
 import { getOptionalAdminSql } from './admin-sql';
 import { lookupProjectMemberAccess } from './authz';
 import { isFixtureFallbackEnabled } from './runtime-guards';
@@ -357,9 +358,9 @@ export async function listAppMembersForUser(userId: string): Promise<GlobalMembe
       FROM public.users
       WHERE id = ${userId}
         AND role IN ('admin', 'member')
-    `) as Array<{ role: AppMemberRole }>;
-      const access = accessRows[0];
-      if (!access) {
+    `) as readonly unknown[];
+      const accessRole = accessRows[0] ? parseAppMemberRoleRow(accessRows[0]) : undefined;
+      if (!accessRole) {
         throw new Error('Members access is required.');
       }
       const rows = (await sql`
@@ -368,7 +369,7 @@ export async function listAppMembersForUser(userId: string): Promise<GlobalMembe
       ORDER BY email
     `) as AppMemberRow[];
       return {
-        canManageMembers: access.role === 'admin',
+        canManageMembers: accessRole === 'admin',
         members: rows.map(memberFromRow),
       };
     },
@@ -395,8 +396,8 @@ export async function getAppUserRole(userId: string): Promise<AppMemberRole | un
       FROM public.users
       WHERE id = ${userId}
         AND role IN ('admin', 'member')
-    `) as Array<{ role: AppMemberRole }>;
-    return rows[0]?.role;
+    `) as readonly unknown[];
+    return rows[0] ? parseAppMemberRoleRow(rows[0]) : undefined;
   }, undefined);
 }
 
@@ -413,8 +414,8 @@ export async function canManageProject(slug: string, userId: string): Promise<bo
       WHERE p.slug = ${slug}
         AND (app_user.role = 'admin' OR pm.role = 'admin')
       LIMIT 1
-    `) as Array<{ can_manage: boolean }>;
-    return Boolean(rows[0]);
+    `) as readonly unknown[];
+    return rows[0] ? parseCanManageProjectRow(rows[0]) : false;
   }, false);
 }
 
