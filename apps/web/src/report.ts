@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import type postgres from 'postgres';
 import { LocalFsObjectStorage } from '../../../packages/storage/src/local-fs.ts';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
+import { isProjectVisibility, type ProjectVisibility } from './admin-data.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
 import {
   type BusinessHoursConfig,
@@ -193,8 +194,28 @@ export interface PublishReportOptions extends ReportAccessOptions {
 type ProjectLookupResult = {
   readonly id: string;
   readonly slug: string;
-  readonly visibility: 'private' | 'public';
+  readonly visibility: ProjectVisibility;
 };
+
+export function parseReportProjectLookupRow(value: unknown): ProjectLookupResult {
+  if (!isRecord(value)) {
+    throw new Error('Invalid project lookup row.');
+  }
+  if (typeof value.id !== 'string') {
+    throw new Error('Invalid project lookup field: id');
+  }
+  if (typeof value.slug !== 'string') {
+    throw new Error('Invalid project lookup field: slug');
+  }
+  if (!isProjectVisibility(value.visibility)) {
+    throw new Error('Invalid project lookup field: visibility');
+  }
+  return {
+    id: value.id,
+    slug: value.slug,
+    visibility: value.visibility,
+  };
+}
 
 export interface PreparedReportChunk {
   readonly chunkIndex: number;
@@ -808,8 +829,11 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
         SELECT p.id::text AS id, p.slug, COALESCE(p.visibility, 'private') AS visibility
         FROM public.projects p
         WHERE p.slug = ${projectSlug}
-      `) as Array<{ id: string; slug: string; visibility: 'private' | 'public' }>;
-      return rows[0];
+      `) as readonly unknown[];
+      if (rows.length === 0) {
+        return undefined;
+      }
+      return parseReportProjectLookupRow(rows[0]);
     },
     async listRecentDocuments({ limit, period, projectId }) {
       const rows = (await sql`
