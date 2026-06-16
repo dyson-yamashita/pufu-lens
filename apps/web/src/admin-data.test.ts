@@ -5,6 +5,8 @@ import {
   getFallbackDataSourceContentPreview,
   getProject,
   getSourceTypeCounts,
+  isProjectVisibility,
+  isSourceType,
   isSourceTypeAvailable,
   listProjects,
   listPublicProjects,
@@ -48,6 +50,14 @@ assert.equal(requiredProviderForSourceType('web'), null);
 assert.equal(requiredProviderForSourceType('github'), 'github');
 assert.equal(requiredProviderForSourceType('gmail'), 'google');
 assert.equal(requiredProviderForSourceType('drive'), 'google');
+assert.equal(isSourceType('web'), true);
+assert.equal(isSourceType('github'), true);
+assert.equal(isSourceType('slack'), false);
+assert.equal(isSourceType(null), false);
+assert.equal(isProjectVisibility('public'), true);
+assert.equal(isProjectVisibility('private'), true);
+assert.equal(isProjectVisibility('internal'), false);
+assert.equal(isProjectVisibility(null), false);
 
 const disconnected = notConnectedProjectConnections();
 assert.equal(disconnected.length, 2);

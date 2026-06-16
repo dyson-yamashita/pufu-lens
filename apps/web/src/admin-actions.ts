@@ -40,6 +40,8 @@ import {
 import {
   isAdminUiCollectionSupported,
   isAdminUiIngestSupported,
+  isProjectVisibility,
+  isSourceType,
   isSourceTypeAvailable,
   type ProjectVisibility,
   type SourceType,
@@ -1219,14 +1221,14 @@ async function requireProjectAdminForMemberManagement(
 }
 
 function requireSourceType(value: string): SourceType {
-  if (value === 'drive' || value === 'github' || value === 'gmail' || value === 'web') {
+  if (isSourceType(value)) {
     return value;
   }
   throw new Error(`Unsupported source type: ${value}`);
 }
 
 function requireProjectVisibility(value: string): ProjectVisibility {
-  if (value === 'private' || value === 'public') {
+  if (isProjectVisibility(value)) {
     return value;
   }
   throw new Error(`Unsupported project visibility: ${value}`);

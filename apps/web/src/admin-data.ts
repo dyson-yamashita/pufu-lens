@@ -1,7 +1,9 @@
-export type SourceType = 'gmail' | 'drive' | 'github' | 'web';
+export const SOURCE_TYPES = ['gmail', 'drive', 'github', 'web'] as const;
+export type SourceType = (typeof SOURCE_TYPES)[number];
 export type SourceStatus = 'healthy' | 'syncing' | 'failed' | 'held';
 export type ParserProfileStatus = 'approved' | 'review_requested' | 'draft' | 'rejected';
-export type ProjectVisibility = 'private' | 'public';
+export const PROJECT_VISIBILITIES = ['private', 'public'] as const;
+export type ProjectVisibility = (typeof PROJECT_VISIBILITIES)[number];
 export type ConnectionProvider = 'google' | 'github';
 export type ProjectConnectionStatus =
   | 'connected'
@@ -31,6 +33,14 @@ export interface ProjectConnectionConfiguration {
 export type ProjectSourceAvailability = Record<SourceType, boolean>;
 
 const CONNECTION_PROVIDERS: readonly ConnectionProvider[] = ['google', 'github'];
+
+export function isSourceType(value: unknown): value is SourceType {
+  return typeof value === 'string' && SOURCE_TYPES.includes(value as SourceType);
+}
+
+export function isProjectVisibility(value: unknown): value is ProjectVisibility {
+  return typeof value === 'string' && PROJECT_VISIBILITIES.includes(value as ProjectVisibility);
+}
 
 export function requiredProviderForSourceType(sourceType: SourceType): ConnectionProvider | null {
   if (sourceType === 'web') {

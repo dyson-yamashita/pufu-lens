@@ -1,4 +1,9 @@
-import type { ProjectVisibility, SourceType } from './admin-data';
+import {
+  isProjectVisibility,
+  isSourceType,
+  type ProjectVisibility,
+  type SourceType,
+} from './admin-data.ts';
 
 export interface AdminActionIdRow {
   readonly id: string;
@@ -113,14 +118,14 @@ function requireProjectVisibility(
   context: string,
   fieldName: string,
 ): ProjectVisibility {
-  if (value === 'private' || value === 'public') {
+  if (isProjectVisibility(value)) {
     return value;
   }
   throw new Error(`Invalid ${context} field: ${fieldName}`);
 }
 
 function requireSourceType(value: unknown, context: string, fieldName: string): SourceType {
-  if (value === 'web' || value === 'github' || value === 'gmail' || value === 'drive') {
+  if (isSourceType(value)) {
     return value;
   }
   throw new Error(`Invalid ${context} field: ${fieldName}`);
