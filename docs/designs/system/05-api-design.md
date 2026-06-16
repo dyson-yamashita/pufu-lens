@@ -42,6 +42,8 @@
 
 管理 API として REST 化されていない操作は、現状では server action を正規入口として扱う。将来 REST API を追加する場合は、server action と同じ認可 SQL / runtime validation を共有する。
 
+Data Sources 詳細の content preview は初期実装では REST API を増やさず、`apps/web/src/admin-db.ts` の server-side loader と Next.js server component から読む。`projectSlug` と `dataSourceId` の組み合わせを DB で検証し、他 project の data source を返さない。
+
 ### 4. CLI / Job 入口
 
 | コマンド / script                                                 | 実装状況           | 用途                                                           |

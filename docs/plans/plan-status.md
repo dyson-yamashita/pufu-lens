@@ -23,6 +23,7 @@
 | `docs/plans/004-project-settings-connections/overview.md`  | `active`    | 2026-06-13 | Project Settings / Connections は Step 1-5 完了。Step 6 / 7 の server enforcement と失効・scope 不足運用が残作業。     |
 | `docs/plans/005-storage-recovery-artifacts/overview.md`    | `active`    | 2026-06-13 | Issue #117 / PR #118 で Step 1 完了。Step 2 以降の artifact 統合、reconcile、restore は未着手。                        |
 | `docs/plans/006-db-migration-management/overview.md`       | `completed` | 2026-06-13 | Issue #119 / #121 / #123 / #127 / #130 / #133 で DB migration 運用、検証、drift 検出、重い DB 変更方針を整備済み。     |
+| `docs/plans/007-data-source-content-preview/overview.md`   | `active`    | 2026-06-15 | Issue #148 で Data Sources 詳細の raw / indexed document、snippet、queue 状態 preview 実装に着手。                     |
 
 ## 運用ルール
 

@@ -9,11 +9,17 @@ import {
   isAdminUiIngestSupported,
   type SourceType,
 } from '../../../../../src/admin-data';
-import { getProjectSourceAvailability, getSourceTypeCounts } from '../../../../../src/admin-db';
+import {
+  getDataSourceContentPreview,
+  getProjectSourceAvailability,
+  getSourceTypeCounts,
+} from '../../../../../src/admin-db';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
 import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
 import {
   AppShell,
+  DataSourceContentPreviewPanel,
+  DataSourceQueuePreviewPanel,
   DataSourceTable,
   MetricStrip,
   PageHeader,
@@ -42,6 +48,14 @@ export default async function DataSourcesPage({
   const selectedSource =
     visibleSources.find((source) => source.id === dataSourceId) ?? visibleSources[0];
   const counts = getSourceTypeCounts(project);
+  let contentPreview = null;
+  if (selectedSource) {
+    try {
+      contentPreview = await getDataSourceContentPreview(projectSlug, selectedSource.id);
+    } catch (error) {
+      console.error('Failed to load data source content preview:', error);
+    }
+  }
 
   return (
     <AppShell active="data-sources" canManageProject project={project}>
@@ -154,81 +168,105 @@ export default async function DataSourcesPage({
                 </div>
                 <StatusBadge status={selectedSource.status} />
               </div>
-              <ActionForm action={updateDataSource} className="detail-edit-form">
-                <input name="projectSlug" type="hidden" value={project.slug} />
-                <input name="dataSourceId" type="hidden" value={selectedSource.id} />
-                <label>
-                  <span>Name</span>
-                  <input
-                    data-testid="data-source-edit-name-input"
-                    defaultValue={selectedSource.name}
-                    name="name"
-                    required
-                    type="text"
-                  />
-                </label>
-                <label>
-                  <span>Scope</span>
-                  <textarea
-                    data-testid="data-source-edit-scope-input"
-                    defaultValue={selectedSource.editableScope}
-                    name="scope"
-                    required
-                    rows={3}
-                  />
-                </label>
-                <dl className="detail-list stacked">
-                  <div>
-                    <dt>Current scope</dt>
-                    <dd>{selectedSource.scope}</dd>
-                  </div>
-                  <div>
-                    <dt>Config</dt>
-                    <dd>{selectedSource.configSummary}</dd>
-                  </div>
-                  <div>
-                    <dt>Last run</dt>
-                    <dd>{selectedSource.lastChecked}</dd>
-                  </div>
-                  <div>
-                    <dt>Last indexed</dt>
-                    <dd>{selectedSource.lastIndexed}</dd>
-                  </div>
-                </dl>
-                <div className="action-row">
-                  <PendingSubmitButton
-                    className="icon-button"
-                    testId="data-source-save-button"
-                    title="Save data source"
-                  >
-                    Save
-                  </PendingSubmitButton>
-                </div>
-              </ActionForm>
-              <div className="action-row">
-                <button
-                  className="icon-button muted"
-                  data-testid="data-source-test-button"
-                  type="button"
+              <div className="data-source-detail-sections">
+                <section
+                  className="data-source-detail-section"
+                  data-testid="data-source-settings-section"
                 >
-                  Test
-                </button>
-                <ActionForm action={collectAndIngestDataSource} className="inline-action-form">
-                  <input name="projectSlug" type="hidden" value={project.slug} />
-                  <input name="dataSourceId" type="hidden" value={selectedSource.id} />
-                  <PendingSubmitButton
-                    className="icon-button muted"
-                    disabled={
-                      !isAdminUiCollectionSupported(selectedSource.sourceType) ||
-                      !isAdminUiIngestSupported(selectedSource.sourceType)
-                    }
-                    pendingLabel="Running"
-                    testId="data-source-run-button"
-                    title="Collect and ingest data source"
+                  <h3 className="data-source-section-title">Settings</h3>
+                  <ActionForm action={updateDataSource} className="detail-edit-form">
+                    <input name="projectSlug" type="hidden" value={project.slug} />
+                    <input name="dataSourceId" type="hidden" value={selectedSource.id} />
+                    <label>
+                      <span>Name</span>
+                      <input
+                        data-testid="data-source-edit-name-input"
+                        defaultValue={selectedSource.name}
+                        name="name"
+                        required
+                        type="text"
+                      />
+                    </label>
+                    <label>
+                      <span>Scope</span>
+                      <textarea
+                        data-testid="data-source-edit-scope-input"
+                        defaultValue={selectedSource.editableScope}
+                        name="scope"
+                        required
+                        rows={3}
+                      />
+                    </label>
+                    <dl className="detail-list stacked">
+                      <div>
+                        <dt>Current scope</dt>
+                        <dd>{selectedSource.scope}</dd>
+                      </div>
+                      <div>
+                        <dt>Config</dt>
+                        <dd>{selectedSource.configSummary}</dd>
+                      </div>
+                      <div>
+                        <dt>Last run</dt>
+                        <dd>{selectedSource.lastChecked}</dd>
+                      </div>
+                      <div>
+                        <dt>Last indexed</dt>
+                        <dd>{selectedSource.lastIndexed}</dd>
+                      </div>
+                    </dl>
+                    <div className="action-row">
+                      <PendingSubmitButton
+                        className="icon-button"
+                        testId="data-source-save-button"
+                        title="Save data source"
+                      >
+                        Save
+                      </PendingSubmitButton>
+                    </div>
+                  </ActionForm>
+                  <div className="action-row">
+                    <button
+                      className="icon-button muted"
+                      data-testid="data-source-test-button"
+                      type="button"
+                    >
+                      Test
+                    </button>
+                    <ActionForm action={collectAndIngestDataSource} className="inline-action-form">
+                      <input name="projectSlug" type="hidden" value={project.slug} />
+                      <input name="dataSourceId" type="hidden" value={selectedSource.id} />
+                      <PendingSubmitButton
+                        className="icon-button muted"
+                        disabled={
+                          !isAdminUiCollectionSupported(selectedSource.sourceType) ||
+                          !isAdminUiIngestSupported(selectedSource.sourceType)
+                        }
+                        pendingLabel="Running"
+                        testId="data-source-run-button"
+                        title="Collect and ingest data source"
+                      >
+                        Collect & Ingest
+                      </PendingSubmitButton>
+                    </ActionForm>
+                  </div>
+                </section>
+                {contentPreview ? (
+                  <>
+                    <DataSourceContentPreviewPanel preview={contentPreview} />
+                    <DataSourceQueuePreviewPanel preview={contentPreview} />
+                  </>
+                ) : (
+                  <section
+                    className="data-source-detail-section"
+                    data-testid="data-source-content-panel"
                   >
-                    Collect & Ingest
-                  </PendingSubmitButton>
-                </ActionForm>
+                    <h3 className="data-source-section-title">Content</h3>
+                    <p className="content-preview-empty" data-testid="data-source-content-empty">
+                      プレビューを読み込めませんでした。
+                    </p>
+                  </section>
+                )}
               </div>
             </>
           ) : null}

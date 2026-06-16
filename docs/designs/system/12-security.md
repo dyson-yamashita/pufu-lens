@@ -60,4 +60,11 @@ API は以下の認可をかける：
 - レート制限を Cloud Armor または Hono middleware で実装する。public chat は信頼プロキシが付与した `x-forwarded-for` を右端から走査し、private / local IP と無効値を除いた最初の有効値（なければ `x-real-ip`、最後に anonymous bucket）+ report id 単位で 1 時間 / 1 日 / 質問長の上限を設け、クライアントが任意に付与できる左端値は信用しない。private chat は user + project 単位で public より緩い上限にする。Mastra 側で使う rate limit 用 header は OIDC 検証済みの Next.js から来たものだけを信頼する
 - App Hosting の runtime env と secret は `apphosting.yaml` で参照し、secret 値をリポジトリに含めない。
 
+### 4. Admin data source content preview
+
+- `/projects/[projectSlug]/admin/data-sources` の content preview は project admin 専用の private UI とし、public report / public chat へ流用しない。
+- 表示してよい情報: document title、doc type、ingest status、canonical URI、240 文字以内の snippet、raw/document id の短い表示、queue status / attempts / 短い error 要約、集計メトリクス。
+- 表示しない情報: raw 本文全文、parsed JSON 全文、`storage_uri` / `parsed_uri` 実値、OAuth token / refresh token、secret reference 実値、provider response 全文。
+- loader は `projectSlug` と `dataSourceId` を DB join で検証し、snippet は `documents.summary` または先頭 `document_chunks.content` から生成する。
+
 ---

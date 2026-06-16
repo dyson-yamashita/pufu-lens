@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {
   availabilityFromConnections,
+  DATA_SOURCE_SNIPPET_MAX_LENGTH,
+  getFallbackDataSourceContentPreview,
   getProject,
   getSourceTypeCounts,
   isSourceTypeAvailable,
@@ -8,6 +10,7 @@ import {
   listPublicProjects,
   notConnectedProjectConnections,
   requiredProviderForSourceType,
+  truncateSnippet,
 } from './admin-data.ts';
 
 const projects = listProjects();
@@ -95,5 +98,31 @@ const expiredGoogleWithDriveScope = disconnected.map((connection) =>
 );
 assert.equal(isSourceTypeAvailable('drive', expiredGoogleWithDriveScope), true);
 assert.equal(isSourceTypeAvailable('gmail', expiredGoogleWithDriveScope), false);
+
+assert.equal(truncateSnippet('  hello   world  ', 20), 'hello world');
+assert.equal(
+  truncateSnippet('a'.repeat(DATA_SOURCE_SNIPPET_MAX_LENGTH + 10), DATA_SOURCE_SNIPPET_MAX_LENGTH)
+    .length,
+  DATA_SOURCE_SNIPPET_MAX_LENGTH,
+);
+assert.match(
+  truncateSnippet('a'.repeat(DATA_SOURCE_SNIPPET_MAX_LENGTH + 10), DATA_SOURCE_SNIPPET_MAX_LENGTH),
+  /…$/,
+);
+
+const webPreview = getFallbackDataSourceContentPreview('sample-a-web-docs');
+assert.ok(webPreview);
+assert.equal(webPreview.documents.length, 2);
+const firstDocument = webPreview.documents[0];
+assert.ok(firstDocument);
+assert.ok(firstDocument.snippet.length > 0);
+assert.equal(getFallbackDataSourceContentPreview('unknown-source-id'), null);
+
+const githubPreview = getFallbackDataSourceContentPreview('sample-a-github-main');
+assert.ok(githubPreview);
+assert.equal(githubPreview.queue.length, 2);
+const firstQueueItem = githubPreview.queue[0];
+assert.ok(firstQueueItem);
+assert.ok(firstQueueItem.lastErrorSummary);
 
 console.log('web admin data tests passed');
