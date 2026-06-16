@@ -9,6 +9,7 @@ assert.equal(parseAdminDbIdRow({ id: 'user-a' }, 'sample'), 'user-a');
 assert.throws(() => parseAdminDbIdRow(null, 'sample'), /Invalid sample row/);
 assert.throws(() => parseAdminDbIdRow([], 'sample'), /Invalid sample row/);
 assert.throws(() => parseAdminDbIdRow({ id: 123 }, 'sample'), /Invalid sample row field: id/);
+assert.throws(() => parseAdminDbIdRow({}, 'sample'), /Invalid sample row field: id/);
 
 assert.equal(parseAppMemberRoleRow({ role: 'admin' }), 'admin');
 assert.equal(parseAppMemberRoleRow({ role: 'member' }), 'member');
