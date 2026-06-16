@@ -1,4 +1,5 @@
 import type postgres from 'postgres';
+import { isProjectVisibility, type ProjectVisibility } from './admin-data.ts';
 
 export type ProjectMemberRole = 'admin' | 'member';
 export type AppMemberRole = 'admin' | 'member';
@@ -10,7 +11,7 @@ export interface ProjectMemberAccess {
   name: string;
   projectRole: ProjectMemberRole | null;
   slug: string;
-  visibility: 'private' | 'public';
+  visibility: ProjectVisibility;
 }
 
 export function parseProjectMemberAccess(value: unknown): ProjectMemberAccess {
@@ -100,8 +101,8 @@ function parseNullableProjectMemberRole(
   throw new Error(`Invalid project member access field: ${fieldName}`);
 }
 
-function parseProjectVisibility(value: unknown, fieldName: string): 'private' | 'public' {
-  if (value === 'private' || value === 'public') {
+function parseProjectVisibility(value: unknown, fieldName: string): ProjectVisibility {
+  if (isProjectVisibility(value)) {
     return value;
   }
   throw new Error(`Invalid project member access field: ${fieldName}`);
