@@ -18,7 +18,6 @@ assert.throws(
 assert.deepEqual(
   parseAdminActionProjectRow({
     admin_user_id: 'user-a',
-    description: null,
     id: 'project-a',
     name: 'Project A',
     slug: 'project-a',
@@ -59,7 +58,6 @@ assert.deepEqual(
   parseAdminActionDataSourceIngestRow({
     id: 'source-a',
     source_type: 'drive',
-    storage_uri: null,
   }),
   { id: 'source-a', source_type: 'drive', storage_uri: null },
 );
@@ -74,6 +72,7 @@ assert.throws(
 );
 
 assert.equal(parseAdminActionAdminCountRow({ admin_count: 2 }), 2);
+assert.equal(parseAdminActionAdminCountRow({ admin_count: 4n }), 4);
 assert.equal(parseAdminActionAdminCountRow({ admin_count: '3' }), 3);
 assert.throws(
   () => parseAdminActionAdminCountRow({ admin_count: 'many' }),

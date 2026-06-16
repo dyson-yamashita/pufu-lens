@@ -78,6 +78,9 @@ export function parseAdminActionAdminCountRow(value: unknown): number {
   if (typeof adminCount === 'number') {
     return adminCount;
   }
+  if (typeof adminCount === 'bigint') {
+    return Number(adminCount);
+  }
   if (typeof adminCount === 'string' && /^\d+$/.test(adminCount)) {
     return Number(adminCount);
   }
@@ -107,8 +110,8 @@ function requireString(value: unknown, context: string, fieldName: string): stri
 }
 
 function requireNullableString(value: unknown, context: string, fieldName: string): string | null {
-  if (value === null || typeof value === 'string') {
-    return value;
+  if (value === null || value === undefined || typeof value === 'string') {
+    return value ?? null;
   }
   throw new Error(`Invalid ${context} field: ${fieldName}`);
 }

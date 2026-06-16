@@ -36,7 +36,7 @@ import {
   parseAdminActionIdRow,
   parseAdminActionParserVersionRow,
   parseAdminActionProjectRow,
-} from './admin-actions-guards';
+} from './admin-actions-guards.ts';
 import {
   isAdminUiCollectionSupported,
   isAdminUiIngestSupported,
