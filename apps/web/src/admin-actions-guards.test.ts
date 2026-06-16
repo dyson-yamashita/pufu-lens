@@ -5,6 +5,7 @@ import {
   parseAdminActionDataSourceRow,
   parseAdminActionIdRow,
   parseAdminActionParserVersionRow,
+  parseAdminActionSameHashCandidateRow,
 } from './admin-actions-guards.ts';
 
 assert.deepEqual(parseAdminActionIdRow({ id: 'row-a' }, 'sample row'), { id: 'row-a' });
@@ -55,6 +56,33 @@ assert.deepEqual(parseAdminActionParserVersionRow({ id: 'version-a', status: 'dr
 assert.throws(
   () => parseAdminActionParserVersionRow({ id: 'version-a', status: null }),
   /Invalid parser version row field: status/,
+);
+
+assert.deepEqual(
+  parseAdminActionSameHashCandidateRow({
+    id: 'doc-a',
+    sourceId: 'source-a',
+    sourceType: 'github',
+  }),
+  { id: 'doc-a', sourceId: 'source-a', sourceType: 'github' },
+);
+assert.throws(
+  () =>
+    parseAdminActionSameHashCandidateRow({
+      id: 'doc-a',
+      sourceId: 'source-a',
+      sourceType: 'slack',
+    }),
+  /Invalid same hash candidate row field: sourceType/,
+);
+assert.throws(
+  () =>
+    parseAdminActionSameHashCandidateRow({
+      id: 'doc-a',
+      sourceId: 123,
+      sourceType: 'github',
+    }),
+  /Invalid same hash candidate row field: sourceId/,
 );
 
 console.log('web admin actions guards tests passed');

@@ -18,6 +18,12 @@ export interface AdminActionParserVersionRow {
   readonly status: string;
 }
 
+export interface AdminActionSameHashCandidateRow {
+  readonly id: string;
+  readonly sourceId: string;
+  readonly sourceType: SourceType;
+}
+
 export function parseAdminActionIdRow(value: unknown, context: string): AdminActionIdRow {
   const row = requireRecord(value, context);
   return { id: requireString(row.id, context, 'id') };
@@ -66,6 +72,17 @@ export function parseAdminActionParserVersionRow(value: unknown): AdminActionPar
   return {
     id: requireString(row.id, 'parser version row', 'id'),
     status: requireString(row.status, 'parser version row', 'status'),
+  };
+}
+
+export function parseAdminActionSameHashCandidateRow(
+  value: unknown,
+): AdminActionSameHashCandidateRow {
+  const row = requireRecord(value, 'same hash candidate row');
+  return {
+    id: requireString(row.id, 'same hash candidate row', 'id'),
+    sourceId: requireString(row.sourceId, 'same hash candidate row', 'sourceId'),
+    sourceType: requireSourceType(row.sourceType, 'same hash candidate row', 'sourceType'),
   };
 }
 
