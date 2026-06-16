@@ -85,6 +85,20 @@ assert.throws(
   () =>
     parseAdminDbProjectMemberRow({
       created_at: '2026-06-16T00:00:00.000Z',
+      email: 123,
+      id: 'user-b',
+      membership_created_at: null,
+      name: 'Member B',
+      project_role: 'member',
+      removable: true,
+      role: 'member',
+    }),
+  /Invalid project member row field: email/,
+);
+assert.throws(
+  () =>
+    parseAdminDbProjectMemberRow({
+      created_at: '2026-06-16T00:00:00.000Z',
       email: 'member@example.test',
       id: 'user-b',
       membership_created_at: null,

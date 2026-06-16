@@ -36,17 +36,20 @@ export function parseAppMemberRoleRow(value: unknown): AppMemberRole {
   return role;
 }
 
-export function parseAdminDbAppMemberRow(value: unknown): AdminDbAppMemberRow {
+export function parseAdminDbAppMemberRow(
+  value: unknown,
+  context = 'app member',
+): AdminDbAppMemberRow {
   if (!isRecord(value)) {
-    throw new Error('Invalid app member row.');
+    throw new Error(`Invalid ${context} row.`);
   }
   const { created_at, email, id, name, role } = value;
   return {
-    created_at: parseDateLike(created_at, 'app member', 'created_at'),
-    email: parseRequiredString(email, 'app member', 'email'),
-    id: parseRequiredString(id, 'app member', 'id'),
-    name: parseNullableString(name, 'app member', 'name'),
-    role: parseAppMemberRole(role, 'app member', 'role'),
+    created_at: parseDateLike(created_at, context, 'created_at'),
+    email: parseRequiredString(email, context, 'email'),
+    id: parseRequiredString(id, context, 'id'),
+    name: parseNullableString(name, context, 'name'),
+    role: parseMemberRole(role, context, 'role'),
   };
 }
 
@@ -56,13 +59,13 @@ export function parseAdminDbProjectMemberRow(value: unknown): AdminDbProjectMemb
   }
   const { membership_created_at, project_role, removable } = value;
   return {
-    ...parseAdminDbAppMemberRow(value),
+    ...parseAdminDbAppMemberRow(value, 'project member'),
     membership_created_at: parseNullableDateLike(
       membership_created_at,
       'project member',
       'membership_created_at',
     ),
-    project_role: parseProjectMemberRole(project_role, 'project member', 'project_role'),
+    project_role: parseMemberRole(project_role, 'project member', 'project_role'),
     removable: parseBoolean(removable, 'project member', 'removable'),
   };
 }
@@ -121,18 +124,7 @@ function parseBoolean(value: unknown, context: string, fieldName: string): boole
   throw new Error(`Invalid ${context} row field: ${fieldName}`);
 }
 
-function parseAppMemberRole(value: unknown, context: string, fieldName: string): AppMemberRole {
-  if (value === 'admin' || value === 'member') {
-    return value;
-  }
-  throw new Error(`Invalid ${context} row field: ${fieldName}`);
-}
-
-function parseProjectMemberRole(
-  value: unknown,
-  context: string,
-  fieldName: string,
-): ProjectMemberRole {
+function parseMemberRole(value: unknown, context: string, fieldName: string): AppMemberRole {
   if (value === 'admin' || value === 'member') {
     return value;
   }

@@ -382,7 +382,7 @@ export async function listAppMembersForUser(userId: string): Promise<GlobalMembe
     `) as readonly unknown[];
       return {
         canManageMembers: accessRole === 'admin',
-        members: rows.map(parseAdminDbAppMemberRow).map(memberFromRow),
+        members: rows.map((row) => memberFromRow(parseAdminDbAppMemberRow(row))),
       };
     },
     { canManageMembers: false, members: [] },
@@ -514,9 +514,9 @@ export async function getProjectMembership(
 
   return {
     canManageMembers,
-    members: memberRows.map(parseAdminDbProjectMemberRow).map(projectMemberFromRow),
+    members: memberRows.map((row) => projectMemberFromRow(parseAdminDbProjectMemberRow(row))),
     project,
-    users: userRows.map(parseAdminDbAppMemberRow).map(memberFromRow),
+    users: userRows.map((row) => memberFromRow(parseAdminDbAppMemberRow(row))),
   };
 }
 
