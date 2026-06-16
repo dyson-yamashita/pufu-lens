@@ -37,6 +37,7 @@ import {
 import { type AppMemberRole, listProjectConnectionsForProjectId } from './admin-db';
 import { getRequiredAdminSql } from './admin-sql';
 import { requireSessionUserId } from './auth-session';
+import { lookupProjectAdminAccess } from './authz';
 import { hashPassword } from './password-auth';
 import {
   createGitHubInstallationAccessToken,
@@ -1203,22 +1204,11 @@ async function requireProjectAdminForMemberManagement(
   readonly slug: string;
 }> {
   const userId = await requireSessionUserId();
-  const rows = (await sql`
-    SELECT projects.id::text AS id, projects.slug
-    FROM public.projects
-    JOIN public.users
-      ON users.id = ${userId}
-    LEFT JOIN public.project_members
-      ON project_members.project_id = projects.id
-     AND project_members.user_id = users.id
-    WHERE projects.slug = ${projectSlug}
-      AND (users.role = 'admin' OR project_members.role = 'admin')
-  `) as Array<{ id: string; slug: string }>;
-  const project = rows[0];
+  const project = await lookupProjectAdminAccess(sql, { projectSlug, userId });
   if (!project) {
     throw new Error(`Member management denied for project slug: ${projectSlug}`);
   }
-  return project;
+  return { id: project.id, slug: project.slug };
 }
 
 function requireSourceType(value: string): SourceType {

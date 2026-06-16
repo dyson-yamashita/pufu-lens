@@ -11,18 +11,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.1.1
+        run: |
+          git init .
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "+${GITHUB_REF}:refs/remotes/origin/ci-ref"
+          git checkout --detach refs/remotes/origin/ci-ref
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
+        run: |
+          node_dir="$(find /opt/hostedtoolcache/node -path '*/24.*/x64' -type d | sort -V | tail -n 1)"
+          if [ -n "${node_dir}" ]; then
+            echo "${node_dir}/bin" >> "${GITHUB_PATH}"
+            export PATH="${node_dir}/bin:${PATH}"
+          fi
+          node --version
+
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.1.1 --activate
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
