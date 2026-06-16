@@ -12,6 +12,7 @@ import {
   isSafePublicReportLocator,
   listPrivateReports,
   PublicReportNotFoundError,
+  parseReportProjectLookupRow,
   publishPublicReport,
   ReportNotFoundError,
   type ReportRepository,
@@ -486,6 +487,28 @@ await assert.rejects(
 );
 
 assert.throws(() => validatePrivateReportJson({ schema_version: 'v2' }), /schema_version/);
+
+assert.deepEqual(
+  parseReportProjectLookupRow({ id: 'proj-1', slug: 'sample-a', visibility: 'public' }),
+  {
+    id: 'proj-1',
+    slug: 'sample-a',
+    visibility: 'public',
+  },
+);
+
+assert.throws(
+  () => parseReportProjectLookupRow({ id: 'proj-1', slug: 'sample-a', visibility: 'internal' }),
+  /Invalid project lookup field: visibility/,
+);
+assert.throws(
+  () => parseReportProjectLookupRow({ slug: 'sample-a', visibility: 'public' }),
+  /Invalid project lookup field: id/,
+);
+assert.throws(
+  () => parseReportProjectLookupRow({ id: 'proj-1', visibility: 'public' }),
+  /Invalid project lookup field: slug/,
+);
 
 const malformedGeminiProvider = createGeminiReportProvider({
   apiKey: 'test-key',
