@@ -6,6 +6,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -36,8 +40,69 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Detect E2E changes
+        id: e2e-changes
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
+            changed_files="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "$GITHUB_SHA")"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "$changed_files"
+
+          if echo "$changed_files" | grep -E '^(apps/web/|packages/|infra/volumes/pufu-lens-data/|package.json|pnpm-lock.yaml|turbo.json|\.github/workflows/ci\.yml)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Restore build caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            .turbo/cache
+            apps/web/.next/cache
+          key: ${{ runner.os }}-build-cache-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-build-cache-${{ hashFiles('pnpm-lock.yaml') }}-
+            ${{ runner.os }}-build-cache-
+
+      - name: Restore Playwright cache
+        if: steps.e2e-changes.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml', 'apps/web/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Restore PostgreSQL image build cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache/postgres-ci
+          key: ${{ runner.os }}-postgres-ci-${{ hashFiles('infra/docker/postgres/Dockerfile') }}
+          restore-keys: |
+            ${{ runner.os }}-postgres-ci-
+
       - name: Build PostgreSQL test image
-        run: docker build -t pufu-lens-postgres-ci infra/docker/postgres
+        run: |
+          set -euo pipefail
+
+          mkdir -p /tmp/.buildx-cache/postgres-ci
+          docker buildx create --use --name pufu-lens-ci-builder
+          docker buildx build \
+            --cache-from type=local,src=/tmp/.buildx-cache/postgres-ci \
+            --cache-to type=local,dest=/tmp/.buildx-cache/postgres-ci-new,mode=min \
+            --load \
+            --tag pufu-lens-postgres-ci:latest \
+            infra/docker/postgres
+          rm -rf /tmp/.buildx-cache/postgres-ci
+          mv /tmp/.buildx-cache/postgres-ci-new /tmp/.buildx-cache/postgres-ci
 
       - name: Start PostgreSQL
         run: |
@@ -48,11 +113,12 @@ jobs:
             --env POSTGRES_DB=pufu_lens \
             --env POSTGRES_USER=pufu_lens \
             --env POSTGRES_PASSWORD=pufu_lens \
-            pufu-lens-postgres-ci
+            pufu-lens-postgres-ci:latest
           for attempt in {1..30}; do
             if docker exec pufu-lens-postgres-ci pg_isready -U pufu_lens -d pufu_lens; then
               exit 0
             fi
+            echo "Waiting for PostgreSQL (${attempt}/30)"
             sleep 2
           done
           docker logs pufu-lens-postgres-ci
@@ -88,10 +154,15 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Build
+        run: pnpm build
+
       - name: Install Playwright browsers
+        if: steps.e2e-changes.outputs.run == 'true'
         run: pnpm --filter @pufu-lens/web exec playwright install --with-deps chromium
 
       - name: E2E test
+        if: steps.e2e-changes.outputs.run == 'true'
         run: pnpm test:e2e
         env:
           PUFU_LENS_ALLOW_FIXED_USER_FALLBACK: 'true'
@@ -99,6 +170,3 @@ jobs:
           PUFU_LENS_REPORT_USER_ID: user-a
           STORAGE_DRIVER: local
           STORAGE_ROOT: ../../infra/volumes/pufu-lens-data
-
-      - name: Build
-        run: pnpm build
