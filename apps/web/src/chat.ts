@@ -578,8 +578,8 @@ export function createPostgresChatRepository(sql: postgres.Sql): ChatRepository 
         FROM distinct_chunks
         ORDER BY distance
         LIMIT ${limit}
-      `) as ChatSourceRow[];
-      return rows.map(sourceFromRow);
+      `) as readonly unknown[];
+      return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
     },
     async graphQuery({ limit, projectId, query }) {
       const patterns = graphQuerySearchPatterns(query);
@@ -608,8 +608,8 @@ export function createPostgresChatRepository(sql: postgres.Sql): ChatRepository 
           )
         ORDER BY d.occurred_at DESC NULLS LAST, d.updated_at DESC
         LIMIT ${limit}
-      `) as ChatSourceRow[];
-      return rows.map(sourceFromRow);
+      `) as readonly unknown[];
+      return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
     },
     async documentFetch({ documentIds, projectId }) {
       if (documentIds.length === 0) {
@@ -635,8 +635,8 @@ export function createPostgresChatRepository(sql: postgres.Sql): ChatRepository 
         WHERE d.project_id = ${projectId}
           AND d.id IN ${sql(documentIds)}
         ORDER BY d.occurred_at DESC NULLS LAST, d.updated_at DESC
-      `) as ChatSourceRow[];
-      return rows.map(sourceFromRow);
+      `) as readonly unknown[];
+      return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
     },
     async rawDocumentFetch({ limit, maxBytes, projectId }) {
       const rows = (await sql`
@@ -661,8 +661,8 @@ export function createPostgresChatRepository(sql: postgres.Sql): ChatRepository 
           AND coalesce(rd.byte_size, 0) <= ${maxBytes}
         ORDER BY rd.fetched_at DESC
         LIMIT ${limit}
-      `) as ChatSourceRow[];
-      return rows.map(sourceFromRow);
+      `) as readonly unknown[];
+      return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
     },
     async parsedDocFetch({ limit, projectId }) {
       const rows = (await sql`
@@ -687,8 +687,8 @@ export function createPostgresChatRepository(sql: postgres.Sql): ChatRepository 
           AND rd.parsed_uri IS NOT NULL
         ORDER BY rd.parsed_at DESC NULLS LAST
         LIMIT ${limit}
-      `) as ChatSourceRow[];
-      return rows.map(sourceFromRow);
+      `) as readonly unknown[];
+      return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
     },
   };
 }
@@ -777,6 +777,21 @@ interface ChatSourceRow {
   readonly title: string;
 }
 
+export function parseChatSourceRow(value: unknown): ChatSourceRow {
+  if (!isRecord(value)) {
+    throw new Error('Invalid chat source row.');
+  }
+  const { canonical_uri, document_id, doc_type, raw_document_id, snippet, title } = value;
+  return {
+    canonical_uri: parseRequiredString(canonical_uri, 'canonical_uri'),
+    document_id: parseRequiredString(document_id, 'document_id'),
+    doc_type: parseRequiredString(doc_type, 'doc_type'),
+    raw_document_id: parseRequiredString(raw_document_id, 'raw_document_id'),
+    snippet: parseOptionalNullableString(snippet, 'snippet'),
+    title: parseRequiredString(title, 'title'),
+  };
+}
+
 function sourceFromRow(row: ChatSourceRow): ChatSource {
   return {
     canonicalUri: row.canonical_uri,
@@ -786,6 +801,24 @@ function sourceFromRow(row: ChatSourceRow): ChatSource {
     snippet: row.snippet?.trim() || undefined,
     title: row.title,
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseRequiredString(value: unknown, fieldName: string): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  throw new Error(`Invalid chat source row field: ${fieldName}`);
+}
+
+function parseOptionalNullableString(value: unknown, fieldName: string): string | null | undefined {
+  if (value === undefined || value === null || typeof value === 'string') {
+    return value;
+  }
+  throw new Error(`Invalid chat source row field: ${fieldName}`);
 }
 
 function deterministicVector(text: string, dimensions: number): number[] {
