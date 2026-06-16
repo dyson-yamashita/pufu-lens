@@ -35,6 +35,7 @@ import {
   parseAdminActionDataSourceRow,
   parseAdminActionIdRow,
   parseAdminActionParserVersionRow,
+  parseAdminActionSameHashCandidateRow,
 } from './admin-actions-guards.ts';
 import {
   isAdminUiCollectionSupported,
@@ -730,13 +731,14 @@ class AdminCollectionRepository implements CollectionRepository {
     projectId: string;
     sourceType: SourceType;
   }): Promise<Array<{ id: string; sourceId: string; sourceType: SourceType }>> {
-    return (await this.sql`
+    const rows = (await this.sql`
       SELECT id::text AS id, source_id AS "sourceId", source_type AS "sourceType"
       FROM public.raw_documents
       WHERE project_id = ${input.projectId}
         AND content_hash = ${input.contentHash}
       ORDER BY created_at
-    `) as Array<{ id: string; sourceId: string; sourceType: SourceType }>;
+    `) as readonly unknown[];
+    return rows.map(parseAdminActionSameHashCandidateRow);
   }
 
   async upsertRawDocument(input: RawDocumentInput): Promise<RawDocumentRecord> {
