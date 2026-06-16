@@ -31,7 +31,9 @@ import {
   truncateSnippet,
 } from './admin-data';
 import {
+  parseAdminDbAppMemberRow,
   parseAdminDbIdRow,
+  parseAdminDbProjectMemberRow,
   parseAppMemberRoleRow,
   parseCanManageProjectRow,
 } from './admin-db-guards';
@@ -377,10 +379,10 @@ export async function listAppMembersForUser(userId: string): Promise<GlobalMembe
       SELECT id::text, email, name, role, created_at
       FROM public.users
       ORDER BY email
-    `) as AppMemberRow[];
+    `) as readonly unknown[];
       return {
         canManageMembers: accessRole === 'admin',
-        members: rows.map(memberFromRow),
+        members: rows.map(parseAdminDbAppMemberRow).map(memberFromRow),
       };
     },
     { canManageMembers: false, members: [] },
@@ -500,21 +502,21 @@ export async function getProjectMembership(
         SELECT * FROM global_admin_rows
       ) members
       ORDER BY email
-    ` as Promise<ProjectMemberRow[]>,
+    ` as Promise<readonly unknown[]>,
     canManageMembers
       ? (sql`
           SELECT id::text, email, name, role, created_at
           FROM public.users
           ORDER BY email
-        ` as Promise<AppMemberRow[]>)
-      : Promise.resolve([]),
+        ` as Promise<readonly unknown[]>)
+      : Promise.resolve([] as readonly unknown[]),
   ]);
 
   return {
     canManageMembers,
-    members: memberRows.map(projectMemberFromRow),
+    members: memberRows.map(parseAdminDbProjectMemberRow).map(projectMemberFromRow),
     project,
-    users: userRows.map(memberFromRow),
+    users: userRows.map(parseAdminDbAppMemberRow).map(memberFromRow),
   };
 }
 
