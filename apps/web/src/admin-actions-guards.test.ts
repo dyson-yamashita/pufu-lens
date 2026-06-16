@@ -66,6 +66,41 @@ assert.throws(
     }),
   /Invalid collection data source row field: config/,
 );
+assert.deepEqual(
+  parseAdminActionDataSourceRecordRow({
+    config: { repository: 'owner/repo' },
+    enabled: true,
+    id: 'source-a',
+    ingestWindow: null,
+    projectId: 'project-a',
+    sourceType: 'github',
+  }),
+  {
+    config: { repository: 'owner/repo' },
+    enabled: true,
+    id: 'source-a',
+    ingestWindow: {},
+    projectId: 'project-a',
+    sourceType: 'github',
+  },
+);
+assert.deepEqual(
+  parseAdminActionDataSourceRecordRow({
+    config: { repository: 'owner/repo' },
+    enabled: true,
+    id: 'source-b',
+    projectId: 'project-a',
+    sourceType: 'github',
+  }),
+  {
+    config: { repository: 'owner/repo' },
+    enabled: true,
+    id: 'source-b',
+    ingestWindow: {},
+    projectId: 'project-a',
+    sourceType: 'github',
+  },
+);
 assert.throws(
   () =>
     parseAdminActionDataSourceRecordRow({

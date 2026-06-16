@@ -123,7 +123,10 @@ export function parseAdminActionDataSourceRecordRow(
     config: requireRecord(row.config, 'collection data source row field: config'),
     enabled: requireBoolean(row.enabled, 'collection data source row', 'enabled'),
     id: requireString(row.id, 'collection data source row', 'id'),
-    ingestWindow: requireRecord(row.ingestWindow, 'collection data source row field: ingestWindow'),
+    ingestWindow:
+      row.ingestWindow == null
+        ? {}
+        : requireRecord(row.ingestWindow, 'collection data source row field: ingestWindow'),
     projectId: requireString(row.projectId, 'collection data source row', 'projectId'),
     sourceType: requireSourceType(row.sourceType, 'collection data source row', 'sourceType'),
   };
