@@ -13,8 +13,8 @@ jobs:
       - name: Checkout
         run: |
           git init .
-          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
-          git -c http.extraheader="AUTHORIZATION: bearer ${GH_TOKEN}" fetch --no-tags --depth=1 origin "+${GITHUB_REF}:refs/remotes/origin/ci-ref"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "+${GITHUB_REF}:refs/remotes/origin/ci-ref"
           git checkout --detach refs/remotes/origin/ci-ref
         env:
           GH_TOKEN: ${{ github.token }}
