@@ -305,13 +305,13 @@ function PropertyList({ item }: { readonly item: GraphViewerEdge | GraphViewerNo
 function readGraphTheme(container: HTMLElement) {
   const style = getComputedStyle(container);
   return {
-    actor: readCssVariable(style, '--graph-actor'),
-    document: readCssVariable(style, '--graph-document'),
-    labelBackground: readCssVariable(style, '--graph-label-bg'),
-    line: readCssVariable(style, '--graph-line'),
-    node: readCssVariable(style, '--graph-node'),
-    selected: readCssVariable(style, '--graph-selected'),
-    text: readCssVariable(style, '--text'),
+    actor: readCssVariable(style, '--graph-actor', '#d8b9ff'),
+    document: readCssVariable(style, '--graph-document', '#0066ff'),
+    labelBackground: readCssVariable(style, '--graph-label-bg', '#0b1326'),
+    line: readCssVariable(style, '--graph-line', '#8c90a1'),
+    node: readCssVariable(style, '--graph-node', '#4edea3'),
+    selected: readCssVariable(style, '--graph-selected', '#ffb4ab'),
+    text: readCssVariable(style, '--text', '#e3e8f7'),
   };
 }
 
@@ -375,8 +375,8 @@ function buildGraphStyles(graphTheme: ReturnType<typeof readGraphTheme>): Styles
   ];
 }
 
-function readCssVariable(style: CSSStyleDeclaration, name: string) {
-  return style.getPropertyValue(name).trim();
+function readCssVariable(style: CSSStyleDeclaration, name: string, fallback: string) {
+  return style.getPropertyValue(name).trim() || fallback;
 }
 
 type GraphErrorBody = {

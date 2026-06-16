@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
+import { normalizeTheme, themeCookieName } from '../src/theme';
 import '../src/styles.css';
 
 export const metadata: Metadata = {
@@ -7,15 +8,9 @@ export const metadata: Metadata = {
   description: 'Project ingestion operations console',
 };
 
-type Theme = 'dark' | 'light';
-
-function normalizeTheme(value: string | undefined): Theme {
-  return value === 'light' || value === 'dark' ? value : 'dark';
-}
-
 export default async function RootLayout({ children }: { readonly children: React.ReactNode }) {
   const cookieStore = await cookies();
-  const theme = normalizeTheme(cookieStore.get('pufu-lens-theme')?.value);
+  const theme = normalizeTheme(cookieStore.get(themeCookieName)?.value);
 
   return (
     <html lang="ja" data-theme={theme}>

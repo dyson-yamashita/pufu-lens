@@ -1,44 +1,23 @@
 'use client';
 
 import { Moon, Sun } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { type Theme, themeCookieName } from './theme';
 
-type Theme = 'dark' | 'light';
-
-const cookieName = 'pufu-lens-theme';
 const maxAgeSeconds = 60 * 60 * 24 * 365;
 
-function normalizeTheme(value: string | undefined): Theme {
-  return value === 'light' || value === 'dark' ? value : 'dark';
-}
-
-async function persistTheme(theme: Theme) {
+function persistTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
-  if ('cookieStore' in window) {
-    await window.cookieStore.set({
-      expires: Date.now() + maxAgeSeconds * 1000,
-      name: cookieName,
-      path: '/',
-      sameSite: 'lax',
-      value: theme,
-    });
-    return;
-  }
-
-  // biome-ignore lint/suspicious/noDocumentCookie: Cookie Store API 非対応ブラウザ向けの永続化 fallback。
-  document.cookie = `${cookieName}=${theme}; path=/; max-age=${maxAgeSeconds}; SameSite=Lax`;
+  // biome-ignore lint/suspicious/noDocumentCookie: Cookie を用いてテーマ設定を永続化する。
+  document.cookie = `${themeCookieName}=${theme}; path=/; max-age=${maxAgeSeconds}; SameSite=Lax`;
 }
 
-export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>('dark');
-
-  useEffect(() => {
-    setTheme(normalizeTheme(document.documentElement.dataset.theme));
-  }, []);
+export function ThemeToggle({ initialTheme = 'dark' }: { readonly initialTheme?: Theme }) {
+  const [theme, setTheme] = useState<Theme>(initialTheme);
 
   const selectTheme = (nextTheme: Theme) => {
     setTheme(nextTheme);
-    void persistTheme(nextTheme);
+    persistTheme(nextTheme);
   };
 
   return (
