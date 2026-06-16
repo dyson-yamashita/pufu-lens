@@ -28,6 +28,16 @@ import {
 } from '../../../packages/project-tenancy/src/project-tenancy.ts';
 import { LocalFsObjectStorage } from '../../../packages/storage/src/local-fs.ts';
 import {
+  type AdminActionDataSourceRow,
+  type AdminActionParserVersionRow,
+  parseAdminActionAdminCountRow,
+  parseAdminActionDataSourceIngestRow,
+  parseAdminActionDataSourceRow,
+  parseAdminActionIdRow,
+  parseAdminActionParserVersionRow,
+  parseAdminActionProjectRow,
+} from './admin-actions-guards';
+import {
   isAdminUiCollectionSupported,
   isAdminUiIngestSupported,
   isSourceTypeAvailable,
@@ -77,7 +87,7 @@ export async function createProject(formData: FormData): Promise<void> {
 
       const existing = (await tx`
         SELECT slug FROM public.projects WHERE slug = ${slug}
-      `) as Array<{ slug: string }>;
+      `) as readonly unknown[];
       if (existing.length > 0) {
         throw new Error(`Project slug already exists: ${slug}`);
       }
@@ -93,8 +103,10 @@ export async function createProject(formData: FormData): Promise<void> {
           ${visibility}
         )
         RETURNING id::text
-      `) as Array<{ id: string }>;
-      const project = projects[0];
+      `) as readonly unknown[];
+      const project = projects[0]
+        ? parseAdminActionIdRow(projects[0], 'project creation row')
+        : undefined;
       if (!project) {
         throw new Error('Project creation failed.');
       }
@@ -210,8 +222,8 @@ export async function createMember(formData: FormData): Promise<void> {
         INSERT INTO public.users (email, name, role)
         VALUES (${email}, ${name}, ${role})
         RETURNING id::text
-      `) as Array<{ id: string }>;
-      const user = rows[0];
+      `) as readonly unknown[];
+      const user = rows[0] ? parseAdminActionIdRow(rows[0], 'member creation row') : undefined;
       if (!user) {
         throw new Error('Member creation failed.');
       }
@@ -339,8 +351,10 @@ export async function createDataSource(formData: FormData): Promise<void> {
           ${tx.json(config as postgres.JSONValue)}
         )
         RETURNING id::text
-      `) as Array<{ id: string }>;
-      const dataSource = dataSources[0];
+      `) as readonly unknown[];
+      const dataSource = dataSources[0]
+        ? parseAdminActionIdRow(dataSources[0], 'data source creation row')
+        : undefined;
       if (!dataSource) {
         throw new Error('Data source creation failed.');
       }
@@ -391,8 +405,8 @@ export async function updateDataSource(formData: FormData): Promise<void> {
       WHERE id = ${dataSourceId}
         AND project_id = ${project.id}
         AND enabled = true
-    `) as Array<{ id: string; source_type: SourceType }>;
-    const dataSource = rows[0];
+    `) as readonly unknown[];
+    const dataSource = rows[0] ? parseAdminActionDataSourceRow(rows[0]) : undefined;
     if (!dataSource) {
       throw new Error('Data source not found in project.');
     }
@@ -870,15 +884,8 @@ async function requireAdminProject(
      AND project_members.user_id = users.id
     WHERE projects.slug = ${projectSlug}
       AND (users.role = 'admin' OR project_members.role = 'admin')
-  `) as Array<{
-    admin_user_id: string;
-    description: string | null;
-    id: string;
-    name: string;
-    slug: string;
-    visibility: ProjectVisibility;
-  }>;
-  const project = rows[0];
+  `) as readonly unknown[];
+  const project = rows[0] ? parseAdminActionProjectRow(rows[0]) : undefined;
   if (!project) {
     throw new Error(`Admin access denied for project slug: ${projectSlug}`);
   }
@@ -928,8 +935,8 @@ async function requireGlobalAdmin(sql: postgres.Sql | postgres.TransactionSql): 
     FROM public.users
     WHERE id = ${userId}
       AND role = 'admin'
-  `) as Array<{ id: string }>;
-  const user = rows[0];
+  `) as readonly unknown[];
+  const user = rows[0] ? parseAdminActionIdRow(rows[0], 'global admin row') : undefined;
   if (!user) {
     throw new Error('Admin access is required.');
   }
@@ -1030,15 +1037,15 @@ async function lookupProjectDataSource(
   sql: postgres.Sql,
   projectId: string,
   dataSourceId: string,
-): Promise<{ readonly id: string; readonly source_type: SourceType }> {
+): Promise<AdminActionDataSourceRow> {
   const rows = (await sql`
     SELECT id::text, source_type
     FROM public.data_sources
     WHERE id = ${dataSourceId}
       AND project_id = ${projectId}
       AND enabled = true
-  `) as Array<{ id: string; source_type: SourceType }>;
-  const dataSource = rows[0];
+  `) as readonly unknown[];
+  const dataSource = rows[0] ? parseAdminActionDataSourceRow(rows[0]) : undefined;
   if (!dataSource) {
     throw new Error('Data source not found in project.');
   }
@@ -1071,8 +1078,8 @@ async function lookupProjectDataSourceIngestInput(
     WHERE ds.id = ${dataSourceId}
       AND ds.project_id = ${projectId}
       AND ds.enabled = true
-  `) as Array<{ id: string; source_type: SourceType; storage_uri: string | null }>;
-  const dataSource = rows[0];
+  `) as readonly unknown[];
+  const dataSource = rows[0] ? parseAdminActionDataSourceIngestRow(rows[0]) : undefined;
   if (!dataSource) {
     throw new Error('Data source not found in project.');
   }
@@ -1189,8 +1196,8 @@ async function assertAdminRemainsAfterRoleChange(
     FROM public.users
     WHERE role = 'admin'
       AND id <> ${userId}
-  `) as Array<{ admin_count: number | string }>;
-  const adminCount = Number(rows[0]?.admin_count ?? 0);
+  `) as readonly unknown[];
+  const adminCount = rows[0] ? parseAdminActionAdminCountRow(rows[0]) : 0;
   if (adminCount < 1) {
     throw new Error('At least one admin account is required.');
   }
@@ -1421,7 +1428,7 @@ async function lookupProjectParserVersion(
   projectId: string,
   parserProfileId: string | undefined,
   parserVersionId: string,
-): Promise<{ readonly id: string; readonly status: string }> {
+): Promise<AdminActionParserVersionRow> {
   const parserProfileFilter = parserProfileId
     ? sql`AND parser_profiles.id = ${parserProfileId}`
     : sql``;
@@ -1432,8 +1439,8 @@ async function lookupProjectParserVersion(
     WHERE parser_profiles.project_id = ${projectId}
       ${parserProfileFilter}
       AND parser_versions.id = ${parserVersionId}
-  `) as Array<{ id: string; status: string }>;
-  const parserVersion = rows[0];
+  `) as readonly unknown[];
+  const parserVersion = rows[0] ? parseAdminActionParserVersionRow(rows[0]) : undefined;
   if (!parserVersion) {
     throw new Error('Parser version not found in project.');
   }
