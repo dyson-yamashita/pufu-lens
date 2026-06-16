@@ -1528,7 +1528,7 @@ export async function getDataSourceContentPreview(
     `) as DataSourcePreviewScopeRow[];
     const scope = scopeRows[0];
     if (!scope) {
-      return null;
+      throw new Error(`Data source content preview target not found: ${dataSourceId}`);
     }
 
     const [summaryRows, documentRows, queueRows] = await Promise.all([
