@@ -768,7 +768,7 @@ function cleanupExpiredBuckets(
   }
 }
 
-interface ChatSourceRow {
+export interface ChatSourceRow {
   readonly canonical_uri: string;
   readonly document_id: string;
   readonly doc_type: string;
