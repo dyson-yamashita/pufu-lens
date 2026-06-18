@@ -40,7 +40,7 @@
     "auth:migrate": "node --experimental-strip-types scripts/migrate-auth-login.ts",
     "auth:create-user": "node --experimental-strip-types scripts/create-credentials-user.ts",
     "seed:projects": "node --experimental-strip-types scripts/create-project.ts --seed-samples",
-    "scripts:typecheck": "pnpm build && tsc --noEmit -p tsconfig.scripts.json",
+    "scripts:typecheck": "tsc --noEmit -p tsconfig.scripts.json",
     "test": "pnpm db:migrate:test && turbo run test",
     "test:e2e": "pnpm --filter @pufu-lens/web test:e2e",
     "typecheck": "turbo run typecheck && pnpm scripts:typecheck"
