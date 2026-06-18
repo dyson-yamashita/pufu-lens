@@ -50,6 +50,25 @@ export type AdminDbOAuthConnectionRow = {
   readonly updated_at: Date | string | null;
 };
 
+export type AdminDbActorRow = {
+  readonly actor_type: string;
+  readonly created_at: Date | string;
+  readonly display_name: string;
+  readonly graph_node_id: string;
+  readonly id: string;
+  readonly primary_email: string | null;
+  readonly primary_login: string | null;
+  readonly updated_at: Date | string;
+};
+
+export type AdminDbActorAliasRow = {
+  readonly actor_id: string;
+  readonly alias_type: string;
+  readonly alias_value: string;
+  readonly confidence: number | string;
+  readonly source: string | null;
+};
+
 export function parseAdminDbIdRow(value: unknown, context: string): string {
   if (!isRecord(value)) {
     throw new Error(`Invalid ${context} row.`);
@@ -187,6 +206,48 @@ export function parseAdminDbOAuthConnectionRow(value: unknown): AdminDbOAuthConn
   };
 }
 
+export function parseAdminDbActorRow(value: unknown): AdminDbActorRow {
+  const context = 'actor';
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${context} row.`);
+  }
+  const {
+    actor_type,
+    created_at,
+    display_name,
+    graph_node_id,
+    id,
+    primary_email,
+    primary_login,
+    updated_at,
+  } = value;
+  return {
+    actor_type: parseRequiredString(actor_type, context, 'actor_type'),
+    created_at: parseDateLike(created_at, context, 'created_at'),
+    display_name: parseRequiredString(display_name, context, 'display_name'),
+    graph_node_id: parseRequiredString(graph_node_id, context, 'graph_node_id'),
+    id: parseRequiredString(id, context, 'id'),
+    primary_email: parseNullableString(primary_email, context, 'primary_email'),
+    primary_login: parseNullableString(primary_login, context, 'primary_login'),
+    updated_at: parseDateLike(updated_at, context, 'updated_at'),
+  };
+}
+
+export function parseAdminDbActorAliasRow(value: unknown): AdminDbActorAliasRow {
+  const context = 'actor alias';
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${context} row.`);
+  }
+  const { actor_id, alias_type, alias_value, confidence, source } = value;
+  return {
+    actor_id: parseRequiredString(actor_id, context, 'actor_id'),
+    alias_type: parseRequiredString(alias_type, context, 'alias_type'),
+    alias_value: parseRequiredString(alias_value, context, 'alias_value'),
+    confidence: parseConfidenceLike(confidence, context, 'confidence'),
+    source: parseNullableString(source, context, 'source'),
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -285,4 +346,20 @@ function parseNullableStringArray(
     }
   }
   return value;
+}
+
+function parseConfidenceLike(value: unknown, context: string, fieldName: string): number | string {
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      throw new Error(`Invalid ${context} row field: ${fieldName}`);
+    }
+    return value;
+  }
+  if (typeof value === 'string') {
+    if (value.trim() === '' || !Number.isFinite(Number(value))) {
+      throw new Error(`Invalid ${context} row field: ${fieldName}`);
+    }
+    return value;
+  }
+  throw new Error(`Invalid ${context} row field: ${fieldName}`);
 }

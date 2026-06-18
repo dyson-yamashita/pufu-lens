@@ -30,11 +30,15 @@ import {
   truncateSnippet,
 } from './admin-data';
 import {
+  type AdminDbActorAliasRow,
+  type AdminDbActorRow,
   type AdminDbAppMemberRow,
   type AdminDbOAuthConnectionRow,
   type AdminDbProjectMemberRow,
   type AdminDbProjectRow,
   type AdminDbPublicProjectReportRow,
+  parseAdminDbActorAliasRow,
+  parseAdminDbActorRow,
   parseAdminDbAppMemberRow,
   parseAdminDbIdRow,
   parseAdminDbOAuthConnectionRow,
@@ -112,25 +116,6 @@ type ParserProfileRow = {
   review_version_id: string | null;
   project_id: string;
   source_type: SourceType;
-};
-
-type ActorRow = {
-  actor_type: string;
-  created_at: Date | string;
-  display_name: string;
-  graph_node_id: string;
-  id: string;
-  primary_email: string | null;
-  primary_login: string | null;
-  updated_at: Date | string;
-};
-
-type ActorAliasRow = {
-  actor_id: string;
-  alias_type: string;
-  alias_value: string;
-  confidence: number | string;
-  source: string | null;
 };
 
 type AdminConfig = Record<string, unknown> & {
@@ -618,7 +603,7 @@ export async function getProjectActorDirectory(
   projectSlug: string,
 ): Promise<ProjectActorDirectory> {
   return withOptionalSql(async (sql) => {
-    const actorRows = (await sql`
+    const rawActorRows = (await sql`
       SELECT
         actors.id::text AS id,
         actors.actor_type,
@@ -632,13 +617,14 @@ export async function getProjectActorDirectory(
       JOIN public.projects ON projects.id = actors.project_id
       WHERE projects.slug = ${projectSlug}
       ORDER BY lower(actors.display_name), actors.created_at
-    `) as ActorRow[];
+    `) as readonly unknown[];
+    const actorRows = rawActorRows.map(parseAdminDbActorRow);
 
     if (actorRows.length === 0) {
       return { actors: [], mergeCandidates: [] };
     }
 
-    const aliasRows = (await sql`
+    const rawAliasRows = (await sql`
       SELECT
         actor_aliases.actor_id::text AS actor_id,
         actor_aliases.alias_type,
@@ -650,7 +636,8 @@ export async function getProjectActorDirectory(
       JOIN public.projects ON projects.id = actors.project_id
       WHERE projects.slug = ${projectSlug}
       ORDER BY actor_aliases.alias_type, actor_aliases.alias_value
-    `) as ActorAliasRow[];
+    `) as readonly unknown[];
+    const aliasRows = rawAliasRows.map(parseAdminDbActorAliasRow);
     const aliasesByActor = groupAliasesByActor(aliasRows);
     const actors = actorRows.map((row) => actorFromRow(row, aliasesByActor.get(row.id) ?? []));
 
@@ -662,7 +649,7 @@ export async function getProjectActorDirectory(
 }
 
 function groupAliasesByActor(
-  rows: readonly ActorAliasRow[],
+  rows: readonly AdminDbActorAliasRow[],
 ): ReadonlyMap<string, readonly ProjectActorAliasSummary[]> {
   const aliasesByActor = new Map<string, ProjectActorAliasSummary[]>();
   for (const row of rows) {
@@ -678,7 +665,7 @@ function groupAliasesByActor(
 }
 
 function actorFromRow(
-  row: ActorRow,
+  row: AdminDbActorRow,
   aliases: readonly ProjectActorAliasSummary[],
 ): ProjectActorSummary {
   const strongAliasCount = aliases.filter((alias) => alias.strength === 'strong').length;
@@ -699,7 +686,7 @@ function actorFromRow(
   };
 }
 
-function aliasFromRow(row: ActorAliasRow): ProjectActorAliasSummary {
+function aliasFromRow(row: AdminDbActorAliasRow): ProjectActorAliasSummary {
   return {
     aliasType: row.alias_type,
     aliasValue: row.alias_value,

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import {
+  parseAdminDbActorAliasRow,
+  parseAdminDbActorRow,
   parseAdminDbAppMemberRow,
   parseAdminDbIdRow,
   parseAdminDbOAuthConnectionRow,
@@ -128,6 +130,69 @@ assert.throws(
 assert.throws(
   () => parseAdminDbOAuthConnectionRow({ ...validOAuthConnectionRow, account_email: 123 }),
   /Invalid oauth connection row field: account_email/,
+);
+
+const validActorRow = {
+  actor_type: 'person',
+  created_at: '2026-06-13T08:00:00.000Z',
+  display_name: 'Sample Actor',
+  graph_node_id: 'actor:sample',
+  id: 'actor-a',
+  primary_email: 'actor@example.test',
+  primary_login: 'sample-actor',
+  updated_at: new Date('2026-06-14T08:00:00.000Z'),
+};
+
+assert.deepEqual(parseAdminDbActorRow(validActorRow), validActorRow);
+assert.throws(
+  () => parseAdminDbActorRow({ ...validActorRow, display_name: null }),
+  /Invalid actor row field: display_name/,
+);
+assert.throws(
+  () => parseAdminDbActorRow({ ...validActorRow, primary_email: 123 }),
+  /Invalid actor row field: primary_email/,
+);
+assert.throws(
+  () => parseAdminDbActorRow({ ...validActorRow, created_at: null }),
+  /Invalid actor row field: created_at/,
+);
+assert.throws(
+  () => parseAdminDbActorRow({ ...validActorRow, updated_at: 123 }),
+  /Invalid actor row field: updated_at/,
+);
+
+const validActorAliasRow = {
+  actor_id: 'actor-a',
+  alias_type: 'email',
+  alias_value: 'actor@example.test',
+  confidence: 1,
+  source: 'gmail:sender',
+};
+
+assert.deepEqual(parseAdminDbActorAliasRow(validActorAliasRow), validActorAliasRow);
+assert.deepEqual(
+  parseAdminDbActorAliasRow({ ...validActorAliasRow, confidence: '0.75', source: null }),
+  { ...validActorAliasRow, confidence: '0.75', source: null },
+);
+assert.throws(
+  () => parseAdminDbActorAliasRow({ ...validActorAliasRow, confidence: Number.NaN }),
+  /Invalid actor alias row field: confidence/,
+);
+assert.throws(
+  () => parseAdminDbActorAliasRow({ ...validActorAliasRow, confidence: Number.POSITIVE_INFINITY }),
+  /Invalid actor alias row field: confidence/,
+);
+assert.throws(
+  () => parseAdminDbActorAliasRow({ ...validActorAliasRow, confidence: 'not-a-number' }),
+  /Invalid actor alias row field: confidence/,
+);
+assert.throws(
+  () => parseAdminDbActorAliasRow({ ...validActorAliasRow, confidence: null }),
+  /Invalid actor alias row field: confidence/,
+);
+assert.throws(
+  () => parseAdminDbActorAliasRow({ ...validActorAliasRow, source: 123 }),
+  /Invalid actor alias row field: source/,
 );
 
 assert.equal(parseAdminDbIdRow({ id: 'user-a' }, 'sample'), 'user-a');
