@@ -209,9 +209,9 @@ function parseCountLike(
   fieldName: string,
 ): number | string | bigint {
   if (
-    typeof value === 'number' ||
+    (typeof value === 'number' && Number.isInteger(value) && value >= 0) ||
     (typeof value === 'string' && /^\d+$/.test(value)) ||
-    typeof value === 'bigint'
+    (typeof value === 'bigint' && value >= 0n)
   ) {
     return value;
   }
