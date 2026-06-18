@@ -33,6 +33,10 @@ assert.throws(
   () => parseAdminDbProjectRow({ ...validProjectRow, raw_count: null }),
   /Invalid project row field: raw_count/,
 );
+assert.throws(
+  () => parseAdminDbProjectRow({ ...validProjectRow, raw_count: 'many' }),
+  /Invalid project row field: raw_count/,
+);
 
 const validPublicProjectReportRow = {
   description: 'Public sample',

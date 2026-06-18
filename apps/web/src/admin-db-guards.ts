@@ -208,7 +208,11 @@ function parseCountLike(
   context: string,
   fieldName: string,
 ): number | string | bigint {
-  if (typeof value === 'number' || typeof value === 'string' || typeof value === 'bigint') {
+  if (
+    typeof value === 'number' ||
+    (typeof value === 'string' && /^\d+$/.test(value)) ||
+    typeof value === 'bigint'
+  ) {
     return value;
   }
   throw new Error(`Invalid ${context} row field: ${fieldName}`);
