@@ -1,4 +1,18 @@
-import type { AppMemberRole } from './admin-db';
+import type { AppMemberRole, ProjectMemberRole } from './admin-db';
+
+export type AdminDbAppMemberRow = {
+  readonly created_at: Date | string;
+  readonly email: string;
+  readonly id: string;
+  readonly name: string | null;
+  readonly role: AppMemberRole;
+};
+
+export type AdminDbProjectMemberRow = AdminDbAppMemberRow & {
+  readonly membership_created_at: Date | string | null;
+  readonly project_role: ProjectMemberRole;
+  readonly removable: boolean;
+};
 
 export function parseAdminDbIdRow(value: unknown, context: string): string {
   if (!isRecord(value)) {
@@ -22,6 +36,40 @@ export function parseAppMemberRoleRow(value: unknown): AppMemberRole {
   return role;
 }
 
+export function parseAdminDbAppMemberRow(
+  value: unknown,
+  context = 'app member',
+): AdminDbAppMemberRow {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${context} row.`);
+  }
+  const { created_at, email, id, name, role } = value;
+  return {
+    created_at: parseDateLike(created_at, context, 'created_at'),
+    email: parseRequiredString(email, context, 'email'),
+    id: parseRequiredString(id, context, 'id'),
+    name: parseNullableString(name, context, 'name'),
+    role: parseMemberRole(role, context, 'role'),
+  };
+}
+
+export function parseAdminDbProjectMemberRow(value: unknown): AdminDbProjectMemberRow {
+  if (!isRecord(value)) {
+    throw new Error('Invalid project member row.');
+  }
+  const { membership_created_at, project_role, removable } = value;
+  return {
+    ...parseAdminDbAppMemberRow(value, 'project member'),
+    membership_created_at: parseNullableDateLike(
+      membership_created_at,
+      'project member',
+      'membership_created_at',
+    ),
+    project_role: parseMemberRole(project_role, 'project member', 'project_role'),
+    removable: parseBoolean(removable, 'project member', 'removable'),
+  };
+}
+
 export function parseCanManageProjectRow(value: unknown): boolean {
   if (!isRecord(value)) {
     throw new Error('Invalid project management access row.');
@@ -35,4 +83,44 @@ export function parseCanManageProjectRow(value: unknown): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseRequiredString(value: unknown, context: string, fieldName: string): string {
+  if (typeof value !== 'string') {
+    throw new Error(`Invalid ${context} row field: ${fieldName}`);
+  }
+  return value;
+}
+
+function parseNullableString(value: unknown, context: string, fieldName: string): string | null {
+  return value === null ? null : parseRequiredString(value, context, fieldName);
+}
+
+function parseDateLike(value: unknown, context: string, fieldName: string): Date | string {
+  if (value instanceof Date || typeof value === 'string') {
+    return value;
+  }
+  throw new Error(`Invalid ${context} row field: ${fieldName}`);
+}
+
+function parseNullableDateLike(
+  value: unknown,
+  context: string,
+  fieldName: string,
+): Date | string | null {
+  return value === null ? null : parseDateLike(value, context, fieldName);
+}
+
+function parseBoolean(value: unknown, context: string, fieldName: string): boolean {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  throw new Error(`Invalid ${context} row field: ${fieldName}`);
+}
+
+function parseMemberRole(value: unknown, context: string, fieldName: string): 'admin' | 'member' {
+  if (value === 'admin' || value === 'member') {
+    return value;
+  }
+  throw new Error(`Invalid ${context} row field: ${fieldName}`);
 }

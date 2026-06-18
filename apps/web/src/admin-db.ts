@@ -31,7 +31,11 @@ import {
   truncateSnippet,
 } from './admin-data';
 import {
+  type AdminDbAppMemberRow,
+  type AdminDbProjectMemberRow,
+  parseAdminDbAppMemberRow,
   parseAdminDbIdRow,
+  parseAdminDbProjectMemberRow,
   parseAppMemberRoleRow,
   parseCanManageProjectRow,
 } from './admin-db-guards';
@@ -100,20 +104,6 @@ export type ProjectMembershipSummary = {
 export type GlobalMemberDirectory = {
   readonly canManageMembers: boolean;
   readonly members: readonly AppMemberSummary[];
-};
-
-type AppMemberRow = {
-  created_at: Date | string;
-  email: string;
-  id: string;
-  name: string | null;
-  role: AppMemberRole;
-};
-
-type ProjectMemberRow = AppMemberRow & {
-  membership_created_at: Date | string | null;
-  project_role: ProjectMemberRole;
-  removable: boolean;
 };
 
 type DataSourceRow = {
@@ -377,10 +367,10 @@ export async function listAppMembersForUser(userId: string): Promise<GlobalMembe
       SELECT id::text, email, name, role, created_at
       FROM public.users
       ORDER BY email
-    `) as AppMemberRow[];
+    `) as readonly unknown[];
       return {
         canManageMembers: accessRole === 'admin',
-        members: rows.map(memberFromRow),
+        members: rows.map((row) => memberFromRow(parseAdminDbAppMemberRow(row))),
       };
     },
     { canManageMembers: false, members: [] },
@@ -500,21 +490,21 @@ export async function getProjectMembership(
         SELECT * FROM global_admin_rows
       ) members
       ORDER BY email
-    ` as Promise<ProjectMemberRow[]>,
+    ` as Promise<readonly unknown[]>,
     canManageMembers
       ? (sql`
           SELECT id::text, email, name, role, created_at
           FROM public.users
           ORDER BY email
-        ` as Promise<AppMemberRow[]>)
-      : Promise.resolve([]),
+        ` as Promise<readonly unknown[]>)
+      : Promise.resolve([] as readonly unknown[]),
   ]);
 
   return {
     canManageMembers,
-    members: memberRows.map(projectMemberFromRow),
+    members: memberRows.map((row) => projectMemberFromRow(parseAdminDbProjectMemberRow(row))),
     project,
-    users: userRows.map(memberFromRow),
+    users: userRows.map((row) => memberFromRow(parseAdminDbAppMemberRow(row))),
   };
 }
 
@@ -848,7 +838,7 @@ function isStrongActorAlias(aliasType: string): boolean {
   return aliasType === 'email' || aliasType === 'github_login';
 }
 
-function memberFromRow(row: AppMemberRow): AppMemberSummary {
+function memberFromRow(row: AdminDbAppMemberRow): AppMemberSummary {
   return {
     createdAt: formatDate(row.created_at),
     email: row.email,
@@ -858,7 +848,7 @@ function memberFromRow(row: AppMemberRow): AppMemberSummary {
   };
 }
 
-function projectMemberFromRow(row: ProjectMemberRow): ProjectMemberSummary {
+function projectMemberFromRow(row: AdminDbProjectMemberRow): ProjectMemberSummary {
   return {
     createdAt: formatDate(row.membership_created_at),
     email: row.email,
