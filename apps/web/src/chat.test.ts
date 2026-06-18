@@ -11,6 +11,7 @@ import {
   graphQuerySearchPatterns,
   isWithinBusinessHours,
   ProjectAccessDeniedError,
+  parseChatSourceRow,
   runPrivateChat,
   runPublicChat,
 } from './chat.ts';
@@ -32,6 +33,47 @@ const sampleSource = {
   rawDocumentId: 'raw-a',
   title: 'Spec Update',
 };
+
+assert.deepEqual(
+  parseChatSourceRow({
+    canonical_uri: 'https://example.com/spec',
+    document_id: 'doc-a',
+    doc_type: 'web_page',
+    raw_document_id: 'raw-a',
+    snippet: null,
+    title: 'Spec Update',
+  }),
+  {
+    canonical_uri: 'https://example.com/spec',
+    document_id: 'doc-a',
+    doc_type: 'web_page',
+    raw_document_id: 'raw-a',
+    snippet: null,
+    title: 'Spec Update',
+  },
+);
+assert.throws(
+  () =>
+    parseChatSourceRow({
+      canonical_uri: 'https://example.com/spec',
+      doc_type: 'web_page',
+      raw_document_id: 'raw-a',
+      title: 'Spec Update',
+    }),
+  /Invalid chat source row field: document_id/,
+);
+assert.throws(
+  () =>
+    parseChatSourceRow({
+      canonical_uri: 'https://example.com/spec',
+      document_id: 'doc-a',
+      doc_type: 'web_page',
+      raw_document_id: 'raw-a',
+      snippet: 123,
+      title: 'Spec Update',
+    }),
+  /Invalid chat source row field: snippet/,
+);
 
 function createRepository(): ChatRepository & {
   readonly rawFetchInputs: Array<{ maxBytes: number }>;
