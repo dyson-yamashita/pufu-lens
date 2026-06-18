@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  quality:
+  format-lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -40,26 +40,40 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Detect E2E changes
-        id: e2e-changes
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
         run: |
-          set -euo pipefail
+          git init .
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "+${GITHUB_REF}:refs/remotes/origin/ci-ref"
+          git checkout --detach refs/remotes/origin/ci-ref
+        env:
+          GH_TOKEN: ${{ github.token }}
 
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
-            changed_files="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "$GITHUB_SHA")"
-          else
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
+      - name: Setup Node.js
+        run: |
+          node_dir="$(find /opt/hostedtoolcache/node -path '*/24.*/x64' -type d | sort -V | tail -n 1)"
+          if [ -n "${node_dir}" ]; then
+            echo "${node_dir}/bin" >> "${GITHUB_PATH}"
+            export PATH="${node_dir}/bin:${PATH}"
           fi
+          node --version
 
-          echo "$changed_files"
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.1.1 --activate
 
-          if echo "$changed_files" | grep -E '^(apps/web/|packages/|infra/volumes/pufu-lens-data/|package.json|pnpm-lock.yaml|turbo.json|\.github/workflows/ci\.yml)'; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Restore build caches
         uses: actions/cache@v4
@@ -72,14 +86,80 @@ jobs:
             ${{ runner.os }}-build-cache-${{ hashFiles('pnpm-lock.yaml') }}-
             ${{ runner.os }}-build-cache-
 
-      - name: Restore Playwright cache
-        if: steps.e2e-changes.outputs.run == 'true'
+      - name: Typecheck
+        run: pnpm typecheck
+
+  unit-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        run: |
+          git init .
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "+${GITHUB_REF}:refs/remotes/origin/ci-ref"
+          git checkout --detach refs/remotes/origin/ci-ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Setup Node.js
+        run: |
+          node_dir="$(find /opt/hostedtoolcache/node -path '*/24.*/x64' -type d | sort -V | tail -n 1)"
+          if [ -n "${node_dir}" ]; then
+            echo "${node_dir}/bin" >> "${GITHUB_PATH}"
+            export PATH="${node_dir}/bin:${PATH}"
+          fi
+          node --version
+
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.1.1 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore build caches
         uses: actions/cache@v4
         with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml', 'apps/web/package.json') }}
+          path: |
+            .turbo/cache
+            apps/web/.next/cache
+          key: ${{ runner.os }}-build-cache-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-playwright-
+            ${{ runner.os }}-build-cache-${{ hashFiles('pnpm-lock.yaml') }}-
+            ${{ runner.os }}-build-cache-
+
+      - name: Test
+        run: pnpm test
+
+  db-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        run: |
+          git init .
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "+${GITHUB_REF}:refs/remotes/origin/ci-ref"
+          git checkout --detach refs/remotes/origin/ci-ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Setup Node.js
+        run: |
+          node_dir="$(find /opt/hostedtoolcache/node -path '*/24.*/x64' -type d | sort -V | tail -n 1)"
+          if [ -n "${node_dir}" ]; then
+            echo "${node_dir}/bin" >> "${GITHUB_PATH}"
+            export PATH="${node_dir}/bin:${PATH}"
+          fi
+          node --version
+
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.1.1 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Restore PostgreSQL image build cache
         uses: actions/cache@v4
@@ -142,24 +222,119 @@ jobs:
         env:
           DATABASE_URL: postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens
 
-      - name: Format check
-        run: pnpm format:check
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        run: |
+          git init .
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "+${GITHUB_REF}:refs/remotes/origin/ci-ref"
+          git checkout --detach refs/remotes/origin/ci-ref
+        env:
+          GH_TOKEN: ${{ github.token }}
 
-      - name: Lint
-        run: pnpm lint
+      - name: Setup Node.js
+        run: |
+          node_dir="$(find /opt/hostedtoolcache/node -path '*/24.*/x64' -type d | sort -V | tail -n 1)"
+          if [ -n "${node_dir}" ]; then
+            echo "${node_dir}/bin" >> "${GITHUB_PATH}"
+            export PATH="${node_dir}/bin:${PATH}"
+          fi
+          node --version
 
-      - name: Typecheck
-        run: pnpm typecheck
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.1.1 --activate
 
-      - name: Test
-        run: pnpm test
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore build caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            .turbo/cache
+            apps/web/.next/cache
+          key: ${{ runner.os }}-build-cache-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-build-cache-${{ hashFiles('pnpm-lock.yaml') }}-
+            ${{ runner.os }}-build-cache-
 
       - name: Build
         run: pnpm build
 
-      - name: Install Playwright browsers
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        run: |
+          git init .
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "+${GITHUB_REF}:refs/remotes/origin/ci-ref"
+          git checkout --detach refs/remotes/origin/ci-ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Setup Node.js
+        run: |
+          node_dir="$(find /opt/hostedtoolcache/node -path '*/24.*/x64' -type d | sort -V | tail -n 1)"
+          if [ -n "${node_dir}" ]; then
+            echo "${node_dir}/bin" >> "${GITHUB_PATH}"
+            export PATH="${node_dir}/bin:${PATH}"
+          fi
+          node --version
+
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.1.1 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build E2E workspace dependencies
+        run: pnpm --filter '@pufu-lens/web^...' build
+
+      - name: Detect E2E changes
+        id: e2e-changes
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
+            changed_files="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "$GITHUB_SHA")"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "$changed_files"
+
+          if echo "$changed_files" | grep -E '^(apps/web/|packages/|infra/volumes/pufu-lens-data/|package.json|pnpm-lock.yaml|turbo.json|\.github/workflows/ci\.yml)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Restore Playwright cache
         if: steps.e2e-changes.outputs.run == 'true'
-        run: pnpm --filter @pufu-lens/web exec playwright install --with-deps chromium
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml', 'apps/web/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright browser dependencies
+        if: steps.e2e-changes.outputs.run == 'true'
+        run: pnpm --filter @pufu-lens/web exec playwright install-deps chromium
+
+      - name: Install Playwright browsers
+        if: steps.e2e-changes.outputs.run == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm --filter @pufu-lens/web exec playwright install chromium
 
       - name: E2E test
         if: steps.e2e-changes.outputs.run == 'true'
