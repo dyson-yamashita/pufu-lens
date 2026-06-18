@@ -93,10 +93,7 @@ function parseRequiredString(value: unknown, context: string, fieldName: string)
 }
 
 function parseNullableString(value: unknown, context: string, fieldName: string): string | null {
-  if (value === null || typeof value === 'string') {
-    return value;
-  }
-  throw new Error(`Invalid ${context} row field: ${fieldName}`);
+  return value === null ? null : parseRequiredString(value, context, fieldName);
 }
 
 function parseDateLike(value: unknown, context: string, fieldName: string): Date | string {
@@ -111,10 +108,7 @@ function parseNullableDateLike(
   context: string,
   fieldName: string,
 ): Date | string | null {
-  if (value === null || value instanceof Date || typeof value === 'string') {
-    return value;
-  }
-  throw new Error(`Invalid ${context} row field: ${fieldName}`);
+  return value === null ? null : parseDateLike(value, context, fieldName);
 }
 
 function parseBoolean(value: unknown, context: string, fieldName: string): boolean {
@@ -124,7 +118,7 @@ function parseBoolean(value: unknown, context: string, fieldName: string): boole
   throw new Error(`Invalid ${context} row field: ${fieldName}`);
 }
 
-function parseMemberRole(value: unknown, context: string, fieldName: string): AppMemberRole {
+function parseMemberRole(value: unknown, context: string, fieldName: string): 'admin' | 'member' {
   if (value === 'admin' || value === 'member') {
     return value;
   }

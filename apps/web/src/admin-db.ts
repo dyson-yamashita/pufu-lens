@@ -31,6 +31,8 @@ import {
   truncateSnippet,
 } from './admin-data';
 import {
+  type AdminDbAppMemberRow,
+  type AdminDbProjectMemberRow,
   parseAdminDbAppMemberRow,
   parseAdminDbIdRow,
   parseAdminDbProjectMemberRow,
@@ -102,20 +104,6 @@ export type ProjectMembershipSummary = {
 export type GlobalMemberDirectory = {
   readonly canManageMembers: boolean;
   readonly members: readonly AppMemberSummary[];
-};
-
-type AppMemberRow = {
-  created_at: Date | string;
-  email: string;
-  id: string;
-  name: string | null;
-  role: AppMemberRole;
-};
-
-type ProjectMemberRow = AppMemberRow & {
-  membership_created_at: Date | string | null;
-  project_role: ProjectMemberRole;
-  removable: boolean;
 };
 
 type DataSourceRow = {
@@ -850,7 +838,7 @@ function isStrongActorAlias(aliasType: string): boolean {
   return aliasType === 'email' || aliasType === 'github_login';
 }
 
-function memberFromRow(row: AppMemberRow): AppMemberSummary {
+function memberFromRow(row: AdminDbAppMemberRow): AppMemberSummary {
   return {
     createdAt: formatDate(row.created_at),
     email: row.email,
@@ -860,7 +848,7 @@ function memberFromRow(row: AppMemberRow): AppMemberSummary {
   };
 }
 
-function projectMemberFromRow(row: ProjectMemberRow): ProjectMemberSummary {
+function projectMemberFromRow(row: AdminDbProjectMemberRow): ProjectMemberSummary {
   return {
     createdAt: formatDate(row.membership_created_at),
     email: row.email,
