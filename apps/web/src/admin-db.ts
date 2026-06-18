@@ -31,11 +31,13 @@ import {
 } from './admin-data';
 import {
   type AdminDbAppMemberRow,
+  type AdminDbOAuthConnectionRow,
   type AdminDbProjectMemberRow,
   type AdminDbProjectRow,
   type AdminDbPublicProjectReportRow,
   parseAdminDbAppMemberRow,
   parseAdminDbIdRow,
+  parseAdminDbOAuthConnectionRow,
   parseAdminDbProjectMemberRow,
   parseAdminDbProjectRow,
   parseAdminDbPublicProjectReportRow,
@@ -507,21 +509,11 @@ function fallbackProjectMembership(slug: string, userId: string): ProjectMembers
   };
 }
 
-type OAuthConnectionRow = {
-  account_email: string | null;
-  account_login: string | null;
-  expires_at: Date | string | null;
-  metadata: unknown;
-  provider: ConnectionProvider;
-  scopes: string[] | null;
-  updated_at: Date | string | null;
-};
-
 export async function listProjectConnections(
   projectSlug: string,
 ): Promise<readonly ProjectConnectionSummary[]> {
   return withOptionalSql(async (sql) => {
-    const rows = (await sql`
+    const rawRows = (await sql`
       SELECT
         oc.provider,
         oc.account_email,
@@ -533,8 +525,8 @@ export async function listProjectConnections(
       FROM public.oauth_connections oc
       JOIN public.projects p ON p.id = oc.project_id
       WHERE p.slug = ${projectSlug}
-    `) as OAuthConnectionRow[];
-    return projectConnectionsFromRows(rows);
+    `) as readonly unknown[];
+    return projectConnectionsFromRows(rawRows.map(parseAdminDbOAuthConnectionRow));
   }, notConnectedProjectConnections());
 }
 
@@ -542,7 +534,7 @@ export async function listProjectConnectionsForProjectId(
   sql: postgres.Sql,
   projectId: string,
 ): Promise<readonly ProjectConnectionSummary[]> {
-  const rows = (await sql`
+  const rawRows = (await sql`
     SELECT
       oc.provider,
       oc.account_email,
@@ -553,8 +545,8 @@ export async function listProjectConnectionsForProjectId(
       oc.updated_at
     FROM public.oauth_connections oc
     WHERE oc.project_id = ${projectId}
-  `) as OAuthConnectionRow[];
-  return projectConnectionsFromRows(rows);
+  `) as readonly unknown[];
+  return projectConnectionsFromRows(rawRows.map(parseAdminDbOAuthConnectionRow));
 }
 
 export async function getProjectSourceAvailability(
@@ -1314,7 +1306,7 @@ function getFallbackProject(slug: string): ProjectSummary {
 }
 
 function projectConnectionsFromRows(
-  rows: readonly OAuthConnectionRow[],
+  rows: readonly AdminDbOAuthConnectionRow[],
 ): readonly ProjectConnectionSummary[] {
   const byProvider = new Map(rows.map((row) => [row.provider, connectionFromRow(row)]));
   return (['google', 'github'] as const).map(
@@ -1322,10 +1314,10 @@ function projectConnectionsFromRows(
   );
 }
 
-function connectionFromRow(row: OAuthConnectionRow): ProjectConnectionSummary {
+function connectionFromRow(row: AdminDbOAuthConnectionRow): ProjectConnectionSummary {
   const metadata = isRecord(row.metadata) ? row.metadata : {};
   const metadataLabels = metadataLabelsFromRecord(metadata);
-  const scopes = Array.isArray(row.scopes) ? row.scopes.map(String) : [];
+  const scopes = row.scopes ?? [];
   const status = connectionStatusFromRow(row, scopes, metadata);
   return {
     accountLabel: accountLabelFromRow(row),
@@ -1351,7 +1343,7 @@ function notConnectedConnection(provider: ConnectionProvider): ProjectConnection
 }
 
 function connectionStatusFromRow(
-  row: OAuthConnectionRow,
+  row: AdminDbOAuthConnectionRow,
   scopes: readonly string[],
   metadata: Record<string, unknown>,
 ): ProjectConnectionStatus {
@@ -1394,7 +1386,7 @@ function connectionConfigurationFromMetadata(
   };
 }
 
-function accountLabelFromRow(row: OAuthConnectionRow): string | null {
+function accountLabelFromRow(row: AdminDbOAuthConnectionRow): string | null {
   if (row.provider === 'github') {
     return row.account_login ?? row.account_email;
   }
