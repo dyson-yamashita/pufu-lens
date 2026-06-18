@@ -3,6 +3,10 @@ import {
   parseAdminDbActorAliasRow,
   parseAdminDbActorRow,
   parseAdminDbAppMemberRow,
+  parseAdminDbDataSourcePreviewDocumentRow,
+  parseAdminDbDataSourcePreviewQueueRow,
+  parseAdminDbDataSourcePreviewScopeRow,
+  parseAdminDbDataSourcePreviewSummaryRow,
   parseAdminDbDataSourceRow,
   parseAdminDbIdRow,
   parseAdminDbOAuthConnectionRow,
@@ -259,6 +263,91 @@ assert.throws(
 assert.throws(
   () => parseAdminDbParserProfileRow({ ...validParserProfileRow, active_version: 123 }),
   /Invalid parser profile row field: active_version/,
+);
+
+const validPreviewScopeRow = {
+  id: 'data-source-a',
+  last_checked_at: '2026-06-16T00:00:00.000Z',
+  project_id: 'project-a',
+};
+
+assert.deepEqual(parseAdminDbDataSourcePreviewScopeRow(validPreviewScopeRow), validPreviewScopeRow);
+assert.throws(
+  () => parseAdminDbDataSourcePreviewScopeRow({ ...validPreviewScopeRow, project_id: null }),
+  /Invalid data source preview scope row field: project_id/,
+);
+assert.throws(
+  () => parseAdminDbDataSourcePreviewScopeRow({ ...validPreviewScopeRow, last_checked_at: 123 }),
+  /Invalid data source preview scope row field: last_checked_at/,
+);
+
+const validPreviewSummaryRow = {
+  failed_count: 0,
+  held_count: 1n,
+  indexed_count: '8',
+  last_checked_at: null,
+  last_indexed: new Date('2026-06-17T00:00:00.000Z'),
+  queue_count: 2,
+  raw_count: 10,
+};
+
+assert.deepEqual(
+  parseAdminDbDataSourcePreviewSummaryRow(validPreviewSummaryRow),
+  validPreviewSummaryRow,
+);
+assert.throws(
+  () => parseAdminDbDataSourcePreviewSummaryRow({ ...validPreviewSummaryRow, raw_count: -1 }),
+  /Invalid data source preview summary row field: raw_count/,
+);
+assert.throws(
+  () => parseAdminDbDataSourcePreviewSummaryRow({ ...validPreviewSummaryRow, last_indexed: 123 }),
+  /Invalid data source preview summary row field: last_indexed/,
+);
+
+const validPreviewDocumentRow = {
+  canonical_uri: 'https://example.test/doc',
+  doc_type: 'web',
+  document_id: 'document-a',
+  document_summary: 'Summary text',
+  fetched_at: new Date('2026-06-16T00:00:00.000Z'),
+  first_chunk_content: null,
+  indexed_at: '2026-06-17T00:00:00.000Z',
+  ingest_status: 'indexed',
+  raw_document_id: 'raw-document-a',
+  source_id: 'source-a',
+  title: 'Sample Document',
+};
+
+assert.deepEqual(
+  parseAdminDbDataSourcePreviewDocumentRow(validPreviewDocumentRow),
+  validPreviewDocumentRow,
+);
+assert.throws(
+  () => parseAdminDbDataSourcePreviewDocumentRow({ ...validPreviewDocumentRow, fetched_at: null }),
+  /Invalid data source preview document row field: fetched_at/,
+);
+assert.throws(
+  () =>
+    parseAdminDbDataSourcePreviewDocumentRow({ ...validPreviewDocumentRow, ingest_status: null }),
+  /Invalid data source preview document row field: ingest_status/,
+);
+
+const validPreviewQueueRow = {
+  attempts: 2,
+  id: 'queue-a',
+  last_error: null,
+  status: 'held',
+  updated_at: '2026-06-16T00:00:00.000Z',
+};
+
+assert.deepEqual(parseAdminDbDataSourcePreviewQueueRow(validPreviewQueueRow), validPreviewQueueRow);
+assert.throws(
+  () => parseAdminDbDataSourcePreviewQueueRow({ ...validPreviewQueueRow, attempts: -1 }),
+  /Invalid data source preview queue row field: attempts/,
+);
+assert.throws(
+  () => parseAdminDbDataSourcePreviewQueueRow({ ...validPreviewQueueRow, updated_at: 123 }),
+  /Invalid data source preview queue row field: updated_at/,
 );
 
 assert.equal(parseAdminDbIdRow({ id: 'user-a' }, 'sample'), 'user-a');
