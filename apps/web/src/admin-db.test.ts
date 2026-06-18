@@ -3,9 +3,59 @@ import {
   parseAdminDbAppMemberRow,
   parseAdminDbIdRow,
   parseAdminDbProjectMemberRow,
+  parseAdminDbProjectRow,
+  parseAdminDbPublicProjectReportRow,
   parseAppMemberRoleRow,
   parseCanManageProjectRow,
 } from './admin-db-guards.ts';
+
+const validProjectRow = {
+  description: 'Sample project',
+  failed_count: 0,
+  held_count: 1,
+  id: 'project-a',
+  ingested_count: '10',
+  last_indexed: new Date('2026-06-16T00:00:00.000Z'),
+  member_count: 2n,
+  name: 'Sample A',
+  queue_count: 3,
+  raw_count: 12,
+  slug: 'sample-a',
+  visibility: 'public',
+};
+
+assert.deepEqual(parseAdminDbProjectRow(validProjectRow), validProjectRow);
+assert.throws(
+  () => parseAdminDbProjectRow({ ...validProjectRow, visibility: 'internal' }),
+  /Invalid project row field: visibility/,
+);
+assert.throws(
+  () => parseAdminDbProjectRow({ ...validProjectRow, raw_count: null }),
+  /Invalid project row field: raw_count/,
+);
+
+const validPublicProjectReportRow = {
+  description: 'Public sample',
+  name: 'Sample A',
+  published_at: '2026-06-16T00:00:00.000Z',
+  report_id: 'report-a',
+  report_summary: 'Summary text',
+  report_title: 'Report title',
+  slug: 'sample-a',
+};
+
+assert.deepEqual(
+  parseAdminDbPublicProjectReportRow(validPublicProjectReportRow),
+  validPublicProjectReportRow,
+);
+assert.throws(
+  () => parseAdminDbPublicProjectReportRow({ ...validPublicProjectReportRow, published_at: 123 }),
+  /Invalid public project report row field: published_at/,
+);
+assert.throws(
+  () => parseAdminDbPublicProjectReportRow({ ...validPublicProjectReportRow, report_id: 456 }),
+  /Invalid public project report row field: report_id/,
+);
 
 assert.equal(parseAdminDbIdRow({ id: 'user-a' }, 'sample'), 'user-a');
 assert.throws(() => parseAdminDbIdRow(null, 'sample'), /Invalid sample row/);

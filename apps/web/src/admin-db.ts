@@ -23,7 +23,6 @@ import {
   type ProjectConnectionSummary,
   type ProjectSourceAvailability,
   type ProjectSummary,
-  type ProjectVisibility,
   type PublicProjectReportSummary,
   type PublicProjectSummary,
   type SourceStatus,
@@ -33,40 +32,19 @@ import {
 import {
   type AdminDbAppMemberRow,
   type AdminDbProjectMemberRow,
+  type AdminDbProjectRow,
+  type AdminDbPublicProjectReportRow,
   parseAdminDbAppMemberRow,
   parseAdminDbIdRow,
   parseAdminDbProjectMemberRow,
+  parseAdminDbProjectRow,
+  parseAdminDbPublicProjectReportRow,
   parseAppMemberRoleRow,
   parseCanManageProjectRow,
 } from './admin-db-guards';
 import { getOptionalAdminSql } from './admin-sql';
 import { lookupProjectMemberAccess } from './authz';
 import { isFixtureFallbackEnabled } from './runtime-guards';
-
-type ProjectRow = {
-  description: string | null;
-  failed_count: number | string | bigint;
-  held_count: number | string | bigint;
-  id: string;
-  ingested_count: number | string | bigint;
-  last_indexed: Date | string | null;
-  member_count: number | string | bigint;
-  name: string;
-  queue_count: number | string | bigint;
-  raw_count: number | string | bigint;
-  slug: string;
-  visibility: ProjectVisibility;
-};
-
-type PublicProjectReportRow = {
-  description: string | null;
-  name: string;
-  published_at: Date | string | null;
-  report_id: string | null;
-  report_summary: string | null;
-  report_title: string | null;
-  slug: string;
-};
 
 type MutablePublicProjectSummary = Omit<PublicProjectSummary, 'reports'> & {
   reports: PublicProjectReportSummary[];
@@ -163,7 +141,7 @@ type AdminConfig = Record<string, unknown> & {
 
 export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
   return withOptionalSql<readonly ProjectSummary[]>(async (sql) => {
-    const rows = (await sql`
+    const rawRows = (await sql`
       SELECT
         p.id::text AS id,
         p.slug,
@@ -191,8 +169,9 @@ export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
         (SELECT max(rd.indexed_at) FROM public.raw_documents rd WHERE rd.project_id = p.id) AS last_indexed
       FROM public.projects p
       ORDER BY p.slug
-    `) as ProjectRow[];
+    `) as readonly unknown[];
 
+    const rows = rawRows.map(parseAdminDbProjectRow);
     const projectIds = rows.map((row) => row.id);
     const [dataSourcesByProject, parserProfilesByProject] = await Promise.all([
       listDataSourcesByProject(sql, projectIds),
@@ -211,7 +190,7 @@ export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
 
 export async function listMemberProjects(userId: string): Promise<readonly ProjectSummary[]> {
   return withOptionalSql(async (sql) => {
-    const rows = (await sql`
+    const rawRows = (await sql`
       SELECT
         p.id::text AS id,
         p.slug,
@@ -246,8 +225,9 @@ export async function listMemberProjects(userId: string): Promise<readonly Proje
       WHERE app_user.role = 'admin'
          OR current_member.user_id IS NOT NULL
       ORDER BY p.slug
-    `) as ProjectRow[];
+    `) as readonly unknown[];
 
+    const rows = rawRows.map(parseAdminDbProjectRow);
     const projectIds = rows.map((row) => row.id);
     const [dataSourcesByProject, parserProfilesByProject] = await Promise.all([
       listDataSourcesByProject(sql, projectIds),
@@ -265,7 +245,7 @@ export async function listMemberProjects(userId: string): Promise<readonly Proje
 
 export async function listPublicProjects(): Promise<readonly PublicProjectSummary[]> {
   return withOptionalSql(async (sql) => {
-    const rows = (await sql`
+    const rawRows = (await sql`
       SELECT
         p.slug,
         p.name,
@@ -285,14 +265,14 @@ export async function listPublicProjects(): Promise<readonly PublicProjectSummar
       ) r ON true
       WHERE p.visibility = 'public'
       ORDER BY p.slug, r.created_at DESC
-    `) as PublicProjectReportRow[];
-    return publicProjectsFromRows(rows);
+    `) as readonly unknown[];
+    return publicProjectsFromRows(rawRows.map(parseAdminDbPublicProjectReportRow));
   }, publicProjectsFallback());
 }
 
 export async function listVisiblePublicProjects(): Promise<readonly PublicProjectSummary[]> {
   return withOptionalSql(async (sql) => {
-    const rows = (await sql`
+    const rawRows = (await sql`
       SELECT
         p.slug,
         p.name,
@@ -312,8 +292,8 @@ export async function listVisiblePublicProjects(): Promise<readonly PublicProjec
       ) r ON true
       WHERE p.visibility = 'public'
       ORDER BY p.slug, r.created_at DESC NULLS LAST
-    `) as PublicProjectReportRow[];
-    return publicProjectsFromRows(rows);
+    `) as readonly unknown[];
+    return publicProjectsFromRows(rawRows.map(parseAdminDbPublicProjectReportRow));
   }, publicProjectsFallback());
 }
 
@@ -322,7 +302,7 @@ export async function getVisiblePublicProject(
 ): Promise<PublicProjectSummary | undefined> {
   return withOptionalSql(
     async (sql) => {
-      const rows = (await sql`
+      const rawRows = (await sql`
       SELECT
         p.slug,
         p.name,
@@ -343,8 +323,8 @@ export async function getVisiblePublicProject(
       WHERE p.visibility = 'public'
         AND p.slug = ${slug}
       ORDER BY r.created_at DESC NULLS LAST
-    `) as PublicProjectReportRow[];
-      return publicProjectsFromRows(rows)[0];
+    `) as readonly unknown[];
+      return publicProjectsFromRows(rawRows.map(parseAdminDbPublicProjectReportRow))[0];
     },
     publicProjectsFallback().find((project) => project.slug === slug),
   );
@@ -591,7 +571,7 @@ export async function getAdminProject(slug: string): Promise<ProjectSummary> {
   }
 
   try {
-    const rows = (await sql`
+    const rawRows = (await sql`
       SELECT
         p.id::text AS id,
         p.slug,
@@ -619,8 +599,8 @@ export async function getAdminProject(slug: string): Promise<ProjectSummary> {
         (SELECT max(rd.indexed_at) FROM public.raw_documents rd WHERE rd.project_id = p.id) AS last_indexed
       FROM public.projects p
       WHERE p.slug = ${slug}
-    `) as ProjectRow[];
-    const row = rows[0];
+    `) as readonly unknown[];
+    const row = rawRows[0] ? parseAdminDbProjectRow(rawRows[0]) : undefined;
     if (!row) {
       throw new Error(`Unknown project slug: ${slug}`);
     }
@@ -1145,7 +1125,7 @@ function groupRowsByProject<TRow extends { readonly project_id: string }, TValue
 }
 
 function projectFromRow(
-  row: ProjectRow,
+  row: AdminDbProjectRow,
   dataSources: readonly DataSourceSummary[],
   parserProfiles: readonly ParserProfileSummary[],
 ): ProjectSummary {
@@ -1171,7 +1151,7 @@ function projectFromRow(
 }
 
 function publicProjectsFromRows(
-  rows: readonly PublicProjectReportRow[],
+  rows: readonly AdminDbPublicProjectReportRow[],
 ): readonly PublicProjectSummary[] {
   const projects = new Map<string, MutablePublicProjectSummary>();
   for (const row of rows) {
