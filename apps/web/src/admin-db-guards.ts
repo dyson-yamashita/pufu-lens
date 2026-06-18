@@ -40,6 +40,16 @@ export type AdminDbProjectMemberRow = AdminDbAppMemberRow & {
   readonly removable: boolean;
 };
 
+export type AdminDbOAuthConnectionRow = {
+  readonly account_email: string | null;
+  readonly account_login: string | null;
+  readonly expires_at: Date | string | null;
+  readonly metadata: unknown;
+  readonly provider: 'google' | 'github';
+  readonly scopes: readonly string[] | null;
+  readonly updated_at: Date | string | null;
+};
+
 export function parseAdminDbIdRow(value: unknown, context: string): string {
   if (!isRecord(value)) {
     throw new Error(`Invalid ${context} row.`);
@@ -159,6 +169,24 @@ export function parseAdminDbPublicProjectReportRow(value: unknown): AdminDbPubli
   };
 }
 
+export function parseAdminDbOAuthConnectionRow(value: unknown): AdminDbOAuthConnectionRow {
+  const context = 'oauth connection';
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${context} row.`);
+  }
+  const { account_email, account_login, expires_at, metadata, provider, scopes, updated_at } =
+    value;
+  return {
+    account_email: parseNullableString(account_email, context, 'account_email'),
+    account_login: parseNullableString(account_login, context, 'account_login'),
+    expires_at: parseNullableDateLike(expires_at, context, 'expires_at'),
+    metadata,
+    provider: parseOAuthProvider(provider, context, 'provider'),
+    scopes: parseNullableStringArray(scopes, context, 'scopes'),
+    updated_at: parseNullableDateLike(updated_at, context, 'updated_at'),
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -225,6 +253,36 @@ function parseProjectVisibility(
 ): ProjectVisibility {
   if (!isProjectVisibility(value)) {
     throw new Error(`Invalid ${context} row field: ${fieldName}`);
+  }
+  return value;
+}
+
+function parseOAuthProvider(
+  value: unknown,
+  context: string,
+  fieldName: string,
+): 'google' | 'github' {
+  if (value === 'google' || value === 'github') {
+    return value;
+  }
+  throw new Error(`Invalid ${context} row field: ${fieldName}`);
+}
+
+function parseNullableStringArray(
+  value: unknown,
+  context: string,
+  fieldName: string,
+): readonly string[] | null {
+  if (value === null) {
+    return null;
+  }
+  if (value === undefined || !Array.isArray(value)) {
+    throw new Error(`Invalid ${context} row field: ${fieldName}`);
+  }
+  for (const item of value) {
+    if (typeof item !== 'string') {
+      throw new Error(`Invalid ${context} row field: ${fieldName}`);
+    }
   }
   return value;
 }

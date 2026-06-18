@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   parseAdminDbAppMemberRow,
   parseAdminDbIdRow,
+  parseAdminDbOAuthConnectionRow,
   parseAdminDbProjectMemberRow,
   parseAdminDbProjectRow,
   parseAdminDbPublicProjectReportRow,
@@ -71,6 +72,62 @@ assert.throws(
 assert.throws(
   () => parseAdminDbPublicProjectReportRow({ ...validPublicProjectReportRow, report_id: 456 }),
   /Invalid public project report row field: report_id/,
+);
+
+const validOAuthConnectionRow = {
+  account_email: 'user@example.test',
+  account_login: 'example-user',
+  expires_at: new Date('2026-12-31T00:00:00.000Z'),
+  metadata: { driveEnabled: true },
+  provider: 'google',
+  scopes: ['https://www.googleapis.com/auth/gmail.readonly'],
+  updated_at: '2026-06-16T00:00:00.000Z',
+};
+
+assert.deepEqual(parseAdminDbOAuthConnectionRow(validOAuthConnectionRow), validOAuthConnectionRow);
+assert.deepEqual(
+  parseAdminDbOAuthConnectionRow({
+    ...validOAuthConnectionRow,
+    account_email: null,
+    account_login: null,
+    expires_at: null,
+    provider: 'github',
+    scopes: null,
+    updated_at: null,
+  }),
+  {
+    ...validOAuthConnectionRow,
+    account_email: null,
+    account_login: null,
+    expires_at: null,
+    provider: 'github',
+    scopes: null,
+    updated_at: null,
+  },
+);
+assert.throws(
+  () => parseAdminDbOAuthConnectionRow({ ...validOAuthConnectionRow, provider: 'slack' }),
+  /Invalid oauth connection row field: provider/,
+);
+assert.throws(
+  () => parseAdminDbOAuthConnectionRow({ ...validOAuthConnectionRow, scopes: 'gmail.readonly' }),
+  /Invalid oauth connection row field: scopes/,
+);
+assert.throws(
+  () => parseAdminDbOAuthConnectionRow({ ...validOAuthConnectionRow, scopes: ['read', 123] }),
+  /Invalid oauth connection row field: scopes/,
+);
+assert.throws(() => {
+  const { scopes: _scopes, ...rowWithoutScopes } = validOAuthConnectionRow;
+  parseAdminDbOAuthConnectionRow(rowWithoutScopes);
+}, /Invalid oauth connection row field: scopes/);
+assert.throws(
+  () => parseAdminDbOAuthConnectionRow({ ...validOAuthConnectionRow, expires_at: 123 }),
+  /Invalid oauth connection row field: expires_at/,
+);
+assert.throws(
+  () => parseAdminDbOAuthConnectionRow({ ...validOAuthConnectionRow, account_email: 123 }),
+  /Invalid oauth connection row field: account_email/,
 );
 
 assert.equal(parseAdminDbIdRow({ id: 'user-a' }, 'sample'), 'user-a');
