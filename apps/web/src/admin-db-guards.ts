@@ -1,4 +1,9 @@
-import { isProjectVisibility, type ProjectVisibility } from './admin-data.ts';
+import {
+  isProjectVisibility,
+  isSourceType,
+  type ProjectVisibility,
+  type SourceType,
+} from './admin-data.ts';
 import type { AppMemberRole, ProjectMemberRole } from './admin-db';
 
 export type AdminDbProjectRow = {
@@ -67,6 +72,21 @@ export type AdminDbActorAliasRow = {
   readonly alias_value: string;
   readonly confidence: number | string;
   readonly source: string | null;
+};
+
+export type AdminDbDataSourceRow = {
+  readonly config: unknown;
+  readonly failed_count: number | string | bigint;
+  readonly held_count: number | string | bigint;
+  readonly id: string;
+  readonly ingested_count: number | string | bigint;
+  readonly last_checked_at: Date | string | null;
+  readonly last_indexed: Date | string | null;
+  readonly name: string;
+  readonly project_id: string;
+  readonly queue_count: number | string | bigint;
+  readonly raw_count: number | string | bigint;
+  readonly source_type: SourceType;
 };
 
 export function parseAdminDbIdRow(value: unknown, context: string): string {
@@ -248,6 +268,41 @@ export function parseAdminDbActorAliasRow(value: unknown): AdminDbActorAliasRow 
   };
 }
 
+export function parseAdminDbDataSourceRow(value: unknown): AdminDbDataSourceRow {
+  const context = 'data source';
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${context} row.`);
+  }
+  const {
+    config,
+    failed_count,
+    held_count,
+    id,
+    ingested_count,
+    last_checked_at,
+    last_indexed,
+    name,
+    project_id,
+    queue_count,
+    raw_count,
+    source_type,
+  } = value;
+  return {
+    config,
+    failed_count: parseCountLike(failed_count, context, 'failed_count'),
+    held_count: parseCountLike(held_count, context, 'held_count'),
+    id: parseRequiredString(id, context, 'id'),
+    ingested_count: parseCountLike(ingested_count, context, 'ingested_count'),
+    last_checked_at: parseNullableDateLike(last_checked_at, context, 'last_checked_at'),
+    last_indexed: parseNullableDateLike(last_indexed, context, 'last_indexed'),
+    name: parseRequiredString(name, context, 'name'),
+    project_id: parseRequiredString(project_id, context, 'project_id'),
+    queue_count: parseCountLike(queue_count, context, 'queue_count'),
+    raw_count: parseCountLike(raw_count, context, 'raw_count'),
+    source_type: parseSourceType(source_type, context, 'source_type'),
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -313,6 +368,13 @@ function parseProjectVisibility(
   fieldName: string,
 ): ProjectVisibility {
   if (!isProjectVisibility(value)) {
+    throw new Error(`Invalid ${context} row field: ${fieldName}`);
+  }
+  return value;
+}
+
+function parseSourceType(value: unknown, context: string, fieldName: string): SourceType {
+  if (!isSourceType(value)) {
     throw new Error(`Invalid ${context} row field: ${fieldName}`);
   }
   return value;

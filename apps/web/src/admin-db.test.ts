@@ -3,6 +3,7 @@ import {
   parseAdminDbActorAliasRow,
   parseAdminDbActorRow,
   parseAdminDbAppMemberRow,
+  parseAdminDbDataSourceRow,
   parseAdminDbIdRow,
   parseAdminDbOAuthConnectionRow,
   parseAdminDbProjectMemberRow,
@@ -193,6 +194,39 @@ assert.throws(
 assert.throws(
   () => parseAdminDbActorAliasRow({ ...validActorAliasRow, source: 123 }),
   /Invalid actor alias row field: source/,
+);
+
+const validDataSourceRow = {
+  config: { urls: ['https://example.test'] },
+  failed_count: 0,
+  held_count: 1n,
+  id: 'data-source-a',
+  ingested_count: '8',
+  last_checked_at: '2026-06-16T00:00:00.000Z',
+  last_indexed: new Date('2026-06-17T00:00:00.000Z'),
+  name: 'Sample Web Source',
+  project_id: 'project-a',
+  queue_count: 2,
+  raw_count: 10,
+  source_type: 'web',
+};
+
+assert.deepEqual(parseAdminDbDataSourceRow(validDataSourceRow), validDataSourceRow);
+assert.throws(
+  () => parseAdminDbDataSourceRow({ ...validDataSourceRow, source_type: 'slack' }),
+  /Invalid data source row field: source_type/,
+);
+assert.throws(
+  () => parseAdminDbDataSourceRow({ ...validDataSourceRow, raw_count: -1 }),
+  /Invalid data source row field: raw_count/,
+);
+assert.throws(
+  () => parseAdminDbDataSourceRow({ ...validDataSourceRow, last_checked_at: 123 }),
+  /Invalid data source row field: last_checked_at/,
+);
+assert.throws(
+  () => parseAdminDbDataSourceRow({ ...validDataSourceRow, name: null }),
+  /Invalid data source row field: name/,
 );
 
 assert.equal(parseAdminDbIdRow({ id: 'user-a' }, 'sample'), 'user-a');

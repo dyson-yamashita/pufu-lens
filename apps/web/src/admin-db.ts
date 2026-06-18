@@ -33,6 +33,7 @@ import {
   type AdminDbActorAliasRow,
   type AdminDbActorRow,
   type AdminDbAppMemberRow,
+  type AdminDbDataSourceRow,
   type AdminDbOAuthConnectionRow,
   type AdminDbProjectMemberRow,
   type AdminDbProjectRow,
@@ -40,6 +41,7 @@ import {
   parseAdminDbActorAliasRow,
   parseAdminDbActorRow,
   parseAdminDbAppMemberRow,
+  parseAdminDbDataSourceRow,
   parseAdminDbIdRow,
   parseAdminDbOAuthConnectionRow,
   parseAdminDbProjectMemberRow,
@@ -88,21 +90,6 @@ export type ProjectMembershipSummary = {
 export type GlobalMemberDirectory = {
   readonly canManageMembers: boolean;
   readonly members: readonly AppMemberSummary[];
-};
-
-type DataSourceRow = {
-  config: unknown;
-  failed_count: number | string | bigint;
-  held_count: number | string | bigint;
-  id: string;
-  ingested_count: number | string | bigint;
-  last_checked_at: Date | string | null;
-  last_indexed: Date | string | null;
-  name: string;
-  queue_count: number | string | bigint;
-  raw_count: number | string | bigint;
-  project_id: string;
-  source_type: SourceType;
 };
 
 type ParserProfileRow = {
@@ -837,7 +824,7 @@ async function listDataSourcesByProject(
     return new Map();
   }
 
-  const rows = (await sql`
+  const rawRows = (await sql`
     SELECT
       ds.project_id::text AS project_id,
       ds.id::text AS id,
@@ -882,12 +869,12 @@ async function listDataSourcesByProject(
     WHERE ds.enabled = true
       AND ds.project_id IN ${sql(projectIds)}
     ORDER BY ds.source_type, ds.name
-  `) as DataSourceRow[];
+  `) as readonly unknown[];
 
-  return groupRowsByProject(rows, dataSourceFromRow);
+  return groupRowsByProject(rawRows.map(parseAdminDbDataSourceRow), dataSourceFromRow);
 }
 
-function dataSourceFromRow(row: DataSourceRow): DataSourceSummary {
+function dataSourceFromRow(row: AdminDbDataSourceRow): DataSourceSummary {
   const failedCount = toNumber(row.failed_count);
   const heldCount = toNumber(row.held_count);
   const ingestedCount = toNumber(row.ingested_count);
@@ -922,7 +909,7 @@ async function listDataSources(
   sql: postgres.Sql,
   projectId: string,
 ): Promise<readonly DataSourceSummary[]> {
-  const rows = (await sql`
+  const rawRows = (await sql`
     SELECT
       ds.project_id::text AS project_id,
       ds.id::text AS id,
@@ -967,9 +954,9 @@ async function listDataSources(
     WHERE ds.project_id = ${projectId}
       AND ds.enabled = true
     ORDER BY ds.source_type, ds.name
-  `) as DataSourceRow[];
+  `) as readonly unknown[];
 
-  return rows.map(dataSourceFromRow);
+  return rawRows.map(parseAdminDbDataSourceRow).map(dataSourceFromRow);
 }
 
 async function listParserProfilesByProject(
