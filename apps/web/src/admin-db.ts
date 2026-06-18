@@ -56,10 +56,9 @@ import {
   parseAdminDbProjectRow,
   parseAdminDbPublicProjectReportRow,
   parseAppMemberRoleRow,
-  parseCanManageProjectRow,
 } from './admin-db-guards';
 import { getOptionalAdminSql } from './admin-sql';
-import { lookupProjectMemberAccess } from './authz';
+import { lookupProjectAdminAccess, lookupProjectMemberAccess } from './authz';
 import { isFixtureFallbackEnabled } from './runtime-guards';
 
 type MutablePublicProjectSummary = Omit<PublicProjectSummary, 'reports'> & {
@@ -356,19 +355,8 @@ export async function getAppUserRole(userId: string): Promise<AppMemberRole | un
 
 export async function canManageProject(slug: string, userId: string): Promise<boolean> {
   return withOptionalSql(async (sql) => {
-    const rows = (await sql`
-      SELECT true AS can_manage
-      FROM public.projects p
-      JOIN public.users app_user
-        ON app_user.id = ${userId}
-      LEFT JOIN public.project_members pm
-        ON pm.project_id = p.id
-       AND pm.user_id = app_user.id
-      WHERE p.slug = ${slug}
-        AND (app_user.role = 'admin' OR pm.role = 'admin')
-      LIMIT 1
-    `) as readonly unknown[];
-    return rows[0] ? parseCanManageProjectRow(rows[0]) : false;
+    const access = await lookupProjectAdminAccess(sql, { projectSlug: slug, userId });
+    return Boolean(access);
   }, false);
 }
 
