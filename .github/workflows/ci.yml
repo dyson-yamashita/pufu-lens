@@ -294,6 +294,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build E2E workspace dependencies
+        run: pnpm --filter '@pufu-lens/web^...' build
+
       - name: Detect E2E changes
         id: e2e-changes
         run: |
