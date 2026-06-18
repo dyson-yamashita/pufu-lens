@@ -956,7 +956,7 @@ async function listDataSources(
     ORDER BY ds.source_type, ds.name
   `) as readonly unknown[];
 
-  return rawRows.map(parseAdminDbDataSourceRow).map(dataSourceFromRow);
+  return rawRows.map((row) => dataSourceFromRow(parseAdminDbDataSourceRow(row)));
 }
 
 async function listParserProfilesByProject(
