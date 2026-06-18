@@ -6,6 +6,7 @@ import {
   parseAdminDbDataSourceRow,
   parseAdminDbIdRow,
   parseAdminDbOAuthConnectionRow,
+  parseAdminDbParserProfileRow,
   parseAdminDbProjectMemberRow,
   parseAdminDbProjectRow,
   parseAdminDbPublicProjectReportRow,
@@ -227,6 +228,37 @@ assert.throws(
 assert.throws(
   () => parseAdminDbDataSourceRow({ ...validDataSourceRow, name: null }),
   /Invalid data source row field: name/,
+);
+
+const validParserProfileRow = {
+  active_version: '1.0.0',
+  held_queue_count: 0,
+  id: 'parser-profile-a',
+  name: 'Web Parser',
+  project_id: 'project-a',
+  review_status: 'draft',
+  review_validation_report_uri: null,
+  review_version: '1.1.0-draft',
+  review_version_id: 'review-version-a',
+  source_type: 'web',
+};
+
+assert.deepEqual(parseAdminDbParserProfileRow(validParserProfileRow), validParserProfileRow);
+assert.throws(
+  () => parseAdminDbParserProfileRow({ ...validParserProfileRow, source_type: 'slack' }),
+  /Invalid parser profile row field: source_type/,
+);
+assert.throws(
+  () => parseAdminDbParserProfileRow({ ...validParserProfileRow, held_queue_count: -1 }),
+  /Invalid parser profile row field: held_queue_count/,
+);
+assert.throws(
+  () => parseAdminDbParserProfileRow({ ...validParserProfileRow, name: null }),
+  /Invalid parser profile row field: name/,
+);
+assert.throws(
+  () => parseAdminDbParserProfileRow({ ...validParserProfileRow, active_version: 123 }),
+  /Invalid parser profile row field: active_version/,
 );
 
 assert.equal(parseAdminDbIdRow({ id: 'user-a' }, 'sample'), 'user-a');

@@ -89,6 +89,19 @@ export type AdminDbDataSourceRow = {
   readonly source_type: SourceType;
 };
 
+export type AdminDbParserProfileRow = {
+  readonly active_version: string | null;
+  readonly held_queue_count: number | string | bigint;
+  readonly id: string;
+  readonly name: string;
+  readonly project_id: string;
+  readonly review_status: string | null;
+  readonly review_validation_report_uri: string | null;
+  readonly review_version: string | null;
+  readonly review_version_id: string | null;
+  readonly source_type: SourceType;
+};
+
 export function parseAdminDbIdRow(value: unknown, context: string): string {
   if (!isRecord(value)) {
     throw new Error(`Invalid ${context} row.`);
@@ -299,6 +312,41 @@ export function parseAdminDbDataSourceRow(value: unknown): AdminDbDataSourceRow 
     project_id: parseRequiredString(project_id, context, 'project_id'),
     queue_count: parseCountLike(queue_count, context, 'queue_count'),
     raw_count: parseCountLike(raw_count, context, 'raw_count'),
+    source_type: parseSourceType(source_type, context, 'source_type'),
+  };
+}
+
+export function parseAdminDbParserProfileRow(value: unknown): AdminDbParserProfileRow {
+  const context = 'parser profile';
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${context} row.`);
+  }
+  const {
+    active_version,
+    held_queue_count,
+    id,
+    name,
+    project_id,
+    review_status,
+    review_validation_report_uri,
+    review_version,
+    review_version_id,
+    source_type,
+  } = value;
+  return {
+    active_version: parseNullableString(active_version, context, 'active_version'),
+    held_queue_count: parseCountLike(held_queue_count, context, 'held_queue_count'),
+    id: parseRequiredString(id, context, 'id'),
+    name: parseRequiredString(name, context, 'name'),
+    project_id: parseRequiredString(project_id, context, 'project_id'),
+    review_status: parseNullableString(review_status, context, 'review_status'),
+    review_validation_report_uri: parseNullableString(
+      review_validation_report_uri,
+      context,
+      'review_validation_report_uri',
+    ),
+    review_version: parseNullableString(review_version, context, 'review_version'),
+    review_version_id: parseNullableString(review_version_id, context, 'review_version_id'),
     source_type: parseSourceType(source_type, context, 'source_type'),
   };
 }

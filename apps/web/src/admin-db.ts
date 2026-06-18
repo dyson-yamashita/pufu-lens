@@ -35,6 +35,7 @@ import {
   type AdminDbAppMemberRow,
   type AdminDbDataSourceRow,
   type AdminDbOAuthConnectionRow,
+  type AdminDbParserProfileRow,
   type AdminDbProjectMemberRow,
   type AdminDbProjectRow,
   type AdminDbPublicProjectReportRow,
@@ -44,6 +45,7 @@ import {
   parseAdminDbDataSourceRow,
   parseAdminDbIdRow,
   parseAdminDbOAuthConnectionRow,
+  parseAdminDbParserProfileRow,
   parseAdminDbProjectMemberRow,
   parseAdminDbProjectRow,
   parseAdminDbPublicProjectReportRow,
@@ -90,19 +92,6 @@ export type ProjectMembershipSummary = {
 export type GlobalMemberDirectory = {
   readonly canManageMembers: boolean;
   readonly members: readonly AppMemberSummary[];
-};
-
-type ParserProfileRow = {
-  active_version: string | null;
-  held_queue_count: number | string | bigint;
-  id: string;
-  name: string;
-  review_status: string | null;
-  review_validation_report_uri: string | null;
-  review_version: string | null;
-  review_version_id: string | null;
-  project_id: string;
-  source_type: SourceType;
 };
 
 type AdminConfig = Record<string, unknown> & {
@@ -967,7 +956,7 @@ async function listParserProfilesByProject(
     return new Map();
   }
 
-  const rows = (await sql`
+  const rawRows = (await sql`
     SELECT
       pp.project_id::text AS project_id,
       pp.id::text AS id,
@@ -991,16 +980,16 @@ async function listParserProfilesByProject(
       AND review_versions.status IN ('draft', 'review_requested')
     WHERE pp.project_id IN ${sql(projectIds)}
     ORDER BY pp.source_type, pp.name, review_versions.created_at DESC NULLS LAST
-  `) as ParserProfileRow[];
+  `) as readonly unknown[];
 
-  return groupParserProfileRowsByProject(rows);
+  return groupParserProfileRowsByProject(rawRows.map(parseAdminDbParserProfileRow));
 }
 
 async function listParserProfiles(
   sql: postgres.Sql,
   projectId: string,
 ): Promise<readonly ParserProfileSummary[]> {
-  const rows = (await sql`
+  const rawRows = (await sql`
     SELECT
       pp.project_id::text AS project_id,
       pp.id::text AS id,
@@ -1024,15 +1013,15 @@ async function listParserProfiles(
       AND review_versions.status IN ('draft', 'review_requested')
     WHERE pp.project_id = ${projectId}
     ORDER BY pp.source_type, pp.name, review_versions.created_at DESC NULLS LAST
-  `) as ParserProfileRow[];
+  `) as readonly unknown[];
 
-  return parserProfilesFromRows(rows);
+  return parserProfilesFromRows(rawRows.map(parseAdminDbParserProfileRow));
 }
 
 function groupParserProfileRowsByProject(
-  rows: readonly ParserProfileRow[],
+  rows: readonly AdminDbParserProfileRow[],
 ): ReadonlyMap<string, readonly ParserProfileSummary[]> {
-  const rowsByProject = new Map<string, ParserProfileRow[]>();
+  const rowsByProject = new Map<string, AdminDbParserProfileRow[]>();
   for (const row of rows) {
     const projectRows = rowsByProject.get(row.project_id);
     if (projectRows) {
@@ -1050,7 +1039,7 @@ function groupParserProfileRowsByProject(
 }
 
 function parserProfilesFromRows(
-  rows: readonly ParserProfileRow[],
+  rows: readonly AdminDbParserProfileRow[],
 ): readonly ParserProfileSummary[] {
   const seen = new Set<string>();
   const profiles: ParserProfileSummary[] = [];
