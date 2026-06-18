@@ -33,6 +33,8 @@ import {
   type AdminDbActorAliasRow,
   type AdminDbActorRow,
   type AdminDbAppMemberRow,
+  type AdminDbDataSourcePreviewDocumentRow,
+  type AdminDbDataSourcePreviewQueueRow,
   type AdminDbDataSourceRow,
   type AdminDbOAuthConnectionRow,
   type AdminDbParserProfileRow,
@@ -42,6 +44,10 @@ import {
   parseAdminDbActorAliasRow,
   parseAdminDbActorRow,
   parseAdminDbAppMemberRow,
+  parseAdminDbDataSourcePreviewDocumentRow,
+  parseAdminDbDataSourcePreviewQueueRow,
+  parseAdminDbDataSourcePreviewScopeRow,
+  parseAdminDbDataSourcePreviewSummaryRow,
   parseAdminDbDataSourceRow,
   parseAdminDbIdRow,
   parseAdminDbOAuthConnectionRow,
@@ -1401,44 +1407,6 @@ function metadataLabelsFromRecord(metadata: Record<string, unknown>): readonly s
   return labels;
 }
 
-type DataSourcePreviewScopeRow = {
-  id: string;
-  last_checked_at: Date | string | null;
-  project_id: string;
-};
-
-type DataSourcePreviewSummaryRow = {
-  failed_count: number | string | bigint;
-  held_count: number | string | bigint;
-  indexed_count: number | string | bigint;
-  last_checked_at: Date | string | null;
-  last_indexed: Date | string | null;
-  queue_count: number | string | bigint;
-  raw_count: number | string | bigint;
-};
-
-type DataSourcePreviewDocumentRow = {
-  canonical_uri: string | null;
-  doc_type: string | null;
-  document_id: string | null;
-  document_summary: string | null;
-  fetched_at: Date | string;
-  first_chunk_content: string | null;
-  indexed_at: Date | string | null;
-  ingest_status: string;
-  raw_document_id: string;
-  source_id: string;
-  title: string | null;
-};
-
-type DataSourcePreviewQueueRow = {
-  attempts: number | string | bigint;
-  id: string;
-  last_error: string | null;
-  status: string;
-  updated_at: Date | string;
-};
-
 const DATA_SOURCE_PREVIEW_DOCUMENT_LIMIT = 20;
 const DATA_SOURCE_PREVIEW_QUEUE_LIMIT = 10;
 const DATA_SOURCE_PREVIEW_ERROR_MAX_LENGTH = 120;
@@ -1448,7 +1416,7 @@ export async function getDataSourceContentPreview(
   dataSourceId: string,
 ): Promise<DataSourceContentPreview | null> {
   return withOptionalSql(async (sql) => {
-    const scopeRows = (await sql`
+    const rawScopeRows = (await sql`
       SELECT
         ds.id::text AS id,
         ds.project_id::text AS project_id,
@@ -1459,13 +1427,15 @@ export async function getDataSourceContentPreview(
         AND ds.id::text = ${dataSourceId}
         AND ds.enabled = true
       LIMIT 1
-    `) as DataSourcePreviewScopeRow[];
-    const scope = scopeRows[0];
+    `) as readonly unknown[];
+    const scope = rawScopeRows[0]
+      ? parseAdminDbDataSourcePreviewScopeRow(rawScopeRows[0])
+      : undefined;
     if (!scope) {
       throw new Error(`Data source content preview target not found: ${dataSourceId}`);
     }
 
-    const [summaryRows, documentRows, queueRows] = await Promise.all([
+    const [rawSummaryRows, rawDocumentRows, rawQueueRows] = await Promise.all([
       sql`
         SELECT
           (
@@ -1513,7 +1483,7 @@ export async function getDataSourceContentPreview(
         FROM public.data_sources ds
         WHERE ds.id = ${dataSourceId}
         LIMIT 1
-      ` as Promise<DataSourcePreviewSummaryRow[]>,
+      ` as Promise<readonly unknown[]>,
       sql`
         SELECT
           rd.id::text AS raw_document_id,
@@ -1540,7 +1510,7 @@ export async function getDataSourceContentPreview(
           AND rdds.project_id = ${scope.project_id}
         ORDER BY rd.fetched_at DESC
         LIMIT ${DATA_SOURCE_PREVIEW_DOCUMENT_LIMIT}
-      ` as Promise<DataSourcePreviewDocumentRow[]>,
+      ` as Promise<readonly unknown[]>,
       sql`
         SELECT
           iq.id::text AS id,
@@ -1553,8 +1523,11 @@ export async function getDataSourceContentPreview(
           AND iq.project_id = ${scope.project_id}
         ORDER BY iq.updated_at DESC
         LIMIT ${DATA_SOURCE_PREVIEW_QUEUE_LIMIT}
-      ` as Promise<DataSourcePreviewQueueRow[]>,
+      ` as Promise<readonly unknown[]>,
     ]);
+    const summaryRows = rawSummaryRows.map(parseAdminDbDataSourcePreviewSummaryRow);
+    const documentRows = rawDocumentRows.map(parseAdminDbDataSourcePreviewDocumentRow);
+    const queueRows = rawQueueRows.map(parseAdminDbDataSourcePreviewQueueRow);
 
     const summaryRow = summaryRows[0];
     if (!summaryRow) {
@@ -1577,7 +1550,9 @@ export async function getDataSourceContentPreview(
   }, getFallbackDataSourceContentPreview(dataSourceId));
 }
 
-function documentPreviewFromRow(row: DataSourcePreviewDocumentRow): DataSourceDocumentPreviewRow {
+function documentPreviewFromRow(
+  row: AdminDbDataSourcePreviewDocumentRow,
+): DataSourceDocumentPreviewRow {
   const snippetSource = row.document_summary ?? row.first_chunk_content ?? '';
   return {
     canonicalUri: row.canonical_uri ?? '',
@@ -1592,7 +1567,7 @@ function documentPreviewFromRow(row: DataSourcePreviewDocumentRow): DataSourceDo
   };
 }
 
-function queuePreviewFromRow(row: DataSourcePreviewQueueRow): DataSourceQueuePreviewRow {
+function queuePreviewFromRow(row: AdminDbDataSourcePreviewQueueRow): DataSourceQueuePreviewRow {
   return {
     attempts: toNumber(row.attempts),
     id: row.id,

@@ -102,6 +102,44 @@ export type AdminDbParserProfileRow = {
   readonly source_type: SourceType;
 };
 
+export type AdminDbDataSourcePreviewScopeRow = {
+  readonly id: string;
+  readonly last_checked_at: Date | string | null;
+  readonly project_id: string;
+};
+
+export type AdminDbDataSourcePreviewSummaryRow = {
+  readonly failed_count: number | string | bigint;
+  readonly held_count: number | string | bigint;
+  readonly indexed_count: number | string | bigint;
+  readonly last_checked_at: Date | string | null;
+  readonly last_indexed: Date | string | null;
+  readonly queue_count: number | string | bigint;
+  readonly raw_count: number | string | bigint;
+};
+
+export type AdminDbDataSourcePreviewDocumentRow = {
+  readonly canonical_uri: string | null;
+  readonly doc_type: string | null;
+  readonly document_id: string | null;
+  readonly document_summary: string | null;
+  readonly fetched_at: Date | string;
+  readonly first_chunk_content: string | null;
+  readonly indexed_at: Date | string | null;
+  readonly ingest_status: string;
+  readonly raw_document_id: string;
+  readonly source_id: string;
+  readonly title: string | null;
+};
+
+export type AdminDbDataSourcePreviewQueueRow = {
+  readonly attempts: number | string | bigint;
+  readonly id: string;
+  readonly last_error: string | null;
+  readonly status: string;
+  readonly updated_at: Date | string;
+};
+
 export function parseAdminDbIdRow(value: unknown, context: string): string {
   if (!isRecord(value)) {
     throw new Error(`Invalid ${context} row.`);
@@ -348,6 +386,100 @@ export function parseAdminDbParserProfileRow(value: unknown): AdminDbParserProfi
     review_version: parseNullableString(review_version, context, 'review_version'),
     review_version_id: parseNullableString(review_version_id, context, 'review_version_id'),
     source_type: parseSourceType(source_type, context, 'source_type'),
+  };
+}
+
+export function parseAdminDbDataSourcePreviewScopeRow(
+  value: unknown,
+): AdminDbDataSourcePreviewScopeRow {
+  const context = 'data source preview scope';
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${context} row.`);
+  }
+  const { id, last_checked_at, project_id } = value;
+  return {
+    id: parseRequiredString(id, context, 'id'),
+    last_checked_at: parseNullableDateLike(last_checked_at, context, 'last_checked_at'),
+    project_id: parseRequiredString(project_id, context, 'project_id'),
+  };
+}
+
+export function parseAdminDbDataSourcePreviewSummaryRow(
+  value: unknown,
+): AdminDbDataSourcePreviewSummaryRow {
+  const context = 'data source preview summary';
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${context} row.`);
+  }
+  const {
+    failed_count,
+    held_count,
+    indexed_count,
+    last_checked_at,
+    last_indexed,
+    queue_count,
+    raw_count,
+  } = value;
+  return {
+    failed_count: parseCountLike(failed_count, context, 'failed_count'),
+    held_count: parseCountLike(held_count, context, 'held_count'),
+    indexed_count: parseCountLike(indexed_count, context, 'indexed_count'),
+    last_checked_at: parseNullableDateLike(last_checked_at, context, 'last_checked_at'),
+    last_indexed: parseNullableDateLike(last_indexed, context, 'last_indexed'),
+    queue_count: parseCountLike(queue_count, context, 'queue_count'),
+    raw_count: parseCountLike(raw_count, context, 'raw_count'),
+  };
+}
+
+export function parseAdminDbDataSourcePreviewDocumentRow(
+  value: unknown,
+): AdminDbDataSourcePreviewDocumentRow {
+  const context = 'data source preview document';
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${context} row.`);
+  }
+  const {
+    canonical_uri,
+    doc_type,
+    document_id,
+    document_summary,
+    fetched_at,
+    first_chunk_content,
+    indexed_at,
+    ingest_status,
+    raw_document_id,
+    source_id,
+    title,
+  } = value;
+  return {
+    canonical_uri: parseNullableString(canonical_uri, context, 'canonical_uri'),
+    doc_type: parseNullableString(doc_type, context, 'doc_type'),
+    document_id: parseNullableString(document_id, context, 'document_id'),
+    document_summary: parseNullableString(document_summary, context, 'document_summary'),
+    fetched_at: parseDateLike(fetched_at, context, 'fetched_at'),
+    first_chunk_content: parseNullableString(first_chunk_content, context, 'first_chunk_content'),
+    indexed_at: parseNullableDateLike(indexed_at, context, 'indexed_at'),
+    ingest_status: parseRequiredString(ingest_status, context, 'ingest_status'),
+    raw_document_id: parseRequiredString(raw_document_id, context, 'raw_document_id'),
+    source_id: parseRequiredString(source_id, context, 'source_id'),
+    title: parseNullableString(title, context, 'title'),
+  };
+}
+
+export function parseAdminDbDataSourcePreviewQueueRow(
+  value: unknown,
+): AdminDbDataSourcePreviewQueueRow {
+  const context = 'data source preview queue';
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${context} row.`);
+  }
+  const { attempts, id, last_error, status, updated_at } = value;
+  return {
+    attempts: parseCountLike(attempts, context, 'attempts'),
+    id: parseRequiredString(id, context, 'id'),
+    last_error: parseNullableString(last_error, context, 'last_error'),
+    status: parseRequiredString(status, context, 'status'),
+    updated_at: parseDateLike(updated_at, context, 'updated_at'),
   };
 }
 
