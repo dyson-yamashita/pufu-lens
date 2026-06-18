@@ -1,4 +1,30 @@
+import { isProjectVisibility, type ProjectVisibility } from './admin-data.ts';
 import type { AppMemberRole, ProjectMemberRole } from './admin-db';
+
+export type AdminDbProjectRow = {
+  readonly description: string | null;
+  readonly failed_count: number | string | bigint;
+  readonly held_count: number | string | bigint;
+  readonly id: string;
+  readonly ingested_count: number | string | bigint;
+  readonly last_indexed: Date | string | null;
+  readonly member_count: number | string | bigint;
+  readonly name: string;
+  readonly queue_count: number | string | bigint;
+  readonly raw_count: number | string | bigint;
+  readonly slug: string;
+  readonly visibility: ProjectVisibility;
+};
+
+export type AdminDbPublicProjectReportRow = {
+  readonly description: string | null;
+  readonly name: string;
+  readonly published_at: Date | string | null;
+  readonly report_id: string | null;
+  readonly report_summary: string | null;
+  readonly report_title: string | null;
+  readonly slug: string;
+};
 
 export type AdminDbAppMemberRow = {
   readonly created_at: Date | string;
@@ -81,6 +107,58 @@ export function parseCanManageProjectRow(value: unknown): boolean {
   return canManage;
 }
 
+export function parseAdminDbProjectRow(value: unknown): AdminDbProjectRow {
+  const context = 'project';
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${context} row.`);
+  }
+  const {
+    description,
+    failed_count,
+    held_count,
+    id,
+    ingested_count,
+    last_indexed,
+    member_count,
+    name,
+    queue_count,
+    raw_count,
+    slug,
+    visibility,
+  } = value;
+  return {
+    description: parseNullableString(description, context, 'description'),
+    failed_count: parseCountLike(failed_count, context, 'failed_count'),
+    held_count: parseCountLike(held_count, context, 'held_count'),
+    id: parseRequiredString(id, context, 'id'),
+    ingested_count: parseCountLike(ingested_count, context, 'ingested_count'),
+    last_indexed: parseNullableDateLike(last_indexed, context, 'last_indexed'),
+    member_count: parseCountLike(member_count, context, 'member_count'),
+    name: parseRequiredString(name, context, 'name'),
+    queue_count: parseCountLike(queue_count, context, 'queue_count'),
+    raw_count: parseCountLike(raw_count, context, 'raw_count'),
+    slug: parseRequiredString(slug, context, 'slug'),
+    visibility: parseProjectVisibility(visibility, context, 'visibility'),
+  };
+}
+
+export function parseAdminDbPublicProjectReportRow(value: unknown): AdminDbPublicProjectReportRow {
+  const context = 'public project report';
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${context} row.`);
+  }
+  const { description, name, published_at, report_id, report_summary, report_title, slug } = value;
+  return {
+    description: parseNullableString(description, context, 'description'),
+    name: parseRequiredString(name, context, 'name'),
+    published_at: parseNullableDateLike(published_at, context, 'published_at'),
+    report_id: parseNullableString(report_id, context, 'report_id'),
+    report_summary: parseNullableString(report_summary, context, 'report_summary'),
+    report_title: parseNullableString(report_title, context, 'report_title'),
+    slug: parseRequiredString(slug, context, 'slug'),
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -123,4 +201,30 @@ function parseMemberRole(value: unknown, context: string, fieldName: string): 'a
     return value;
   }
   throw new Error(`Invalid ${context} row field: ${fieldName}`);
+}
+
+function parseCountLike(
+  value: unknown,
+  context: string,
+  fieldName: string,
+): number | string | bigint {
+  if (
+    (typeof value === 'number' && Number.isInteger(value) && value >= 0) ||
+    (typeof value === 'string' && /^\d+$/.test(value)) ||
+    (typeof value === 'bigint' && value >= 0n)
+  ) {
+    return value;
+  }
+  throw new Error(`Invalid ${context} row field: ${fieldName}`);
+}
+
+function parseProjectVisibility(
+  value: unknown,
+  context: string,
+  fieldName: string,
+): ProjectVisibility {
+  if (!isProjectVisibility(value)) {
+    throw new Error(`Invalid ${context} row field: ${fieldName}`);
+  }
+  return value;
 }
