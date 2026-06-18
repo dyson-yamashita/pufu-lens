@@ -1428,12 +1428,11 @@ export async function getDataSourceContentPreview(
         AND ds.enabled = true
       LIMIT 1
     `) as readonly unknown[];
-    const scope = rawScopeRows[0]
-      ? parseAdminDbDataSourcePreviewScopeRow(rawScopeRows[0])
-      : undefined;
-    if (!scope) {
+    const rawScopeRow = rawScopeRows[0];
+    if (!rawScopeRow) {
       throw new Error(`Data source content preview target not found: ${dataSourceId}`);
     }
+    const scope = parseAdminDbDataSourcePreviewScopeRow(rawScopeRow);
 
     const [rawSummaryRows, rawDocumentRows, rawQueueRows] = await Promise.all([
       sql`
