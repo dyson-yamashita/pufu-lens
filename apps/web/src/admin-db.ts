@@ -49,16 +49,19 @@ import {
   parseAdminDbDataSourcePreviewScopeRow,
   parseAdminDbDataSourcePreviewSummaryRow,
   parseAdminDbDataSourceRow,
-  parseAdminDbIdRow,
   parseAdminDbOAuthConnectionRow,
   parseAdminDbParserProfileRow,
   parseAdminDbProjectMemberRow,
   parseAdminDbProjectRow,
   parseAdminDbPublicProjectReportRow,
-  parseAppMemberRoleRow,
 } from './admin-db-guards';
 import { getOptionalAdminSql } from './admin-sql';
-import { lookupProjectAdminAccess, lookupProjectMemberAccess } from './authz';
+import {
+  lookupAppUserRole,
+  lookupGlobalAdminUserId,
+  lookupProjectAdminAccess,
+  lookupProjectMemberAccess,
+} from './authz';
 import { isFixtureFallbackEnabled } from './runtime-guards';
 
 type MutablePublicProjectSummary = Omit<PublicProjectSummary, 'reports'> & {
@@ -301,13 +304,7 @@ export async function getVisiblePublicProject(
 export async function listAppMembersForUser(userId: string): Promise<GlobalMemberDirectory> {
   return withOptionalSql(
     async (sql) => {
-      const accessRows = (await sql`
-      SELECT role
-      FROM public.users
-      WHERE id = ${userId}
-        AND role IN ('admin', 'member')
-    `) as readonly unknown[];
-      const accessRole = accessRows[0] ? parseAppMemberRoleRow(accessRows[0]) : undefined;
+      const accessRole = await lookupAppUserRole(sql, { userId });
       if (!accessRole) {
         throw new Error('Members access is required.');
       }
@@ -327,29 +324,14 @@ export async function listAppMembersForUser(userId: string): Promise<GlobalMembe
 
 export async function isGlobalAdminUser(userId: string): Promise<boolean> {
   return withOptionalSql(async (sql) => {
-    const rows = (await sql`
-      SELECT id::text
-      FROM public.users
-      WHERE id = ${userId}
-        AND role = 'admin'
-    `) as readonly unknown[];
-    if (!rows[0]) {
-      return false;
-    }
-    parseAdminDbIdRow(rows[0], 'global admin user');
-    return true;
+    const adminUserId = await lookupGlobalAdminUserId(sql, { userId });
+    return Boolean(adminUserId);
   }, false);
 }
 
 export async function getAppUserRole(userId: string): Promise<AppMemberRole | undefined> {
   return withOptionalSql(async (sql) => {
-    const rows = (await sql`
-      SELECT role
-      FROM public.users
-      WHERE id = ${userId}
-        AND role IN ('admin', 'member')
-    `) as readonly unknown[];
-    return rows[0] ? parseAppMemberRoleRow(rows[0]) : undefined;
+    return lookupAppUserRole(sql, { userId });
   }, undefined);
 }
 

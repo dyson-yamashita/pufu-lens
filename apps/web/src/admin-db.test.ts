@@ -14,7 +14,6 @@ import {
   parseAdminDbProjectMemberRow,
   parseAdminDbProjectRow,
   parseAdminDbPublicProjectReportRow,
-  parseAppMemberRoleRow,
 } from './admin-db-guards.ts';
 
 const validProjectRow = {
@@ -354,13 +353,6 @@ assert.throws(() => parseAdminDbIdRow(null, 'sample'), /Invalid sample row/);
 assert.throws(() => parseAdminDbIdRow([], 'sample'), /Invalid sample row/);
 assert.throws(() => parseAdminDbIdRow({ id: 123 }, 'sample'), /Invalid sample row field: id/);
 assert.throws(() => parseAdminDbIdRow({}, 'sample'), /Invalid sample row field: id/);
-
-assert.equal(parseAppMemberRoleRow({ role: 'admin' }), 'admin');
-assert.equal(parseAppMemberRoleRow({ role: 'member' }), 'member');
-assert.throws(() => parseAppMemberRoleRow(null), /Invalid app member role row/);
-assert.throws(() => parseAppMemberRoleRow([]), /Invalid app member role row/);
-assert.throws(() => parseAppMemberRoleRow({ role: 'owner' }), /Invalid app member role row/);
-assert.throws(() => parseAppMemberRoleRow({ role: null }), /Invalid app member role row/);
 
 assert.deepEqual(
   parseAdminDbAppMemberRow({

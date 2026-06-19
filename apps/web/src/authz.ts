@@ -15,6 +15,17 @@ export interface ProjectMemberAccess {
   visibility: ProjectVisibility;
 }
 
+export function parseAppUserRoleRow(value: unknown): AppMemberRole {
+  if (!isRecord(value)) {
+    throw new Error('Invalid app user role row.');
+  }
+  const role = value.role;
+  if (role === 'admin' || role === 'member') {
+    return role;
+  }
+  throw new Error('Invalid app user role row field: role');
+}
+
 export function parseProjectMemberAccess(value: unknown): ProjectMemberAccess {
   if (!isRecord(value)) {
     throw new Error('Invalid project member access row.');
@@ -29,6 +40,27 @@ export function parseProjectMemberAccess(value: unknown): ProjectMemberAccess {
     slug: parseRequiredString(value.slug, 'slug'),
     visibility: parseProjectVisibility(value.visibility, 'visibility'),
   };
+}
+
+export async function lookupAppUserRole(
+  sql: postgres.Sql | postgres.TransactionSql,
+  input: { userId: string },
+): Promise<AppMemberRole | undefined> {
+  const rows = (await sql`
+    SELECT role
+    FROM public.users
+    WHERE id = ${input.userId}
+      AND role IN ('admin', 'member')
+  `) as readonly unknown[];
+  return rows[0] ? parseAppUserRoleRow(rows[0]) : undefined;
+}
+
+export async function lookupGlobalAdminUserId(
+  sql: postgres.Sql | postgres.TransactionSql,
+  input: { userId: string },
+): Promise<string | undefined> {
+  const role = await lookupAppUserRole(sql, input);
+  return role === 'admin' ? input.userId : undefined;
 }
 
 export async function lookupProjectMemberAccess(

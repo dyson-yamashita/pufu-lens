@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { parseProjectMemberAccess } from './authz.ts';
+import { parseAppUserRoleRow, parseProjectMemberAccess } from './authz.ts';
 
 const validAccessRow = {
   appRole: 'member',
@@ -56,5 +56,15 @@ assert.throws(
   () => parseProjectMemberAccess({ ...validAccessRow, visibility: 'internal' }),
   /Invalid project member access field: visibility/,
 );
+
+assert.equal(parseAppUserRoleRow({ role: 'admin' }), 'admin');
+assert.equal(parseAppUserRoleRow({ role: 'member' }), 'member');
+assert.throws(() => parseAppUserRoleRow(null), /Invalid app user role row/);
+assert.throws(() => parseAppUserRoleRow([]), /Invalid app user role row/);
+assert.throws(
+  () => parseAppUserRoleRow({ role: 'owner' }),
+  /Invalid app user role row field: role/,
+);
+assert.throws(() => parseAppUserRoleRow({ role: null }), /Invalid app user role row field: role/);
 
 console.log('web authz tests passed');
