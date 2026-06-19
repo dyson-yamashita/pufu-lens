@@ -470,9 +470,97 @@ function safeStorageSegment(value: string): string {
 
 function sanitizeError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  return redactHttpUrls(
-    message.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, 'redacted@example.test'),
-  ).slice(0, 500);
+  return redactHttpUrls(replaceEmails(message, 'redacted@example.test')).slice(0, 500);
+}
+
+function replaceEmails(value: string, replacement: string): string {
+  const ranges = emailRanges(value);
+  if (ranges.length === 0) {
+    return value;
+  }
+
+  let output = '';
+  let cursor = 0;
+  for (const range of ranges) {
+    output += value.slice(cursor, range.start);
+    output += replacement;
+    cursor = range.end;
+  }
+  return output + value.slice(cursor);
+}
+
+function emailRanges(value: string): { end: number; start: number }[] {
+  const ranges: { end: number; start: number }[] = [];
+  let index = 0;
+  while (index < value.length) {
+    const atIndex = value.indexOf('@', index);
+    if (atIndex === -1) {
+      break;
+    }
+
+    const start = emailLocalStart(value, atIndex);
+    const end = emailDomainEnd(value, atIndex);
+    if (start < atIndex && end > atIndex + 1 && hasEmailTopLevelDomain(value, atIndex + 1, end)) {
+      ranges.push({ end, start });
+      index = end;
+    } else {
+      index = atIndex + 1;
+    }
+  }
+  return ranges;
+}
+
+function emailLocalStart(value: string, atIndex: number): number {
+  let cursor = atIndex - 1;
+  while (cursor >= 0 && isEmailLocalChar(value.charCodeAt(cursor))) {
+    cursor -= 1;
+  }
+  return cursor + 1;
+}
+
+function emailDomainEnd(value: string, atIndex: number): number {
+  let cursor = atIndex + 1;
+  while (cursor < value.length && isEmailDomainChar(value.charCodeAt(cursor))) {
+    cursor += 1;
+  }
+  return cursor;
+}
+
+function hasEmailTopLevelDomain(value: string, domainStart: number, domainEnd: number): boolean {
+  const lastDot = value.lastIndexOf('.', domainEnd - 1);
+  if (lastDot < domainStart || domainEnd - lastDot - 1 < 2) {
+    return false;
+  }
+
+  for (let index = lastDot + 1; index < domainEnd; index += 1) {
+    if (!isAsciiAlpha(value.charCodeAt(index))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isEmailLocalChar(code: number): boolean {
+  return (
+    isAsciiAlphaNumeric(code) ||
+    code === 37 ||
+    code === 43 ||
+    code === 45 ||
+    code === 46 ||
+    code === 95
+  );
+}
+
+function isEmailDomainChar(code: number): boolean {
+  return isAsciiAlphaNumeric(code) || code === 45 || code === 46;
+}
+
+function isAsciiAlphaNumeric(code: number): boolean {
+  return isAsciiAlpha(code) || (code >= 48 && code <= 57);
+}
+
+function isAsciiAlpha(code: number): boolean {
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 }
 
 function normalizeStorageSegment(value: string, maxLength: number): string {
