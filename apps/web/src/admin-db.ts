@@ -219,57 +219,98 @@ export async function listMemberProjects(userId: string): Promise<readonly Proje
   }, []);
 }
 
+async function listPublicProjectReportRows(
+  sql: postgres.Sql,
+): Promise<readonly AdminDbPublicProjectReportRow[]> {
+  const rawRows = (await sql`
+    SELECT
+      p.slug,
+      p.name,
+      p.description,
+      r.id::text AS report_id,
+      r.title AS report_title,
+      r.summary AS report_summary,
+      r.created_at AS published_at
+    FROM public.projects p
+    JOIN LATERAL (
+      SELECT id, title, summary, created_at
+      FROM public.reports
+      WHERE project_id = p.id
+        AND is_public = true
+      ORDER BY created_at DESC
+      LIMIT 3
+    ) r ON true
+    WHERE p.visibility = 'public'
+    ORDER BY p.slug, r.created_at DESC
+  `) as readonly unknown[];
+  return rawRows.map(parseAdminDbPublicProjectReportRow);
+}
+
+async function listVisiblePublicProjectReportRows(
+  sql: postgres.Sql,
+): Promise<readonly AdminDbPublicProjectReportRow[]> {
+  const rawRows = (await sql`
+    SELECT
+      p.slug,
+      p.name,
+      p.description,
+      r.id::text AS report_id,
+      r.title AS report_title,
+      r.summary AS report_summary,
+      r.created_at AS published_at
+    FROM public.projects p
+    LEFT JOIN LATERAL (
+      SELECT id, title, summary, created_at
+      FROM public.reports
+      WHERE project_id = p.id
+        AND is_public = true
+      ORDER BY created_at DESC
+      LIMIT 3
+    ) r ON true
+    WHERE p.visibility = 'public'
+    ORDER BY p.slug, r.created_at DESC NULLS LAST
+  `) as readonly unknown[];
+  return rawRows.map(parseAdminDbPublicProjectReportRow);
+}
+
+async function listVisiblePublicProjectReportRowsBySlug(
+  sql: postgres.Sql,
+  slug: string,
+): Promise<readonly AdminDbPublicProjectReportRow[]> {
+  const rawRows = (await sql`
+    SELECT
+      p.slug,
+      p.name,
+      p.description,
+      r.id::text AS report_id,
+      r.title AS report_title,
+      r.summary AS report_summary,
+      r.created_at AS published_at
+    FROM public.projects p
+    LEFT JOIN LATERAL (
+      SELECT id, title, summary, created_at
+      FROM public.reports
+      WHERE project_id = p.id
+        AND is_public = true
+      ORDER BY created_at DESC
+      LIMIT 3
+    ) r ON true
+    WHERE p.visibility = 'public'
+      AND p.slug = ${slug}
+    ORDER BY r.created_at DESC NULLS LAST
+  `) as readonly unknown[];
+  return rawRows.map(parseAdminDbPublicProjectReportRow);
+}
+
 export async function listPublicProjects(): Promise<readonly PublicProjectSummary[]> {
   return withOptionalSql(async (sql) => {
-    const rawRows = (await sql`
-      SELECT
-        p.slug,
-        p.name,
-        p.description,
-        r.id::text AS report_id,
-        r.title AS report_title,
-        r.summary AS report_summary,
-        r.created_at AS published_at
-      FROM public.projects p
-      JOIN LATERAL (
-        SELECT id, title, summary, created_at
-        FROM public.reports
-        WHERE project_id = p.id
-          AND is_public = true
-        ORDER BY created_at DESC
-        LIMIT 3
-      ) r ON true
-      WHERE p.visibility = 'public'
-      ORDER BY p.slug, r.created_at DESC
-    `) as readonly unknown[];
-    return publicProjectsFromRows(rawRows.map(parseAdminDbPublicProjectReportRow));
+    return publicProjectsFromRows(await listPublicProjectReportRows(sql));
   }, publicProjectsFallback());
 }
 
 export async function listVisiblePublicProjects(): Promise<readonly PublicProjectSummary[]> {
   return withOptionalSql(async (sql) => {
-    const rawRows = (await sql`
-      SELECT
-        p.slug,
-        p.name,
-        p.description,
-        r.id::text AS report_id,
-        r.title AS report_title,
-        r.summary AS report_summary,
-        r.created_at AS published_at
-      FROM public.projects p
-      LEFT JOIN LATERAL (
-        SELECT id, title, summary, created_at
-        FROM public.reports
-        WHERE project_id = p.id
-          AND is_public = true
-        ORDER BY created_at DESC
-        LIMIT 3
-      ) r ON true
-      WHERE p.visibility = 'public'
-      ORDER BY p.slug, r.created_at DESC NULLS LAST
-    `) as readonly unknown[];
-    return publicProjectsFromRows(rawRows.map(parseAdminDbPublicProjectReportRow));
+    return publicProjectsFromRows(await listVisiblePublicProjectReportRows(sql));
   }, publicProjectsFallback());
 }
 
@@ -278,29 +319,7 @@ export async function getVisiblePublicProject(
 ): Promise<PublicProjectSummary | undefined> {
   return withOptionalSql(
     async (sql) => {
-      const rawRows = (await sql`
-      SELECT
-        p.slug,
-        p.name,
-        p.description,
-        r.id::text AS report_id,
-        r.title AS report_title,
-        r.summary AS report_summary,
-        r.created_at AS published_at
-      FROM public.projects p
-      LEFT JOIN LATERAL (
-        SELECT id, title, summary, created_at
-        FROM public.reports
-        WHERE project_id = p.id
-          AND is_public = true
-        ORDER BY created_at DESC
-        LIMIT 3
-      ) r ON true
-      WHERE p.visibility = 'public'
-        AND p.slug = ${slug}
-      ORDER BY r.created_at DESC NULLS LAST
-    `) as readonly unknown[];
-      return publicProjectsFromRows(rawRows.map(parseAdminDbPublicProjectReportRow))[0];
+      return publicProjectsFromRows(await listVisiblePublicProjectReportRowsBySlug(sql, slug))[0];
     },
     publicProjectsFallback().find((project) => project.slug === slug),
   );
