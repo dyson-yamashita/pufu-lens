@@ -127,7 +127,7 @@ async function lookupProjectParserVersionRow(
     WHERE parser_profiles.project_id = ${projectId}
       ${parserProfileFilter}
       AND parser_versions.id = ${parserVersionId}
-    FOR UPDATE
+    FOR UPDATE OF parser_versions
   `) as readonly unknown[];
   return parseOptionalAdminActionRow(rows, parseAdminActionParserVersionRow);
 }
