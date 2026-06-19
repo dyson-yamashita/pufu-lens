@@ -92,7 +92,18 @@ function parseOptionalAdminActionIdRow(
   rows: readonly unknown[],
   context: string,
 ): AdminActionIdRow | undefined {
-  return rows[0] ? parseAdminActionIdRow(rows[0], context) : undefined;
+  return parseOptionalAdminActionRow(rows, (row) => parseAdminActionIdRow(row, context));
+}
+
+function parseOptionalAdminActionRow<T>(
+  rows: readonly unknown[],
+  parser: (row: unknown) => T,
+): T | undefined {
+  return rows[0] ? parser(rows[0]) : undefined;
+}
+
+function parseAdminActionRows<T>(rows: readonly unknown[], parser: (row: unknown) => T): T[] {
+  return rows.map((row) => parser(row));
 }
 
 async function insertCreatedProjectRow(
@@ -796,7 +807,7 @@ class AdminCollectionRepository implements CollectionRepository {
       FROM public.projects
       WHERE slug = ${slug}
     `) as readonly unknown[];
-    return rows[0] ? parseAdminActionProjectRecordRow(rows[0]) : undefined;
+    return parseOptionalAdminActionRow(rows, parseAdminActionProjectRecordRow);
   }
 
   private async listCollectionDataSourceRecords(
@@ -817,7 +828,7 @@ class AdminCollectionRepository implements CollectionRepository {
         AND source_type = ${sourceType}
         AND id = ${this.dataSourceId}
     `) as readonly unknown[];
-    return rows.map(parseAdminActionDataSourceRecordRow);
+    return parseAdminActionRows(rows, parseAdminActionDataSourceRecordRow);
   }
 
   private async lookupCollectionRawDocumentRecord(input: {
@@ -836,7 +847,7 @@ class AdminCollectionRepository implements CollectionRepository {
         AND source_type = ${input.sourceType}
         AND source_id = ${input.sourceId}
     `) as readonly unknown[];
-    return rows[0] ? parseAdminActionRawDocumentRecordRow(rows[0]) : undefined;
+    return parseOptionalAdminActionRow(rows, parseAdminActionRawDocumentRecordRow);
   }
 
   private async listSameHashCandidateRecords(input: {
@@ -851,7 +862,7 @@ class AdminCollectionRepository implements CollectionRepository {
         AND content_hash = ${input.contentHash}
       ORDER BY created_at
     `) as readonly unknown[];
-    return rows.map(parseAdminActionSameHashCandidateRow);
+    return parseAdminActionRows(rows, parseAdminActionSameHashCandidateRow);
   }
 
   private async upsertRawDocumentRecord(
@@ -900,7 +911,7 @@ class AdminCollectionRepository implements CollectionRepository {
         source_id AS "sourceId",
         source_type AS "sourceType"
     `) as readonly unknown[];
-    return rows[0] ? parseAdminActionRawDocumentRecordRow(rows[0]) : undefined;
+    return parseOptionalAdminActionRow(rows, parseAdminActionRawDocumentRecordRow);
   }
 
   async linkDataSource(input: LinkDataSourceInput): Promise<void> {
@@ -1149,7 +1160,7 @@ async function lookupProjectDataSourceRow(
       AND project_id = ${projectId}
       AND enabled = true
   `) as readonly unknown[];
-  return rows[0] ? parseAdminActionDataSourceRow(rows[0]) : undefined;
+  return parseOptionalAdminActionRow(rows, parseAdminActionDataSourceRow);
 }
 
 async function lookupProjectDataSourceIngestInput(
@@ -1197,7 +1208,7 @@ async function lookupProjectDataSourceIngestRow(
       AND ds.project_id = ${projectId}
       AND ds.enabled = true
   `) as readonly unknown[];
-  return rows[0] ? parseAdminActionDataSourceIngestRow(rows[0]) : undefined;
+  return parseOptionalAdminActionRow(rows, parseAdminActionDataSourceIngestRow);
 }
 
 async function runIngestWorkflow(input: {
@@ -1560,7 +1571,7 @@ async function lookupProjectParserVersionRow(
       ${parserProfileFilter}
       AND parser_versions.id = ${parserVersionId}
   `) as readonly unknown[];
-  return rows[0] ? parseAdminActionParserVersionRow(rows[0]) : undefined;
+  return parseOptionalAdminActionRow(rows, parseAdminActionParserVersionRow);
 }
 
 function requireParserVersionReviewable(
