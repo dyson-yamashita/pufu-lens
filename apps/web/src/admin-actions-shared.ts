@@ -3,7 +3,18 @@ import type postgres from 'postgres';
 import type { ProjectVisibility } from './admin-data';
 import { getRequiredAdminSql } from './admin-sql';
 import { requireSessionUserId } from './auth-session';
-import { lookupProjectAdminAccess } from './authz.ts';
+import { lookupGlobalAdminUserId, lookupProjectAdminAccess } from './authz.ts';
+
+export async function requireGlobalAdmin(
+  sql: postgres.Sql | postgres.TransactionSql,
+): Promise<string> {
+  const userId = await requireSessionUserId();
+  const adminUserId = await lookupGlobalAdminUserId(sql, { userId });
+  if (!adminUserId) {
+    throw new Error('Admin access is required.');
+  }
+  return adminUserId;
+}
 
 export async function withSql<T>(callback: (sql: postgres.Sql) => Promise<T>): Promise<T> {
   return callback(getRequiredAdminSql());
