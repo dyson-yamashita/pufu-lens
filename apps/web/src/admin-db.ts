@@ -339,6 +339,16 @@ export async function getVisiblePublicProject(
   );
 }
 
+async function listAppMemberRows(sql: postgres.Sql): Promise<readonly AdminDbAppMemberRow[]> {
+  const rawRows = (await sql`
+    SELECT id::text, email, name, role, created_at
+    FROM public.users
+    ORDER BY email
+  `) as readonly unknown[];
+  // Keep the arrow wrapper so Array.map does not pass the index as the parser context.
+  return rawRows.map((row) => parseAdminDbAppMemberRow(row));
+}
+
 export async function listAppMembersForUser(userId: string): Promise<GlobalMemberDirectory> {
   return withOptionalSql(
     async (sql) => {
@@ -346,14 +356,10 @@ export async function listAppMembersForUser(userId: string): Promise<GlobalMembe
       if (!accessRole) {
         throw new Error('Members access is required.');
       }
-      const rows = (await sql`
-      SELECT id::text, email, name, role, created_at
-      FROM public.users
-      ORDER BY email
-    `) as readonly unknown[];
+      const rows = await listAppMemberRows(sql);
       return {
         canManageMembers: accessRole === 'admin',
-        members: rows.map((row) => memberFromRow(parseAdminDbAppMemberRow(row))),
+        members: rows.map((row) => memberFromRow(row)),
       };
     },
     { canManageMembers: false, members: [] },
@@ -592,45 +598,59 @@ export async function getAdminProject(slug: string): Promise<ProjectSummary> {
   }
 }
 
+async function listProjectActorRows(
+  sql: postgres.Sql,
+  projectSlug: string,
+): Promise<readonly AdminDbActorRow[]> {
+  const rawRows = (await sql`
+    SELECT
+      actors.id::text AS id,
+      actors.actor_type,
+      actors.display_name,
+      actors.primary_email,
+      actors.primary_login,
+      actors.graph_node_id,
+      actors.created_at,
+      actors.updated_at
+    FROM public.actors
+    JOIN public.projects ON projects.id = actors.project_id
+    WHERE projects.slug = ${projectSlug}
+    ORDER BY lower(actors.display_name), actors.created_at
+  `) as readonly unknown[];
+  return rawRows.map(parseAdminDbActorRow);
+}
+
+async function listProjectActorAliasRows(
+  sql: postgres.Sql,
+  projectSlug: string,
+): Promise<readonly AdminDbActorAliasRow[]> {
+  const rawRows = (await sql`
+    SELECT
+      actor_aliases.actor_id::text AS actor_id,
+      actor_aliases.alias_type,
+      actor_aliases.alias_value,
+      actor_aliases.confidence,
+      actor_aliases.source
+    FROM public.actor_aliases
+    JOIN public.actors ON actors.id = actor_aliases.actor_id
+    JOIN public.projects ON projects.id = actors.project_id
+    WHERE projects.slug = ${projectSlug}
+    ORDER BY actor_aliases.alias_type, actor_aliases.alias_value
+  `) as readonly unknown[];
+  return rawRows.map(parseAdminDbActorAliasRow);
+}
+
 export async function getProjectActorDirectory(
   projectSlug: string,
 ): Promise<ProjectActorDirectory> {
   return withOptionalSql(async (sql) => {
-    const rawActorRows = (await sql`
-      SELECT
-        actors.id::text AS id,
-        actors.actor_type,
-        actors.display_name,
-        actors.primary_email,
-        actors.primary_login,
-        actors.graph_node_id,
-        actors.created_at,
-        actors.updated_at
-      FROM public.actors
-      JOIN public.projects ON projects.id = actors.project_id
-      WHERE projects.slug = ${projectSlug}
-      ORDER BY lower(actors.display_name), actors.created_at
-    `) as readonly unknown[];
-    const actorRows = rawActorRows.map(parseAdminDbActorRow);
+    const actorRows = await listProjectActorRows(sql, projectSlug);
 
     if (actorRows.length === 0) {
       return { actors: [], mergeCandidates: [] };
     }
 
-    const rawAliasRows = (await sql`
-      SELECT
-        actor_aliases.actor_id::text AS actor_id,
-        actor_aliases.alias_type,
-        actor_aliases.alias_value,
-        actor_aliases.confidence,
-        actor_aliases.source
-      FROM public.actor_aliases
-      JOIN public.actors ON actors.id = actor_aliases.actor_id
-      JOIN public.projects ON projects.id = actors.project_id
-      WHERE projects.slug = ${projectSlug}
-      ORDER BY actor_aliases.alias_type, actor_aliases.alias_value
-    `) as readonly unknown[];
-    const aliasRows = rawAliasRows.map(parseAdminDbActorAliasRow);
+    const aliasRows = await listProjectActorAliasRows(sql, projectSlug);
     const aliasesByActor = groupAliasesByActor(aliasRows);
     const actors = actorRows.map((row) => actorFromRow(row, aliasesByActor.get(row.id) ?? []));
 
