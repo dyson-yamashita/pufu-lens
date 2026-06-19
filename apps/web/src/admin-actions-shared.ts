@@ -18,7 +18,7 @@ export async function requireAdminUserId(): Promise<string> {
 }
 
 export async function requireAdminProject(
-  sql: postgres.Sql,
+  sql: postgres.Sql | postgres.TransactionSql,
   projectSlug: string,
 ): Promise<{
   readonly adminUserId: string;
