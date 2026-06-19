@@ -116,6 +116,26 @@ async function insertCreatedProjectRow(
   return rows[0] ? parseAdminActionIdRow(rows[0], 'project creation row') : undefined;
 }
 
+async function insertCreatedMemberRow(
+  sql: SqlExecutor,
+  {
+    email,
+    name,
+    role,
+  }: {
+    readonly email: string;
+    readonly name: string | null;
+    readonly role: AppMemberRole;
+  },
+): Promise<AdminActionIdRow | undefined> {
+  const rows = (await sql`
+    INSERT INTO public.users (email, name, role)
+    VALUES (${email}, ${name}, ${role})
+    RETURNING id::text
+  `) as readonly unknown[];
+  return rows[0] ? parseAdminActionIdRow(rows[0], 'member creation row') : undefined;
+}
+
 export async function createProject(formData: FormData): Promise<void> {
   const name = requireFormValue(formData, 'name').trim();
   if (!name) {
@@ -257,12 +277,7 @@ export async function createMember(formData: FormData): Promise<void> {
   await withSql(async (sql) => {
     await requireGlobalAdmin(sql);
     await sql.begin(async (tx) => {
-      const rows = (await tx`
-        INSERT INTO public.users (email, name, role)
-        VALUES (${email}, ${name}, ${role})
-        RETURNING id::text
-      `) as readonly unknown[];
-      const user = rows[0] ? parseAdminActionIdRow(rows[0], 'member creation row') : undefined;
+      const user = await insertCreatedMemberRow(tx, { email, name, role });
       if (!user) {
         throw new Error('Member creation failed.');
       }
