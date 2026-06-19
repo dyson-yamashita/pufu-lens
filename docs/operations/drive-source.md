@@ -8,14 +8,13 @@ Step 10 の Drive 収集は、Google Drive API から folder 配下の file meta
 - `DATABASE_URL` がローカル DB を指している。
 - `STORAGE_ROOT` または `LOCAL_STORAGE_ROOT` が local object storage の root を指している。
 - 対象 project は `pnpm seed:projects` または `pnpm create-project` で作成済み。
-- `GOOGLE_DRIVE_ACCESS_TOKEN` または `GOOGLE_OAUTH_ACCESS_TOKEN` に Drive API を読む OAuth access token が設定されている。
+- project に Google OAuth connection が設定されている。Settings から Drive を接続するか、`--connection-id` で接続を指定する。
 
 ## 実行例
 
 ```bash
 DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
   STORAGE_ROOT=/tmp/pufu-lens-storage \
-  GOOGLE_DRIVE_ACCESS_TOKEN="$GOOGLE_DRIVE_ACCESS_TOKEN" \
   pnpm ingest:collect --project sample-a --source drive --folder-id DRIVE_FOLDER_ID --limit 5 --dry-run
 ```
 
@@ -24,7 +23,6 @@ DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
 ```bash
 DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
   STORAGE_ROOT=/tmp/pufu-lens-storage \
-  GOOGLE_DRIVE_ACCESS_TOKEN="$GOOGLE_DRIVE_ACCESS_TOKEN" \
   pnpm ingest:collect --project sample-a --source drive --folder-id DRIVE_FOLDER_ID --limit 5
 ```
 
@@ -33,7 +31,6 @@ DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
 ```bash
 DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
   STORAGE_ROOT=/tmp/pufu-lens-storage \
-  GOOGLE_DRIVE_ACCESS_TOKEN="$GOOGLE_DRIVE_ACCESS_TOKEN" \
   pnpm ingest:run --project sample-a --source drive --folder-id DRIVE_FOLDER_ID --limit 5 \
     --embedding-provider deterministic
 ```

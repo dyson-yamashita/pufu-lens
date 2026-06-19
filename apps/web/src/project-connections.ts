@@ -84,11 +84,11 @@ export async function githubConnectionStartUrl(input: {
 }): Promise<string> {
   await requireProjectAdmin(input.projectSlug);
   const metadata = await readProjectProviderMetadata(input.projectSlug, 'github');
-  const appSlug =
-    (typeof metadata.githubAppSlug === 'string' ? metadata.githubAppSlug : null) ??
-    process.env.GITHUB_APP_SLUG;
+  const appSlug = typeof metadata.githubAppSlug === 'string' ? metadata.githubAppSlug : null;
   if (!appSlug) {
-    throw new ConnectionConfigError('GITHUB_APP_SLUG is required.');
+    throw new ConnectionConfigError(
+      'GitHub App slug is required. Configure GitHub App in project Settings.',
+    );
   }
   const params = new URLSearchParams({
     state: signConnectionState({
@@ -146,10 +146,6 @@ export async function completeGithubConnection(request: NextRequest): Promise<st
     expiresAt: null,
     metadata: {
       ...existingMetadata,
-      githubAppSlug:
-        typeof existingMetadata.githubAppSlug === 'string'
-          ? existingMetadata.githubAppSlug
-          : (process.env.GITHUB_APP_SLUG ?? null),
       installationId,
       setupAction,
     },
@@ -475,9 +471,7 @@ export async function createGitHubInstallationAccessToken(input: {
   if (typeof installationId !== 'string' && typeof installationId !== 'number') {
     return null;
   }
-  const appId =
-    (typeof metadata.githubAppId === 'string' ? metadata.githubAppId : null) ??
-    process.env.GITHUB_APP_ID;
+  const appId = typeof metadata.githubAppId === 'string' ? metadata.githubAppId : null;
   const privateKey = githubAppPrivateKey(metadata);
   if (!appId || !privateKey) {
     throw new ConnectionConfigError(
@@ -524,12 +518,7 @@ function githubAppPrivateKey(metadata: Record<string, unknown>): string | null {
   if (isEncryptedConnectionSecret(encrypted)) {
     return decryptConnectionSecret(encrypted);
   }
-  const base64Value = process.env.GITHUB_APP_PRIVATE_KEY_BASE64;
-  if (base64Value) {
-    return Buffer.from(base64Value, 'base64').toString('utf8');
-  }
-  const value = process.env.GITHUB_APP_PRIVATE_KEY;
-  return value ? value.replace(/\\n/g, '\n') : null;
+  return null;
 }
 
 function normalizePrivateKeyPem(value: string): string {

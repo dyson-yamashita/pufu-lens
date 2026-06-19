@@ -74,7 +74,7 @@ gcloud run deploy mastra-server \
   --vpc-connector=mastra-connector \
   --no-allow-unauthenticated \
   --set-env-vars STORAGE_DRIVER=gcs,STORAGE_BUCKET=pufu-lens-prod \
-  --set-secrets="DATABASE_URL=DATABASE_URL:latest,GITHUB_APP_PRIVATE_KEY=GITHUB_APP_PRIVATE_KEY:latest"
+  --set-secrets="DATABASE_URL=DATABASE_URL:latest"
 
 # 4. Ingestion / Report Jobs デプロイ
 gcloud run jobs deploy curate-workflow \
@@ -82,14 +82,14 @@ gcloud run jobs deploy curate-workflow \
   --service-account=mastra-runtime@PROJECT.iam.gserviceaccount.com \
   --vpc-connector=mastra-connector \
   --set-env-vars STORAGE_DRIVER=gcs,STORAGE_BUCKET=pufu-lens-prod \
-  --set-secrets="DATABASE_URL=DATABASE_URL:latest,GITHUB_APP_PRIVATE_KEY=GITHUB_APP_PRIVATE_KEY:latest"
+  --set-secrets="DATABASE_URL=DATABASE_URL:latest"
 
 gcloud run jobs deploy ingest-workflow \
   --source . --region asia-east1 \
   --service-account=mastra-runtime@PROJECT.iam.gserviceaccount.com \
   --vpc-connector=mastra-connector \
   --set-env-vars STORAGE_DRIVER=gcs,STORAGE_BUCKET=pufu-lens-prod \
-  --set-secrets="DATABASE_URL=DATABASE_URL:latest,GITHUB_APP_PRIVATE_KEY=GITHUB_APP_PRIVATE_KEY:latest"
+  --set-secrets="DATABASE_URL=DATABASE_URL:latest"
 
 gcloud run jobs deploy generate-report \
   --source . --region asia-east1 \
@@ -185,13 +185,12 @@ printf '%s' "$DATABASE_URL_VALUE" | gcloud secrets create DATABASE_URL --data-fi
 printf '%s' "$AUTH_SECRET_VALUE" | gcloud secrets create AUTH_SECRET --data-file=-
 printf '%s' "$GOOGLE_CLIENT_SECRET_VALUE" | gcloud secrets create GOOGLE_CLIENT_SECRET --data-file=-
 printf '%s' "$GITHUB_CLIENT_SECRET_VALUE" | gcloud secrets create GITHUB_CLIENT_SECRET --data-file=-
-gcloud secrets create GITHUB_APP_PRIVATE_KEY --data-file=github-app-private-key.pem
 printf '%s' "$SLACK_WEBHOOK_URL_VALUE" | gcloud secrets create SLACK_WEBHOOK_URL --data-file=-
 ```
 
 secret 値は shell history に残さない。ローカルの一時ファイルや環境変数から `--data-file=-` に流し込み、作業後に一時ファイルを削除する。`.env.example`、deploy script、build log には実値を出さない。
 
-管理者が作成した Google / GitHub 連携の token は、接続作成時に個別の Secret Manager secret として保存し、`oauth_connections` には参照名だけを保存する。
+管理者が作成した Google / GitHub 連携の token と GitHub App 設定は project Settings で管理し、暗号化済み値または参照 metadata を `oauth_connections` に保存する。
 
 Firebase App Hosting から参照する secret は、`firebase apphosting:secrets:set` で作成するか、既存の Secret Manager secret に App Hosting backend service account のアクセス権を付与する。
 
