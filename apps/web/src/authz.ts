@@ -75,8 +75,7 @@ function parseOptionalAuthzRow<T>(
   rows: readonly unknown[],
   parser: (row: unknown) => T,
 ): T | undefined {
-  const firstRow = rows[0];
-  return firstRow !== undefined ? parser(firstRow) : undefined;
+  return rows.length > 0 ? parser(rows[0]) : undefined;
 }
 
 export function parseAppUserRoleRow(value: unknown): AppMemberRole {
