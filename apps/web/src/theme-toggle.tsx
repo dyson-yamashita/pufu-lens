@@ -14,6 +14,7 @@ function persistTheme(theme: Theme) {
 
 export function ThemeToggle({ initialTheme = 'dark' }: { readonly initialTheme?: Theme }) {
   const [theme, setTheme] = useState<Theme>(initialTheme);
+  const nextTheme: Theme = theme === 'dark' ? 'light' : 'dark';
 
   const selectTheme = (nextTheme: Theme) => {
     setTheme(nextTheme);
@@ -21,30 +22,18 @@ export function ThemeToggle({ initialTheme = 'dark' }: { readonly initialTheme?:
   };
 
   return (
-    <fieldset className="theme-toggle" data-testid="theme-toggle">
-      <legend className="theme-toggle-label">テーマ切替</legend>
-      <button
-        aria-label="ライトテーマに切り替える"
-        aria-pressed={theme === 'light'}
-        className={theme === 'light' ? 'theme-toggle-option active' : 'theme-toggle-option'}
-        data-testid="theme-toggle-light"
-        onClick={() => selectTheme('light')}
-        title="Light"
-        type="button"
-      >
-        <Sun size={16} />
-      </button>
-      <button
-        aria-label="ダークテーマに切り替える"
-        aria-pressed={theme === 'dark'}
-        className={theme === 'dark' ? 'theme-toggle-option active' : 'theme-toggle-option'}
-        data-testid="theme-toggle-dark"
-        onClick={() => selectTheme('dark')}
-        title="Dark"
-        type="button"
-      >
-        <Moon size={16} />
-      </button>
-    </fieldset>
+    <button
+      aria-label={theme === 'dark' ? 'ライトテーマに切り替える' : 'ダークテーマに切り替える'}
+      className="theme-toggle"
+      data-testid="theme-toggle"
+      onClick={(event) => {
+        event.stopPropagation();
+        selectTheme(nextTheme);
+      }}
+      title={theme === 'dark' ? 'Light' : 'Dark'}
+      type="button"
+    >
+      {theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
+    </button>
   );
 }

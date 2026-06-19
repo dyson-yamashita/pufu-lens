@@ -224,6 +224,15 @@ button {
   width: 40px;
 }
 
+.brand-logo {
+  border-radius: 8px;
+  display: block;
+  flex: 0 0 auto;
+  height: 40px;
+  object-fit: cover;
+  width: 40px;
+}
+
 .brand strong,
 .brand small {
   display: block;
@@ -268,48 +277,27 @@ button {
 
 .theme-toggle {
   align-items: center;
+  appearance: none;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 999px;
-  display: inline-grid;
-  grid-template-columns: repeat(2, 32px);
-  height: 36px;
-  margin: 0;
-  min-inline-size: 0;
-  padding: 2px;
-  width: max-content;
-}
-
-.theme-toggle-label {
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  height: 1px;
-  overflow: hidden;
-  position: absolute;
-  white-space: nowrap;
-  width: 1px;
-}
-
-.theme-toggle-option {
-  align-items: center;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: 8px;
   color: var(--muted);
   cursor: pointer;
   display: inline-flex;
-  height: 30px;
+  flex: 0 0 auto;
+  height: 32px;
   justify-content: center;
+  margin: 0;
+  min-inline-size: 0;
   padding: 0;
   transition:
     background-color 120ms ease,
     border-color 120ms ease,
     color 120ms ease;
-  width: 30px;
+  width: 32px;
 }
 
-.theme-toggle-option:hover,
-.theme-toggle-option.active {
+.theme-toggle:hover {
   background: var(--surface);
   border-color: var(--line);
   color: var(--text);
@@ -377,6 +365,10 @@ button {
 }
 
 .guest-menu:not([open]) .guest-brand-name {
+  display: none;
+}
+
+.guest-menu:not([open]) .theme-toggle {
   display: none;
 }
 
