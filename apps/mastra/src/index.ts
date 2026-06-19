@@ -226,8 +226,6 @@ const pufuScoreGenerateOutputSchema = z.object({
   score: z.unknown(),
 });
 
-type PufuScoreGenerateInput = z.infer<typeof pufuScoreGenerateInputSchema>;
-
 export function createCrossProjectResearchTools(repository: CrossProjectInvestigationRepository) {
   return {
     dataSourceStatus: createTool({
@@ -241,7 +239,11 @@ export function createCrossProjectResearchTools(repository: CrossProjectInvestig
       }),
       outputSchema: z.object({ dataSources: z.array(crossProjectDataSourceStatusSchema) }),
       execute: async ({ limit, projectSlugs, sourceTypes }) => ({
-        dataSources: await repository.dataSourceStatus({ limit, projectSlugs, sourceTypes }),
+        dataSources: await repository.dataSourceStatus({
+          limit: limit ?? 20,
+          projectSlugs,
+          sourceTypes,
+        }),
       }),
     }),
     documentSearch: createTool({
@@ -256,7 +258,12 @@ export function createCrossProjectResearchTools(repository: CrossProjectInvestig
       }),
       outputSchema: z.object({ sources: z.array(crossProjectDocumentSourceSchema) }),
       execute: async ({ limit, projectSlugs, query, sourceTypes }) => ({
-        sources: await repository.searchDocuments({ limit, projectSlugs, query, sourceTypes }),
+        sources: await repository.searchDocuments({
+          limit: limit ?? 10,
+          projectSlugs,
+          query,
+          sourceTypes,
+        }),
       }),
     }),
     listProjects: createTool({
@@ -266,7 +273,7 @@ export function createCrossProjectResearchTools(repository: CrossProjectInvestig
       inputSchema: z.object({ limit: z.number().int().min(1).max(50).default(20) }),
       outputSchema: z.object({ projects: z.array(crossProjectSummarySchema) }),
       execute: async ({ limit }) => ({
-        projects: await repository.listProjects({ limit }),
+        projects: await repository.listProjects({ limit: limit ?? 20 }),
       }),
     }),
   };
@@ -368,12 +375,14 @@ export function createProjectChatTools(repository: ChatRepository) {
       inputSchema: pufuScoreGenerateInputSchema,
       outputSchema: pufuScoreGenerateOutputSchema,
       requestContextSchema: mastraProjectContextSchema,
-      execute: async (input: PufuScoreGenerateInput, context) => {
+      execute: async (input, context) => {
         projectIdFromContext(context);
+        const pufuSources = input.pufuSources ?? [];
+        const sections = input.sections ?? [];
         return {
           score: createPufuScoreFromReport({
             period: input.period,
-            pufu_sources: input.pufuSources.map((source, index) => ({
+            pufu_sources: pufuSources.map((source, index) => ({
               canonical_uri: source.canonical_uri ?? '',
               doc_type: source.doc_type ?? 'unknown',
               document_id: source.document_id ?? `agent-source-${index}`,
@@ -381,8 +390,8 @@ export function createProjectChatTools(repository: ChatRepository) {
               snippet: source.snippet ?? '',
               title: source.title ?? source.snippet ?? `データソース ${index + 1}`,
             })),
-            report_id: input.reportId,
-            sections: input.sections.map((section) => ({
+            report_id: input.reportId ?? 'agent-generated-pufu',
+            sections: sections.map((section) => ({
               ...section,
               sources: section.sources?.map((source) => ({
                 canonical_uri: source.canonical_uri ?? '',

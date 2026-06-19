@@ -281,33 +281,33 @@ assert.deepEqual(
   ].sort(),
 );
 
-const projectInventory = await runtime.crossProjectResearchTools?.listProjects.execute?.(
+const projectInventory = (await runtime.crossProjectResearchTools?.listProjects.execute?.(
   {
     limit: 10,
   },
   {} as never,
-);
+)) as { projects: Array<{ slug: string }> } | undefined;
 assert.equal(projectInventory?.projects.length, 2);
 assert.equal(projectInventory?.projects[0]?.slug, 'sample-a');
 
-const crossProjectSearch = await runtime.crossProjectResearchTools?.documentSearch.execute?.(
+const crossProjectSearch = (await runtime.crossProjectResearchTools?.documentSearch.execute?.(
   {
     limit: 10,
     projectSlugs: ['sample-b'],
     query: '仕様 issue',
   },
   {} as never,
-);
+)) as { sources: Array<{ projectSlug: string }> } | undefined;
 assert.equal(crossProjectSearch?.sources.length, 1);
 assert.equal(crossProjectSearch?.sources[0]?.projectSlug, 'sample-b');
 
-const dataSourceStatus = await runtime.crossProjectResearchTools?.dataSourceStatus.execute?.(
+const dataSourceStatus = (await runtime.crossProjectResearchTools?.dataSourceStatus.execute?.(
   {
     limit: 10,
     sourceTypes: ['github'],
   },
   {} as never,
-);
+)) as { dataSources: Array<{ sourceType: string }> } | undefined;
 assert.equal(dataSourceStatus?.dataSources.length, 1);
 assert.equal(dataSourceStatus?.dataSources[0]?.sourceType, 'github');
 
@@ -318,10 +318,10 @@ const vectorSearch = await runtime.projectChatTools.vectorSearch.execute?.(
 );
 assert.deepEqual(vectorSearch, { sources: [sampleSource] });
 
-const graphQuery = await runtime.projectChatTools.graphQuery.execute?.(
+const graphQuery = (await runtime.projectChatTools.graphQuery.execute?.(
   { limit: 3, query: '関連 issue' },
   { requestContext } as never,
-);
+)) as { sources: Array<{ documentId: string }> } | undefined;
 assert.equal(graphQuery?.sources[0]?.documentId, 'doc-graph');
 
 const documentFetch = await runtime.projectChatTools.documentFetch.execute?.(
@@ -330,7 +330,7 @@ const documentFetch = await runtime.projectChatTools.documentFetch.execute?.(
 );
 assert.deepEqual(documentFetch, { sources: [sampleSource] });
 
-const pufuScore = await runtime.projectChatTools.pufuScoreGenerate.execute?.(
+const pufuScore = (await runtime.projectChatTools.pufuScoreGenerate.execute?.(
   {
     period: { end: '2026-06-07', start: '2026-06-01' },
     pufuSources: [
@@ -372,7 +372,7 @@ const pufuScore = await runtime.projectChatTools.pufuScoreGenerate.execute?.(
     title: 'プロジェクト状況レポート',
   },
   { requestContext } as never,
-);
+)) as { score: unknown } | undefined;
 const generatedScore = pufuScore?.score as {
   readonly elements?: { readonly environment?: { readonly text?: string } };
   readonly gainingGoal?: { readonly text?: string };
@@ -384,15 +384,15 @@ assert.match(generatedScore.purposes?.[0]?.measures[0]?.text ?? '', /ブース/)
 assert.doesNotMatch(generatedScore.purposes?.[0]?.measures[0]?.text ?? '', /引用本文が続きます/);
 assert.doesNotMatch(JSON.stringify(generatedScore), /データソースから|根拠資料/);
 
-const rawDocumentFetch = await runtime.projectChatTools.rawDocumentFetch.execute?.(
+const rawDocumentFetch = (await runtime.projectChatTools.rawDocumentFetch.execute?.(
   { limit: 3, maxBytes: 64 * 1024 },
   { requestContext } as never,
-);
+)) as { sources: Array<{ documentId: string }> } | undefined;
 assert.equal(rawDocumentFetch?.sources[0]?.documentId, 'doc-raw');
 
-const parsedDocFetch = await runtime.projectChatTools.parsedDocFetch.execute?.({ limit: 3 }, {
+const parsedDocFetch = (await runtime.projectChatTools.parsedDocFetch.execute?.({ limit: 3 }, {
   requestContext,
-} as never);
+} as never)) as { sources: Array<{ documentId: string }> } | undefined;
 assert.equal(parsedDocFetch?.sources[0]?.documentId, 'doc-parsed');
 
 assert.ok(chatRepository.projectIds.every((projectId) => projectId === 'project-a'));
@@ -403,15 +403,20 @@ const publicRequestContext = new RequestContext<MastraPublicReportContext>([
   ['report', publicReport],
   ['reportId', 'report-a'],
 ]);
-const publicReportFetch = await runtime.publicReportChatTools.publicReportFetch.execute?.({}, {
+const publicReportFetch = (await runtime.publicReportChatTools.publicReportFetch.execute?.({}, {
   requestContext: publicRequestContext,
-} as never);
+} as never)) as { report: unknown; resultCount: number } | undefined;
 assert.equal(publicReportFetch?.resultCount, 1);
 assert.equal(publicReportFetch?.report, publicReport);
 
-const publicContextFetch = await runtime.publicReportChatTools.publicContextFetch.execute?.({}, {
+const publicContextFetch = (await runtime.publicReportChatTools.publicContextFetch.execute?.({}, {
   requestContext: publicRequestContext,
-} as never);
+} as never)) as
+  | {
+      resultCount: number;
+      sources: Array<{ label: string; publicSourceId: string; sectionId: string }>;
+    }
+  | undefined;
 assert.equal(publicContextFetch?.resultCount, 1);
 assert.deepEqual(publicContextFetch?.sources, [
   {

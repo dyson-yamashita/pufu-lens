@@ -465,19 +465,96 @@ function heldDecision(target: ParseQueueTarget, holdReason: HoldReason): ParseRa
 }
 
 function safeStorageSegment(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 160);
+  return normalizeStorageSegment(value, 160);
 }
 
 function sanitizeError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  return message
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, 'redacted@example.test')
-    .replace(/https?:\/\/[^\s"'<>]+/gi, 'https://example.test/redacted')
-    .slice(0, 500);
+  return redactHttpUrls(
+    message.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, 'redacted@example.test'),
+  ).slice(0, 500);
+}
+
+function normalizeStorageSegment(value: string, maxLength: number): string {
+  let output = '';
+  let lastWasDash = false;
+  for (const char of value.toLowerCase()) {
+    const safe = isSafeStorageChar(char);
+    if (safe) {
+      output += char;
+      lastWasDash = false;
+    } else if (!lastWasDash) {
+      output += '-';
+      lastWasDash = true;
+    }
+    if (output.length >= maxLength) {
+      break;
+    }
+  }
+  return trimDashes(output);
+}
+
+function isSafeStorageChar(char: string): boolean {
+  return (
+    (char >= 'a' && char <= 'z') ||
+    (char >= '0' && char <= '9') ||
+    char === '.' ||
+    char === '_' ||
+    char === '-'
+  );
+}
+
+function trimDashes(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value[start] === '-') {
+    start += 1;
+  }
+  while (end > start && value[end - 1] === '-') {
+    end -= 1;
+  }
+  return value.slice(start, end);
+}
+
+function redactHttpUrls(value: string): string {
+  let output = '';
+  let cursor = 0;
+  while (cursor < value.length) {
+    const nextHttp = nextHttpUrlStart(value, cursor);
+    if (nextHttp < 0) {
+      return output + value.slice(cursor);
+    }
+    output += value.slice(cursor, nextHttp);
+    const end = urlTokenEnd(value, nextHttp);
+    output += 'https://example.test/redacted';
+    cursor = end;
+  }
+  return output;
+}
+
+function nextHttpUrlStart(value: string, fromIndex: number): number {
+  const lowerValue = value.toLowerCase();
+  const httpIndex = lowerValue.indexOf('http://', fromIndex);
+  const httpsIndex = lowerValue.indexOf('https://', fromIndex);
+  if (httpIndex < 0) {
+    return httpsIndex;
+  }
+  if (httpsIndex < 0) {
+    return httpIndex;
+  }
+  return Math.min(httpIndex, httpsIndex);
+}
+
+function urlTokenEnd(value: string, start: number): number {
+  let index = start;
+  while (index < value.length) {
+    const char = value.charAt(index);
+    if (char.trim() === '' || char === '"' || char === "'" || char === '<' || char === '>') {
+      break;
+    }
+    index += 1;
+  }
+  return index;
 }
 
 function sha256Hex(value: string): string {

@@ -701,18 +701,128 @@ function validateArray(value: unknown, field: string): unknown[] {
 }
 
 function textFromHtml(value: string): string {
-  return value
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<(?:[^"'>]|"[^"]*"|'[^']*')*>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&(apos|#39|#x27);/gi, "'")
-    .replace(/\s+/g, ' ')
-    .trim();
+  return normalizeWhitespace(htmlEntityDecode(stripHtmlTags(value)));
+}
+
+function stripHtmlTags(value: string): string {
+  let output = '';
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value.charAt(index);
+    if (char !== '<') {
+      output += char;
+      continue;
+    }
+    const tagEnd = findHtmlTagEnd(value, index + 1);
+    if (tagEnd === -1) {
+      output += char;
+      continue;
+    }
+    const tagName = readHtmlTagName(value, index + 1);
+    index =
+      tagName === 'script' || tagName === 'style'
+        ? findClosingTagEnd(value, tagName, tagEnd + 1)
+        : tagEnd;
+    output += ' ';
+  }
+  return output;
+}
+
+function findHtmlTagEnd(value: string, startIndex: number): number {
+  let quote: '"' | "'" | undefined;
+  for (let index = startIndex; index < value.length; index += 1) {
+    const char = value.charAt(index);
+    if (quote) {
+      if (char === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === '>') {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function readHtmlTagName(value: string, startIndex: number): string {
+  let index = startIndex;
+  if (value.charAt(index) === '/') {
+    index += 1;
+  }
+  while (index < value.length && value.charAt(index).trim() === '') {
+    index += 1;
+  }
+  let name = '';
+  while (index < value.length) {
+    const char = value.charAt(index).toLowerCase();
+    if (char < 'a' || char > 'z') {
+      break;
+    }
+    name += char;
+    index += 1;
+  }
+  return name;
+}
+
+function findClosingTagEnd(value: string, tagName: string, startIndex: number): number {
+  const needle = `</${tagName}`;
+  const lowerValue = value.toLowerCase();
+  const closeStart = lowerValue.indexOf(needle, startIndex);
+  if (closeStart < 0) {
+    return value.length - 1;
+  }
+  const closeEnd = findHtmlTagEnd(value, closeStart + needle.length);
+  return closeEnd < 0 ? value.length - 1 : closeEnd;
+}
+
+function htmlEntityDecode(value: string): string {
+  const entities = new Map([
+    ['nbsp', ' '],
+    ['amp', '&'],
+    ['lt', '<'],
+    ['gt', '>'],
+    ['quot', '"'],
+    ['apos', "'"],
+    ['#39', "'"],
+    ['#x27', "'"],
+  ]);
+  let output = '';
+  for (let index = 0; index < value.length; index += 1) {
+    if (value.charAt(index) !== '&') {
+      output += value.charAt(index);
+      continue;
+    }
+    const semicolon = value.indexOf(';', index + 1);
+    if (semicolon < 0 || semicolon - index > 12) {
+      output += value.charAt(index);
+      continue;
+    }
+    const decoded = entities.get(value.slice(index + 1, semicolon).toLowerCase());
+    output += decoded ?? value.slice(index, semicolon + 1);
+    index = semicolon;
+  }
+  return output;
+}
+
+function normalizeWhitespace(value: string): string {
+  let output = '';
+  let pendingSpace = false;
+  for (const char of value.trim()) {
+    if (char.trim() === '') {
+      pendingSpace = true;
+      continue;
+    }
+    if (pendingSpace && output.length > 0) {
+      output += ' ';
+    }
+    output += char;
+    pendingSpace = false;
+  }
+  return output;
 }
 
 function domainOf(email: string): string | undefined {
@@ -748,12 +858,48 @@ function requiredString(value: unknown, field: string): string {
 
 function safeStorageSegment(value: string): string {
   const hash = sha256Hex(value).slice(0, 12);
-  const clean = value
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 107);
+  const clean = normalizeStorageSegment(value, 107);
   return clean ? `${clean}-${hash}` : hash;
+}
+
+function normalizeStorageSegment(value: string, maxLength: number): string {
+  let output = '';
+  let lastWasDash = false;
+  for (const char of value.toLowerCase()) {
+    if (isSafeStorageChar(char)) {
+      output += char;
+      lastWasDash = false;
+    } else if (!lastWasDash) {
+      output += '-';
+      lastWasDash = true;
+    }
+    if (output.length >= maxLength) {
+      break;
+    }
+  }
+  return trimDashes(output);
+}
+
+function isSafeStorageChar(char: string): boolean {
+  return (
+    (char >= 'a' && char <= 'z') ||
+    (char >= '0' && char <= '9') ||
+    char === '.' ||
+    char === '_' ||
+    char === '-'
+  );
+}
+
+function trimDashes(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value[start] === '-') {
+    start += 1;
+  }
+  while (end > start && value[end - 1] === '-') {
+    end -= 1;
+  }
+  return value.slice(start, end);
 }
 
 function redactGmailUri(value: string): string {

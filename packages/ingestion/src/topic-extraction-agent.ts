@@ -165,7 +165,7 @@ function normalizeTopicTargets(
     if (typeof value !== 'string') {
       continue;
     }
-    const target = normalizeTopicTarget(value.replace(/^#/, ''));
+    const target = normalizeTopicTarget(stripHashPrefix(value));
     const key = target.toLowerCase();
     if (!target || seen.has(key) || looksLikeUrl(target)) {
       continue;
@@ -181,16 +181,14 @@ function titleTopicCandidates(title: string): string[] {
   if (!normalized) {
     return [];
   }
-  const parts = normalized
-    .split(/[|｜：]|\s+[-–—:]\s+/)
+  const parts = splitTitleTopicParts(normalized)
     .map((part) => normalizeTopicTarget(part))
     .filter((part) => part.length >= 2);
   return [normalized, ...parts];
 }
 
 function* extractMetaKeywords(html: string): Generator<string> {
-  for (const meta of html.matchAll(/<meta\s+[^>]*>/gi)) {
-    const tag = meta[0];
+  for (const tag of htmlTags(html, 'meta')) {
     const key =
       getHtmlAttribute(tag, 'name')?.toLowerCase() ??
       getHtmlAttribute(tag, 'property')?.toLowerCase();
@@ -201,61 +199,285 @@ function* extractMetaKeywords(html: string): Generator<string> {
     if (!content) {
       continue;
     }
-    yield* content.split(/[,、]/);
+    yield* splitListContent(content);
   }
 }
 
 function* extractHashtagTopics(html: string): Generator<string> {
-  for (const anchor of html.matchAll(/<a\s+[^>]*href=["'](?<href>[^"']+)["'][^>]*>/gi)) {
-    const href = anchor.groups?.href ?? '';
-    const match = href.match(/(?:^|\/)hashtag\/(?<tag>[^?#/]+)/i);
-    const tag = match?.groups?.tag;
+  for (const anchor of htmlTags(html, 'a')) {
+    const href = getHtmlAttribute(anchor, 'href') ?? '';
+    const tag = hashtagPathSegment(href);
     if (!tag) {
       continue;
     }
     try {
-      yield decodeURIComponent(tag).replace(/^#/, '');
+      yield stripHashPrefix(decodeURIComponent(tag));
     } catch {
-      yield tag.replace(/^#/, '');
+      yield stripHashPrefix(tag);
     }
   }
 }
 
 function* extractQuotedTopicPhrases(bodyText: string): Generator<string> {
-  const regex = /"([^"]{2,80})"|「([^」]{2,80})」|『([^』]{2,80})』|“([^”]{2,80})”/g;
-  for (const match of bodyText.matchAll(regex)) {
-    yield match[1] ?? match[2] ?? match[3] ?? match[4] ?? '';
+  const pairs = [
+    ['"', '"'],
+    ['「', '」'],
+    ['『', '』'],
+    ['“', '”'],
+  ] as const;
+  for (let index = 0; index < bodyText.length; index += 1) {
+    const pair = pairs.find(([open]) => open === bodyText[index]);
+    if (!pair) {
+      continue;
+    }
+    const end = bodyText.indexOf(pair[1], index + 1);
+    if (end < 0) {
+      continue;
+    }
+    const phrase = bodyText.slice(index + 1, end);
+    if (phrase.length >= 2 && phrase.length <= 80) {
+      yield phrase;
+    }
+    index = end;
   }
 }
 
 function normalizeTopicTarget(value: string): string {
-  return htmlEntityDecode(value)
-    .replace(/[【】]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return normalizeWhitespace(replaceBrackets(htmlEntityDecode(value)));
 }
 
 function htmlEntityDecode(value: string): string {
-  return value
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&(apos|#39);/g, "'");
+  const entities = new Map([
+    ['nbsp', ' '],
+    ['amp', '&'],
+    ['lt', '<'],
+    ['gt', '>'],
+    ['quot', '"'],
+    ['apos', "'"],
+    ['#39', "'"],
+  ]);
+  let output = '';
+  for (let index = 0; index < value.length; index += 1) {
+    if (value.charAt(index) !== '&') {
+      output += value.charAt(index);
+      continue;
+    }
+    const semicolon = value.indexOf(';', index + 1);
+    if (semicolon < 0 || semicolon - index > 12) {
+      output += value.charAt(index);
+      continue;
+    }
+    const decoded = entities.get(value.slice(index + 1, semicolon).toLowerCase());
+    output += decoded ?? value.slice(index, semicolon + 1);
+    index = semicolon;
+  }
+  return output;
 }
 
 function getHtmlAttribute(tag: string, attributeName: string): string | undefined {
-  const pattern = new RegExp(
-    `\\s${attributeName}\\s*=\\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<unquoted>[^\\s>]+))`,
-    'i',
-  );
-  const match = tag.match(pattern);
-  return match?.groups?.double ?? match?.groups?.single ?? match?.groups?.unquoted;
+  const wanted = attributeName.toLowerCase();
+  let index = 0;
+  while (index < tag.length) {
+    while (index < tag.length && tag.charAt(index).trim() !== '') {
+      index += 1;
+    }
+    while (index < tag.length && tag.charAt(index).trim() === '') {
+      index += 1;
+    }
+    const nameStart = index;
+    while (index < tag.length && isHtmlAttributeNameChar(tag.charAt(index))) {
+      index += 1;
+    }
+    const name = tag.slice(nameStart, index).toLowerCase();
+    while (index < tag.length && tag.charAt(index).trim() === '') {
+      index += 1;
+    }
+    if (tag.charAt(index) !== '=') {
+      continue;
+    }
+    index += 1;
+    while (index < tag.length && tag.charAt(index).trim() === '') {
+      index += 1;
+    }
+    const value = readHtmlAttributeValue(tag, index);
+    if (name === wanted) {
+      return value.value;
+    }
+    index = value.end;
+  }
+  return undefined;
 }
 
 function looksLikeUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value);
+  const lowerValue = value.toLowerCase();
+  return lowerValue.startsWith('http://') || lowerValue.startsWith('https://');
+}
+
+function splitTitleTopicParts(value: string): string[] {
+  const parts: string[] = [];
+  let current = '';
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value.charAt(index);
+    if (char === '|' || char === '｜' || char === '：' || isSpacedDashSeparator(value, index)) {
+      if (current.trim()) {
+        parts.push(current);
+      }
+      current = '';
+      if (isSpacedDashSeparator(value, index)) {
+        index += 1;
+      }
+      continue;
+    }
+    current += char;
+  }
+  if (current.trim()) {
+    parts.push(current);
+  }
+  return parts;
+}
+
+function isSpacedDashSeparator(value: string, index: number): boolean {
+  const char = value.charAt(index);
+  if (char !== '-' && char !== '–' && char !== '—' && char !== ':') {
+    return false;
+  }
+  return value[index - 1]?.trim() === '' && value[index + 1]?.trim() === '';
+}
+
+function* splitListContent(value: string): Generator<string> {
+  let current = '';
+  for (const char of value) {
+    if (char === ',' || char === '、') {
+      yield current;
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  yield current;
+}
+
+function hashtagPathSegment(href: string): string | undefined {
+  const path = href.split('?')[0]?.split('#')[0] ?? href;
+  const segments = path.split('/').filter(Boolean);
+  const hashtagIndex = segments.findIndex((segment) => segment.toLowerCase() === 'hashtag');
+  return hashtagIndex >= 0 ? segments[hashtagIndex + 1] : undefined;
+}
+
+function stripHashPrefix(value: string): string {
+  return value.startsWith('#') ? value.slice(1) : value;
+}
+
+function replaceBrackets(value: string): string {
+  let output = '';
+  for (const char of value) {
+    output += char === '【' || char === '】' ? ' ' : char;
+  }
+  return output;
+}
+
+function normalizeWhitespace(value: string): string {
+  let output = '';
+  let pendingSpace = false;
+  for (const char of value.trim()) {
+    if (char.trim() === '') {
+      pendingSpace = true;
+      continue;
+    }
+    if (pendingSpace && output.length > 0) {
+      output += ' ';
+    }
+    output += char;
+    pendingSpace = false;
+  }
+  return output;
+}
+
+function htmlTags(html: string, tagName: string): string[] {
+  const tags: string[] = [];
+  const wanted = tagName.toLowerCase();
+  for (let index = 0; index < html.length; index += 1) {
+    if (html[index] !== '<' || html[index + 1] === '/') {
+      continue;
+    }
+    if (readHtmlTagName(html, index + 1) !== wanted) {
+      continue;
+    }
+    const tagEnd = findHtmlTagEnd(html, index + 1);
+    if (tagEnd < 0) {
+      continue;
+    }
+    tags.push(html.slice(index, tagEnd + 1));
+    index = tagEnd;
+  }
+  return tags;
+}
+
+function findHtmlTagEnd(value: string, startIndex: number): number {
+  let quote: '"' | "'" | undefined;
+  for (let index = startIndex; index < value.length; index += 1) {
+    const char = value.charAt(index);
+    if (quote) {
+      if (char === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === '>') {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function readHtmlTagName(value: string, startIndex: number): string {
+  let index = startIndex;
+  if (value.charAt(index) === '/') {
+    index += 1;
+  }
+  while (index < value.length && value.charAt(index).trim() === '') {
+    index += 1;
+  }
+  let name = '';
+  while (index < value.length) {
+    const char = value.charAt(index).toLowerCase();
+    if (char < 'a' || char > 'z') {
+      break;
+    }
+    name += char;
+    index += 1;
+  }
+  return name;
+}
+
+function isHtmlAttributeNameChar(char: string): boolean {
+  return (
+    (char >= 'a' && char <= 'z') ||
+    (char >= 'A' && char <= 'Z') ||
+    (char >= '0' && char <= '9') ||
+    char === '-' ||
+    char === ':' ||
+    char === '_'
+  );
+}
+
+function readHtmlAttributeValue(tag: string, startIndex: number): { end: number; value: string } {
+  const quote = tag[startIndex];
+  if (quote === '"' || quote === "'") {
+    const end = tag.indexOf(quote, startIndex + 1);
+    return end < 0
+      ? { end: tag.length, value: tag.slice(startIndex + 1) }
+      : { end: end + 1, value: tag.slice(startIndex + 1, end) };
+  }
+  let end = startIndex;
+  while (end < tag.length && tag.charAt(end).trim() !== '' && tag.charAt(end) !== '>') {
+    end += 1;
+  }
+  return { end, value: tag.slice(startIndex, end) };
 }
 
 function geminiResponseText(body: Record<string, unknown>): string {

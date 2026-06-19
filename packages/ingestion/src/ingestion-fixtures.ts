@@ -249,17 +249,15 @@ async function parseWeb(
   html: string,
   topicExtractionAgent: TopicExtractionAgent = createDeterministicTopicExtractionAgent(),
 ): Promise<ParsedDocument> {
-  const title = textFromHtml(html.match(/<title>(?<title>.*?)<\/title>/is)?.groups?.title ?? '');
-  const canonicalLink = [...html.matchAll(/<link\s+[^>]*>/gi)]
-    .map((match) => match[0])
-    .find((link) => getHtmlAttribute(link, 'rel')?.toLowerCase() === 'canonical');
+  const title = textFromHtml(firstElementText(html, 'title') ?? '');
+  const canonicalLink = htmlTags(html, 'link').find(
+    (link) => getHtmlAttribute(link, 'rel')?.toLowerCase() === 'canonical',
+  );
   const canonicalUri =
     canonicalLink === undefined
       ? fixtureCase.raw.sourceUri
       : (getHtmlAttribute(canonicalLink, 'href') ?? fixtureCase.raw.sourceUri);
-  const bodyText = textFromHtml(
-    html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, ''),
-  );
+  const bodyText = textFromHtml(html);
   const publishedAt = extractPublishedAt(html) ?? String(fixtureCase.raw.metadata.fetchedAt);
 
   return validateParsedDocument({
@@ -287,10 +285,11 @@ function extractPublishedAt(html: string): string | undefined {
 }
 
 function extractJsonLdPublishedAt(html: string): string | undefined {
-  for (const script of html.matchAll(
-    /<script\s+[^>]*type=["']application\/ld\+json["'][^>]*>(?<json>[\s\S]*?)<\/script>/gi,
-  )) {
-    const jsonText = (script.groups?.json ?? '').trim();
+  for (const script of htmlElements(html, 'script')) {
+    if (getHtmlAttribute(script.tag, 'type')?.toLowerCase() !== 'application/ld+json') {
+      continue;
+    }
+    const jsonText = script.text.trim();
     if (!jsonText) {
       continue;
     }
@@ -338,8 +337,7 @@ function findJsonLdDatePublished(value: unknown): string | undefined {
 
 function extractMetaDate(html: string, names: readonly string[]): string | undefined {
   const wanted = new Set(names.map((name) => name.toLowerCase()));
-  for (const meta of html.matchAll(/<meta\s+[^>]*>/gi)) {
-    const tag = meta[0];
+  for (const tag of htmlTags(html, 'meta')) {
     const key =
       getHtmlAttribute(tag, 'property')?.toLowerCase() ??
       getHtmlAttribute(tag, 'name')?.toLowerCase();
@@ -355,8 +353,8 @@ function extractMetaDate(html: string, names: readonly string[]): string | undef
 }
 
 function extractTimeDateTime(html: string): string | undefined {
-  for (const time of html.matchAll(/<time\s+[^>]*>/gi)) {
-    const parsed = parseIsoDateValue(getHtmlAttribute(time[0], 'datetime'));
+  for (const time of htmlTags(html, 'time')) {
+    const parsed = parseIsoDateValue(getHtmlAttribute(time, 'datetime'));
     if (parsed) {
       return parsed;
     }
@@ -450,13 +448,13 @@ function parseDrive(
 }
 
 function textFromHtml(value: string): string {
-  return htmlEntityDecode(stripHtmlTags(value)).replace(/\s+/g, ' ').trim();
+  return normalizeWhitespace(htmlEntityDecode(stripHtmlTags(value)));
 }
 
 function stripHtmlTags(value: string): string {
   let output = '';
   for (let index = 0; index < value.length; index += 1) {
-    const char = value[index];
+    const char = value.charAt(index);
     if (char !== '<') {
       output += char;
       continue;
@@ -466,8 +464,12 @@ function stripHtmlTags(value: string): string {
       output += char;
       continue;
     }
+    const tagName = readHtmlTagName(value, index + 1);
+    index =
+      tagName === 'script' || tagName === 'style'
+        ? findClosingTagEnd(value, tagName, tagEnd + 1)
+        : tagEnd;
     output += ' ';
-    index = tagEnd;
   }
   return output;
 }
@@ -475,7 +477,7 @@ function stripHtmlTags(value: string): string {
 function findHtmlTagEnd(value: string, startIndex: number): number {
   let quote: '"' | "'" | undefined;
   for (let index = startIndex; index < value.length; index += 1) {
-    const char = value[index];
+    const char = value.charAt(index);
     if (quote) {
       if (char === quote) {
         quote = undefined;
@@ -494,22 +496,191 @@ function findHtmlTagEnd(value: string, startIndex: number): number {
 }
 
 function htmlEntityDecode(value: string): string {
-  return value
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&(apos|#39);/g, "'");
+  const entities = new Map([
+    ['nbsp', ' '],
+    ['amp', '&'],
+    ['lt', '<'],
+    ['gt', '>'],
+    ['quot', '"'],
+    ['apos', "'"],
+    ['#39', "'"],
+  ]);
+  let output = '';
+  for (let index = 0; index < value.length; index += 1) {
+    if (value.charAt(index) !== '&') {
+      output += value.charAt(index);
+      continue;
+    }
+    const semicolon = value.indexOf(';', index + 1);
+    if (semicolon < 0 || semicolon - index > 12) {
+      output += value.charAt(index);
+      continue;
+    }
+    const decoded = entities.get(value.slice(index + 1, semicolon).toLowerCase());
+    output += decoded ?? value.slice(index, semicolon + 1);
+    index = semicolon;
+  }
+  return output;
 }
 
 function getHtmlAttribute(tag: string, attributeName: string): string | undefined {
-  const pattern = new RegExp(
-    `\\s${attributeName}\\s*=\\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<unquoted>[^\\s>]+))`,
-    'i',
+  const wanted = attributeName.toLowerCase();
+  let index = 0;
+  while (index < tag.length) {
+    while (index < tag.length && tag.charAt(index).trim() !== '') {
+      index += 1;
+    }
+    while (index < tag.length && tag.charAt(index).trim() === '') {
+      index += 1;
+    }
+    const nameStart = index;
+    while (index < tag.length && isHtmlAttributeNameChar(tag.charAt(index))) {
+      index += 1;
+    }
+    const name = tag.slice(nameStart, index).toLowerCase();
+    while (index < tag.length && tag.charAt(index).trim() === '') {
+      index += 1;
+    }
+    if (tag.charAt(index) !== '=') {
+      continue;
+    }
+    index += 1;
+    while (index < tag.length && tag.charAt(index).trim() === '') {
+      index += 1;
+    }
+    const value = readHtmlAttributeValue(tag, index);
+    if (name === wanted) {
+      return value.value;
+    }
+    index = value.end;
+  }
+  return undefined;
+}
+
+function firstElementText(html: string, tagName: string): string | undefined {
+  return htmlElements(html, tagName)[0]?.text;
+}
+
+function htmlElements(html: string, tagName: string): { tag: string; text: string }[] {
+  const elements: { tag: string; text: string }[] = [];
+  const wanted = tagName.toLowerCase();
+  for (let index = 0; index < html.length; index += 1) {
+    if (html[index] !== '<' || html[index + 1] === '/') {
+      continue;
+    }
+    if (readHtmlTagName(html, index + 1) !== wanted) {
+      continue;
+    }
+    const tagEnd = findHtmlTagEnd(html, index + 1);
+    if (tagEnd < 0) {
+      continue;
+    }
+    const tag = html.slice(index, tagEnd + 1);
+    const contentStart = tagEnd + 1;
+    const contentEnd = findClosingTagStart(html, tagName, contentStart);
+    if (contentEnd < 0) {
+      continue;
+    }
+    elements.push({ tag, text: html.slice(contentStart, contentEnd) });
+    index = contentEnd;
+  }
+  return elements;
+}
+
+function htmlTags(html: string, tagName: string): string[] {
+  const tags: string[] = [];
+  const wanted = tagName.toLowerCase();
+  for (let index = 0; index < html.length; index += 1) {
+    if (html[index] !== '<' || html[index + 1] === '/') {
+      continue;
+    }
+    if (readHtmlTagName(html, index + 1) !== wanted) {
+      continue;
+    }
+    const tagEnd = findHtmlTagEnd(html, index + 1);
+    if (tagEnd < 0) {
+      continue;
+    }
+    tags.push(html.slice(index, tagEnd + 1));
+    index = tagEnd;
+  }
+  return tags;
+}
+
+function readHtmlTagName(value: string, startIndex: number): string {
+  let index = startIndex;
+  if (value.charAt(index) === '/') {
+    index += 1;
+  }
+  while (index < value.length && value.charAt(index).trim() === '') {
+    index += 1;
+  }
+  let name = '';
+  while (index < value.length) {
+    const char = value.charAt(index).toLowerCase();
+    if (char < 'a' || char > 'z') {
+      break;
+    }
+    name += char;
+    index += 1;
+  }
+  return name;
+}
+
+function findClosingTagStart(value: string, tagName: string, startIndex: number): number {
+  return value.toLowerCase().indexOf(`</${tagName}`, startIndex);
+}
+
+function findClosingTagEnd(value: string, tagName: string, startIndex: number): number {
+  const closeStart = findClosingTagStart(value, tagName, startIndex);
+  if (closeStart < 0) {
+    return value.length - 1;
+  }
+  const closeEnd = findHtmlTagEnd(value, closeStart + tagName.length + 2);
+  return closeEnd < 0 ? value.length - 1 : closeEnd;
+}
+
+function isHtmlAttributeNameChar(char: string): boolean {
+  return (
+    (char >= 'a' && char <= 'z') ||
+    (char >= 'A' && char <= 'Z') ||
+    (char >= '0' && char <= '9') ||
+    char === '-' ||
+    char === ':' ||
+    char === '_'
   );
-  const match = tag.match(pattern);
-  return match?.groups?.double ?? match?.groups?.single ?? match?.groups?.unquoted;
+}
+
+function readHtmlAttributeValue(tag: string, startIndex: number): { end: number; value: string } {
+  const quote = tag[startIndex];
+  if (quote === '"' || quote === "'") {
+    const end = tag.indexOf(quote, startIndex + 1);
+    return end < 0
+      ? { end: tag.length, value: tag.slice(startIndex + 1) }
+      : { end: end + 1, value: tag.slice(startIndex + 1, end) };
+  }
+  let end = startIndex;
+  while (end < tag.length && tag.charAt(end).trim() !== '' && tag.charAt(end) !== '>') {
+    end += 1;
+  }
+  return { end, value: tag.slice(startIndex, end) };
+}
+
+function normalizeWhitespace(value: string): string {
+  let output = '';
+  let pendingSpace = false;
+  for (const char of value.trim()) {
+    if (char.trim() === '') {
+      pendingSpace = true;
+      continue;
+    }
+    if (pendingSpace && output.length > 0) {
+      output += ' ';
+    }
+    output += char;
+    pendingSpace = false;
+  }
+  return output;
 }
 
 export function sha256Hex(value: string): string {
