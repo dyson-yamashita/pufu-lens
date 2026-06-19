@@ -1,5 +1,4 @@
 import {
-  ArrowLeft,
   Clock3,
   Contact,
   Database,
@@ -20,8 +19,10 @@ import {
   ShieldCheck,
   TriangleAlert,
   Users,
+  X,
 } from 'lucide-react';
 import { cookies } from 'next/headers';
+import Image from 'next/image';
 import Link from 'next/link';
 import { auth, signOut } from '../auth';
 import type {
@@ -213,10 +214,17 @@ export async function AppShell({
           <details className="guest-menu" data-testid="guest-menu" open>
             <summary className="guest-menu-toggle" data-testid="guest-menu-toggle">
               <Menu className="guest-menu-open-icon" size={22} />
-              <ArrowLeft className="guest-menu-close-icon" size={22} />
-              <span className="brand-mark">PL</span>
+              <X className="guest-menu-close-icon" size={22} />
+              <Image
+                alt="Pufu Lens"
+                className="brand-logo"
+                height={40}
+                src="/pufu-lens-logo.png"
+                width={40}
+              />
               <strong className="guest-brand-name">Pufu Lens</strong>
             </summary>
+            <ThemeToggle initialTheme={initialTheme} />
             <nav aria-label="Primary" className="guest-side-menu" data-testid="guest-side-menu">
               {navItems}
             </nav>
@@ -225,10 +233,17 @@ export async function AppShell({
           <details className="guest-menu" data-testid="app-menu" open>
             <summary className="guest-menu-toggle" data-testid="app-menu-toggle">
               <Menu className="guest-menu-open-icon" size={22} />
-              <ArrowLeft className="guest-menu-close-icon" size={22} />
-              <span className="brand-mark">PL</span>
+              <X className="guest-menu-close-icon" size={22} />
+              <Image
+                alt="Pufu Lens"
+                className="brand-logo"
+                height={40}
+                src="/pufu-lens-logo.png"
+                width={40}
+              />
               <strong className="guest-brand-name">Pufu Lens</strong>
             </summary>
+            <ThemeToggle initialTheme={initialTheme} />
             <nav aria-label="Primary" className="guest-side-menu" data-testid="app-side-menu">
               {navItems}
             </nav>
@@ -238,7 +253,6 @@ export async function AppShell({
           className={isGuest ? 'account-panel guest-account-panel' : 'account-panel'}
           data-testid="account-panel"
         >
-          <ThemeToggle initialTheme={initialTheme} />
           {session?.user?.id ? (
             <>
               <span className="account-identity" data-testid="account-identity">
