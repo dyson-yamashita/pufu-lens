@@ -140,6 +140,36 @@ async function insertCreatedMemberRow(
   return rows[0] ? parseAdminActionIdRow(rows[0], 'member creation row') : undefined;
 }
 
+async function insertCreatedDataSourceRow(
+  sql: SqlExecutor,
+  {
+    config,
+    name,
+    ownerUserId,
+    projectId,
+    sourceType,
+  }: {
+    readonly config: Record<string, unknown>;
+    readonly name: string;
+    readonly ownerUserId: string;
+    readonly projectId: string;
+    readonly sourceType: SourceType;
+  },
+): Promise<AdminActionIdRow | undefined> {
+  const rows = (await sql`
+    INSERT INTO public.data_sources (project_id, owner_user_id, source_type, name, config)
+    VALUES (
+      ${projectId},
+      ${ownerUserId},
+      ${sourceType},
+      ${name},
+      ${sql.json(config as postgres.JSONValue)}
+    )
+    RETURNING id::text
+  `) as readonly unknown[];
+  return rows[0] ? parseAdminActionIdRow(rows[0], 'data source creation row') : undefined;
+}
+
 export async function createProject(formData: FormData): Promise<void> {
   const name = requireFormValue(formData, 'name').trim();
   if (!name) {
@@ -399,20 +429,13 @@ export async function createDataSource(formData: FormData): Promise<void> {
       );
     }
     await sql.begin(async (tx) => {
-      const dataSources = (await tx`
-        INSERT INTO public.data_sources (project_id, owner_user_id, source_type, name, config)
-        VALUES (
-          ${project.id},
-          ${project.adminUserId},
-          ${sourceType},
-          ${name},
-          ${tx.json(config as postgres.JSONValue)}
-        )
-        RETURNING id::text
-      `) as readonly unknown[];
-      const dataSource = dataSources[0]
-        ? parseAdminActionIdRow(dataSources[0], 'data source creation row')
-        : undefined;
+      const dataSource = await insertCreatedDataSourceRow(tx, {
+        config,
+        name,
+        ownerUserId: project.adminUserId,
+        projectId: project.id,
+        sourceType,
+      });
       if (!dataSource) {
         throw new Error('Data source creation failed.');
       }
