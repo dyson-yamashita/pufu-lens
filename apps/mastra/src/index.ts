@@ -213,6 +213,9 @@ const reportSectionSchema = z.object({
   title: z.string(),
 });
 
+type ReportSectionInput = z.infer<typeof reportSectionSchema>;
+type ReportSourceInput = z.infer<typeof reportSourceSchema>;
+
 const pufuScoreGenerateInputSchema = z.object({
   period: z.object({ end: z.string(), start: z.string() }),
   pufuSources: z.array(reportSourceSchema).default([]),
@@ -382,7 +385,7 @@ export function createProjectChatTools(repository: ChatRepository) {
         return {
           score: createPufuScoreFromReport({
             period: input.period,
-            pufu_sources: pufuSources.map((source, index) => ({
+            pufu_sources: pufuSources.map((source: ReportSourceInput, index: number) => ({
               canonical_uri: source.canonical_uri ?? '',
               doc_type: source.doc_type ?? 'unknown',
               document_id: source.document_id ?? `agent-source-${index}`,
@@ -391,9 +394,9 @@ export function createProjectChatTools(repository: ChatRepository) {
               title: source.title ?? source.snippet ?? `データソース ${index + 1}`,
             })),
             report_id: input.reportId ?? 'agent-generated-pufu',
-            sections: sections.map((section) => ({
+            sections: sections.map((section: ReportSectionInput) => ({
               ...section,
-              sources: section.sources?.map((source) => ({
+              sources: section.sources?.map((source: ReportSourceInput) => ({
                 canonical_uri: source.canonical_uri ?? '',
                 doc_type: source.doc_type ?? 'unknown',
                 document_id: source.document_id ?? '',

@@ -321,11 +321,23 @@ validatePublicReportJson({
   ...published.publicReport,
   summary: 'Public host https://10.example.com is allowed when it is not a private IP.',
 });
+validatePublicReportJson({
+  ...published.publicReport,
+  summary: 'Public host https://172.16.example.com is allowed when it is not an IPv4 address.',
+});
 assert.throws(
   () =>
     validatePublicReportJson({
       ...published.publicReport,
       summary: 'Private host https://10.0.0.1/path must not be treated as public text.',
+    }),
+  /Public report contains private text/,
+);
+assert.throws(
+  () =>
+    validatePublicReportJson({
+      ...published.publicReport,
+      summary: 'Private host https://172.16.0.1/path must not be treated as public text.',
     }),
   /Public report contains private text/,
 );

@@ -1464,6 +1464,9 @@ function isPrivate172Host(hostname: string): boolean {
   if (!hostname.startsWith('172.')) {
     return false;
   }
+  if (!isIpv4Host(hostname)) {
+    return false;
+  }
   const secondOctet = Number(hostname.split('.')[1]);
   return Number.isInteger(secondOctet) && secondOctet >= 16 && secondOctet <= 31;
 }

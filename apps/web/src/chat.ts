@@ -165,31 +165,26 @@ function normalizeSpaces(value: string): string {
 
 function stripGraphQueryRequestSuffix(value: string): string {
   let output = value.endsWith('。') ? value.slice(0, -1) : value;
-  for (const suffix of ['知りたいです', '知りたい', 'ください', '教えて']) {
-    if (output.endsWith(suffix)) {
-      output = output.slice(0, -suffix.length).trim();
-      break;
-    }
-  }
-  for (const suffix of ['教えて']) {
-    if (output.endsWith(suffix)) {
-      output = output.slice(0, -suffix.length).trim();
-      break;
-    }
-  }
-  if (output.endsWith('を')) {
-    output = output.slice(0, -1).trim();
-  }
-  for (const suffix of ['結果', '情報']) {
-    if (output.endsWith(suffix)) {
-      output = output.slice(0, -suffix.length).trim();
-      break;
-    }
-  }
-  for (const suffix of ['について', 'に関する', 'を', 'の']) {
-    if (output.endsWith(suffix)) {
-      output = output.slice(0, -suffix.length).trim();
-      break;
+  const suffixGroups = [
+    ['知りたいです', '知りたい', 'ください', '教えて'],
+    ['を'],
+    ['結果', '情報'],
+    ['について', 'に関する', 'を', 'の'],
+  ];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const suffixes of suffixGroups) {
+      for (const suffix of suffixes) {
+        if (output.endsWith(suffix)) {
+          output = output.slice(0, -suffix.length).trim();
+          changed = true;
+          break;
+        }
+      }
+      if (changed) {
+        break;
+      }
     }
   }
   return output.trim();
