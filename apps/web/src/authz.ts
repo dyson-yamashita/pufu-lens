@@ -57,7 +57,7 @@ async function fetchProjectMemberAccessRow(
   return rows[0] ? parseProjectMemberAccess(rows[0]) : undefined;
 }
 
-async function listGlobalAdminIdRows(
+async function listGlobalAdminIdRowsForUpdate(
   sql: postgres.TransactionSql,
 ): Promise<readonly { readonly id: string }[]> {
   const rows = (await sql`
@@ -151,7 +151,7 @@ export async function assertOtherGlobalAdminExists(
   sql: postgres.TransactionSql,
   input: { userId: string },
 ): Promise<void> {
-  const adminIds = await listGlobalAdminIdRows(sql);
+  const adminIds = await listGlobalAdminIdRowsForUpdate(sql);
   const otherAdminExists = adminIds.some((row) => row.id !== input.userId);
   if (!otherAdminExists) {
     throw new Error('At least one admin account is required.');
