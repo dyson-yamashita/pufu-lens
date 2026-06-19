@@ -290,7 +290,7 @@ async function ensureDefaultParserProfile(
         ${input.dataSourceId},
         ${input.sourceType},
         ${`Built-in ${input.sourceType} parser`},
-        ${sql.json({ managedBy: 'apps/web/src/admin-actions.ts' } as postgres.JSONValue)}
+        ${sql.json({ managedBy: 'apps/web/src/admin-data-source-actions.ts' } as postgres.JSONValue)}
       )
       ON CONFLICT (project_id, data_source_id, source_type, name)
       DO UPDATE SET
