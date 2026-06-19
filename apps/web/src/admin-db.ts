@@ -251,9 +251,6 @@ async function listVisiblePublicProjectReportRows(
   slug?: string,
 ): Promise<readonly AdminDbPublicProjectReportRow[]> {
   const slugCondition = slug ? sql`AND p.slug = ${slug}` : sql``;
-  const orderBy = slug
-    ? sql`ORDER BY r.created_at DESC NULLS LAST`
-    : sql`ORDER BY p.slug, r.created_at DESC NULLS LAST`;
   const rawRows = (await sql`
     SELECT
       p.slug,
@@ -274,7 +271,7 @@ async function listVisiblePublicProjectReportRows(
     ) r ON true
     WHERE p.visibility = 'public'
       ${slugCondition}
-    ${orderBy}
+    ORDER BY p.slug, r.created_at DESC NULLS LAST
   `) as readonly unknown[];
   return rawRows.map(parseAdminDbPublicProjectReportRow);
 }
