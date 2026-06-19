@@ -1467,11 +1467,11 @@ async function lookupDataSourcePreviewScopeRow(
   return rawRows[0] ? parseAdminDbDataSourcePreviewScopeRow(rawRows[0]) : undefined;
 }
 
-async function listDataSourcePreviewSummaryRows(
+async function lookupDataSourcePreviewSummaryRow(
   sql: postgres.Sql,
   dataSourceId: string,
   projectId: string,
-): Promise<readonly AdminDbDataSourcePreviewSummaryRow[]> {
+): Promise<AdminDbDataSourcePreviewSummaryRow | undefined> {
   const rawRows = (await sql`
     SELECT
       (
@@ -1520,7 +1520,7 @@ async function listDataSourcePreviewSummaryRows(
     WHERE ds.id = ${dataSourceId}
     LIMIT 1
   `) as readonly unknown[];
-  return rawRows.map(parseAdminDbDataSourcePreviewSummaryRow);
+  return rawRows[0] ? parseAdminDbDataSourcePreviewSummaryRow(rawRows[0]) : undefined;
 }
 
 async function listDataSourcePreviewDocumentRows(
@@ -1589,13 +1589,12 @@ export async function getDataSourceContentPreview(
       throw new Error(`Data source content preview target not found: ${dataSourceId}`);
     }
 
-    const [summaryRows, documentRows, queueRows] = await Promise.all([
-      listDataSourcePreviewSummaryRows(sql, dataSourceId, scope.project_id),
+    const [summaryRow, documentRows, queueRows] = await Promise.all([
+      lookupDataSourcePreviewSummaryRow(sql, dataSourceId, scope.project_id),
       listDataSourcePreviewDocumentRows(sql, dataSourceId, scope.project_id),
       listDataSourcePreviewQueueRows(sql, dataSourceId, scope.project_id),
     ]);
 
-    const summaryRow = summaryRows[0];
     if (!summaryRow) {
       return null;
     }
