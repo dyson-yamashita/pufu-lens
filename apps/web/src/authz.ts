@@ -3,6 +3,7 @@ import { isProjectVisibility, type ProjectVisibility } from './admin-data.ts';
 
 export type ProjectMemberRole = 'admin' | 'member';
 export type AppMemberRole = 'admin' | 'member';
+export type RequiredProjectAccessRole = 'admin' | 'member';
 
 export interface ProjectMemberAccess {
   appRole: AppMemberRole;
@@ -27,7 +28,7 @@ async function fetchAppUserRoleRow(
     WHERE id = ${userId}
       AND role IN ('admin', 'member')
   `) as readonly unknown[];
-  return rows[0] ? parseAppUserRoleRow(rows[0]) : undefined;
+  return parseOptionalAuthzRow(rows, parseAppUserRoleRow);
 }
 
 async function fetchProjectMemberAccessRow(
@@ -54,7 +55,7 @@ async function fetchProjectMemberAccessRow(
       AND (app_user.role = 'admin' OR pm.user_id IS NOT NULL)
     LIMIT 1
   `) as readonly unknown[];
-  return rows[0] ? parseProjectMemberAccess(rows[0]) : undefined;
+  return parseOptionalAuthzRow(rows, parseProjectMemberAccess);
 }
 
 async function listGlobalAdminIdRowsForUpdate(
@@ -68,6 +69,13 @@ async function listGlobalAdminIdRowsForUpdate(
     FOR UPDATE
   `) as readonly unknown[];
   return rows.map(parseGlobalAdminIdRow);
+}
+
+function parseOptionalAuthzRow<T>(
+  rows: readonly unknown[],
+  parser: (row: unknown) => T,
+): T | undefined {
+  return rows.length > 0 ? parser(rows[0]) : undefined;
 }
 
 export function parseAppUserRoleRow(value: unknown): AppMemberRole {
@@ -122,18 +130,42 @@ export async function lookupProjectMemberAccess(
   sql: postgres.Sql | postgres.TransactionSql,
   input: { projectSlug: string; userId: string },
 ): Promise<ProjectMemberAccess | undefined> {
-  return fetchProjectMemberAccessRow(sql, input);
+  return lookupProjectAccessByRole(sql, { ...input, requiredRole: 'member' });
 }
 
 export async function lookupProjectAdminAccess(
   sql: postgres.Sql | postgres.TransactionSql,
   input: { projectSlug: string; userId: string },
 ): Promise<ProjectMemberAccess | undefined> {
-  const access = await lookupProjectMemberAccess(sql, input);
+  return lookupProjectAccessByRole(sql, { ...input, requiredRole: 'admin' });
+}
+
+export async function lookupProjectAccessByRole(
+  sql: postgres.Sql | postgres.TransactionSql,
+  input: {
+    projectSlug: string;
+    requiredRole: RequiredProjectAccessRole;
+    userId: string;
+  },
+): Promise<ProjectMemberAccess | undefined> {
+  const access = await fetchProjectMemberAccessRow(sql, input);
   if (!access) {
     return undefined;
   }
-  return access.appRole === 'admin' || access.projectRole === 'admin' ? access : undefined;
+  return projectAccessSatisfiesRole(access, input.requiredRole) ? access : undefined;
+}
+
+export function projectAccessSatisfiesRole(
+  access: ProjectMemberAccess,
+  requiredRole: RequiredProjectAccessRole,
+): boolean {
+  if (access.appRole === 'admin') {
+    return true;
+  }
+  if (requiredRole === 'admin') {
+    return access.projectRole === 'admin';
+  }
+  return access.projectRole === 'admin' || access.projectRole === 'member';
 }
 
 export function parseGlobalAdminIdRow(value: unknown): { readonly id: string } {
