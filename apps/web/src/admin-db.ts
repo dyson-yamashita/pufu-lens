@@ -35,6 +35,8 @@ import {
   type AdminDbAppMemberRow,
   type AdminDbDataSourcePreviewDocumentRow,
   type AdminDbDataSourcePreviewQueueRow,
+  type AdminDbDataSourcePreviewScopeRow,
+  type AdminDbDataSourcePreviewSummaryRow,
   type AdminDbDataSourceRow,
   type AdminDbOAuthConnectionRow,
   type AdminDbParserProfileRow,
@@ -1445,124 +1447,154 @@ const DATA_SOURCE_PREVIEW_DOCUMENT_LIMIT = 20;
 const DATA_SOURCE_PREVIEW_QUEUE_LIMIT = 10;
 const DATA_SOURCE_PREVIEW_ERROR_MAX_LENGTH = 120;
 
+async function lookupDataSourcePreviewScopeRow(
+  sql: postgres.Sql,
+  projectSlug: string,
+  dataSourceId: string,
+): Promise<AdminDbDataSourcePreviewScopeRow | undefined> {
+  const rawRows = (await sql`
+    SELECT
+      ds.id::text AS id,
+      ds.project_id::text AS project_id,
+      ds.last_checked_at
+    FROM public.data_sources ds
+    JOIN public.projects p ON p.id = ds.project_id
+    WHERE p.slug = ${projectSlug}
+      AND ds.id::text = ${dataSourceId}
+      AND ds.enabled = true
+    LIMIT 1
+  `) as readonly unknown[];
+  return rawRows[0] ? parseAdminDbDataSourcePreviewScopeRow(rawRows[0]) : undefined;
+}
+
+async function lookupDataSourcePreviewSummaryRow(
+  sql: postgres.Sql,
+  dataSourceId: string,
+  projectId: string,
+): Promise<AdminDbDataSourcePreviewSummaryRow | undefined> {
+  const rawRows = (await sql`
+    SELECT
+      (
+        SELECT count(*)::int
+        FROM public.raw_document_data_sources rdds
+        WHERE rdds.data_source_id = ${dataSourceId}
+          AND rdds.project_id = ${projectId}
+      ) AS raw_count,
+      (
+        SELECT count(*)::int
+        FROM public.raw_document_data_sources rdds
+        JOIN public.raw_documents rd ON rd.id = rdds.raw_document_id
+        WHERE rdds.data_source_id = ${dataSourceId}
+          AND rdds.project_id = ${projectId}
+          AND rd.ingest_status = 'indexed'
+      ) AS indexed_count,
+      (
+        SELECT count(*)::int
+        FROM public.ingestion_queue iq
+        WHERE iq.data_source_id = ${dataSourceId}
+          AND iq.project_id = ${projectId}
+      ) AS queue_count,
+      (
+        SELECT count(*)::int
+        FROM public.ingestion_queue iq
+        WHERE iq.data_source_id = ${dataSourceId}
+          AND iq.project_id = ${projectId}
+          AND iq.status = 'failed'
+      ) AS failed_count,
+      (
+        SELECT count(*)::int
+        FROM public.ingestion_queue iq
+        WHERE iq.data_source_id = ${dataSourceId}
+          AND iq.project_id = ${projectId}
+          AND iq.status = 'held'
+      ) AS held_count,
+      ds.last_checked_at,
+      (
+        SELECT max(rd.indexed_at)
+        FROM public.raw_document_data_sources rdds
+        JOIN public.raw_documents rd ON rd.id = rdds.raw_document_id
+        WHERE rdds.data_source_id = ${dataSourceId}
+          AND rdds.project_id = ${projectId}
+      ) AS last_indexed
+    FROM public.data_sources ds
+    WHERE ds.id = ${dataSourceId}
+    LIMIT 1
+  `) as readonly unknown[];
+  return rawRows[0] ? parseAdminDbDataSourcePreviewSummaryRow(rawRows[0]) : undefined;
+}
+
+async function listDataSourcePreviewDocumentRows(
+  sql: postgres.Sql,
+  dataSourceId: string,
+  projectId: string,
+): Promise<readonly AdminDbDataSourcePreviewDocumentRow[]> {
+  const rawRows = (await sql`
+    SELECT
+      rd.id::text AS raw_document_id,
+      d.id::text AS document_id,
+      rd.source_id,
+      COALESCE(d.title, rd.source_id) AS title,
+      COALESCE(d.doc_type::text, rd.source_type) AS doc_type,
+      rd.ingest_status,
+      COALESCE(d.canonical_uri, rd.source_uri, '') AS canonical_uri,
+      rd.fetched_at,
+      rd.indexed_at,
+      d.summary AS document_summary,
+      (
+        SELECT dc.content
+        FROM public.document_chunks dc
+        WHERE dc.document_id = d.id
+        ORDER BY dc.chunk_index ASC
+        LIMIT 1
+      ) AS first_chunk_content
+    FROM public.raw_document_data_sources rdds
+    JOIN public.raw_documents rd ON rd.id = rdds.raw_document_id
+    LEFT JOIN public.documents d ON d.raw_document_id = rd.id
+    WHERE rdds.data_source_id = ${dataSourceId}
+      AND rdds.project_id = ${projectId}
+    ORDER BY rd.fetched_at DESC
+    LIMIT ${DATA_SOURCE_PREVIEW_DOCUMENT_LIMIT}
+  `) as readonly unknown[];
+  return rawRows.map(parseAdminDbDataSourcePreviewDocumentRow);
+}
+
+async function listDataSourcePreviewQueueRows(
+  sql: postgres.Sql,
+  dataSourceId: string,
+  projectId: string,
+): Promise<readonly AdminDbDataSourcePreviewQueueRow[]> {
+  const rawRows = (await sql`
+    SELECT
+      iq.id::text AS id,
+      iq.status,
+      iq.attempts,
+      iq.last_error,
+      iq.updated_at
+    FROM public.ingestion_queue iq
+    WHERE iq.data_source_id = ${dataSourceId}
+      AND iq.project_id = ${projectId}
+    ORDER BY iq.updated_at DESC
+    LIMIT ${DATA_SOURCE_PREVIEW_QUEUE_LIMIT}
+  `) as readonly unknown[];
+  return rawRows.map(parseAdminDbDataSourcePreviewQueueRow);
+}
+
 export async function getDataSourceContentPreview(
   projectSlug: string,
   dataSourceId: string,
 ): Promise<DataSourceContentPreview | null> {
   return withOptionalSql(async (sql) => {
-    const rawScopeRows = (await sql`
-      SELECT
-        ds.id::text AS id,
-        ds.project_id::text AS project_id,
-        ds.last_checked_at
-      FROM public.data_sources ds
-      JOIN public.projects p ON p.id = ds.project_id
-      WHERE p.slug = ${projectSlug}
-        AND ds.id::text = ${dataSourceId}
-        AND ds.enabled = true
-      LIMIT 1
-    `) as readonly unknown[];
-    const rawScopeRow = rawScopeRows[0];
-    if (!rawScopeRow) {
+    const scope = await lookupDataSourcePreviewScopeRow(sql, projectSlug, dataSourceId);
+    if (!scope) {
       throw new Error(`Data source content preview target not found: ${dataSourceId}`);
     }
-    const scope = parseAdminDbDataSourcePreviewScopeRow(rawScopeRow);
 
-    const [rawSummaryRows, rawDocumentRows, rawQueueRows] = await Promise.all([
-      sql`
-        SELECT
-          (
-            SELECT count(*)::int
-            FROM public.raw_document_data_sources rdds
-            WHERE rdds.data_source_id = ${dataSourceId}
-              AND rdds.project_id = ${scope.project_id}
-          ) AS raw_count,
-          (
-            SELECT count(*)::int
-            FROM public.raw_document_data_sources rdds
-            JOIN public.raw_documents rd ON rd.id = rdds.raw_document_id
-            WHERE rdds.data_source_id = ${dataSourceId}
-              AND rdds.project_id = ${scope.project_id}
-              AND rd.ingest_status = 'indexed'
-          ) AS indexed_count,
-          (
-            SELECT count(*)::int
-            FROM public.ingestion_queue iq
-            WHERE iq.data_source_id = ${dataSourceId}
-              AND iq.project_id = ${scope.project_id}
-          ) AS queue_count,
-          (
-            SELECT count(*)::int
-            FROM public.ingestion_queue iq
-            WHERE iq.data_source_id = ${dataSourceId}
-              AND iq.project_id = ${scope.project_id}
-              AND iq.status = 'failed'
-          ) AS failed_count,
-          (
-            SELECT count(*)::int
-            FROM public.ingestion_queue iq
-            WHERE iq.data_source_id = ${dataSourceId}
-              AND iq.project_id = ${scope.project_id}
-              AND iq.status = 'held'
-          ) AS held_count,
-          ds.last_checked_at,
-          (
-            SELECT max(rd.indexed_at)
-            FROM public.raw_document_data_sources rdds
-            JOIN public.raw_documents rd ON rd.id = rdds.raw_document_id
-            WHERE rdds.data_source_id = ${dataSourceId}
-              AND rdds.project_id = ${scope.project_id}
-          ) AS last_indexed
-        FROM public.data_sources ds
-        WHERE ds.id = ${dataSourceId}
-        LIMIT 1
-      ` as Promise<readonly unknown[]>,
-      sql`
-        SELECT
-          rd.id::text AS raw_document_id,
-          d.id::text AS document_id,
-          rd.source_id,
-          COALESCE(d.title, rd.source_id) AS title,
-          COALESCE(d.doc_type::text, rd.source_type) AS doc_type,
-          rd.ingest_status,
-          COALESCE(d.canonical_uri, rd.source_uri, '') AS canonical_uri,
-          rd.fetched_at,
-          rd.indexed_at,
-          d.summary AS document_summary,
-          (
-            SELECT dc.content
-            FROM public.document_chunks dc
-            WHERE dc.document_id = d.id
-            ORDER BY dc.chunk_index ASC
-            LIMIT 1
-          ) AS first_chunk_content
-        FROM public.raw_document_data_sources rdds
-        JOIN public.raw_documents rd ON rd.id = rdds.raw_document_id
-        LEFT JOIN public.documents d ON d.raw_document_id = rd.id
-        WHERE rdds.data_source_id = ${dataSourceId}
-          AND rdds.project_id = ${scope.project_id}
-        ORDER BY rd.fetched_at DESC
-        LIMIT ${DATA_SOURCE_PREVIEW_DOCUMENT_LIMIT}
-      ` as Promise<readonly unknown[]>,
-      sql`
-        SELECT
-          iq.id::text AS id,
-          iq.status,
-          iq.attempts,
-          iq.last_error,
-          iq.updated_at
-        FROM public.ingestion_queue iq
-        WHERE iq.data_source_id = ${dataSourceId}
-          AND iq.project_id = ${scope.project_id}
-        ORDER BY iq.updated_at DESC
-        LIMIT ${DATA_SOURCE_PREVIEW_QUEUE_LIMIT}
-      ` as Promise<readonly unknown[]>,
+    const [summaryRow, documentRows, queueRows] = await Promise.all([
+      lookupDataSourcePreviewSummaryRow(sql, dataSourceId, scope.project_id),
+      listDataSourcePreviewDocumentRows(sql, dataSourceId, scope.project_id),
+      listDataSourcePreviewQueueRows(sql, dataSourceId, scope.project_id),
     ]);
-    const summaryRows = rawSummaryRows.map(parseAdminDbDataSourcePreviewSummaryRow);
-    const documentRows = rawDocumentRows.map(parseAdminDbDataSourcePreviewDocumentRow);
-    const queueRows = rawQueueRows.map(parseAdminDbDataSourcePreviewQueueRow);
 
-    const summaryRow = summaryRows[0];
     if (!summaryRow) {
       return null;
     }
