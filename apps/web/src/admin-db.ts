@@ -161,6 +161,12 @@ export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
 
 export async function listMemberProjects(userId: string): Promise<readonly ProjectSummary[]> {
   return withOptionalSql(async (sql) => {
+    const role = await lookupAppUserRole(sql, { userId });
+    if (!role) {
+      return [];
+    }
+
+    const canListAllProjects = role === 'admin';
     const rawRows = (await sql`
       SELECT
         p.id::text AS id,
@@ -188,13 +194,10 @@ export async function listMemberProjects(userId: string): Promise<readonly Proje
         ) AS held_count,
         (SELECT max(rd.indexed_at) FROM public.raw_documents rd WHERE rd.project_id = p.id) AS last_indexed
       FROM public.projects p
-      JOIN public.users app_user
-        ON app_user.id = ${userId}
       LEFT JOIN public.project_members current_member
         ON current_member.project_id = p.id
-       AND current_member.user_id = app_user.id
-      WHERE app_user.role = 'admin'
-         OR current_member.user_id IS NOT NULL
+       AND current_member.user_id = ${userId}
+      WHERE ${canListAllProjects} OR current_member.user_id IS NOT NULL
       ORDER BY p.slug
     `) as readonly unknown[];
 
