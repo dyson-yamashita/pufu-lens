@@ -16,12 +16,19 @@ export default defineConfig({
   },
   projects: [
     {
+      grepInvert: /@mobile|@api/,
       name: 'desktop',
       use: { ...devices['Desktop Chrome'] },
     },
     {
+      grep: /@mobile/,
       name: 'mobile',
       use: { ...devices['Pixel 5'] },
+    },
+    {
+      grep: /@api/,
+      name: 'api',
+      use: { ...devices['Desktop Chrome'] },
     },
   ],
   testDir: './e2e',
