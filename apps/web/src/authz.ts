@@ -44,8 +44,11 @@ export function parseProjectMemberAccess(value: unknown): ProjectMemberAccess {
 
 export async function lookupAppUserRole(
   sql: postgres.Sql | postgres.TransactionSql,
-  input: { userId: string },
+  input: { userId: string | null | undefined },
 ): Promise<AppMemberRole | undefined> {
+  if (!input.userId) {
+    return undefined;
+  }
   const rows = (await sql`
     SELECT role
     FROM public.users
@@ -57,8 +60,11 @@ export async function lookupAppUserRole(
 
 export async function lookupGlobalAdminUserId(
   sql: postgres.Sql | postgres.TransactionSql,
-  input: { userId: string },
+  input: { userId: string | null | undefined },
 ): Promise<string | undefined> {
+  if (!input.userId) {
+    return undefined;
+  }
   const role = await lookupAppUserRole(sql, input);
   return role === 'admin' ? input.userId : undefined;
 }
