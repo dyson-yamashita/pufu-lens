@@ -31,49 +31,89 @@ test('GcsObjectStorage rejects traversal and bucket mismatches', async () => {
 });
 
 test('GcsObjectStorage put returns local sha256 etag without reading metadata', async () => {
+  let savedBody: Buffer | undefined;
   const fakeFile = {
     name: 'project-a/raw/doc.txt',
     async save(body: Buffer) {
+      savedBody = body;
       assert.equal(body.toString('utf8'), 'hello');
     },
     async getMetadata() {
       throw new Error('getMetadata should not be called after put');
     },
   };
+  const input = Buffer.from('hello');
   const storage = new GcsObjectStorage({
     bucket: 'pufu-lens-test',
     storage: fakeStorage(fakeFile),
   });
 
-  const result = await storage.put('project-a/raw/doc.txt', 'hello');
+  const result = await storage.put('project-a/raw/doc.txt', input);
 
   assert.equal(result.uri, 'gs://pufu-lens-test/project-a/raw/doc.txt');
   assert.equal(result.etag, createHash('sha256').update('hello').digest('hex'));
+  assert.equal(savedBody, input);
 });
 
-test('GcsObjectStorage list streams files and signedUrl uses v4', async () => {
+test('GcsObjectStorage get reads directly and signedUrl uses v4', async () => {
   const signedUrlOptions: Array<Record<string, unknown>> = [];
+  const readStream = Readable.from(['hello']);
+  const file = fakeFile('project-a/raw/a.txt', {}, signedUrlOptions, readStream);
+  const storage = new GcsObjectStorage({
+    bucket: 'pufu-lens-test',
+    storage: fakeStorage(file),
+  });
+
+  const result = await storage.get('project-a/raw/a.txt');
+  const signedUrl = await storage.signedUrl('project-a/raw/a.txt', 60);
+
+  assert.equal(result, readStream);
+  assert.equal(signedUrl, 'https://signed.example.test/project-a/raw/a.txt');
+  assert.equal(signedUrlOptions[0]?.version, 'v4');
+});
+
+test('GcsObjectStorage list streams directory contents without matching sibling prefixes', async () => {
   const files = [
     fakeFile('project-a/raw/a.txt', { size: '1', updated: '2026-06-19T00:00:00.000Z' }),
     fakeFile('project-a/raw/b.txt', { size: '2', updated: '2026-06-19T00:01:00.000Z' }),
+    fakeFile('project-a/raw-backup/c.txt', { size: '3', updated: '2026-06-19T00:02:00.000Z' }),
   ];
   const storage = new GcsObjectStorage({
     bucket: 'pufu-lens-test',
-    storage: fakeStorage(fakeFile('project-a/raw/a.txt', {}, signedUrlOptions), files),
+    storage: fakeStorage(fakeFile('project-a/raw/a.txt'), files),
   });
 
   const listed = [];
   for await (const item of storage.list('project-a/raw')) {
     listed.push(item);
   }
-  const signedUrl = await storage.signedUrl('project-a/raw/a.txt', 60);
 
   assert.deepEqual(
     listed.map((item) => item.uri),
     ['gs://pufu-lens-test/project-a/raw/a.txt', 'gs://pufu-lens-test/project-a/raw/b.txt'],
   );
-  assert.equal(signedUrl, 'https://signed.example.test/project-a/raw/a.txt');
-  assert.equal(signedUrlOptions[0]?.version, 'v4');
+});
+
+test('GcsObjectStorage list falls back to key-prefix search when no directory exists', async () => {
+  const files = [
+    fakeFile('project-a/raw/a.txt', { size: '1' }),
+    fakeFile('project-a/raw/ab.txt', { size: '2' }),
+    fakeFile('project-a/raw/b.txt', { size: '3' }),
+  ];
+  const storage = new GcsObjectStorage({
+    bucket: 'pufu-lens-test',
+    storage: fakeStorage(fakeFile('project-a/raw/a.txt'), files),
+  });
+
+  const listed = [];
+  for await (const item of storage.list('project-a/raw/a')) {
+    listed.push(item.uri);
+  }
+
+  assert.deepEqual(listed, [
+    'gs://pufu-lens-test/project-a/raw/a.txt',
+    'gs://pufu-lens-test/project-a/raw/ab.txt',
+  ]);
 });
 
 function fakeStorage(file: unknown, streamedFiles: unknown[] = []): Storage {
@@ -86,8 +126,17 @@ function fakeStorage(file: unknown, streamedFiles: unknown[] = []): Storage {
         getFiles() {
           throw new Error('getFiles should not be used for list');
         },
-        getFilesStream() {
-          return Readable.from(streamedFiles);
+        getFilesStream(options: { prefix?: string }) {
+          return Readable.from(
+            streamedFiles.filter(
+              (streamedFile) =>
+                typeof streamedFile === 'object' &&
+                streamedFile !== null &&
+                'name' in streamedFile &&
+                typeof streamedFile.name === 'string' &&
+                streamedFile.name.startsWith(options.prefix ?? ''),
+            ),
+          );
         },
       };
     },
@@ -98,6 +147,7 @@ function fakeFile(
   name: string,
   metadata: Record<string, unknown> = {},
   signedUrlOptions?: Array<Record<string, unknown>>,
+  readStream: Readable = Readable.from([]),
 ) {
   return {
     metadata,
@@ -110,7 +160,10 @@ function fakeFile(
       });
     },
     async exists() {
-      return [true];
+      throw new Error('exists should not be called before get');
+    },
+    createReadStream() {
+      return readStream;
     },
     async getSignedUrl(options: Record<string, unknown>) {
       signedUrlOptions?.push(options);

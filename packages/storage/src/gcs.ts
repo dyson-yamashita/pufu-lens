@@ -44,7 +44,7 @@ export class GcsObjectStorage implements ObjectStorage {
     let etag: string;
 
     if (typeof body === 'string' || Buffer.isBuffer(body)) {
-      const buffer = Buffer.from(body);
+      const buffer = typeof body === 'string' ? Buffer.from(body, 'utf8') : body;
       etag = hash.update(buffer).digest('hex');
       await file.save(buffer, {
         contentType: opts?.contentType,
@@ -75,13 +75,7 @@ export class GcsObjectStorage implements ObjectStorage {
   }
 
   async get(uri: string): Promise<NodeJS.ReadableStream> {
-    const file = this.fileForUri(uri);
-    const [exists] = await file.exists();
-    if (!exists) {
-      throw new Error(`GCS object does not exist: ${this.uriForKey(file.name)}`);
-    }
-
-    return file.createReadStream();
+    return this.fileForUri(uri).createReadStream();
   }
 
   async getText(uri: string): Promise<string> {
@@ -109,17 +103,44 @@ export class GcsObjectStorage implements ObjectStorage {
 
   async *list(prefix: string): AsyncIterable<ObjectInfo> {
     const normalizedPrefix = this.keyForUri(prefix);
-    const fileStream = this.bucket().getFilesStream({ prefix: normalizedPrefix });
-    for await (const file of fileStream) {
-      const metadata = file.metadata;
-      const size = Number(metadata.size ?? 0);
-      const updatedAt = metadata.updated ? new Date(metadata.updated) : new Date(0);
-      yield {
-        size,
-        updatedAt,
-        uri: this.uriForKey(file.name),
-      };
+    const directoryPrefix =
+      normalizedPrefix && !normalizedPrefix.endsWith('/')
+        ? `${normalizedPrefix}/`
+        : normalizedPrefix;
+    let yieldedDirectoryItems = false;
+
+    for await (const file of this.streamFiles(directoryPrefix)) {
+      yieldedDirectoryItems = true;
+      yield this.infoForFile(file);
     }
+    if (yieldedDirectoryItems || directoryPrefix === normalizedPrefix) {
+      return;
+    }
+
+    for await (const file of this.streamFiles(normalizedPrefix)) {
+      yield this.infoForFile(file);
+    }
+  }
+
+  private async *streamFiles(prefix: string) {
+    const fileStream = this.bucket().getFilesStream({ prefix });
+    for await (const file of fileStream) {
+      yield file;
+    }
+  }
+
+  private infoForFile(file: {
+    metadata: { size?: number | string; updated?: string };
+    name: string;
+  }): ObjectInfo {
+    const metadata = file.metadata;
+    const size = Number(metadata.size ?? 0);
+    const updatedAt = metadata.updated ? new Date(metadata.updated) : new Date(0);
+    return {
+      size,
+      updatedAt,
+      uri: this.uriForKey(file.name),
+    };
   }
 
   async ensureProjectPrefixes(projectSlug: string): Promise<ProjectStoragePrefixes> {
