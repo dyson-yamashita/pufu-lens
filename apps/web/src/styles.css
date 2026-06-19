@@ -908,7 +908,7 @@ tr.selected-row {
 .metric-strip {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   margin: 16px 0;
 }
 
@@ -933,6 +933,13 @@ tr.selected-row {
   font-size: 24px;
   line-height: 32px;
   margin-top: 2px;
+}
+
+.metric p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+  margin: 2px 0 0;
 }
 
 .metric-info strong {
@@ -1334,6 +1341,10 @@ table {
   flex-wrap: wrap;
   gap: 8px;
   min-width: 320px;
+}
+
+.data-source-row-actions {
+  min-width: 520px;
 }
 
 .modal-dialog {

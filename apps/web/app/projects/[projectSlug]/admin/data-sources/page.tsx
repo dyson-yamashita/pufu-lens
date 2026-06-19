@@ -2,6 +2,7 @@ import Link from 'next/link';
 import {
   collectAndIngestDataSource,
   createDataSource,
+  retryFailedQueue,
   updateDataSource,
 } from '../../../../../src/admin-actions';
 import {
@@ -154,7 +155,13 @@ export default async function DataSourcesPage({
           <DataSourceTable
             activeSourceId={selectedSource?.id}
             activeType={activeSourceType}
+            collectAndIngestAction={collectAndIngestDataSource}
+            canCollectAndIngest={(source) =>
+              isAdminUiCollectionSupported(source.sourceType) &&
+              isAdminUiIngestSupported(source.sourceType)
+            }
             projectSlug={project.slug}
+            retryAction={retryFailedQueue}
             sources={visibleSources}
           />
         </div>

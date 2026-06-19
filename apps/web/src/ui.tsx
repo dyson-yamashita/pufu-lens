@@ -1,6 +1,6 @@
 import {
-  Activity,
   ArrowLeft,
+  Clock3,
   Contact,
   Database,
   FileSearch,
@@ -65,7 +65,6 @@ export async function AppShell({
     | 'actors'
     | 'data-sources'
     | 'graph'
-    | 'ingestion'
     | 'members'
     | 'overview'
     | 'parser-profiles'
@@ -167,15 +166,6 @@ export async function AppShell({
               >
                 <GitBranch size={18} />
                 Sources
-              </Link>
-              <Link
-                aria-current={active === 'ingestion' ? 'page' : undefined}
-                className={navClass(active === 'ingestion')}
-                href={`/projects/${projectSlug}/admin/ingestion`}
-                data-testid="global-nav-ingestion"
-              >
-                <Activity size={18} />
-                Ingestion
               </Link>
               <Link
                 aria-current={active === 'parser-profiles' ? 'page' : undefined}
@@ -311,17 +301,24 @@ async function canManageProjectNavigation(projectSlug: string, userId: string): 
 export function MetricStrip({ project }: { readonly project: ProjectSummary }) {
   return (
     <section className="metric-strip" aria-label="Project ingestion metrics">
-      <Metric label="Raw" value={project.rawCount} tone="neutral" />
-      <Metric label="Ingested" value={project.ingestedCount} tone="neutral" />
-      <Metric label="Queue" value={project.queueCount} tone="info" />
+      <Metric label="Raw" value={project.rawCount} description="収集済み原本" tone="neutral" />
+      <Metric
+        label="Ingested"
+        value={project.ingestedCount}
+        description="検索登録済み"
+        tone="neutral"
+      />
+      <Metric label="Queue" value={project.queueCount} description="処理待ち" tone="info" />
       <Metric
         label="Failed"
         value={project.failedCount}
+        description="失敗"
         tone={project.failedCount > 0 ? 'danger' : 'neutral'}
       />
       <Metric
         label="Held"
         value={project.heldCount}
+        description="保留"
         tone={project.heldCount > 0 ? 'warning' : 'neutral'}
       />
     </section>
@@ -406,12 +403,18 @@ export function SourceTypeTabs({
 export function DataSourceTable({
   activeSourceId,
   activeType,
+  collectAndIngestAction,
+  canCollectAndIngest,
   projectSlug,
+  retryAction,
   sources,
 }: {
   readonly activeSourceId?: string;
   readonly activeType?: SourceType;
+  readonly collectAndIngestAction?: (formData: FormData) => Promise<void>;
+  readonly canCollectAndIngest?: (source: DataSourceSummary) => boolean;
   readonly projectSlug: string;
+  readonly retryAction?: (formData: FormData) => Promise<void>;
   readonly sources: readonly DataSourceSummary[];
 }) {
   return (
@@ -425,45 +428,98 @@ export function DataSourceTable({
             <th>Queue</th>
             <th>Last checked</th>
             <th>Scope</th>
+            {collectAndIngestAction || retryAction ? <th>Actions</th> : null}
           </tr>
         </thead>
         <tbody>
-          {sources.map((source) => (
-            <tr
-              className={activeSourceId === source.id ? 'selected-row' : undefined}
-              key={source.id}
-              data-testid={`data-source-row-${source.id}`}
-            >
-              <td>
-                <Link
-                  className="source-name source-name-link"
-                  data-testid={`data-source-select-${source.id}`}
-                  href={dataSourceDetailHref(projectSlug, source.id, activeType)}
-                >
-                  <SourceIcon sourceType={source.sourceType} />
-                  <span>
-                    <strong>{source.name}</strong>
-                    <small>{sourceLabels[source.sourceType]}</small>
+          {sources.map((source) => {
+            const canRun = canCollectAndIngest?.(source) ?? false;
+            const hasRetryTarget = source.failedCount + source.heldCount > 0;
+            return (
+              <tr
+                className={activeSourceId === source.id ? 'selected-row' : undefined}
+                key={source.id}
+                data-testid={`data-source-row-${source.id}`}
+              >
+                <td>
+                  <Link
+                    className="source-name source-name-link"
+                    data-testid={`data-source-select-${source.id}`}
+                    href={dataSourceDetailHref(projectSlug, source.id, activeType)}
+                  >
+                    <SourceIcon sourceType={source.sourceType} />
+                    <span>
+                      <strong>{source.name}</strong>
+                      <small>{sourceLabels[source.sourceType]}</small>
+                    </span>
+                  </Link>
+                </td>
+                <td>
+                  <StatusBadge status={source.status} />
+                </td>
+                <td>
+                  <span className="mono">
+                    {source.ingestedCount} / raw {source.rawCount}
                   </span>
-                </Link>
-              </td>
-              <td>
-                <StatusBadge status={source.status} />
-              </td>
-              <td>
-                <span className="mono">
-                  {source.ingestedCount} / raw {source.rawCount}
-                </span>
-              </td>
-              <td>
-                <span className="mono">
-                  {source.queueCount} / failed {source.failedCount}
-                </span>
-              </td>
-              <td>{source.lastChecked}</td>
-              <td className="truncate">{source.scope}</td>
-            </tr>
-          ))}
+                </td>
+                <td>
+                  <span className="mono">
+                    {source.queueCount} / failed {source.failedCount}
+                  </span>
+                </td>
+                <td>{source.lastChecked}</td>
+                <td className="truncate">{source.scope}</td>
+                {collectAndIngestAction || retryAction ? (
+                  <td>
+                    <div className="table-actions data-source-row-actions">
+                      {collectAndIngestAction ? (
+                        <ActionForm action={collectAndIngestAction} className="inline-action-form">
+                          <input name="projectSlug" type="hidden" value={projectSlug} />
+                          <input name="dataSourceId" type="hidden" value={source.id} />
+                          <PendingSubmitButton
+                            className="icon-button"
+                            disabled={!canRun}
+                            pendingLabel="Running"
+                            testId={`data-source-collect-ingest-${source.id}`}
+                            title="Collect and ingest data source"
+                          >
+                            Collect & Ingest
+                          </PendingSubmitButton>
+                        </ActionForm>
+                      ) : null}
+                      <details className="ingest-history">
+                        <summary
+                          className="icon-button"
+                          data-testid={`data-source-history-${source.id}`}
+                          title="Show ingest history"
+                        >
+                          <Clock3 size={16} />
+                          History
+                        </summary>
+                        <dl className="detail-list stacked">
+                          {source.ingestHistory.map((entry) => (
+                            <div key={entry.label}>
+                              <dt>{entry.label}</dt>
+                              <dd>{entry.value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </details>
+                      {retryAction ? (
+                        <RetryButton
+                          action={retryAction}
+                          dataSourceId={source.id}
+                          disabled={!hasRetryTarget}
+                          projectSlug={projectSlug}
+                          testId={`data-source-retry-${source.id}`}
+                        />
+                      ) : null}
+                    </div>
+                  </td>
+                ) : null}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -486,11 +542,13 @@ function dataSourceDetailHref(
 export function RetryButton({
   action,
   dataSourceId,
+  disabled,
   projectSlug,
   testId,
 }: {
   readonly action?: (formData: FormData) => Promise<void>;
   readonly dataSourceId?: string;
+  readonly disabled?: boolean;
   readonly projectSlug?: string;
   readonly testId: string;
 }) {
@@ -499,7 +557,12 @@ export function RetryButton({
       <ActionForm action={action}>
         <input name="projectSlug" type="hidden" value={projectSlug} />
         {dataSourceId ? <input name="dataSourceId" type="hidden" value={dataSourceId} /> : null}
-        <PendingSubmitButton className="icon-button" testId={testId} title="Retry failed queue">
+        <PendingSubmitButton
+          className="icon-button"
+          disabled={disabled}
+          testId={testId}
+          title="Retry failed queue"
+        >
           <RefreshCw size={16} />
           Retry
         </PendingSubmitButton>
@@ -508,7 +571,13 @@ export function RetryButton({
   }
 
   return (
-    <button className="icon-button" data-testid={testId} title="Retry failed queue" type="button">
+    <button
+      className="icon-button"
+      data-testid={testId}
+      disabled={disabled}
+      title="Retry failed queue"
+      type="button"
+    >
       <RefreshCw size={16} />
       Retry
     </button>
@@ -702,10 +771,12 @@ function compactId(value: string): string {
 }
 
 function Metric({
+  description,
   label,
   value,
   tone,
 }: {
+  readonly description?: string;
   readonly label: string;
   readonly value: number;
   readonly tone: string;
@@ -714,6 +785,7 @@ function Metric({
     <div className={`metric metric-${tone}`}>
       <span>{label}</span>
       <strong>{value}</strong>
+      {description ? <p>{description}</p> : null}
     </div>
   );
 }
