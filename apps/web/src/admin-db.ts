@@ -112,52 +112,135 @@ type AdminConfig = Record<string, unknown> & {
   readonly urls?: unknown;
 };
 
+async function listAdminProjectRows(sql: postgres.Sql): Promise<readonly AdminDbProjectRow[]> {
+  const rawRows = (await sql`
+    SELECT
+      p.id::text AS id,
+      p.slug,
+      p.name,
+      p.description,
+      p.visibility,
+      (SELECT count(*)::int FROM public.project_members pm WHERE pm.project_id = p.id) AS member_count,
+      (SELECT count(*)::int FROM public.raw_documents rd WHERE rd.project_id = p.id) AS raw_count,
+      (
+        SELECT count(*)::int
+        FROM public.raw_documents rd
+        WHERE rd.project_id = p.id AND rd.ingest_status = 'indexed'
+      ) AS ingested_count,
+      (SELECT count(*)::int FROM public.ingestion_queue iq WHERE iq.project_id = p.id) AS queue_count,
+      (
+        SELECT count(*)::int
+        FROM public.raw_documents rd
+        WHERE rd.project_id = p.id AND rd.ingest_status = 'failed'
+      ) AS failed_count,
+      (
+        SELECT count(*)::int
+        FROM public.raw_documents rd
+        WHERE rd.project_id = p.id AND rd.ingest_status = 'held'
+      ) AS held_count,
+      (SELECT max(rd.indexed_at) FROM public.raw_documents rd WHERE rd.project_id = p.id) AS last_indexed
+    FROM public.projects p
+    ORDER BY p.slug
+  `) as readonly unknown[];
+  return rawRows.map(parseAdminDbProjectRow);
+}
+
+async function listMemberProjectRows(
+  sql: postgres.Sql,
+  userId: string,
+): Promise<readonly AdminDbProjectRow[]> {
+  const rawRows = (await sql`
+    SELECT
+      p.id::text AS id,
+      p.slug,
+      p.name,
+      p.description,
+      p.visibility,
+      (SELECT count(*)::int FROM public.project_members pm WHERE pm.project_id = p.id) AS member_count,
+      (SELECT count(*)::int FROM public.raw_documents rd WHERE rd.project_id = p.id) AS raw_count,
+      (
+        SELECT count(*)::int
+        FROM public.raw_documents rd
+        WHERE rd.project_id = p.id AND rd.ingest_status = 'indexed'
+      ) AS ingested_count,
+      (SELECT count(*)::int FROM public.ingestion_queue iq WHERE iq.project_id = p.id) AS queue_count,
+      (
+        SELECT count(*)::int
+        FROM public.raw_documents rd
+        WHERE rd.project_id = p.id AND rd.ingest_status = 'failed'
+      ) AS failed_count,
+      (
+        SELECT count(*)::int
+        FROM public.raw_documents rd
+        WHERE rd.project_id = p.id AND rd.ingest_status = 'held'
+      ) AS held_count,
+      (SELECT max(rd.indexed_at) FROM public.raw_documents rd WHERE rd.project_id = p.id) AS last_indexed
+    FROM public.projects p
+    JOIN public.project_members current_member
+      ON current_member.project_id = p.id
+     AND current_member.user_id = ${userId}
+    ORDER BY p.slug
+  `) as readonly unknown[];
+  return rawRows.map(parseAdminDbProjectRow);
+}
+
+async function lookupProjectRowBySlug(
+  sql: postgres.Sql,
+  slug: string,
+): Promise<AdminDbProjectRow | undefined> {
+  const rawRows = (await sql`
+    SELECT
+      p.id::text AS id,
+      p.slug,
+      p.name,
+      p.description,
+      p.visibility,
+      (SELECT count(*)::int FROM public.project_members pm WHERE pm.project_id = p.id) AS member_count,
+      (SELECT count(*)::int FROM public.raw_documents rd WHERE rd.project_id = p.id) AS raw_count,
+      (
+        SELECT count(*)::int
+        FROM public.raw_documents rd
+        WHERE rd.project_id = p.id AND rd.ingest_status = 'indexed'
+      ) AS ingested_count,
+      (SELECT count(*)::int FROM public.ingestion_queue iq WHERE iq.project_id = p.id) AS queue_count,
+      (
+        SELECT count(*)::int
+        FROM public.raw_documents rd
+        WHERE rd.project_id = p.id AND rd.ingest_status = 'failed'
+      ) AS failed_count,
+      (
+        SELECT count(*)::int
+        FROM public.raw_documents rd
+        WHERE rd.project_id = p.id AND rd.ingest_status = 'held'
+      ) AS held_count,
+      (SELECT max(rd.indexed_at) FROM public.raw_documents rd WHERE rd.project_id = p.id) AS last_indexed
+    FROM public.projects p
+    WHERE p.slug = ${slug}
+  `) as readonly unknown[];
+  return rawRows[0] ? parseAdminDbProjectRow(rawRows[0]) : undefined;
+}
+
+async function projectSummariesFromRows(
+  sql: postgres.Sql,
+  rows: readonly AdminDbProjectRow[],
+): Promise<readonly ProjectSummary[]> {
+  const projectIds = rows.map((row) => row.id);
+  const [dataSourcesByProject, parserProfilesByProject] = await Promise.all([
+    listDataSourcesByProject(sql, projectIds),
+    listParserProfilesByProject(sql, projectIds),
+  ]);
+  return rows.map((row) =>
+    projectFromRow(
+      row,
+      dataSourcesByProject.get(row.id) ?? [],
+      parserProfilesByProject.get(row.id) ?? [],
+    ),
+  );
+}
+
 export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
   return withOptionalSql<readonly ProjectSummary[]>(async (sql) => {
-    const rawRows = (await sql`
-      SELECT
-        p.id::text AS id,
-        p.slug,
-        p.name,
-        p.description,
-        p.visibility,
-        (SELECT count(*)::int FROM public.project_members pm WHERE pm.project_id = p.id) AS member_count,
-        (SELECT count(*)::int FROM public.raw_documents rd WHERE rd.project_id = p.id) AS raw_count,
-        (
-          SELECT count(*)::int
-          FROM public.raw_documents rd
-          WHERE rd.project_id = p.id AND rd.ingest_status = 'indexed'
-        ) AS ingested_count,
-        (SELECT count(*)::int FROM public.ingestion_queue iq WHERE iq.project_id = p.id) AS queue_count,
-        (
-          SELECT count(*)::int
-          FROM public.raw_documents rd
-          WHERE rd.project_id = p.id AND rd.ingest_status = 'failed'
-        ) AS failed_count,
-        (
-          SELECT count(*)::int
-          FROM public.raw_documents rd
-          WHERE rd.project_id = p.id AND rd.ingest_status = 'held'
-        ) AS held_count,
-        (SELECT max(rd.indexed_at) FROM public.raw_documents rd WHERE rd.project_id = p.id) AS last_indexed
-      FROM public.projects p
-      ORDER BY p.slug
-    `) as readonly unknown[];
-
-    const rows = rawRows.map(parseAdminDbProjectRow);
-    const projectIds = rows.map((row) => row.id);
-    const [dataSourcesByProject, parserProfilesByProject] = await Promise.all([
-      listDataSourcesByProject(sql, projectIds),
-      listParserProfilesByProject(sql, projectIds),
-    ]);
-    const projects = rows.map((row) =>
-      projectFromRow(
-        row,
-        dataSourcesByProject.get(row.id) ?? [],
-        parserProfilesByProject.get(row.id) ?? [],
-      ),
-    );
-    return projects;
+    return projectSummariesFromRows(sql, await listAdminProjectRows(sql));
   }, fallbackProjects);
 }
 
@@ -172,52 +255,7 @@ export async function listMemberProjects(userId: string): Promise<readonly Proje
       return listAdminProjects();
     }
 
-    const rawRows = (await sql`
-      SELECT
-        p.id::text AS id,
-        p.slug,
-        p.name,
-        p.description,
-        p.visibility,
-        (SELECT count(*)::int FROM public.project_members pm WHERE pm.project_id = p.id) AS member_count,
-        (SELECT count(*)::int FROM public.raw_documents rd WHERE rd.project_id = p.id) AS raw_count,
-        (
-          SELECT count(*)::int
-          FROM public.raw_documents rd
-          WHERE rd.project_id = p.id AND rd.ingest_status = 'indexed'
-        ) AS ingested_count,
-        (SELECT count(*)::int FROM public.ingestion_queue iq WHERE iq.project_id = p.id) AS queue_count,
-        (
-          SELECT count(*)::int
-          FROM public.raw_documents rd
-          WHERE rd.project_id = p.id AND rd.ingest_status = 'failed'
-        ) AS failed_count,
-        (
-          SELECT count(*)::int
-          FROM public.raw_documents rd
-          WHERE rd.project_id = p.id AND rd.ingest_status = 'held'
-        ) AS held_count,
-        (SELECT max(rd.indexed_at) FROM public.raw_documents rd WHERE rd.project_id = p.id) AS last_indexed
-      FROM public.projects p
-      JOIN public.project_members current_member
-        ON current_member.project_id = p.id
-       AND current_member.user_id = ${userId}
-      ORDER BY p.slug
-    `) as readonly unknown[];
-
-    const rows = rawRows.map(parseAdminDbProjectRow);
-    const projectIds = rows.map((row) => row.id);
-    const [dataSourcesByProject, parserProfilesByProject] = await Promise.all([
-      listDataSourcesByProject(sql, projectIds),
-      listParserProfilesByProject(sql, projectIds),
-    ]);
-    return rows.map((row) =>
-      projectFromRow(
-        row,
-        dataSourcesByProject.get(row.id) ?? [],
-        parserProfilesByProject.get(row.id) ?? [],
-      ),
-    );
+    return projectSummariesFromRows(sql, await listMemberProjectRows(sql, userId));
   }, []);
 }
 
@@ -301,6 +339,16 @@ export async function getVisiblePublicProject(
   );
 }
 
+async function listAppMemberRows(sql: postgres.Sql): Promise<readonly AdminDbAppMemberRow[]> {
+  const rawRows = (await sql`
+    SELECT id::text, email, name, role, created_at
+    FROM public.users
+    ORDER BY email
+  `) as readonly unknown[];
+  // Keep the arrow wrapper so Array.map does not pass the index as the parser context.
+  return rawRows.map((row) => parseAdminDbAppMemberRow(row));
+}
+
 export async function listAppMembersForUser(userId: string): Promise<GlobalMemberDirectory> {
   return withOptionalSql(
     async (sql) => {
@@ -308,14 +356,10 @@ export async function listAppMembersForUser(userId: string): Promise<GlobalMembe
       if (!accessRole) {
         throw new Error('Members access is required.');
       }
-      const rows = (await sql`
-      SELECT id::text, email, name, role, created_at
-      FROM public.users
-      ORDER BY email
-    `) as readonly unknown[];
+      const rows = await listAppMemberRows(sql);
       return {
         canManageMembers: accessRole === 'admin',
-        members: rows.map((row) => memberFromRow(parseAdminDbAppMemberRow(row))),
+        members: rows.map((row) => memberFromRow(row)),
       };
     },
     { canManageMembers: false, members: [] },
@@ -532,36 +576,7 @@ export async function getAdminProject(slug: string): Promise<ProjectSummary> {
   }
 
   try {
-    const rawRows = (await sql`
-      SELECT
-        p.id::text AS id,
-        p.slug,
-        p.name,
-        p.description,
-        p.visibility,
-        (SELECT count(*)::int FROM public.project_members pm WHERE pm.project_id = p.id) AS member_count,
-        (SELECT count(*)::int FROM public.raw_documents rd WHERE rd.project_id = p.id) AS raw_count,
-        (
-          SELECT count(*)::int
-          FROM public.raw_documents rd
-          WHERE rd.project_id = p.id AND rd.ingest_status = 'indexed'
-        ) AS ingested_count,
-        (SELECT count(*)::int FROM public.ingestion_queue iq WHERE iq.project_id = p.id) AS queue_count,
-        (
-          SELECT count(*)::int
-          FROM public.raw_documents rd
-          WHERE rd.project_id = p.id AND rd.ingest_status = 'failed'
-        ) AS failed_count,
-        (
-          SELECT count(*)::int
-          FROM public.raw_documents rd
-          WHERE rd.project_id = p.id AND rd.ingest_status = 'held'
-        ) AS held_count,
-        (SELECT max(rd.indexed_at) FROM public.raw_documents rd WHERE rd.project_id = p.id) AS last_indexed
-      FROM public.projects p
-      WHERE p.slug = ${slug}
-    `) as readonly unknown[];
-    const row = rawRows[0] ? parseAdminDbProjectRow(rawRows[0]) : undefined;
+    const row = await lookupProjectRowBySlug(sql, slug);
     if (!row) {
       throw new Error(`Unknown project slug: ${slug}`);
     }
@@ -583,46 +598,60 @@ export async function getAdminProject(slug: string): Promise<ProjectSummary> {
   }
 }
 
+async function listProjectActorRows(
+  sql: postgres.Sql,
+  projectSlug: string,
+): Promise<readonly AdminDbActorRow[]> {
+  const rawRows = (await sql`
+    SELECT
+      actors.id::text AS id,
+      actors.actor_type,
+      actors.display_name,
+      actors.primary_email,
+      actors.primary_login,
+      actors.metadata,
+      actors.graph_node_id,
+      actors.created_at,
+      actors.updated_at
+    FROM public.actors
+    JOIN public.projects ON projects.id = actors.project_id
+    WHERE projects.slug = ${projectSlug}
+    ORDER BY lower(actors.display_name), actors.created_at
+  `) as readonly unknown[];
+  return rawRows.map(parseAdminDbActorRow);
+}
+
+async function listProjectActorAliasRows(
+  sql: postgres.Sql,
+  projectSlug: string,
+): Promise<readonly AdminDbActorAliasRow[]> {
+  const rawRows = (await sql`
+    SELECT
+      actor_aliases.actor_id::text AS actor_id,
+      actor_aliases.alias_type,
+      actor_aliases.alias_value,
+      actor_aliases.confidence,
+      actor_aliases.source
+    FROM public.actor_aliases
+    JOIN public.actors ON actors.id = actor_aliases.actor_id
+    JOIN public.projects ON projects.id = actors.project_id
+    WHERE projects.slug = ${projectSlug}
+    ORDER BY actor_aliases.alias_type, actor_aliases.alias_value
+  `) as readonly unknown[];
+  return rawRows.map(parseAdminDbActorAliasRow);
+}
+
 export async function getProjectActorDirectory(
   projectSlug: string,
 ): Promise<ProjectActorDirectory> {
   return withOptionalSql(async (sql) => {
-    const rawActorRows = (await sql`
-      SELECT
-        actors.id::text AS id,
-        actors.actor_type,
-        actors.display_name,
-        actors.primary_email,
-        actors.primary_login,
-        actors.metadata,
-        actors.graph_node_id,
-        actors.created_at,
-        actors.updated_at
-      FROM public.actors
-      JOIN public.projects ON projects.id = actors.project_id
-      WHERE projects.slug = ${projectSlug}
-      ORDER BY lower(actors.display_name), actors.created_at
-    `) as readonly unknown[];
-    const actorRows = rawActorRows.map(parseAdminDbActorRow);
+    const actorRows = await listProjectActorRows(sql, projectSlug);
 
     if (actorRows.length === 0) {
       return { actors: [], mergeCandidates: [] };
     }
 
-    const rawAliasRows = (await sql`
-      SELECT
-        actor_aliases.actor_id::text AS actor_id,
-        actor_aliases.alias_type,
-        actor_aliases.alias_value,
-        actor_aliases.confidence,
-        actor_aliases.source
-      FROM public.actor_aliases
-      JOIN public.actors ON actors.id = actor_aliases.actor_id
-      JOIN public.projects ON projects.id = actors.project_id
-      WHERE projects.slug = ${projectSlug}
-      ORDER BY actor_aliases.alias_type, actor_aliases.alias_value
-    `) as readonly unknown[];
-    const aliasRows = rawAliasRows.map(parseAdminDbActorAliasRow);
+    const aliasRows = await listProjectActorAliasRows(sql, projectSlug);
     const aliasesByActor = groupAliasesByActor(aliasRows);
     const actors = actorRows.map((row) => actorFromRow(row, aliasesByActor.get(row.id) ?? []));
 
