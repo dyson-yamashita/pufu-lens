@@ -7,14 +7,19 @@ import type {
 const emptyComment = { color: 'blue' as const, text: '' };
 
 function generateUUID(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === 'function') {
+    return cryptoApi.randomUUID();
   }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
-    const random = (Math.random() * 16) | 0;
-    const value = char === 'x' ? random : (random & 0x3) | 0x8;
-    return value.toString(16);
-  });
+  if (typeof cryptoApi?.getRandomValues !== 'function') {
+    throw new Error('Secure random UUID generation is unavailable.');
+  }
+  const bytes = new Uint8Array(16);
+  cryptoApi.getRandomValues(bytes);
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 export type PufuScoreModel = {
@@ -174,9 +179,9 @@ function markdownSourceCandidates(section: PrivateReportSection): PufuSourceCand
   }
   const sources: PufuSourceCandidate[] = [];
   section.markdown.split('\n').forEach((line, index) => {
-    const match = line.match(/^\s*[-*]\s+(.+?):\s+(.+)$/);
-    const title = match?.[1];
-    const snippet = match?.[2];
+    const parsed = parseMarkdownSourceLine(line);
+    const title = parsed?.title;
+    const snippet = parsed?.snippet;
     if (!title || !snippet) {
       return;
     }
@@ -190,6 +195,27 @@ function markdownSourceCandidates(section: PrivateReportSection): PufuSourceCand
     });
   });
   return sources;
+}
+
+function parseMarkdownSourceLine(line: string): { snippet: string; title: string } | undefined {
+  const trimmedStart = line.trimStart();
+  const marker = trimmedStart[0];
+  if (marker !== '-' && marker !== '*') {
+    return undefined;
+  }
+  const rest = trimmedStart.slice(1);
+  const content = rest.trimStart();
+  if (rest.length === content.length) {
+    return undefined;
+  }
+  const separatorIndex = content.indexOf(': ');
+  if (separatorIndex <= 0 || separatorIndex >= content.length - 2) {
+    return undefined;
+  }
+  return {
+    snippet: content.slice(separatorIndex + 2),
+    title: content.slice(0, separatorIndex),
+  };
 }
 
 function dedupeSources(sources: PufuSourceCandidate[]): PufuSourceCandidate[] {
@@ -206,15 +232,27 @@ function dedupeSources(sources: PufuSourceCandidate[]): PufuSourceCandidate[] {
 }
 
 function isExhibitionSource(sources: readonly PufuSourceCandidate[]): boolean {
-  return /出展|展示|カンファレンス|オープンソースカンファレンス|OSC/i.test(sourceText(sources));
+  const text = sourceText(sources);
+  return (
+    text.includes('出展') ||
+    text.includes('展示') ||
+    text.includes('カンファレンス') ||
+    text.includes('オープンソースカンファレンス') ||
+    text.toLowerCase().includes('osc')
+  );
 }
 
 function exhibitionEventName(sources: readonly PufuSourceCandidate[]): string {
   const text = sourceText(sources);
-  if (/オープンソースカンファレンス2026＠大阪|OSC2026.*大阪|OSC.*大阪/i.test(text)) {
+  const lowerText = text.toLowerCase();
+  if (
+    text.includes('オープンソースカンファレンス2026＠大阪') ||
+    (lowerText.includes('osc2026') && text.includes('大阪')) ||
+    (lowerText.includes('osc') && text.includes('大阪'))
+  ) {
     return 'オープンソースカンファレンス2026＠大阪';
   }
-  if (/オープンソースカンファレンス|OSC/i.test(text)) {
+  if (text.includes('オープンソースカンファレンス') || lowerText.includes('osc')) {
     return 'オープンソースカンファレンス';
   }
   return '対外イベント';
@@ -225,7 +263,7 @@ function summarizeSourceState(sources: readonly PufuSourceCandidate[]): string {
     return '活動領域や周辺状況は、データソースから継続して読み解く必要がある。';
   }
   const text = sourceText(sources);
-  if (/出展|展示|カンファレンス|オープンソースカンファレンス|OSC/i.test(text)) {
+  if (isExhibitionSource(sources)) {
     return '現在の認識: 対外イベントでプ譜や関連プロダクトを説明し、外部接点から反応を得ている。';
   }
   if (/リリース|公開|ローンチ|発表/i.test(text)) {
@@ -318,8 +356,9 @@ function sourceTitleFromSnippet(snippet: string | null | undefined): string {
   if (!snippet) {
     return '';
   }
-  const normalized = snippet.replace(/\s+/g, ' ').trim();
-  const [title] = normalized.split(/[:：]/);
+  const normalized = normalizeSpaces(snippet);
+  const separator = firstTitleSeparatorIndex(normalized);
+  const title = separator < 0 ? normalized : normalized.slice(0, separator);
   return title && title.length < normalized.length ? truncateText(title, 120) : '';
 }
 
@@ -327,8 +366,37 @@ function truncateText(text: string | null | undefined, maxLength: number): strin
   if (!text) {
     return '';
   }
-  const normalized = text.replace(/\s+/g, ' ').trim();
+  const normalized = normalizeSpaces(text);
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3)}...` : normalized;
+}
+
+function firstTitleSeparatorIndex(value: string): number {
+  const colon = value.indexOf(':');
+  const japaneseColon = value.indexOf('：');
+  if (colon < 0) {
+    return japaneseColon;
+  }
+  if (japaneseColon < 0) {
+    return colon;
+  }
+  return Math.min(colon, japaneseColon);
+}
+
+function normalizeSpaces(value: string): string {
+  let output = '';
+  let pendingSpace = false;
+  for (const char of value.trim()) {
+    if (char.trim() === '') {
+      pendingSpace = true;
+      continue;
+    }
+    if (pendingSpace && output.length > 0) {
+      output += ' ';
+    }
+    output += char;
+    pendingSpace = false;
+  }
+  return output;
 }
 
 function objective(text: string) {

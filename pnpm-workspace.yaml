@@ -4,3 +4,13 @@ packages:
 allowBuilds:
   esbuild: true
   sharp: false
+overrides:
+  '@ai-sdk/provider-utils': 4.0.30
+  '@ai-sdk/provider-utils-v5': npm:@ai-sdk/provider-utils@4.0.30
+  '@ai-sdk/provider-utils-v6': npm:@ai-sdk/provider-utils@4.0.30
+  esbuild: 0.28.1
+  hono: 4.12.26
+  js-yaml: 4.2.0
+  markdown-it: 14.2.0
+  postcss: 8.5.15
+  uuid: 11.1.1

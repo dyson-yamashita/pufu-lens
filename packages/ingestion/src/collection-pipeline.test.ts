@@ -771,6 +771,31 @@ test('buildGmailRawCandidate decodes HTML single quote entities when plain text 
   assert.equal(raw.bodyText, "HTML mail's fallback");
 });
 
+test('buildGmailRawCandidate preserves content after self-closing script tags', async () => {
+  const rawCandidate = buildGmailRawCandidate({
+    dataSource: dataSource({ id: 'data-source-gmail', sourceType: 'gmail' }),
+    projectId: 'project-1',
+    projectSlug: 'sample-a',
+    thread: {
+      id: 'thread-html-self-closing',
+      messages: [
+        gmailMessage({
+          bodyMimeType: 'text/html',
+          bodyText: '<div>Before</div><script src="app.js" /><p>After</p>',
+          from: 'HTML Sender <html@example.test>',
+          id: 'msg-html-self-closing-001',
+          internalDate: '1777994400000',
+          sentAt: 'Tue, 05 May 2026 15:20:00 +0000',
+          subject: 'HTML self closing',
+        }),
+      ],
+    },
+  });
+
+  const raw = JSON.parse(rawCandidate.body);
+  assert.equal(raw.bodyText, 'Before After');
+});
+
 test('fetchGmailJson builds Gmail API URLs with URL semantics', async () => {
   const originalFetch = globalThis.fetch;
   const urls: string[] = [];

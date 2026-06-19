@@ -135,6 +135,32 @@ test('web parser prefers schema.org datePublished over fetchedAt', async () => {
   }
 });
 
+test('web parser handles valueless attributes and self-closing script tags', async () => {
+  const rawPath = await writeTempRawFixture(
+    'web-valueless-attributes.html',
+    `<!doctype html>
+<html>
+  <head>
+    <title>Valueless Attribute Fixture</title>
+    <link disabled rel="canonical" href="https://note.example.test/valueless">
+    <script src="bundle.js" />
+  </head>
+  <body><article>Visible after self-closing script.</article></body>
+</html>`,
+  );
+
+  try {
+    const parsed = await parseRawFixture(
+      buildFixtureCase('web-valueless-attributes', 'web', rawPath),
+    );
+
+    assert.equal(parsed.canonicalUri, 'https://note.example.test/valueless');
+    assert.match(parsed.bodyText, /Visible after self-closing script/);
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
 test('web parser keeps escaped angle bracket text while stripping tags', async () => {
   const rawPath = await writeTempRawFixture(
     'web-escaped-angle-brackets.html',

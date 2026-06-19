@@ -272,6 +272,21 @@ assert.ok(
     '%プロジェクトエディター%',
   ),
 );
+assert.ok(
+  graphQuerySearchPatterns('プロジェクトエディターに関する結果をください').includes(
+    '%プロジェクトエディター%',
+  ),
+);
+assert.ok(
+  graphQuerySearchPatterns('プロジェクトエディターを教えてください').includes(
+    '%プロジェクトエディター%',
+  ),
+);
+assert.ok(
+  graphQuerySearchPatterns('プロジェクトエディター情報について教えて').includes(
+    '%プロジェクトエディター%',
+  ),
+);
 
 const failingGeminiProvider = createGeminiChatProvider({
   apiKey: 'test-key',

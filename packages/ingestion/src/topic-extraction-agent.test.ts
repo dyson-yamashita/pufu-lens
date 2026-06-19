@@ -35,7 +35,7 @@ test('Gemini TopicExtractionAgent sends web article context and parses JSON topi
   const topics = await agent.extractTopics({
     bodyText: '本文',
     canonicalUri: 'https://note.example.test/n/abc',
-    html: '<a href="/hashtag/AI">#AI</a>',
+    html: '<a data-active href="/hashtag/AI">#AI</a>',
     title: '記事',
   });
 

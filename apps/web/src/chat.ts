@@ -132,20 +132,88 @@ export interface PublicChatProvider {
 }
 
 export function graphQuerySearchPatterns(query: string): string[] {
-  const normalized = query.replace(/\s+/g, ' ').trim();
-  const withoutRequestSuffix = normalized
-    .replace(/(について|に関する|を|の)?(結果|情報)?(を)?(ください|教えて|知りたいです?)。?$/u, '')
-    .trim();
+  const normalized = normalizeSpaces(query);
+  const withoutRequestSuffix = stripGraphQueryRequestSuffix(normalized);
   const candidates = [
     normalized,
-    normalized.replace(/の?グラフクエリ.*$/u, '').replace(/graph query.*$/iu, ''),
-    normalized.replace(/(について|に関する).*$/u, ''),
-    withoutRequestSuffix.replace(/の?グラフクエリ.*$/u, '').replace(/graph query.*$/iu, ''),
-    withoutRequestSuffix.replace(/(について|に関する).*$/u, ''),
+    stripAfterGraphQuery(stripAfterGraphQuery(normalized, 'グラフクエリ'), 'graph query'),
+    stripAfterAny(normalized, ['について', 'に関する']),
+    stripAfterGraphQuery(stripAfterGraphQuery(withoutRequestSuffix, 'グラフクエリ'), 'graph query'),
+    stripAfterAny(withoutRequestSuffix, ['について', 'に関する']),
   ]
-    .map((candidate) => candidate.replace(/^(現在|最新)?の?/u, '').trim())
+    .map((candidate) => stripGraphQueryPrefix(candidate).trim())
     .filter((candidate) => candidate.length > 0);
   return [...new Set(candidates)].slice(0, 5).map((candidate) => `%${candidate}%`);
+}
+
+function normalizeSpaces(value: string): string {
+  let output = '';
+  let pendingSpace = false;
+  for (const char of value.trim()) {
+    if (char.trim() === '') {
+      pendingSpace = true;
+      continue;
+    }
+    if (pendingSpace && output.length > 0) {
+      output += ' ';
+    }
+    output += char;
+    pendingSpace = false;
+  }
+  return output;
+}
+
+function stripGraphQueryRequestSuffix(value: string): string {
+  let output = value.endsWith('。') ? value.slice(0, -1) : value;
+  const suffixGroups = [
+    ['知りたいです', '知りたい', 'ください', '教えて'],
+    ['を'],
+    ['結果', '情報'],
+    ['について', 'に関する', 'を', 'の'],
+  ];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const suffixes of suffixGroups) {
+      for (const suffix of suffixes) {
+        if (output.endsWith(suffix)) {
+          output = output.slice(0, -suffix.length).trim();
+          changed = true;
+          break;
+        }
+      }
+      if (changed) {
+        break;
+      }
+    }
+  }
+  return output.trim();
+}
+
+function stripAfterAny(value: string, markers: readonly string[]): string {
+  const indexes = markers.map((marker) => value.indexOf(marker)).filter((index) => index >= 0);
+  return indexes.length === 0 ? value : value.slice(0, Math.min(...indexes)).trim();
+}
+
+function stripAfterGraphQuery(value: string, marker: string): string {
+  const lowerValue = value.toLowerCase();
+  const index = lowerValue.indexOf(marker.toLowerCase());
+  if (index < 0) {
+    return value;
+  }
+  const endIndex = marker === 'グラフクエリ' && value[index - 1] === 'の' ? index - 1 : index;
+  return value.slice(0, endIndex).trim();
+}
+
+function stripGraphQueryPrefix(value: string): string {
+  let output = value;
+  for (const prefix of ['現在の', '最新の', '現在', '最新', 'の']) {
+    if (output.startsWith(prefix)) {
+      output = output.slice(prefix.length);
+      break;
+    }
+  }
+  return output;
 }
 
 export interface RunPublicChatOptions {

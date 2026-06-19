@@ -1269,22 +1269,232 @@ function redactUnknown(value: unknown): unknown {
 }
 
 function redactText(value: string): string {
-  return value
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted-email]')
-    .replace(
-      /https?:\/\/(?:localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[0-1])\.\d+\.\d+|192\.168\.\d+\.\d+|[^/\s]*(?:internal|corp|intranet|local)[^/\s]*)[^\s)]*/gi,
-      '[redacted-url]',
-    )
-    .replace(/\b(?:file|gs):\/\/[^\s)]*/gi, '[redacted-uri]');
+  const emailRedacted = replaceEmails(value, '[redacted-email]');
+  return replacePrivateTokens(emailRedacted);
 }
 
 function containsPrivateText(value: string): boolean {
+  return hasEmail(value) || privateTokenRanges(value).length > 0;
+}
+
+function hasEmail(value: string): boolean {
+  return emailRanges(value).length > 0;
+}
+
+function replaceEmails(value: string, replacement: string): string {
+  const ranges = emailRanges(value);
+  if (ranges.length === 0) {
+    return value;
+  }
+
+  let output = '';
+  let cursor = 0;
+  for (const range of ranges) {
+    output += value.slice(cursor, range.start);
+    output += replacement;
+    cursor = range.end;
+  }
+  return output + value.slice(cursor);
+}
+
+function emailRanges(value: string): { end: number; start: number }[] {
+  const ranges: { end: number; start: number }[] = [];
+  let index = 0;
+  while (index < value.length) {
+    const atIndex = value.indexOf('@', index);
+    if (atIndex === -1) {
+      break;
+    }
+
+    const start = emailLocalStart(value, atIndex);
+    const end = emailDomainEnd(value, atIndex);
+    if (start < atIndex && end > atIndex + 1 && hasEmailTopLevelDomain(value, atIndex + 1, end)) {
+      ranges.push({ end, start });
+      index = end;
+    } else {
+      index = atIndex + 1;
+    }
+  }
+  return ranges;
+}
+
+function emailLocalStart(value: string, atIndex: number): number {
+  let cursor = atIndex - 1;
+  while (cursor >= 0 && isEmailLocalChar(value.charCodeAt(cursor))) {
+    cursor -= 1;
+  }
+  return cursor + 1;
+}
+
+function emailDomainEnd(value: string, atIndex: number): number {
+  let cursor = atIndex + 1;
+  while (cursor < value.length && isEmailDomainChar(value.charCodeAt(cursor))) {
+    cursor += 1;
+  }
+  return cursor;
+}
+
+function hasEmailTopLevelDomain(value: string, domainStart: number, domainEnd: number): boolean {
+  const lastDot = value.lastIndexOf('.', domainEnd - 1);
+  if (lastDot < domainStart || domainEnd - lastDot - 1 < 2) {
+    return false;
+  }
+
+  for (let index = lastDot + 1; index < domainEnd; index += 1) {
+    if (!isAsciiAlpha(value.charCodeAt(index))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isEmailLocalChar(code: number): boolean {
   return (
-    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(value) ||
-    /\b(?:file|gs):\/\//i.test(value) ||
-    /https?:\/\/(?:localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[0-1])\.\d+\.\d+|192\.168\.\d+\.\d+|[^/\s]*(?:internal|corp|intranet|local))/i.test(
-      value,
-    )
+    isAsciiAlphaNumeric(code) ||
+    code === 37 ||
+    code === 43 ||
+    code === 45 ||
+    code === 46 ||
+    code === 95
+  );
+}
+
+function isEmailDomainChar(code: number): boolean {
+  return isAsciiAlphaNumeric(code) || code === 45 || code === 46;
+}
+
+function isAsciiAlphaNumeric(code: number): boolean {
+  return isAsciiAlpha(code) || (code >= 48 && code <= 57);
+}
+
+function isAsciiAlpha(code: number): boolean {
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+}
+
+function replacePrivateTokens(value: string): string {
+  const ranges = privateTokenRanges(value);
+  if (ranges.length === 0) {
+    return value;
+  }
+  let output = '';
+  let cursor = 0;
+  for (const range of ranges) {
+    output += value.slice(cursor, range.start);
+    output += range.replacement;
+    cursor = range.end;
+  }
+  return output + value.slice(cursor);
+}
+
+function privateTokenRanges(value: string): { end: number; replacement: string; start: number }[] {
+  const ranges: { end: number; replacement: string; start: number }[] = [];
+  let index = 0;
+  while (index < value.length) {
+    const uriStart = nextUriStart(value, index);
+    if (!uriStart) {
+      break;
+    }
+    const end = tokenEnd(value, uriStart.index);
+    const token = value.slice(uriStart.index, end);
+    if (uriStart.scheme === 'file' || uriStart.scheme === 'gs') {
+      ranges.push({ end, replacement: '[redacted-uri]', start: uriStart.index });
+    } else if (isPrivateHttpUrl(token)) {
+      ranges.push({ end, replacement: '[redacted-url]', start: uriStart.index });
+    }
+    index = Math.max(end, uriStart.index + uriStart.scheme.length + 3);
+  }
+  return ranges;
+}
+
+function nextUriStart(
+  value: string,
+  fromIndex: number,
+): { index: number; scheme: string } | undefined {
+  const schemes = ['https', 'http', 'file', 'gs'];
+  let found: { index: number; scheme: string } | undefined;
+  for (const scheme of schemes) {
+    const index = value.toLowerCase().indexOf(`${scheme}://`, fromIndex);
+    if (index >= 0 && (!found || index < found.index)) {
+      found = { index, scheme };
+    }
+  }
+  return found;
+}
+
+function tokenEnd(value: string, start: number): number {
+  let index = start;
+  while (index < value.length && !isUriTerminator(value.charAt(index))) {
+    index += 1;
+  }
+  return index;
+}
+
+function isUriTerminator(char: string): boolean {
+  return char.trim() === '' || char === ')' || char === '"' || char === "'" || char === '<';
+}
+
+function isPrivateHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+    return (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      isPrivate10Host(hostname) ||
+      isPrivate172Host(hostname) ||
+      isPrivate192Host(hostname) ||
+      hostname.includes('internal') ||
+      hostname.includes('corp') ||
+      hostname.includes('intranet') ||
+      hostname.split('.').includes('local')
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isPrivate10Host(hostname: string): boolean {
+  if (!hostname.startsWith('10.')) {
+    return false;
+  }
+  return isIpv4Host(hostname);
+}
+
+function isPrivate172Host(hostname: string): boolean {
+  if (!hostname.startsWith('172.')) {
+    return false;
+  }
+  if (!isIpv4Host(hostname)) {
+    return false;
+  }
+  const secondOctet = Number(hostname.split('.')[1]);
+  return Number.isInteger(secondOctet) && secondOctet >= 16 && secondOctet <= 31;
+}
+
+function isPrivate192Host(hostname: string): boolean {
+  if (!hostname.startsWith('192.168.')) {
+    return false;
+  }
+  return isIpv4Host(hostname);
+}
+
+function isIpv4Host(hostname: string): boolean {
+  const parts = hostname.split('.');
+  return (
+    parts.length === 4 &&
+    parts.every((part) => {
+      if (part === '' || part.length > 3) {
+        return false;
+      }
+      for (let index = 0; index < part.length; index += 1) {
+        const code = part.charCodeAt(index);
+        if (code < 48 || code > 57) {
+          return false;
+        }
+      }
+      const value = Number(part);
+      return Number.isInteger(value) && value >= 0 && value <= 255;
+    })
   );
 }
 

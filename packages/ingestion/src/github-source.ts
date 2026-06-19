@@ -632,12 +632,48 @@ function requiredString(value: unknown, field: string): string {
 
 function safeStorageSegment(value: string): string {
   const hash = sha256Hex(value).slice(0, 12);
-  const clean = value
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 107);
+  const clean = normalizeStorageSegment(value, 107);
   return clean ? `${clean}-${hash}` : hash;
+}
+
+function normalizeStorageSegment(value: string, maxLength: number): string {
+  let output = '';
+  let lastWasDash = false;
+  for (const char of value.toLowerCase()) {
+    if (isSafeStorageChar(char)) {
+      output += char;
+      lastWasDash = false;
+    } else if (!lastWasDash) {
+      output += '-';
+      lastWasDash = true;
+    }
+    if (output.length >= maxLength) {
+      break;
+    }
+  }
+  return trimDashes(output);
+}
+
+function isSafeStorageChar(char: string): boolean {
+  return (
+    (char >= 'a' && char <= 'z') ||
+    (char >= '0' && char <= '9') ||
+    char === '.' ||
+    char === '_' ||
+    char === '-'
+  );
+}
+
+function trimDashes(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value[start] === '-') {
+    start += 1;
+  }
+  while (end > start && value[end - 1] === '-') {
+    end -= 1;
+  }
+  return value.slice(start, end);
 }
 
 function redactGitHubUri(value: string): string {
