@@ -2,7 +2,7 @@
 
 ## システムアーキテクチャ
 
-> 現状（2026-06-11）は、ローカル `docker compose` の PostgreSQL / LocalFsObjectStorage と Node scripts（例: `scripts/ingest-workflow.ts`, `scripts/workflow-job.ts`）で主要処理を実行している。Cloud Run Job、GCS、Secret Manager、VPC 構成は目標アーキテクチャであり、実装済みの入口は CLI / Next.js API Route / server action / Mastra runtime に分かれている。
+> 現状（2026-06-19）は、ローカル `docker compose` の PostgreSQL / LocalFsObjectStorage と Node scripts（例: `scripts/ingest-workflow.ts`, `scripts/workflow-job.ts`）で主要処理を検証している。GCS object storage は実装済みだが、Cloud Run Job、Secret Manager、VPC 構成の end-to-end 実接続は staging GCP identifier / IAM 設定後に検証する。
 
 ### 1. 全体構成
 

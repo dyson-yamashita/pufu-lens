@@ -10,7 +10,8 @@ import type {
   UpsertActorAliasInput,
 } from '../packages/ingestion/dist/index.js';
 import { resolveActors } from '../packages/ingestion/dist/index.js';
-import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
+import { createObjectStorageFromEnv } from '../packages/storage/dist/factory.js';
+import type { ObjectStorage } from '../packages/storage/dist/object-storage.js';
 import { requiredEnv } from './lib/cli.ts';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
@@ -19,7 +20,7 @@ async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
-  const storage = createLocalObjectStorageFromEnv();
+  const storage = createObjectStorageFromEnv(process.env);
   const repository = new PostgresActorResolutionRepository(
     sql,
     storage,
@@ -43,11 +44,11 @@ async function main(): Promise<void> {
 class PostgresActorResolutionRepository implements ActorResolutionRepository {
   private dataSourceId: string | undefined;
   private sql: postgres.Sql;
-  private storage: LocalFsObjectStorage;
+  private storage: ObjectStorage;
   private sourceType: SourceType | undefined;
   constructor(
     sql: postgres.Sql,
-    storage: LocalFsObjectStorage,
+    storage: ObjectStorage,
     sourceType: SourceType | undefined,
     dataSourceId: string | undefined,
   ) {
@@ -218,16 +219,6 @@ class PostgresActorResolutionRepository implements ActorResolutionRepository {
     }
     return alias;
   }
-}
-
-function createLocalObjectStorageFromEnv(
-  env: NodeJS.ProcessEnv = process.env,
-): LocalFsObjectStorage {
-  const root = env.STORAGE_ROOT ?? env.LOCAL_STORAGE_ROOT;
-  if (!root) {
-    throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
-  }
-  return new LocalFsObjectStorage(root);
 }
 
 function parseArgs(argv: string[]): {

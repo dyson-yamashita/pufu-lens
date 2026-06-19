@@ -7,5 +7,8 @@
     "build": "tsc -p tsconfig.json",
     "test": "tsc -p tsconfig.json && node --test \"dist/**/*.test.js\"",
     "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@google-cloud/storage": "^7.21.0"
   }
 }

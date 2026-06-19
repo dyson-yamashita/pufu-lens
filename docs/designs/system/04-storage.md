@@ -2,7 +2,7 @@
 
 ## ストレージ抽象化
 
-> 現状（2026-06-11）は `LocalFsObjectStorage` が実装済みで、`STORAGE_DRIVER=gcs` は factory で未実装エラーになる。GCS は本番目標の設計として扱い、GCS を使う実装や運用手順を追加した場合はこの章と deployment 章を同時に更新する。
+> 現状（2026-06-19）は `LocalFsObjectStorage` と `GcsObjectStorage` が実装済み。GCP 上で `STORAGE_DRIVER=gcs` を使う場合は、`STORAGE_BUCKET` と runtime service account の GCS IAM を必ず設定する。
 
 ### 1. 目的
 
@@ -32,11 +32,11 @@ export interface PutOptions {
 
 ### 2. 実装
 
-| 環境                           | 実装                   | URI スキーム      | 設定                                               |
-| ------------------------------ | ---------------------- | ----------------- | -------------------------------------------------- |
-| ローカル開発 / オンプレ Docker | `LocalFsObjectStorage` | `file://`         | `STORAGE_ROOT=/data` を Docker volume にマウント   |
-| GCP デプロイ                   | `GcsObjectStorage`     | `gs://`           | 目標。現状は未実装で `STORAGE_DRIVER=gcs` はエラー |
-| 将来: S3 / Azure               | `S3ObjectStorage` 等   | `s3://` / `az://` | 各 SDK で実装                                      |
+| 環境                           | 実装                   | URI スキーム      | 設定                                                                              |
+| ------------------------------ | ---------------------- | ----------------- | --------------------------------------------------------------------------------- |
+| ローカル開発 / オンプレ Docker | `LocalFsObjectStorage` | `file://`         | `STORAGE_ROOT=/data` を Docker volume にマウント                                  |
+| GCP デプロイ                   | `GcsObjectStorage`     | `gs://`           | `STORAGE_BUCKET` / `GCS_BUCKET` と Workload Identity / service account IAM が必要 |
+| 将来: S3 / Azure               | `S3ObjectStorage` 等   | `s3://` / `az://` | 各 SDK で実装                                                                     |
 
 `StorageFactory.fromEnv()` が `STORAGE_DRIVER`（`local` / `gcs` / …）と `STORAGE_ROOT` / `STORAGE_BUCKET` を読んで適切な実装を返す。Ingestion・Report・Chat いずれも同じ抽象を使う。
 
