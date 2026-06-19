@@ -29,6 +29,7 @@ import {
 import { LocalFsObjectStorage } from '../../../packages/storage/src/local-fs.ts';
 import {
   type AdminActionDataSourceRow,
+  type AdminActionIdRow,
   type AdminActionParserVersionRow,
   parseAdminActionDataSourceIngestRow,
   parseAdminActionDataSourceRecordRow,
@@ -75,6 +76,46 @@ import {
 
 type SqlExecutor = postgres.Sql | postgres.TransactionSql;
 
+async function projectSlugExists(sql: SqlExecutor, slug: string): Promise<boolean> {
+  const rows = (await sql`
+    SELECT 1 FROM public.projects WHERE slug = ${slug}
+  `) as readonly unknown[];
+  return rows.length > 0;
+}
+
+async function insertCreatedProjectRow(
+  sql: SqlExecutor,
+  {
+    description,
+    graphName,
+    name,
+    slug,
+    storagePrefix,
+    visibility,
+  }: {
+    readonly description: string | null;
+    readonly graphName: string;
+    readonly name: string;
+    readonly slug: string;
+    readonly storagePrefix: string;
+    readonly visibility: ProjectVisibility;
+  },
+): Promise<AdminActionIdRow | undefined> {
+  const rows = (await sql`
+    INSERT INTO public.projects (slug, name, description, graph_name, storage_prefix, visibility)
+    VALUES (
+      ${slug},
+      ${name},
+      ${description},
+      ${graphName},
+      ${storagePrefix},
+      ${visibility}
+    )
+    RETURNING id::text
+  `) as readonly unknown[];
+  return rows[0] ? parseAdminActionIdRow(rows[0], 'project creation row') : undefined;
+}
+
 export async function createProject(formData: FormData): Promise<void> {
   const name = requireFormValue(formData, 'name').trim();
   if (!name) {
@@ -93,28 +134,18 @@ export async function createProject(formData: FormData): Promise<void> {
       await tx`LOAD 'age'`;
       await tx`SET search_path = ag_catalog, "$user", public`;
 
-      const existing = (await tx`
-        SELECT slug FROM public.projects WHERE slug = ${slug}
-      `) as readonly unknown[];
-      if (existing.length > 0) {
+      if (await projectSlugExists(tx, slug)) {
         throw new Error(`Project slug already exists: ${slug}`);
       }
 
-      const projects = (await tx`
-        INSERT INTO public.projects (slug, name, description, graph_name, storage_prefix, visibility)
-        VALUES (
-          ${slug},
-          ${name},
-          ${description},
-          ${identifiers.graphName},
-          ${identifiers.storagePrefix},
-          ${visibility}
-        )
-        RETURNING id::text
-      `) as readonly unknown[];
-      const project = projects[0]
-        ? parseAdminActionIdRow(projects[0], 'project creation row')
-        : undefined;
+      const project = await insertCreatedProjectRow(tx, {
+        description,
+        graphName: identifiers.graphName,
+        name,
+        slug,
+        storagePrefix: identifiers.storagePrefix,
+        visibility,
+      });
       if (!project) {
         throw new Error('Project creation failed.');
       }
