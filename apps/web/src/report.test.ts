@@ -12,6 +12,8 @@ import {
   isSafePublicReportLocator,
   listPrivateReports,
   PublicReportNotFoundError,
+  parseReportDocumentRow,
+  parseReportMetadataRow,
   parseReportProjectLookupRow,
   publishPublicReport,
   ReportNotFoundError,
@@ -545,6 +547,61 @@ assert.throws(
 assert.throws(
   () => parseReportProjectLookupRow({ id: 'proj-1', visibility: 'public' }),
   /Invalid project lookup field: slug/,
+);
+
+const validReportDocumentRow = {
+  canonical_uri: 'https://example.com/issues/42',
+  doc_type: 'issue',
+  document_id: 'doc-issue',
+  occurred_at: '2026-06-03T00:00:00.000Z',
+  summary: 'Login failure risk',
+  title: 'Issue #42 Login failure',
+};
+
+assert.deepEqual(parseReportDocumentRow(validReportDocumentRow), validReportDocumentRow);
+assert.deepEqual(parseReportDocumentRow({ ...validReportDocumentRow, occurred_at: null }), {
+  ...validReportDocumentRow,
+  occurred_at: null,
+});
+assert.throws(() => parseReportDocumentRow(null), /Invalid report document row/);
+assert.throws(
+  () => parseReportDocumentRow({ ...validReportDocumentRow, document_id: 123 }),
+  /Invalid report document field: document_id/,
+);
+assert.throws(
+  () => parseReportDocumentRow({ ...validReportDocumentRow, doc_type: null }),
+  /Invalid report document field: doc_type/,
+);
+assert.throws(
+  () => parseReportDocumentRow({ ...validReportDocumentRow, occurred_at: 123 }),
+  /Invalid report document field: occurred_at/,
+);
+
+const validReportMetadataRow = {
+  created_at: '2026-06-04T00:00:00.000Z',
+  id: 'report-a',
+  is_public: false,
+  period_end: '2026-06-07',
+  period_start: '2026-06-01',
+  schema_version: 'v1',
+  storage_uri: 'sample-a/reports/private/report-a.json',
+  summary: 'summary',
+  title: 'Weekly report',
+};
+
+assert.deepEqual(parseReportMetadataRow(validReportMetadataRow), validReportMetadataRow);
+assert.throws(() => parseReportMetadataRow(null), /Invalid report metadata row/);
+assert.throws(
+  () => parseReportMetadataRow({ ...validReportMetadataRow, is_public: 'false' }),
+  /Invalid report metadata field: is_public/,
+);
+assert.throws(
+  () => parseReportMetadataRow({ ...validReportMetadataRow, created_at: {} }),
+  /Invalid report metadata field: created_at/,
+);
+assert.throws(
+  () => parseReportMetadataRow({ ...validReportMetadataRow, storage_uri: 123 }),
+  /Invalid report metadata field: storage_uri/,
 );
 
 const malformedGeminiProvider = createGeminiReportProvider({

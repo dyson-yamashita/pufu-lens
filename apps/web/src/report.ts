@@ -218,6 +218,94 @@ export function parseReportProjectLookupRow(value: unknown): ProjectLookupResult
   };
 }
 
+export function parseReportDocumentRow(value: unknown): ReportDocumentRow {
+  if (!isRecord(value)) {
+    throw new Error('Invalid report document row.');
+  }
+  const { canonical_uri, doc_type, document_id, occurred_at, summary, title } = value;
+  if (typeof document_id !== 'string') {
+    throw new Error('Invalid report document field: document_id');
+  }
+  if (typeof doc_type !== 'string') {
+    throw new Error('Invalid report document field: doc_type');
+  }
+  if (typeof title !== 'string') {
+    throw new Error('Invalid report document field: title');
+  }
+  if (typeof summary !== 'string') {
+    throw new Error('Invalid report document field: summary');
+  }
+  if (typeof canonical_uri !== 'string') {
+    throw new Error('Invalid report document field: canonical_uri');
+  }
+  if (!isNullableDateLike(occurred_at)) {
+    throw new Error('Invalid report document field: occurred_at');
+  }
+  return {
+    canonical_uri,
+    doc_type,
+    document_id,
+    occurred_at,
+    summary,
+    title,
+  };
+}
+
+export function parseReportMetadataRow(value: unknown): ReportMetadataRow {
+  if (!isRecord(value)) {
+    throw new Error('Invalid report metadata row.');
+  }
+  const {
+    created_at,
+    id,
+    is_public,
+    period_end,
+    period_start,
+    schema_version,
+    storage_uri,
+    summary,
+    title,
+  } = value;
+  if (typeof id !== 'string') {
+    throw new Error('Invalid report metadata field: id');
+  }
+  if (typeof title !== 'string') {
+    throw new Error('Invalid report metadata field: title');
+  }
+  if (typeof summary !== 'string') {
+    throw new Error('Invalid report metadata field: summary');
+  }
+  if (typeof storage_uri !== 'string') {
+    throw new Error('Invalid report metadata field: storage_uri');
+  }
+  if (typeof schema_version !== 'string') {
+    throw new Error('Invalid report metadata field: schema_version');
+  }
+  if (typeof period_start !== 'string') {
+    throw new Error('Invalid report metadata field: period_start');
+  }
+  if (typeof period_end !== 'string') {
+    throw new Error('Invalid report metadata field: period_end');
+  }
+  if (typeof is_public !== 'boolean') {
+    throw new Error('Invalid report metadata field: is_public');
+  }
+  if (!isNullableDateLike(created_at)) {
+    throw new Error('Invalid report metadata field: created_at');
+  }
+  return {
+    created_at,
+    id,
+    is_public,
+    period_end,
+    period_start,
+    schema_version,
+    storage_uri,
+    summary,
+    title,
+  };
+}
+
 export interface PreparedReportChunk {
   readonly chunkIndex: number;
   readonly content: string;
@@ -856,8 +944,8 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
           )
         ORDER BY d.occurred_at DESC NULLS LAST, d.updated_at DESC
         LIMIT ${limit}
-      `) as ReportDocumentRow[];
-      return rows.map(documentFromRow);
+      `) as readonly unknown[];
+      return rows.map((row) => documentFromRow(parseReportDocumentRow(row)));
     },
     async insertReport({ chunks, generatedBy, projectId, report, storageUri }) {
       await sql.begin(async (transaction) => {
@@ -922,8 +1010,8 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
         FROM public.reports
         WHERE project_id = ${projectId}
         ORDER BY created_at DESC
-      `) as ReportMetadataRow[];
-      return rows.map(reportFromRow);
+      `) as readonly unknown[];
+      return rows.map((row) => reportFromRow(parseReportMetadataRow(row)));
     },
     async readReportMetadata({ projectId, reportId }) {
       const rows = (await sql`
@@ -940,8 +1028,8 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
         FROM public.reports
         WHERE project_id = ${projectId}
           AND id = ${reportId}
-      `) as ReportMetadataRow[];
-      return rows[0] ? reportFromRow(rows[0]) : undefined;
+      `) as readonly unknown[];
+      return rows[0] ? reportFromRow(parseReportMetadataRow(rows[0])) : undefined;
     },
     async setReportPublicState({ isPublic, projectId, reportId }) {
       await sql`
@@ -1638,6 +1726,10 @@ function truncate(value: string, maxLength: number): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function isNullableDateLike(value: unknown): value is Date | string | null {
+  return value === null || value instanceof Date || typeof value === 'string';
 }
 
 interface ReportDocumentRow {
