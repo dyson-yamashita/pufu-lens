@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
-import { parseAppUserRoleRow, parseGlobalAdminIdRow, parseProjectMemberAccess } from './authz.ts';
+import {
+  parseAppUserRoleRow,
+  parseGlobalAdminIdRow,
+  parseProjectMemberAccess,
+  projectAccessSatisfiesRole,
+} from './authz.ts';
 
 const validAccessRow = {
   appRole: 'member',
@@ -13,6 +18,8 @@ const validAccessRow = {
 };
 
 assert.deepEqual(parseProjectMemberAccess(validAccessRow), validAccessRow);
+assert.equal(projectAccessSatisfiesRole(parseProjectMemberAccess(validAccessRow), 'member'), true);
+assert.equal(projectAccessSatisfiesRole(parseProjectMemberAccess(validAccessRow), 'admin'), true);
 
 assert.deepEqual(
   parseProjectMemberAccess({
@@ -31,6 +38,28 @@ assert.deepEqual(
     projectRole: null,
     visibility: 'public',
   },
+);
+
+assert.equal(
+  projectAccessSatisfiesRole(
+    parseProjectMemberAccess({
+      ...validAccessRow,
+      projectRole: 'member',
+    }),
+    'admin',
+  ),
+  false,
+);
+assert.equal(
+  projectAccessSatisfiesRole(
+    parseProjectMemberAccess({
+      ...validAccessRow,
+      appRole: 'admin',
+      projectRole: null,
+    }),
+    'admin',
+  ),
+  true,
 );
 
 assert.throws(
