@@ -88,6 +88,13 @@ async function projectSlugExists(sql: SqlExecutor, slug: string): Promise<boolea
   return rows.length > 0;
 }
 
+function parseOptionalAdminActionIdRow(
+  rows: readonly unknown[],
+  context: string,
+): AdminActionIdRow | undefined {
+  return rows[0] ? parseAdminActionIdRow(rows[0], context) : undefined;
+}
+
 async function insertCreatedProjectRow(
   sql: SqlExecutor,
   {
@@ -118,7 +125,7 @@ async function insertCreatedProjectRow(
     )
     RETURNING id::text
   `) as readonly unknown[];
-  return rows[0] ? parseAdminActionIdRow(rows[0], 'project creation row') : undefined;
+  return parseOptionalAdminActionIdRow(rows, 'project creation row');
 }
 
 async function insertCreatedMemberRow(
@@ -138,7 +145,7 @@ async function insertCreatedMemberRow(
     VALUES (${email}, ${name}, ${role})
     RETURNING id::text
   `) as readonly unknown[];
-  return rows[0] ? parseAdminActionIdRow(rows[0], 'member creation row') : undefined;
+  return parseOptionalAdminActionIdRow(rows, 'member creation row');
 }
 
 async function insertCreatedDataSourceRow(
@@ -168,7 +175,7 @@ async function insertCreatedDataSourceRow(
     )
     RETURNING id::text
   `) as readonly unknown[];
-  return rows[0] ? parseAdminActionIdRow(rows[0], 'data source creation row') : undefined;
+  return parseOptionalAdminActionIdRow(rows, 'data source creation row');
 }
 
 export async function createProject(formData: FormData): Promise<void> {
