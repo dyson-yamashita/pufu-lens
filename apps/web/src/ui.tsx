@@ -419,7 +419,7 @@ export function DataSourceTable({
 }) {
   return (
     <div className="table-frame">
-      <table data-testid="data-source-table">
+      <table className="data-source-table" data-testid="data-source-table">
         <thead>
           <tr>
             <th>Source</th>
@@ -433,7 +433,7 @@ export function DataSourceTable({
         </thead>
         <tbody>
           {sources.map((source) => {
-            const canRun = canCollectAndIngest?.(source) ?? false;
+            const canRun = canCollectAndIngest?.(source) ?? true;
             const hasRetryTarget = source.failedCount + source.heldCount > 0;
             return (
               <tr
@@ -574,7 +574,7 @@ export function RetryButton({
     <button
       className="icon-button"
       data-testid={testId}
-      disabled={disabled}
+      disabled={true}
       title="Retry failed queue"
       type="button"
     >

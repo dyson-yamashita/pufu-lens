@@ -1311,6 +1311,10 @@ table {
   width: 100%;
 }
 
+.data-source-table {
+  min-width: 1240px;
+}
+
 .table-edit-form {
   align-items: center;
   display: grid;
