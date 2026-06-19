@@ -3,10 +3,14 @@
 import { revalidatePath } from 'next/cache';
 import type postgres from 'postgres';
 import { type AdminActionIdRow, parseAdminActionIdRow } from './admin-actions-guards.ts';
-import { requireFormValue, requireGlobalAdmin, withSql } from './admin-actions-shared.ts';
+import {
+  requireAdminProject,
+  requireFormValue,
+  requireGlobalAdmin,
+  withSql,
+} from './admin-actions-shared.ts';
 import type { AppMemberRole } from './admin-db';
-import { requireSessionUserId } from './auth-session';
-import { assertOtherGlobalAdminExists, lookupProjectAdminAccess } from './authz.ts';
+import { assertOtherGlobalAdminExists } from './authz.ts';
 import { hashPassword } from './password-auth';
 
 type SqlExecutor = postgres.Sql | postgres.TransactionSql;
@@ -87,7 +91,7 @@ export async function addProjectMember(formData: FormData): Promise<void> {
   const userId = requireFormValue(formData, 'userId');
 
   await withSql(async (sql) => {
-    const project = await requireProjectAdminForMemberManagement(sql, projectSlug);
+    const project = await requireAdminProject(sql, projectSlug);
     await sql`
       INSERT INTO public.project_members (project_id, user_id, role)
       VALUES (${project.id}, ${userId}, 'member')
@@ -105,7 +109,7 @@ export async function removeProjectMember(formData: FormData): Promise<void> {
   const userId = requireFormValue(formData, 'userId');
 
   await withSql(async (sql) => {
-    const project = await requireProjectAdminForMemberManagement(sql, projectSlug);
+    const project = await requireAdminProject(sql, projectSlug);
     await sql`
       DELETE FROM public.project_members
       USING public.users
@@ -153,21 +157,6 @@ async function assertAdminRemainsAfterRoleChange(
   userId: string,
 ): Promise<void> {
   await assertOtherGlobalAdminExists(sql, { userId });
-}
-
-async function requireProjectAdminForMemberManagement(
-  sql: postgres.Sql | postgres.TransactionSql,
-  projectSlug: string,
-): Promise<{
-  readonly id: string;
-  readonly slug: string;
-}> {
-  const userId = await requireSessionUserId();
-  const project = await lookupProjectAdminAccess(sql, { projectSlug, userId });
-  if (!project) {
-    throw new Error(`Member management denied for project slug: ${projectSlug}`);
-  }
-  return { id: project.id, slug: project.slug };
 }
 
 function requireAppMemberRole(value: string): AppMemberRole {
