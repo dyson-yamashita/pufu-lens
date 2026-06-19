@@ -480,17 +480,7 @@ export async function updateDataSource(formData: FormData): Promise<void> {
 
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
-    const rows = (await sql`
-      SELECT id::text, source_type
-      FROM public.data_sources
-      WHERE id = ${dataSourceId}
-        AND project_id = ${project.id}
-        AND enabled = true
-    `) as readonly unknown[];
-    const dataSource = rows[0] ? parseAdminActionDataSourceRow(rows[0]) : undefined;
-    if (!dataSource) {
-      throw new Error('Data source not found in project.');
-    }
+    const dataSource = await lookupProjectDataSource(sql, project.id, dataSourceId);
     const config = buildDataSourceConfig(dataSource.source_type, scope);
     await sql`
       UPDATE public.data_sources
