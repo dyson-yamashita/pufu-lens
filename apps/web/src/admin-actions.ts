@@ -32,6 +32,7 @@ import type {
   ProjectStoragePrefixes,
 } from '../../../packages/storage/src/object-storage.ts';
 import {
+  type AdminActionDataSourceIngestRow,
   type AdminActionDataSourceRow,
   type AdminActionIdRow,
   type AdminActionParserVersionRow,
@@ -1122,6 +1123,18 @@ async function lookupProjectDataSource(
   projectId: string,
   dataSourceId: string,
 ): Promise<AdminActionDataSourceRow> {
+  const dataSource = await lookupProjectDataSourceRow(sql, projectId, dataSourceId);
+  if (!dataSource) {
+    throw new Error('Data source not found in project.');
+  }
+  return dataSource;
+}
+
+async function lookupProjectDataSourceRow(
+  sql: postgres.Sql,
+  projectId: string,
+  dataSourceId: string,
+): Promise<AdminActionDataSourceRow | undefined> {
   const rows = (await sql`
     SELECT id::text, source_type
     FROM public.data_sources
@@ -1129,11 +1142,7 @@ async function lookupProjectDataSource(
       AND project_id = ${projectId}
       AND enabled = true
   `) as readonly unknown[];
-  const dataSource = rows[0] ? parseAdminActionDataSourceRow(rows[0]) : undefined;
-  if (!dataSource) {
-    throw new Error('Data source not found in project.');
-  }
-  return dataSource;
+  return rows[0] ? parseAdminActionDataSourceRow(rows[0]) : undefined;
 }
 
 async function lookupProjectDataSourceIngestInput(
@@ -1145,6 +1154,24 @@ async function lookupProjectDataSourceIngestInput(
   readonly sourceType: SourceType;
   readonly storageRoot?: string;
 }> {
+  const dataSource = await lookupProjectDataSourceIngestRow(sql, projectId, dataSourceId);
+  if (!dataSource) {
+    throw new Error('Data source not found in project.');
+  }
+  if (!isAdminUiIngestSupported(dataSource.source_type)) {
+    throw new Error(`Ingest from admin UI is not supported for ${dataSource.source_type} yet.`);
+  }
+  return {
+    sourceType: dataSource.source_type,
+    storageRoot: storageRootFromObjectUri(dataSource.storage_uri, projectSlug),
+  };
+}
+
+async function lookupProjectDataSourceIngestRow(
+  sql: postgres.Sql,
+  projectId: string,
+  dataSourceId: string,
+): Promise<AdminActionDataSourceIngestRow | undefined> {
   const rows = (await sql`
     SELECT
       ds.id::text,
@@ -1163,17 +1190,7 @@ async function lookupProjectDataSourceIngestInput(
       AND ds.project_id = ${projectId}
       AND ds.enabled = true
   `) as readonly unknown[];
-  const dataSource = rows[0] ? parseAdminActionDataSourceIngestRow(rows[0]) : undefined;
-  if (!dataSource) {
-    throw new Error('Data source not found in project.');
-  }
-  if (!isAdminUiIngestSupported(dataSource.source_type)) {
-    throw new Error(`Ingest from admin UI is not supported for ${dataSource.source_type} yet.`);
-  }
-  return {
-    sourceType: dataSource.source_type,
-    storageRoot: storageRootFromObjectUri(dataSource.storage_uri, projectSlug),
-  };
+  return rows[0] ? parseAdminActionDataSourceIngestRow(rows[0]) : undefined;
 }
 
 async function runIngestWorkflow(input: {
@@ -1507,6 +1524,24 @@ async function lookupProjectParserVersion(
   parserProfileId: string | undefined,
   parserVersionId: string,
 ): Promise<AdminActionParserVersionRow> {
+  const parserVersion = await lookupProjectParserVersionRow(
+    sql,
+    projectId,
+    parserProfileId,
+    parserVersionId,
+  );
+  if (!parserVersion) {
+    throw new Error('Parser version not found in project.');
+  }
+  return parserVersion;
+}
+
+async function lookupProjectParserVersionRow(
+  sql: SqlExecutor,
+  projectId: string,
+  parserProfileId: string | undefined,
+  parserVersionId: string,
+): Promise<AdminActionParserVersionRow | undefined> {
   const parserProfileFilter = parserProfileId
     ? sql`AND parser_profiles.id = ${parserProfileId}`
     : sql``;
@@ -1518,11 +1553,7 @@ async function lookupProjectParserVersion(
       ${parserProfileFilter}
       AND parser_versions.id = ${parserVersionId}
   `) as readonly unknown[];
-  const parserVersion = rows[0] ? parseAdminActionParserVersionRow(rows[0]) : undefined;
-  if (!parserVersion) {
-    throw new Error('Parser version not found in project.');
-  }
-  return parserVersion;
+  return rows[0] ? parseAdminActionParserVersionRow(rows[0]) : undefined;
 }
 
 function requireParserVersionReviewable(
