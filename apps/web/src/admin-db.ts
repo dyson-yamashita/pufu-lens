@@ -414,6 +414,7 @@ async function listProjectMembershipAppMemberRows(
     FROM public.users
     ORDER BY email
   `) as readonly unknown[];
+  // Keep the arrow wrapper so Array.map does not pass the index as the parser context.
   return rawRows.map((row) => parseAdminDbAppMemberRow(row));
 }
 
