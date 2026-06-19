@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { posix } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Storage } from '@google-cloud/storage';
@@ -39,25 +40,36 @@ export class GcsObjectStorage implements ObjectStorage {
       cacheControl: opts?.cacheControl,
       metadata: opts?.metadata,
     };
+    const hash = createHash('sha256');
+    let etag: string;
+
     if (typeof body === 'string' || Buffer.isBuffer(body)) {
-      await file.save(body, {
+      const buffer = Buffer.from(body);
+      etag = hash.update(buffer).digest('hex');
+      await file.save(buffer, {
         contentType: opts?.contentType,
         metadata: uploadMetadata,
       });
     } else {
       await pipeline(
         body,
+        async function* (source) {
+          for await (const chunk of source) {
+            hash.update(chunk);
+            yield chunk;
+          }
+        },
         file.createWriteStream({
           contentType: opts?.contentType,
           metadata: uploadMetadata,
           resumable: false,
         }),
       );
+      etag = hash.digest('hex');
     }
 
-    const [metadata] = await file.getMetadata();
     return {
-      etag: metadata.etag,
+      etag,
       uri: this.uriForKey(file.name),
     };
   }
@@ -90,14 +102,15 @@ export class GcsObjectStorage implements ObjectStorage {
     const [url] = await this.fileForUri(uri).getSignedUrl({
       action: 'read',
       expires: Date.now() + ttlSeconds * 1000,
+      version: 'v4',
     });
     return url;
   }
 
   async *list(prefix: string): AsyncIterable<ObjectInfo> {
     const normalizedPrefix = this.keyForUri(prefix);
-    const [files] = await this.bucket().getFiles({ prefix: normalizedPrefix });
-    for (const file of files) {
+    const fileStream = this.bucket().getFilesStream({ prefix: normalizedPrefix });
+    for await (const file of fileStream) {
       const metadata = file.metadata;
       const size = Number(metadata.size ?? 0);
       const updatedAt = metadata.updated ? new Date(metadata.updated) : new Date(0);
