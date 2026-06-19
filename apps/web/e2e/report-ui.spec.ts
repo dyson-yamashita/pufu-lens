@@ -103,7 +103,7 @@ test('scenario: member opens private report detail from list and sees sections',
   await expect(page.getByTestId('report-section-progress')).toContainText('判断材料');
 });
 
-test('scenario: member reads private report sections on mobile', async ({ page }) => {
+test('scenario: member reads private report sections on mobile @mobile', async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 390 });
   await page.route('**/api/projects/sample-a/reports/report-a', async (route) => {
     await route.fulfill({
@@ -254,7 +254,7 @@ test('scenario: public user reads redacted report and receives scoped chat answe
   await expect(page.getByTestId('chat-assistant-message-3')).toContainText('未公開情報');
 });
 
-test('scenario: hostile client sends unsafe input and public/publish APIs reject it', async ({
+test('scenario: hostile client sends unsafe input and public/publish APIs reject it @api', async ({
   request,
 }) => {
   const unsafePublicResponse = await request.get(
