@@ -347,6 +347,77 @@ export async function canManageProject(slug: string, userId: string): Promise<bo
   }, false);
 }
 
+async function listProjectMembershipMemberRows(
+  sql: postgres.Sql,
+  projectId: string,
+): Promise<readonly AdminDbProjectMemberRow[]> {
+  const rawRows = (await sql`
+    WITH project_member_rows AS (
+      SELECT
+        users.id,
+        users.email,
+        users.name,
+        users.role,
+        project_members.role AS project_role,
+        project_members.created_at AS membership_created_at,
+        project_members.role = 'member' AND users.role <> 'admin' AS removable
+      FROM public.project_members
+      JOIN public.users
+        ON users.id = project_members.user_id
+      WHERE project_members.project_id = ${projectId}
+    ),
+    global_admin_rows AS (
+      SELECT
+        users.id,
+        users.email,
+        users.name,
+        users.role,
+        'admin'::text AS project_role,
+        users.created_at AS membership_created_at,
+        false AS removable
+      FROM public.users
+      WHERE users.role = 'admin'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM public.project_members
+          WHERE project_members.project_id = ${projectId}
+            AND project_members.user_id = users.id
+        )
+    )
+    SELECT
+      id::text,
+      email,
+      name,
+      role,
+      project_role,
+      membership_created_at,
+      removable
+    FROM (
+      SELECT * FROM project_member_rows
+      UNION ALL
+      SELECT * FROM global_admin_rows
+    ) members
+    ORDER BY email
+  `) as readonly unknown[];
+  return rawRows.map(parseAdminDbProjectMemberRow);
+}
+
+async function listProjectMembershipAppMemberRows(
+  sql: postgres.Sql,
+  canManageMembers: boolean,
+): Promise<readonly AdminDbAppMemberRow[]> {
+  if (!canManageMembers) {
+    return [];
+  }
+  const rawRows = (await sql`
+    SELECT id::text, email, name, role, created_at
+    FROM public.users
+    ORDER BY email
+  `) as readonly unknown[];
+  // Keep the arrow wrapper so Array.map does not pass the index as the parser context.
+  return rawRows.map((row) => parseAdminDbAppMemberRow(row));
+}
+
 export async function getProjectMembership(
   slug: string,
   userId: string,
@@ -367,68 +438,15 @@ export async function getProjectMembership(
 
   const project = await getAdminProject(slug);
   const [memberRows, userRows] = await Promise.all([
-    sql`
-      WITH project_member_rows AS (
-        SELECT
-          users.id,
-          users.email,
-          users.name,
-          users.role,
-          project_members.role AS project_role,
-          project_members.created_at AS membership_created_at,
-          project_members.role = 'member' AND users.role <> 'admin' AS removable
-        FROM public.project_members
-        JOIN public.users
-          ON users.id = project_members.user_id
-        WHERE project_members.project_id = ${access.id}
-      ),
-      global_admin_rows AS (
-        SELECT
-          users.id,
-          users.email,
-          users.name,
-          users.role,
-          'admin'::text AS project_role,
-          users.created_at AS membership_created_at,
-          false AS removable
-        FROM public.users
-        WHERE users.role = 'admin'
-          AND NOT EXISTS (
-            SELECT 1
-            FROM public.project_members
-            WHERE project_members.project_id = ${access.id}
-              AND project_members.user_id = users.id
-          )
-      )
-      SELECT
-        id::text,
-        email,
-        name,
-        role,
-        project_role,
-        membership_created_at,
-        removable
-      FROM (
-        SELECT * FROM project_member_rows
-        UNION ALL
-        SELECT * FROM global_admin_rows
-      ) members
-      ORDER BY email
-    ` as Promise<readonly unknown[]>,
-    canManageMembers
-      ? (sql`
-          SELECT id::text, email, name, role, created_at
-          FROM public.users
-          ORDER BY email
-        ` as Promise<readonly unknown[]>)
-      : Promise.resolve([] as readonly unknown[]),
+    listProjectMembershipMemberRows(sql, access.id),
+    listProjectMembershipAppMemberRows(sql, canManageMembers),
   ]);
 
   return {
     canManageMembers,
-    members: memberRows.map((row) => projectMemberFromRow(parseAdminDbProjectMemberRow(row))),
+    members: memberRows.map(projectMemberFromRow),
     project,
-    users: userRows.map((row) => memberFromRow(parseAdminDbAppMemberRow(row))),
+    users: userRows.map(memberFromRow),
   };
 }
 
