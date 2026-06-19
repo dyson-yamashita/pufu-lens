@@ -46,6 +46,12 @@ import {
   parseAdminActionSameHashCandidateRow,
 } from './admin-actions-guards.ts';
 import {
+  requireAdminProject,
+  requireFormValue,
+  revalidateProject,
+  withSql,
+} from './admin-actions-shared.ts';
+import {
   isAdminUiCollectionSupported,
   isAdminUiIngestSupported,
   isProjectVisibility,
@@ -55,7 +61,7 @@ import {
   type SourceType,
 } from './admin-data';
 import { type AppMemberRole, listProjectConnectionsForProjectId } from './admin-db';
-import { getRequiredAdminSql } from './admin-sql';
+import { generatePrivateReport as generatePrivateReportAction } from './admin-report-actions.ts';
 import { requireSessionUserId } from './auth-session';
 import {
   assertOtherGlobalAdminExists,
@@ -68,16 +74,7 @@ import {
   readProjectConnectionAccessToken,
   saveGithubAppConnectionConfig,
 } from './project-connections';
-import {
-  createExtractiveReportProvider,
-  createGeminiReportProvider,
-  createPostgresReportRepository,
-  createReportStorageFromEnv,
-  type ReportGenerationProvider,
-  reportNowFromEnv,
-  runGenerateReport,
-  writePublicProjectManifest,
-} from './report';
+import { createReportStorageFromEnv, writePublicProjectManifest } from './report';
 
 type SqlExecutor = postgres.Sql | postgres.TransactionSql;
 
@@ -589,23 +586,7 @@ export async function ingestDataSource(formData: FormData): Promise<void> {
 }
 
 export async function generatePrivateReport(formData: FormData): Promise<void> {
-  const projectSlug = requireFormValue(formData, 'projectSlug');
-  const period = requireReportPeriod(formData);
-  await withSql(async (sql) => {
-    await requireAdminProject(sql, projectSlug);
-    await runGenerateReport({
-      options: {
-        generatedBy: 'admin-ui',
-        now: reportNowFromEnv(process.env),
-        period,
-        provider: createReportProvider(),
-        repository: createPostgresReportRepository(sql),
-        storage: createReportStorageFromEnv(),
-      },
-      projectSlug,
-    });
-  });
-  revalidateProject(projectSlug);
+  await generatePrivateReportAction(formData);
 }
 
 export async function approveParserVersion(formData: FormData): Promise<void> {
@@ -684,10 +665,6 @@ export async function rejectParserVersion(formData: FormData): Promise<void> {
     });
   });
   revalidateProject(projectSlug);
-}
-
-async function withSql<T>(callback: (sql: postgres.Sql) => Promise<T>): Promise<T> {
-  return callback(getRequiredAdminSql());
 }
 
 async function ensureDefaultParserProfile(
@@ -980,70 +957,6 @@ class AdminCollectionRepository implements CollectionRepository {
       WHERE id = ${dataSourceId}
     `;
   }
-}
-
-async function requireAdminProject(
-  sql: postgres.Sql,
-  projectSlug: string,
-): Promise<{
-  readonly adminUserId: string;
-  readonly description: string | null;
-  readonly id: string;
-  readonly name: string;
-  readonly slug: string;
-  readonly visibility: ProjectVisibility;
-}> {
-  const adminUserId = await requireAdminUserId();
-  const access = await lookupProjectAdminAccess(sql, { projectSlug, userId: adminUserId });
-  if (!access) {
-    throw new Error(`Admin access denied for project slug: ${projectSlug}`);
-  }
-  return {
-    adminUserId,
-    description: access.description,
-    id: access.id,
-    name: access.name,
-    slug: access.slug,
-    visibility: access.visibility,
-  };
-}
-
-async function requireAdminUserId(): Promise<string> {
-  const sessionUserId = await requireSessionUserId();
-  if (sessionUserId) {
-    return sessionUserId;
-  }
-  throw new Error('Authentication is required for admin actions.');
-}
-
-function requireReportPeriod(formData: FormData): { readonly end: string; readonly start: string } {
-  const start = requireIsoDate(requireFormValue(formData, 'periodStart'), 'periodStart');
-  const end = requireIsoDate(requireFormValue(formData, 'periodEnd'), 'periodEnd');
-  if (start > end) {
-    throw new Error('periodStart must be before or equal to periodEnd.');
-  }
-  return { end, start };
-}
-
-function requireIsoDate(value: string, fieldName: string): string {
-  const trimmed = value.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    throw new Error(`${fieldName} must be YYYY-MM-DD.`);
-  }
-  const parsed = new Date(`${trimmed}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== trimmed) {
-    throw new Error(`${fieldName} must be a valid date.`);
-  }
-  return trimmed;
-}
-
-async function requireGlobalAdmin(sql: postgres.Sql | postgres.TransactionSql): Promise<string> {
-  const userId = await requireSessionUserId();
-  const adminUserId = await lookupGlobalAdminUserId(sql, { userId });
-  if (!adminUserId) {
-    throw new Error('Admin access is required.');
-  }
-  return adminUserId;
 }
 
 async function runCollectAndIngestDataSource(
@@ -1460,30 +1373,6 @@ function googleSourceLabel(sourceType: SourceType): string {
   return sourceType === 'gmail' ? 'Gmail' : 'Drive';
 }
 
-function createReportProvider(): ReportGenerationProvider {
-  const fallbackProvider = createExtractiveReportProvider();
-  if (process.env.GEMINI_API_KEY && process.env.GEMINI_CHAT_MODEL) {
-    const geminiProvider = createGeminiReportProvider({
-      apiKey: process.env.GEMINI_API_KEY,
-      model: process.env.GEMINI_CHAT_MODEL,
-    });
-    return {
-      async generate(input) {
-        try {
-          return await geminiProvider.generate(input);
-        } catch (error) {
-          console.warn(
-            'Gemini report generation failed; falling back to extractive provider.',
-            error instanceof Error ? error.message : String(error),
-          );
-          return fallbackProvider.generate(input);
-        }
-      },
-    };
-  }
-  return fallbackProvider;
-}
-
 function createCollectionStorageFromEnv(): ObjectStorage {
   return createObjectStorageFromEnv(process.env);
 }
@@ -1586,22 +1475,11 @@ function requireParserVersionReviewable(
   );
 }
 
-function requireFormValue(formData: FormData, key: string): string {
-  const value = formData.get(key)?.toString();
-  if (!value) {
-    throw new Error(`${key} is required.`);
+async function requireGlobalAdmin(sql: postgres.Sql | postgres.TransactionSql): Promise<string> {
+  const userId = await requireSessionUserId();
+  const adminUserId = await lookupGlobalAdminUserId(sql, { userId });
+  if (!adminUserId) {
+    throw new Error('Admin access is required.');
   }
-  return value;
-}
-
-function revalidateProject(projectSlug: string): void {
-  revalidatePath('/projects');
-  revalidatePath(`/projects/${projectSlug}`);
-  revalidatePath(`/projects/${projectSlug}/chat`);
-  revalidatePath(`/projects/${projectSlug}/graph`);
-  revalidatePath(`/projects/${projectSlug}/members`);
-  revalidatePath(`/projects/${projectSlug}/admin/data-sources`);
-  revalidatePath(`/projects/${projectSlug}/admin/parser-profiles`);
-  revalidatePath(`/projects/${projectSlug}/admin/settings`);
-  revalidatePath(`/projects/${projectSlug}/reports`);
+  return adminUserId;
 }
