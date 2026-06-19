@@ -469,31 +469,30 @@ function fallbackProjectMembership(slug: string, userId: string): ProjectMembers
   };
 }
 
-export async function listProjectConnections(
+async function listProjectConnectionRowsBySlug(
+  sql: postgres.Sql,
   projectSlug: string,
-): Promise<readonly ProjectConnectionSummary[]> {
-  return withOptionalSql(async (sql) => {
-    const rawRows = (await sql`
-      SELECT
-        oc.provider,
-        oc.account_email,
-        oc.account_login,
-        oc.scopes,
-        oc.metadata,
-        oc.expires_at,
-        oc.updated_at
-      FROM public.oauth_connections oc
-      JOIN public.projects p ON p.id = oc.project_id
-      WHERE p.slug = ${projectSlug}
-    `) as readonly unknown[];
-    return projectConnectionsFromRows(rawRows.map(parseAdminDbOAuthConnectionRow));
-  }, notConnectedProjectConnections());
+): Promise<readonly AdminDbOAuthConnectionRow[]> {
+  const rawRows = (await sql`
+    SELECT
+      oc.provider,
+      oc.account_email,
+      oc.account_login,
+      oc.scopes,
+      oc.metadata,
+      oc.expires_at,
+      oc.updated_at
+    FROM public.oauth_connections oc
+    JOIN public.projects p ON p.id = oc.project_id
+    WHERE p.slug = ${projectSlug}
+  `) as readonly unknown[];
+  return rawRows.map(parseAdminDbOAuthConnectionRow);
 }
 
-export async function listProjectConnectionsForProjectId(
+async function listProjectConnectionRowsByProjectId(
   sql: postgres.Sql,
   projectId: string,
-): Promise<readonly ProjectConnectionSummary[]> {
+): Promise<readonly AdminDbOAuthConnectionRow[]> {
   const rawRows = (await sql`
     SELECT
       oc.provider,
@@ -506,7 +505,22 @@ export async function listProjectConnectionsForProjectId(
     FROM public.oauth_connections oc
     WHERE oc.project_id = ${projectId}
   `) as readonly unknown[];
-  return projectConnectionsFromRows(rawRows.map(parseAdminDbOAuthConnectionRow));
+  return rawRows.map(parseAdminDbOAuthConnectionRow);
+}
+
+export async function listProjectConnections(
+  projectSlug: string,
+): Promise<readonly ProjectConnectionSummary[]> {
+  return withOptionalSql(async (sql) => {
+    return projectConnectionsFromRows(await listProjectConnectionRowsBySlug(sql, projectSlug));
+  }, notConnectedProjectConnections());
+}
+
+export async function listProjectConnectionsForProjectId(
+  sql: postgres.Sql,
+  projectId: string,
+): Promise<readonly ProjectConnectionSummary[]> {
+  return projectConnectionsFromRows(await listProjectConnectionRowsByProjectId(sql, projectId));
 }
 
 export async function getProjectSourceAvailability(
