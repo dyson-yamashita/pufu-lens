@@ -815,6 +815,9 @@ async function listDataSourceRowsByProjectIds(
   sql: postgres.Sql,
   projectIds: readonly string[],
 ): Promise<readonly AdminDbDataSourceRow[]> {
+  if (projectIds.length === 0) {
+    return [];
+  }
   const rawRows = (await sql`
     SELECT
       ds.project_id::text AS project_id,
@@ -921,6 +924,9 @@ async function listParserProfileRowsByProjectIds(
   sql: postgres.Sql,
   projectIds: readonly string[],
 ): Promise<readonly AdminDbParserProfileRow[]> {
+  if (projectIds.length === 0) {
+    return [];
+  }
   const rawRows = (await sql`
     SELECT
       pp.project_id::text AS project_id,
