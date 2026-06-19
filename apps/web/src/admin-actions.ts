@@ -78,14 +78,21 @@ type SqlExecutor = postgres.Sql | postgres.TransactionSql;
 
 async function projectSlugExists(sql: SqlExecutor, slug: string): Promise<boolean> {
   const rows = (await sql`
-    SELECT slug FROM public.projects WHERE slug = ${slug}
+    SELECT 1 FROM public.projects WHERE slug = ${slug}
   `) as readonly unknown[];
   return rows.length > 0;
 }
 
 async function insertCreatedProjectRow(
   sql: SqlExecutor,
-  input: {
+  {
+    description,
+    graphName,
+    name,
+    slug,
+    storagePrefix,
+    visibility,
+  }: {
     readonly description: string | null;
     readonly graphName: string;
     readonly name: string;
@@ -97,12 +104,12 @@ async function insertCreatedProjectRow(
   const rows = (await sql`
     INSERT INTO public.projects (slug, name, description, graph_name, storage_prefix, visibility)
     VALUES (
-      ${input.slug},
-      ${input.name},
-      ${input.description},
-      ${input.graphName},
-      ${input.storagePrefix},
-      ${input.visibility}
+      ${slug},
+      ${name},
+      ${description},
+      ${graphName},
+      ${storagePrefix},
+      ${visibility}
     )
     RETURNING id::text
   `) as readonly unknown[];
