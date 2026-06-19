@@ -112,6 +112,17 @@ type AdminConfig = Record<string, unknown> & {
   readonly urls?: unknown;
 };
 
+function parseAdminDbRows<T>(rows: readonly unknown[], parser: (row: unknown) => T): readonly T[] {
+  return rows.map((row) => parser(row));
+}
+
+function parseOptionalAdminDbRow<T>(
+  rows: readonly unknown[],
+  parser: (row: unknown) => T,
+): T | undefined {
+  return rows[0] ? parser(rows[0]) : undefined;
+}
+
 async function listAdminProjectRows(sql: postgres.Sql): Promise<readonly AdminDbProjectRow[]> {
   const rawRows = (await sql`
     SELECT
@@ -142,7 +153,7 @@ async function listAdminProjectRows(sql: postgres.Sql): Promise<readonly AdminDb
     FROM public.projects p
     ORDER BY p.slug
   `) as readonly unknown[];
-  return rawRows.map(parseAdminDbProjectRow);
+  return parseAdminDbRows(rawRows, parseAdminDbProjectRow);
 }
 
 async function listMemberProjectRows(
@@ -181,7 +192,7 @@ async function listMemberProjectRows(
      AND current_member.user_id = ${userId}
     ORDER BY p.slug
   `) as readonly unknown[];
-  return rawRows.map(parseAdminDbProjectRow);
+  return parseAdminDbRows(rawRows, parseAdminDbProjectRow);
 }
 
 async function lookupProjectRowBySlug(
@@ -217,7 +228,7 @@ async function lookupProjectRowBySlug(
     FROM public.projects p
     WHERE p.slug = ${slug}
   `) as readonly unknown[];
-  return rawRows[0] ? parseAdminDbProjectRow(rawRows[0]) : undefined;
+  return parseOptionalAdminDbRow(rawRows, parseAdminDbProjectRow);
 }
 
 async function projectSummariesFromRows(
@@ -283,7 +294,7 @@ async function listPublicProjectReportRows(
     WHERE p.visibility = 'public'
     ORDER BY p.slug, r.created_at DESC
   `) as readonly unknown[];
-  return rawRows.map(parseAdminDbPublicProjectReportRow);
+  return parseAdminDbRows(rawRows, parseAdminDbPublicProjectReportRow);
 }
 
 async function listVisiblePublicProjectReportRows(
@@ -313,7 +324,7 @@ async function listVisiblePublicProjectReportRows(
       ${slugCondition}
     ORDER BY p.slug, r.created_at DESC NULLS LAST
   `) as readonly unknown[];
-  return rawRows.map(parseAdminDbPublicProjectReportRow);
+  return parseAdminDbRows(rawRows, parseAdminDbPublicProjectReportRow);
 }
 
 export async function listPublicProjects(): Promise<readonly PublicProjectSummary[]> {
@@ -345,8 +356,7 @@ async function listAppMemberRows(sql: postgres.Sql): Promise<readonly AdminDbApp
     FROM public.users
     ORDER BY email
   `) as readonly unknown[];
-  // Keep the arrow wrapper so Array.map does not pass the index as the parser context.
-  return rawRows.map((row) => parseAdminDbAppMemberRow(row));
+  return parseAdminDbRows(rawRows, parseAdminDbAppMemberRow);
 }
 
 export async function listAppMembersForUser(userId: string): Promise<GlobalMemberDirectory> {
@@ -438,7 +448,7 @@ async function listProjectMembershipMemberRows(
     ) members
     ORDER BY email
   `) as readonly unknown[];
-  return rawRows.map(parseAdminDbProjectMemberRow);
+  return parseAdminDbRows(rawRows, parseAdminDbProjectMemberRow);
 }
 
 async function listProjectMembershipAppMemberRows(
@@ -453,8 +463,7 @@ async function listProjectMembershipAppMemberRows(
     FROM public.users
     ORDER BY email
   `) as readonly unknown[];
-  // Keep the arrow wrapper so Array.map does not pass the index as the parser context.
-  return rawRows.map((row) => parseAdminDbAppMemberRow(row));
+  return parseAdminDbRows(rawRows, parseAdminDbAppMemberRow);
 }
 
 export async function getProjectMembership(
@@ -525,7 +534,7 @@ async function listProjectConnectionRowsBySlug(
     JOIN public.projects p ON p.id = oc.project_id
     WHERE p.slug = ${projectSlug}
   `) as readonly unknown[];
-  return rawRows.map(parseAdminDbOAuthConnectionRow);
+  return parseAdminDbRows(rawRows, parseAdminDbOAuthConnectionRow);
 }
 
 async function listProjectConnectionRowsByProjectId(
@@ -544,7 +553,7 @@ async function listProjectConnectionRowsByProjectId(
     FROM public.oauth_connections oc
     WHERE oc.project_id = ${projectId}
   `) as readonly unknown[];
-  return rawRows.map(parseAdminDbOAuthConnectionRow);
+  return parseAdminDbRows(rawRows, parseAdminDbOAuthConnectionRow);
 }
 
 export async function listProjectConnections(
@@ -618,7 +627,7 @@ async function listProjectActorRows(
     WHERE projects.slug = ${projectSlug}
     ORDER BY lower(actors.display_name), actors.created_at
   `) as readonly unknown[];
-  return rawRows.map(parseAdminDbActorRow);
+  return parseAdminDbRows(rawRows, parseAdminDbActorRow);
 }
 
 async function listProjectActorAliasRows(
@@ -638,7 +647,7 @@ async function listProjectActorAliasRows(
     WHERE projects.slug = ${projectSlug}
     ORDER BY actor_aliases.alias_type, actor_aliases.alias_value
   `) as readonly unknown[];
-  return rawRows.map(parseAdminDbActorAliasRow);
+  return parseAdminDbRows(rawRows, parseAdminDbActorAliasRow);
 }
 
 export async function getProjectActorDirectory(
@@ -910,7 +919,7 @@ async function listDataSourceRowsByProjectIds(
       AND ds.project_id IN ${sql(projectIds)}
     ORDER BY ds.source_type, ds.name
   `) as readonly unknown[];
-  return rawRows.map(parseAdminDbDataSourceRow);
+  return parseAdminDbRows(rawRows, parseAdminDbDataSourceRow);
 }
 
 async function listDataSourceRowsByProjectId(
@@ -963,7 +972,7 @@ async function listDataSourceRowsByProjectId(
       AND ds.enabled = true
     ORDER BY ds.source_type, ds.name
   `) as readonly unknown[];
-  return rawRows.map(parseAdminDbDataSourceRow);
+  return parseAdminDbRows(rawRows, parseAdminDbDataSourceRow);
 }
 
 async function listParserProfileRowsByProjectIds(
@@ -998,7 +1007,7 @@ async function listParserProfileRowsByProjectIds(
     WHERE pp.project_id IN ${sql(projectIds)}
     ORDER BY pp.source_type, pp.name, review_versions.created_at DESC NULLS LAST
   `) as readonly unknown[];
-  return rawRows.map(parseAdminDbParserProfileRow);
+  return parseAdminDbRows(rawRows, parseAdminDbParserProfileRow);
 }
 
 async function listParserProfileRowsByProjectId(
@@ -1030,7 +1039,7 @@ async function listParserProfileRowsByProjectId(
     WHERE pp.project_id = ${projectId}
     ORDER BY pp.source_type, pp.name, review_versions.created_at DESC NULLS LAST
   `) as readonly unknown[];
-  return rawRows.map(parseAdminDbParserProfileRow);
+  return parseAdminDbRows(rawRows, parseAdminDbParserProfileRow);
 }
 
 async function listDataSourcesByProject(
@@ -1508,7 +1517,7 @@ async function lookupDataSourcePreviewScopeRow(
       AND ds.enabled = true
     LIMIT 1
   `) as readonly unknown[];
-  return rawRows[0] ? parseAdminDbDataSourcePreviewScopeRow(rawRows[0]) : undefined;
+  return parseOptionalAdminDbRow(rawRows, parseAdminDbDataSourcePreviewScopeRow);
 }
 
 async function lookupDataSourcePreviewSummaryRow(
@@ -1564,7 +1573,7 @@ async function lookupDataSourcePreviewSummaryRow(
     WHERE ds.id = ${dataSourceId}
     LIMIT 1
   `) as readonly unknown[];
-  return rawRows[0] ? parseAdminDbDataSourcePreviewSummaryRow(rawRows[0]) : undefined;
+  return parseOptionalAdminDbRow(rawRows, parseAdminDbDataSourcePreviewSummaryRow);
 }
 
 async function listDataSourcePreviewDocumentRows(
@@ -1599,7 +1608,7 @@ async function listDataSourcePreviewDocumentRows(
     ORDER BY rd.fetched_at DESC
     LIMIT ${DATA_SOURCE_PREVIEW_DOCUMENT_LIMIT}
   `) as readonly unknown[];
-  return rawRows.map(parseAdminDbDataSourcePreviewDocumentRow);
+  return parseAdminDbRows(rawRows, parseAdminDbDataSourcePreviewDocumentRow);
 }
 
 async function listDataSourcePreviewQueueRows(
@@ -1620,7 +1629,7 @@ async function listDataSourcePreviewQueueRows(
     ORDER BY iq.updated_at DESC
     LIMIT ${DATA_SOURCE_PREVIEW_QUEUE_LIMIT}
   `) as readonly unknown[];
-  return rawRows.map(parseAdminDbDataSourcePreviewQueueRow);
+  return parseAdminDbRows(rawRows, parseAdminDbDataSourcePreviewQueueRow);
 }
 
 export async function getDataSourceContentPreview(
