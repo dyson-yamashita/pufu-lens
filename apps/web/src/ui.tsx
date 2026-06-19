@@ -223,8 +223,8 @@ export async function AppShell({
                 width={40}
               />
               <strong className="guest-brand-name">Pufu Lens</strong>
-              <ThemeToggle initialTheme={initialTheme} />
             </summary>
+            <ThemeToggle initialTheme={initialTheme} />
             <nav aria-label="Primary" className="guest-side-menu" data-testid="guest-side-menu">
               {navItems}
             </nav>
@@ -242,8 +242,8 @@ export async function AppShell({
                 width={40}
               />
               <strong className="guest-brand-name">Pufu Lens</strong>
-              <ThemeToggle initialTheme={initialTheme} />
             </summary>
+            <ThemeToggle initialTheme={initialTheme} />
             <nav aria-label="Primary" className="guest-side-menu" data-testid="app-side-menu">
               {navItems}
             </nav>

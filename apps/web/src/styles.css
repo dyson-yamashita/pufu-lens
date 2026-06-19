@@ -277,6 +277,12 @@ button {
 
 .theme-toggle {
   align-items: center;
+  display: inline-flex;
+  height: 32px;
+}
+
+.theme-toggle-button {
+  align-items: center;
   appearance: none;
   background: var(--surface-2);
   border: 1px solid var(--line);
@@ -297,7 +303,7 @@ button {
   width: 32px;
 }
 
-.theme-toggle:hover {
+.theme-toggle-button:hover {
   background: var(--surface);
   border-color: var(--line);
   color: var(--text);
@@ -323,7 +329,10 @@ button {
 
 .guest-menu {
   display: grid;
-  gap: 24px;
+  column-gap: 12px;
+  grid-template-columns: max-content max-content;
+  row-gap: 24px;
+  align-items: center;
   position: static;
 }
 
@@ -368,13 +377,10 @@ button {
   display: none;
 }
 
-.guest-menu:not([open]) .theme-toggle {
-  display: none;
-}
-
 .guest-side-menu {
   display: grid;
   gap: 8px;
+  grid-column: 1 / -1;
   min-width: 0;
 }
 

@@ -20,20 +20,23 @@ export function ThemeToggle({ initialTheme = 'dark' }: { readonly initialTheme?:
     setTheme(nextTheme);
     persistTheme(nextTheme);
   };
+  const label =
+    theme === 'dark'
+      ? '現在はダークテーマです。ライトテーマに切り替える'
+      : '現在はライトテーマです。ダークテーマに切り替える';
 
   return (
-    <button
-      aria-label={theme === 'dark' ? 'ライトテーマに切り替える' : 'ダークテーマに切り替える'}
-      className="theme-toggle"
-      data-testid="theme-toggle"
-      onClick={(event) => {
-        event.stopPropagation();
-        selectTheme(nextTheme);
-      }}
-      title={theme === 'dark' ? 'Light' : 'Dark'}
-      type="button"
-    >
-      {theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
-    </button>
+    <span className="theme-toggle" data-testid="theme-toggle">
+      <button
+        aria-label={label}
+        className="theme-toggle-button"
+        data-testid="theme-toggle-button"
+        onClick={() => selectTheme(nextTheme)}
+        title={label}
+        type="button"
+      >
+        {theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
+      </button>
+    </span>
   );
 }
