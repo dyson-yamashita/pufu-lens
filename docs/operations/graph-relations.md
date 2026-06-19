@@ -10,7 +10,7 @@ Step 8 では、`documents` と `actors` を AGE graph に materialize し、`em
 
 ```bash
 export DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens
-export STORAGE_ROOT=./infra/volumes/pufu-lens-data
+export STORAGE_ROOT=./.data/volumes/pufu-lens-data
 ```
 
 ## 実行

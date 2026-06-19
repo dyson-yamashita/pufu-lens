@@ -15,6 +15,8 @@
       "!**/build",
       "!**/coverage",
       "!**/test-results",
+      "!.data",
+      "!**/.data",
       "!tmp",
       "!**/tmp",
       "!apps/web/infra",

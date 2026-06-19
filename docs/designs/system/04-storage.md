@@ -32,18 +32,19 @@ export interface PutOptions {
 
 ### 2. 実装
 
-| 環境                           | 実装                   | URI スキーム      | 設定                                                                              |
-| ------------------------------ | ---------------------- | ----------------- | --------------------------------------------------------------------------------- |
-| ローカル開発 / オンプレ Docker | `LocalFsObjectStorage` | `file://`         | `STORAGE_ROOT=/data` を Docker volume にマウント                                  |
-| GCP デプロイ                   | `GcsObjectStorage`     | `gs://`           | `STORAGE_BUCKET` / `GCS_BUCKET` と Workload Identity / service account IAM が必要 |
-| 将来: S3 / Azure               | `S3ObjectStorage` 等   | `s3://` / `az://` | 各 SDK で実装                                                                     |
+| 環境                           | 実装                   | URI スキーム      | 設定                                                                                     |
+| ------------------------------ | ---------------------- | ----------------- | ---------------------------------------------------------------------------------------- |
+| ローカル開発 / オンプレ Docker | `LocalFsObjectStorage` | `file://`         | ホストでは `STORAGE_ROOT=./.data/volumes/pufu-lens-data`、Docker では `/data` にマウント |
+| GCP デプロイ                   | `GcsObjectStorage`     | `gs://`           | `STORAGE_BUCKET` / `GCS_BUCKET` と Workload Identity / service account IAM が必要        |
+| 将来: S3 / Azure               | `S3ObjectStorage` 等   | `s3://` / `az://` | 各 SDK で実装                                                                            |
 
 `StorageFactory.fromEnv()` が `STORAGE_DRIVER`（`local` / `gcs` / …）と `STORAGE_ROOT` / `STORAGE_BUCKET` を読んで適切な実装を返す。Ingestion・Report・Chat いずれも同じ抽象を使う。
 
 ### 3. ローカルデプロイ運用
 
-- `docker-compose.yml` に `pufu-lens-data` という volume を定義し、Mastra Server / Ingestion Job コンテナへ `/data` にマウントする。
-- バックアップは `tar` または `rclone` で `pufu-lens-data` を外部ストレージへ同期する。
+- ホスト実行の Node scripts / Web 開発サーバーは、repo 直下の `.data/volumes/pufu-lens-data` を `STORAGE_ROOT` として使う。
+- `docker-compose.yml` では `.data/volumes/pufu-lens-data` を `/data` に bind mount し、Docker とホスト実行で同じ実体を参照する。
+- バックアップは `tar` または `rclone` で `.data/volumes/pufu-lens-data` または Docker volume の実体を外部ストレージへ同期する。
 
 ### 4. クラウドデプロイ運用
 

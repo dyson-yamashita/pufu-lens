@@ -691,7 +691,7 @@ function localConnectionSecretRoot(): string {
   const storageRoot =
     process.env.STORAGE_ROOT ??
     process.env.LOCAL_STORAGE_ROOT ??
-    resolve(process.cwd(), '../../infra/volumes/pufu-lens-data');
+    resolve(process.cwd(), '../../.data/volumes/pufu-lens-data');
   return resolve(storageRoot, 'connection-secrets');
 }
 

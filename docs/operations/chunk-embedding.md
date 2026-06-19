@@ -12,7 +12,7 @@ pnpm ingest:chunk --project sample-a --limit 10 --embedding-provider determinist
 
 ```bash
 DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
-STORAGE_ROOT=./infra/volumes/pufu-lens-data \
+STORAGE_ROOT=./.data/volumes/pufu-lens-data \
 pnpm ingest:chunk --project sample-a --limit 10 --embedding-provider deterministic
 ```
 

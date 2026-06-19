@@ -10,7 +10,7 @@ Step 9 では、既存の fixture collection / parse / actor resolution / chunk 
 
 ```bash
 export DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens
-export STORAGE_ROOT=./infra/volumes/pufu-lens-data
+export STORAGE_ROOT=./.data/volumes/pufu-lens-data
 ```
 
 既存 DB に過去の検証で作った `file:///private/tmp/...` URI が残っている場合は、その URI を含む root を指定して再実行する。

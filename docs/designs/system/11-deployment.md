@@ -7,7 +7,7 @@
 ### 1. ローカル開発
 
 ```bash
-# 全サービス + ローカルストレージ volume を起動
+# 全サービス + ローカルストレージ bind mount を起動
 docker compose up
 
 # プロジェクトを 1 つ作成（AGE グラフとストレージ prefix を初期化）
@@ -31,7 +31,7 @@ infisical run --env=dev --path=/ -- pnpm --filter @pufu-lens/mastra dev
 infisical run --env=dev --path=/ -- pnpm --filter @pufu-lens/web dev
 ```
 
-`docker-compose.yml` で `STORAGE_DRIVER=local` と `STORAGE_ROOT=/data` を Mastra コンテナに設定し、`pufu-lens-data` volume を `/data` にマウントする。
+`docker-compose.yml` では `.data/volumes/pufu-lens-data` を `/data` に bind mount する。ホスト実行の Node scripts / Web 開発サーバーは repo 直下の `.data/volumes/pufu-lens-data` を `STORAGE_ROOT` として使い、Docker コンテナ内では `STORAGE_DRIVER=local` と `STORAGE_ROOT=/data` で同じ実体を参照する。
 
 ### 2. 本番デプロイ（GCP + Firebase App Hosting）
 
