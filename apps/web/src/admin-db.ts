@@ -811,14 +811,10 @@ export function getSourceTypeCounts(project: ProjectSummary): Record<SourceType,
   );
 }
 
-async function listDataSourcesByProject(
+async function listDataSourceRowsByProjectIds(
   sql: postgres.Sql,
   projectIds: readonly string[],
-): Promise<ReadonlyMap<string, readonly DataSourceSummary[]>> {
-  if (projectIds.length === 0) {
-    return new Map();
-  }
-
+): Promise<readonly AdminDbDataSourceRow[]> {
   const rawRows = (await sql`
     SELECT
       ds.project_id::text AS project_id,
@@ -865,45 +861,13 @@ async function listDataSourcesByProject(
       AND ds.project_id IN ${sql(projectIds)}
     ORDER BY ds.source_type, ds.name
   `) as readonly unknown[];
-
-  return groupRowsByProject(rawRows.map(parseAdminDbDataSourceRow), dataSourceFromRow);
+  return rawRows.map(parseAdminDbDataSourceRow);
 }
 
-function dataSourceFromRow(row: AdminDbDataSourceRow): DataSourceSummary {
-  const failedCount = toNumber(row.failed_count);
-  const heldCount = toNumber(row.held_count);
-  const ingestedCount = toNumber(row.ingested_count);
-  const queueCount = toNumber(row.queue_count);
-  const rawCount = toNumber(row.raw_count);
-  const lastChecked = formatDate(row.last_checked_at);
-  const lastIndexed = formatDate(row.last_indexed);
-  return {
-    configSummary: summarizeConfig(row.source_type, row.config),
-    failedCount,
-    heldCount,
-    id: row.id,
-    ingestedCount,
-    ingestHistory: [
-      { label: 'Last collect', value: lastChecked },
-      { label: 'Last indexed', value: lastIndexed },
-      { label: 'Raw / Ingested', value: `${rawCount} / ${ingestedCount}` },
-    ],
-    lastChecked,
-    lastIndexed,
-    name: row.name,
-    queueCount,
-    rawCount,
-    editableScope: editableScopeFromConfig(row.source_type, row.config),
-    scope: summarizeScope(row.source_type, row.config),
-    sourceType: row.source_type,
-    status: statusFromCounts({ failedCount, heldCount, queueCount }),
-  };
-}
-
-async function listDataSources(
+async function listDataSourceRowsByProjectId(
   sql: postgres.Sql,
   projectId: string,
-): Promise<readonly DataSourceSummary[]> {
+): Promise<readonly AdminDbDataSourceRow[]> {
   const rawRows = (await sql`
     SELECT
       ds.project_id::text AS project_id,
@@ -950,18 +914,13 @@ async function listDataSources(
       AND ds.enabled = true
     ORDER BY ds.source_type, ds.name
   `) as readonly unknown[];
-
-  return rawRows.map((row) => dataSourceFromRow(parseAdminDbDataSourceRow(row)));
+  return rawRows.map(parseAdminDbDataSourceRow);
 }
 
-async function listParserProfilesByProject(
+async function listParserProfileRowsByProjectIds(
   sql: postgres.Sql,
   projectIds: readonly string[],
-): Promise<ReadonlyMap<string, readonly ParserProfileSummary[]>> {
-  if (projectIds.length === 0) {
-    return new Map();
-  }
-
+): Promise<readonly AdminDbParserProfileRow[]> {
   const rawRows = (await sql`
     SELECT
       pp.project_id::text AS project_id,
@@ -987,14 +946,13 @@ async function listParserProfilesByProject(
     WHERE pp.project_id IN ${sql(projectIds)}
     ORDER BY pp.source_type, pp.name, review_versions.created_at DESC NULLS LAST
   `) as readonly unknown[];
-
-  return groupParserProfileRowsByProject(rawRows.map(parseAdminDbParserProfileRow));
+  return rawRows.map(parseAdminDbParserProfileRow);
 }
 
-async function listParserProfiles(
+async function listParserProfileRowsByProjectId(
   sql: postgres.Sql,
   projectId: string,
-): Promise<readonly ParserProfileSummary[]> {
+): Promise<readonly AdminDbParserProfileRow[]> {
   const rawRows = (await sql`
     SELECT
       pp.project_id::text AS project_id,
@@ -1020,8 +978,78 @@ async function listParserProfiles(
     WHERE pp.project_id = ${projectId}
     ORDER BY pp.source_type, pp.name, review_versions.created_at DESC NULLS LAST
   `) as readonly unknown[];
+  return rawRows.map(parseAdminDbParserProfileRow);
+}
 
-  return parserProfilesFromRows(rawRows.map(parseAdminDbParserProfileRow));
+async function listDataSourcesByProject(
+  sql: postgres.Sql,
+  projectIds: readonly string[],
+): Promise<ReadonlyMap<string, readonly DataSourceSummary[]>> {
+  if (projectIds.length === 0) {
+    return new Map();
+  }
+
+  return groupRowsByProject(
+    await listDataSourceRowsByProjectIds(sql, projectIds),
+    dataSourceFromRow,
+  );
+}
+
+function dataSourceFromRow(row: AdminDbDataSourceRow): DataSourceSummary {
+  const failedCount = toNumber(row.failed_count);
+  const heldCount = toNumber(row.held_count);
+  const ingestedCount = toNumber(row.ingested_count);
+  const queueCount = toNumber(row.queue_count);
+  const rawCount = toNumber(row.raw_count);
+  const lastChecked = formatDate(row.last_checked_at);
+  const lastIndexed = formatDate(row.last_indexed);
+  return {
+    configSummary: summarizeConfig(row.source_type, row.config),
+    failedCount,
+    heldCount,
+    id: row.id,
+    ingestedCount,
+    ingestHistory: [
+      { label: 'Last collect', value: lastChecked },
+      { label: 'Last indexed', value: lastIndexed },
+      { label: 'Raw / Ingested', value: `${rawCount} / ${ingestedCount}` },
+    ],
+    lastChecked,
+    lastIndexed,
+    name: row.name,
+    queueCount,
+    rawCount,
+    editableScope: editableScopeFromConfig(row.source_type, row.config),
+    scope: summarizeScope(row.source_type, row.config),
+    sourceType: row.source_type,
+    status: statusFromCounts({ failedCount, heldCount, queueCount }),
+  };
+}
+
+async function listDataSources(
+  sql: postgres.Sql,
+  projectId: string,
+): Promise<readonly DataSourceSummary[]> {
+  const rows = await listDataSourceRowsByProjectId(sql, projectId);
+  return rows.map(dataSourceFromRow);
+}
+
+async function listParserProfilesByProject(
+  sql: postgres.Sql,
+  projectIds: readonly string[],
+): Promise<ReadonlyMap<string, readonly ParserProfileSummary[]>> {
+  if (projectIds.length === 0) {
+    return new Map();
+  }
+
+  return groupParserProfileRowsByProject(await listParserProfileRowsByProjectIds(sql, projectIds));
+}
+
+async function listParserProfiles(
+  sql: postgres.Sql,
+  projectId: string,
+): Promise<readonly ParserProfileSummary[]> {
+  return parserProfilesFromRows(await listParserProfileRowsByProjectId(sql, projectId));
 }
 
 function groupParserProfileRowsByProject(
