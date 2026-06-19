@@ -142,6 +142,7 @@ const validActorRow = {
   display_name: 'Sample Actor',
   graph_node_id: 'actor:sample',
   id: 'actor-a',
+  metadata: { resolution: { sourceType: 'web' } },
   primary_email: 'actor@example.test',
   primary_login: 'sample-actor',
   updated_at: new Date('2026-06-14T08:00:00.000Z'),

@@ -2,7 +2,7 @@ import { parseSenderAlias } from './actor-resolution.js';
 import type { ActorMention, ParsedDocument, ParsedDocumentType } from './ingestion-fixtures.js';
 import { validateParsedDocument } from './ingestion-fixtures.js';
 
-export type GraphActorAliasType = 'email' | 'github_login';
+export type GraphActorAliasType = 'email' | 'github_login' | 'domain';
 export type GraphEdgeType =
   | 'AUTHORED'
   | 'COMMENTED_ON'
@@ -464,11 +464,19 @@ function strongAliases(
   const aliases: Array<{ aliasType: GraphActorAliasType; aliasValue: string }> = [];
   const email = mention.email?.trim().toLowerCase();
   const githubLogin = mention.githubLogin?.trim().toLowerCase();
+  const domain = mention.domain
+    ?.trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/+$/, '');
   if (email) {
     aliases.push({ aliasType: 'email', aliasValue: email });
   }
   if (githubLogin) {
     aliases.push({ aliasType: 'github_login', aliasValue: githubLogin });
+  }
+  if (domain) {
+    aliases.push({ aliasType: 'domain', aliasValue: domain });
   }
   return aliases;
 }

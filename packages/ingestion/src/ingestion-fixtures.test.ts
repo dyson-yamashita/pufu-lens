@@ -135,6 +135,158 @@ test('web parser prefers schema.org datePublished over fetchedAt', async () => {
   }
 });
 
+test('web parser extracts JSON-LD author as an actor', async () => {
+  const rawPath = await writeTempRawFixture(
+    'web-json-ld-author.html',
+    `<!doctype html>
+<html>
+  <head>
+    <title>Author web fixture</title>
+    <script type="application/ld+json">
+      {
+        "@context": "http://schema.org",
+        "@type": "BlogPosting",
+        "author": {
+          "@type": "Person",
+          "name": "Sample Writer",
+          "url": "https://note.example.test/sample-writer/"
+        },
+        "datePublished": "2019-05-07T10:50:58.000+09:00"
+      }
+    </script>
+  </head>
+  <body><article>Author body</article></body>
+</html>`,
+  );
+
+  try {
+    const parsed = await parseRawFixture(buildFixtureCase('web-json-ld-author', 'web', rawPath));
+
+    assert.deepEqual(parsed.actors, [
+      {
+        displayName: 'Sample Writer',
+        domain: 'note.example.test/sample-writer',
+        role: 'author',
+      },
+    ]);
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
+test('web parser resolves JSON-LD @graph author references', async () => {
+  const rawPath = await writeTempRawFixture(
+    'web-json-ld-author-reference.html',
+    `<!doctype html>
+<html>
+  <head>
+    <title>Graph author fixture</title>
+    <script type="application/ld+json">
+      {
+        "@context": "http://schema.org",
+        "@graph": [
+          {
+            "@type": "Article",
+            "author": { "@id": "#author" }
+          },
+          {
+            "@id": "#author",
+            "@type": "Person",
+            "name": "Graph Writer",
+            "url": "https://note.example.test/graph-writer/"
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body><article>Graph author body</article></body>
+</html>`,
+  );
+
+  try {
+    const parsed = await parseRawFixture(
+      buildFixtureCase('web-json-ld-author-reference', 'web', rawPath),
+    );
+
+    assert.deepEqual(parsed.actors, [
+      {
+        displayName: 'Graph Writer',
+        domain: 'note.example.test/graph-writer',
+        role: 'author',
+      },
+    ]);
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
+test('web parser extracts meta author when JSON-LD author is missing', async () => {
+  const rawPath = await writeTempRawFixture(
+    'web-meta-author.html',
+    `<!doctype html>
+<html>
+  <head>
+    <title>Meta author fixture</title>
+    <meta name="author" content="Meta Writer">
+  </head>
+  <body><article>Meta author body</article></body>
+</html>`,
+  );
+
+  try {
+    const parsed = await parseRawFixture(buildFixtureCase('web-meta-author', 'web', rawPath));
+
+    assert.deepEqual(parsed.actors, [{ displayName: 'Meta Writer', role: 'author' }]);
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
+test('web parser resolves relative author links for display-name authors', async () => {
+  const rawPath = await writeTempRawFixture(
+    'web-relative-author-link.html',
+    `<!doctype html>
+<html>
+  <head>
+    <title>Relative author fixture</title>
+    <link rel="canonical" href="https://note.example.test/sample-writer/post-1">
+    <script type="application/ld+json">
+      {
+        "@context": "http://schema.org",
+        "@type": "BlogPosting",
+        "author": {
+          "@type": "Person",
+          "name": "Sample Writer"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <a href="/sample-writer" class="a-link">
+      Sample Writer
+    </a>
+    <article>Author link body</article>
+  </body>
+</html>`,
+  );
+
+  try {
+    const parsed = await parseRawFixture(
+      buildFixtureCase('web-relative-author-link', 'web', rawPath),
+    );
+
+    assert.deepEqual(parsed.actors, [
+      {
+        displayName: 'Sample Writer',
+        domain: 'note.example.test/sample-writer',
+        role: 'author',
+      },
+    ]);
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
 test('web parser handles valueless attributes and self-closing script tags', async () => {
   const rawPath = await writeTempRawFixture(
     'web-valueless-attributes.html',

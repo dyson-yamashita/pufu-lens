@@ -11,6 +11,7 @@
 - raw を追加したら `fixtures/ingestion/manifest.json` に `sourceType`、`sourceId`、`storageUri`、`contentHash`、`snapshotPath` を追加する。
 - parsed JSON は parser の出力を `*.parsed.json` として保存し、レビューしやすいように pretty print する。
 - Gmail 風 fixture は最新メール本文を `bodyText`、引用履歴を `quotedMessages` に分ける。
+- Web fixture は JSON-LD / meta author / author link から `actors` を抽出する。著者 profile URL は `hostname/path` 形式の `domain` alias として扱う。
 - Drive 風 fixture は `fileId` と `revisionId` を必ず持たせ、最新版だけが document 化される前提を保つ。
 
 ## 失敗 raw の regression 化

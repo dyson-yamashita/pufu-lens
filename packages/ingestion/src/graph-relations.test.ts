@@ -66,6 +66,46 @@ test('storeGraphRelations materializes document, actor, topic, quote, and status
   assert.equal(repository.edges.size, 3);
 });
 
+test('storeGraphRelations resolves web authors by domain alias', async () => {
+  const repository = new InMemoryGraphRelationsRepository([
+    {
+      document: documentRecord({
+        docType: 'web_page',
+        graphNodeId: 'document:web_page:https%3A%2F%2Fnote.example.test%2Fsample-writer%2Fpost-1',
+        id: 'document-web-1',
+        rawDocumentId: 'raw-web-1',
+      }),
+      parsed: webParsed(),
+      rawContentHash: 'web-hash',
+      rawDocumentId: 'raw-web-1',
+    },
+  ]);
+  repository.actors.push({
+    displayName: 'Sample Writer',
+    graphNodeId: 'actor:domain:note.example.test%2Fsample-writer',
+    id: 'actor-web-writer',
+  });
+  repository.aliases.set(
+    'domain:note.example.test/sample-writer',
+    repository.actors.at(-1) as GraphRelationActorRecord,
+  );
+
+  const result = await storeGraphRelations({
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  });
+
+  assert.equal(result.decisions[0]?.actorEdgeCount, 1);
+  assert.ok(
+    repository.hasEdge(
+      'actor:domain:note.example.test%2Fsample-writer',
+      'AUTHORED',
+      'document:web_page:https%3A%2F%2Fnote.example.test%2Fsample-writer%2Fpost-1',
+    ),
+  );
+});
+
 test('storeGraphRelations resolves quote chains without depending on quote order', async () => {
   const repository = new InMemoryGraphRelationsRepository([
     {
@@ -352,7 +392,7 @@ class InMemoryGraphRelationsRepository implements GraphRelationsRepository {
   }
 
   async findActorByAlias(input: {
-    aliasType: 'email' | 'github_login';
+    aliasType: 'email' | 'github_login' | 'domain';
     aliasValue: string;
     projectId: string;
   }) {
@@ -465,6 +505,28 @@ function githubParsed(): ParsedDocument {
     sourceId: 'example-org/pufu-sample/issues/101',
     sourceType: 'github',
     title: 'Indexer should skip archived notes',
+  };
+}
+
+function webParsed(): ParsedDocument {
+  return {
+    actors: [
+      {
+        displayName: 'Sample Writer',
+        domain: 'note.example.test/sample-writer',
+        role: 'author',
+      },
+    ],
+    bodyText: 'Web body',
+    canonicalUri: 'https://note.example.test/sample-writer/post-1',
+    docType: 'web_page',
+    metadata: {},
+    occurredAt: '2026-05-01T09:00:00.000Z',
+    relations: [],
+    schemaVersion: 1,
+    sourceId: 'https://note.example.test/sample-writer/post-1',
+    sourceType: 'web',
+    title: 'Web article',
   };
 }
 

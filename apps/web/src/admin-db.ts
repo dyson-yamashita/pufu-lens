@@ -594,6 +594,7 @@ export async function getProjectActorDirectory(
         actors.display_name,
         actors.primary_email,
         actors.primary_login,
+        actors.metadata,
         actors.graph_node_id,
         actors.created_at,
         actors.updated_at
@@ -663,7 +664,7 @@ function actorFromRow(
     id: row.id,
     primaryEmail: row.primary_email ?? 'none',
     primaryLogin: row.primary_login ?? 'none',
-    sourceTypes: sourceTypesFromAliases(aliases),
+    sourceTypes: sourceTypesFromActor(row.metadata, aliases),
     strongAliasCount,
     updatedAt: formatDate(row.updated_at),
     weakAliasCount,
@@ -777,8 +778,22 @@ function sourceTypesFromAliases(aliases: readonly ProjectActorAliasSummary[]): r
   return Array.from(sourceTypes).sort();
 }
 
+function sourceTypesFromActor(
+  metadata: unknown,
+  aliases: readonly ProjectActorAliasSummary[],
+): readonly string[] {
+  const sourceTypes = new Set(sourceTypesFromAliases(aliases));
+  if (isRecord(metadata) && isRecord(metadata.resolution)) {
+    const sourceType = metadata.resolution.sourceType;
+    if (typeof sourceType === 'string' && sourceType.trim()) {
+      sourceTypes.add(sourceType.trim());
+    }
+  }
+  return Array.from(sourceTypes).sort();
+}
+
 function isStrongActorAlias(aliasType: string): boolean {
-  return aliasType === 'email' || aliasType === 'github_login';
+  return aliasType === 'email' || aliasType === 'github_login' || aliasType === 'domain';
 }
 
 function memberFromRow(row: AdminDbAppMemberRow): AppMemberSummary {
