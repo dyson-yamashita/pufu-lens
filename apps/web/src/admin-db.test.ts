@@ -15,7 +15,6 @@ import {
   parseAdminDbProjectRow,
   parseAdminDbPublicProjectReportRow,
   parseAppMemberRoleRow,
-  parseCanManageProjectRow,
 } from './admin-db-guards.ts';
 
 const validProjectRow = {
@@ -479,15 +478,6 @@ assert.throws(
       role: 'member',
     }),
   /Invalid project member row field: membership_created_at/,
-);
-
-assert.equal(parseCanManageProjectRow({ can_manage: true }), true);
-assert.equal(parseCanManageProjectRow({ can_manage: false }), false);
-assert.throws(() => parseCanManageProjectRow(null), /Invalid project management access row/);
-assert.throws(() => parseCanManageProjectRow([]), /Invalid project management access row/);
-assert.throws(
-  () => parseCanManageProjectRow({ can_manage: 'true' }),
-  /Invalid project management access row/,
 );
 
 console.log('web admin db tests passed');

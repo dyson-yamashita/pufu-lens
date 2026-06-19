@@ -196,17 +196,6 @@ export function parseAdminDbProjectMemberRow(value: unknown): AdminDbProjectMemb
   };
 }
 
-export function parseCanManageProjectRow(value: unknown): boolean {
-  if (!isRecord(value)) {
-    throw new Error('Invalid project management access row.');
-  }
-  const canManage = value.can_manage;
-  if (typeof canManage !== 'boolean') {
-    throw new Error('Invalid project management access row.');
-  }
-  return canManage;
-}
-
 export function parseAdminDbProjectRow(value: unknown): AdminDbProjectRow {
   const context = 'project';
   if (!isRecord(value)) {
