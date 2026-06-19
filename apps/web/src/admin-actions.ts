@@ -26,7 +26,11 @@ import {
   deriveProjectIdentifiers,
   validateProjectSlug,
 } from '../../../packages/project-tenancy/src/project-tenancy.ts';
-import { LocalFsObjectStorage } from '../../../packages/storage/src/local-fs.ts';
+import { createObjectStorageFromEnv } from '../../../packages/storage/src/factory.ts';
+import type {
+  ObjectStorage,
+  ProjectStoragePrefixes,
+} from '../../../packages/storage/src/object-storage.ts';
 import {
   type AdminActionDataSourceRow,
   type AdminActionIdRow,
@@ -1384,16 +1388,8 @@ function createReportProvider(): ReportGenerationProvider {
   return fallbackProvider;
 }
 
-function createCollectionStorageFromEnv(): LocalFsObjectStorage {
-  const driver = process.env.STORAGE_DRIVER ?? process.env.OBJECT_STORAGE_DRIVER ?? 'local';
-  if (driver !== 'local') {
-    throw new Error(`Unsupported object storage driver for collection: ${driver}`);
-  }
-  const root = process.env.STORAGE_ROOT ?? process.env.LOCAL_STORAGE_ROOT;
-  if (!root) {
-    throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required for collection.');
-  }
-  return new LocalFsObjectStorage(root);
+function createCollectionStorageFromEnv(): ObjectStorage {
+  return createObjectStorageFromEnv(process.env);
 }
 
 function splitScopeList(value: string): readonly string[] {
@@ -1408,11 +1404,22 @@ function splitScopeList(value: string): readonly string[] {
 }
 
 async function ensureProjectStoragePrefixes(projectSlug: string): Promise<void> {
-  const storageRoot = process.env.STORAGE_ROOT ?? process.env.LOCAL_STORAGE_ROOT;
-  if (!storageRoot) {
+  const driver = process.env.STORAGE_DRIVER ?? process.env.OBJECT_STORAGE_DRIVER ?? 'local';
+  if (driver === 'local' && !process.env.STORAGE_ROOT && !process.env.LOCAL_STORAGE_ROOT) {
     return;
   }
-  await new LocalFsObjectStorage(storageRoot).ensureProjectPrefixes(projectSlug);
+
+  const storage = createObjectStorageFromEnv(process.env);
+  if (!hasProjectPrefixSupport(storage)) {
+    return;
+  }
+  await storage.ensureProjectPrefixes(projectSlug);
+}
+
+function hasProjectPrefixSupport(storage: ObjectStorage): storage is ObjectStorage & {
+  ensureProjectPrefixes(projectSlug: string): Promise<ProjectStoragePrefixes>;
+} {
+  return 'ensureProjectPrefixes' in storage && typeof storage.ensureProjectPrefixes === 'function';
 }
 
 async function writePublicProjectVisibilityManifest(

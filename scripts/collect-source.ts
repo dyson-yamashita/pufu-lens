@@ -16,7 +16,8 @@ import {
   collectGmailSource,
   collectWebUrlSource,
 } from '../packages/ingestion/dist/index.js';
-import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
+import { createObjectStorageFromEnv } from '../packages/storage/dist/factory.js';
+import type { ObjectStorage } from '../packages/storage/dist/object-storage.js';
 import { requiredEnv } from './lib/cli.ts';
 
 const SOURCE_TYPES = ['drive', 'github', 'gmail', 'web'] as const;
@@ -52,7 +53,7 @@ async function main(): Promise<void> {
   const limit = options.limit ?? DEFAULT_COLLECT_LIMIT;
 
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
-  const storage = createLocalObjectStorageFromEnv();
+  const storage = createObjectStorageForCollection();
   const repository = new PostgresCollectionRepository(sql);
 
   try {
@@ -510,20 +511,8 @@ async function ensureGmailDataSource(input: {
   `;
 }
 
-function createLocalObjectStorageFromEnv(
-  env: NodeJS.ProcessEnv = process.env,
-): LocalFsObjectStorage {
-  const driver = env.STORAGE_DRIVER ?? env.OBJECT_STORAGE_DRIVER ?? 'local';
-  if (driver !== 'local') {
-    throw new Error(`Unsupported object storage driver for real collection CLI: ${driver}`);
-  }
-
-  const root = env.STORAGE_ROOT ?? env.LOCAL_STORAGE_ROOT;
-  if (!root) {
-    throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required for local object storage.');
-  }
-
-  return new LocalFsObjectStorage(root);
+function createObjectStorageForCollection(env: NodeJS.ProcessEnv = process.env): ObjectStorage {
+  return createObjectStorageFromEnv(env);
 }
 
 function parseArgs(args: string[]): {
