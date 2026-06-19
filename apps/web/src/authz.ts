@@ -15,6 +15,61 @@ export interface ProjectMemberAccess {
   visibility: ProjectVisibility;
 }
 
+type SqlExecutor = postgres.Sql | postgres.TransactionSql;
+
+async function fetchAppUserRoleRow(
+  sql: SqlExecutor,
+  userId: string,
+): Promise<AppMemberRole | undefined> {
+  const rows = (await sql`
+    SELECT role
+    FROM public.users
+    WHERE id = ${userId}
+      AND role IN ('admin', 'member')
+  `) as readonly unknown[];
+  return rows[0] ? parseAppUserRoleRow(rows[0]) : undefined;
+}
+
+async function fetchProjectMemberAccessRow(
+  sql: SqlExecutor,
+  input: { projectSlug: string; userId: string },
+): Promise<ProjectMemberAccess | undefined> {
+  const rows = (await sql`
+    SELECT
+      p.id::text AS id,
+      p.slug,
+      p.name,
+      p.description,
+      p.graph_name AS "graphName",
+      COALESCE(p.visibility, 'private') AS visibility,
+      app_user.role AS "appRole",
+      pm.role AS "projectRole"
+    FROM public.projects p
+    JOIN public.users app_user
+      ON app_user.id = ${input.userId}
+    LEFT JOIN public.project_members pm
+      ON pm.project_id = p.id
+     AND pm.user_id = app_user.id
+    WHERE p.slug = ${input.projectSlug}
+      AND (app_user.role = 'admin' OR pm.user_id IS NOT NULL)
+    LIMIT 1
+  `) as readonly unknown[];
+  return rows[0] ? parseProjectMemberAccess(rows[0]) : undefined;
+}
+
+async function listGlobalAdminIdRowsForUpdate(
+  sql: postgres.TransactionSql,
+): Promise<readonly { readonly id: string }[]> {
+  const rows = (await sql`
+    SELECT id
+    FROM public.users
+    WHERE role = 'admin'
+    ORDER BY id
+    FOR UPDATE
+  `) as readonly unknown[];
+  return rows.map(parseGlobalAdminIdRow);
+}
+
 export function parseAppUserRoleRow(value: unknown): AppMemberRole {
   if (!isRecord(value)) {
     throw new Error('Invalid app user role row.');
@@ -49,13 +104,7 @@ export async function lookupAppUserRole(
   if (!input.userId) {
     return undefined;
   }
-  const rows = (await sql`
-    SELECT role
-    FROM public.users
-    WHERE id = ${input.userId}
-      AND role IN ('admin', 'member')
-  `) as readonly unknown[];
-  return rows[0] ? parseAppUserRoleRow(rows[0]) : undefined;
+  return fetchAppUserRoleRow(sql, input.userId);
 }
 
 export async function lookupGlobalAdminUserId(
@@ -73,27 +122,7 @@ export async function lookupProjectMemberAccess(
   sql: postgres.Sql | postgres.TransactionSql,
   input: { projectSlug: string; userId: string },
 ): Promise<ProjectMemberAccess | undefined> {
-  const rows = (await sql`
-    SELECT
-      p.id::text AS id,
-      p.slug,
-      p.name,
-      p.description,
-      p.graph_name AS "graphName",
-      COALESCE(p.visibility, 'private') AS visibility,
-      app_user.role AS "appRole",
-      pm.role AS "projectRole"
-    FROM public.projects p
-    JOIN public.users app_user
-      ON app_user.id = ${input.userId}
-    LEFT JOIN public.project_members pm
-      ON pm.project_id = p.id
-     AND pm.user_id = app_user.id
-    WHERE p.slug = ${input.projectSlug}
-      AND (app_user.role = 'admin' OR pm.user_id IS NOT NULL)
-    LIMIT 1
-  `) as readonly unknown[];
-  return rows[0] ? parseProjectMemberAccess(rows[0]) : undefined;
+  return fetchProjectMemberAccessRow(sql, input);
 }
 
 export async function lookupProjectAdminAccess(
@@ -122,14 +151,7 @@ export async function assertOtherGlobalAdminExists(
   sql: postgres.TransactionSql,
   input: { userId: string },
 ): Promise<void> {
-  const rows = (await sql`
-    SELECT id
-    FROM public.users
-    WHERE role = 'admin'
-    ORDER BY id
-    FOR UPDATE
-  `) as readonly unknown[];
-  const adminIds = rows.map(parseGlobalAdminIdRow);
+  const adminIds = await listGlobalAdminIdRowsForUpdate(sql);
   const otherAdminExists = adminIds.some((row) => row.id !== input.userId);
   if (!otherAdminExists) {
     throw new Error('At least one admin account is required.');
