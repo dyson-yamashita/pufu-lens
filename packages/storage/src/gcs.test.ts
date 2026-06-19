@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { Readable, Writable } from 'node:stream';
 import test from 'node:test';
 import type { Storage } from '@google-cloud/storage';
-import { GcsObjectStorage } from './gcs.js';
+import { GcsObjectStorage } from './gcs.ts';
 
 test('GcsObjectStorage builds gs:// URIs and project prefixes', async () => {
   const storage = new GcsObjectStorage('pufu-lens-test');

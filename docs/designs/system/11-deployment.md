@@ -2,7 +2,15 @@
 
 ## デプロイメント
 
-> 現状（2026-06-19）はローカル `docker compose`、Node scripts、Next.js dev/build を中心に検証している。GCS object storage は実装済みだが、GCP / Firebase App Hosting / Cloud Run Jobs の end-to-end deploy automation は未完成。クラウド手順を有効化する変更では `scripts/deploy-dry-run.ts`、`scripts/deploy-smoke.ts`、CI、Secret Manager 設計を同時に確認する。
+> 2026-06-19 に GCP project `pufu-lens`（asia-east1）へ end-to-end でデプロイし、PostgreSQL(AGE) VM・Mastra Server (Cloud Run)・Cloud Run Jobs ×3・Web (Firebase App Hosting) の稼働を確認した。本番ビルドに必要だったアプリ側の修正は [ADR-004](../../adr/ADR-004-storage-module-resolution-mastra-build.md) を参照。クラウド手順を変更する際は `scripts/deploy-dry-run.ts`、`scripts/deploy-smoke.ts`、`scripts/infra-check.ts`、CI、Secret Manager 設計を同時に確認する。
+>
+> 既知の落とし穴（再現デプロイ時に必須）:
+>
+> - **Mastra Server / Cloud Run Jobs はコンテナイメージでデプロイする**。`infra/docker/mastra/Dockerfile`・`infra/docker/jobs/Dockerfile` で monorepo を build し、Artifact Registry 経由で Cloud Run / Jobs に渡す（`--source .` の buildpacks は pnpm workspace を解決できない）。
+> - **App Hosting の Next.js アダプタの CVE ゲートは `package.json` の version 文字列をそのまま `semver.satisfies` に渡す**。`"next": "^16.2.x"`（キャレット付き）だと誤って "vulnerable" 判定でブロックされるため、`apps/web/package.json` では **キャレット無しの厳密バージョン**（例 `"next": "16.2.9"`）で固定する。
+> - **`--no-address` の PostgreSQL VM を使う場合、サブネットで Private Google Access を有効化**しないと konlet / コンテナイメージの pull に失敗する。
+> - **App Hosting backend に custom service account を割り当てた場合**、その SA に App Hosting ソースバケットの閲覧権 + `roles/firebaseapphosting.computeRunner` を付与し、参照する secret に `firebase apphosting:secrets:grantaccess` を実行する。
+> - Cloud Build が Compute default SA を使う構成では `roles/cloudbuild.builds.builder` の付与が必要。
 
 ### 1. ローカル開発
 
@@ -66,47 +74,45 @@ gcloud compute instances create-with-container pg-ai \
 gsutil mb -l asia-east1 gs://pufu-lens-prod
 
 # 3. Mastra Server デプロイ（STORAGE_DRIVER=gcs）
-cd apps/mastra && mastra build
+#    monorepo は infra/docker/mastra/Dockerfile で build し、Artifact Registry 経由で渡す。
+gcloud builds submit --config /tmp/cb-mastra.yaml .   # docker build -f infra/docker/mastra/Dockerfile
 gcloud run deploy mastra-server \
-  --source . \
+  --image asia-east1-docker.pkg.dev/PROJECT/pufu-lens/mastra-server:latest \
   --region asia-east1 \
   --service-account=mastra-runtime@PROJECT.iam.gserviceaccount.com \
   --vpc-connector=mastra-connector \
-  --no-allow-unauthenticated \
-  --set-env-vars STORAGE_DRIVER=gcs,STORAGE_BUCKET=pufu-lens-prod \
-  --set-secrets="DATABASE_URL=DATABASE_URL:latest"
+  --no-allow-unauthenticated --port 8080 \
+  --set-env-vars STORAGE_DRIVER=gcs,STORAGE_BUCKET=pufu-lens-prod,GEMINI_CHAT_MODEL=gemini-2.5-flash,GEMINI_EMBEDDING_MODEL=gemini-embedding-2 \
+  --set-secrets="DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_GENERATIVE_AI_API_KEY=GEMINI_API_KEY:latest"
 
 # 4. Ingestion / Report Jobs デプロイ
-gcloud run jobs deploy curate-workflow \
-  --source . --region asia-east1 \
-  --service-account=mastra-runtime@PROJECT.iam.gserviceaccount.com \
-  --vpc-connector=mastra-connector \
-  --set-env-vars STORAGE_DRIVER=gcs,STORAGE_BUCKET=pufu-lens-prod \
-  --set-secrets="DATABASE_URL=DATABASE_URL:latest"
+#    共通イメージ infra/docker/jobs/Dockerfile（entrypoint scripts/workflow-job.ts）を build し、
+#    各 Job に WORKFLOW_ID を設定する。WORKFLOW_INPUT_JSON は実行時 override で渡す。
+for WF in curate-workflow ingest-workflow generate-report; do
+  gcloud run jobs deploy "$WF" \
+    --image asia-east1-docker.pkg.dev/PROJECT/pufu-lens/workflow-job:latest \
+    --region asia-east1 \
+    --service-account=mastra-runtime@PROJECT.iam.gserviceaccount.com \
+    --vpc-connector=mastra-connector \
+    --set-env-vars STORAGE_DRIVER=gcs,STORAGE_BUCKET=pufu-lens-prod,WORKFLOW_ID="$WF" \
+    --set-secrets="DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
+done
 
-gcloud run jobs deploy ingest-workflow \
-  --source . --region asia-east1 \
-  --service-account=mastra-runtime@PROJECT.iam.gserviceaccount.com \
-  --vpc-connector=mastra-connector \
-  --set-env-vars STORAGE_DRIVER=gcs,STORAGE_BUCKET=pufu-lens-prod \
-  --set-secrets="DATABASE_URL=DATABASE_URL:latest"
-
-gcloud run jobs deploy generate-report \
-  --source . --region asia-east1 \
-  --service-account=mastra-runtime@PROJECT.iam.gserviceaccount.com \
-  --vpc-connector=mastra-connector \
-  --set-env-vars STORAGE_DRIVER=gcs,STORAGE_BUCKET=pufu-lens-prod,FRONTEND_URL=https://pufu-lens-web--PROJECT.asia-east1.hosted.app \
-  --set-secrets="DATABASE_URL=DATABASE_URL:latest,SLACK_WEBHOOK_URL=SLACK_WEBHOOK_URL:latest"
-
-# 5. Next.js デプロイ
-#    Web は Firebase App Hosting で管理する。GitHub 連携を作成し、live branch への push で rollout する。
-#    App Hosting は Cloud Build で build し、Firebase 管理下の Cloud Run / Cloud CDN で配信する。
-cd apps/web
-firebase init apphosting
+# 5. Next.js デプロイ（Firebase App Hosting）
+#    Firebase CLI >= 14.4.0 のローカルソースデプロイを使うと GitHub 連携や push なしで rollout できる。
+#    apps/web/apphosting.yaml に runtime env / secrets / VPC access、リポジトリルートに firebase.json /
+#    .firebaserc を置き、`firebase deploy --only apphosting` でローカルの作業ツリーをそのままデプロイする。
+#    NOTE: apps/web/package.json の next は CVE ゲート回避のため厳密バージョンで固定すること（冒頭の注記参照）。
 firebase apphosting:backends:create \
   --project PROJECT \
-  --location asia-east1 \
-  --backend pufu-lens-web
+  --primary-region asia-east1 \
+  --backend pufu-lens-web \
+  --root-dir apps/web \
+  --service-account mastra-runtime@PROJECT.iam.gserviceaccount.com \
+  --non-interactive
+firebase apphosting:secrets:grantaccess DATABASE_URL,AUTH_SECRET,GEMINI_API_KEY \
+  --backend pufu-lens-web --location asia-east1 --project PROJECT
+firebase deploy --only apphosting --project PROJECT
 
 # apps/web/apphosting.yaml に runtime env / secrets / VPC access を定義する。
 # Web API が GCS / PostgreSQL / Mastra にアクセスするため、App Hosting backend service account に

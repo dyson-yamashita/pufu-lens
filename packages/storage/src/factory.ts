@@ -1,6 +1,6 @@
-import { GcsObjectStorage } from './gcs.js';
-import { LocalFsObjectStorage } from './local-fs.js';
-import type { ObjectStorage } from './object-storage.js';
+import { GcsObjectStorage } from './gcs.ts';
+import { LocalFsObjectStorage } from './local-fs.ts';
+import type { ObjectStorage } from './object-storage.ts';
 
 export type ObjectStorageDriver = 'gcs' | 'local';
 
