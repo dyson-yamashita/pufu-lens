@@ -1,7 +1,7 @@
 import type { ActorMention, ParsedDocument } from './ingestion-fixtures.js';
 import { validateParsedDocument } from './ingestion-fixtures.js';
 
-export type ActorAliasType = 'email' | 'github_login' | 'display_name';
+export type ActorAliasType = 'email' | 'github_login' | 'display_name' | 'domain';
 export type ActorType = 'person' | 'organization' | 'bot';
 
 export interface ActorRecord {
@@ -178,6 +178,7 @@ async function resolveMention(
     displayName: mention.displayName,
     occurrenceKey: `${mention.role}:${mentionIndex}`,
     sourceId: parsed.sourceId,
+    sourceType: parsed.sourceType,
   });
   const persistedAliases = await persistAliases(context, actor, aliases);
 
@@ -233,7 +234,13 @@ async function resolveEmailQuotes(
 
 async function findOrCreateActor(
   context: ResolveContext,
-  input: { aliases: ResolvedAlias[]; displayName: string; occurrenceKey: string; sourceId: string },
+  input: {
+    aliases: ResolvedAlias[];
+    displayName: string;
+    occurrenceKey: string;
+    sourceId: string;
+    sourceType: ParsedDocument['sourceType'];
+  },
 ): Promise<ActorRecord> {
   for (const alias of input.aliases) {
     const cacheKey = actorAliasCacheKey(alias.aliasType, alias.aliasValue);
@@ -266,6 +273,7 @@ async function findOrCreateActor(
       resolution: {
         createdBy: 'resolveActors',
         sourceId: input.sourceId,
+        sourceType: input.sourceType,
       },
     },
     primaryEmail,
@@ -323,6 +331,7 @@ function aliasesForMention(mention: ActorMention, source: string): ResolvedAlias
   const aliases: ResolvedAlias[] = [];
   const email = normalizeEmail(mention.email);
   const githubLogin = normalizeGitHubLogin(mention.githubLogin);
+  const domain = normalizeDomain(mention.domain);
   const displayName = normalizeDisplayName(mention.displayName);
 
   if (email) {
@@ -338,6 +347,15 @@ function aliasesForMention(mention: ActorMention, source: string): ResolvedAlias
     aliases.push({
       aliasType: 'github_login',
       aliasValue: githubLogin,
+      confidence: 1,
+      persisted: false,
+      source,
+    });
+  }
+  if (domain) {
+    aliases.push({
+      aliasType: 'domain',
+      aliasValue: domain,
       confidence: 1,
       persisted: false,
       source,
@@ -388,6 +406,15 @@ function normalizeGitHubLogin(value: string | undefined): string | undefined {
   return normalized === '' ? undefined : normalized;
 }
 
+function normalizeDomain(value: string | undefined): string | undefined {
+  const normalized = value
+    ?.trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/+$/, '');
+  return normalized === '' ? undefined : normalized;
+}
+
 function normalizeDisplayName(value: string): string | undefined {
   const normalized = value.trim().replace(/\s+/g, ' ');
   return normalized === '' ? undefined : normalized;
@@ -398,7 +425,7 @@ function aliasSource(parsed: ParsedDocument, role: ActorMention['role']): string
 }
 
 function isStrongAlias(aliasType: ActorAliasType): boolean {
-  return aliasType === 'email' || aliasType === 'github_login';
+  return aliasType === 'email' || aliasType === 'github_login' || aliasType === 'domain';
 }
 
 function actorAliasCacheKey(aliasType: ActorAliasType, aliasValue: string): string {

@@ -91,6 +91,32 @@ test('resolveActors does not merge display-name-only mentions', async () => {
   );
 });
 
+test('resolveActors merges web authors by domain alias', async () => {
+  const repository = new InMemoryActorResolutionRepository([
+    {
+      parsed: webParsed({
+        sourceId: 'https://note.example.test/sample-writer/post-1',
+      }),
+      rawDocumentId: 'raw-web-1',
+    },
+    {
+      parsed: webParsed({
+        sourceId: 'https://note.example.test/sample-writer/post-2',
+      }),
+      rawDocumentId: 'raw-web-2',
+    },
+  ]);
+
+  const result = await resolveActors({
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  });
+
+  assert.equal(result.decisions[0]?.actors[0]?.actorId, result.decisions[1]?.actors[0]?.actorId);
+  assert.equal(repository.countAliases('domain', 'note.example.test/sample-writer'), 1);
+});
+
 test('resolveActors preserves Gmail quote order and previous quote index', async () => {
   const repository = new InMemoryActorResolutionRepository([
     {
@@ -348,6 +374,29 @@ function githubParsed(input: Partial<Pick<ParsedDocument, 'actors'>> = {}): Pars
     sourceId: 'example-org/pufu-sample/issues/101',
     sourceType: 'github',
     title: 'Indexer should skip archived notes',
+  };
+}
+
+function webParsed(input: Partial<Pick<ParsedDocument, 'sourceId'>> = {}): ParsedDocument {
+  const sourceId = input.sourceId ?? 'https://note.example.test/sample-writer/post-1';
+  return {
+    actors: [
+      {
+        displayName: 'Sample Writer',
+        domain: 'note.example.test/sample-writer',
+        role: 'author',
+      },
+    ],
+    bodyText: 'Web body',
+    canonicalUri: sourceId,
+    docType: 'web_page',
+    metadata: {},
+    occurredAt: '2026-05-01T09:00:00.000Z',
+    relations: [],
+    schemaVersion: 1,
+    sourceId,
+    sourceType: 'web',
+    title: 'Web article',
   };
 }
 

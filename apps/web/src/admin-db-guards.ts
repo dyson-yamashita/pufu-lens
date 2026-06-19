@@ -61,6 +61,7 @@ export type AdminDbActorRow = {
   readonly display_name: string;
   readonly graph_node_id: string;
   readonly id: string;
+  readonly metadata: unknown;
   readonly primary_email: string | null;
   readonly primary_login: string | null;
   readonly updated_at: Date | string;
@@ -266,6 +267,7 @@ export function parseAdminDbActorRow(value: unknown): AdminDbActorRow {
     display_name,
     graph_node_id,
     id,
+    metadata,
     primary_email,
     primary_login,
     updated_at,
@@ -276,6 +278,7 @@ export function parseAdminDbActorRow(value: unknown): AdminDbActorRow {
     display_name: parseRequiredString(display_name, context, 'display_name'),
     graph_node_id: parseRequiredString(graph_node_id, context, 'graph_node_id'),
     id: parseRequiredString(id, context, 'id'),
+    metadata,
     primary_email: parseNullableString(primary_email, context, 'primary_email'),
     primary_login: parseNullableString(primary_login, context, 'primary_login'),
     updated_at: parseDateLike(updated_at, context, 'updated_at'),

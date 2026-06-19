@@ -22,6 +22,7 @@ export interface RawDocumentContract {
 }
 
 export interface ActorMention {
+  domain?: string;
   displayName: string;
   email?: string;
   githubLogin?: string;
@@ -259,9 +260,10 @@ async function parseWeb(
       : (getHtmlAttribute(canonicalLink, 'href') ?? fixtureCase.raw.sourceUri);
   const bodyText = textFromHtml(html);
   const publishedAt = extractPublishedAt(html) ?? String(fixtureCase.raw.metadata.fetchedAt);
+  const author = extractWebAuthor(html, canonicalUri);
 
   return validateParsedDocument({
-    actors: [],
+    actors: author === undefined ? [] : [actorMentionFromWebAuthor(author)],
     bodyText,
     canonicalUri,
     docType: 'web_page',
@@ -274,6 +276,197 @@ async function parseWeb(
     title,
     topics: await topicExtractionAgent.extractTopics({ bodyText, canonicalUri, html, title }),
   });
+}
+
+type WebAuthor = {
+  readonly displayName: string;
+  readonly domain?: string;
+};
+
+function actorMentionFromWebAuthor(author: WebAuthor): ActorMention {
+  return {
+    ...(author.domain === undefined ? {} : { domain: author.domain }),
+    displayName: author.displayName,
+    role: 'author',
+  };
+}
+
+function extractWebAuthor(html: string, canonicalUri: string): WebAuthor | undefined {
+  const author = extractJsonLdAuthor(html) ?? extractMetaAuthor(html);
+  if (author === undefined || author.domain !== undefined) {
+    return author;
+  }
+  return {
+    ...author,
+    domain: extractAuthorLinkDomain(html, canonicalUri, author.displayName),
+  };
+}
+
+function extractJsonLdAuthor(html: string): WebAuthor | undefined {
+  for (const script of htmlElements(html, 'script')) {
+    if (getHtmlAttribute(script.tag, 'type')?.toLowerCase() !== 'application/ld+json') {
+      continue;
+    }
+    const jsonText = script.text.trim();
+    if (!jsonText) {
+      continue;
+    }
+    try {
+      const value = JSON.parse(jsonText) as unknown;
+      const author = findJsonLdAuthor(value);
+      if (author) {
+        return author;
+      }
+    } catch {
+      // Ignore malformed or framework-injected JSON-LD and try the next author source.
+    }
+  }
+  return undefined;
+}
+
+function findJsonLdAuthor(value: unknown, graph?: readonly unknown[]): WebAuthor | undefined {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const author = findJsonLdAuthor(item, graph);
+      if (author) {
+        return author;
+      }
+    }
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const ownGraph = value['@graph'];
+  const authorGraph = Array.isArray(ownGraph) ? ownGraph : graph;
+  const directAuthor =
+    authorFromJsonLd(value.author, authorGraph) ?? authorFromJsonLd(value.creator, authorGraph);
+  if (directAuthor) {
+    return directAuthor;
+  }
+
+  if (Array.isArray(ownGraph)) {
+    for (const item of ownGraph) {
+      const author = findJsonLdAuthor(item, ownGraph);
+      if (author) {
+        return author;
+      }
+    }
+  }
+  return undefined;
+}
+
+function authorFromJsonLd(
+  value: unknown,
+  graph?: readonly unknown[],
+  visitedIds = new Set<string>(),
+): WebAuthor | undefined {
+  if (typeof value === 'string') {
+    const displayName = normalizeWebAuthor(value);
+    return displayName === undefined ? undefined : { displayName };
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const author = authorFromJsonLd(item, graph, visitedIds);
+      if (author) {
+        return author;
+      }
+    }
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const id = jsonLdId(value['@id']);
+  if (id && graph && !visitedIds.has(id)) {
+    visitedIds.add(id);
+    const referencedAuthor = authorFromJsonLd(findJsonLdGraphNode(graph, id), graph, visitedIds);
+    if (referencedAuthor) {
+      return referencedAuthor;
+    }
+  }
+  const displayName = normalizeWebAuthor(value.name);
+  if (displayName === undefined) {
+    return undefined;
+  }
+  return {
+    displayName,
+    domain: normalizeWebAuthorProfile(value.url),
+  };
+}
+
+function findJsonLdGraphNode(graph: readonly unknown[], id: string): unknown {
+  return graph.find((item) => isRecord(item) && jsonLdId(item['@id']) === id);
+}
+
+function jsonLdId(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const normalized = value.trim();
+  return normalized === '' ? undefined : normalized;
+}
+
+function extractMetaAuthor(html: string): WebAuthor | undefined {
+  for (const tag of htmlTags(html, 'meta')) {
+    const key =
+      getHtmlAttribute(tag, 'property')?.toLowerCase() ??
+      getHtmlAttribute(tag, 'name')?.toLowerCase();
+    if (key !== 'author' && key !== 'article:author') {
+      continue;
+    }
+    const displayName = normalizeWebAuthor(getHtmlAttribute(tag, 'content'));
+    if (displayName) {
+      return { displayName };
+    }
+  }
+  return undefined;
+}
+
+function normalizeWebAuthor(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const normalized = textFromHtml(value).trim().replace(/\s+/g, ' ');
+  return normalized === '' ? undefined : normalized;
+}
+
+function extractAuthorLinkDomain(
+  html: string,
+  canonicalUri: string,
+  displayName: string,
+): string | undefined {
+  const normalizedDisplayName = normalizeWebAuthor(displayName);
+  if (normalizedDisplayName === undefined) {
+    return undefined;
+  }
+  for (const anchor of htmlElements(html, 'a')) {
+    const text = normalizeWebAuthor(anchor.text);
+    if (text !== normalizedDisplayName) {
+      continue;
+    }
+    const href = getHtmlAttribute(anchor.tag, 'href');
+    const domain = normalizeWebAuthorProfile(href, canonicalUri);
+    if (domain) {
+      return domain;
+    }
+  }
+  return undefined;
+}
+
+function normalizeWebAuthorProfile(value: unknown, baseUri?: string): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) {
+    return undefined;
+  }
+  try {
+    const url = new URL(value, baseUri);
+    const normalizedPath = url.pathname.replace(/\/+$/, '');
+    const key = `${url.hostname.toLowerCase()}${normalizedPath}`;
+    return key === url.hostname.toLowerCase() ? undefined : key;
+  } catch {
+    return undefined;
+  }
 }
 
 function extractPublishedAt(html: string): string | undefined {
