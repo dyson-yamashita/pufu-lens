@@ -465,13 +465,22 @@ function stripHtmlTags(value: string): string {
       continue;
     }
     const tagName = readHtmlTagName(value, index + 1);
+    const selfClosing = isSelfClosingHtmlTag(value, index, tagEnd);
     index =
-      tagName === 'script' || tagName === 'style'
+      (tagName === 'script' || tagName === 'style') && !selfClosing
         ? findClosingTagEnd(value, tagName, tagEnd + 1)
         : tagEnd;
     output += ' ';
   }
   return output;
+}
+
+function isSelfClosingHtmlTag(value: string, tagStart: number, tagEnd: number): boolean {
+  let index = tagEnd - 1;
+  while (index > tagStart && value.charAt(index).trim() === '') {
+    index -= 1;
+  }
+  return value.charAt(index) === '/';
 }
 
 function findHtmlTagEnd(value: string, startIndex: number): number {
@@ -538,10 +547,19 @@ function getHtmlAttribute(tag: string, attributeName: string): string | undefine
       index += 1;
     }
     const name = tag.slice(nameStart, index).toLowerCase();
+    const afterName = index;
+    if (!name) {
+      index += 1;
+      continue;
+    }
     while (index < tag.length && tag.charAt(index).trim() === '') {
       index += 1;
     }
     if (tag.charAt(index) !== '=') {
+      if (name === wanted) {
+        return '';
+      }
+      index = afterName;
       continue;
     }
     index += 1;

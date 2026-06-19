@@ -167,13 +167,29 @@ function stripGraphQueryRequestSuffix(value: string): string {
   let output = value.endsWith('。') ? value.slice(0, -1) : value;
   for (const suffix of ['知りたいです', '知りたい', 'ください', '教えて']) {
     if (output.endsWith(suffix)) {
-      output = output.slice(0, -suffix.length);
+      output = output.slice(0, -suffix.length).trim();
       break;
     }
   }
-  for (const suffix of ['結果', '情報', 'を', 'の', 'について', 'に関する']) {
+  for (const suffix of ['教えて']) {
     if (output.endsWith(suffix)) {
-      output = output.slice(0, -suffix.length);
+      output = output.slice(0, -suffix.length).trim();
+      break;
+    }
+  }
+  if (output.endsWith('を')) {
+    output = output.slice(0, -1).trim();
+  }
+  for (const suffix of ['結果', '情報']) {
+    if (output.endsWith(suffix)) {
+      output = output.slice(0, -suffix.length).trim();
+      break;
+    }
+  }
+  for (const suffix of ['について', 'に関する', 'を', 'の']) {
+    if (output.endsWith(suffix)) {
+      output = output.slice(0, -suffix.length).trim();
+      break;
     }
   }
   return output.trim();

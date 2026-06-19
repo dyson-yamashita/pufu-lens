@@ -200,10 +200,14 @@ function markdownSourceCandidates(section: PrivateReportSection): PufuSourceCand
 function parseMarkdownSourceLine(line: string): { snippet: string; title: string } | undefined {
   const trimmedStart = line.trimStart();
   const marker = trimmedStart[0];
-  if ((marker !== '-' && marker !== '*') || trimmedStart[1] !== ' ') {
+  if (marker !== '-' && marker !== '*') {
     return undefined;
   }
-  const content = trimmedStart.slice(2);
+  const rest = trimmedStart.slice(1);
+  const content = rest.trimStart();
+  if (rest.length === content.length) {
+    return undefined;
+  }
   const separatorIndex = content.indexOf(': ');
   if (separatorIndex <= 0 || separatorIndex >= content.length - 2) {
     return undefined;

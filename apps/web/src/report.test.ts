@@ -321,6 +321,31 @@ validatePublicReportJson({
   ...published.publicReport,
   summary: 'Public host https://10.example.com is allowed when it is not a private IP.',
 });
+assert.throws(
+  () =>
+    validatePublicReportJson({
+      ...published.publicReport,
+      summary: 'Private host https://10.0.0.1/path must not be treated as public text.',
+    }),
+  /Public report contains private text/,
+);
+
+const markdownSourceScore = createPufuScoreFromReport({
+  period: { end: '2026-06-07', start: '2026-06-01' },
+  report_id: 'markdown-source-report',
+  sections: [
+    {
+      id: 'activity',
+      markdown: '-  Markdown Source: Parsed without leading spaces',
+      metrics: {},
+      title: 'Activity',
+    },
+  ],
+  summary: 'summary',
+  title: 'title',
+});
+assert.match(JSON.stringify(markdownSourceScore), /Markdown Source/);
+assert.doesNotMatch(JSON.stringify(markdownSourceScore), / {2}Markdown Source/);
 
 const publicDetail = await getPublicReport({
   projectSlug: 'sample-a',

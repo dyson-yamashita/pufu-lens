@@ -289,10 +289,19 @@ function getHtmlAttribute(tag: string, attributeName: string): string | undefine
       index += 1;
     }
     const name = tag.slice(nameStart, index).toLowerCase();
+    const afterName = index;
+    if (!name) {
+      index += 1;
+      continue;
+    }
     while (index < tag.length && tag.charAt(index).trim() === '') {
       index += 1;
     }
     if (tag.charAt(index) !== '=') {
+      if (name === wanted) {
+        return '';
+      }
+      index = afterName;
       continue;
     }
     index += 1;

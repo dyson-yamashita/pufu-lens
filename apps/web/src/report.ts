@@ -1483,6 +1483,12 @@ function isIpv4Host(hostname: string): boolean {
       if (part === '' || part.length > 3) {
         return false;
       }
+      for (let index = 0; index < part.length; index += 1) {
+        const code = part.charCodeAt(index);
+        if (code < 48 || code > 57) {
+          return false;
+        }
+      }
       const value = Number(part);
       return Number.isInteger(value) && value >= 0 && value <= 255;
     })
