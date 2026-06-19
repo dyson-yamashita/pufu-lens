@@ -119,7 +119,7 @@ export function parseGlobalAdminIdRow(value: unknown): { readonly id: string } {
 }
 
 export async function assertOtherGlobalAdminExists(
-  sql: postgres.Sql | postgres.TransactionSql,
+  sql: postgres.TransactionSql,
   input: { userId: string },
 ): Promise<void> {
   const rows = (await sql`

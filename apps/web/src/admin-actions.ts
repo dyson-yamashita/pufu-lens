@@ -1176,7 +1176,7 @@ function truncateWorkflowOutput(output: string): string {
 }
 
 async function assertAdminRemainsAfterRoleChange(
-  sql: postgres.Sql | postgres.TransactionSql,
+  sql: postgres.TransactionSql,
   userId: string,
 ): Promise<void> {
   await assertOtherGlobalAdminExists(sql, { userId });
