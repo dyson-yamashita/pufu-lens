@@ -52,7 +52,7 @@ import {
 import { type AppMemberRole, listProjectConnectionsForProjectId } from './admin-db';
 import { getRequiredAdminSql } from './admin-sql';
 import { requireSessionUserId } from './auth-session';
-import { lookupProjectAdminAccess } from './authz.ts';
+import { lookupGlobalAdminUserId, lookupProjectAdminAccess } from './authz.ts';
 import { hashPassword } from './password-auth';
 import {
   createGitHubInstallationAccessToken,
@@ -921,17 +921,11 @@ function requireIsoDate(value: string, fieldName: string): string {
 
 async function requireGlobalAdmin(sql: postgres.Sql | postgres.TransactionSql): Promise<string> {
   const userId = await requireSessionUserId();
-  const rows = (await sql`
-    SELECT id::text
-    FROM public.users
-    WHERE id = ${userId}
-      AND role = 'admin'
-  `) as readonly unknown[];
-  const user = rows[0] ? parseAdminActionIdRow(rows[0], 'global admin row') : undefined;
-  if (!user) {
+  const adminUserId = await lookupGlobalAdminUserId(sql, { userId });
+  if (!adminUserId) {
     throw new Error('Admin access is required.');
   }
-  return user.id;
+  return adminUserId;
 }
 
 async function runCollectAndIngestDataSource(

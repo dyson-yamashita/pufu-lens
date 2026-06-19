@@ -151,17 +151,6 @@ export function parseAdminDbIdRow(value: unknown, context: string): string {
   return id;
 }
 
-export function parseAppMemberRoleRow(value: unknown): AppMemberRole {
-  if (!isRecord(value)) {
-    throw new Error('Invalid app member role row.');
-  }
-  const role = value.role;
-  if (role !== 'admin' && role !== 'member') {
-    throw new Error('Invalid app member role row.');
-  }
-  return role;
-}
-
 export function parseAdminDbAppMemberRow(
   value: unknown,
   context = 'app member',
