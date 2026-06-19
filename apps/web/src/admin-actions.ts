@@ -1105,7 +1105,7 @@ async function collectProjectDataSource(
     });
     if (!token) {
       throw new Error(
-        'GitHub App installation token is not available. Reconnect GitHub in Settings and verify GITHUB_APP_ID / GITHUB_APP_PRIVATE_KEY.',
+        'GitHub App installation token is not available. Reconnect GitHub in Settings and verify GitHub App ID and private key are configured.',
       );
     }
     await collectGitHubSource({

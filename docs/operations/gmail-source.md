@@ -8,7 +8,7 @@ Step 10 の Gmail 収集は、Gmail API から query / label で絞った messag
 - `DATABASE_URL` がローカル DB を指している。
 - `STORAGE_ROOT` または `LOCAL_STORAGE_ROOT` が local object storage の root を指している。
 - 対象 project は `pnpm seed:projects` または `pnpm create-project` で作成済み。
-- `GMAIL_ACCESS_TOKEN` または `GOOGLE_OAUTH_ACCESS_TOKEN` に Gmail API を読む OAuth access token が設定されている。
+- project に Google OAuth connection が設定されている。Settings から Gmail を接続するか、`--connection-id` で接続を指定する。
 - OAuth scope は読み取り専用の `https://www.googleapis.com/auth/gmail.readonly` を使う。
 
 ## 実行例
@@ -16,7 +16,6 @@ Step 10 の Gmail 収集は、Gmail API から query / label で絞った messag
 ```bash
 DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
   STORAGE_ROOT=/tmp/pufu-lens-storage \
-  GMAIL_ACCESS_TOKEN="$GMAIL_ACCESS_TOKEN" \
   pnpm ingest:collect --project sample-a --source gmail --label-id INBOX \
     --query "newer_than:30d" --limit 5 --dry-run
 ```
@@ -26,7 +25,6 @@ DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
 ```bash
 DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
   STORAGE_ROOT=/tmp/pufu-lens-storage \
-  GMAIL_ACCESS_TOKEN="$GMAIL_ACCESS_TOKEN" \
   pnpm ingest:collect --project sample-a --source gmail --label-id INBOX \
     --query "newer_than:30d" --limit 5
 ```
@@ -36,7 +34,6 @@ DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
 ```bash
 DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
   STORAGE_ROOT=/tmp/pufu-lens-storage \
-  GMAIL_ACCESS_TOKEN="$GMAIL_ACCESS_TOKEN" \
   pnpm ingest:run --project sample-a --source gmail --label-id INBOX \
     --query "newer_than:30d" --limit 5 --embedding-provider deterministic
 ```

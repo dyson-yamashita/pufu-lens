@@ -57,14 +57,20 @@ async function main(): Promise<void> {
   const repository = new PostgresCollectionRepository(sql);
 
   try {
+    const provider = providerForSource(sourceType);
     const connection = options.connectionId
       ? await readCollectionConnection({
           connectionId: options.connectionId,
           projectSlug,
-          provider: providerForSource(sourceType),
+          provider,
           sql,
         })
-      : undefined;
+      : provider
+        ? await readProjectCollectionConnection({ projectSlug, provider, sql })
+        : undefined;
+
+    const connectionToken =
+      sourceType === 'web' ? undefined : requiredCollectionToken(sourceType, connection);
 
     if (sourceType === 'web' && options.urls.length > 0) {
       await ensureWebUrlDataSource({ projectSlug, sql, urls: options.urls });
@@ -108,10 +114,7 @@ async function main(): Promise<void> {
             projectSlug,
             repository,
             storage,
-            token:
-              connection?.token ??
-              process.env.GOOGLE_DRIVE_ACCESS_TOKEN ??
-              process.env.GOOGLE_OAUTH_ACCESS_TOKEN,
+            token: connectionToken,
           })
         : sourceType === 'gmail'
           ? await collectGmailSource({
@@ -120,10 +123,7 @@ async function main(): Promise<void> {
               projectSlug,
               repository,
               storage,
-              token:
-                connection?.token ??
-                process.env.GMAIL_ACCESS_TOKEN ??
-                process.env.GOOGLE_OAUTH_ACCESS_TOKEN,
+              token: connectionToken,
             })
           : sourceType === 'github'
             ? await collectGitHubSource({
@@ -132,7 +132,7 @@ async function main(): Promise<void> {
                 projectSlug,
                 repository,
                 storage,
-                token: connection?.token ?? process.env.GITHUB_TOKEN,
+                token: connectionToken,
               })
             : await collectWebUrlSource({
                 dryRun: options.dryRun,
@@ -617,6 +617,58 @@ function providerForSource(sourceType: RealSourceType): ConnectionProvider | und
   return undefined;
 }
 
+function requiredCollectionToken(
+  sourceType: Exclude<RealSourceType, 'web'>,
+  connection: CollectionConnection | undefined,
+): string {
+  if (!connection?.token) {
+    throw new Error(
+      `${sourceType} collection requires a configured OAuth connection for this project. Connect the source in Settings or pass --connection-id.`,
+    );
+  }
+  return connection.token;
+}
+
+async function readProjectCollectionConnection(input: {
+  projectSlug: string;
+  provider: ConnectionProvider;
+  sql: postgres.Sql;
+}): Promise<CollectionConnection | undefined> {
+  const rows = (await input.sql`
+    SELECT
+      oc.id::text AS id,
+      oc.provider,
+      oc.user_id::text AS "userId",
+      oc.access_token_secret AS "accessTokenSecret",
+      oc.refresh_token_secret AS "refreshTokenSecret",
+      oc.expires_at AS "expiresAt",
+      oc.metadata
+    FROM public.oauth_connections oc
+    JOIN public.projects p ON p.id = oc.project_id
+    WHERE p.slug = ${input.projectSlug}
+      AND oc.provider = ${input.provider}
+    LIMIT 1
+  `) as Array<{
+    accessTokenSecret: string | null;
+    expiresAt: Date | string | null;
+    id: string;
+    metadata: unknown;
+    provider: ConnectionProvider;
+    refreshTokenSecret: string | null;
+    userId: string;
+  }>;
+  const connection = rows[0];
+  if (!connection) {
+    return undefined;
+  }
+  return {
+    id: connection.id,
+    provider: connection.provider,
+    token: await resolveConnectionToken({ connection, sql: input.sql }),
+    userId: connection.userId,
+  };
+}
+
 async function readCollectionConnection(input: {
   connectionId: string;
   projectSlug: string;
@@ -738,13 +790,11 @@ async function createGitHubInstallationAccessToken(metadataValue: unknown): Prom
   if (typeof installationId !== 'string' && typeof installationId !== 'number') {
     throw new Error('GitHub OAuth connection does not have an installation id.');
   }
-  const appId =
-    (typeof metadata.githubAppId === 'string' ? metadata.githubAppId : null) ??
-    process.env.GITHUB_APP_ID;
+  const appId = typeof metadata.githubAppId === 'string' ? metadata.githubAppId : null;
   const privateKey = githubAppPrivateKey(metadata);
   if (!appId || !privateKey) {
     throw new Error(
-      'GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY are required for GitHub App collection.',
+      'GitHub App ID and private key are required for GitHub collection. Configure GitHub App in project Settings or pass --connection-id for a configured GitHub connection.',
     );
   }
   const response = await fetch(
@@ -789,12 +839,7 @@ function githubAppPrivateKey(metadata: Record<string, unknown>): string | null {
   if (isEncryptedConnectionSecret(encrypted)) {
     return decryptConnectionSecret(encrypted);
   }
-  const base64Value = process.env.GITHUB_APP_PRIVATE_KEY_BASE64;
-  if (base64Value) {
-    return Buffer.from(base64Value, 'base64').toString('utf8');
-  }
-  const value = process.env.GITHUB_APP_PRIVATE_KEY;
-  return value ? value.replace(/\\n/g, '\n') : null;
+  return null;
 }
 
 function base64UrlJson(value: Record<string, unknown>): string {

@@ -140,7 +140,7 @@ Step 10 の Web URL 接続で追加した scripts は、後続 Step 10a / Step 1
 - 対象 Issue: #40
 - 実装範囲:
   - Drive folder scanner / raw adapter を追加。
-  - `GOOGLE_DRIVE_ACCESS_TOKEN` または `GOOGLE_OAUTH_ACCESS_TOKEN` を使う `pnpm ingest:collect --source drive --folder-id ...` / `--folder-url ...` を追加。
+  - project の Google OAuth connection を使う `pnpm ingest:collect --source drive --folder-id ...` / `--folder-url ...` を追加。
   - `ingest:run --source drive` の collect step 接続を追加。
   - `ingest:inspect --source drive` の source contract に `fileId`、`revisionId`、`mimeType`、`ownerCount`、`drive_doc` parse 検査を追加。
   - Drive 実データ収集手順を `docs/operations/drive-source.md` に追加。
@@ -150,7 +150,7 @@ Step 10 の Web URL 接続で追加した scripts は、後続 Step 10a / Step 1
   - `pnpm format`
 - 自動テスト結果: Drive folder scan、ingest window、file filter、raw metadata、本文全文 / token を metadata に保存しないこと、dry-run、重複 skip、失敗時の secret マスクを unit test で確認。ingestion package test は全 59 件成功。
 - 補助的な手動確認: script 構文 check で Drive 用 CLI option と workflow option が Node の strip-types 実行形式で解釈できることを確認。
-- DB 確認: 未実施。OAuth access token と実 Drive folder が必要なため、この追記時点では実 DB smoke は未実施。
+- DB 確認: 未実施。Google OAuth connection と実 Drive folder が必要なため、この追記時点では実 DB smoke は未実施。
 - Storage 確認: 未実施。unit test の in-memory storage では raw JSON 保存と重複 skip を確認済み。
 - ログ / secret 確認: unit test で Drive text fetch failure の `token=secret` がログに残らないこと、raw metadata に token と本文全文が入らないことを確認。
 - 未確認リスク: 実 Drive API での `--limit 5` indexed 到達、OAuth scope の最小性、Google Docs / Sheets / Slides 以外の binary / PDF の本文抽出、実 folder での再実行重複確認は未実施。Gmail の実データ接続は未着手。
@@ -161,7 +161,7 @@ Step 10 の Web URL 接続で追加した scripts は、後続 Step 10a / Step 1
 - 対象 Issue: #42
 - 実装範囲:
   - Gmail message scanner / thread raw adapter を追加。
-  - `GMAIL_ACCESS_TOKEN` または `GOOGLE_OAUTH_ACCESS_TOKEN` を使う `pnpm ingest:collect --source gmail --label-id ... --query ...` を追加。
+  - project の Google OAuth connection を使う `pnpm ingest:collect --source gmail --label-id ... --query ...` を追加。
   - `ingest:run --source gmail` の collect step 接続を追加。
   - `ingest:inspect --source gmail` の source contract に `threadId`、`messageId`、`quotedMessageCount`、`toCount`、`email` parse 検査を追加。
   - Gmail 実データ収集手順を `docs/operations/gmail-source.md` に追加。

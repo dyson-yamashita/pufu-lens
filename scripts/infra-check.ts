@@ -29,13 +29,13 @@ type Profile = 'deploy' | 'collect-drive' | 'collect-gmail' | 'collect-github' |
 const PROFILE_REQUIREMENTS = {
   'collect-drive': ['DATABASE_URL'],
   'collect-gmail': ['DATABASE_URL'],
-  'collect-github': ['DATABASE_URL', 'GITHUB_TOKEN'],
+  'collect-github': ['DATABASE_URL'],
   'workflow-job': ['DATABASE_URL', 'WORKFLOW_ID', 'WORKFLOW_INPUT_JSON'],
 } as const satisfies Record<Exclude<Profile, 'deploy'>, readonly string[]>;
 
 const PROFILE_ANY_REQUIREMENTS = {
-  'collect-drive': [['GOOGLE_DRIVE_ACCESS_TOKEN', 'GOOGLE_OAUTH_ACCESS_TOKEN']],
-  'collect-gmail': [['GMAIL_ACCESS_TOKEN', 'GOOGLE_OAUTH_ACCESS_TOKEN']],
+  'collect-drive': [],
+  'collect-gmail': [],
   'collect-github': [],
   'workflow-job': [],
 } as const satisfies Record<Exclude<Profile, 'deploy'>, readonly (readonly string[])[]>;
