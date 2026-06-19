@@ -107,6 +107,35 @@ export async function lookupProjectAdminAccess(
   return access.appRole === 'admin' || access.projectRole === 'admin' ? access : undefined;
 }
 
+export function parseGlobalAdminIdRow(value: unknown): { readonly id: string } {
+  if (!isRecord(value)) {
+    throw new Error('Invalid global admin id row.');
+  }
+  const id = value.id;
+  if (typeof id !== 'string') {
+    throw new Error('Invalid global admin id row field: id');
+  }
+  return { id };
+}
+
+export async function assertOtherGlobalAdminExists(
+  sql: postgres.TransactionSql,
+  input: { userId: string },
+): Promise<void> {
+  const rows = (await sql`
+    SELECT id
+    FROM public.users
+    WHERE role = 'admin'
+    ORDER BY id
+    FOR UPDATE
+  `) as readonly unknown[];
+  const adminIds = rows.map(parseGlobalAdminIdRow);
+  const otherAdminExists = adminIds.some((row) => row.id !== input.userId);
+  if (!otherAdminExists) {
+    throw new Error('At least one admin account is required.');
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
