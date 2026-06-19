@@ -38,11 +38,11 @@ env:
     availability:
       - RUNTIME
   - variable: GEMINI_EMBEDDING_DIMENSIONS
-    value: "1536"
+    value: '1536'
     availability:
       - RUNTIME
   - variable: GOOGLE_GENAI_USE_VERTEXAI
-    value: "false"
+    value: 'false'
     availability:
       - RUNTIME
   # AUTH_URL must match the backend's public origin. Update after the first

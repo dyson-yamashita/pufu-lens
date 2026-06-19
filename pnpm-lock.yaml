@@ -44,6 +44,9 @@ importers:
 
   apps/mastra:
     dependencies:
+      '@google-cloud/storage':
+        specifier: ^7.21.0
+        version: 7.21.0
       '@mastra/core':
         specifier: ^1.40.0
         version: 1.40.0(express@5.2.1)(zod@4.4.3)

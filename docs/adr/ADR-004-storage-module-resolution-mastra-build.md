@@ -16,6 +16,7 @@
 問題は Mastra rollup バンドラがソースを読む点にある。`factory.ts` の `./local-fs.js` 指定子をシムファイルに解決した後、シム内の `export * from './local-fs.ts'` を **辿れず**、`LocalFsObjectStorage` が「not exported」となってビルドが失敗する（`.js` ファイルから `.ts` 再エクスポートを追えない）。
 
 検証で以下を確認した。
+
 - strip-types は `.js` シムを使う場合、シム内の再エクスポートに **明示 `.ts` 拡張子が必須**（無拡張は `ERR_MODULE_NOT_FOUND`）。つまりシムと strip-types の組み合わせは本質的にバンドラと両立しない。
 - Mastra の `bundler` 設定（`externals` / `transpilePackages`）は依存の外部化を制御するのみで、rollup の拡張子解決（`.js` シム → `.ts`）には介入できない。依存「解析」段階での失敗のため、バンドラ設定だけでは解消不可。
 
