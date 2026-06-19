@@ -106,7 +106,9 @@ gcloud compute networks subnets update default --region "$REGION" --enable-priva
 gcloud builds submit infra/docker/postgres \
   --tag "${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/postgres-ai:latest"
 # 2) VM 作成（永続データディスク + host network コンテナ + 内部IP のみ）
-gcloud iam service-accounts ... # AR reader を VM の SA に付与（image pull 用）
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
+  --role="roles/artifactregistry.reader" --condition=None
 gcloud compute instances create-with-container pg-ai \
   --zone "$ZONE" --machine-type e2-medium \
   --boot-disk-size 20GB --boot-disk-type pd-balanced \
@@ -118,13 +120,14 @@ gcloud compute instances create-with-container pg-ai \
 ```
 
 注意点:
+
 - `POSTGRES_PASSWORD` はシェル変数 `$PGPASS` を生成して渡し、表示しない。`DATABASE_URL=postgresql://pufu:$PGPASS@<internal-ip>:5432/pufu_lens` を Secret Manager に格納。
 - DB 名は `pufu_lens` 固定（`init.sql` が参照）。
 - `create-with-container` は init script を自動実行しないので、コンテナ起動後に IAP SSH 経由で `infra/docker/postgres/init.sql` を流し込む。`init.sql` は全テーブル + AGE graph + `schema_migrations` stamp を作るため、適用後は migration head 相当になる。
 
 ```bash
 gcloud compute ssh pg-ai --zone "$ZONE" --tunnel-through-iap \
-  --command 'CID=$(docker ps -q --filter ancestor=...postgres-ai:latest); docker exec -i "$CID" psql -v ON_ERROR_STOP=1 -U pufu -d pufu_lens' \
+  --command 'CID=$(docker ps -q --filter status=running); docker exec -i "$CID" psql -v ON_ERROR_STOP=1 -U pufu -d pufu_lens' \
   < infra/docker/postgres/init.sql
 ```
 
@@ -172,7 +175,7 @@ entrypoint は `scripts/workflow-job.ts`。`WORKFLOW_INPUT_JSON` は実行時 ov
 firebase projects:addfirebase "$PROJECT_ID"
 firebase apphosting:backends:create --project "$PROJECT_ID" --backend pufu-lens-web \
   --primary-region "$REGION" --root-dir apps/web --service-account "$RUNTIME_SA" --non-interactive
-firebase apphosting:secrets:grantaccess DATABASE_URL,AUTH_SECRET,GEMINI_API_KEY \
+firebase apphosting:secrets:grantaccess DATABASE_URL AUTH_SECRET GEMINI_API_KEY \
   --backend pufu-lens-web --location "$REGION" --project "$PROJECT_ID"
 firebase deploy --only apphosting --project "$PROJECT_ID"
 ```
