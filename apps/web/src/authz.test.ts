@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { parseAppUserRoleRow, parseProjectMemberAccess } from './authz.ts';
+import { parseAppUserRoleRow, parseGlobalAdminIdRow, parseProjectMemberAccess } from './authz.ts';
 
 const validAccessRow = {
   appRole: 'member',
@@ -66,5 +66,10 @@ assert.throws(
   /Invalid app user role row field: role/,
 );
 assert.throws(() => parseAppUserRoleRow({ role: null }), /Invalid app user role row field: role/);
+
+assert.deepEqual(parseGlobalAdminIdRow({ id: 'admin-a' }), { id: 'admin-a' });
+assert.throws(() => parseGlobalAdminIdRow(null), /Invalid global admin id row/);
+assert.throws(() => parseGlobalAdminIdRow([]), /Invalid global admin id row/);
+assert.throws(() => parseGlobalAdminIdRow({ id: 123 }), /Invalid global admin id row field: id/);
 
 console.log('web authz tests passed');
