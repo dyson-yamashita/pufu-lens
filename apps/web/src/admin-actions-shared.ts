@@ -73,3 +73,10 @@ export function revalidateProject(projectSlug: string): void {
   revalidatePath(`/projects/${projectSlug}/admin/settings`);
   revalidatePath(`/projects/${projectSlug}/reports`);
 }
+
+export function parseOptionalAdminActionRow<T>(
+  rows: readonly unknown[],
+  parser: (row: unknown) => T,
+): T | undefined {
+  return rows[0] ? parser(rows[0]) : undefined;
+}
