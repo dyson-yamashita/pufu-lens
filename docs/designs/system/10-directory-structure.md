@@ -95,6 +95,10 @@ project-root/
 │       │   └── factory.ts
 │       └── package.json
 │
+├── .data/
+│   └── volumes/
+│       └── pufu-lens-data/        # ローカル運用時の元データ保管場所（gitignore）
+│
 ├── infra/
 │   ├── db/
 │   │   ├── baseline/              # schema drift check 用の migration 起点 SQL
@@ -103,8 +107,6 @@ project-root/
 │   │   └── postgres/
 │   │       ├── Dockerfile
 │   │       └── init.sql           # fresh DB 用スキーマ + schema_migrations baseline stamp
-│   ├── volumes/
-│   │   └── pufu-lens-data/        # ローカル運用時の元データ保管場所（gitignore）
 │   └── scheduler/
 │       ├── curate-hourly.json
 │       ├── ingest-daily.json
@@ -126,7 +128,7 @@ project-root/
 │
 ├── .env.local
 ├── .env.example
-├── docker-compose.yml             # postgres + pufu-lens-data volume + mastra + web
+├── docker-compose.yml             # postgres + local object storage bind mount + mastra + web
 └── package.json
 ```
 

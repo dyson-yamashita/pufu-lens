@@ -811,6 +811,8 @@ function localDevStorageRoot(): string | undefined {
     return undefined;
   }
   const candidates = [
+    resolve(process.cwd(), '.data/volumes/pufu-lens-data'),
+    resolve(process.cwd(), '../../.data/volumes/pufu-lens-data'),
     resolve(process.cwd(), 'infra/volumes/pufu-lens-data'),
     resolve(process.cwd(), '../../infra/volumes/pufu-lens-data'),
   ];

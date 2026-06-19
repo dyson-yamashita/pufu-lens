@@ -22,6 +22,8 @@ test-results/
 *.tsbuildinfo
 
 # Local data and generated artifacts
+.data/
 infra/volumes/
+**/infra/volumes/
 tmp/
 *.log

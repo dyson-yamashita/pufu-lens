@@ -1243,7 +1243,7 @@ async function runIngestWorkflow(input: {
         STORAGE_ROOT:
           input.storageRoot ??
           process.env.STORAGE_ROOT ??
-          resolve(repoRoot, 'infra/volumes/pufu-lens-data'),
+          resolve(repoRoot, '.data/volumes/pufu-lens-data'),
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     },

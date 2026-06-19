@@ -11,7 +11,7 @@ services:
       - '5432:5432'
     volumes:
       - pufu-lens-postgres:/var/lib/postgresql
-      - pufu-lens-data:/data
+      - ./.data/volumes/pufu-lens-data:/data
       - ./infra/docker/postgres/init.sql:/docker-entrypoint-initdb.d/99-init.sql:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U pufu_lens -d pufu_lens']
@@ -20,5 +20,4 @@ services:
       retries: 12
 
 volumes:
-  pufu-lens-data:
   pufu-lens-postgres:

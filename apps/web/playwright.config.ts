@@ -8,7 +8,7 @@ const databaseUrl = process.env.DATABASE_URL
     ? undefined
     : 'postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens';
 const storageDriver = process.env.STORAGE_DRIVER || 'local';
-const storageRoot = process.env.STORAGE_ROOT || '../../infra/volumes/pufu-lens-data';
+const storageRoot = process.env.STORAGE_ROOT || '../../.data/volumes/pufu-lens-data';
 
 export default defineConfig({
   expect: {
