@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import {
-  parseAdminActionAdminCountRow,
   parseAdminActionDataSourceIngestRow,
   parseAdminActionDataSourceRecordRow,
   parseAdminActionDataSourceRow,
@@ -176,14 +175,6 @@ assert.throws(
       sourceType: 'github',
     }),
   /Invalid collection raw document row field: sourceId/,
-);
-
-assert.equal(parseAdminActionAdminCountRow({ admin_count: 2 }), 2);
-assert.equal(parseAdminActionAdminCountRow({ admin_count: 4n }), 4);
-assert.equal(parseAdminActionAdminCountRow({ admin_count: '3' }), 3);
-assert.throws(
-  () => parseAdminActionAdminCountRow({ admin_count: 'many' }),
-  /Invalid admin count row field: admin_count/,
 );
 
 assert.deepEqual(parseAdminActionParserVersionRow({ id: 'version-a', status: 'draft' }), {

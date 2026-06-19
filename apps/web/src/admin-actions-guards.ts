@@ -73,21 +73,6 @@ export function parseAdminActionDataSourceIngestRow(
   };
 }
 
-export function parseAdminActionAdminCountRow(value: unknown): number {
-  const row = requireRecord(value, 'admin count row');
-  const adminCount = row.admin_count;
-  if (typeof adminCount === 'number') {
-    return adminCount;
-  }
-  if (typeof adminCount === 'bigint') {
-    return Number(adminCount);
-  }
-  if (typeof adminCount === 'string' && /^\d+$/.test(adminCount)) {
-    return Number(adminCount);
-  }
-  throw new Error('Invalid admin count row field: admin_count');
-}
-
 export function parseAdminActionParserVersionRow(value: unknown): AdminActionParserVersionRow {
   const row = requireRecord(value, 'parser version row');
   return {

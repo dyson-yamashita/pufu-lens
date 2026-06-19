@@ -30,7 +30,6 @@ import { LocalFsObjectStorage } from '../../../packages/storage/src/local-fs.ts'
 import {
   type AdminActionDataSourceRow,
   type AdminActionParserVersionRow,
-  parseAdminActionAdminCountRow,
   parseAdminActionDataSourceIngestRow,
   parseAdminActionDataSourceRecordRow,
   parseAdminActionDataSourceRow,
@@ -52,7 +51,11 @@ import {
 import { type AppMemberRole, listProjectConnectionsForProjectId } from './admin-db';
 import { getRequiredAdminSql } from './admin-sql';
 import { requireSessionUserId } from './auth-session';
-import { lookupGlobalAdminUserId, lookupProjectAdminAccess } from './authz.ts';
+import {
+  assertOtherGlobalAdminExists,
+  lookupGlobalAdminUserId,
+  lookupProjectAdminAccess,
+} from './authz.ts';
 import { hashPassword } from './password-auth';
 import {
   createGitHubInstallationAccessToken,
@@ -1176,16 +1179,7 @@ async function assertAdminRemainsAfterRoleChange(
   sql: postgres.Sql | postgres.TransactionSql,
   userId: string,
 ): Promise<void> {
-  const rows = (await sql`
-    SELECT COUNT(*)::int AS admin_count
-    FROM public.users
-    WHERE role = 'admin'
-      AND id <> ${userId}
-  `) as readonly unknown[];
-  const adminCount = rows[0] ? parseAdminActionAdminCountRow(rows[0]) : 0;
-  if (adminCount < 1) {
-    throw new Error('At least one admin account is required.');
-  }
+  await assertOtherGlobalAdminExists(sql, { userId });
 }
 
 async function requireProjectAdminForMemberManagement(
