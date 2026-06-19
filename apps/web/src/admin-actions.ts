@@ -13,6 +13,7 @@ import type {
 } from '../../../packages/storage/src/object-storage.ts';
 import { type AdminActionIdRow, parseAdminActionIdRow } from './admin-actions-guards.ts';
 import {
+  parseOptionalAdminActionRow,
   requireAdminProject,
   requireFormValue,
   requireGlobalAdmin,
@@ -56,13 +57,6 @@ function parseOptionalAdminActionIdRow(
   context: string,
 ): AdminActionIdRow | undefined {
   return parseOptionalAdminActionRow(rows, (row) => parseAdminActionIdRow(row, context));
-}
-
-function parseOptionalAdminActionRow<T>(
-  rows: readonly unknown[],
-  parser: (row: unknown) => T,
-): T | undefined {
-  return rows[0] ? parser(rows[0]) : undefined;
 }
 
 async function insertCreatedProjectRow(

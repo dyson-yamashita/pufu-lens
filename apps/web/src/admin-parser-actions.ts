@@ -6,6 +6,7 @@ import {
   parseAdminActionParserVersionRow,
 } from './admin-actions-guards.ts';
 import {
+  parseOptionalAdminActionRow,
   requireAdminProject,
   requireFormValue,
   revalidateProject,
@@ -13,13 +14,6 @@ import {
 } from './admin-actions-shared.ts';
 
 type SqlExecutor = postgres.Sql | postgres.TransactionSql;
-
-function parseOptionalAdminActionRow<T>(
-  rows: readonly unknown[],
-  parser: (row: unknown) => T,
-): T | undefined {
-  return rows[0] ? parser(rows[0]) : undefined;
-}
 
 export async function approveParserVersion(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
@@ -133,6 +127,7 @@ async function lookupProjectParserVersionRow(
     WHERE parser_profiles.project_id = ${projectId}
       ${parserProfileFilter}
       AND parser_versions.id = ${parserVersionId}
+    FOR UPDATE OF parser_versions
   `) as readonly unknown[];
   return parseOptionalAdminActionRow(rows, parseAdminActionParserVersionRow);
 }
