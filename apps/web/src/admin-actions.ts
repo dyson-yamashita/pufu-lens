@@ -748,6 +748,41 @@ class AdminCollectionRepository implements CollectionRepository {
   ) {}
 
   async lookupProjectBySlug(slug: string): Promise<ProjectRecord | undefined> {
+    return this.lookupProjectRecordBySlug(slug);
+  }
+
+  async findDataSources(projectId: string, sourceType?: SourceType): Promise<DataSourceRecord[]> {
+    if (!sourceType) {
+      return [];
+    }
+    return this.listCollectionDataSourceRecords(projectId, sourceType);
+  }
+
+  async lookupRawDocument(input: {
+    projectId: string;
+    sourceId: string;
+    sourceType: SourceType;
+  }): Promise<RawDocumentRecord | undefined> {
+    return this.lookupCollectionRawDocumentRecord(input);
+  }
+
+  async findSameHashCandidates(input: {
+    contentHash: string;
+    projectId: string;
+    sourceType: SourceType;
+  }): Promise<Array<{ id: string; sourceId: string; sourceType: SourceType }>> {
+    return this.listSameHashCandidateRecords(input);
+  }
+
+  async upsertRawDocument(input: RawDocumentInput): Promise<RawDocumentRecord> {
+    const rawDocument = await this.upsertRawDocumentRecord(input);
+    if (!rawDocument) {
+      throw new Error(`Failed to upsert raw document: ${input.sourceType}:${input.sourceId}`);
+    }
+    return rawDocument;
+  }
+
+  private async lookupProjectRecordBySlug(slug: string): Promise<ProjectRecord | undefined> {
     const rows = (await this.sql`
       SELECT id::text AS id, slug
       FROM public.projects
@@ -756,10 +791,10 @@ class AdminCollectionRepository implements CollectionRepository {
     return rows[0] ? parseAdminActionProjectRecordRow(rows[0]) : undefined;
   }
 
-  async findDataSources(projectId: string, sourceType?: SourceType): Promise<DataSourceRecord[]> {
-    if (!sourceType) {
-      return [];
-    }
+  private async listCollectionDataSourceRecords(
+    projectId: string,
+    sourceType: SourceType,
+  ): Promise<DataSourceRecord[]> {
     const rows = (await this.sql`
       SELECT
         config,
@@ -777,7 +812,7 @@ class AdminCollectionRepository implements CollectionRepository {
     return rows.map(parseAdminActionDataSourceRecordRow);
   }
 
-  async lookupRawDocument(input: {
+  private async lookupCollectionRawDocumentRecord(input: {
     projectId: string;
     sourceId: string;
     sourceType: SourceType;
@@ -796,7 +831,7 @@ class AdminCollectionRepository implements CollectionRepository {
     return rows[0] ? parseAdminActionRawDocumentRecordRow(rows[0]) : undefined;
   }
 
-  async findSameHashCandidates(input: {
+  private async listSameHashCandidateRecords(input: {
     contentHash: string;
     projectId: string;
     sourceType: SourceType;
@@ -811,7 +846,9 @@ class AdminCollectionRepository implements CollectionRepository {
     return rows.map(parseAdminActionSameHashCandidateRow);
   }
 
-  async upsertRawDocument(input: RawDocumentInput): Promise<RawDocumentRecord> {
+  private async upsertRawDocumentRecord(
+    input: RawDocumentInput,
+  ): Promise<RawDocumentRecord | undefined> {
     const rows = (await this.sql`
       INSERT INTO public.raw_documents (
         project_id,
@@ -855,11 +892,7 @@ class AdminCollectionRepository implements CollectionRepository {
         source_id AS "sourceId",
         source_type AS "sourceType"
     `) as readonly unknown[];
-    const rawDocument = rows[0];
-    if (!rawDocument) {
-      throw new Error(`Failed to upsert raw document: ${input.sourceType}:${input.sourceId}`);
-    }
-    return parseAdminActionRawDocumentRecordRow(rawDocument);
+    return rows[0] ? parseAdminActionRawDocumentRecordRow(rows[0]) : undefined;
   }
 
   async linkDataSource(input: LinkDataSourceInput): Promise<void> {
