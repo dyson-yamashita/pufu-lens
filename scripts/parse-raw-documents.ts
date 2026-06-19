@@ -16,7 +16,7 @@ import {
   defaultParserContract,
   parseRawDocuments,
 } from '../packages/ingestion/dist/index.js';
-import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
+import { createObjectStorageFromEnv } from '../packages/storage/dist/factory.js';
 import { ensureIngestionQueueLeaseColumn } from './ingestion-queue-lease.ts';
 import { requiredEnv } from './lib/cli.ts';
 
@@ -27,7 +27,7 @@ async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
-  const storage = createLocalObjectStorageFromEnv();
+  const storage = createObjectStorageFromEnv(process.env);
   const repository = new PostgresRawParseRepository(
     sql,
     options.source,
@@ -414,16 +414,6 @@ function readSourceType(value: string | undefined, optionName: string): SourceTy
     throw new Error(`Unsupported ${optionName} value: ${sourceType}`);
   }
   return sourceType as SourceType;
-}
-
-function createLocalObjectStorageFromEnv(
-  env: NodeJS.ProcessEnv = process.env,
-): LocalFsObjectStorage {
-  const root = env.STORAGE_ROOT ?? env.LOCAL_STORAGE_ROOT;
-  if (!root) {
-    throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required.');
-  }
-  return new LocalFsObjectStorage(root);
 }
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {

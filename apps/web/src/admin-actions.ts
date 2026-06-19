@@ -26,9 +26,14 @@ import {
   deriveProjectIdentifiers,
   validateProjectSlug,
 } from '../../../packages/project-tenancy/src/project-tenancy.ts';
-import { LocalFsObjectStorage } from '../../../packages/storage/src/local-fs.ts';
+import { createObjectStorageFromEnv } from '../../../packages/storage/src/factory.ts';
+import type {
+  ObjectStorage,
+  ProjectStoragePrefixes,
+} from '../../../packages/storage/src/object-storage.ts';
 import {
   type AdminActionDataSourceRow,
+  type AdminActionIdRow,
   type AdminActionParserVersionRow,
   parseAdminActionDataSourceIngestRow,
   parseAdminActionDataSourceRecordRow,
@@ -75,6 +80,66 @@ import {
 
 type SqlExecutor = postgres.Sql | postgres.TransactionSql;
 
+async function projectSlugExists(sql: SqlExecutor, slug: string): Promise<boolean> {
+  const rows = (await sql`
+    SELECT 1 FROM public.projects WHERE slug = ${slug}
+  `) as readonly unknown[];
+  return rows.length > 0;
+}
+
+async function insertCreatedProjectRow(
+  sql: SqlExecutor,
+  {
+    description,
+    graphName,
+    name,
+    slug,
+    storagePrefix,
+    visibility,
+  }: {
+    readonly description: string | null;
+    readonly graphName: string;
+    readonly name: string;
+    readonly slug: string;
+    readonly storagePrefix: string;
+    readonly visibility: ProjectVisibility;
+  },
+): Promise<AdminActionIdRow | undefined> {
+  const rows = (await sql`
+    INSERT INTO public.projects (slug, name, description, graph_name, storage_prefix, visibility)
+    VALUES (
+      ${slug},
+      ${name},
+      ${description},
+      ${graphName},
+      ${storagePrefix},
+      ${visibility}
+    )
+    RETURNING id::text
+  `) as readonly unknown[];
+  return rows[0] ? parseAdminActionIdRow(rows[0], 'project creation row') : undefined;
+}
+
+async function insertCreatedMemberRow(
+  sql: SqlExecutor,
+  {
+    email,
+    name,
+    role,
+  }: {
+    readonly email: string;
+    readonly name: string | null;
+    readonly role: AppMemberRole;
+  },
+): Promise<AdminActionIdRow | undefined> {
+  const rows = (await sql`
+    INSERT INTO public.users (email, name, role)
+    VALUES (${email}, ${name}, ${role})
+    RETURNING id::text
+  `) as readonly unknown[];
+  return rows[0] ? parseAdminActionIdRow(rows[0], 'member creation row') : undefined;
+}
+
 export async function createProject(formData: FormData): Promise<void> {
   const name = requireFormValue(formData, 'name').trim();
   if (!name) {
@@ -93,28 +158,18 @@ export async function createProject(formData: FormData): Promise<void> {
       await tx`LOAD 'age'`;
       await tx`SET search_path = ag_catalog, "$user", public`;
 
-      const existing = (await tx`
-        SELECT slug FROM public.projects WHERE slug = ${slug}
-      `) as readonly unknown[];
-      if (existing.length > 0) {
+      if (await projectSlugExists(tx, slug)) {
         throw new Error(`Project slug already exists: ${slug}`);
       }
 
-      const projects = (await tx`
-        INSERT INTO public.projects (slug, name, description, graph_name, storage_prefix, visibility)
-        VALUES (
-          ${slug},
-          ${name},
-          ${description},
-          ${identifiers.graphName},
-          ${identifiers.storagePrefix},
-          ${visibility}
-        )
-        RETURNING id::text
-      `) as readonly unknown[];
-      const project = projects[0]
-        ? parseAdminActionIdRow(projects[0], 'project creation row')
-        : undefined;
+      const project = await insertCreatedProjectRow(tx, {
+        description,
+        graphName: identifiers.graphName,
+        name,
+        slug,
+        storagePrefix: identifiers.storagePrefix,
+        visibility,
+      });
       if (!project) {
         throw new Error('Project creation failed.');
       }
@@ -226,12 +281,7 @@ export async function createMember(formData: FormData): Promise<void> {
   await withSql(async (sql) => {
     await requireGlobalAdmin(sql);
     await sql.begin(async (tx) => {
-      const rows = (await tx`
-        INSERT INTO public.users (email, name, role)
-        VALUES (${email}, ${name}, ${role})
-        RETURNING id::text
-      `) as readonly unknown[];
-      const user = rows[0] ? parseAdminActionIdRow(rows[0], 'member creation row') : undefined;
+      const user = await insertCreatedMemberRow(tx, { email, name, role });
       if (!user) {
         throw new Error('Member creation failed.');
       }
@@ -1353,16 +1403,8 @@ function createReportProvider(): ReportGenerationProvider {
   return fallbackProvider;
 }
 
-function createCollectionStorageFromEnv(): LocalFsObjectStorage {
-  const driver = process.env.STORAGE_DRIVER ?? process.env.OBJECT_STORAGE_DRIVER ?? 'local';
-  if (driver !== 'local') {
-    throw new Error(`Unsupported object storage driver for collection: ${driver}`);
-  }
-  const root = process.env.STORAGE_ROOT ?? process.env.LOCAL_STORAGE_ROOT;
-  if (!root) {
-    throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required for collection.');
-  }
-  return new LocalFsObjectStorage(root);
+function createCollectionStorageFromEnv(): ObjectStorage {
+  return createObjectStorageFromEnv(process.env);
 }
 
 function splitScopeList(value: string): readonly string[] {
@@ -1377,11 +1419,22 @@ function splitScopeList(value: string): readonly string[] {
 }
 
 async function ensureProjectStoragePrefixes(projectSlug: string): Promise<void> {
-  const storageRoot = process.env.STORAGE_ROOT ?? process.env.LOCAL_STORAGE_ROOT;
-  if (!storageRoot) {
+  const driver = process.env.STORAGE_DRIVER ?? process.env.OBJECT_STORAGE_DRIVER ?? 'local';
+  if (driver === 'local' && !process.env.STORAGE_ROOT && !process.env.LOCAL_STORAGE_ROOT) {
     return;
   }
-  await new LocalFsObjectStorage(storageRoot).ensureProjectPrefixes(projectSlug);
+
+  const storage = createObjectStorageFromEnv(process.env);
+  if (!hasProjectPrefixSupport(storage)) {
+    return;
+  }
+  await storage.ensureProjectPrefixes(projectSlug);
+}
+
+function hasProjectPrefixSupport(storage: ObjectStorage): storage is ObjectStorage & {
+  ensureProjectPrefixes(projectSlug: string): Promise<ProjectStoragePrefixes>;
+} {
+  return 'ensureProjectPrefixes' in storage && typeof storage.ensureProjectPrefixes === 'function';
 }
 
 async function writePublicProjectVisibilityManifest(
@@ -1453,7 +1506,6 @@ function revalidateProject(projectSlug: string): void {
   revalidatePath(`/projects/${projectSlug}/graph`);
   revalidatePath(`/projects/${projectSlug}/members`);
   revalidatePath(`/projects/${projectSlug}/admin/data-sources`);
-  revalidatePath(`/projects/${projectSlug}/admin/ingestion`);
   revalidatePath(`/projects/${projectSlug}/admin/parser-profiles`);
   revalidatePath(`/projects/${projectSlug}/admin/settings`);
   revalidatePath(`/projects/${projectSlug}/reports`);

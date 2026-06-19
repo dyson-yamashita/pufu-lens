@@ -161,6 +161,15 @@ export async function listAdminProjects(): Promise<readonly ProjectSummary[]> {
 
 export async function listMemberProjects(userId: string): Promise<readonly ProjectSummary[]> {
   return withOptionalSql(async (sql) => {
+    const role = await lookupAppUserRole(sql, { userId });
+    if (!role) {
+      return [];
+    }
+
+    if (role === 'admin') {
+      return listAdminProjects();
+    }
+
     const rawRows = (await sql`
       SELECT
         p.id::text AS id,
@@ -188,13 +197,9 @@ export async function listMemberProjects(userId: string): Promise<readonly Proje
         ) AS held_count,
         (SELECT max(rd.indexed_at) FROM public.raw_documents rd WHERE rd.project_id = p.id) AS last_indexed
       FROM public.projects p
-      JOIN public.users app_user
-        ON app_user.id = ${userId}
-      LEFT JOIN public.project_members current_member
+      JOIN public.project_members current_member
         ON current_member.project_id = p.id
-       AND current_member.user_id = app_user.id
-      WHERE app_user.role = 'admin'
-         OR current_member.user_id IS NOT NULL
+       AND current_member.user_id = ${userId}
       ORDER BY p.slug
     `) as readonly unknown[];
 
@@ -342,6 +347,77 @@ export async function canManageProject(slug: string, userId: string): Promise<bo
   }, false);
 }
 
+async function listProjectMembershipMemberRows(
+  sql: postgres.Sql,
+  projectId: string,
+): Promise<readonly AdminDbProjectMemberRow[]> {
+  const rawRows = (await sql`
+    WITH project_member_rows AS (
+      SELECT
+        users.id,
+        users.email,
+        users.name,
+        users.role,
+        project_members.role AS project_role,
+        project_members.created_at AS membership_created_at,
+        project_members.role = 'member' AND users.role <> 'admin' AS removable
+      FROM public.project_members
+      JOIN public.users
+        ON users.id = project_members.user_id
+      WHERE project_members.project_id = ${projectId}
+    ),
+    global_admin_rows AS (
+      SELECT
+        users.id,
+        users.email,
+        users.name,
+        users.role,
+        'admin'::text AS project_role,
+        users.created_at AS membership_created_at,
+        false AS removable
+      FROM public.users
+      WHERE users.role = 'admin'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM public.project_members
+          WHERE project_members.project_id = ${projectId}
+            AND project_members.user_id = users.id
+        )
+    )
+    SELECT
+      id::text,
+      email,
+      name,
+      role,
+      project_role,
+      membership_created_at,
+      removable
+    FROM (
+      SELECT * FROM project_member_rows
+      UNION ALL
+      SELECT * FROM global_admin_rows
+    ) members
+    ORDER BY email
+  `) as readonly unknown[];
+  return rawRows.map(parseAdminDbProjectMemberRow);
+}
+
+async function listProjectMembershipAppMemberRows(
+  sql: postgres.Sql,
+  canManageMembers: boolean,
+): Promise<readonly AdminDbAppMemberRow[]> {
+  if (!canManageMembers) {
+    return [];
+  }
+  const rawRows = (await sql`
+    SELECT id::text, email, name, role, created_at
+    FROM public.users
+    ORDER BY email
+  `) as readonly unknown[];
+  // Keep the arrow wrapper so Array.map does not pass the index as the parser context.
+  return rawRows.map((row) => parseAdminDbAppMemberRow(row));
+}
+
 export async function getProjectMembership(
   slug: string,
   userId: string,
@@ -362,68 +438,15 @@ export async function getProjectMembership(
 
   const project = await getAdminProject(slug);
   const [memberRows, userRows] = await Promise.all([
-    sql`
-      WITH project_member_rows AS (
-        SELECT
-          users.id,
-          users.email,
-          users.name,
-          users.role,
-          project_members.role AS project_role,
-          project_members.created_at AS membership_created_at,
-          project_members.role = 'member' AND users.role <> 'admin' AS removable
-        FROM public.project_members
-        JOIN public.users
-          ON users.id = project_members.user_id
-        WHERE project_members.project_id = ${access.id}
-      ),
-      global_admin_rows AS (
-        SELECT
-          users.id,
-          users.email,
-          users.name,
-          users.role,
-          'admin'::text AS project_role,
-          users.created_at AS membership_created_at,
-          false AS removable
-        FROM public.users
-        WHERE users.role = 'admin'
-          AND NOT EXISTS (
-            SELECT 1
-            FROM public.project_members
-            WHERE project_members.project_id = ${access.id}
-              AND project_members.user_id = users.id
-          )
-      )
-      SELECT
-        id::text,
-        email,
-        name,
-        role,
-        project_role,
-        membership_created_at,
-        removable
-      FROM (
-        SELECT * FROM project_member_rows
-        UNION ALL
-        SELECT * FROM global_admin_rows
-      ) members
-      ORDER BY email
-    ` as Promise<readonly unknown[]>,
-    canManageMembers
-      ? (sql`
-          SELECT id::text, email, name, role, created_at
-          FROM public.users
-          ORDER BY email
-        ` as Promise<readonly unknown[]>)
-      : Promise.resolve([] as readonly unknown[]),
+    listProjectMembershipMemberRows(sql, access.id),
+    listProjectMembershipAppMemberRows(sql, canManageMembers),
   ]);
 
   return {
     canManageMembers,
-    members: memberRows.map((row) => projectMemberFromRow(parseAdminDbProjectMemberRow(row))),
+    members: memberRows.map(projectMemberFromRow),
     project,
-    users: userRows.map((row) => memberFromRow(parseAdminDbAppMemberRow(row))),
+    users: userRows.map(memberFromRow),
   };
 }
 

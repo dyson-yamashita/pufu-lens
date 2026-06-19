@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type postgres from 'postgres';
-import { LocalFsObjectStorage } from '../../../packages/storage/src/local-fs.ts';
+import { createObjectStorageFromEnv } from '../../../packages/storage/src/factory.ts';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import { isProjectVisibility, type ProjectVisibility } from './admin-data.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
@@ -796,14 +796,14 @@ export function createGeminiReportProvider(input: {
 
 export function createReportStorageFromEnv(): ObjectStorage {
   const driver = process.env.STORAGE_DRIVER ?? process.env.OBJECT_STORAGE_DRIVER ?? 'local';
-  if (driver !== 'local') {
-    throw new Error(`Unsupported object storage driver for report API: ${driver}`);
-  }
-  const root = process.env.STORAGE_ROOT ?? process.env.LOCAL_STORAGE_ROOT ?? localDevStorageRoot();
-  if (!root) {
-    throw new Error('STORAGE_ROOT or LOCAL_STORAGE_ROOT is required for local object storage.');
-  }
-  return new LocalFsObjectStorage(root);
+  return createObjectStorageFromEnv({
+    ...process.env,
+    STORAGE_DRIVER: driver,
+    STORAGE_ROOT:
+      driver === 'local'
+        ? (process.env.STORAGE_ROOT ?? process.env.LOCAL_STORAGE_ROOT ?? localDevStorageRoot())
+        : process.env.STORAGE_ROOT,
+  });
 }
 
 function localDevStorageRoot(): string | undefined {

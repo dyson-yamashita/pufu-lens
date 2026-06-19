@@ -1,9 +1,11 @@
+import { GcsObjectStorage } from './gcs.js';
 import { LocalFsObjectStorage } from './local-fs.js';
 import type { ObjectStorage } from './object-storage.js';
 
 export type ObjectStorageDriver = 'gcs' | 'local';
 
 export interface StorageEnv {
+  [key: string]: string | undefined;
   GCS_BUCKET?: string;
   LOCAL_STORAGE_ROOT?: string;
   OBJECT_STORAGE_DRIVER?: string;
@@ -26,9 +28,11 @@ export function createObjectStorageFromEnv(env: StorageEnv = process.env): Objec
 
   if (driver === 'gcs') {
     const bucket = env.STORAGE_BUCKET ?? env.GCS_BUCKET;
-    throw new Error(
-      `GCS object storage is not implemented yet. Bucket setting: ${bucket ?? '(empty)'}`,
-    );
+    if (!bucket) {
+      throw new Error('STORAGE_BUCKET or GCS_BUCKET is required for GCS object storage.');
+    }
+
+    return new GcsObjectStorage(bucket);
   }
 
   throw new Error(`Unsupported object storage driver: ${driver}`);
