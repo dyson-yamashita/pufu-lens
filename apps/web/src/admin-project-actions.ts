@@ -89,7 +89,7 @@ export async function createProject(formData: FormData): Promise<void> {
     const adminUserId = await requireGlobalAdmin(sql);
     await sql.begin(async (tx) => {
       await tx`LOAD 'age'`;
-      await tx`SET search_path = ag_catalog, "$user", public`;
+      await tx`SET LOCAL search_path = ag_catalog, "$user", public`;
 
       if (await projectSlugExists(tx, slug)) {
         throw new Error(`Project slug already exists: ${slug}`);
@@ -221,7 +221,11 @@ async function applyProjectVisibilityChange(
     try {
       await updateRow();
     } catch (error) {
-      await writePublicProjectVisibilityManifest(project.slug, project.visibility);
+      try {
+        await writePublicProjectVisibilityManifest(project.slug, project.visibility);
+      } catch (rollbackError) {
+        console.error('Failed to rollback public project visibility manifest:', rollbackError);
+      }
       throw error;
     }
     return;
@@ -231,7 +235,11 @@ async function applyProjectVisibilityChange(
   try {
     await writePublicProjectVisibilityManifest(project.slug, visibility);
   } catch (error) {
-    await rollbackRow();
+    try {
+      await rollbackRow();
+    } catch (rollbackError) {
+      console.error('Failed to rollback project visibility row:', rollbackError);
+    }
     throw error;
   }
 }
