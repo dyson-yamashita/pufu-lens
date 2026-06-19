@@ -166,7 +166,10 @@ export async function listMemberProjects(userId: string): Promise<readonly Proje
       return [];
     }
 
-    const canListAllProjects = role === 'admin';
+    if (role === 'admin') {
+      return listAdminProjects();
+    }
+
     const rawRows = (await sql`
       SELECT
         p.id::text AS id,
@@ -194,10 +197,9 @@ export async function listMemberProjects(userId: string): Promise<readonly Proje
         ) AS held_count,
         (SELECT max(rd.indexed_at) FROM public.raw_documents rd WHERE rd.project_id = p.id) AS last_indexed
       FROM public.projects p
-      LEFT JOIN public.project_members current_member
+      JOIN public.project_members current_member
         ON current_member.project_id = p.id
        AND current_member.user_id = ${userId}
-      WHERE ${canListAllProjects} OR current_member.user_id IS NOT NULL
       ORDER BY p.slug
     `) as readonly unknown[];
 
