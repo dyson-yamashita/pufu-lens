@@ -68,18 +68,15 @@ async function listGlobalAdminIdRowsForUpdate(
     ORDER BY id
     FOR UPDATE
   `) as readonly unknown[];
-  return parseAuthzRows(rows, parseGlobalAdminIdRow);
+  return rows.map(parseGlobalAdminIdRow);
 }
 
 function parseOptionalAuthzRow<T>(
   rows: readonly unknown[],
   parser: (row: unknown) => T,
 ): T | undefined {
-  return rows[0] ? parser(rows[0]) : undefined;
-}
-
-function parseAuthzRows<T>(rows: readonly unknown[], parser: (row: unknown) => T): readonly T[] {
-  return rows.map((row) => parser(row));
+  const firstRow = rows[0];
+  return firstRow !== undefined ? parser(firstRow) : undefined;
 }
 
 export function parseAppUserRoleRow(value: unknown): AppMemberRole {
@@ -163,10 +160,13 @@ export function projectAccessSatisfiesRole(
   access: ProjectMemberAccess,
   requiredRole: RequiredProjectAccessRole,
 ): boolean {
-  if (requiredRole === 'member') {
+  if (access.appRole === 'admin') {
     return true;
   }
-  return access.appRole === 'admin' || access.projectRole === 'admin';
+  if (requiredRole === 'admin') {
+    return access.projectRole === 'admin';
+  }
+  return access.projectRole === 'admin' || access.projectRole === 'member';
 }
 
 export function parseGlobalAdminIdRow(value: unknown): { readonly id: string } {

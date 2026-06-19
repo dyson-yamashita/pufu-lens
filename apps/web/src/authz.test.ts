@@ -54,6 +54,16 @@ assert.equal(
   projectAccessSatisfiesRole(
     parseProjectMemberAccess({
       ...validAccessRow,
+      projectRole: null,
+    }),
+    'member',
+  ),
+  false,
+);
+assert.equal(
+  projectAccessSatisfiesRole(
+    parseProjectMemberAccess({
+      ...validAccessRow,
       appRole: 'admin',
       projectRole: null,
     }),
