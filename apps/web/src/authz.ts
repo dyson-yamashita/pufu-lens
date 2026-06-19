@@ -107,42 +107,19 @@ export async function lookupProjectAdminAccess(
   return access.appRole === 'admin' || access.projectRole === 'admin' ? access : undefined;
 }
 
-export function parseGlobalAdminCountRow(value: unknown): number {
-  if (!isRecord(value)) {
-    throw new Error('Invalid global admin count row.');
-  }
-  const adminCount = value.admin_count;
-  if (typeof adminCount === 'number') {
-    return adminCount;
-  }
-  if (typeof adminCount === 'bigint') {
-    return Number(adminCount);
-  }
-  if (typeof adminCount === 'string' && /^\d+$/.test(adminCount)) {
-    return Number(adminCount);
-  }
-  throw new Error('Invalid global admin count row field: admin_count');
-}
-
-export async function countOtherGlobalAdmins(
-  sql: postgres.Sql | postgres.TransactionSql,
-  input: { userId: string },
-): Promise<number> {
-  const rows = (await sql`
-    SELECT COUNT(*)::int AS admin_count
-    FROM public.users
-    WHERE role = 'admin'
-      AND id <> ${input.userId}
-  `) as readonly unknown[];
-  return rows[0] ? parseGlobalAdminCountRow(rows[0]) : 0;
-}
-
 export async function assertOtherGlobalAdminExists(
   sql: postgres.Sql | postgres.TransactionSql,
   input: { userId: string },
 ): Promise<void> {
-  const adminCount = await countOtherGlobalAdmins(sql, input);
-  if (adminCount < 1) {
+  const rows = (await sql`
+    SELECT 1
+    FROM public.users
+    WHERE role = 'admin'
+      AND id <> ${input.userId}
+    LIMIT 1
+    FOR UPDATE
+  `) as readonly unknown[];
+  if (!rows[0]) {
     throw new Error('At least one admin account is required.');
   }
 }
