@@ -45,6 +45,13 @@ export interface PreparedReportChunk {
   readonly metadata: Record<string, unknown>;
 }
 
+const PRIVATE_REPORT_SECTION_IDS = new Set<PrivateReportSection['id']>([
+  'activity',
+  'issues',
+  'progress',
+  'risks',
+]);
+
 export function reportNowFromEnv(env?: NodeJS.ProcessEnv): Date | undefined {
   const value = env?.PUFU_LENS_REPORT_NOW?.trim();
   if (!value) {
@@ -114,6 +121,9 @@ export function validatePrivateReportJson(value: unknown): asserts value is Priv
     if (!isRecord(section) || typeof section.id !== 'string' || typeof section.title !== 'string') {
       throw new Error('Report section must include id and title.');
     }
+    if (!isPrivateReportSectionId(section.id)) {
+      throw new Error('Report section id is invalid.');
+    }
     if (typeof section.markdown !== 'string') {
       throw new Error(`Report section ${section.id} markdown must be a string.`);
     }
@@ -135,6 +145,10 @@ export function validateGeneratedReport(
 
 function formatDate(date: Date): string {
   return date.toISOString().slice(0, 10);
+}
+
+function isPrivateReportSectionId(value: string): value is PrivateReportSection['id'] {
+  return PRIVATE_REPORT_SECTION_IDS.has(value as PrivateReportSection['id']);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

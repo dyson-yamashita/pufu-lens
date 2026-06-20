@@ -151,7 +151,10 @@ export function createGeminiReportProvider(input: {
       }
       const body = (await response.json()) as {
         candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-      };
+      } | null;
+      if (!body || typeof body !== 'object') {
+        throw new Error('Gemini report response is not a valid JSON object.');
+      }
       const text = body.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('');
       if (!text) {
         throw new Error('Gemini report response did not include JSON text.');
