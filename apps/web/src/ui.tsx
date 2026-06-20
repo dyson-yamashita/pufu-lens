@@ -11,7 +11,6 @@ import {
   LogIn,
   LogOut,
   Mail,
-  Menu,
   MessageSquare,
   Network,
   RefreshCw,
@@ -19,10 +18,8 @@ import {
   ShieldCheck,
   TriangleAlert,
   Users,
-  X,
 } from 'lucide-react';
 import { cookies } from 'next/headers';
-import Image from 'next/image';
 import Link from 'next/link';
 import { auth, signOut } from '../auth';
 import type {
@@ -36,8 +33,8 @@ import type {
 } from './admin-data';
 import { canManageProject as canManageProjectDb } from './admin-db';
 import { ActionForm, PendingSubmitButton } from './form-buttons';
+import { SideMenu } from './side-menu';
 import { normalizeTheme, themeCookieName } from './theme';
-import { ThemeToggle } from './theme-toggle';
 
 const sourceLabels: Record<SourceType, string> = {
   drive: 'Drive',
@@ -210,45 +207,14 @@ export async function AppShell({
         className={isGuest ? 'global-nav guest-global-nav' : 'global-nav'}
         data-testid="global-nav"
       >
-        {isGuest ? (
-          <details className="guest-menu" data-testid="guest-menu" open>
-            <summary className="guest-menu-toggle" data-testid="guest-menu-toggle">
-              <Menu className="guest-menu-open-icon" size={22} />
-              <X className="guest-menu-close-icon" size={22} />
-              <Image
-                alt="Pufu Lens"
-                className="brand-logo"
-                height={40}
-                src="/pufu-lens-logo.png"
-                width={40}
-              />
-              <strong className="guest-brand-name">Pufu Lens</strong>
-            </summary>
-            <ThemeToggle initialTheme={initialTheme} />
-            <nav aria-label="Primary" className="guest-side-menu" data-testid="guest-side-menu">
-              {navItems}
-            </nav>
-          </details>
-        ) : (
-          <details className="guest-menu" data-testid="app-menu" open>
-            <summary className="guest-menu-toggle" data-testid="app-menu-toggle">
-              <Menu className="guest-menu-open-icon" size={22} />
-              <X className="guest-menu-close-icon" size={22} />
-              <Image
-                alt="Pufu Lens"
-                className="brand-logo"
-                height={40}
-                src="/pufu-lens-logo.png"
-                width={40}
-              />
-              <strong className="guest-brand-name">Pufu Lens</strong>
-            </summary>
-            <ThemeToggle initialTheme={initialTheme} />
-            <nav aria-label="Primary" className="guest-side-menu" data-testid="app-side-menu">
-              {navItems}
-            </nav>
-          </details>
-        )}
+        <SideMenu
+          initialTheme={initialTheme}
+          menuTestId={isGuest ? 'guest-menu' : 'app-menu'}
+          navTestId={isGuest ? 'guest-side-menu' : 'app-side-menu'}
+          toggleTestId={isGuest ? 'guest-menu-toggle' : 'app-menu-toggle'}
+        >
+          {navItems}
+        </SideMenu>
         <div
           className={isGuest ? 'account-panel guest-account-panel' : 'account-panel'}
           data-testid="account-panel"
