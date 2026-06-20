@@ -1,13 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { createObjectStorageFromEnv } from '../../../packages/storage/src/factory.ts';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import {
   type BusinessHoursConfig,
   isWithinBusinessHours,
   ProjectAccessDeniedError,
 } from './chat.ts';
+import type { ReportGenerationProvider } from './report-provider.ts';
 import {
   buildArtifactVersion,
   buildPublicContextBundle,
@@ -30,7 +28,21 @@ import type {
   ReportListItem,
   ReportRepository,
 } from './report-repository.ts';
+import {
+  type PreparedReportChunk,
+  type PrivateReportJsonV1,
+  type PrivateReportPufuSource,
+  type ReportPeriod,
+  type ReportPeriodKind,
+  resolveReportPeriod,
+  validatePrivateReportJson,
+} from './report-schema.ts';
 
+export {
+  createExtractiveReportProvider,
+  createGeminiReportProvider,
+  type ReportGenerationProvider,
+} from './report-provider.ts';
 export {
   isProjectPublic,
   isSafePublicReportLocator,
@@ -55,54 +67,19 @@ export {
   type ReportListItem,
   type ReportRepository,
 } from './report-repository.ts';
-
-export type ReportPeriodKind = 'weekly';
-
-export interface ReportPeriod {
-  readonly end: string;
-  readonly start: string;
-}
-
-export interface PrivateReportSource {
-  readonly canonical_uri: string;
-  readonly doc_type: string;
-  readonly document_id: string;
-  readonly snippet: string;
-}
-
-export interface PrivateReportPufuSource extends PrivateReportSource {
-  readonly occurred_at: string | null;
-  readonly title: string;
-}
-
-export interface PrivateReportSection {
-  readonly id: 'activity' | 'issues' | 'progress' | 'risks';
-  readonly items?: readonly Record<string, unknown>[];
-  readonly markdown: string;
-  readonly metrics?: Record<string, number>;
-  readonly sources?: readonly PrivateReportSource[];
-  readonly title: string;
-}
-
-export interface PrivateReportJsonV1 {
-  readonly generated_at: string;
-  readonly period: ReportPeriod;
-  readonly project_id: string;
-  readonly pufu_sources?: readonly PrivateReportPufuSource[];
-  readonly report_id: string;
-  readonly schema_version: 'v1';
-  readonly sections: readonly PrivateReportSection[];
-  readonly summary: string;
-  readonly title: string;
-}
-
-export interface ReportGenerationProvider {
-  generate(input: {
-    readonly documents: readonly ReportDocumentRecord[];
-    readonly period: ReportPeriod;
-    readonly projectSlug: string;
-  }): Promise<Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'>>;
-}
+export {
+  type PreparedReportChunk,
+  type PrivateReportJsonV1,
+  type PrivateReportPufuSource,
+  type PrivateReportSection,
+  type PrivateReportSource,
+  type ReportPeriod,
+  type ReportPeriodKind,
+  reportNowFromEnv,
+  resolveReportPeriod,
+  validatePrivateReportJson,
+} from './report-schema.ts';
+export { createReportStorageFromEnv } from './report-storage.ts';
 
 export interface RunGenerateReportOptions {
   readonly generatedBy?: string;
@@ -129,13 +106,6 @@ export interface ReportAccessOptions {
 
 export interface PublishReportOptions extends ReportAccessOptions {
   readonly storage: ObjectStorage;
-}
-
-export interface PreparedReportChunk {
-  readonly chunkIndex: number;
-  readonly content: string;
-  readonly embedding: readonly number[];
-  readonly metadata: Record<string, unknown>;
 }
 
 const DEFAULT_BUSINESS_HOURS: BusinessHoursConfig = {
@@ -478,280 +448,6 @@ export class PublicReportNotFoundError extends Error {
   }
 }
 
-export function createExtractiveReportProvider(): ReportGenerationProvider {
-  return {
-    async generate({ documents, period }) {
-      const sourceDocuments = documents.slice(0, 8);
-      const issueDocuments = documents.filter((document) => document.docType === 'issue');
-      const risks = documents.filter((document) =>
-        `${document.title} ${document.summary}`
-          .toLowerCase()
-          .match(/risk|block|fail|error|遅延|障害/),
-      );
-      const sources = sourceDocuments.map((document) => ({
-        canonical_uri: document.canonicalUri,
-        doc_type: document.docType,
-        document_id: document.documentId,
-        snippet: truncate(document.summary || document.title, 220),
-      }));
-      return {
-        sections: [
-          {
-            id: 'activity',
-            markdown: sourceDocuments.length
-              ? [
-                  `対象期間に確認できた情報は ${documents.length} 件です。直近の材料から見ると、プロジェクトは次の文脈で動いています。`,
-                  '',
-                  ...sourceDocuments.map(
-                    (document) =>
-                      `- ${document.title}: ${truncate(document.summary || '要約は未設定です。', 180)}`,
-                  ),
-                ].join('\n')
-              : '対象期間の indexed document はありません。現時点では概況を判断する材料が不足しています。',
-            sources,
-            title: '概況',
-          },
-          {
-            id: 'issues',
-            items: issueDocuments.map((document) => ({
-              document_id: document.documentId,
-              title: document.title,
-            })),
-            markdown: issueDocuments.length
-              ? issueDocuments.map((document) => `- ${document.title}`).join('\n')
-              : '現時点で大きな論点候補は抽出されていません。ただし、情報量が少ない場合は未検出の論点が残る可能性があります。',
-            title: '論点',
-          },
-          {
-            id: 'progress',
-            markdown:
-              documents.length > 0
-                ? [
-                    `${period.start} から ${period.end} の情報を見る限り、プロジェクトは情報収集と状況把握を継続できている状態です。`,
-                    `確認できた document は ${documents.length} 件で、判断材料は蓄積されつつあります。`,
-                    '今後は、個別タスクの消化数よりも、目指す状態に近づいているか、次の意思決定に十分な材料が揃っているかを確認する必要があります。',
-                  ].join('\n')
-                : `${period.start} から ${period.end} の期間には indexed document がなく、進行状況を判断できる材料がありません。`,
-            metrics: {
-              documents: documents.length,
-              discussion_points: issueDocuments.length,
-              risk_signals: risks.length,
-            },
-            title: '進行状況',
-          },
-          {
-            id: 'risks',
-            items: risks.map((document) => ({
-              document_id: document.documentId,
-              title: document.title,
-            })),
-            markdown: risks.length
-              ? risks.map((document) => `- ${document.title}`).join('\n')
-              : '重大なリスク候補は抽出されていません。とはいえ、情報が少ない場合は不確実性そのものがリスクになります。',
-            title: '不確実性・リスク',
-          },
-        ],
-        summary:
-          documents.length > 0
-            ? `${documents.length} 件の indexed document から、プロジェクトの概況と進行状況を整理しました。`
-            : '対象期間の indexed document がないため、プロジェクト概況は未判定です。',
-        title: `プロジェクト状況レポート ${period.start} - ${period.end}`,
-      };
-    },
-  };
-}
-
-export function createGeminiReportProvider(input: {
-  readonly apiKey: string;
-  readonly endpoint?: string;
-  readonly fetchImpl?: typeof fetch;
-  readonly model: string;
-}): ReportGenerationProvider {
-  if (!input.apiKey) {
-    throw new Error('GEMINI_API_KEY is required for Gemini report generation.');
-  }
-  if (!input.model) {
-    throw new Error('GEMINI_CHAT_MODEL is required for Gemini report generation.');
-  }
-  const fetchImpl = input.fetchImpl ?? fetch;
-  const endpoint =
-    input.endpoint ??
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-      input.model,
-    )}:generateContent`;
-  return {
-    async generate({ documents, period, projectSlug }) {
-      const response = await fetchImpl(`${endpoint}?key=${encodeURIComponent(input.apiKey)}`, {
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: [
-                    'Return only JSON for Pufu Lens private report schema v1 fields: title, summary, sections.',
-                    'This report is for understanding the project situation, not checking task completion.',
-                    'Summarize the overall context, current movement, decisions implied by the information, uncertainty, and signals that matter.',
-                    'Do not make the report primarily about GitHub issues, PR counts, task lists, or TODO tracking.',
-                    'Sections must include exactly these ids:',
-                    '- activity: title "概況"; summarize what kind of project state the documents indicate.',
-                    '- progress: title "進行状況"; explain how the project appears to be moving or not moving.',
-                    '- issues: title "論点"; summarize open questions, tensions, or decisions to clarify.',
-                    '- risks: title "不確実性・リスク"; summarize blockers, risk signals, and unknowns.',
-                    'Use markdown prose and concise bullets. metrics are optional and should support situation understanding, not task management.',
-                    `Project: ${projectSlug}`,
-                    `Period: ${period.start} to ${period.end}`,
-                    `Documents: ${JSON.stringify(documents)}`,
-                  ].join('\n'),
-                },
-              ],
-            },
-          ],
-          generationConfig: { responseMimeType: 'application/json' },
-        }),
-        headers: { 'content-type': 'application/json' },
-        method: 'POST',
-      });
-      if (!response.ok) {
-        throw new Error(`Gemini report request failed: HTTP ${response.status}`);
-      }
-      const body = (await response.json()) as {
-        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-      };
-      const text = body.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('');
-      if (!text) {
-        throw new Error('Gemini report response did not include JSON text.');
-      }
-      let generated: Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'>;
-      try {
-        generated = JSON.parse(text) as Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'>;
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        throw new Error(
-          `Failed to parse Gemini report response as JSON: ${reason}. Raw text prefix: ${text.slice(
-            0,
-            500,
-          )}`,
-        );
-      }
-      validateGeneratedReport(generated);
-      return generated;
-    },
-  };
-}
-
-export function createReportStorageFromEnv(): ObjectStorage {
-  const driver = process.env.STORAGE_DRIVER ?? process.env.OBJECT_STORAGE_DRIVER ?? 'local';
-  return createObjectStorageFromEnv({
-    ...process.env,
-    STORAGE_DRIVER: driver,
-    STORAGE_ROOT:
-      driver === 'local'
-        ? (process.env.STORAGE_ROOT ?? process.env.LOCAL_STORAGE_ROOT ?? localDevStorageRoot())
-        : process.env.STORAGE_ROOT,
-  });
-}
-
-function localDevStorageRoot(): string | undefined {
-  if (process.env.NODE_ENV === 'production') {
-    return undefined;
-  }
-  const candidates = [
-    resolve(process.cwd(), '.data/volumes/pufu-lens-data'),
-    resolve(process.cwd(), '../../.data/volumes/pufu-lens-data'),
-    resolve(process.cwd(), 'infra/volumes/pufu-lens-data'),
-    resolve(process.cwd(), '../../infra/volumes/pufu-lens-data'),
-  ];
-  return candidates.find((candidate) => existsSync(candidate));
-}
-
-export function reportNowFromEnv(env?: NodeJS.ProcessEnv): Date | undefined {
-  const value = env?.PUFU_LENS_REPORT_NOW?.trim();
-  if (!value) {
-    return undefined;
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    throw new Error('PUFU_LENS_REPORT_NOW must be an ISO 8601 datetime.');
-  }
-  return date;
-}
-
-export function resolveReportPeriod(now: Date, periodKind: ReportPeriodKind): ReportPeriod {
-  if (periodKind !== 'weekly') {
-    throw new Error(`Unsupported report period: ${periodKind}`);
-  }
-  const day = now.getUTCDay();
-  const daysSinceMonday = (day + 6) % 7;
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  start.setUTCDate(start.getUTCDate() - daysSinceMonday);
-  const end = new Date(start);
-  end.setUTCDate(start.getUTCDate() + 6);
-  return { end: formatDate(end), start: formatDate(start) };
-}
-
-export function validatePrivateReportJson(value: unknown): asserts value is PrivateReportJsonV1 {
-  if (!isRecord(value)) {
-    throw new Error('Report JSON must be an object.');
-  }
-  if (value.schema_version !== 'v1') {
-    throw new Error('Report schema_version must be v1.');
-  }
-  for (const key of ['report_id', 'project_id', 'title', 'generated_at', 'summary']) {
-    if (typeof value[key] !== 'string' || value[key].length === 0) {
-      throw new Error(`Report ${key} must be a non-empty string.`);
-    }
-  }
-  if (
-    !isRecord(value.period) ||
-    typeof value.period.start !== 'string' ||
-    typeof value.period.end !== 'string'
-  ) {
-    throw new Error('Report period must include start and end.');
-  }
-  if (!Array.isArray(value.sections) || value.sections.length === 0) {
-    throw new Error('Report sections must be a non-empty array.');
-  }
-  if (value.pufu_sources !== undefined) {
-    if (!Array.isArray(value.pufu_sources)) {
-      throw new Error('Report pufu_sources must be an array.');
-    }
-    for (const source of value.pufu_sources) {
-      if (
-        !isRecord(source) ||
-        typeof source.document_id !== 'string' ||
-        typeof source.doc_type !== 'string' ||
-        typeof source.title !== 'string' ||
-        typeof source.snippet !== 'string' ||
-        typeof source.canonical_uri !== 'string' ||
-        (source.occurred_at !== null && typeof source.occurred_at !== 'string')
-      ) {
-        throw new Error('Report pufu source is invalid.');
-      }
-    }
-  }
-  for (const section of value.sections) {
-    if (!isRecord(section) || typeof section.id !== 'string' || typeof section.title !== 'string') {
-      throw new Error('Report section must include id and title.');
-    }
-    if (typeof section.markdown !== 'string') {
-      throw new Error(`Report section ${section.id} markdown must be a string.`);
-    }
-  }
-}
-
-function validateGeneratedReport(
-  value: Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'>,
-): void {
-  validatePrivateReportJson({
-    generated_at: new Date().toISOString(),
-    period: { end: '2026-01-04', start: '2025-12-29' },
-    project_id: '00000000-0000-0000-0000-000000000000',
-    report_id: '00000000-0000-0000-0000-000000000000',
-    schema_version: 'v1',
-    ...value,
-  });
-}
-
 async function lookupMemberOrThrow(input: {
   readonly options: ReportAccessOptions;
   readonly projectSlug: string;
@@ -808,14 +504,6 @@ function pufuSourceFromDocument(document: ReportDocumentRecord): PrivateReportPu
   };
 }
 
-function formatDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
 function truncate(value: string, maxLength: number): string {
   return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }

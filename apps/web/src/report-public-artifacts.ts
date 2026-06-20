@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
-import type { PrivateReportJsonV1, PrivateReportSection, ReportPeriod } from './report.ts';
+import type { PrivateReportJsonV1, PrivateReportSection, ReportPeriod } from './report-schema.ts';
 
 export interface PublicReportSource {
   readonly label: string;

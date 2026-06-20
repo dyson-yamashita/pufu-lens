@@ -1,7 +1,7 @@
 import type postgres from 'postgres';
 import { isProjectVisibility, type ProjectVisibility } from './admin-data.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
-import type { PreparedReportChunk, PrivateReportJsonV1, ReportPeriod } from './report.ts';
+import type { PreparedReportChunk, PrivateReportJsonV1, ReportPeriod } from './report-schema.ts';
 
 export interface ReportListItem {
   readonly createdAt: string;
