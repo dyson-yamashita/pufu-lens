@@ -236,26 +236,28 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
             ${generatedBy}
           )
         `;
-        for (const chunk of chunks) {
-          await transaction`
-            INSERT INTO public.report_chunks (
-              project_id,
-              report_id,
-              chunk_index,
-              content,
-              embedding,
-              metadata
-            )
-            VALUES (
-              ${projectId},
-              ${report.report_id},
-              ${chunk.chunkIndex},
-              ${chunk.content},
-              ${vectorLiteral(chunk.embedding)}::vector,
-              ${JSON.stringify(chunk.metadata)}::jsonb
-            )
-          `;
-        }
+        await Promise.all(
+          chunks.map(
+            (chunk) => transaction`
+              INSERT INTO public.report_chunks (
+                project_id,
+                report_id,
+                chunk_index,
+                content,
+                embedding,
+                metadata
+              )
+              VALUES (
+                ${projectId},
+                ${report.report_id},
+                ${chunk.chunkIndex},
+                ${chunk.content},
+                ${vectorLiteral(chunk.embedding)}::vector,
+                ${JSON.stringify(chunk.metadata)}::jsonb
+              )
+            `,
+          ),
+        );
       });
     },
     async listReports({ projectId }) {
