@@ -22,7 +22,7 @@ export function SideMenu({
   readonly toggleTestId: string;
 }) {
   const contentId = useId();
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState<boolean | null>(null);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(mobileMenuQuery);
@@ -35,10 +35,14 @@ export function SideMenu({
   }, []);
 
   return (
-    <div className="guest-menu" data-open={isOpen ? 'true' : 'false'} data-testid={menuTestId}>
+    <div
+      className="guest-menu"
+      data-open={isOpen === null ? undefined : isOpen ? 'true' : 'false'}
+      data-testid={menuTestId}
+    >
       <button
         aria-controls={contentId}
-        aria-expanded={isOpen}
+        aria-expanded={isOpen ?? true}
         className="guest-menu-toggle"
         data-testid={toggleTestId}
         type="button"
