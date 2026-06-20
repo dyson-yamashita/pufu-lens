@@ -51,6 +51,7 @@ AI エージェントは上記に従って branch を作成する。
 - コミットメッセージは Conventional Commits 形式。
 - GitHub の Issue 起票、PR タイトル、PR 本文、PR 上のコメント、Issue / PR コメントは日本語で書く。
 - 外部仕様名、エラー文、コード識別子、引用が必要なログは原文のまま記載してよいが、説明は日本語で補足する。
+- PR 本文には、該当する場合、認可 / runtime guard / module 境界への影響、追加・変更した検証、例外的に許容した設計負債と理由を記載する。
 - Step に着手するときは、作業開始前に対応する GitHub Issue を作成する。
 - Step の作業が完了したら、対応 Issue に紐づく PR を作成する。
 - Step 用ブランチは、対応 Issue 番号を含むブランチ命名ルールに従う。
@@ -63,3 +64,4 @@ AI エージェントは上記に従って branch を作成する。
 3. secret や `.env` が含まれていないこと
 4. 不要な生成物や `node_modules` が含まれていないこと
 5. 関連テストまたは検証結果
+6. 認可 SQL、SQL row cast、app 間相対 import、script helper 重複、god file への責務追加がないこと

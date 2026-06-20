@@ -13,6 +13,7 @@
 3. 変更対象の既存ファイル
 4. 仕様変更を伴うかどうか
 5. Google Workspace scope、PII、コスト、テストへの影響範囲
+6. 認可、DB row、module 境界、app/package 依存への影響（影響する場合は `.codex/rules/architecture-rule.md` を確認）
 
 仕様変更を伴う場合は、実装だけでなく `docs/designs/*` の更新が必要か判断する。
 
@@ -26,3 +27,7 @@
 ## 4. Git ルール
 
 Git / branch / PR / commit の運用は `.codex/rules/git-rule.md` に従う。
+
+## 5. Architecture ルール
+
+認可、SQL row 検証、module 境界、server action、script helper の運用は `.codex/rules/architecture-rule.md` に従う。

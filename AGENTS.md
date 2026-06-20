@@ -16,6 +16,7 @@
 ## 参照先
 
 - プロジェクト全体の作業ルール: `.codex/rules/project-rule.md`
+- アーキテクチャ境界・認可・runtime guard ルール: `.codex/rules/architecture-rule.md`
 - Git / branch / PR / commit ルール: `.codex/rules/git-rule.md`
 - format / lint ルール: `.codex/rules/format-rule.md`
 - plan ルール: `.codex/rules/plan-rule.md`
@@ -28,6 +29,7 @@
 
 - ファイル検索は `rg` / `rg --files` を優先する。
 - 手動編集は `apply_patch` を使う。
+- 認可、SQL row 取得、app/package 境界、server action の責務に触れる場合は、`.codex/rules/architecture-rule.md` との整合を確認する。
 - UI、画面遷移、レイアウト、コンポーネント方針を変更する場合は、`docs/designs/ui/ui-design.md` との整合を確認する。
 - Google Workspace データ、個人情報、OAuth token、secret を扱う変更では、収集範囲、PII マスク、ログ出力、コスト影響を確認する。
 - テストや検証を実行できない場合は、理由と未検証リスクを最終報告に明記する。
