@@ -1,0 +1,370 @@
+import type postgres from 'postgres';
+import { isProjectVisibility, type ProjectVisibility } from './admin-data.ts';
+import { lookupProjectMemberAccess } from './authz.ts';
+import type { PreparedReportChunk, PrivateReportJsonV1, ReportPeriod } from './report.ts';
+
+export interface ReportListItem {
+  readonly createdAt: string;
+  readonly id: string;
+  readonly isPublic: boolean;
+  readonly period: ReportPeriod;
+  readonly schemaVersion: string;
+  readonly storageUri: string;
+  readonly summary: string;
+  readonly title: string;
+}
+
+export interface ReportDocumentRecord {
+  readonly canonicalUri: string;
+  readonly docType: string;
+  readonly documentId: string;
+  readonly occurredAt: string | null;
+  readonly summary: string;
+  readonly title: string;
+}
+
+export interface ReportRepository {
+  insertReport(input: {
+    readonly chunks: readonly PreparedReportChunk[];
+    readonly generatedBy: string;
+    readonly projectId: string;
+    readonly report: PrivateReportJsonV1;
+    readonly storageUri: string;
+  }): Promise<void>;
+  listRecentDocuments(input: {
+    readonly limit: number;
+    readonly period: ReportPeriod;
+    readonly projectId: string;
+  }): Promise<readonly ReportDocumentRecord[]>;
+  listReports(input: { readonly projectId: string }): Promise<readonly ReportListItem[]>;
+  lookupProject(input: { readonly projectSlug: string }): Promise<ProjectLookupResult | undefined>;
+  lookupProjectMember(input: {
+    readonly projectSlug: string;
+    readonly userId: string;
+  }): Promise<ProjectLookupResult | undefined>;
+  readReportMetadata(input: {
+    readonly projectId: string;
+    readonly reportId: string;
+  }): Promise<ReportListItem | undefined>;
+  setReportPublicState?(input: {
+    readonly isPublic: boolean;
+    readonly projectId: string;
+    readonly reportId: string;
+  }): Promise<void>;
+}
+
+export type ProjectLookupResult = {
+  readonly id: string;
+  readonly slug: string;
+  readonly visibility: ProjectVisibility;
+};
+
+export function parseReportProjectLookupRow(value: unknown): ProjectLookupResult {
+  if (!isRecord(value)) {
+    throw new Error('Invalid project lookup row.');
+  }
+  const { id, slug, visibility } = value;
+  if (typeof id !== 'string') {
+    throw new Error('Invalid project lookup field: id');
+  }
+  if (typeof slug !== 'string') {
+    throw new Error('Invalid project lookup field: slug');
+  }
+  if (!isProjectVisibility(visibility)) {
+    throw new Error('Invalid project lookup field: visibility');
+  }
+  return {
+    id,
+    slug,
+    visibility,
+  };
+}
+
+export function parseReportDocumentRow(value: unknown): ReportDocumentRow {
+  if (!isRecord(value)) {
+    throw new Error('Invalid report document row.');
+  }
+  const { canonical_uri, doc_type, document_id, occurred_at, summary, title } = value;
+  if (typeof document_id !== 'string') {
+    throw new Error('Invalid report document field: document_id');
+  }
+  if (typeof doc_type !== 'string') {
+    throw new Error('Invalid report document field: doc_type');
+  }
+  if (typeof title !== 'string') {
+    throw new Error('Invalid report document field: title');
+  }
+  if (typeof summary !== 'string') {
+    throw new Error('Invalid report document field: summary');
+  }
+  if (typeof canonical_uri !== 'string') {
+    throw new Error('Invalid report document field: canonical_uri');
+  }
+  if (!isNullableDateLike(occurred_at)) {
+    throw new Error('Invalid report document field: occurred_at');
+  }
+  return {
+    canonical_uri,
+    doc_type,
+    document_id,
+    occurred_at,
+    summary,
+    title,
+  };
+}
+
+export function parseReportMetadataRow(value: unknown): ReportMetadataRow {
+  if (!isRecord(value)) {
+    throw new Error('Invalid report metadata row.');
+  }
+  const {
+    created_at,
+    id,
+    is_public,
+    period_end,
+    period_start,
+    schema_version,
+    storage_uri,
+    summary,
+    title,
+  } = value;
+  if (typeof id !== 'string') {
+    throw new Error('Invalid report metadata field: id');
+  }
+  if (typeof title !== 'string') {
+    throw new Error('Invalid report metadata field: title');
+  }
+  if (typeof summary !== 'string') {
+    throw new Error('Invalid report metadata field: summary');
+  }
+  if (typeof storage_uri !== 'string') {
+    throw new Error('Invalid report metadata field: storage_uri');
+  }
+  if (typeof schema_version !== 'string') {
+    throw new Error('Invalid report metadata field: schema_version');
+  }
+  if (typeof period_start !== 'string') {
+    throw new Error('Invalid report metadata field: period_start');
+  }
+  if (typeof period_end !== 'string') {
+    throw new Error('Invalid report metadata field: period_end');
+  }
+  if (typeof is_public !== 'boolean') {
+    throw new Error('Invalid report metadata field: is_public');
+  }
+  if (!isNullableDateLike(created_at)) {
+    throw new Error('Invalid report metadata field: created_at');
+  }
+  return {
+    created_at,
+    id,
+    is_public,
+    period_end,
+    period_start,
+    schema_version,
+    storage_uri,
+    summary,
+    title,
+  };
+}
+
+export function createPostgresReportRepository(sql: postgres.Sql): ReportRepository {
+  return {
+    async lookupProjectMember({ projectSlug, userId }) {
+      const access = await lookupProjectMemberAccess(sql, { projectSlug, userId });
+      return access
+        ? { id: access.id, slug: access.slug, visibility: access.visibility }
+        : undefined;
+    },
+    async lookupProject({ projectSlug }) {
+      const rows = (await sql`
+        SELECT p.id::text AS id, p.slug, COALESCE(p.visibility, 'private') AS visibility
+        FROM public.projects p
+        WHERE p.slug = ${projectSlug}
+      `) as readonly unknown[];
+      if (rows.length === 0) {
+        return undefined;
+      }
+      return parseReportProjectLookupRow(rows[0]);
+    },
+    async listRecentDocuments({ limit, period, projectId }) {
+      const rows = (await sql`
+        SELECT
+          d.id::text AS document_id,
+          d.doc_type,
+          coalesce(d.title, 'Untitled') AS title,
+          coalesce(d.summary, '') AS summary,
+          coalesce(d.canonical_uri, '') AS canonical_uri,
+          d.occurred_at
+        FROM public.documents d
+        WHERE d.project_id = ${projectId}
+          AND (
+            d.occurred_at IS NULL
+            OR (
+              d.occurred_at >= ${period.start}::timestamptz
+              AND d.occurred_at < ${period.end}::timestamptz + interval '1 day'
+            )
+          )
+        ORDER BY d.occurred_at DESC NULLS LAST, d.updated_at DESC
+        LIMIT ${limit}
+      `) as readonly unknown[];
+      return rows.map((row) => documentFromRow(parseReportDocumentRow(row)));
+    },
+    async insertReport({ chunks, generatedBy, projectId, report, storageUri }) {
+      await sql.begin(async (transaction) => {
+        await transaction`
+          INSERT INTO public.reports (
+            id,
+            project_id,
+            title,
+            summary,
+            storage_uri,
+            schema_version,
+            period,
+            is_public,
+            generated_by
+          )
+          VALUES (
+            ${report.report_id},
+            ${projectId},
+            ${report.title},
+            ${report.summary},
+            ${storageUri},
+            ${report.schema_version},
+            daterange(${report.period.start}::date, ${report.period.end}::date, '[]'),
+            false,
+            ${generatedBy}
+          )
+        `;
+        for (const chunk of chunks) {
+          await transaction`
+            INSERT INTO public.report_chunks (
+              project_id,
+              report_id,
+              chunk_index,
+              content,
+              embedding,
+              metadata
+            )
+            VALUES (
+              ${projectId},
+              ${report.report_id},
+              ${chunk.chunkIndex},
+              ${chunk.content},
+              ${vectorLiteral(chunk.embedding)}::vector,
+              ${JSON.stringify(chunk.metadata)}::jsonb
+            )
+          `;
+        }
+      });
+    },
+    async listReports({ projectId }) {
+      const rows = (await sql`
+        SELECT
+          id::text,
+          title,
+          coalesce(summary, '') AS summary,
+          storage_uri,
+          schema_version,
+          lower(period)::text AS period_start,
+          (upper(period) - 1)::text AS period_end,
+          is_public,
+          created_at
+        FROM public.reports
+        WHERE project_id = ${projectId}
+        ORDER BY created_at DESC
+      `) as readonly unknown[];
+      return rows.map((row) => reportFromRow(parseReportMetadataRow(row)));
+    },
+    async readReportMetadata({ projectId, reportId }) {
+      const rows = (await sql`
+        SELECT
+          id::text,
+          title,
+          coalesce(summary, '') AS summary,
+          storage_uri,
+          schema_version,
+          lower(period)::text AS period_start,
+          (upper(period) - 1)::text AS period_end,
+          is_public,
+          created_at
+        FROM public.reports
+        WHERE project_id = ${projectId}
+          AND id = ${reportId}
+      `) as readonly unknown[];
+      return rows[0] ? reportFromRow(parseReportMetadataRow(rows[0])) : undefined;
+    },
+    async setReportPublicState({ isPublic, projectId, reportId }) {
+      await sql`
+        UPDATE public.reports
+        SET is_public = ${isPublic}
+        WHERE project_id = ${projectId}
+          AND id = ${reportId}
+      `;
+    },
+  };
+}
+
+function documentFromRow(row: ReportDocumentRow): ReportDocumentRecord {
+  return {
+    canonicalUri: row.canonical_uri,
+    docType: row.doc_type,
+    documentId: row.document_id,
+    occurredAt: formatNullableDate(row.occurred_at),
+    summary: row.summary,
+    title: row.title,
+  };
+}
+
+function reportFromRow(row: ReportMetadataRow): ReportListItem {
+  return {
+    createdAt: formatNullableDate(row.created_at) ?? '',
+    id: row.id,
+    isPublic: row.is_public,
+    period: { end: row.period_end, start: row.period_start },
+    schemaVersion: row.schema_version,
+    storageUri: row.storage_uri,
+    summary: row.summary,
+    title: row.title,
+  };
+}
+
+function formatNullableDate(value: Date | string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  return value instanceof Date ? value.toISOString() : value;
+}
+
+function vectorLiteral(vector: readonly number[]): string {
+  return `[${vector.join(',')}]`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isNullableDateLike(value: unknown): value is Date | string | null {
+  return value === null || value instanceof Date || typeof value === 'string';
+}
+
+interface ReportDocumentRow {
+  readonly canonical_uri: string;
+  readonly doc_type: string;
+  readonly document_id: string;
+  readonly occurred_at: Date | string | null;
+  readonly summary: string;
+  readonly title: string;
+}
+
+interface ReportMetadataRow {
+  readonly created_at: Date | string | null;
+  readonly id: string;
+  readonly is_public: boolean;
+  readonly period_end: string;
+  readonly period_start: string;
+  readonly schema_version: string;
+  readonly storage_uri: string;
+  readonly summary: string;
+  readonly title: string;
+}
