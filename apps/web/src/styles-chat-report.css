@@ -332,22 +332,7 @@
 }
 
 @media (max-width: 640px) {
-  .chat-panel,
-  .public-chat-panel {
-    min-height: 0;
-  }
-
-  .chat-thread {
-    min-height: 0;
-  }
-
-  .chat-message-user,
-  .chat-message-assistant {
-    max-width: 100%;
-  }
-
-  .source-chip,
-  .source-chip-compact {
+  .source-chip {
     max-width: 100%;
     min-width: 0;
     width: 100%;
