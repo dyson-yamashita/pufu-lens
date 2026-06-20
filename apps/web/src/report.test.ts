@@ -526,6 +526,26 @@ await assert.rejects(
 );
 
 assert.throws(() => validatePrivateReportJson({ schema_version: 'v2' }), /schema_version/);
+assert.throws(
+  () =>
+    validatePrivateReportJson({
+      generated_at: '2026-06-04T00:00:00.000Z',
+      period,
+      project_id: 'project-a',
+      report_id: 'report-invalid-section',
+      schema_version: 'v1',
+      sections: [
+        {
+          id: 'unknown',
+          markdown: 'body',
+          title: 'Unknown',
+        },
+      ],
+      summary: 'summary',
+      title: 'title',
+    }),
+  /Report section id is invalid/,
+);
 
 assert.deepEqual(
   parseReportProjectLookupRow({ id: 'proj-1', slug: 'sample-a', visibility: 'public' }),
@@ -623,6 +643,21 @@ await assert.rejects(
       projectSlug: 'sample-a',
     }),
   /Failed to parse Gemini report response as JSON/,
+);
+
+const nonObjectGeminiProvider = createGeminiReportProvider({
+  apiKey: 'test-key',
+  fetchImpl: async () => new Response('null', { status: 200 }),
+  model: 'gemini-test',
+});
+await assert.rejects(
+  () =>
+    nonObjectGeminiProvider.generate({
+      documents: [],
+      period,
+      projectSlug: 'sample-a',
+    }),
+  /Gemini report response is not a valid JSON object/,
 );
 
 console.log('web report tests passed');
