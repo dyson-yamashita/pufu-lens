@@ -30,10 +30,10 @@
 - server action は request / form validation、認可、use case 呼び出し、revalidate に寄せる。
 - SQL 組み立て、外部 process 実行、storage 操作、複雑な mapping を同じ action file に蓄積しない。
 - loader / repository / action / external process runner の責務が同居し始めたら、domain 別 module へ分割する。
-- 目安として 800 行超、または exported action 8 個超の file に新しい責務を追加する場合は、先に分割要否を検討する。
+- 目安として 500 行超、または exported action 8 個超の file に新しい責務を追加する場合は、先に分割要否を検討する。
 - 既存 import path 互換が必要な場合は、薄い wrapper を残し、実装本体を責務別 module に移す。
 
-## 6. scripts
+## 6. Scripts
 
 - `requiredEnv`、`parseArgs`、`validateGraphName` などの汎用 helper を script ごとに再定義しない。
 - 共通化できる helper は `scripts/lib/` または専用 package に置く。
