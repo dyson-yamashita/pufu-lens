@@ -5,9 +5,9 @@
 runConfig:
   minInstances: 0
   maxInstances: 10
-  concurrency: 80
+  concurrency: 40
   cpu: 1
-  memoryMiB: 1024
+  memoryMiB: 2048
   vpcAccess:
     egress: PRIVATE_RANGES_ONLY
     connector: mastra-connector
