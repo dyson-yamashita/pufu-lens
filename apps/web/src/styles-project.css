@@ -1,0 +1,220 @@
+.login-page {
+  align-items: center;
+  display: grid;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.login-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 18px;
+  margin: 0 auto;
+  max-width: 440px;
+  padding: 28px;
+  position: relative;
+  width: 100%;
+}
+
+.login-panel h1,
+.login-panel p {
+  margin: 0;
+}
+
+.login-panel p {
+  color: var(--muted);
+}
+
+.login-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.login-actions .primary-button {
+  width: 100%;
+}
+
+.project-grid,
+.parser-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+
+.create-project-panel {
+  display: grid;
+  justify-items: end;
+  margin-bottom: 16px;
+}
+
+.project-section-heading {
+  margin: 24px 0 16px;
+}
+
+.project-section-heading h2 {
+  margin: 0;
+}
+
+[data-testid="public-project-list"] {
+  margin-bottom: 24px;
+}
+
+.project-create-form {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(180px, 0.7fr) minmax(240px, 1fr) auto;
+  justify-self: stretch;
+  margin-top: 16px;
+}
+
+.project-create-dialog-form {
+  align-items: stretch;
+  grid-template-columns: 1fr;
+  margin-top: 0;
+}
+
+.project-create-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.project-create-form span {
+  color: var(--muted);
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.project-create-form input,
+.project-create-form select,
+.project-create-form textarea {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  min-height: 40px;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
+.project-create-form textarea {
+  resize: vertical;
+}
+
+.project-card {
+  background: var(--panel-overlay), var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  min-width: 0;
+  padding: 20px;
+  position: relative;
+}
+
+.project-card h2 {
+  letter-spacing: 0;
+  margin: 0;
+}
+
+.project-card-link {
+  color: inherit;
+  display: block;
+  text-decoration: none;
+  transition:
+    border-color 120ms ease,
+    transform 120ms ease;
+}
+
+.project-card-link:hover,
+.project-card-link:focus-within {
+  border-color: var(--blue);
+  transform: translateY(-1px);
+}
+
+.project-card-stretched-link {
+  border-radius: inherit;
+  inset: 0;
+  position: absolute;
+  z-index: 1;
+}
+
+.project-card-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.status-visibility-public {
+  background: var(--status-info-bg);
+  color: var(--blue);
+}
+
+.status-visibility-private {
+  background: var(--status-muted-bg);
+  color: var(--muted);
+}
+
+.status-stack {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.project-card-actions {
+  margin-top: 16px;
+  position: relative;
+  z-index: 2;
+}
+
+.credentials-form {
+  display: grid;
+  gap: 12px;
+}
+
+.credentials-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.credentials-form label span {
+  color: var(--muted);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.credentials-form input {
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  min-height: 42px;
+  padding: 0 12px;
+  width: 100%;
+}
+
+.credentials-form input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
+  outline: none;
+}
+
+.credentials-form .primary-button {
+  width: 100%;
+}
+
+@media (max-width: 1023px) {
+  .project-create-form {
+    grid-template-columns: 1fr;
+  }
+}
