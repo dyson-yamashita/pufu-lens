@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { normalizeTheme, themeCookieName } from '../src/theme';
 import '../src/styles.css';
+import '../src/styles-admin.css';
 
 export const metadata: Metadata = {
   title: 'Pufu Lens',
