@@ -66,7 +66,7 @@ gsutil mb -l "$REGION" "gs://${BUCKET}"
 # Cloud Build が Compute default SA を使う構成では builder ロールが要る
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
-  --role="roles/cloudbuild.builds.builder" --condition=None
+  --role="roles/cloudbuild.builds.builder"
 ```
 
 ## Phase 4 — Secret Manager（実値は stdin 注入、絶対に echo しない）
@@ -108,7 +108,7 @@ gcloud builds submit infra/docker/postgres \
 # 2) VM 作成（永続データディスク + host network コンテナ + 内部IP のみ）
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
-  --role="roles/artifactregistry.reader" --condition=None
+  --role="roles/artifactregistry.reader"
 gcloud compute instances create-with-container pg-ai \
   --zone "$ZONE" --machine-type e2-medium \
   --boot-disk-size 20GB --boot-disk-type pd-balanced \
@@ -121,11 +121,21 @@ gcloud compute instances create-with-container pg-ai \
 
 注意点:
 
-- `POSTGRES_PASSWORD` はシェル変数 `$PGPASS` を生成して渡し、表示しない。`DATABASE_URL=postgresql://pufu:$PGPASS@<internal-ip>:5432/pufu_lens` を Secret Manager に格納。
+- `POSTGRES_PASSWORD` はシェル変数 `$PGPASS` を生成して渡し、表示しない。VM 作成後に内部 IP を取得し、`DATABASE_URL` を Secret Manager に stdin で格納する。
 - DB 名は `pufu_lens` 固定（`init.sql` が参照）。
 - `create-with-container` は init script を自動実行しないので、コンテナ起動後に IAP SSH 経由で `infra/docker/postgres/init.sql` を流し込む。`init.sql` は全テーブル + AGE graph + `schema_migrations` stamp を作るため、適用後は migration head 相当になる。
 
 ```bash
+PGPASS=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
+INTERNAL_IP=$(gcloud compute instances describe pg-ai --zone "$ZONE" --format='get(networkInterfaces[0].networkIP)')
+DATABASE_URL="postgresql://pufu:${PGPASS}@${INTERNAL_IP}:5432/pufu_lens"
+printf '%s' "$DATABASE_URL" | gcloud secrets create DATABASE_URL --data-file=-
+
+until gcloud compute ssh pg-ai --zone "$ZONE" --tunnel-through-iap --command "docker ps -q --filter status=running" >/dev/null 2>&1; do
+  echo "Waiting for container to start..."
+  sleep 10
+done
+
 gcloud compute ssh pg-ai --zone "$ZONE" --tunnel-through-iap \
   --command 'CID=$(docker ps -q --filter status=running); docker exec -i "$CID" psql -v ON_ERROR_STOP=1 -U pufu -d pufu_lens' \
   < infra/docker/postgres/init.sql
@@ -175,8 +185,10 @@ entrypoint は `scripts/workflow-job.ts`。`WORKFLOW_INPUT_JSON` は実行時 ov
 firebase projects:addfirebase "$PROJECT_ID"
 firebase apphosting:backends:create --project "$PROJECT_ID" --backend pufu-lens-web \
   --primary-region "$REGION" --root-dir apps/web --service-account "$RUNTIME_SA" --non-interactive
-firebase apphosting:secrets:grantaccess DATABASE_URL AUTH_SECRET GEMINI_API_KEY \
-  --backend pufu-lens-web --location "$REGION" --project "$PROJECT_ID"
+for SECRET in DATABASE_URL AUTH_SECRET GEMINI_API_KEY; do
+  firebase apphosting:secrets:grantaccess "$SECRET" \
+    --backend pufu-lens-web --location "$REGION" --project "$PROJECT_ID"
+done
 firebase deploy --only apphosting --project "$PROJECT_ID"
 ```
 
