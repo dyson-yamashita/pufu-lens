@@ -59,7 +59,11 @@ class MemoryStorage implements ObjectStorage {
   async *list(): AsyncIterable<ObjectInfo> {}
 }
 
-function createRepository(): ReportRepository & { insertedChunks: number; storageUri?: string } {
+function createRepository(): ReportRepository & {
+  insertedChunkContents: string[];
+  insertedChunks: number;
+  storageUri?: string;
+} {
   const reports = new Map<
     string,
     { isPublic: boolean; projectId: string; storageUri: string; title: string }
@@ -75,6 +79,7 @@ function createRepository(): ReportRepository & { insertedChunks: number; storag
     ],
   ]);
   return {
+    insertedChunkContents: [],
     insertedChunks: 0,
     async lookupProjectMember({ projectSlug, userId }) {
       if (projectSlug === 'sample-a' && userId === 'user-a') {
@@ -112,6 +117,7 @@ function createRepository(): ReportRepository & { insertedChunks: number; storag
       ];
     },
     async insertReport({ chunks, report, storageUri }) {
+      this.insertedChunkContents = chunks.map((chunk) => chunk.content);
       this.insertedChunks = chunks.length;
       this.storageUri = storageUri;
       reports.set(report.report_id, {
@@ -208,6 +214,7 @@ assert.match(pufuScore.elements.environment.text, /来場者/);
 assert.match(pufuScore.purposes[0]?.measures[0]?.text ?? '', /ブース/);
 assert.doesNotMatch(JSON.stringify(pufuScore), /データソースから|根拠資料/);
 assert.equal(repository.insertedChunks, 4);
+assert.doesNotMatch(repository.insertedChunkContents.join('\n'), /\n\n\{\}/);
 assert.ok(repository.storageUri?.includes('/sample-a/reports/private/'));
 validatePrivateReportJson(JSON.parse(await storage.getText(generated.storageUri)));
 const generatedMetadata = await repository.readReportMetadata({

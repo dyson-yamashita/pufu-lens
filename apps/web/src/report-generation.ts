@@ -98,7 +98,7 @@ export async function runGenerateReport(input: {
 
 function prepareReportChunks(report: PrivateReportJsonV1): PreparedReportChunk[] {
   return report.sections.map((section, index) => {
-    const content = [`# ${section.title}`, section.markdown, JSON.stringify(section.metrics ?? {})]
+    const content = [`# ${section.title}`, section.markdown, metricsContent(section.metrics)]
       .filter(Boolean)
       .join('\n\n');
     return {
@@ -108,6 +108,10 @@ function prepareReportChunks(report: PrivateReportJsonV1): PreparedReportChunk[]
       metadata: { sectionId: section.id, schemaVersion: report.schema_version },
     };
   });
+}
+
+function metricsContent(metrics: Record<string, number> | undefined): string {
+  return metrics && Object.keys(metrics).length > 0 ? JSON.stringify(metrics) : '';
 }
 
 function deterministicVector(text: string, dimensions: number): number[] {
