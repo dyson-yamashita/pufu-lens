@@ -1,4 +1,4 @@
-.project-create-form.member-create-form {
+.member-create-form {
   grid-template-columns:
     minmax(180px, 1fr) minmax(160px, 0.8fr) minmax(120px, 0.5fr)
     minmax(160px, 0.8fr) minmax(160px, 0.8fr) auto;
@@ -162,7 +162,7 @@
   margin: 4px 0 0;
 }
 
-.detail-list.connection-detail-list {
+.connection-detail-list {
   margin: 0 0 16px;
 }
 
@@ -285,7 +285,7 @@
   min-width: 1240px;
 }
 
-.table-actions.data-source-row-actions {
+.data-source-row-actions {
   min-width: 520px;
 }
 
@@ -376,7 +376,7 @@
   .actor-compare-grid,
   .status-row,
   .content-preview-row-header,
-  .project-create-form.member-create-form {
+  .member-create-form {
     grid-template-columns: 1fr;
   }
 

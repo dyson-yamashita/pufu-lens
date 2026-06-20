@@ -2,7 +2,6 @@
 @import "./styles-shell.css";
 @import "./styles-chat-report.css";
 @import "./styles-graph.css";
-@import "./styles-admin.css";
 
 :root,
 :root[data-theme="dark"] {
