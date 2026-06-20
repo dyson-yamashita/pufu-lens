@@ -6,19 +6,19 @@
 
 .guest-app-shell {
   grid-template-columns: 256px minmax(0, 1fr);
-  transition: grid-template-columns 160ms ease;
+  transition: grid-template-columns 180ms ease;
 }
 
 .app-shell:not(.guest-app-shell) {
-  transition: grid-template-columns 160ms ease;
+  transition: grid-template-columns 180ms ease;
 }
 
-.app-shell:not(.guest-app-shell):has(.guest-menu:not([open])) {
+.app-shell:not(.guest-app-shell):has(.guest-menu[data-open="false"]) {
   grid-template-columns: minmax(0, 1fr);
   --main-surface-padding-left: 176px;
 }
 
-.guest-app-shell:has(.guest-menu:not([open])) {
+.guest-app-shell:has(.guest-menu[data-open="false"]) {
   grid-template-columns: minmax(0, 1fr);
   --main-surface-padding-left: 176px;
 }
@@ -32,6 +32,12 @@
   padding: 24px 16px;
   position: sticky;
   top: 0;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    padding 180ms ease,
+    width 180ms ease;
 }
 
 .guest-global-nav {
@@ -48,7 +54,7 @@
   z-index: 2;
 }
 
-.guest-app-shell:has(.guest-menu:not([open])) .guest-global-nav {
+.guest-app-shell:has(.guest-menu[data-open="false"]) .guest-global-nav {
   background: transparent;
   border-right: 0;
   height: auto;
@@ -59,7 +65,7 @@
   width: auto;
 }
 
-.app-shell:not(.guest-app-shell):has(.guest-menu:not([open])) .global-nav {
+.app-shell:not(.guest-app-shell):has(.guest-menu[data-open="false"]) .global-nav {
   background: transparent;
   border-right: 0;
   height: auto;
@@ -189,31 +195,31 @@
   z-index: 20;
 }
 
-.app-shell:not(.guest-app-shell):has(.guest-menu:not([open])) .account-panel {
+.app-shell:not(.guest-app-shell):has(.guest-menu[data-open="false"]) .account-panel {
   display: none;
 }
 
 .guest-menu {
+  align-items: start;
   display: grid;
-  column-gap: 12px;
-  grid-template-columns: max-content max-content;
-  row-gap: 24px;
-  align-items: center;
+  row-gap: 0;
   position: static;
 }
 
 .guest-menu-toggle {
   align-items: center;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
   color: var(--text);
   cursor: pointer;
   display: inline-flex;
+  font: inherit;
   gap: 12px;
-  list-style: none;
   min-height: 44px;
-}
-
-.guest-menu-toggle::-webkit-details-marker {
-  display: none;
+  padding: 0;
+  text-align: left;
 }
 
 .guest-menu-toggle svg {
@@ -224,11 +230,11 @@
   display: none;
 }
 
-.guest-menu[open] .guest-menu-open-icon {
+.guest-menu[data-open="true"] .guest-menu-open-icon {
   display: none;
 }
 
-.guest-menu[open] .guest-menu-close-icon {
+.guest-menu[data-open="true"] .guest-menu-close-icon {
   display: block;
 }
 
@@ -239,19 +245,47 @@
   white-space: nowrap;
 }
 
-.guest-menu:not([open]) .guest-brand-name {
+.guest-menu[data-open="false"] .guest-brand-name {
   display: none;
+}
+
+.guest-menu-content {
+  display: grid;
+  grid-template-rows: 1fr;
+  min-width: 0;
+  opacity: 1;
+  overflow: hidden;
+  transform: translateY(0);
+  transition:
+    grid-template-rows 180ms ease,
+    opacity 140ms ease,
+    transform 180ms ease;
+}
+
+.guest-menu-content-inner {
+  display: grid;
+  gap: 24px;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding-top: 24px;
+  transition: padding-top 180ms ease;
+}
+
+.guest-menu[data-open="false"] .guest-menu-content {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.guest-menu[data-open="false"] .guest-menu-content-inner {
+  padding-top: 0;
 }
 
 .guest-side-menu {
   display: grid;
   gap: 8px;
-  grid-column: 1 / -1;
   min-width: 0;
-}
-
-.guest-menu:not([open]) .guest-side-menu {
-  display: none;
 }
 
 .guest-side-menu .nav-link {
@@ -334,12 +368,12 @@
     grid-template-columns: 224px minmax(0, 1fr);
   }
 
-  .guest-app-shell:has(.guest-menu:not([open])) {
+  .guest-app-shell:has(.guest-menu[data-open="false"]) {
     grid-template-columns: minmax(0, 1fr);
     --main-surface-padding-left: 152px;
   }
 
-  .app-shell:not(.guest-app-shell):has(.guest-menu:not([open])) {
+  .app-shell:not(.guest-app-shell):has(.guest-menu[data-open="false"]) {
     grid-template-columns: minmax(0, 1fr);
     --main-surface-padding-left: 152px;
   }
@@ -371,26 +405,64 @@
 }
 
 @media (max-width: 720px) {
+  .app-shell,
+  .guest-app-shell {
+    grid-template-columns: minmax(0, 1fr);
+    --main-surface-padding-left: 16px;
+    --main-surface-padding-top: 80px;
+  }
+
   .main-surface {
-    padding: 20px 16px;
+    padding: var(--main-surface-padding-top, 20px) 16px 20px;
     padding-left: var(--main-surface-padding-left, 16px);
   }
 
-  .global-nav {
+  .global-nav,
+  .guest-global-nav {
+    background: var(--nav-bg);
+    border-bottom: 1px solid var(--line);
+    border-right: 0;
+    box-shadow: var(--shadow);
+    height: auto;
+    left: 0;
+    max-height: 100dvh;
+    overflow-y: auto;
     padding: 16px;
+    position: fixed;
+    right: 0;
+    top: 0;
+    width: auto;
+    z-index: 30;
+  }
+
+  .global-nav:has(.guest-menu[data-open="false"]),
+  .guest-global-nav:has(.guest-menu[data-open="false"]) {
+    background: transparent;
+    border-bottom: 0;
+    box-shadow: none;
+    pointer-events: none;
+    right: auto;
+  }
+
+  .guest-menu-toggle,
+  .guest-account-panel {
+    pointer-events: auto;
   }
 
   .guest-account-panel {
     right: 16px;
     top: 16px;
+    z-index: 40;
   }
 
-  .guest-app-shell:has(.guest-menu:not([open])) {
-    --main-surface-padding-left: 128px;
+  .guest-app-shell:has(.guest-menu[data-open="false"]),
+  .app-shell:not(.guest-app-shell):has(.guest-menu[data-open="false"]) {
+    --main-surface-padding-left: 16px;
+    --main-surface-padding-top: 80px;
   }
 
-  .app-shell:not(.guest-app-shell):has(.guest-menu:not([open])) {
-    --main-surface-padding-left: 128px;
+  .account-panel:not(.guest-account-panel) {
+    margin-top: 24px;
   }
 
   .global-nav nav {
@@ -403,5 +475,18 @@
 
   .guest-side-menu .nav-link {
     justify-content: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell,
+  .guest-app-shell,
+  .global-nav,
+  .guest-menu-content {
+    transition: none;
+  }
+
+  .guest-menu-content-inner {
+    transition: none;
   }
 }
