@@ -40,29 +40,29 @@ Mastra UI（Studio / Playground）は、Agent / Workflow の入出力、tool cal
 
 Step の詳細を参照する前に、この表で status を確認する。
 
-| step     | plan                                                                                   | status      | 更新日     | メモ                                                                                                |
-| -------- | -------------------------------------------------------------------------------------- | ----------- | ---------- | --------------------------------------------------------------------------------------------------- |
-| Step 0   | [開発基盤と品質ゲート](step-00-foundation.md)                                          | `completed` | 2026-05-29 | pnpm workspaces / Turborepo と品質ゲートを追加済み。                                                |
-| Step 1   | [ローカル DB / Storage の最小起動](step-01-local-db-storage.md)                        | `completed` | 2026-05-30 | PR #6 で merge 済み。                                                                               |
-| Step 2   | [Project 作成とテナント分離の確認](step-02-project-tenancy.md)                         | `completed` | 2026-05-30 | Issue #7 で完了確認済み。                                                                           |
-| Step 3   | [Ingestion Fixture とデータ契約](step-03-ingestion-fixtures.md)                        | `completed` | 2026-05-30 | Issue #9 で完了確認済み。                                                                           |
-| Step 4   | [Collection Pipeline のローカル収集パイプライン](step-04-local-collection-pipeline.md) | `completed` | 2026-05-31 | Issue #13 で完了確認済み。                                                                          |
-| Step 4a  | [Parser Registry と承認制保留フロー](step-04a-parser-registry-approval.md)             | `completed` | 2026-05-31 | Issue #11 / PR #12 で設計反映済み。                                                                 |
-| Step 5   | [Raw Parse と parsed JSON 保存](step-05-raw-parse.md)                                  | `completed` | 2026-05-31 | Issue #15 で完了確認済み。                                                                          |
-| Step 6   | [Actor 名寄せと引用チェーン](step-06-actor-resolution.md)                              | `completed` | 2026-05-31 | Issue #17 で完了確認済み。                                                                          |
-| Step 7   | [Document / Chunk / Embedding の決定的検証](step-07-chunk-embedding.md)                | `completed` | 2026-05-31 | Issue #19 で完了確認済み。                                                                          |
-| Step 8   | [Graph / Relation 構築](step-08-graph-relations.md)                                    | `completed` | 2026-06-01 | Issue #21 で完了確認済み。                                                                          |
-| Step 9   | [Ingestion Workflow の通し実行](step-09-ingestion-workflow.md)                         | `completed` | 2026-06-01 | Issue #25 で完了確認済み。                                                                          |
-| Step 10  | [実データソース接続を 1 種類ずつ追加](step-10-real-data-sources.md)                    | `blocked`   | 2026-06-03 | PR #43 merge 済み。Drive / Gmail 実 API smoke は OAuth token と安全な実データ待ち。                 |
-| Step 10a | [scripts 実行形式の `.ts` 統一](step-10a-scripts-ts-execution.md)                      | `completed` | 2026-06-02 | Issue #32 で完了確認済み。                                                                          |
-| Step 10b | [scripts strict typecheck 対応](step-10b-scripts-strict-typecheck.md)                  | `completed` | 2026-06-02 | Issue #34 で完了確認済み。                                                                          |
-| Step 11  | [管理 UI と取り込み状況の可視化](step-11-admin-ui.md)                                  | `completed` | 2026-06-03 | Issue #36 で完了確認済み。                                                                          |
-| Step 12  | [Chat Agent の最小確認](step-12-chat-agent.md)                                         | `completed` | 2026-06-04 | Gemini API smoke / Chat UI e2e / chat:eval を確認済み。                                             |
-| Step 13a | [Private Report 生成と閲覧](step-13a-private-report.md)                                | `completed` | 2026-06-04 | Issue #48 で Private Report 生成 / API / UI / e2e を確認済み。                                      |
-| Step 13b | [Public Report 公開 artifact と配信](step-13b-public-report-artifact.md)               | `completed` | 2026-06-04 | Issue #50 / PR #51 で public report artifact / manifest / API / UI を確認済み。                     |
-| Step 13c | [Public Chat 限定 context と安全確認](step-13c-public-chat-context.md)                 | `completed` | 2026-06-04 | Issue #52 で public chat 限定 context / API / UI / eval を確認済み。                                |
-| Step 13d | [Mastra Agent / Workflow 登録](step-13d-mastra-agent-workflow.md)                      | `completed` | 2026-06-04 | Issue #55 / PR #56 で Mastra Agent / Workflow 登録を完了。                                          |
-| Step 14  | [Scheduler / Cloud Run Job / Deploy 検証](step-14-scheduler-deploy.md)                 | `blocked`   | 2026-06-13 | PR #58 で local dry-run / Docker job entrypoint は確認済み。staging GCP identifier / 権限設定待ち。 |
+| step     | plan                                                                                   | status      | 更新日     | メモ                                                                            |
+| -------- | -------------------------------------------------------------------------------------- | ----------- | ---------- | ------------------------------------------------------------------------------- |
+| Step 0   | [開発基盤と品質ゲート](step-00-foundation.md)                                          | `completed` | 2026-05-29 | pnpm workspaces / Turborepo と品質ゲートを追加済み。                            |
+| Step 1   | [ローカル DB / Storage の最小起動](step-01-local-db-storage.md)                        | `completed` | 2026-05-30 | PR #6 で merge 済み。                                                           |
+| Step 2   | [Project 作成とテナント分離の確認](step-02-project-tenancy.md)                         | `completed` | 2026-05-30 | Issue #7 で完了確認済み。                                                       |
+| Step 3   | [Ingestion Fixture とデータ契約](step-03-ingestion-fixtures.md)                        | `completed` | 2026-05-30 | Issue #9 で完了確認済み。                                                       |
+| Step 4   | [Collection Pipeline のローカル収集パイプライン](step-04-local-collection-pipeline.md) | `completed` | 2026-05-31 | Issue #13 で完了確認済み。                                                      |
+| Step 4a  | [Parser Registry と承認制保留フロー](step-04a-parser-registry-approval.md)             | `completed` | 2026-05-31 | Issue #11 / PR #12 で設計反映済み。                                             |
+| Step 5   | [Raw Parse と parsed JSON 保存](step-05-raw-parse.md)                                  | `completed` | 2026-05-31 | Issue #15 で完了確認済み。                                                      |
+| Step 6   | [Actor 名寄せと引用チェーン](step-06-actor-resolution.md)                              | `completed` | 2026-05-31 | Issue #17 で完了確認済み。                                                      |
+| Step 7   | [Document / Chunk / Embedding の決定的検証](step-07-chunk-embedding.md)                | `completed` | 2026-05-31 | Issue #19 で完了確認済み。                                                      |
+| Step 8   | [Graph / Relation 構築](step-08-graph-relations.md)                                    | `completed` | 2026-06-01 | Issue #21 で完了確認済み。                                                      |
+| Step 9   | [Ingestion Workflow の通し実行](step-09-ingestion-workflow.md)                         | `completed` | 2026-06-01 | Issue #25 で完了確認済み。                                                      |
+| Step 10  | [実データソース接続を 1 種類ずつ追加](step-10-real-data-sources.md)                    | `completed` | 2026-06-21 | Web / GitHub smoke に加え、Drive / Gmail の one-pass 実 API 確認済み。          |
+| Step 10a | [scripts 実行形式の `.ts` 統一](step-10a-scripts-ts-execution.md)                      | `completed` | 2026-06-02 | Issue #32 で完了確認済み。                                                      |
+| Step 10b | [scripts strict typecheck 対応](step-10b-scripts-strict-typecheck.md)                  | `completed` | 2026-06-02 | Issue #34 で完了確認済み。                                                      |
+| Step 11  | [管理 UI と取り込み状況の可視化](step-11-admin-ui.md)                                  | `completed` | 2026-06-03 | Issue #36 で完了確認済み。                                                      |
+| Step 12  | [Chat Agent の最小確認](step-12-chat-agent.md)                                         | `completed` | 2026-06-04 | Gemini API smoke / Chat UI e2e / chat:eval を確認済み。                         |
+| Step 13a | [Private Report 生成と閲覧](step-13a-private-report.md)                                | `completed` | 2026-06-04 | Issue #48 で Private Report 生成 / API / UI / e2e を確認済み。                  |
+| Step 13b | [Public Report 公開 artifact と配信](step-13b-public-report-artifact.md)               | `completed` | 2026-06-04 | Issue #50 / PR #51 で public report artifact / manifest / API / UI を確認済み。 |
+| Step 13c | [Public Chat 限定 context と安全確認](step-13c-public-chat-context.md)                 | `completed` | 2026-06-04 | Issue #52 で public chat 限定 context / API / UI / eval を確認済み。            |
+| Step 13d | [Mastra Agent / Workflow 登録](step-13d-mastra-agent-workflow.md)                      | `completed` | 2026-06-04 | Issue #55 / PR #56 で Mastra Agent / Workflow 登録を完了。                      |
+| Step 14  | [Scheduler / Cloud Run Job / Deploy 検証](step-14-scheduler-deploy.md)                 | `completed` | 2026-06-21 | local dry-run / Docker job entrypoint に加え、GCP deploy 済み。                 |
 
 ### ステータス定義
 
@@ -85,6 +85,14 @@ Step の詳細を参照する前に、この表で status を確認する。
 Step 12 と Step 13a は、Mastra runtime に載せる前の server-side core、CLI、API、UI、e2e を先に確認した Step である。Step 13d で `apps/mastra` に `project-chat-agent`、project context tools、`generate-report` workflow を登録した。
 
 Step 14 では Scheduler / Cloud Run Job / Deploy 検証として、`curate-workflow`、`ingest-workflow`、`generate-report` の job entrypoint、Secret Manager / Workload Identity / GCS / VPC の検査、`infra:check` / `deploy:smoke` を整備する。
+
+### 2026-06-21 完了確認
+
+`001-step-by-step-build-plan` は Step 10 と Step 14 の外部要因待ちが解消されたため、plan 全体の status を `completed` とする。
+
+- Step 10: Web / GitHub の smoke と Drive / Gmail の scanner / adapter / contract test に加え、Drive / Gmail の one-pass 実 API 確認が完了済み。
+- Step 14: local dry-run / Docker job entrypoint に加え、GCP deploy が完了済み。
+- Project Settings Connections、Storage Recovery Artifacts、Data Source Content Preview などの追加作業は `004` / `005` / `007` の個別 plan で管理する。`007` は Issue #148 / PR #150 と Issue #212 / PR #213 で完了済み。
 
 ## データ取り込み・成形の重点確認項目
 
