@@ -375,7 +375,8 @@
   .split-layout,
   .actor-compare-grid,
   .status-row,
-  .content-preview-row-header {
+  .content-preview-row-header,
+  .project-create-form.member-create-form {
     grid-template-columns: 1fr;
   }
 
@@ -398,7 +399,8 @@
     width: 100%;
   }
 
-  .segmented-control a {
+  .segmented-control a,
+  .segmented-control .disabled {
     padding: 0 8px;
   }
 }
