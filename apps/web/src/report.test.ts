@@ -375,6 +375,46 @@ assert.throws(
     }),
   /Public report contains private text/,
 );
+assert.throws(
+  () =>
+    validatePublicReportJson({
+      ...published.publicReport,
+      summary: 'Private host http://127.0.0.2/path must not be treated as public text.',
+    }),
+  /Public report contains private text/,
+);
+assert.throws(
+  () =>
+    validatePublicReportJson({
+      ...published.publicReport,
+      summary: 'Private host http://0.0.0.0/path must not be treated as public text.',
+    }),
+  /Public report contains private text/,
+);
+assert.throws(
+  () =>
+    validatePublicReportJson({
+      ...published.publicReport,
+      summary: 'Private host http://[::]/path must not be treated as public text.',
+    }),
+  /Public report contains private text/,
+);
+assert.throws(
+  () =>
+    validatePublicReportJson({
+      ...published.publicReport,
+      summary: 'Private host http://[::ffff:127.0.0.1]/path must not be treated as public text.',
+    }),
+  /Public report contains private text/,
+);
+assert.throws(
+  () =>
+    validatePublicReportJson({
+      ...published.publicReport,
+      summary: 'Private host http://[::ffff:10.0.0.1]/path must not be treated as public text.',
+    }),
+  /Public report contains private text/,
+);
 
 const markdownSourceScore = createPufuScoreFromReport({
   period: { end: '2026-06-07', start: '2026-06-01' },

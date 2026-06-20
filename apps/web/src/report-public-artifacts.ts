@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import {
   containsPrivateText,
+  isRecord,
   publicSourceLabel,
   redactItems,
   redactText,
@@ -355,10 +356,6 @@ function storageUriHasAllowedPublicPrefix(uri: string, allowedPrefix: string): b
     return uri.includes(`/${allowedPrefix}`);
   }
   return uri.startsWith(allowedPrefix);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 const PROJECT_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/;

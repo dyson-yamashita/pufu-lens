@@ -199,11 +199,7 @@ function isPrivateHttpUrl(value: string): boolean {
     const hostname = url.hostname.toLowerCase();
     return (
       hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      isPrivate10Host(hostname) ||
-      isPrivate172Host(hostname) ||
-      isPrivate192Host(hostname) ||
-      isLinkLocalHost(hostname) ||
+      isPrivateIpv4Host(hostname) ||
       isPrivateIpv6Host(hostname) ||
       hostname.includes('internal') ||
       hostname.includes('corp') ||
@@ -213,6 +209,21 @@ function isPrivateHttpUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isPrivateIpv4Host(hostname: string): boolean {
+  return (
+    isLoopbackIpv4Host(hostname) ||
+    hostname === '0.0.0.0' ||
+    isPrivate10Host(hostname) ||
+    isPrivate172Host(hostname) ||
+    isPrivate192Host(hostname) ||
+    isLinkLocalHost(hostname)
+  );
+}
+
+function isLoopbackIpv4Host(hostname: string): boolean {
+  return hostname.startsWith('127.') && isIpv4Host(hostname);
 }
 
 function isPrivate10Host(hostname: string): boolean {
@@ -245,8 +256,14 @@ function isLinkLocalHost(hostname: string): boolean {
 }
 
 function isPrivateIpv6Host(hostname: string): boolean {
+  const mappedIpv4 = ipv4FromMappedIpv6Host(hostname);
+  if (mappedIpv4) {
+    return isPrivateIpv4Host(mappedIpv4);
+  }
+
   return (
     hostname === '[::1]' ||
+    hostname === '[::]' ||
     hostname.startsWith('[fc') ||
     hostname.startsWith('[fd') ||
     hostname.startsWith('[fe8') ||
@@ -254,6 +271,48 @@ function isPrivateIpv6Host(hostname: string): boolean {
     hostname.startsWith('[fea') ||
     hostname.startsWith('[feb')
   );
+}
+
+function ipv4FromMappedIpv6Host(hostname: string): string | undefined {
+  if (!hostname.startsWith('[::ffff:') || !hostname.endsWith(']')) {
+    return undefined;
+  }
+  const mappedValue = hostname.slice('[::ffff:'.length, -1);
+  if (isIpv4Host(mappedValue)) {
+    return mappedValue;
+  }
+
+  const parts = mappedValue.split(':');
+  if (parts.length !== 2) {
+    return undefined;
+  }
+  const [highPart, lowPart] = parts;
+  if (highPart === undefined || lowPart === undefined) {
+    return undefined;
+  }
+  const high = parseIpv6Hextet(highPart);
+  const low = parseIpv6Hextet(lowPart);
+  if (high === undefined || low === undefined) {
+    return undefined;
+  }
+
+  return [high >> 8, high & 255, low >> 8, low & 255].join('.');
+}
+
+function parseIpv6Hextet(value: string): number | undefined {
+  if (value === '' || value.length > 4) {
+    return undefined;
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    const isHexDigit =
+      (code >= 48 && code <= 57) || (code >= 97 && code <= 102) || (code >= 65 && code <= 70);
+    if (!isHexDigit) {
+      return undefined;
+    }
+  }
+  const parsed = Number.parseInt(value, 16);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 0xffff ? parsed : undefined;
 }
 
 function isIpv4Host(hostname: string): boolean {
@@ -276,7 +335,7 @@ function isIpv4Host(hostname: string): boolean {
   );
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
