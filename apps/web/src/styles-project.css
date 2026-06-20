@@ -188,8 +188,9 @@
 
 .credentials-form label span {
   color: var(--muted);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
