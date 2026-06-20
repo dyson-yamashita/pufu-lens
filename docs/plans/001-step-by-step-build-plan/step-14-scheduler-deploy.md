@@ -80,3 +80,10 @@ GCP / Google AI Studio で必要な初回手動作業は `docs/operations/deploy
 - secret 値が build log / runtime log に出ない。
 - Gemini API key または Vertex AI 認証情報が Secret Manager / Workload Identity 経由で参照される。
 - `infra:check` / `deploy:smoke` の結果が成功し、GCP / Google AI Studio で実施した初回手動作業、作成した secret 名、付与した IAM role、未完了項目が `docs/operations/deploy-checklist.md` に記録されている。
+
+### 2026-06-21 追記: GCP deploy 確認
+
+- 確認者: ユーザー報告
+- 確認範囲: GCP への deploy 済み。
+- 完了判断: GCP deploy 済みのため、Step 14 を完了に更新する。
+- 残メモ: deploy 先 project / region、`infra:check` / `deploy:smoke` の出力、Cloud Run Job / Scheduler / Secret Manager / GCS / DB 接続確認の詳細値はこの追記時点では未記録。必要な場合は `docs/operations/deploy-checklist.md` と合わせて追記する。

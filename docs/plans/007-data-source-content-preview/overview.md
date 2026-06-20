@@ -51,14 +51,13 @@
 
 ### UI
 
-既存 detail panel の中に、設定編集と確認ビューを混ぜすぎないようにタブまたは区切りを置く。
+既存 detail panel の中に、設定編集と確認ビューを混ぜすぎないように区切りを置く。初期実装では query string 連動 tab は増やさず、Settings / Content / Queue を同一 detail panel 内の section として表示する。
 
-候補構成:
+実装構成:
 
 ```text
 Selected Source Detail
 ├─ Header: source type / name / status
-├─ Tabs: Settings | Content | Queue
 ├─ Settings: 既存の name / scope / collect 操作
 ├─ Content: document preview table / snippet
 └─ Queue: failed / held / pending summary
@@ -66,10 +65,8 @@ Selected Source Detail
 
 desktop では現在の split layout を維持し、右 panel 内で content preview を表示する。mobile では一覧と詳細が縦積みになるため、preview table は横スクロールではなく compact list を優先する。
 
-主要 `data-testid` 候補:
+主要 `data-testid`:
 
-- `data-source-detail-tabs`
-- `data-source-content-tab`
 - `data-source-content-panel`
 - `data-source-content-document-row`
 - `data-source-content-snippet`
@@ -110,8 +107,8 @@ getDataSourceContentPreview(projectSlug, dataSourceId);
 | Step 1 | `completed` | preview contract と UI 設計を docs に反映する           | Issue #148。system / UI design に表示項目、非表示情報、detail panel 構成が残る |
 | Step 2 | `completed` | data source content preview loader を実装する           | project scoped query、limit、snippet、fallback の unit test が通る             |
 | Step 3 | `completed` | Data Sources detail panel に Content / Queue 表示を足す | 選択中 data source の document と queue 状態を UI で確認できる                 |
-| Step 4 | `planned`   | Chat / Graph への導線と追加 preset の要否を整理する     | document / data source 起点で chat / graph 確認へ進める設計が決まる            |
-| Step 5 | `active`    | e2e / visual / security 検証を追加する                  | desktop / mobile で崩れず、secret / raw 本文が表示されないことを確認する       |
+| Step 4 | `completed` | Chat / Graph への導線と追加 preset の要否を整理する     | 初期実装では導線を置かず、後続 plan 候補として分離する判断を記録済み           |
+| Step 5 | `completed` | e2e / visual / security 検証を追加する                  | PR #150 で unit / typecheck / build / e2e 部分確認を実施し、未確認リスクを記録 |
 
 ## Step 1: Preview Contract と UI 設計
 
@@ -120,7 +117,7 @@ getDataSourceContentPreview(projectSlug, dataSourceId);
 - `docs/designs/system/03-data-model.md` に data source content preview が参照する table と境界を追記する。
 - `docs/designs/system/05-api-design.md` に、初期実装は server component / loader 経由であり REST API を増やさない方針を追記する。
 - `docs/designs/system/12-security.md` に preview で表示してよい情報 / 表示しない情報を追記する。
-- `docs/designs/ui/ui-layout.md` に Data Sources detail panel の `Settings | Content | Queue` 構成を追記する。
+- `docs/designs/ui/ui-layout.md` に Data Sources detail panel の Settings / Content / Queue section 構成を追記する。
 
 ### 受け入れ条件
 
@@ -152,7 +149,7 @@ getDataSourceContentPreview(projectSlug, dataSourceId);
 ### 実装範囲
 
 - `apps/web/app/projects/[projectSlug]/admin/data-sources/page.tsx` で選択中 data source の preview を読み込む。
-- detail panel に `Settings | Content | Queue` の切り替えを追加する。
+- detail panel に Settings / Content / Queue section を追加する。
 - Content では document list と snippet を表示する。
 - Queue では failed / held / pending の代表 item と既存 retry / collect 導線を整理する。
 - empty state を追加する。
@@ -172,13 +169,19 @@ getDataSourceContentPreview(projectSlug, dataSourceId);
 - document row から private chat へ遷移する導線を検討する。
 - data source 起点の graph preset を増やす必要があるか確認する。
 - Chat に dataSourceId / documentId を渡す場合の server side validation を設計する。
-- 初期実装で導線だけ置くか、後続 plan に分けるか判断する。
+- 初期実装で導線は置かず、後続 plan に分ける判断を記録する。
 
 ### 受け入れ条件
 
 - Chat / Graph の既存認可境界を崩さない導線方針が決まっている。
 - Cypher 文字列や graph name を browser から受け取らない方針が維持されている。
 - public chat / public report へ private preview 情報が混ざらない。
+
+### 対応状況
+
+- 初期実装では document row から private chat / graph viewer へ直接遷移する導線は置かない。
+- `documentId` / `rawDocumentId` / `canonicalUri` / source type は Content row 上で compact 表示し、将来の操作起点として識別できる範囲に留める。
+- Chat に `dataSourceId` / `documentId` を渡す導線や data source 起点 graph preset は、既存の private chat / graph 認可境界を再設計してから後続 plan で扱う。
 
 ## Step 5: 検証
 
@@ -207,9 +210,17 @@ getDataSourceContentPreview(projectSlug, dataSourceId);
 - `pnpm --filter @pufu-lens/web test:e2e`
 - 必要に応じて `pnpm format:check` / `pnpm typecheck`
 
+### 対応状況
+
+- Issue #148 / PR #150 で loader、fallback、UI、admin e2e assertion、設計 docs を追加した。
+- PR #150 では `pnpm --filter @pufu-lens/web test`、`pnpm --filter @pufu-lens/web typecheck`、`pnpm --filter @pufu-lens/web build`、`pnpm format:check` を確認済み。
+- `pnpm --filter @pufu-lens/web test:e2e` は 11 passed / 2 skipped / 5 failed。失敗は既存 report-ui mock 期待要素欠落と local DB の public-test 系 project 重複による mobile click 干渉で、今回追加した authenticated admin operation controls は e2e admin credential 未設定により skip された。
+- Browser plugin による localhost 目視確認は `net::ERR_BLOCKED_BY_CLIENT` で未実施。
+- Issue #212 / PR #213 で preview row 取得の runtime guard parser 適用を helper に集約し、`pnpm exec biome check apps/web/src/admin-db.ts apps/web/src/admin-db-guards.ts`、`pnpm --filter @pufu-lens/web test`、`pnpm --filter @pufu-lens/ingestion build && pnpm --filter @pufu-lens/web typecheck` を確認済み。
+
 ## 未決事項
 
-- Content / Queue を HTML details にするか、query string 連動の tab にするか。
-- snippet の最大文字数を 240 / 320 / 500 のどれにするか。
-- raw document metadata の storage URI を完全非表示にするか、admin 向けに masked 表示するか。
-- Chat / Graph 導線をこの plan 内で実装するか、後続 plan に分けるか。
+- Content / Queue は query string 連動 tab ではなく detail panel 内の section 表示にした。
+- snippet の最大文字数は `DATA_SOURCE_SNIPPET_MAX_LENGTH` に集約し、unit test で長さ制限を確認する。
+- raw / parsed storage URI は admin UI でも表示しない。
+- Chat / Graph 導線はこの plan では実装せず、後続 plan 候補に分ける。

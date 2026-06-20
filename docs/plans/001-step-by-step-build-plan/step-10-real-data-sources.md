@@ -179,3 +179,11 @@ Step 10 の Web URL 接続で追加した scripts は、後続 Step 10a / Step 1
 - ログ / secret 確認: unit test で Gmail thread fetch failure の `token=secret` がログに残らないこと、raw metadata に token と本文全文が入らないことを確認。
 - 未確認リスク: 実 Gmail API での `--limit 5` indexed 到達、OAuth scope の最小性、複雑な MIME multipart / attachment / quoted text の本文抽出、実 label / query での再実行重複確認は未実施。
 - 次 step に進む判断: Gmail の実 API 接続部と contract test は追加済みだが、Step 10 の完了条件である実データ `indexed` 到達は未確認。Gmail smoke 用の OAuth access token と安全な query / label が用意できたら `docs/operations/gmail-source.md` の手順で確認する。
+
+### 2026-06-21 追記: Drive / Gmail one-pass 実 API 確認
+
+- 確認者: ユーザー報告
+- 対象 source: Drive / Gmail
+- 確認範囲: Drive / Gmail の実 API 接続で one-pass 確認済み。
+- 完了判断: これまで未確認だった Drive / Gmail 実 API smoke が完了したため、Step 10 の blocker は解消済み。
+- 残メモ: 実行コマンド、対象 project、対象 folder / label / query、件数、ログ / secret 確認の詳細値はこの追記時点では未記録。必要な場合は別途 smoke 記録として追記する。
