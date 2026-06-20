@@ -1,0 +1,15 @@
+{
+  "apphosting": {
+    "backendId": "pufu-lens-web",
+    "rootDir": "apps/web",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "**/node_modules",
+      "**/.next",
+      "**/dist",
+      "**/.turbo",
+      ".mastra"
+    ]
+  }
+}

@@ -9,7 +9,7 @@ import type {
   ObjectStorage,
   ProjectStoragePrefixes,
   PutOptions,
-} from './object-storage.js';
+} from './object-storage.ts';
 
 const PROJECT_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/;
 

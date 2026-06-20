@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import test from 'node:test';
-import { LocalFsObjectStorage } from './local-fs.js';
+import { LocalFsObjectStorage } from './local-fs.ts';
 
 test('LocalFsObjectStorage stores and reads text objects', async () => {
   const root = await mkdtemp(join(tmpdir(), 'pufu-lens-storage-'));

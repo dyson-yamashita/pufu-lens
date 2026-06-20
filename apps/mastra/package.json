@@ -12,9 +12,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.21.0",
     "@mastra/core": "^1.40.0",
     "@pufu-lens/storage": "workspace:*",
     "@pufu-lens/web": "workspace:*",
+    "postgres": "^3.4.9",
     "zod": "^4.4.3"
   },
   "devDependencies": {

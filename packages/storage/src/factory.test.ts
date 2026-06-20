@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createObjectStorageFromEnv } from './factory.js';
-import { GcsObjectStorage } from './gcs.js';
-import { LocalFsObjectStorage } from './local-fs.js';
+import { createObjectStorageFromEnv } from './factory.ts';
+import { GcsObjectStorage } from './gcs.ts';
+import { LocalFsObjectStorage } from './local-fs.ts';
 
 test('createObjectStorageFromEnv creates local storage', () => {
   const storage = createObjectStorageFromEnv({

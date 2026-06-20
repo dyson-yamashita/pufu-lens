@@ -54,6 +54,11 @@ const generateReportWorkflow = createGenerateReportWorkflow({
 
 export const mastra = new Mastra({
   agents: { crossProjectResearchAgent, projectChatAgent, publicReportChatAgent },
+  bundler: {
+    // @google-cloud/storage is reachable from @pufu-lens/storage's GcsObjectStorage.
+    // It must be installed at runtime rather than bundled by the Mastra rollup analyzer.
+    externals: ['@google-cloud/storage'],
+  },
   workflows: { generateReportWorkflow },
 });
 

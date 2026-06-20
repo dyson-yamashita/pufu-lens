@@ -1,0 +1,73 @@
+# Firebase App Hosting backend configuration for @pufu-lens/web (Next.js).
+# Deployed via local source: `firebase deploy` (Firebase CLI >= 14.4.0).
+# Region must match the VPC connector (asia-east1) so the Web API can reach
+# the internal PostgreSQL VM and the Mastra Cloud Run service.
+runConfig:
+  minInstances: 0
+  maxInstances: 10
+  concurrency: 40
+  cpu: 1
+  memoryMiB: 2048
+  vpcAccess:
+    egress: PRIVATE_RANGES_ONLY
+    connector: mastra-connector
+
+env:
+  - variable: STORAGE_DRIVER
+    value: gcs
+    availability:
+      - RUNTIME
+  - variable: STORAGE_BUCKET
+    value: pufu-lens-prod
+    availability:
+      - RUNTIME
+  - variable: MASTRA_API_URL
+    value: https://mastra-server-mfq5zc7o4a-de.a.run.app
+    availability:
+      - RUNTIME
+  - variable: MASTRA_SERVER_URL
+    value: https://mastra-server-mfq5zc7o4a-de.a.run.app
+    availability:
+      - RUNTIME
+  - variable: GEMINI_CHAT_MODEL
+    value: gemini-2.5-flash
+    availability:
+      - RUNTIME
+  - variable: GEMINI_EMBEDDING_MODEL
+    value: gemini-embedding-2
+    availability:
+      - RUNTIME
+  - variable: GEMINI_EMBEDDING_DIMENSIONS
+    value: '1536'
+    availability:
+      - RUNTIME
+  - variable: GOOGLE_GENAI_USE_VERTEXAI
+    value: 'false'
+    availability:
+      - RUNTIME
+  # AUTH_URL must match the backend's public origin. Update after the first
+  # deploy if the assigned hosted.app domain differs from this value.
+  - variable: AUTH_URL
+    value: https://pufu-lens-web--pufu-lens.asia-east1.hosted.app
+    availability:
+      - RUNTIME
+  - variable: DATABASE_URL
+    secret: DATABASE_URL
+    availability:
+      - RUNTIME
+  - variable: AUTH_SECRET
+    secret: AUTH_SECRET
+    availability:
+      - RUNTIME
+  - variable: GEMINI_API_KEY
+    secret: GEMINI_API_KEY
+    availability:
+      - RUNTIME
+  - variable: GOOGLE_GENERATIVE_AI_API_KEY
+    secret: GEMINI_API_KEY
+    availability:
+      - RUNTIME
+  - variable: GOOGLE_API_KEY
+    secret: GEMINI_API_KEY
+    availability:
+      - RUNTIME
