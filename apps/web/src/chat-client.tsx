@@ -192,7 +192,10 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
   }
 
   return (
-    <section className="panel public-chat-panel" data-testid="public-project-chat-panel">
+    <section
+      className="panel public-chat-panel public-project-chat-panel"
+      data-testid="public-project-chat-panel"
+    >
       <PublicChatThread messages={messages} resultTestId="public-project-chat-result" />
       <form className="chat-form" onSubmit={submit}>
         <label htmlFor="public-project-chat-question">Question</label>

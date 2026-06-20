@@ -1181,7 +1181,7 @@ th {
   min-height: 0;
 }
 
-.public-chat-panel[data-testid="public-project-chat-panel"] {
+.public-project-chat-panel {
   height: 100%;
   margin-bottom: 0;
   width: 100%;
@@ -1469,11 +1469,6 @@ th {
 }
 
 @media (max-width: 640px) {
-  .main-surface:has(> .chat-panel),
-  .main-surface:has(> .public-chat-panel[data-testid="public-project-chat-panel"]) {
-    height: 100dvh;
-  }
-
   .chat-panel,
   .public-chat-panel {
     min-height: 0;
@@ -1635,49 +1630,6 @@ th {
 }
 
 @media (max-width: 1023px) {
-  .app-shell {
-    grid-template-columns: 224px minmax(0, 1fr);
-  }
-
-  .guest-app-shell {
-    grid-template-columns: 224px minmax(0, 1fr);
-  }
-
-  .guest-app-shell:has(.guest-menu:not([open])) {
-    grid-template-columns: minmax(0, 1fr);
-    --main-surface-padding-left: 152px;
-  }
-
-  .app-shell:not(.guest-app-shell):has(.guest-menu:not([open])) {
-    grid-template-columns: minmax(0, 1fr);
-    --main-surface-padding-left: 152px;
-  }
-
-  .global-nav {
-    height: 100vh;
-    position: sticky;
-    top: 0;
-  }
-
-  .guest-global-nav {
-    height: 100vh;
-    min-height: 0;
-    position: sticky;
-    top: 0;
-  }
-
-  .global-nav nav {
-    grid-template-columns: 1fr;
-  }
-
-  .guest-global-nav .guest-side-menu {
-    grid-template-columns: 1fr;
-  }
-
-  .nav-link {
-    justify-content: flex-start;
-  }
-
   .split-layout,
   .actor-compare-grid,
   .graph-workspace,
@@ -1702,42 +1654,8 @@ th {
 }
 
 @media (max-width: 720px) {
-  .main-surface {
-    padding: 20px 16px;
-    padding-left: var(--main-surface-padding-left, 16px);
-  }
-
-  .global-nav {
-    padding: 16px;
-  }
-
-  .guest-account-panel {
-    right: 16px;
-    top: 16px;
-  }
-
-  .guest-app-shell:has(.guest-menu:not([open])) {
-    --main-surface-padding-left: 128px;
-  }
-
-  .app-shell:not(.guest-app-shell):has(.guest-menu:not([open])) {
-    --main-surface-padding-left: 128px;
-  }
-
-  .global-nav nav {
-    grid-template-columns: 1fr;
-  }
-
   .connection-card-grid {
     grid-template-columns: 1fr;
-  }
-
-  .guest-global-nav .guest-side-menu {
-    grid-template-columns: 1fr;
-  }
-
-  .guest-side-menu .nav-link {
-    justify-content: flex-start;
   }
 
   .page-header {
