@@ -203,6 +203,8 @@ function isPrivateHttpUrl(value: string): boolean {
       isPrivate10Host(hostname) ||
       isPrivate172Host(hostname) ||
       isPrivate192Host(hostname) ||
+      isLinkLocalHost(hostname) ||
+      isPrivateIpv6Host(hostname) ||
       hostname.includes('internal') ||
       hostname.includes('corp') ||
       hostname.includes('intranet') ||
@@ -238,6 +240,22 @@ function isPrivate192Host(hostname: string): boolean {
   return isIpv4Host(hostname);
 }
 
+function isLinkLocalHost(hostname: string): boolean {
+  return hostname.startsWith('169.254.') && isIpv4Host(hostname);
+}
+
+function isPrivateIpv6Host(hostname: string): boolean {
+  return (
+    hostname === '[::1]' ||
+    hostname.startsWith('[fc') ||
+    hostname.startsWith('[fd') ||
+    hostname.startsWith('[fe8') ||
+    hostname.startsWith('[fe9') ||
+    hostname.startsWith('[fea') ||
+    hostname.startsWith('[feb')
+  );
+}
+
 function isIpv4Host(hostname: string): boolean {
   const parts = hostname.split('.');
   return (
@@ -259,7 +277,7 @@ function isIpv4Host(hostname: string): boolean {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 const PRIVATE_PUBLIC_REPORT_KEYS = new Set([
