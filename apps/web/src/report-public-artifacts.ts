@@ -486,9 +486,10 @@ function replacePrivateTokens(value: string): string {
 
 function privateTokenRanges(value: string): { end: number; replacement: string; start: number }[] {
   const ranges: { end: number; replacement: string; start: number }[] = [];
+  const lowerValue = value.toLowerCase();
   let index = 0;
   while (index < value.length) {
-    const uriStart = nextUriStart(value, index);
+    const uriStart = nextUriStart(lowerValue, index);
     if (!uriStart) {
       break;
     }
@@ -505,13 +506,13 @@ function privateTokenRanges(value: string): { end: number; replacement: string; 
 }
 
 function nextUriStart(
-  value: string,
+  lowerValue: string,
   fromIndex: number,
 ): { index: number; scheme: string } | undefined {
   const schemes = ['https', 'http', 'file', 'gs'];
   let found: { index: number; scheme: string } | undefined;
   for (const scheme of schemes) {
-    const index = value.toLowerCase().indexOf(`${scheme}://`, fromIndex);
+    const index = lowerValue.indexOf(`${scheme}://`, fromIndex);
     if (index >= 0 && (!found || index < found.index)) {
       found = { index, scheme };
     }
