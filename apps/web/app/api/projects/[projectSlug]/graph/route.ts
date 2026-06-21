@@ -13,7 +13,7 @@ export async function POST(
 ) {
   const { projectSlug } = await params;
   let queryId = '';
-  let userId = '';
+  let userId: string;
   try {
     userId = await requireSessionUserId();
   } catch (error) {

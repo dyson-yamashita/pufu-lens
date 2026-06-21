@@ -5,6 +5,7 @@ import {
   getAdminProject,
   getProjectMembership,
   getVisiblePublicProject,
+  ProjectNotFoundError,
 } from '../../../src/admin-db';
 import { AppShell, MetricStrip, PageHeader } from '../../../src/ui';
 
@@ -97,5 +98,5 @@ export default async function ProjectOverviewPage({
 }
 
 function isUnknownProjectError(error: unknown): boolean {
-  return error instanceof Error && error.message.startsWith('Unknown project slug:');
+  return error instanceof ProjectNotFoundError;
 }

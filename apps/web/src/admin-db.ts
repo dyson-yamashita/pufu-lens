@@ -104,6 +104,13 @@ export type GlobalMemberDirectory = {
   readonly members: readonly AppMemberSummary[];
 };
 
+export class ProjectNotFoundError extends Error {
+  constructor(slug: string) {
+    super(`Unknown project slug: ${slug}`);
+    this.name = 'ProjectNotFoundError';
+  }
+}
+
 type AdminConfig = Record<string, unknown> & {
   readonly folderId?: unknown;
   readonly query?: unknown;
@@ -587,7 +594,7 @@ export async function getAdminProject(slug: string): Promise<ProjectSummary> {
   try {
     const row = await lookupProjectRowBySlug(sql, slug);
     if (!row) {
-      throw new Error(`Unknown project slug: ${slug}`);
+      throw new ProjectNotFoundError(slug);
     }
     const [dataSources, parserProfiles] = await Promise.all([
       listDataSources(sql, row.id),
@@ -1358,7 +1365,7 @@ function toNumber(value: number | string | bigint): number {
 function getFallbackProject(slug: string): ProjectSummary {
   const project = fallbackProjects.find((candidate) => candidate.slug === slug);
   if (!project) {
-    throw new Error(`Unknown project slug: ${slug}`);
+    throw new ProjectNotFoundError(slug);
   }
   return project;
 }
