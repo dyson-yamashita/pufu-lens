@@ -1,10 +1,11 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { auth } from '../../../auth';
 import {
   getAdminProject,
   getProjectMembership,
   getVisiblePublicProject,
+  ProjectNotFoundError,
 } from '../../../src/admin-db';
 import { AppShell, MetricStrip, PageHeader } from '../../../src/ui';
 
@@ -14,7 +15,19 @@ export default async function ProjectOverviewPage({
   readonly params: Promise<{ readonly projectSlug: string }>;
 }) {
   const { projectSlug } = await params;
-  const [project, session] = await Promise.all([getAdminProject(projectSlug), auth()]);
+  const [projectResult, session] = await Promise.all([
+    getAdminProject(projectSlug)
+      .then((project) => ({ project }))
+      .catch((error: unknown) => ({ error })),
+    auth(),
+  ]);
+  if ('error' in projectResult) {
+    if (!isUnknownProjectError(projectResult.error)) {
+      throw projectResult.error;
+    }
+    notFound();
+  }
+  const { project } = projectResult;
   const userId = session?.user?.id;
   let isMember = false;
   if (userId) {
@@ -82,4 +95,8 @@ export default async function ProjectOverviewPage({
       ) : null}
     </AppShell>
   );
+}
+
+function isUnknownProjectError(error: unknown): boolean {
+  return error instanceof ProjectNotFoundError;
 }
