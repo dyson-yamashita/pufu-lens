@@ -13,6 +13,15 @@ export async function POST(
 ) {
   const { projectSlug } = await params;
   let queryId = '';
+  let userId = '';
+  try {
+    userId = await requireSessionUserId();
+  } catch (error) {
+    if (error instanceof AuthRequiredError) {
+      return graphErrorResponse('auth_required', error.message, 401);
+    }
+    throw error;
+  }
   try {
     const body = (await request.json()) as unknown;
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -31,7 +40,6 @@ export async function POST(
   }
 
   try {
-    const userId = await requireSessionUserId();
     const response = await runGraphPresetQuery(
       { projectSlug, queryId, userId },
       { repository: createPostgresGraphViewerRepository() },
