@@ -7,12 +7,20 @@ import Google from 'next-auth/providers/google';
 import { getRequiredAdminSql } from './src/admin-sql';
 import { createPostgresAuthUserRepository, resolveAuthUser } from './src/auth-db';
 import {
+  createCredentialsRateLimiter,
+  credentialsRateLimitKey,
+} from './src/credentials-rate-limit';
+import {
   createPostgresPasswordCredentialRepository,
   verifyPasswordCredential,
 } from './src/password-auth';
 import { isProductionBuildPhase, isProductionRuntime } from './src/runtime-guards';
 
 const authProviders = buildProviders();
+const credentialsRateLimiter = createCredentialsRateLimiter({
+  limit: parsePositiveInt(process.env.PUFU_LENS_CREDENTIALS_LOGIN_ATTEMPT_LIMIT, 10),
+  windowMs: parsePositiveInt(process.env.PUFU_LENS_CREDENTIALS_LOGIN_WINDOW_MS, 15 * 60_000),
+});
 
 export const { auth, handlers, signIn, signOut } = NextAuth({
   callbacks: {
@@ -83,11 +91,20 @@ function buildProviders(): Provider[] {
       async authorize(credentials) {
         const email = typeof credentials.email === 'string' ? credentials.email : '';
         const password = typeof credentials.password === 'string' ? credentials.password : '';
+        const rateLimitKey = credentialsRateLimitKey(email);
+        if (!credentialsRateLimiter.check(rateLimitKey).allowed) {
+          return null;
+        }
         const user = await verifyPasswordCredential(
           { email, password },
           createPostgresPasswordCredentialRepository(getRequiredAdminSql()),
         );
-        return user ? { email: user.email, id: user.id, name: user.name, role: user.role } : null;
+        if (!user) {
+          credentialsRateLimiter.recordFailure(rateLimitKey);
+          return null;
+        }
+        credentialsRateLimiter.reset(rateLimitKey);
+        return { email: user.email, id: user.id, name: user.name, role: user.role };
       },
     }),
   ];
@@ -174,4 +191,12 @@ function requireProvider(provider: string): 'github' | 'google' {
     return provider;
   }
   throw new Error(`Unsupported auth provider: ${provider}`);
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
