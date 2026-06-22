@@ -18,6 +18,7 @@ import {
 import {
   createMastraProjectChatBody,
   createMastraPublicReportChatBody,
+  mastraFetchHeaders,
   mastraGenerateToChatResponse,
   mastraGenerateToPublicChatResponse,
   mastraProjectChatGenerateUrl,
@@ -187,6 +188,29 @@ assert.deepEqual(createMastraProjectChatBody({ projectId: 'project-a', question:
   messages: [{ content: '仕様変更は?', role: 'user' }],
   requestContext: { projectId: 'project-a' },
 });
+assert.equal(
+  (
+    await mastraFetchHeaders({
+      env: {},
+      url: 'http://localhost:4111/api/agents/project-chat-agent/generate',
+    })
+  ).get('authorization'),
+  null,
+);
+const cloudRunHeaders = await mastraFetchHeaders({
+  authClientFactory: async (audience) => ({
+    getRequestHeaders: async (url) => ({
+      authorization: `Bearer test-token-for:${audience}:${url ?? ''}`,
+    }),
+  }),
+  env: {},
+  url: 'https://mastra-server-example-de.a.run.app/api/agents/project-chat-agent/generate',
+});
+assert.equal(
+  cloudRunHeaders.get('authorization'),
+  'Bearer test-token-for:https://mastra-server-example-de.a.run.app:https://mastra-server-example-de.a.run.app/api/agents/project-chat-agent/generate',
+);
+assert.equal(cloudRunHeaders.get('content-type'), 'application/json');
 
 const mastraChatResponse = mastraGenerateToChatResponse({
   mastraResponse: {

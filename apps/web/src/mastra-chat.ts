@@ -14,6 +14,10 @@ const PROJECT_CHAT_AGENT_ID = 'project-chat-agent';
 const PUBLIC_REPORT_CHAT_AGENT_ID = 'public-report-chat-agent';
 
 type MastraChatEnv = Record<string, string | undefined>;
+type MastraIdTokenClient = {
+  readonly getRequestHeaders: (url?: string) => Promise<HeadersInit>;
+};
+type MastraIdTokenClientFactory = (audience: string) => Promise<MastraIdTokenClient>;
 
 const TOOL_NAME_MAP: Record<string, ChatToolName> = {
   documentFetch: 'document-fetch',
@@ -78,6 +82,27 @@ export function mastraPublicReportChatGenerateUrl(env: MastraChatEnv = process.e
   const rawBase = env.MASTRA_SERVER_URL ?? env.MASTRA_API_URL ?? 'http://localhost:4111';
   const base = rawBase.replace(/\/+$/, '').replace(/\/api$/, '');
   return `${base}/api/agents/${PUBLIC_REPORT_CHAT_AGENT_ID}/generate`;
+}
+
+export async function mastraFetchHeaders(input: {
+  readonly authClientFactory?: MastraIdTokenClientFactory;
+  readonly env?: MastraChatEnv;
+  readonly url: string;
+}): Promise<Headers> {
+  const headers = new Headers({ 'content-type': 'application/json' });
+  if (!shouldAttachMastraIdToken(input.url, input.env ?? process.env)) {
+    return headers;
+  }
+
+  const authClient = await (input.authClientFactory ?? createGoogleAuthIdTokenClient)(
+    mastraAuthAudience(input.url),
+  );
+  const authHeaders = await authClient.getRequestHeaders(input.url);
+  for (const [key, value] of new Headers(authHeaders)) {
+    headers.set(key, value);
+  }
+  headers.set('content-type', 'application/json');
+  return headers;
 }
 
 export function createMastraProjectChatBody(input: {
@@ -209,6 +234,31 @@ function parseMastraPublicSteps(value: unknown): MastraPublicGenerateStep[] | un
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function shouldAttachMastraIdToken(url: string, env: MastraChatEnv): boolean {
+  if (env.MASTRA_ID_TOKEN_ENABLED === 'false') {
+    return false;
+  }
+  if (env.MASTRA_ID_TOKEN_ENABLED === 'true') {
+    return true;
+  }
+
+  const parsed = new URL(url);
+  return (
+    parsed.protocol === 'https:' && !['127.0.0.1', 'localhost', '::1'].includes(parsed.hostname)
+  );
+}
+
+function mastraAuthAudience(url: string): string {
+  const parsed = new URL(url);
+  return `${parsed.protocol}//${parsed.host}`;
+}
+
+async function createGoogleAuthIdTokenClient(audience: string): Promise<MastraIdTokenClient> {
+  const { GoogleAuth } = await import('google-auth-library');
+  const auth = new GoogleAuth();
+  return auth.getIdTokenClient(audience);
 }
 
 function uniqueSources(sources: readonly ChatSource[]): ChatSource[] {

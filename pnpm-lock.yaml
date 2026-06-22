@@ -87,6 +87,9 @@ importers:
       dom-to-image:
         specifier: ^2.6.0
         version: 2.6.0
+      google-auth-library:
+        specifier: 9.15.1
+        version: 9.15.1
       html-to-image:
         specifier: ^1.11.13
         version: 1.11.13
