@@ -443,7 +443,7 @@ async function listProjectMembershipMemberRows(
         )
     )
     SELECT
-      id::text,
+      id::text AS id,
       email,
       name,
       role,
@@ -451,29 +451,18 @@ async function listProjectMembershipMemberRows(
       project_role,
       membership_created_at,
       removable
-    FROM (
-      SELECT
-        id,
-        email,
-        name,
-        role,
-        created_at,
-        project_role,
-        membership_created_at,
-        removable
-      FROM project_member_rows
-      UNION ALL
-      SELECT
-        id,
-        email,
-        name,
-        role,
-        created_at,
-        project_role,
-        membership_created_at,
-        removable
-      FROM global_admin_rows
-    ) members
+    FROM project_member_rows
+    UNION ALL
+    SELECT
+      id::text AS id,
+      email,
+      name,
+      role,
+      created_at,
+      project_role,
+      membership_created_at,
+      removable
+    FROM global_admin_rows
     ORDER BY email
   `) as readonly unknown[];
   return parseAdminDbRows(rawRows, parseAdminDbProjectMemberRow);
