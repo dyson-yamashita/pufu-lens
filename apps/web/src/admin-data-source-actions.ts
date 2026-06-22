@@ -867,16 +867,19 @@ async function runtimeProjectId(): Promise<string> {
     process.env.GCLOUD_PROJECT ??
     process.env.GCP_PROJECT;
   if (envProjectId) {
-    return envProjectId;
+    return envProjectId.trim();
   }
   const response = await fetch(
     'http://metadata.google.internal/computeMetadata/v1/project/project-id',
-    { headers: { 'metadata-flavor': 'Google' } },
+    {
+      headers: { 'metadata-flavor': 'Google' },
+      signal: AbortSignal.timeout(2000),
+    },
   );
   if (!response.ok) {
     throw new Error(`Failed to read GCP project id from metadata server: HTTP ${response.status}`);
   }
-  return response.text();
+  return (await response.text()).trim();
 }
 
 function requiredRuntimeEnv(name: string): string {
