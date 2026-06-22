@@ -414,6 +414,7 @@ async function listProjectMembershipMemberRows(
         users.email,
         users.name,
         users.role,
+        users.created_at,
         project_members.role AS project_role,
         project_members.created_at AS membership_created_at,
         project_members.role = 'member' AND users.role <> 'admin' AS removable
@@ -428,6 +429,7 @@ async function listProjectMembershipMemberRows(
         users.email,
         users.name,
         users.role,
+        users.created_at,
         'admin'::text AS project_role,
         users.created_at AS membership_created_at,
         false AS removable
@@ -445,6 +447,7 @@ async function listProjectMembershipMemberRows(
       email,
       name,
       role,
+      created_at,
       project_role,
       membership_created_at,
       removable
