@@ -131,7 +131,7 @@ export async function getPrivateReport(input: {
 }
 
 export async function deletePrivateReport(input: {
-  readonly options: ReportAccessOptions & { readonly storage?: ObjectStorage };
+  readonly options: ReportAccessOptions & { readonly storage: ObjectStorage };
   readonly projectSlug: string;
   readonly reportId: string;
   readonly userId: string;
@@ -147,12 +147,11 @@ export async function deletePrivateReport(input: {
   if (!metadata) {
     throw new ReportNotFoundError(input.reportId);
   }
-  if (metadata.isPublic && input.options.storage) {
+  if (metadata.isPublic) {
     try {
       await revokePublicReport({
         options: {
           ...input.options,
-          storage: input.options.storage,
         },
         projectSlug: input.projectSlug,
         reportId: input.reportId,
