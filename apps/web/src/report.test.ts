@@ -204,11 +204,70 @@ assert.ok(progressSection);
 assert.ok(risksSection);
 assert.doesNotMatch(overviewSection.markdown, /^- /m);
 assert.match(overviewSection.markdown, /プロジェクトに関する 2 件の情報が確認できました/);
-assert.match(progressSection.markdown, /^- Issue #42 Login failure/m);
+assert.match(progressSection.markdown, /^- Login failure risk。/m);
+assert.match(progressSection.markdown, /^- Merged report UI。/m);
 assert.equal(progressSection.sources?.length, 2);
 assert.equal(progressSection.sources?.[0]?.title, 'Issue #42 Login failure');
 assert.doesNotMatch(progressSection.markdown, /documents|discussion_points|目指す状態/);
-assert.match(risksSection.markdown, /Login failure risk|次の期間に向けて/);
+assert.match(risksSection.markdown, /Login failure risk.*対応として/);
+const oscReport = await createExtractiveReportProvider().generate({
+  documents: [
+    {
+      canonicalUri: 'https://note.example.com/osc-kyoto',
+      docType: 'web_page',
+      documentId: 'doc-osc-kyoto',
+      occurredAt: '2024-08-30T00:00:00.000Z',
+      summary:
+        'オープンソースカンファレンス@京都にプ譜エディタを出展し、来場者に実際に触れてもらいながら、プ譜の考え方と使い方を紹介しました。',
+      title: 'オープンソースカンファレンス@京都にプ譜エディタを出展しました｜Dyson',
+    },
+  ],
+  period: { end: '2024-08-30', start: '2024-08-01' },
+  projectSlug: 'pufu-tomonokai',
+});
+const oscOverview = oscReport.sections.find((section) => section.id === 'activity');
+const oscProgress = oscReport.sections.find((section) => section.id === 'progress');
+const oscRisks = oscReport.sections.find((section) => section.id === 'risks');
+assert.ok(oscOverview);
+assert.ok(oscProgress);
+assert.ok(oscRisks);
+assert.match(oscOverview.markdown, /プ譜エディタを出展/);
+assert.match(oscOverview.markdown, /利用者候補にプ譜エディタを見せ/);
+assert.match(oscProgress.markdown, /来場者に実際に触れてもらいながら/);
+assert.doesNotMatch(
+  oscProgress.markdown,
+  /^- オープンソースカンファレンス@京都にプ譜エディタを出展しました｜Dyson$/m,
+);
+assert.match(oscRisks.markdown, /来場者の反応・質問・つまずき/);
+assert.match(oscRisks.markdown, /継続利用につながる説明資料や導線/);
+const sparseDocumentReport = await createExtractiveReportProvider().generate({
+  documents: [
+    {
+      canonicalUri: 'https://example.com/no-summary',
+      docType: 'web_page',
+      documentId: 'doc-no-summary',
+      occurredAt: '2024-08-30T00:00:00.000Z',
+      summary: null,
+      title: 'Summary missing source',
+    } as never,
+    {
+      canonicalUri: 'https://example.com/long-summary',
+      docType: 'web_page',
+      documentId: 'doc-long-summary',
+      occurredAt: '2024-08-30T00:00:00.000Z',
+      summary: '長い説明'.repeat(80),
+      title: 'Long summary source',
+    },
+  ],
+  period: { end: '2024-08-30', start: '2024-08-01' },
+  projectSlug: 'pufu-tomonokai',
+});
+const sparseProgress = sparseDocumentReport.sections.find((section) => section.id === 'progress');
+assert.ok(sparseProgress);
+assert.doesNotMatch(sparseProgress.markdown, /null|undefined/);
+assert.match(sparseProgress.markdown, /Summary missing source。/);
+assert.match(sparseProgress.markdown, /…$/m);
+assert.doesNotMatch(sparseProgress.markdown, /…。/);
 const pufuScore = createPufuScoreFromReport({
   ...generated.report,
   pufu_sources: [

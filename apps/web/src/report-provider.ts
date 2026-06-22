@@ -43,7 +43,7 @@ export function createExtractiveReportProvider(): ReportGenerationProvider {
               document_id: document.documentId,
               title: document.title,
             })),
-            markdown: buildRisksMarkdown(risks),
+            markdown: buildRisksMarkdown(risks, sourceDocuments),
             title: '課題・次のアクション',
           },
         ],
@@ -147,10 +147,12 @@ function buildActivityMarkdown(
     return '対象期間の indexed document はありません。現時点では概況を判断する材料が不足しています。';
   }
   const activitySummary = summarizeDocumentTypes(sourceDocuments);
+  const activityDetails = summarizeActivityDetails(sourceDocuments);
   return [
     `${period.start} から ${period.end} の期間に、プロジェクトに関する ${documents.length} 件の情報が確認できました。`,
     activitySummary,
-    '全体として、関係者間の更新や議論が継続している状態と読み取れます。',
+    activityDetails,
+    overallActivityReading(sourceDocuments),
   ].join('\n');
 }
 
@@ -161,17 +163,20 @@ function buildProgressMarkdown(
   if (sourceDocuments.length === 0) {
     return `- ${period.start} から ${period.end} の期間には indexed document がなく、進行状況を判断できる材料がありません。`;
   }
-  return sourceDocuments.map((document) => `- ${document.title}`).join('\n');
+  return sourceDocuments.map((document) => `- ${progressItemFromDocument(document)}`).join('\n');
 }
 
-function buildRisksMarkdown(risks: readonly ReportDocumentRecord[]): string {
+function buildRisksMarkdown(
+  risks: readonly ReportDocumentRecord[],
+  sourceDocuments: readonly ReportDocumentRecord[],
+): string {
   if (risks.length === 0) {
-    return '- 次の期間に向けて、判断材料の収集と関係者とのすり合わせを進めてください。';
+    return nextActionsFromDocuments(sourceDocuments).join('\n');
   }
   return risks
     .map(
       (document) =>
-        `- ${document.title}: ${truncate(document.summary || '要約は未設定です。', 120)}`,
+        `- ${progressItemFromDocument(document)} 対応として、状況確認と解消方針の合意を進めてください。`,
     )
     .join('\n');
 }
@@ -185,6 +190,117 @@ function summarizeDocumentTypes(documents: readonly ReportDocumentRecord[]): str
     return `主な活動は ${labels[0]} に関する更新や議論の記録です。`;
   }
   return `主な活動は ${labels.slice(0, -1).join('、')} および ${labels.at(-1)} に関する更新や議論の記録です。`;
+}
+
+function summarizeActivityDetails(documents: readonly ReportDocumentRecord[]): string {
+  const details = uniqueNonEmpty(documents.map((document) => activityPhraseFromDocument(document)));
+  if (details.length === 0) {
+    return '確認された内容はありますが、具体的な取り組みの詳細は追加確認が必要です。';
+  }
+  return `確認された内容として、${joinJapanese(details.slice(0, 3))}がありました。`;
+}
+
+function overallActivityReading(documents: readonly ReportDocumentRecord[]): string {
+  const combinedText = documents.map(documentText).join('\n');
+  if (/出展|展示|カンファレンス|OSC/i.test(combinedText)) {
+    return '全体として、外部イベントで利用者候補にプ譜エディタを見せ、反応を得る取り組みが進んだ状態と読み取れます。';
+  }
+  if (/リリース|公開|ローンチ|発表/i.test(combinedText)) {
+    return '全体として、成果物を外部または関係者に届け、利用状況を確認する段階に進んでいると読み取れます。';
+  }
+  if (/議論|検討|すり合わせ|合意|方針/i.test(combinedText)) {
+    return '全体として、関係者間で方針や判断材料をそろえる動きが継続していると読み取れます。';
+  }
+  return '全体として、確認できた情報をもとに次の判断材料を整理する段階にあります。';
+}
+
+function activityPhraseFromDocument(document: ReportDocumentRecord): string {
+  const text = documentText(document);
+  if (/出展|展示|カンファレンス|OSC/i.test(text)) {
+    return 'イベントでプ譜エディタを出展し、来場者に触れてもらう活動';
+  }
+  if (/リリース|公開|ローンチ|発表/i.test(text)) {
+    return '成果物や情報を公開して関係者に届ける活動';
+  }
+  if (/改善|修正|更新|実装|開発/i.test(text)) {
+    return 'プロダクトや資料の改善・更新';
+  }
+  if (/議論|検討|すり合わせ|合意|相談/i.test(text)) {
+    return '方針や進め方に関する議論';
+  }
+  return truncate(meaningfulDocumentText(document), 80);
+}
+
+function progressItemFromDocument(document: ReportDocumentRecord): string {
+  const text = meaningfulDocumentText(document);
+  if (!text) {
+    return `${document.title} について情報が追加されました。`;
+  }
+  return sentenceLike(truncate(text, 150));
+}
+
+function nextActionsFromDocuments(documents: readonly ReportDocumentRecord[]): string[] {
+  if (documents.length === 0) {
+    return ['- 次の期間に向けて、判断材料の収集と関係者とのすり合わせを進めてください。'];
+  }
+  const combinedText = documents.map(documentText).join('\n');
+  const actions: string[] = [];
+  if (/出展|展示|カンファレンス|OSC/i.test(combinedText)) {
+    actions.push(
+      '- 出展で得た来場者の反応・質問・つまずきを整理し、プ譜エディタの改善項目に落とし込んでください。',
+    );
+    actions.push(
+      '- イベント後に試用してくれた人へフォローし、継続利用につながる説明資料や導線を確認してください。',
+    );
+  }
+  if (/リリース|公開|ローンチ|発表/i.test(combinedText)) {
+    actions.push(
+      '- 公開後の利用状況や反応を確認し、次に強化すべき機能・説明・サポートを決めてください。',
+    );
+  }
+  if (/議論|検討|すり合わせ|合意|相談/i.test(combinedText)) {
+    actions.push(
+      '- 議論で残った未決事項を明確にし、次回までに必要な判断材料と決定者をそろえてください。',
+    );
+  }
+  if (actions.length === 0) {
+    actions.push(
+      '- 参照資料から読み取れる取り組みの目的・成果・未確認点を整理し、関係者間で次に確認する判断材料を明確にしてください。',
+    );
+  }
+  return uniqueNonEmpty(actions);
+}
+
+function meaningfulDocumentText(document: ReportDocumentRecord): string {
+  const summary = normalizeWhitespace(document.summary);
+  const title = normalizeWhitespace(document.title);
+  if (summary && summary !== title) {
+    return summary;
+  }
+  return title;
+}
+
+function documentText(document: ReportDocumentRecord): string {
+  return `${document.title}\n${normalizeWhitespace(document.summary)}`;
+}
+
+function sentenceLike(value: string): string {
+  return /[。.!?…]$/u.test(value) || value.endsWith('...') ? value : `${value}。`;
+}
+
+function uniqueNonEmpty(values: readonly string[]): string[] {
+  return [...new Set(values.map(normalizeWhitespace).filter(Boolean))];
+}
+
+function normalizeWhitespace(value: string | null | undefined): string {
+  return (value || '').replace(/\s+/g, ' ').trim();
+}
+
+function joinJapanese(values: readonly string[]): string {
+  if (values.length <= 1) {
+    return values[0] ?? '';
+  }
+  return `${values.slice(0, -1).join('、')}、および ${values.at(-1)}`;
 }
 
 function documentTypeLabel(docType: string): string {

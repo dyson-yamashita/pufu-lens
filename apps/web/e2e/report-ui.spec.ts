@@ -101,6 +101,37 @@ test('scenario: member opens private report detail from list and sees sections',
   );
 });
 
+test('scenario: private report pufu score stays inside viewport when side menu is open', async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 900, width: 1280 });
+  await page.route('**/api/projects/sample-a/reports/report-a', async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({ report, status: 'ok' }),
+      contentType: 'application/json',
+      status: 200,
+    });
+  });
+
+  await page.goto('/projects/sample-a/reports/report-a');
+
+  await expect(page.getByTestId('global-nav')).toBeVisible();
+  await expect(page.getByTestId('pufu-report-score')).toContainText('プ譜エディターを試す人');
+  await expect(page.getByTestId('pufu-report-viewer')).toBeInViewport();
+  await expect
+    .poll(async () =>
+      page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      page
+        .locator('.pufu-score-frame')
+        .evaluate((element) => element.scrollWidth > element.clientWidth),
+    )
+    .toBe(true);
+});
+
 test('scenario: member reads private report sections on mobile @mobile', async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 390 });
   await page.route('**/api/projects/sample-a/reports/report-a', async (route) => {
