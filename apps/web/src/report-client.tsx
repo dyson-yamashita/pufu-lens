@@ -254,7 +254,6 @@ export function ReportDocument({
         throw new Error(reportErrorStatus(body, response.status));
       }
       router.push(`/projects/${projectSlug}/reports`);
-      router.refresh();
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : String(error));
     } finally {
