@@ -7,6 +7,7 @@ import {
 } from './chat';
 import {
   createMastraPublicReportChatBody,
+  mastraFetchHeaders,
   mastraGenerateToPublicChatResponse,
   mastraPublicReportChatGenerateUrl,
 } from './mastra-chat';
@@ -129,7 +130,8 @@ export async function handlePublicChatPost(
         toolCalls,
       });
     }
-    const mastraResponse = await fetch(mastraPublicReportChatGenerateUrl(), {
+    const mastraUrl = mastraPublicReportChatGenerateUrl();
+    const mastraResponse = await fetch(mastraUrl, {
       body: JSON.stringify(
         createMastraPublicReportChatBody({
           contextBundle: artifacts.contextBundle,
@@ -139,7 +141,7 @@ export async function handlePublicChatPost(
           reportId: input.reportId,
         }),
       ),
-      headers: { 'content-type': 'application/json' },
+      headers: await mastraFetchHeaders({ url: mastraUrl }),
       method: 'POST',
       signal: request.signal,
     });

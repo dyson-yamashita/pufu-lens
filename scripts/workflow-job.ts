@@ -10,12 +10,15 @@ type WorkflowId = (typeof WORKFLOW_IDS)[number];
 type SourceType = (typeof SOURCE_TYPES)[number];
 
 type WorkflowInput = {
+  dataSourceId?: string;
   dryRun?: boolean;
+  embeddingProvider?: string;
   fixture?: boolean;
   limit?: number;
   period?: 'weekly';
   project?: string;
   projectSlug?: string;
+  resumeFrom?: 'collect' | 'parse' | 'resolve' | 'chunk' | 'graph';
   source?: SourceType;
 };
 
@@ -83,11 +86,20 @@ function buildJobPlan(workflowId: WorkflowId, input: WorkflowInput): JobPlan {
 }
 
 function appendCommonOptions(args: string[], input: WorkflowInput): void {
+  if (input.dataSourceId !== undefined) {
+    args.push('--data-source-id', input.dataSourceId);
+  }
   if (input.dryRun) {
     args.push('--dry-run');
   }
+  if (input.embeddingProvider !== undefined) {
+    args.push('--embedding-provider', input.embeddingProvider);
+  }
   if (input.limit !== undefined) {
     args.push('--limit', String(input.limit));
+  }
+  if (input.resumeFrom !== undefined) {
+    args.push('--resume-from', input.resumeFrom);
   }
   if (input.source && !args.includes('--source')) {
     args.push('--source', input.source);
@@ -120,12 +132,15 @@ function parseWorkflowInput(value: string | undefined): WorkflowInput {
   }
   const input = parsed as Record<string, unknown>;
   return {
+    dataSourceId: optionalString(input.dataSourceId, 'dataSourceId'),
     dryRun: optionalBoolean(input.dryRun, 'dryRun'),
+    embeddingProvider: optionalString(input.embeddingProvider, 'embeddingProvider'),
     fixture: optionalBoolean(input.fixture, 'fixture'),
     limit: optionalPositiveInteger(input.limit, 'limit'),
     period: optionalPeriod(input.period),
     project: optionalString(input.project, 'project'),
     projectSlug: optionalString(input.projectSlug, 'projectSlug'),
+    resumeFrom: optionalResumeFrom(input.resumeFrom),
     source: optionalSource(input.source),
   };
 }
@@ -174,6 +189,22 @@ function optionalSource(value: unknown): SourceType | undefined {
   throw new Error(`source must be one of: ${SOURCE_TYPES.join(', ')}`);
 }
 
+function optionalResumeFrom(value: unknown): WorkflowInput['resumeFrom'] {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (
+    value === 'collect' ||
+    value === 'parse' ||
+    value === 'resolve' ||
+    value === 'chunk' ||
+    value === 'graph'
+  ) {
+    return value;
+  }
+  throw new Error('resumeFrom must be one of: collect, parse, resolve, chunk, graph.');
+}
+
 function optionalString(value: unknown, name: string): string | undefined {
   if (value === undefined) {
     return undefined;
@@ -204,11 +235,14 @@ function isDryRun(input: WorkflowInput): boolean {
 
 function summarizeInput(input: WorkflowInput): Record<string, unknown> {
   return {
+    dataSourceId: input.dataSourceId,
     dryRun: isDryRun(input),
+    embeddingProvider: input.embeddingProvider,
     fixture: input.fixture ?? false,
     limit: input.limit,
     period: input.period,
     projectSlug: input.projectSlug ?? input.project,
+    resumeFrom: input.resumeFrom,
     source: input.source,
   };
 }

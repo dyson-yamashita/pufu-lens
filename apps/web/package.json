@@ -24,6 +24,7 @@
     "@pufu-lens/storage": "workspace:*",
     "cytoscape": "^3.34.0",
     "dom-to-image": "^2.6.0",
+    "google-auth-library": "9.15.1",
     "html-to-image": "^1.11.13",
     "i18next": "^23.16.8",
     "i18next-browser-languagedetector": "^7.2.2",

@@ -11,6 +11,7 @@ import {
 } from '../../../../../src/chat';
 import {
   createMastraProjectChatBody,
+  mastraFetchHeaders,
   mastraGenerateToChatResponse,
   mastraProjectChatGenerateUrl,
 } from '../../../../../src/mastra-chat';
@@ -81,9 +82,10 @@ export async function POST(
     if (!project) {
       throw new ProjectAccessDeniedError(projectSlug);
     }
-    const mastraResponse = await fetch(mastraProjectChatGenerateUrl(), {
+    const mastraUrl = mastraProjectChatGenerateUrl();
+    const mastraResponse = await fetch(mastraUrl, {
       body: JSON.stringify(createMastraProjectChatBody({ projectId: project.id, question })),
-      headers: { 'content-type': 'application/json' },
+      headers: await mastraFetchHeaders({ url: mastraUrl }),
       method: 'POST',
       signal: request.signal,
     });

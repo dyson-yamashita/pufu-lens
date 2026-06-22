@@ -55,6 +55,9 @@ import {
 } from './project-connections';
 
 type SqlExecutor = postgres.Sql | postgres.TransactionSql;
+type CloudRunJobRunResponse = {
+  readonly name?: string;
+};
 
 function parseOptionalAdminActionIdRow(
   rows: readonly unknown[],
@@ -731,9 +734,8 @@ async function runIngestWorkflow(input: {
   readonly storageRoot?: string;
 }): Promise<void> {
   if (process.env.NODE_ENV === 'production') {
-    throw new Error(
-      'Admin UI ingest is only available in local development. Use the ingest worker or CLI in production.',
-    );
+    await runCloudRunIngestWorkflowJob(input);
+    return;
   }
   const repoRoot = resolveRepoRoot();
   const workflowScript = resolve(repoRoot, 'scripts/ingest-workflow.ts');
@@ -788,6 +790,104 @@ async function runIngestWorkflow(input: {
       )}`,
     );
   }
+}
+
+async function runCloudRunIngestWorkflowJob(input: {
+  readonly dataSourceId: string;
+  readonly projectSlug: string;
+  readonly sourceType: SourceType;
+}): Promise<void> {
+  const projectId = await runtimeProjectId();
+  const region = requiredRuntimeEnv('PUFU_LENS_CLOUD_RUN_JOBS_REGION');
+  const jobName = process.env.PUFU_LENS_INGEST_WORKFLOW_JOB_NAME ?? 'ingest-workflow';
+  const workflowInput = {
+    dataSourceId: input.dataSourceId,
+    embeddingProvider: process.env.PUFU_LENS_ADMIN_INGEST_EMBEDDING_PROVIDER ?? 'deterministic',
+    projectSlug: input.projectSlug,
+    resumeFrom: 'parse',
+    source: input.sourceType,
+  };
+  const token = await cloudRunAccessToken();
+  const response = await fetch(
+    `https://run.googleapis.com/v2/projects/${encodeURIComponent(
+      projectId,
+    )}/locations/${encodeURIComponent(region)}/jobs/${encodeURIComponent(jobName)}:run`,
+    {
+      body: JSON.stringify({
+        overrides: {
+          containerOverrides: [
+            {
+              env: [
+                {
+                  name: 'WORKFLOW_INPUT_JSON',
+                  value: JSON.stringify(workflowInput),
+                },
+              ],
+            },
+          ],
+        },
+      }),
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    },
+  );
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(
+      `Cloud Run ingest workflow job failed to start: HTTP ${response.status} - ${truncateWorkflowOutput(
+        errorText,
+      )}`,
+    );
+  }
+  const body = (await response.json().catch(() => ({}))) as CloudRunJobRunResponse;
+  console.info(
+    `Started Cloud Run ingest workflow job ${jobName} for ${input.projectSlug}/${input.dataSourceId}: ${
+      body.name ?? '<unknown execution>'
+    }`,
+  );
+}
+
+async function cloudRunAccessToken(): Promise<string> {
+  const { GoogleAuth } = await import('google-auth-library');
+  const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
+  const token = await auth.getAccessToken();
+  if (!token) {
+    throw new Error('Failed to acquire Google Cloud access token for Cloud Run Jobs API.');
+  }
+  return token;
+}
+
+async function runtimeProjectId(): Promise<string> {
+  const envProjectId =
+    process.env.PUFU_LENS_GCP_PROJECT_ID ??
+    process.env.GOOGLE_CLOUD_PROJECT ??
+    process.env.GCLOUD_PROJECT ??
+    process.env.GCP_PROJECT;
+  if (envProjectId) {
+    return envProjectId.trim();
+  }
+  const response = await fetch(
+    'http://metadata.google.internal/computeMetadata/v1/project/project-id',
+    {
+      headers: { 'metadata-flavor': 'Google' },
+      signal: AbortSignal.timeout(2000),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to read GCP project id from metadata server: HTTP ${response.status}`);
+  }
+  return (await response.text()).trim();
+}
+
+function requiredRuntimeEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} is required.`);
+  }
+  return value;
 }
 
 function storageRootFromObjectUri(uri: string | null, projectSlug: string): string | undefined {

@@ -29,6 +29,18 @@ env:
     value: https://mastra-server-mfq5zc7o4a-de.a.run.app
     availability:
       - RUNTIME
+  - variable: PUFU_LENS_GCP_PROJECT_ID
+    value: pufu-lens
+    availability:
+      - RUNTIME
+  - variable: PUFU_LENS_CLOUD_RUN_JOBS_REGION
+    value: asia-east1
+    availability:
+      - RUNTIME
+  - variable: PUFU_LENS_INGEST_WORKFLOW_JOB_NAME
+    value: ingest-workflow
+    availability:
+      - RUNTIME
   - variable: GEMINI_CHAT_MODEL
     value: gemini-2.5-flash
     availability:
