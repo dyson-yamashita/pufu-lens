@@ -452,9 +452,27 @@ async function listProjectMembershipMemberRows(
       membership_created_at,
       removable
     FROM (
-      SELECT * FROM project_member_rows
+      SELECT
+        id,
+        email,
+        name,
+        role,
+        created_at,
+        project_role,
+        membership_created_at,
+        removable
+      FROM project_member_rows
       UNION ALL
-      SELECT * FROM global_admin_rows
+      SELECT
+        id,
+        email,
+        name,
+        role,
+        created_at,
+        project_role,
+        membership_created_at,
+        removable
+      FROM global_admin_rows
     ) members
     ORDER BY email
   `) as readonly unknown[];
