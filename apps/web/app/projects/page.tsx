@@ -6,6 +6,7 @@ import {
   listMemberProjects,
   listVisiblePublicProjects,
 } from '../../src/admin-db';
+import { filterPublicProjectsExcludingMemberProjects } from '../../src/admin-data';
 import { ProjectCreateDialog } from '../../src/project-create-dialog';
 import { isDevelopmentBypassEnabled } from '../../src/runtime-guards';
 import { AppShell, PageHeader, StatusBadge } from '../../src/ui';
@@ -24,6 +25,9 @@ export default async function ProjectsPage() {
         : Promise.resolve([]),
     listVisiblePublicProjects(),
   ]);
+  const discoveryPublicProjects = userId
+    ? filterPublicProjectsExcludingMemberProjects(publicProjects, projects)
+    : publicProjects;
 
   return (
     <AppShell active="projects">
@@ -42,8 +46,8 @@ export default async function ProjectsPage() {
         </div>
       </div>
       <section className="project-grid" data-testid="public-project-list">
-        {publicProjects.length > 0 ? (
-          publicProjects.map((project) => (
+        {discoveryPublicProjects.length > 0 ? (
+          discoveryPublicProjects.map((project) => (
             <article
               className="project-card project-card-link"
               data-testid={`public-project-${project.slug}`}
@@ -83,7 +87,7 @@ export default async function ProjectsPage() {
         <>
           <div className="section-heading project-section-heading">
             <div>
-              <h2>Private Projects</h2>
+              <h2>Your Projects</h2>
             </div>
           </div>
           <section className="project-grid" data-testid="project-list">
