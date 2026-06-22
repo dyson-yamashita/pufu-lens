@@ -391,6 +391,14 @@ export function listPublicProjects(): readonly PublicProjectSummary[] {
   return fallbackPublicProjects;
 }
 
+export function filterPublicProjectsExcludingMemberProjects(
+  publicProjects: readonly PublicProjectSummary[],
+  memberProjects: readonly ProjectSummary[],
+): readonly PublicProjectSummary[] {
+  const memberProjectSlugs = new Set(memberProjects.map((project) => project.slug));
+  return publicProjects.filter((project) => !memberProjectSlugs.has(project.slug));
+}
+
 export function getProject(slug: string): ProjectSummary {
   const project = fallbackProjects.find((candidate) => candidate.slug === slug);
   if (!project) {
