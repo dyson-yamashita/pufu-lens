@@ -9,6 +9,7 @@ import {
 import {
   createPostgresReportRepository,
   createReportStorageFromEnv,
+  deletePrivateReport,
   getPrivateReport,
   PublicReportNotFoundError,
   publishPublicReport,
@@ -123,4 +124,50 @@ export async function PATCH(
 
 function reportErrorResponse(code: string, message: string, status: number) {
   return NextResponse.json({ error: { code, message } }, { status });
+}
+
+export async function DELETE(
+  _request: Request,
+  {
+    params,
+  }: { readonly params: Promise<{ readonly projectSlug: string; readonly reportId: string }> },
+) {
+  const { projectSlug, reportId } = await params;
+
+  try {
+    const userId = await requireSessionUserId();
+    const businessHours = businessHoursFromEnv(process.env);
+    const now = reportNowFromEnv(process.env) ?? new Date();
+    if (!isWithinBusinessHours(now, businessHours)) {
+      return NextResponse.json(
+        { report: null, status: 'db_outside_business_hours' },
+        { status: 503 },
+      );
+    }
+    const response = await deletePrivateReport({
+      options: {
+        businessHours,
+        now,
+        repository: createPostgresReportRepository(getRequiredAdminSql()),
+        storage: createReportStorageFromEnv(),
+      },
+      projectSlug,
+      reportId,
+      userId,
+    });
+    return NextResponse.json(response);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof AuthRequiredError) {
+      return reportErrorResponse('auth_required', message, 401);
+    }
+    if (error instanceof ProjectAccessDeniedError) {
+      return reportErrorResponse('project_access_denied', message, 403);
+    }
+    if (error instanceof ReportNotFoundError) {
+      return reportErrorResponse('report_not_found', message, 404);
+    }
+    console.error('Report Delete API Error:', error);
+    return reportErrorResponse('report_internal_error', 'An unexpected error occurred', 500);
+  }
 }

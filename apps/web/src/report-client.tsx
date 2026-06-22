@@ -2,6 +2,7 @@
 
 import { ArrowUp, Mic } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PublicChatResponse } from './chat';
 import {
@@ -16,6 +17,7 @@ import { ActionForm, PendingSubmitButton } from './form-buttons';
 import { PufuReportViewer } from './pufu-report-viewer';
 import type {
   PrivateReportJsonV1,
+  PrivateReportSource,
   PublicReportJsonV1,
   ReportListItem,
   ReportPeriod,
@@ -200,8 +202,11 @@ export function ReportDocument({
   readonly projectSlug: string;
   readonly reportId: string;
 }) {
+  const router = useRouter();
   const [report, setReport] = useState<PrivateReportJsonV1 | undefined>();
   const [status, setStatus] = useState('loading');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | undefined>();
 
   useEffect(() => {
     let cancelled = false;
@@ -233,6 +238,28 @@ export function ReportDocument({
       cancelled = true;
     };
   }, [projectSlug, reportId]);
+
+  async function handleDelete() {
+    if (!window.confirm('レポートが削除されますがよろしいですか')) {
+      return;
+    }
+    setDeleting(true);
+    setDeleteError(undefined);
+    try {
+      const response = await fetch(`/api/projects/${projectSlug}/reports/${reportId}`, {
+        method: 'DELETE',
+      });
+      const body = (await response.json()) as ReportApiError & { readonly status?: string };
+      if (!response.ok) {
+        throw new Error(reportErrorStatus(body, response.status));
+      }
+      router.push(`/projects/${projectSlug}/reports`);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   if (status === 'loading') {
     return <p className="notice">loading</p>;
@@ -273,29 +300,54 @@ export function ReportDocument({
         >
           <h3>{section.title}</h3>
           <p className="markdown-text">{section.markdown}</p>
-          {section.metrics ? (
-            <div className="metric-strip compact">
-              {Object.entries(section.metrics).map(([name, value]) => (
-                <div className="metric" key={name}>
-                  <span>{name}</span>
-                  <strong>{value}</strong>
-                </div>
-              ))}
-            </div>
-          ) : null}
           {section.sources?.length ? (
             <div className="source-list">
               {section.sources.map((source) => (
-                <article className="source-chip" key={source.document_id}>
-                  <strong>{source.doc_type}</strong>
-                  <span>{source.snippet}</span>
-                  <small>{source.canonical_uri || source.document_id}</small>
+                <article
+                  className="source-chip"
+                  data-testid={`report-source-${source.document_id}`}
+                  key={source.document_id}
+                >
+                  <strong>{normalizePrivateReportSourceLabel(source.doc_type)}</strong>
+                  {isPublicHttpUrl(source.canonical_uri) ? (
+                    <a
+                      href={source.canonical_uri}
+                      rel="noreferrer"
+                      target="_blank"
+                      title={source.canonical_uri}
+                    >
+                      {privateReportSourceTitle(source)}
+                    </a>
+                  ) : (
+                    <>
+                      <span>{privateReportSourceTitle(source)}</span>
+                      <small>{source.canonical_uri || source.document_id}</small>
+                    </>
+                  )}
                 </article>
               ))}
             </div>
           ) : null}
         </section>
       ))}
+      <div className="report-delete-actions">
+        <button
+          className="report-delete-button"
+          data-testid="report-delete-button"
+          disabled={deleting}
+          onClick={() => {
+            void handleDelete();
+          }}
+          type="button"
+        >
+          {deleting ? 'Deleting...' : 'Delete Report'}
+        </button>
+        {deleteError ? (
+          <p className="notice error" data-testid="report-delete-error">
+            {deleteError}
+          </p>
+        ) : null}
+      </div>
     </article>
   );
 }
@@ -526,4 +578,29 @@ function PublicReportChatPanel({
 
 function reportErrorStatus(body: ReportApiError, status: number): string {
   return body.error?.code ?? body.error?.message ?? `http_${status}`;
+}
+
+function normalizePrivateReportSourceLabel(docType: string): string {
+  if (docType === 'web_page') {
+    return 'web';
+  }
+  return docType.replace(/_/g, ' ');
+}
+
+function privateReportSourceTitle(source: PrivateReportSource): string {
+  if (source.title?.trim()) {
+    return source.title.trim();
+  }
+  if (isPublicHttpUrl(source.canonical_uri)) {
+    try {
+      return new URL(source.canonical_uri).hostname;
+    } catch {
+      return source.document_id;
+    }
+  }
+  return source.document_id;
+}
+
+function isPublicHttpUrl(uri: string): boolean {
+  return /^https?:\/\//i.test(uri);
 }

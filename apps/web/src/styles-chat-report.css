@@ -17,6 +17,32 @@
   opacity: 1;
 }
 
+.report-delete-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.report-delete-button {
+  background: var(--status-danger-bg);
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  border-radius: 8px;
+  color: #b91c1c;
+  cursor: pointer;
+  font-weight: 600;
+  justify-self: start;
+  padding: 10px 18px;
+}
+
+.report-delete-button:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.18);
+}
+
+.report-delete-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .report-generate-form label {
   display: grid;
   gap: 6px;
@@ -325,6 +351,7 @@
   width: 100%;
 }
 
+.source-chip a,
 .source-chip span,
 .source-chip small {
   color: var(--muted);

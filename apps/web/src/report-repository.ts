@@ -46,6 +46,7 @@ export interface ReportRepository {
     readonly projectId: string;
     readonly reportId: string;
   }): Promise<ReportListItem | undefined>;
+  deleteReport(input: { readonly projectId: string; readonly reportId: string }): Promise<void>;
   setReportPublicState?(input: {
     readonly isPublic: boolean;
     readonly projectId: string;
@@ -295,6 +296,20 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
           AND id = ${reportId}
       `) as readonly unknown[];
       return rows[0] ? reportFromRow(parseReportMetadataRow(rows[0])) : undefined;
+    },
+    async deleteReport({ projectId, reportId }) {
+      await sql.begin(async (transaction) => {
+        await transaction`
+          DELETE FROM public.report_chunks
+          WHERE project_id = ${projectId}
+            AND report_id = ${reportId}
+        `;
+        await transaction`
+          DELETE FROM public.reports
+          WHERE project_id = ${projectId}
+            AND id = ${reportId}
+        `;
+      });
     },
     async setReportPublicState({ isPublic, projectId, reportId }) {
       await sql`

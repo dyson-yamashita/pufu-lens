@@ -238,6 +238,7 @@ function unavailableReportRepository(envName: string): ReportRepository {
     lookupProject: unavailableMethod(envName),
     lookupProjectMember: unavailableMethod(envName),
     readReportMetadata: unavailableMethod(envName),
+    deleteReport: unavailableMethod(envName),
     setReportPublicState: unavailableMethod(envName),
   };
 }

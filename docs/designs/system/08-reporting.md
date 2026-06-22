@@ -34,31 +34,27 @@ Private report JSON スキーマ（`schema_version: "v1"`）：
   "sections": [
     {
       "id": "activity",
-      "title": "アクティビティ",
-      "markdown": "...",
-      "sources": [
-        { "document_id": "...", "doc_type": "email", "canonical_uri": "...", "snippet": "..." }
-      ]
-    },
-    {
-      "id": "issues",
-      "title": "未解決 Issue",
-      "markdown": "...",
-      "items": [{ "issue_number": 42, "title": "...", "assignee": "...", "document_id": "..." }]
+      "title": "概況",
+      "markdown": "対象期間に確認できた活動の種類を短い文章で要約する。参照資料や source 一覧は含めない。"
     },
     {
       "id": "progress",
-      "title": "進捗",
-      "markdown": "...",
-      "metrics": { "merged_prs": 5, "open_issues": 12 }
+      "title": "進行状況",
+      "markdown": "- 実施した作業や確認できた活動内容を箇条書きで列挙する",
+      "sources": [
+        {
+          "document_id": "...",
+          "doc_type": "web_page",
+          "title": "データソースのタイトル",
+          "canonical_uri": "https://example.com/article",
+          "snippet": "..."
+        }
+      ]
     },
     {
       "id": "risks",
-      "title": "リスク",
-      "markdown": "...",
-      "items": [
-        /* ... */
-      ]
+      "title": "課題・次のアクション",
+      "markdown": "- ブロッカーや不確実性、次に取るべきアクションを箇条書きで示す"
     }
   ]
 }
@@ -109,21 +105,17 @@ const generateReportWorkflow = createWorkflow({
     const agent = mastra.getAgent('chat-agent');
     const { periodStart, periodEnd } = resolveReportPeriod(inputData);
 
-    const [activity, issues, progress, risks] = await Promise.all([
+    const [activity, progress, risks] = await Promise.all([
       agent.generate({
         prompt: `${inputData.since} 以降のアクティビティサマリーを生成`,
         context: { projectId: project.id }
       }),
       agent.generate({
-        prompt: '未解決の Issue と担当者をグラフから一覧化',
+        prompt: '進行状況と参照資料を整理',
         context: { projectId: project.id }
       }),
       agent.generate({
-        prompt: 'プロジェクト進捗を PR・Issue・ドキュメント変更から分析',
-        context: { projectId: project.id }
-      }),
-      agent.generate({
-        prompt: 'リスク・懸念事項をメールや Issue から抽出',
+        prompt: '課題と次のアクションを整理',
         context: { projectId: project.id }
       })
     ]);
@@ -134,7 +126,7 @@ const generateReportWorkflow = createWorkflow({
       project,
       periodStart,
       periodEnd,
-      sections: [activity, issues, progress, risks]
+      sections: [activity, progress, risks]
     });
 
     const storageUri = `${storage.uriForProject(project.slug)}/reports/${reportId}.json`;

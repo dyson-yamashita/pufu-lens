@@ -10,6 +10,7 @@ export interface PrivateReportSource {
   readonly doc_type: string;
   readonly document_id: string;
   readonly snippet: string;
+  readonly title?: string;
 }
 
 export interface PrivateReportPufuSource extends PrivateReportSource {
@@ -126,6 +127,25 @@ export function validatePrivateReportJson(value: unknown): asserts value is Priv
     }
     if (typeof section.markdown !== 'string') {
       throw new Error(`Report section ${section.id} markdown must be a string.`);
+    }
+    if (section.sources !== undefined) {
+      if (!Array.isArray(section.sources)) {
+        throw new Error(`Report section ${section.id} sources must be an array.`);
+      }
+      for (const source of section.sources) {
+        if (
+          !isRecord(source) ||
+          typeof source.document_id !== 'string' ||
+          typeof source.doc_type !== 'string' ||
+          typeof source.snippet !== 'string' ||
+          typeof source.canonical_uri !== 'string'
+        ) {
+          throw new Error(`Report section ${section.id} source is invalid.`);
+        }
+        if (source.title !== undefined && typeof source.title !== 'string') {
+          throw new Error(`Report section ${section.id} source title must be a string.`);
+        }
+      }
     }
   }
 }
