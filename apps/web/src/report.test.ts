@@ -240,6 +240,34 @@ assert.doesNotMatch(
 );
 assert.match(oscRisks.markdown, /来場者の反応・質問・つまずき/);
 assert.match(oscRisks.markdown, /継続利用につながる説明資料や導線/);
+const sparseDocumentReport = await createExtractiveReportProvider().generate({
+  documents: [
+    {
+      canonicalUri: 'https://example.com/no-summary',
+      docType: 'web_page',
+      documentId: 'doc-no-summary',
+      occurredAt: '2024-08-30T00:00:00.000Z',
+      summary: null,
+      title: 'Summary missing source',
+    } as never,
+    {
+      canonicalUri: 'https://example.com/long-summary',
+      docType: 'web_page',
+      documentId: 'doc-long-summary',
+      occurredAt: '2024-08-30T00:00:00.000Z',
+      summary: '長い説明'.repeat(80),
+      title: 'Long summary source',
+    },
+  ],
+  period: { end: '2024-08-30', start: '2024-08-01' },
+  projectSlug: 'pufu-tomonokai',
+});
+const sparseProgress = sparseDocumentReport.sections.find((section) => section.id === 'progress');
+assert.ok(sparseProgress);
+assert.doesNotMatch(sparseProgress.markdown, /null|undefined/);
+assert.match(sparseProgress.markdown, /Summary missing source。/);
+assert.match(sparseProgress.markdown, /…$/m);
+assert.doesNotMatch(sparseProgress.markdown, /…。/);
 const pufuScore = createPufuScoreFromReport({
   ...generated.report,
   pufu_sources: [

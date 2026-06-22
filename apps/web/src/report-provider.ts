@@ -281,19 +281,19 @@ function meaningfulDocumentText(document: ReportDocumentRecord): string {
 }
 
 function documentText(document: ReportDocumentRecord): string {
-  return `${document.title}\n${document.summary}`;
+  return `${document.title}\n${normalizeWhitespace(document.summary)}`;
 }
 
 function sentenceLike(value: string): string {
-  return /[。.!?]$/u.test(value) ? value : `${value}。`;
+  return /[。.!?…]$/u.test(value) || value.endsWith('...') ? value : `${value}。`;
 }
 
 function uniqueNonEmpty(values: readonly string[]): string[] {
   return [...new Set(values.map(normalizeWhitespace).filter(Boolean))];
 }
 
-function normalizeWhitespace(value: string): string {
-  return value.replace(/\s+/g, ' ').trim();
+function normalizeWhitespace(value: string | null | undefined): string {
+  return (value || '').replace(/\s+/g, ' ').trim();
 }
 
 function joinJapanese(values: readonly string[]): string {
