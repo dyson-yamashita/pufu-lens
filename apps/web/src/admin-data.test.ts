@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   availabilityFromConnections,
   DATA_SOURCE_SNIPPET_MAX_LENGTH,
+  filterPublicProjectsExcludingMemberProjects,
   getFallbackDataSourceContentPreview,
   getProject,
   getSourceTypeCounts,
@@ -45,6 +46,18 @@ const publicProjects = listPublicProjects();
 assert.equal(publicProjects.length, 1);
 assert.equal(publicProjects[0]?.slug, 'sample-a');
 assert.equal(publicProjects[0]?.reports[0]?.id, 'report-a');
+assert.deepEqual(
+  filterPublicProjectsExcludingMemberProjects(publicProjects, projects).map(
+    (project) => project.slug,
+  ),
+  [],
+);
+assert.deepEqual(
+  filterPublicProjectsExcludingMemberProjects(publicProjects, [getProject('sample-b')]).map(
+    (project) => project.slug,
+  ),
+  ['sample-a'],
+);
 
 assert.equal(requiredProviderForSourceType('web'), null);
 assert.equal(requiredProviderForSourceType('github'), 'github');
