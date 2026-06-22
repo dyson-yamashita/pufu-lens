@@ -194,6 +194,26 @@ firebase deploy --only apphosting --project "$PROJECT_ID"
 
 `apps/web/apphosting.yaml`（env/secrets/vpcAccess）+ ルートの `firebase.json` / `.firebaserc` が必要。env-specific 値（Mastra URL 等）は当該環境の実値を書く。
 
+## Phase 11 — 初期アカウント登録（Credentials login）
+
+OAuth を使わない環境、または初回管理者を Credentials login で用意する場合は、PostgreSQL VM に IAP トンネルで接続して `auth:create-user` を実行する。`PGPASS` は Phase 6 で PostgreSQL VM 作成時に使った値を一時的な shell 変数として用意し、実 password / `DATABASE_URL` は shell history / log / docs / コミットに出さない。
+
+```bash
+gcloud compute start-iap-tunnel pg-ai 5432 \
+  --local-host-port=localhost:5433 \
+  --zone "$ZONE" &
+
+# Wait a moment for the tunnel to establish, then run:
+DATABASE_URL="postgresql://pufu:${PGPASS}@localhost:5433/pufu_lens" \
+pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-chars>' --name '<User Name>'
+```
+
+注意点:
+
+- `auth:create-user` は `users` と `auth_password_credentials` を作成または更新する。
+- 既存の global admin がいる場合は、作成後に `/members` で role と password を管理する。
+- Project member への追加は `/projects/<projectSlug>/members` で行う。
+
 ## Critical Gotchas（再発防止）
 
 1. **App Hosting の Next.js アダプタの CVE ゲートは `package.json` の version 文字列を `semver.satisfies` にそのまま渡す**。`"next": "^16.2.x"`（キャレット）は誤って vulnerable 判定 → ブロック。**キャレット無しの厳密版に固定**する。

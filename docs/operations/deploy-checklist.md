@@ -74,6 +74,24 @@ pnpm deploy:smoke --env staging
 - public report manifest 解決:
 - secret / token / PII のログ漏れ確認:
 
+## Credentials account 作成
+
+OAuth を使わない環境、または初回管理者を Credentials login で用意する場合は、PostgreSQL VM に IAP トンネルで接続して `auth:create-user` を実行する。`PGPASS` は PostgreSQL VM 作成時に使った値を一時的な shell 変数として用意し、実 password / `DATABASE_URL` は shell history、docs、ログ、PR に残さない。
+
+```bash
+gcloud compute start-iap-tunnel pg-ai 5432 \
+  --local-host-port=localhost:5433 \
+  --zone "$ZONE" &
+
+# Wait a moment for the tunnel to establish, then run:
+DATABASE_URL="postgresql://pufu:${PGPASS}@localhost:5433/pufu_lens" \
+pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-chars>' --name '<User Name>'
+```
+
+- `auth:create-user` は `users` と `auth_password_credentials` を作成または更新する。
+- 既存の global admin がいる場合は、作成後に `/members` で role と password を管理する。
+- Project member への追加は `/projects/<projectSlug>/members` で行う。
+
 ## DB Migration 記録
 
 作成・レビュー時の判断基準は `docs/operations/db-migrations.md` を参照する。
