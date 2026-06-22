@@ -22,33 +22,27 @@ const report = {
       id: 'activity',
       markdown:
         '対象期間に確認できた情報から、プロジェクトは仕様整理とレポート体験の改善を進めている状態です。',
+      title: '概況',
+    },
+    {
+      id: 'progress',
+      markdown: '- 仕様更新とレポート UI の情報が増えており、判断材料は蓄積されつつあります。',
       sources: [
         {
           canonical_uri: 'https://example.com/spec',
           doc_type: 'web_page',
           document_id: 'doc-a',
           snippet: 'Spec Update',
+          title: 'Spec Update',
         },
       ],
-      title: '概況',
-    },
-    {
-      id: 'issues',
-      items: [{ document_id: 'doc-issue', title: 'Issue #42' }],
-      markdown: 'ログイン失敗時の体験と、利用者が状況を理解できる説明が論点です。',
-      title: '論点',
-    },
-    {
-      id: 'progress',
-      markdown: '仕様更新とレポート UI の情報が増えており、判断材料は蓄積されつつあります。',
-      metrics: { discussion_points: 1, documents: 2, risk_signals: 1 },
       title: '進行状況',
     },
     {
       id: 'risks',
       items: [],
       markdown: '失敗時の導線が不明瞭なままだと、利用者の理解を阻む可能性があります。',
-      title: '不確実性・リスク',
+      title: '課題・次のアクション',
     },
   ],
   summary: '2 件の indexed document から、プロジェクトの概況と進行状況を整理しました。',
@@ -99,8 +93,12 @@ test('scenario: member opens private report detail from list and sees sections',
   await page.goto('/projects/sample-a/reports/report-a');
   await expect(page.getByTestId('report-document')).toContainText(report.summary);
   await expect(page.getByTestId('pufu-report-score')).toContainText('プ譜エディターを試す人');
-  await expect(page.getByTestId('report-section-activity')).toContainText('Spec Update');
   await expect(page.getByTestId('report-section-progress')).toContainText('判断材料');
+  await expect(page.getByTestId('report-source-doc-a')).toContainText('web');
+  await expect(page.getByRole('link', { name: 'Spec Update' })).toHaveAttribute(
+    'href',
+    'https://example.com/spec',
+  );
 });
 
 test('scenario: member reads private report sections on mobile @mobile', async ({ page }) => {
@@ -117,7 +115,6 @@ test('scenario: member reads private report sections on mobile @mobile', async (
 
   await expect(page.getByTestId('report-document')).toBeVisible();
   await expect(page.getByTestId('report-section-activity')).toBeVisible();
-  await expect(page.getByTestId('report-section-issues')).toBeVisible();
   await expect(page.getByTestId('report-section-progress')).toBeVisible();
   await expect(page.getByTestId('report-section-risks')).toBeVisible();
 });

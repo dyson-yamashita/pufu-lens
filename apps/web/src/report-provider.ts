@@ -17,61 +17,24 @@ export function createExtractiveReportProvider(): ReportGenerationProvider {
   return {
     async generate({ documents, period }) {
       const sourceDocuments = documents.slice(0, 8);
-      const issueDocuments = documents.filter((document) => document.docType === 'issue');
       const risks = documents.filter((document) =>
         `${document.title} ${document.summary}`
           .toLowerCase()
           .match(/risk|block|fail|error|遅延|障害/),
       );
-      const sources = sourceDocuments.map((document) => ({
-        canonical_uri: document.canonicalUri,
-        doc_type: document.docType,
-        document_id: document.documentId,
-        snippet: truncate(document.summary || document.title, 220),
-      }));
+      const progressSources = sourceDocuments.map((document) => sourceFromDocument(document));
+
       return {
         sections: [
           {
             id: 'activity',
-            markdown: sourceDocuments.length
-              ? [
-                  `対象期間に確認できた情報は ${documents.length} 件です。直近の材料から見ると、プロジェクトは次の文脈で動いています。`,
-                  '',
-                  ...sourceDocuments.map(
-                    (document) =>
-                      `- ${document.title}: ${truncate(document.summary || '要約は未設定です。', 180)}`,
-                  ),
-                ].join('\n')
-              : '対象期間の indexed document はありません。現時点では概況を判断する材料が不足しています。',
-            sources,
+            markdown: buildActivityMarkdown(documents, period, sourceDocuments),
             title: '概況',
           },
           {
-            id: 'issues',
-            items: issueDocuments.map((document) => ({
-              document_id: document.documentId,
-              title: document.title,
-            })),
-            markdown: issueDocuments.length
-              ? issueDocuments.map((document) => `- ${document.title}`).join('\n')
-              : '現時点で大きな論点候補は抽出されていません。ただし、情報量が少ない場合は未検出の論点が残る可能性があります。',
-            title: '論点',
-          },
-          {
             id: 'progress',
-            markdown:
-              documents.length > 0
-                ? [
-                    `${period.start} から ${period.end} の情報を見る限り、プロジェクトは情報収集と状況把握を継続できている状態です。`,
-                    `確認できた document は ${documents.length} 件で、判断材料は蓄積されつつあります。`,
-                    '今後は、個別タスクの消化数よりも、目指す状態に近づいているか、次の意思決定に十分な材料が揃っているかを確認する必要があります。',
-                  ].join('\n')
-                : `${period.start} から ${period.end} の期間には indexed document がなく、進行状況を判断できる材料がありません。`,
-            metrics: {
-              documents: documents.length,
-              discussion_points: issueDocuments.length,
-              risk_signals: risks.length,
-            },
+            markdown: buildProgressMarkdown(period, sourceDocuments),
+            sources: progressSources,
             title: '進行状況',
           },
           {
@@ -80,10 +43,8 @@ export function createExtractiveReportProvider(): ReportGenerationProvider {
               document_id: document.documentId,
               title: document.title,
             })),
-            markdown: risks.length
-              ? risks.map((document) => `- ${document.title}`).join('\n')
-              : '重大なリスク候補は抽出されていません。とはいえ、情報が少ない場合は不確実性そのものがリスクになります。',
-            title: '不確実性・リスク',
+            markdown: buildRisksMarkdown(risks),
+            title: '課題・次のアクション',
           },
         ],
         summary:
@@ -127,12 +88,12 @@ export function createGeminiReportProvider(input: {
                     'This report is for understanding the project situation, not checking task completion.',
                     'Summarize the overall context, current movement, decisions implied by the information, uncertainty, and signals that matter.',
                     'Do not make the report primarily about GitHub issues, PR counts, task lists, or TODO tracking.',
-                    'Sections must include exactly these ids:',
-                    '- activity: title "概況"; summarize what kind of project state the documents indicate.',
-                    '- progress: title "進行状況"; explain how the project appears to be moving or not moving.',
-                    '- issues: title "論点"; summarize open questions, tensions, or decisions to clarify.',
-                    '- risks: title "不確実性・リスク"; summarize blockers, risk signals, and unknowns.',
-                    'Use markdown prose and concise bullets. metrics are optional and should support situation understanding, not task management.',
+                    'Sections must include exactly these ids and no others:',
+                    '- activity: title "概況"; a few short prose lines describing what kind of activities occurred. Do not include source lists, references, or bullet lists of documents.',
+                    '- progress: title "進行状況"; bullet-list the work/activity contents only. Do not include metrics objects or document/discussion counts. Put references in sources with title when available.',
+                    '- risks: title "課題・次のアクション"; bullet-list blockers, risks, and concrete next actions. If none are evident, suggest next actions for gathering clarity.',
+                    'Do not generate an issues section.',
+                    'Use markdown prose and concise bullets. Do not include metrics objects.',
                     `Project: ${projectSlug}`,
                     `Period: ${period.start} to ${period.end}`,
                     `Documents: ${JSON.stringify(documents)}`,
@@ -174,6 +135,78 @@ export function createGeminiReportProvider(input: {
       validateGeneratedReport(generated);
       return generated;
     },
+  };
+}
+
+function buildActivityMarkdown(
+  documents: readonly ReportDocumentRecord[],
+  period: ReportPeriod,
+  sourceDocuments: readonly ReportDocumentRecord[],
+): string {
+  if (sourceDocuments.length === 0) {
+    return '対象期間の indexed document はありません。現時点では概況を判断する材料が不足しています。';
+  }
+  const activitySummary = summarizeDocumentTypes(sourceDocuments);
+  return [
+    `${period.start} から ${period.end} の期間に、プロジェクトに関する ${documents.length} 件の情報が確認できました。`,
+    activitySummary,
+    '全体として、関係者間の更新や議論が継続している状態と読み取れます。',
+  ].join('\n');
+}
+
+function buildProgressMarkdown(
+  period: ReportPeriod,
+  sourceDocuments: readonly ReportDocumentRecord[],
+): string {
+  if (sourceDocuments.length === 0) {
+    return `- ${period.start} から ${period.end} の期間には indexed document がなく、進行状況を判断できる材料がありません。`;
+  }
+  return sourceDocuments.map((document) => `- ${document.title}`).join('\n');
+}
+
+function buildRisksMarkdown(risks: readonly ReportDocumentRecord[]): string {
+  if (risks.length === 0) {
+    return '- 次の期間に向けて、判断材料の収集と関係者とのすり合わせを進めてください。';
+  }
+  return risks
+    .map(
+      (document) =>
+        `- ${document.title}: ${truncate(document.summary || '要約は未設定です。', 120)}`,
+    )
+    .join('\n');
+}
+
+function summarizeDocumentTypes(documents: readonly ReportDocumentRecord[]): string {
+  const labels = [...new Set(documents.map((document) => documentTypeLabel(document.docType)))];
+  if (labels.length === 0) {
+    return '確認できた情報から、プロジェクトに関する更新や議論が継続している状態です。';
+  }
+  if (labels.length === 1) {
+    return `主な活動は ${labels[0]} に関する更新や議論の記録です。`;
+  }
+  return `主な活動は ${labels.slice(0, -1).join('、')} および ${labels.at(-1)} に関する更新や議論の記録です。`;
+}
+
+function documentTypeLabel(docType: string): string {
+  if (docType === 'web_page') {
+    return 'Web ページ';
+  }
+  if (docType === 'pull_request') {
+    return 'プルリクエスト';
+  }
+  if (docType === 'issue') {
+    return 'Issue';
+  }
+  return docType.replace(/_/g, ' ');
+}
+
+function sourceFromDocument(document: ReportDocumentRecord) {
+  return {
+    canonical_uri: document.canonicalUri,
+    doc_type: document.docType,
+    document_id: document.documentId,
+    snippet: truncate(document.summary || document.title, 220),
+    title: document.title,
   };
 }
 

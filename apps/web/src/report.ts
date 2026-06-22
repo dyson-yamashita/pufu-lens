@@ -130,6 +130,46 @@ export async function getPrivateReport(input: {
   return { report, status: 'ok' };
 }
 
+export async function deletePrivateReport(input: {
+  readonly options: ReportAccessOptions & { readonly storage: ObjectStorage };
+  readonly projectSlug: string;
+  readonly reportId: string;
+  readonly userId: string;
+}): Promise<{ readonly status: 'ok' }> {
+  if (!isReportDbAvailable(input.options)) {
+    throw new Error('Cannot delete report outside DB business hours.');
+  }
+  const project = await lookupMemberOrThrow(input);
+  const metadata = await input.options.repository.readReportMetadata({
+    projectId: project.id,
+    reportId: input.reportId,
+  });
+  if (!metadata) {
+    throw new ReportNotFoundError(input.reportId);
+  }
+  if (metadata.isPublic) {
+    try {
+      await revokePublicReport({
+        options: {
+          ...input.options,
+        },
+        projectSlug: input.projectSlug,
+        reportId: input.reportId,
+        userId: input.userId,
+      });
+    } catch (error) {
+      if (!(error instanceof PublicReportNotFoundError)) {
+        throw error;
+      }
+    }
+  }
+  await input.options.repository.deleteReport({
+    projectId: project.id,
+    reportId: input.reportId,
+  });
+  return { status: 'ok' };
+}
+
 export async function publishPublicReport(input: {
   readonly now?: Date;
   readonly options: PublishReportOptions;

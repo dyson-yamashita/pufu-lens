@@ -122,6 +122,7 @@ function createReportRepository(): ReportRepository & { insertedReports: number 
     async readReportMetadata() {
       return undefined;
     },
+    async deleteReport() {},
   };
 }
 
