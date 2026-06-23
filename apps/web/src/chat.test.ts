@@ -24,6 +24,11 @@ import {
   mastraProjectChatGenerateUrl,
   mastraPublicReportChatGenerateUrl,
 } from './mastra-chat.ts';
+import {
+  createMastraGenerateReportWorkflowBody,
+  mastraGenerateReportWorkflowStartUrl,
+  runMastraGenerateReportWorkflow,
+} from './mastra-workflow.ts';
 import type { PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 import { appendSpeechTranscript } from './speech-input.ts';
 
@@ -184,10 +189,30 @@ assert.equal(
   mastraProjectChatGenerateUrl({ MASTRA_API_URL: 'https://mastra.example.com/api' }),
   'https://mastra.example.com/api/agents/project-chat-agent/generate',
 );
+assert.equal(
+  mastraGenerateReportWorkflowStartUrl({ MASTRA_API_URL: 'https://mastra.example.com/api' }),
+  'https://mastra.example.com/api/workflows/generate-report/start-async',
+);
 assert.deepEqual(createMastraProjectChatBody({ projectId: 'project-a', question: '仕様変更は?' }), {
   messages: [{ content: '仕様変更は?', role: 'user' }],
   requestContext: { projectId: 'project-a' },
 });
+assert.deepEqual(
+  createMastraGenerateReportWorkflowBody({
+    generatedBy: 'admin-ui',
+    nowIso: '2026-06-04T12:00:00.000Z',
+    period: { end: '2026-06-07', start: '2026-06-01' },
+    projectSlug: 'sample-a',
+  }),
+  {
+    inputData: {
+      generatedBy: 'admin-ui',
+      nowIso: '2026-06-04T12:00:00.000Z',
+      period: { end: '2026-06-07', start: '2026-06-01' },
+      projectSlug: 'sample-a',
+    },
+  },
+);
 assert.equal(
   (
     await mastraFetchHeaders({
@@ -211,6 +236,34 @@ assert.equal(
   'Bearer test-token-for:https://mastra-server-example-de.a.run.app:https://mastra-server-example-de.a.run.app/api/agents/project-chat-agent/generate',
 );
 assert.equal(cloudRunHeaders.get('content-type'), 'application/json');
+
+let workflowRequest: { body?: string; method?: string; url?: string } | undefined;
+await runMastraGenerateReportWorkflow({
+  env: { MASTRA_API_URL: 'https://mastra.example.com/api', MASTRA_ID_TOKEN_ENABLED: 'false' },
+  fetchImpl: async (url, init) => {
+    workflowRequest = {
+      body: init?.body?.toString(),
+      method: init?.method,
+      url: url.toString(),
+    };
+    return Response.json({ result: { reportId: 'report-a' }, status: 'success' });
+  },
+  generatedBy: 'admin-ui',
+  period: { end: '2026-06-07', start: '2026-06-01' },
+  projectSlug: 'sample-a',
+});
+assert.equal(workflowRequest?.method, 'POST');
+assert.equal(
+  workflowRequest?.url,
+  'https://mastra.example.com/api/workflows/generate-report/start-async',
+);
+assert.deepEqual(JSON.parse(workflowRequest?.body ?? '{}'), {
+  inputData: {
+    generatedBy: 'admin-ui',
+    period: { end: '2026-06-07', start: '2026-06-01' },
+    projectSlug: 'sample-a',
+  },
+});
 
 const mastraChatResponse = mastraGenerateToChatResponse({
   mastraResponse: {

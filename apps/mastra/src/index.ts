@@ -10,6 +10,7 @@ import {
   type PublicContextBundleV1,
   type PublicReportJsonV1,
   type ReportGenerationProvider,
+  type ReportPeriod,
   type ReportPeriodKind,
   type ReportRepository,
   type RunGenerateReportOptions,
@@ -574,8 +575,14 @@ export function createPublicReportChatAgent(input: {
 }
 
 export function createGenerateReportWorkflow(options: RunGenerateReportOptions) {
+  const periodSchema = z.object({
+    end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  });
   const inputSchema = z.object({
+    generatedBy: z.string().min(1).optional(),
     nowIso: z.string().datetime().optional(),
+    period: periodSchema.optional(),
     periodKind: z.literal('weekly').optional(),
     projectSlug: z.string().min(1),
   });
@@ -593,7 +600,9 @@ export function createGenerateReportWorkflow(options: RunGenerateReportOptions) 
       const result = await runGenerateReport({
         options: {
           ...options,
+          ...(inputData.generatedBy ? { generatedBy: inputData.generatedBy } : {}),
           now: inputData.nowIso ? new Date(inputData.nowIso) : options.now,
+          ...(inputData.period ? { period: validateReportPeriod(inputData.period) } : {}),
           periodKind: inputData.periodKind ?? options.periodKind,
         },
         projectSlug: inputData.projectSlug,
@@ -614,6 +623,24 @@ export function createGenerateReportWorkflow(options: RunGenerateReportOptions) 
   })
     .then(generateReportStep)
     .commit();
+}
+
+function validateReportPeriod(period: ReportPeriod | undefined): ReportPeriod | undefined {
+  if (!period) {
+    return undefined;
+  }
+  if (!isValidReportDate(period.start) || !isValidReportDate(period.end)) {
+    throw new Error('Report period start and end must be valid YYYY-MM-DD dates.');
+  }
+  if (period.start > period.end) {
+    throw new Error('Report period start must be before or equal to end.');
+  }
+  return period;
+}
+
+function isValidReportDate(value: string): boolean {
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
 export function createPufuLensMastraRuntime(
