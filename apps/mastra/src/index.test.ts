@@ -86,9 +86,15 @@ function createChatRepository(): ChatRepository & { projectIds: string[] } {
   };
 }
 
-function createReportRepository(): ReportRepository & { insertedReports: number } {
+function createReportRepository(): ReportRepository & {
+  generatedByValues: string[];
+  insertedReports: number;
+  recentDocumentPeriods: Array<{ end: string; start: string }>;
+} {
   return {
+    generatedByValues: [],
     insertedReports: 0,
+    recentDocumentPeriods: [],
     async lookupProject({ projectSlug }) {
       return projectSlug === 'sample-a'
         ? { id: 'project-a', slug: 'sample-a', visibility: 'public' }
@@ -99,8 +105,9 @@ function createReportRepository(): ReportRepository & { insertedReports: number 
         ? { id: 'project-a', slug: 'sample-a', visibility: 'public' }
         : undefined;
     },
-    async listRecentDocuments({ projectId }) {
+    async listRecentDocuments({ period, projectId }) {
       assert.equal(projectId, 'project-a');
+      this.recentDocumentPeriods.push(period);
       return [
         {
           canonicalUri: 'https://example.com/issues/42',
@@ -112,8 +119,9 @@ function createReportRepository(): ReportRepository & { insertedReports: number 
         },
       ];
     },
-    async insertReport({ report }) {
+    async insertReport({ generatedBy, report }) {
       assert.equal(report.project_id, 'project-a');
+      this.generatedByValues.push(generatedBy);
       this.insertedReports += 1;
     },
     async listReports() {
@@ -430,7 +438,9 @@ assert.deepEqual(publicContextFetch?.sources, [
 const run = await runtime.generateReportWorkflow.createRun();
 const report = await run.start({
   inputData: {
+    generatedBy: 'admin-ui',
     nowIso: '2026-06-04T12:00:00.000Z',
+    period: { end: '2026-06-05', start: '2026-06-02' },
     projectSlug: 'sample-a',
   },
 });
@@ -443,6 +453,11 @@ const reportResult = report.result as {
 assert.equal(reportResult.schemaVersion, 'v1');
 assert.match(reportResult.reportUrl, /^\/projects\/sample-a\/reports\//);
 assert.equal(reportRepository.insertedReports, 1);
+assert.equal(reportRepository.generatedByValues.at(-1), 'admin-ui');
+assert.deepEqual(reportRepository.recentDocumentPeriods.at(-1), {
+  end: '2026-06-05',
+  start: '2026-06-02',
+});
 assert.ok(await storage.exists(reportResult.storageUri));
 
 console.log('mastra runtime tests passed');
