@@ -3,7 +3,7 @@
 import { ArrowUp, Mic } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PublicChatResponse } from './chat';
 import {
   appendPendingAssistant,
@@ -362,6 +362,7 @@ export function PublicReportDocument({
 }) {
   const [report, setReport] = useState<PublicReportJsonV1 | undefined>();
   const [status, setStatus] = useState('loading');
+  const pufuInput = useMemo(() => (report ? publicReportPufuInput(report) : undefined), [report]);
 
   useEffect(() => {
     let cancelled = false;
@@ -397,7 +398,7 @@ export function PublicReportDocument({
   if (status === 'loading') {
     return <p className="notice">loading</p>;
   }
-  if (!report || status !== 'ok') {
+  if (!report || !pufuInput || status !== 'ok') {
     return (
       <p className="notice error" data-testid="public-report-status">
         {status}
@@ -428,7 +429,7 @@ export function PublicReportDocument({
             </div>
           </dl>
         </header>
-        <PufuReportViewer report={publicReportPufuInput(report)} />
+        <PufuReportViewer report={pufuInput} />
         {report.sections.map((section) => (
           <section
             className="report-section"
