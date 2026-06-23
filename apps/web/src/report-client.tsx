@@ -3,7 +3,7 @@
 import { ArrowUp, Mic } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PublicChatResponse } from './chat';
 import {
   appendPendingAssistant,
@@ -15,6 +15,7 @@ import {
 } from './chat-thread';
 import { ActionForm, PendingSubmitButton } from './form-buttons';
 import { PufuReportViewer } from './pufu-report-viewer';
+import type { PufuScoreReportInput } from './pufu-score';
 import type {
   PrivateReportJsonV1,
   PrivateReportSource,
@@ -361,6 +362,7 @@ export function PublicReportDocument({
 }) {
   const [report, setReport] = useState<PublicReportJsonV1 | undefined>();
   const [status, setStatus] = useState('loading');
+  const pufuInput = useMemo(() => (report ? publicReportPufuInput(report) : undefined), [report]);
 
   useEffect(() => {
     let cancelled = false;
@@ -396,7 +398,7 @@ export function PublicReportDocument({
   if (status === 'loading') {
     return <p className="notice">loading</p>;
   }
-  if (!report || status !== 'ok') {
+  if (!report || !pufuInput || status !== 'ok') {
     return (
       <p className="notice error" data-testid="public-report-status">
         {status}
@@ -427,6 +429,7 @@ export function PublicReportDocument({
             </div>
           </dl>
         </header>
+        <PufuReportViewer report={pufuInput} />
         {report.sections.map((section) => (
           <section
             className="report-section"
@@ -578,6 +581,29 @@ function PublicReportChatPanel({
 
 function reportErrorStatus(body: ReportApiError, status: number): string {
   return body.error?.code ?? body.error?.message ?? `http_${status}`;
+}
+
+function publicReportPufuInput(report: PublicReportJsonV1): PufuScoreReportInput {
+  return {
+    period: report.period,
+    report_id: report.report_id,
+    sections: report.sections.map((section) => ({
+      id: section.id,
+      items: section.items,
+      markdown: section.markdown,
+      metrics: section.metrics,
+      sources: section.sources?.map((source) => ({
+        canonical_uri: '',
+        doc_type: 'public_report_source',
+        document_id: source.public_source_id,
+        snippet: source.label,
+        title: source.label,
+      })),
+      title: section.title,
+    })),
+    summary: report.summary,
+    title: report.title,
+  };
 }
 
 function normalizePrivateReportSourceLabel(docType: string): string {

@@ -278,6 +278,8 @@ test('scenario: public user reads redacted report and receives scoped chat answe
   await page.goto('/reports/public/sample-a/report-a');
 
   await expect(page.getByTestId('public-report-document')).toContainText('公開可能な概要です。');
+  await expect(page.getByTestId('pufu-report-viewer')).toBeVisible();
+  await expect(page.getByTestId('pufu-report-score')).toBeVisible();
   await expect(page.getByTestId('public-report-section-activity')).toContainText(
     'src_activity_001',
   );
