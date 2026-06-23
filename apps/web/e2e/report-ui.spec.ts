@@ -182,7 +182,9 @@ test('scenario: member reads private report sections on mobile @mobile', async (
     )
     .toBe(true);
   await expect
-    .poll(async () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1))
+    .poll(async () =>
+      page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
+    )
     .toBe(true);
 });
 
