@@ -163,7 +163,10 @@ function buildProgressMarkdown(
   if (sourceDocuments.length === 0) {
     return `- ${period.start} から ${period.end} の期間には indexed document がなく、進行状況を判断できる材料がありません。`;
   }
-  return sourceDocuments.map((document) => `- ${progressItemFromDocument(document)}`).join('\n');
+  return sourceDocuments
+    .flatMap((document) => progressItemsFromDocument(document))
+    .map((item) => `- ${item}`)
+    .join('\n');
 }
 
 function buildRisksMarkdown(
@@ -176,7 +179,7 @@ function buildRisksMarkdown(
   return risks
     .map(
       (document) =>
-        `- ${progressItemFromDocument(document)} 対応として、状況確認と解消方針の合意を進めてください。`,
+        `- ${progressItemsFromDocument(document)[0] ?? document.title} 対応として、状況確認と解消方針の合意`,
     )
     .join('\n');
 }
@@ -231,44 +234,90 @@ function activityPhraseFromDocument(document: ReportDocumentRecord): string {
   return truncate(meaningfulDocumentText(document), 80);
 }
 
-function progressItemFromDocument(document: ReportDocumentRecord): string {
-  const text = meaningfulDocumentText(document);
+function progressItemsFromDocument(document: ReportDocumentRecord): string[] {
+  const text = cleanDocumentText(meaningfulDocumentText(document));
   if (!text) {
-    return `${document.title} について情報が追加されました。`;
+    return [`${document.title} について情報が追加されました。`];
   }
-  return sentenceLike(truncate(text, 150));
+  const eventItems = eventProgressItems(text);
+  if (eventItems.length > 0) {
+    return eventItems;
+  }
+  return uniqueNonEmpty(sentenceFragments(text).map((item) => sentenceLike(truncate(item, 150))))
+    .slice(0, 3)
+    .filter(Boolean);
 }
 
 function nextActionsFromDocuments(documents: readonly ReportDocumentRecord[]): string[] {
   if (documents.length === 0) {
-    return ['- 次の期間に向けて、判断材料の収集と関係者とのすり合わせを進めてください。'];
+    return ['- 次の期間に向けた判断材料の収集と、関係者間のすり合わせ'];
   }
   const combinedText = documents.map(documentText).join('\n');
   const actions: string[] = [];
   if (/出展|展示|カンファレンス|OSC/i.test(combinedText)) {
-    actions.push(
-      '- 出展で得た来場者の反応・質問・つまずきを整理し、プ譜エディタの改善項目に落とし込んでください。',
-    );
-    actions.push(
-      '- イベント後に試用してくれた人へフォローし、継続利用につながる説明資料や導線を確認してください。',
-    );
+    actions.push('- 出展で得た来場者の反応・質問・つまずきの整理と、プ譜エディタ改善項目への反映');
+    actions.push('- イベント後に試用した人へのフォロー、継続利用につながる説明資料・導線の確認');
   }
   if (/リリース|公開|ローンチ|発表/i.test(combinedText)) {
-    actions.push(
-      '- 公開後の利用状況や反応を確認し、次に強化すべき機能・説明・サポートを決めてください。',
-    );
+    actions.push('- 公開後の利用状況・反応の確認と、次に強化する機能・説明・サポートの整理');
   }
   if (/議論|検討|すり合わせ|合意|相談/i.test(combinedText)) {
-    actions.push(
-      '- 議論で残った未決事項を明確にし、次回までに必要な判断材料と決定者をそろえてください。',
-    );
+    actions.push('- 議論で残った未決事項の明確化と、次回までに必要な判断材料・決定者の整理');
   }
   if (actions.length === 0) {
     actions.push(
-      '- 参照資料から読み取れる取り組みの目的・成果・未確認点を整理し、関係者間で次に確認する判断材料を明確にしてください。',
+      '- 参照資料から読み取れる取り組みの目的・成果・未確認点の整理と、次に確認する判断材料の明確化',
     );
   }
   return uniqueNonEmpty(actions);
+}
+
+function eventProgressItems(text: string): string[] {
+  if (!/出展|展示|カンファレンス|OSC/i.test(text)) {
+    return [];
+  }
+  const eventName = extractEventName(text);
+  const product = /プ譜エディタ|プ譜エディター/.test(text) ? 'プ譜エディタ' : 'プロダクト';
+  const items: string[] = [];
+  if (/出展|展示/i.test(text)) {
+    items.push(`${eventName}で${product}を出展。`);
+  }
+  if (/来場者|触れて|試し|体験|紹介/i.test(text)) {
+    items.push(`来場者に${product}を実際に触れてもらい、考え方と使い方を紹介。`);
+  }
+  return uniqueNonEmpty(items);
+}
+
+function extractEventName(text: string): string {
+  const explicitName = text.match(
+    /(オープンソースカンファレンス\s+[^\s。、「」]+\s+\d{4}|オープンソースカンファレンス[@＠][^\s。、「」]+|OSC\s*[^\s。、「」]*)/i,
+  )?.[1];
+  if (explicitName) {
+    return normalizeWhitespace(explicitName).replace(/に.*$/u, '');
+  }
+  if (/オープンソースカンファレンス/i.test(text)) {
+    return 'オープンソースカンファレンス';
+  }
+  return 'イベント';
+}
+
+function sentenceFragments(text: string): string[] {
+  return text
+    .split(/(?<=[。.!?…])\s*/u)
+    .map((item) => item.replace(/[。.!?…]+$/u, '').trim())
+    .filter((item) => item.length > 0 && !isBoilerplateFragment(item));
+}
+
+function cleanDocumentText(value: string): string {
+  return normalizeWhitespace(value)
+    .replace(/投稿|ログイン|会員登録/g, ' ')
+    .replace(/\b\d+\s+Dyson\s+\d{4}年\d{1,2}月\d{1,2}日\s+\d{1,2}:\d{2}\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isBoilerplateFragment(value: string): boolean {
+  return /^(投稿|ログイン|会員登録|[0-9]+|Dyson)$/i.test(value);
 }
 
 function meaningfulDocumentText(document: ReportDocumentRecord): string {

@@ -120,6 +120,14 @@ test('scenario: private report pufu score stays inside viewport when side menu i
   await expect(page.getByTestId('pufu-report-viewer')).toBeInViewport();
   await expect
     .poll(async () =>
+      page
+        .getByTestId('pufu-report-score')
+        .locator('[role="score"][aria-label="box"]')
+        .evaluate((element) => element.classList.contains('dark')),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
       page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     )
     .toBe(true);
@@ -127,9 +135,18 @@ test('scenario: private report pufu score stays inside viewport when side menu i
     .poll(async () =>
       page
         .locator('.pufu-score-frame')
-        .evaluate((element) => element.scrollWidth > element.clientWidth),
+        .evaluate((element) => element.scrollWidth <= element.clientWidth),
     )
     .toBe(true);
+  await page.getByTestId('theme-toggle-button').click();
+  await expect
+    .poll(async () =>
+      page
+        .getByTestId('pufu-report-score')
+        .locator('[role="score"][aria-label="box"]')
+        .evaluate((element) => element.classList.contains('dark')),
+    )
+    .toBe(false);
 });
 
 test('scenario: member reads private report sections on mobile @mobile', async ({ page }) => {

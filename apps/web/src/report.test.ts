@@ -210,6 +210,7 @@ assert.equal(progressSection.sources?.length, 2);
 assert.equal(progressSection.sources?.[0]?.title, 'Issue #42 Login failure');
 assert.doesNotMatch(progressSection.markdown, /documents|discussion_points|目指す状態/);
 assert.match(risksSection.markdown, /Login failure risk.*対応として/);
+assert.doesNotMatch(risksSection.markdown, /ください/);
 const oscReport = await createExtractiveReportProvider().generate({
   documents: [
     {
@@ -233,13 +234,15 @@ assert.ok(oscProgress);
 assert.ok(oscRisks);
 assert.match(oscOverview.markdown, /プ譜エディタを出展/);
 assert.match(oscOverview.markdown, /利用者候補にプ譜エディタを見せ/);
-assert.match(oscProgress.markdown, /来場者に実際に触れてもらいながら/);
+assert.match(oscProgress.markdown, /オープンソースカンファレンス@京都でプ譜エディタを出展/);
+assert.match(oscProgress.markdown, /来場者にプ譜エディタを実際に触れてもらい/);
 assert.doesNotMatch(
   oscProgress.markdown,
   /^- オープンソースカンファレンス@京都にプ譜エディタを出展しました｜Dyson$/m,
 );
 assert.match(oscRisks.markdown, /来場者の反応・質問・つまずき/);
-assert.match(oscRisks.markdown, /継続利用につながる説明資料や導線/);
+assert.match(oscRisks.markdown, /継続利用につながる説明資料・導線/);
+assert.doesNotMatch(oscRisks.markdown, /ください/);
 const sparseDocumentReport = await createExtractiveReportProvider().generate({
   documents: [
     {
