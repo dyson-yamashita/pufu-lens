@@ -234,8 +234,9 @@ assert.ok(oscProgress);
 assert.ok(oscRisks);
 assert.match(oscOverview.markdown, /プ譜エディタを出展/);
 assert.match(oscOverview.markdown, /利用者候補にプ譜エディタを見せ/);
-assert.match(oscProgress.markdown, /オープンソースカンファレンス@京都でプ譜エディタを出展/);
-assert.match(oscProgress.markdown, /来場者にプ譜エディタを実際に触れてもらい/);
+assert.match(oscProgress.markdown, /プ譜エディタを出展/);
+assert.match(oscProgress.markdown, /来場者に実際に触れてもらい/);
+assert.ok(oscProgress.markdown.split('\n').filter((line) => line.startsWith('- ')).length >= 2);
 assert.doesNotMatch(
   oscProgress.markdown,
   /^- オープンソースカンファレンス@京都にプ譜エディタを出展しました｜Dyson$/m,

@@ -239,11 +239,9 @@ function progressItemsFromDocument(document: ReportDocumentRecord): string[] {
   if (!text) {
     return [`${document.title} について情報が追加されました。`];
   }
-  const eventItems = eventProgressItems(text);
-  if (eventItems.length > 0) {
-    return eventItems;
-  }
-  return uniqueNonEmpty(sentenceFragments(text).map((item) => sentenceLike(truncate(item, 150))))
+  return uniqueNonEmpty(
+    extractProgressFragments(text).map((item) => sentenceLike(truncate(item, 150))),
+  )
     .slice(0, 3)
     .filter(Boolean);
 }
@@ -272,33 +270,16 @@ function nextActionsFromDocuments(documents: readonly ReportDocumentRecord[]): s
   return uniqueNonEmpty(actions);
 }
 
-function eventProgressItems(text: string): string[] {
-  if (!/出展|展示|カンファレンス|OSC/i.test(text)) {
-    return [];
-  }
-  const eventName = extractEventName(text);
-  const product = /プ譜エディタ|プ譜エディター/.test(text) ? 'プ譜エディタ' : 'プロダクト';
-  const items: string[] = [];
-  if (/出展|展示/i.test(text)) {
-    items.push(`${eventName}で${product}を出展。`);
-  }
-  if (/来場者|触れて|試し|体験|紹介/i.test(text)) {
-    items.push(`来場者に${product}を実際に触れてもらい、考え方と使い方を紹介。`);
-  }
-  return uniqueNonEmpty(items);
+function extractProgressFragments(text: string): string[] {
+  const fragments = sentenceFragments(text).flatMap(splitClauseFragments);
+  return fragments.length > 0 ? fragments : [text];
 }
 
-function extractEventName(text: string): string {
-  const explicitName = text.match(
-    /(オープンソースカンファレンス\s+[^\s。、「」]+\s+\d{4}|オープンソースカンファレンス[@＠][^\s。、「」]+|OSC\s*[^\s。、「」]*)/i,
-  )?.[1];
-  if (explicitName) {
-    return normalizeWhitespace(explicitName).replace(/に.*$/u, '');
-  }
-  if (/オープンソースカンファレンス/i.test(text)) {
-    return 'オープンソースカンファレンス';
-  }
-  return 'イベント';
+function splitClauseFragments(text: string): string[] {
+  return text
+    .split(/(?:、|,|\s+(?:and|with|by|for)\s+|し、|して|しながら|しつつ|行い|実施し|紹介し)/iu)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 12 && !isBoilerplateFragment(item));
 }
 
 function sentenceFragments(text: string): string[] {
@@ -311,13 +292,13 @@ function sentenceFragments(text: string): string[] {
 function cleanDocumentText(value: string): string {
   return normalizeWhitespace(value)
     .replace(/投稿|ログイン|会員登録/g, ' ')
-    .replace(/\b\d+\s+Dyson\s+\d{4}年\d{1,2}月\d{1,2}日\s+\d{1,2}:\d{2}\b/g, ' ')
+    .replace(/\b\d+\s+[^\s。、「」]{1,32}\s+\d{4}年\d{1,2}月\d{1,2}日\s+\d{1,2}:\d{2}\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 function isBoilerplateFragment(value: string): boolean {
-  return /^(投稿|ログイン|会員登録|[0-9]+|Dyson)$/i.test(value);
+  return /^(投稿|ログイン|会員登録|[0-9]+)$/i.test(value);
 }
 
 function meaningfulDocumentText(document: ReportDocumentRecord): string {
