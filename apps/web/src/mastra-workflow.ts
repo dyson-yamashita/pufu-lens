@@ -1,5 +1,5 @@
-import type { ReportPeriod } from './report.ts';
 import { mastraFetchHeaders } from './mastra-chat.ts';
+import type { ReportPeriod } from './report.ts';
 
 const GENERATE_REPORT_WORKFLOW_ID = 'generate-report';
 
@@ -33,13 +33,15 @@ export function createMastraGenerateReportWorkflowBody(input: {
 }
 
 export async function runMastraGenerateReportWorkflow(input: {
+  readonly env?: MastraWorkflowEnv;
   readonly fetchImpl?: typeof fetch;
   readonly generatedBy?: string;
   readonly nowIso?: string;
   readonly period?: ReportPeriod;
   readonly projectSlug: string;
 }): Promise<void> {
-  const url = mastraGenerateReportWorkflowStartUrl();
+  const env = input.env ?? process.env;
+  const url = mastraGenerateReportWorkflowStartUrl(env);
   const response = await (input.fetchImpl ?? fetch)(url, {
     body: JSON.stringify(
       createMastraGenerateReportWorkflowBody({
@@ -49,7 +51,7 @@ export async function runMastraGenerateReportWorkflow(input: {
         projectSlug: input.projectSlug,
       }),
     ),
-    headers: await mastraFetchHeaders({ url }),
+    headers: await mastraFetchHeaders({ env, url }),
     method: 'POST',
   });
   if (!response.ok) {

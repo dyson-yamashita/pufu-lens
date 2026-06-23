@@ -629,10 +629,18 @@ function validateReportPeriod(period: ReportPeriod | undefined): ReportPeriod | 
   if (!period) {
     return undefined;
   }
+  if (!isValidReportDate(period.start) || !isValidReportDate(period.end)) {
+    throw new Error('Report period start and end must be valid YYYY-MM-DD dates.');
+  }
   if (period.start > period.end) {
     throw new Error('Report period start must be before or equal to end.');
   }
   return period;
+}
+
+function isValidReportDate(value: string): boolean {
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
 export function createPufuLensMastraRuntime(

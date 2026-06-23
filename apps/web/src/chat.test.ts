@@ -239,6 +239,7 @@ assert.equal(cloudRunHeaders.get('content-type'), 'application/json');
 
 let workflowRequest: { body?: string; method?: string; url?: string } | undefined;
 await runMastraGenerateReportWorkflow({
+  env: { MASTRA_API_URL: 'https://mastra.example.com/api', MASTRA_ID_TOKEN_ENABLED: 'false' },
   fetchImpl: async (url, init) => {
     workflowRequest = {
       body: init?.body?.toString(),
@@ -254,7 +255,7 @@ await runMastraGenerateReportWorkflow({
 assert.equal(workflowRequest?.method, 'POST');
 assert.equal(
   workflowRequest?.url,
-  'http://localhost:4111/api/workflows/generate-report/start-async',
+  'https://mastra.example.com/api/workflows/generate-report/start-async',
 );
 assert.deepEqual(JSON.parse(workflowRequest?.body ?? '{}'), {
   inputData: {
