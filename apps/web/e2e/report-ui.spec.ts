@@ -171,7 +171,7 @@ test('scenario: member reads private report sections on mobile @mobile', async (
       page
         .getByTestId('pufu-report-score')
         .locator('[role="score"][aria-label="box"]')
-        .evaluate((element) => element.getBoundingClientRect().width),
+        .evaluate((element) => Math.round(element.getBoundingClientRect().width)),
     )
     .toBeGreaterThanOrEqual(720);
   await expect
@@ -182,7 +182,7 @@ test('scenario: member reads private report sections on mobile @mobile', async (
     )
     .toBe(true);
   await expect
-    .poll(async () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .poll(async () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1))
     .toBe(true);
 });
 

@@ -41,7 +41,7 @@ export function PufuReportViewer({ report }: { readonly report: PufuScoreReportI
   const isDarkTheme = useIsDarkTheme();
   const scoreRenderWidth =
     scoreWidth === null ? null : Math.max(scoreWidth, MIN_READABLE_SCORE_WIDTH);
-  const isMobileScore = scoreRenderWidth !== null && scoreRenderWidth < 760;
+  const isMobileScore = scoreWidth !== null && scoreWidth < 760;
   return (
     <section className="pufu-report-panel" data-testid="pufu-report-viewer">
       <div className="panel-heading">
