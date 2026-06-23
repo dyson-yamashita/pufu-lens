@@ -444,7 +444,8 @@
   color: var(--text);
   margin-top: 16px;
   min-width: 0;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   padding: 16px;
   width: 100%;
 }
@@ -454,6 +455,16 @@
   max-width: 100%;
   min-width: 0;
   width: 100%;
+}
+
+@media (max-width: 640px) {
+  .pufu-report-panel {
+    padding: 16px;
+  }
+
+  .pufu-score-frame {
+    padding: 10px;
+  }
 }
 
 .pufu-report-panel .pufu-score-frame .pufu-score-canvas textarea {

@@ -165,6 +165,25 @@ test('scenario: member reads private report sections on mobile @mobile', async (
   await expect(page.getByTestId('report-section-activity')).toBeVisible();
   await expect(page.getByTestId('report-section-progress')).toBeVisible();
   await expect(page.getByTestId('report-section-risks')).toBeVisible();
+  await expect(page.getByTestId('pufu-report-score')).toContainText('プ譜エディターを試す人');
+  await expect
+    .poll(async () =>
+      page
+        .getByTestId('pufu-report-score')
+        .locator('[role="score"][aria-label="box"]')
+        .evaluate((element) => element.getBoundingClientRect().width),
+    )
+    .toBeGreaterThanOrEqual(720);
+  await expect
+    .poll(async () =>
+      page
+        .locator('.pufu-score-frame')
+        .evaluate((element) => element.scrollWidth > element.clientWidth),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true);
 });
 
 test('scenario: member sees private report API error codes', async ({ page }) => {
