@@ -320,7 +320,11 @@ function sentenceLike(value: string): string {
 }
 
 function stripTrailingPunctuation(value: string): string {
-  return value.replace(/[。.!?…]+$/u, '');
+  let end = value.length;
+  while (end > 0 && isTrailingPunctuation(value[end - 1] ?? '')) {
+    end -= 1;
+  }
+  return value.slice(0, end);
 }
 
 function isSentenceBoundary(text: string, index: number): boolean {
@@ -351,6 +355,10 @@ function pushSentenceFragment(fragments: string[], value: string): void {
   if (fragment.length > 0 && !isBoilerplateFragment(fragment)) {
     fragments.push(fragment);
   }
+}
+
+function isTrailingPunctuation(char: string): boolean {
+  return char === '。' || char === '.' || char === '!' || char === '?' || char === '…';
 }
 
 function uniqueNonEmpty(values: readonly string[]): string[] {
