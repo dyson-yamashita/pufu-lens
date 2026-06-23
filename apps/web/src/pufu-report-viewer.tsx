@@ -55,7 +55,7 @@ export function PufuReportViewer({ report }: { readonly report: PrivateReportJso
               mobile={isMobileScore}
               preview
               textSize="small"
-              uniqueKey={`report-pufu-${report.report_id}-${scoreWidth}-${isDarkTheme ? 'dark' : 'light'}`}
+              uniqueKey={`report-pufu-${report.report_id}`}
               width={scoreWidth}
             />
           )}
@@ -73,14 +73,10 @@ function useElementWidth(ref: RefObject<HTMLElement | null>): number | null {
     if (!element) {
       return;
     }
-    const syncWidth = (nextWidth: number) => {
-      setWidth(Math.max(1, Math.floor(nextWidth)));
-    };
-    syncWidth(element.clientWidth);
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (entry) {
-        syncWidth(entry.contentRect.width);
+        setWidth(Math.max(1, Math.floor(entry.contentRect.width)));
       }
     });
     observer.observe(element);

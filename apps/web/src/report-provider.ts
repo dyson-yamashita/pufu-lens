@@ -90,8 +90,8 @@ export function createGeminiReportProvider(input: {
                     'Do not make the report primarily about GitHub issues, PR counts, task lists, or TODO tracking.',
                     'Sections must include exactly these ids and no others:',
                     '- activity: title "概況"; a few short prose lines describing what kind of activities occurred. Do not include source lists, references, or bullet lists of documents.',
-                    '- progress: title "進行状況"; bullet-list the work/activity contents only. Do not include metrics objects or document/discussion counts. Put references in sources with title when available.',
-                    '- risks: title "課題・次のアクション"; bullet-list blockers, risks, and concrete next actions. If none are evident, suggest next actions for gathering clarity.',
+                    '- progress: title "進行状況"; use the document body to extract initiatives or activity units as bullets, not source titles or one-line raw excerpts. Group related sentences into one bullet per initiative. Do not include metrics objects or document/discussion counts. Put references in sources with title when available.',
+                    '- risks: title "課題・次のアクション"; bullet-list blockers, risks, and concrete next actions. Use report-style noun phrases or neutral descriptions, and do not end Japanese bullets with "ください". If none are evident, suggest next actions for gathering clarity.',
                     'Do not generate an issues section.',
                     'Use markdown prose and concise bullets. Do not include metrics objects.',
                     `Project: ${projectSlug}`,
@@ -177,10 +177,12 @@ function buildRisksMarkdown(
     return nextActionsFromDocuments(sourceDocuments).join('\n');
   }
   return risks
-    .map(
-      (document) =>
-        `- ${progressItemsFromDocument(document)[0] ?? document.title} 対応として、状況確認と解消方針の合意`,
-    )
+    .map((document) => {
+      const context = stripTrailingPunctuation(
+        progressItemsFromDocument(document)[0] ?? document.title,
+      );
+      return `- ${context} 対応として、状況確認と解消方針の合意`;
+    })
     .join('\n');
 }
 
@@ -239,11 +241,12 @@ function progressItemsFromDocument(document: ReportDocumentRecord): string[] {
   if (!text) {
     return [`${document.title} について情報が追加されました。`];
   }
-  return uniqueNonEmpty(
-    extractProgressFragments(text).map((item) => sentenceLike(truncate(item, 150))),
+  const items = uniqueNonEmpty(
+    sentenceFragments(text).map((item) => sentenceLike(truncate(item, 150))),
   )
     .slice(0, 3)
     .filter(Boolean);
+  return items.length > 0 ? items : [`${document.title} について情報が追加されました。`];
 }
 
 function nextActionsFromDocuments(documents: readonly ReportDocumentRecord[]): string[] {
@@ -268,18 +271,6 @@ function nextActionsFromDocuments(documents: readonly ReportDocumentRecord[]): s
     );
   }
   return uniqueNonEmpty(actions);
-}
-
-function extractProgressFragments(text: string): string[] {
-  const fragments = sentenceFragments(text).flatMap(splitClauseFragments);
-  return fragments.length > 0 ? fragments : [text];
-}
-
-function splitClauseFragments(text: string): string[] {
-  return text
-    .split(/(?:、|,|\s+(?:and|with|by|for)\s+|し、|して|しながら|しつつ|行い|実施し|紹介し)/iu)
-    .map((item) => item.trim())
-    .filter((item) => item.length >= 12 && !isBoilerplateFragment(item));
 }
 
 function sentenceFragments(text: string): string[] {
@@ -316,6 +307,10 @@ function documentText(document: ReportDocumentRecord): string {
 
 function sentenceLike(value: string): string {
   return /[。.!?…]$/u.test(value) || value.endsWith('...') ? value : `${value}。`;
+}
+
+function stripTrailingPunctuation(value: string): string {
+  return value.replace(/[。.!?…]+$/u, '');
 }
 
 function uniqueNonEmpty(values: readonly string[]): string[] {

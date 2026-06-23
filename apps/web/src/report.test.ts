@@ -210,6 +210,7 @@ assert.equal(progressSection.sources?.length, 2);
 assert.equal(progressSection.sources?.[0]?.title, 'Issue #42 Login failure');
 assert.doesNotMatch(progressSection.markdown, /documents|discussion_points|目指す状態/);
 assert.match(risksSection.markdown, /Login failure risk.*対応として/);
+assert.doesNotMatch(risksSection.markdown, /。 対応として/);
 assert.doesNotMatch(risksSection.markdown, /ください/);
 const oscReport = await createExtractiveReportProvider().generate({
   documents: [
@@ -236,7 +237,6 @@ assert.match(oscOverview.markdown, /プ譜エディタを出展/);
 assert.match(oscOverview.markdown, /利用者候補にプ譜エディタを見せ/);
 assert.match(oscProgress.markdown, /プ譜エディタを出展/);
 assert.match(oscProgress.markdown, /来場者に実際に触れてもらい/);
-assert.ok(oscProgress.markdown.split('\n').filter((line) => line.startsWith('- ')).length >= 2);
 assert.doesNotMatch(
   oscProgress.markdown,
   /^- オープンソースカンファレンス@京都にプ譜エディタを出展しました｜Dyson$/m,
@@ -272,6 +272,56 @@ assert.doesNotMatch(sparseProgress.markdown, /null|undefined/);
 assert.match(sparseProgress.markdown, /Summary missing source。/);
 assert.match(sparseProgress.markdown, /…$/m);
 assert.doesNotMatch(sparseProgress.markdown, /…。/);
+let geminiPrompt = '';
+const promptInspectingGeminiProvider = createGeminiReportProvider({
+  apiKey: 'test-key',
+  fetchImpl: async (_url, init) => {
+    const body = JSON.parse(String(init?.body)) as {
+      contents: Array<{ parts: Array<{ text: string }> }>;
+    };
+    geminiPrompt = body.contents[0]?.parts[0]?.text ?? '';
+    return new Response(
+      JSON.stringify({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: JSON.stringify({
+                    sections: [
+                      { id: 'activity', markdown: '概況です。', title: '概況' },
+                      {
+                        id: 'progress',
+                        markdown: '- 取り組み単位で整理された進行状況。',
+                        title: '進行状況',
+                      },
+                      {
+                        id: 'risks',
+                        markdown: '- 次に確認する判断材料の整理',
+                        title: '課題・次のアクション',
+                      },
+                    ],
+                    summary: 'summary',
+                    title: 'title',
+                  }),
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      { status: 200 },
+    );
+  },
+  model: 'gemini-test',
+});
+await promptInspectingGeminiProvider.generate({
+  documents: [],
+  period,
+  projectSlug: 'sample-a',
+});
+assert.match(geminiPrompt, /extract initiatives or activity units/);
+assert.match(geminiPrompt, /do not end Japanese bullets with "ください"/);
 const pufuScore = createPufuScoreFromReport({
   ...generated.report,
   pufu_sources: [
