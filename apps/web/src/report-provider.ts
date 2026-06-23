@@ -90,8 +90,8 @@ export function createGeminiReportProvider(input: {
                     'Do not make the report primarily about GitHub issues, PR counts, task lists, or TODO tracking.',
                     'Sections must include exactly these ids and no others:',
                     '- activity: title "概況"; a few short prose lines describing what kind of activities occurred. Do not include source lists, references, or bullet lists of documents.',
-                    '- progress: title "進行状況"; bullet-list the work/activity contents only. Do not include metrics objects or document/discussion counts. Put references in sources with title when available.',
-                    '- risks: title "課題・次のアクション"; bullet-list blockers, risks, and concrete next actions. If none are evident, suggest next actions for gathering clarity.',
+                    '- progress: title "進行状況"; use the document body to extract initiatives or activity units as bullets, not source titles or one-line raw excerpts. Group related sentences into one bullet per initiative. Do not include metrics objects or document/discussion counts. Put references in sources with title when available.',
+                    '- risks: title "課題・次のアクション"; bullet-list blockers, risks, and concrete next actions. Use report-style noun phrases or neutral descriptions, and do not end Japanese bullets with "ください". If none are evident, suggest next actions for gathering clarity.',
                     'Do not generate an issues section.',
                     'Use markdown prose and concise bullets. Do not include metrics objects.',
                     `Project: ${projectSlug}`,
@@ -163,7 +163,10 @@ function buildProgressMarkdown(
   if (sourceDocuments.length === 0) {
     return `- ${period.start} から ${period.end} の期間には indexed document がなく、進行状況を判断できる材料がありません。`;
   }
-  return sourceDocuments.map((document) => `- ${progressItemFromDocument(document)}`).join('\n');
+  return sourceDocuments
+    .flatMap((document) => progressItemsFromDocument(document))
+    .map((item) => `- ${item}`)
+    .join('\n');
 }
 
 function buildRisksMarkdown(
@@ -174,10 +177,12 @@ function buildRisksMarkdown(
     return nextActionsFromDocuments(sourceDocuments).join('\n');
   }
   return risks
-    .map(
-      (document) =>
-        `- ${progressItemFromDocument(document)} 対応として、状況確認と解消方針の合意を進めてください。`,
-    )
+    .map((document) => {
+      const firstItem = progressItemsFromDocument(document)[0];
+      const hasMeaningfulText = firstItem && !firstItem.includes('について情報が追加されました');
+      const context = stripTrailingPunctuation(hasMeaningfulText ? firstItem : document.title);
+      return `- ${context} 対応として、状況確認と解消方針の合意`;
+    })
     .join('\n');
 }
 
@@ -231,44 +236,70 @@ function activityPhraseFromDocument(document: ReportDocumentRecord): string {
   return truncate(meaningfulDocumentText(document), 80);
 }
 
-function progressItemFromDocument(document: ReportDocumentRecord): string {
-  const text = meaningfulDocumentText(document);
+function progressItemsFromDocument(document: ReportDocumentRecord): string[] {
+  const text = cleanDocumentText(meaningfulDocumentText(document));
   if (!text) {
-    return `${document.title} について情報が追加されました。`;
+    return [`${document.title} について情報が追加されました。`];
   }
-  return sentenceLike(truncate(text, 150));
+  const items = uniqueNonEmpty(
+    sentenceFragments(text).map((item) => sentenceLike(truncate(item, 150))),
+  )
+    .slice(0, 3)
+    .filter(Boolean);
+  return items.length > 0 ? items : [`${document.title} について情報が追加されました。`];
 }
 
 function nextActionsFromDocuments(documents: readonly ReportDocumentRecord[]): string[] {
   if (documents.length === 0) {
-    return ['- 次の期間に向けて、判断材料の収集と関係者とのすり合わせを進めてください。'];
+    return ['- 次の期間に向けた判断材料の収集と、関係者間のすり合わせ'];
   }
   const combinedText = documents.map(documentText).join('\n');
   const actions: string[] = [];
   if (/出展|展示|カンファレンス|OSC/i.test(combinedText)) {
-    actions.push(
-      '- 出展で得た来場者の反応・質問・つまずきを整理し、プ譜エディタの改善項目に落とし込んでください。',
-    );
-    actions.push(
-      '- イベント後に試用してくれた人へフォローし、継続利用につながる説明資料や導線を確認してください。',
-    );
+    actions.push('- 出展で得た来場者の反応・質問・つまずきの整理と、プ譜エディタ改善項目への反映');
+    actions.push('- イベント後に試用した人へのフォロー、継続利用につながる説明資料・導線の確認');
   }
   if (/リリース|公開|ローンチ|発表/i.test(combinedText)) {
-    actions.push(
-      '- 公開後の利用状況や反応を確認し、次に強化すべき機能・説明・サポートを決めてください。',
-    );
+    actions.push('- 公開後の利用状況・反応の確認と、次に強化する機能・説明・サポートの整理');
   }
   if (/議論|検討|すり合わせ|合意|相談/i.test(combinedText)) {
-    actions.push(
-      '- 議論で残った未決事項を明確にし、次回までに必要な判断材料と決定者をそろえてください。',
-    );
+    actions.push('- 議論で残った未決事項の明確化と、次回までに必要な判断材料・決定者の整理');
   }
   if (actions.length === 0) {
     actions.push(
-      '- 参照資料から読み取れる取り組みの目的・成果・未確認点を整理し、関係者間で次に確認する判断材料を明確にしてください。',
+      '- 参照資料から読み取れる取り組みの目的・成果・未確認点の整理と、次に確認する判断材料の明確化',
     );
   }
   return uniqueNonEmpty(actions);
+}
+
+function sentenceFragments(text: string): string[] {
+  const fragments: string[] = [];
+  let start = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    if (!isSentenceBoundary(text, index)) {
+      continue;
+    }
+    const rawFragment = text.slice(start, index + 1);
+    const nextStart = consumeWhitespace(text, index + 1);
+    pushSentenceFragment(fragments, rawFragment);
+    start = nextStart;
+    index = nextStart - 1;
+  }
+  pushSentenceFragment(fragments, text.slice(start));
+  return fragments;
+}
+
+function cleanDocumentText(value: string): string {
+  return normalizeWhitespace(value)
+    .replace(/投稿|ログイン|会員登録/g, ' ')
+    .replace(/\b\d+\s+[^\s。、「」]{1,32}\s+\d{4}年\d{1,2}月\d{1,2}日\s+\d{1,2}:\d{2}\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isBoilerplateFragment(value: string): boolean {
+  return /^(投稿|ログイン|会員登録|[0-9]+)$/i.test(value);
 }
 
 function meaningfulDocumentText(document: ReportDocumentRecord): string {
@@ -286,6 +317,48 @@ function documentText(document: ReportDocumentRecord): string {
 
 function sentenceLike(value: string): string {
   return /[。.!?…]$/u.test(value) || value.endsWith('...') ? value : `${value}。`;
+}
+
+function stripTrailingPunctuation(value: string): string {
+  let end = value.length;
+  while (end > 0 && isTrailingPunctuation(value[end - 1] ?? '')) {
+    end -= 1;
+  }
+  return value.slice(0, end);
+}
+
+function isSentenceBoundary(text: string, index: number): boolean {
+  const char = text[index];
+  if (
+    char === '。' ||
+    char === '！' ||
+    char === '？' ||
+    char === '!' ||
+    char === '?' ||
+    char === '…'
+  ) {
+    return true;
+  }
+  return char === '.' && /\s/.test(text[index + 1] ?? '');
+}
+
+function consumeWhitespace(text: string, index: number): number {
+  let nextIndex = index;
+  while (nextIndex < text.length && /\s/.test(text[nextIndex] ?? '')) {
+    nextIndex += 1;
+  }
+  return nextIndex;
+}
+
+function pushSentenceFragment(fragments: string[], value: string): void {
+  const fragment = stripTrailingPunctuation(value).trim();
+  if (fragment.length > 0 && !isBoilerplateFragment(fragment)) {
+    fragments.push(fragment);
+  }
+}
+
+function isTrailingPunctuation(char: string): boolean {
+  return char === '。' || char === '.' || char === '!' || char === '?' || char === '…';
 }
 
 function uniqueNonEmpty(values: readonly string[]): string[] {

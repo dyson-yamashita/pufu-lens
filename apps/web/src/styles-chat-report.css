@@ -438,25 +438,26 @@
 }
 
 .pufu-score-frame {
-  background: #ffffff;
+  background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: 8px;
-  color: #111827;
+  color: var(--text);
   margin-top: 16px;
   min-width: 0;
-  overflow-x: auto;
+  overflow: hidden;
   padding: 16px;
   width: 100%;
 }
 
 .pufu-score-canvas {
   display: block;
-  min-width: 1120px;
+  max-width: 100%;
+  min-width: 0;
+  width: 100%;
 }
 
 .pufu-report-panel .pufu-score-frame .pufu-score-canvas textarea {
   background: transparent;
-  color: #374151;
 }
 
 .pufu-score-canvas textarea:disabled {
