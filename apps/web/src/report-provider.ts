@@ -178,9 +178,9 @@ function buildRisksMarkdown(
   }
   return risks
     .map((document) => {
-      const context = stripTrailingPunctuation(
-        progressItemsFromDocument(document)[0] ?? document.title,
-      );
+      const firstItem = progressItemsFromDocument(document)[0];
+      const hasMeaningfulText = firstItem && !firstItem.includes('について情報が追加されました');
+      const context = stripTrailingPunctuation(hasMeaningfulText ? firstItem : document.title);
       return `- ${context} 対応として、状況確認と解消方針の合意`;
     })
     .join('\n');
@@ -274,10 +274,20 @@ function nextActionsFromDocuments(documents: readonly ReportDocumentRecord[]): s
 }
 
 function sentenceFragments(text: string): string[] {
-  return text
-    .split(/(?<=[。.!?…])\s*/u)
-    .map((item) => item.replace(/[。.!?…]+$/u, '').trim())
-    .filter((item) => item.length > 0 && !isBoilerplateFragment(item));
+  const fragments: string[] = [];
+  let start = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    if (!isSentenceBoundary(text, index)) {
+      continue;
+    }
+    const rawFragment = text.slice(start, index + 1);
+    const nextStart = consumeWhitespace(text, index + 1);
+    pushSentenceFragment(fragments, rawFragment);
+    start = nextStart;
+    index = nextStart - 1;
+  }
+  pushSentenceFragment(fragments, text.slice(start));
+  return fragments;
 }
 
 function cleanDocumentText(value: string): string {
@@ -311,6 +321,36 @@ function sentenceLike(value: string): string {
 
 function stripTrailingPunctuation(value: string): string {
   return value.replace(/[。.!?…]+$/u, '');
+}
+
+function isSentenceBoundary(text: string, index: number): boolean {
+  const char = text[index];
+  if (
+    char === '。' ||
+    char === '！' ||
+    char === '？' ||
+    char === '!' ||
+    char === '?' ||
+    char === '…'
+  ) {
+    return true;
+  }
+  return char === '.' && /\s/.test(text[index + 1] ?? '');
+}
+
+function consumeWhitespace(text: string, index: number): number {
+  let nextIndex = index;
+  while (nextIndex < text.length && /\s/.test(text[nextIndex] ?? '')) {
+    nextIndex += 1;
+  }
+  return nextIndex;
+}
+
+function pushSentenceFragment(fragments: string[], value: string): void {
+  const fragment = stripTrailingPunctuation(value).trim();
+  if (fragment.length > 0 && !isBoilerplateFragment(fragment)) {
+    fragments.push(fragment);
+  }
 }
 
 function uniqueNonEmpty(values: readonly string[]): string[] {

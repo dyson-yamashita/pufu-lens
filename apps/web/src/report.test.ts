@@ -212,6 +212,26 @@ assert.doesNotMatch(progressSection.markdown, /documents|discussion_points|目�
 assert.match(risksSection.markdown, /Login failure risk.*対応として/);
 assert.doesNotMatch(risksSection.markdown, /。 対応として/);
 assert.doesNotMatch(risksSection.markdown, /ください/);
+const titleFallbackRiskReport = await createExtractiveReportProvider().generate({
+  documents: [
+    {
+      canonicalUri: 'https://example.com/risk-only-title',
+      docType: 'issue',
+      documentId: 'doc-risk-only-title',
+      occurredAt: '2024-08-30T00:00:00.000Z',
+      summary: null,
+      title: 'Risk only title',
+    } as never,
+  ],
+  period: { end: '2024-08-30', start: '2024-08-01' },
+  projectSlug: 'pufu-tomonokai',
+});
+const titleFallbackRisks = titleFallbackRiskReport.sections.find(
+  (section) => section.id === 'risks',
+);
+assert.ok(titleFallbackRisks);
+assert.match(titleFallbackRisks.markdown, /Risk only title 対応として/);
+assert.doesNotMatch(titleFallbackRisks.markdown, /について情報が追加されました 対応として/);
 const oscReport = await createExtractiveReportProvider().generate({
   documents: [
     {
@@ -272,6 +292,29 @@ assert.doesNotMatch(sparseProgress.markdown, /null|undefined/);
 assert.match(sparseProgress.markdown, /Summary missing source。/);
 assert.match(sparseProgress.markdown, /…$/m);
 assert.doesNotMatch(sparseProgress.markdown, /…。/);
+const punctuationReport = await createExtractiveReportProvider().generate({
+  documents: [
+    {
+      canonicalUri: 'https://example.com/punctuation',
+      docType: 'web_page',
+      documentId: 'doc-punctuation',
+      occurredAt: '2024-08-30T00:00:00.000Z',
+      summary:
+        'Version 1.0 was published at example.com with report.json. Follow-up notes were shared.',
+      title: 'Punctuation source',
+    },
+  ],
+  period: { end: '2024-08-30', start: '2024-08-01' },
+  projectSlug: 'pufu-tomonokai',
+});
+const punctuationProgress = punctuationReport.sections.find((section) => section.id === 'progress');
+assert.ok(punctuationProgress);
+assert.match(
+  punctuationProgress.markdown,
+  /Version 1\.0 was published at example\.com with report\.json/,
+);
+assert.doesNotMatch(punctuationProgress.markdown, /Version 1。\n- 0/);
+assert.doesNotMatch(punctuationProgress.markdown, /example。\n- com/);
 let geminiPrompt = '';
 const promptInspectingGeminiProvider = createGeminiReportProvider({
   apiKey: 'test-key',
