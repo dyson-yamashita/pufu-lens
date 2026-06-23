@@ -32,11 +32,15 @@ type ProjectScoreProps = {
   readonly width?: number;
 };
 
+const MIN_READABLE_SCORE_WIDTH = 720;
+
 export function PufuReportViewer({ report }: { readonly report: PufuScoreReportInput }) {
   const score = useMemo(() => createPufuScoreFromReport(report), [report]);
   const scoreFrameRef = useRef<HTMLDivElement>(null);
   const scoreWidth = useElementWidth(scoreFrameRef);
   const isDarkTheme = useIsDarkTheme();
+  const scoreRenderWidth =
+    scoreWidth === null ? null : Math.max(scoreWidth, MIN_READABLE_SCORE_WIDTH);
   const isMobileScore = scoreWidth !== null && scoreWidth < 760;
   return (
     <section className="pufu-report-panel" data-testid="pufu-report-viewer">
@@ -48,7 +52,7 @@ export function PufuReportViewer({ report }: { readonly report: PufuScoreReportI
       </div>
       <div className="pufu-score-frame">
         <div className="pufu-score-canvas" data-testid="pufu-report-score" ref={scoreFrameRef}>
-          {scoreWidth === null ? (
+          {scoreRenderWidth === null ? (
             <p className="notice">loading</p>
           ) : (
             <ProjectScore
@@ -59,7 +63,7 @@ export function PufuReportViewer({ report }: { readonly report: PufuScoreReportI
               preview
               textSize="small"
               uniqueKey={`report-pufu-${report.report_id}`}
-              width={scoreWidth}
+              width={scoreRenderWidth}
             />
           )}
         </div>
