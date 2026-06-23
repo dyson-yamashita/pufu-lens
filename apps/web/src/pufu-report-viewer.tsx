@@ -3,8 +3,11 @@
 import dynamic from 'next/dynamic';
 import type { ComponentType, RefObject } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createPufuScoreFromReport, type PufuScoreModel } from './pufu-score';
-import type { PrivateReportJsonV1 } from './report';
+import {
+  createPufuScoreFromReport,
+  type PufuScoreModel,
+  type PufuScoreReportInput,
+} from './pufu-score';
 
 const ProjectScore = dynamic(
   () =>
@@ -29,7 +32,7 @@ type ProjectScoreProps = {
   readonly width?: number;
 };
 
-export function PufuReportViewer({ report }: { readonly report: PrivateReportJsonV1 }) {
+export function PufuReportViewer({ report }: { readonly report: PufuScoreReportInput }) {
   const score = useMemo(() => createPufuScoreFromReport(report), [report]);
   const scoreFrameRef = useRef<HTMLDivElement>(null);
   const scoreWidth = useElementWidth(scoreFrameRef);
