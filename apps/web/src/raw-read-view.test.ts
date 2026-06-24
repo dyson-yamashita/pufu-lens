@@ -107,6 +107,17 @@ const webText = await fixtureText('web/release-notes.html');
   assert.equal(view.data.sections[0]?.sourceLocator.kind, 'main_text_section');
   assert.match(view.data.sections.map((section) => section.text).join('\n'), /Version 0\.3/);
   assert.doesNotMatch(JSON.stringify(view), /console\.log/);
+
+  const htmlView = buildAgentRawReadView({
+    rawDocument: { ...baseRawDocument, sourceType: 'web' },
+    rawText:
+      '<html><head><script>console.log("hidden")</script ></head><body><h1>Title &#x201d;</h1><p>First &#160; paragraph</p><div>Second block</div></body></html>',
+  });
+  const htmlSectionText = htmlView.data.sections.map((section) => section.text).join('\n');
+  assert.match(htmlSectionText, /Title ”/);
+  assert.match(htmlSectionText, /First\s+paragraph/);
+  assert.match(htmlSectionText, /Second block/);
+  assert.doesNotMatch(JSON.stringify(htmlView), /console\.log/);
 }
 
 {
@@ -138,6 +149,22 @@ const webText = await fixtureText('web/release-notes.html');
     selected.data.sections.map((section) => section.id),
     ['comment_1'],
   );
+
+  const around = buildAgentRawReadView({
+    rawDocument: { ...baseRawDocument, sourceType: 'github' },
+    rawText: JSON.stringify({
+      body: 'body text',
+      comments: [{ body: 'first' }, { body: 'second' }, { body: 'third' }],
+      kind: 'issue',
+      title: 'Around test',
+    }),
+    request: { aroundSectionId: 'comment_2', maxSections: 1 },
+  });
+  assert.deepEqual(
+    around.data.sections.map((section) => section.id),
+    ['comment_1'],
+  );
+  assert.equal(around.data.limits.nextCursor, 'section:2');
 }
 
 {

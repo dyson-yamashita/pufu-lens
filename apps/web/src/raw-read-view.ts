@@ -141,9 +141,9 @@ export function createPostgresRawReadViewRepository(input: {
           LEFT JOIN public.documents d
             ON d.raw_document_id = rd.id
             AND d.project_id = rd.project_id
-          WHERE rd.project_id = ${projectId}
-            AND rd.id = ${rawDocumentId}
-            AND (${documentId ?? null}::text IS NULL OR d.id::text = ${documentId ?? null})
+          WHERE rd.project_id = ${projectId}::uuid
+            AND rd.id = ${rawDocumentId}::uuid
+            AND (${documentId ?? null}::uuid IS NULL OR d.id = ${documentId ?? null}::uuid)
           LIMIT 1
         `) as readonly unknown[];
         const row = rows[0];
@@ -363,8 +363,14 @@ function webSections(rawText: string): AgentRawReadViewSection[] {
   const withoutScripts = rawText
     .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ' ')
     .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, ' ');
-  const text = decodeHtml(withoutScripts.replace(/<[^>]+>/g, ' '))
-    .replace(/\s+/g, ' ')
+  const text = decodeHtml(
+    withoutScripts
+      .replace(/<\/(p|div|h[1-6]|li|blockquote|pre|tr)\s*>/gi, '\n\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, ' '),
+  )
+    .replace(/[^\S\r\n]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
   const sections: AgentRawReadViewSection[] = [];
   if (title) {
@@ -429,10 +435,12 @@ function selectSections(
       return { canPage: false, sections: [], truncated: false };
     }
     const endOffset = Math.min(sections.length, index + 2);
+    const startOffset = Math.max(0, index - 1);
     return {
-      canPage: endOffset < sections.length,
+      baseOffset: startOffset,
+      canPage: true,
       nextOffset: endOffset,
-      sections: sections.slice(Math.max(0, index - 1), endOffset),
+      sections: sections.slice(startOffset, endOffset),
       truncated: index > 1 || endOffset < sections.length,
     };
   }
@@ -596,7 +604,7 @@ function decodeCursor(cursor: string | undefined): number {
 
 function splitParagraphs(value: string): string[] {
   return value
-    .split(/\n{2,}|(?<=[。.!?])\s+/)
+    .split(/\n+/)
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
 }
@@ -608,5 +616,15 @@ function decodeHtml(value: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&gt;/g, '>')
     .replace(/&lt;/g, '<')
-    .replace(/&amp;/g, '&');
+    .replace(/&amp;/g, '&')
+    .replace(/&#(\d+);/g, (_match, value: string) => decodeNumericHtmlEntity(value, 10))
+    .replace(/&#x([a-fA-F0-9]+);/g, (_match, value: string) => decodeNumericHtmlEntity(value, 16));
+}
+
+function decodeNumericHtmlEntity(value: string, radix: 10 | 16): string {
+  const codePoint = Number.parseInt(value, radix);
+  if (!Number.isFinite(codePoint) || codePoint < 0 || codePoint > 0x10ffff) {
+    return '';
+  }
+  return String.fromCodePoint(codePoint);
 }
