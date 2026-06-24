@@ -37,6 +37,9 @@ interface MastraToolResultContent {
     readonly value?: {
       readonly resultCount?: number;
       readonly sources?: readonly ChatSource[];
+      readonly trace?: {
+        readonly resultCount?: number;
+      };
     };
   };
   readonly toolName?: string;
@@ -155,7 +158,14 @@ export function mastraGenerateToChatResponse(input: {
         if (!name) {
           return undefined;
         }
-        return { name, resultCount: result.output?.value?.sources?.length ?? 0 };
+        return {
+          name,
+          resultCount:
+            result.output?.value?.resultCount ??
+            result.output?.value?.trace?.resultCount ??
+            result.output?.value?.sources?.length ??
+            0,
+        };
       })
       .filter((toolCall): toolCall is ChatToolCall => Boolean(toolCall)),
   };
