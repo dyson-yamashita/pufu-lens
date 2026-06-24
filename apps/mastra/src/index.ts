@@ -672,6 +672,7 @@ export function createPufuLensMastraRuntime(
   const publicReportChatAgent = createPublicReportChatAgent({ tools: publicReportChatTools });
   const generateReportWorkflow = createGenerateReportWorkflow({
     provider: reportProvider,
+    rawReadViewRepository: { fetchRawReadView: dependencies.chatRepository.rawReadViewFetch },
     repository: dependencies.reportRepository,
     storage: dependencies.reportStorage,
   });

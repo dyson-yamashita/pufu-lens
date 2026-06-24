@@ -41,7 +41,7 @@
 | 2    | `completed` | parser 安定化方針と Parser Profiles 廃止を実装する                | parser は最小抽出に固定し、通常 UI から parser 更新導線が消える          |
 | 3    | `completed` | raw read adapter と repository 境界を実装する                     | raw / parsed を project 認可付きで read view に変換できる                |
 | 4    | `completed` | private chat の tool selection に raw read を統合する             | chat が必要時だけ raw view を取得し、source 付きで回答できる             |
-| 5    | `planned`   | private report 生成に raw 補完を統合する                          | report が parsed context と raw view の根拠を併用して生成される          |
+| 5    | `completed` | private report 生成に raw 補完を統合する                          | report が parsed context と raw view の根拠を併用して生成される          |
 | 6    | `planned`   | Mastra trace / log / eval / docs を整備する                       | trace と log に raw 本文全文や secret が出ないことを確認できる           |
 
 ## Step 1: Tool Contract / Read View 設計
@@ -140,6 +140,8 @@
 - 回答に source が残り、raw 本文全文は API response / trace / log に出ない。
 
 ## Step 5: Private Report 統合
+
+**Outcome (Issue #300):** report generation の provider input に raw read view supplement を追加した。`ReportDocumentRecord.rawDocumentId` がある document は project-scoped `rawReadViewRepository` で bounded / redacted section を取得し、provider に渡す summary へ補助文脈として付与する。private report / public artifact には raw document id、storage URI、private raw locator を保存せず、public project では既存 redaction / public source 変換後の report を公開する。
 
 ### 実装範囲
 

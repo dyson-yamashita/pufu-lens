@@ -19,6 +19,7 @@ export interface ReportDocumentRecord {
   readonly docType: string;
   readonly documentId: string;
   readonly occurredAt: string | null;
+  readonly rawDocumentId?: string;
   readonly summary: string;
   readonly title: string;
 }
@@ -85,7 +86,8 @@ export function parseReportDocumentRow(value: unknown): ReportDocumentRow {
   if (!isRecord(value)) {
     throw new Error('Invalid report document row.');
   }
-  const { canonical_uri, doc_type, document_id, occurred_at, summary, title } = value;
+  const { canonical_uri, doc_type, document_id, occurred_at, raw_document_id, summary, title } =
+    value;
   if (typeof document_id !== 'string') {
     throw new Error('Invalid report document field: document_id');
   }
@@ -109,6 +111,7 @@ export function parseReportDocumentRow(value: unknown): ReportDocumentRow {
     doc_type,
     document_id,
     occurred_at,
+    ...(typeof raw_document_id === 'string' ? { raw_document_id } : {}),
     summary,
     title,
   };
@@ -192,6 +195,7 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
       const rows = (await sql`
         SELECT
           d.id::text AS document_id,
+          d.raw_document_id::text AS raw_document_id,
           d.doc_type,
           coalesce(d.title, 'Untitled') AS title,
           coalesce(d.summary, '') AS summary,
@@ -328,6 +332,7 @@ function documentFromRow(row: ReportDocumentRow): ReportDocumentRecord {
     docType: row.doc_type,
     documentId: row.document_id,
     occurredAt: formatNullableDate(row.occurred_at),
+    rawDocumentId: typeof row.raw_document_id === 'string' ? row.raw_document_id : undefined,
     summary: row.summary,
     title: row.title,
   };
@@ -370,6 +375,7 @@ interface ReportDocumentRow {
   readonly doc_type: string;
   readonly document_id: string;
   readonly occurred_at: Date | string | null;
+  readonly raw_document_id?: unknown;
   readonly summary: string;
   readonly title: string;
 }
