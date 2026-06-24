@@ -316,13 +316,16 @@ assert.match(
 assert.doesNotMatch(punctuationProgress.markdown, /Version 1。\n- 0/);
 assert.doesNotMatch(punctuationProgress.markdown, /example。\n- com/);
 let geminiPrompt = '';
+let geminiGenerationConfig: Record<string, unknown> = {};
 const promptInspectingGeminiProvider = createGeminiReportProvider({
   apiKey: 'test-key',
   fetchImpl: async (_url, init) => {
     const body = JSON.parse(String(init?.body)) as {
       contents: Array<{ parts: Array<{ text: string }> }>;
+      generationConfig?: Record<string, unknown>;
     };
     geminiPrompt = body.contents[0]?.parts[0]?.text ?? '';
+    geminiGenerationConfig = body.generationConfig ?? {};
     return new Response(
       JSON.stringify({
         candidates: [
@@ -365,6 +368,43 @@ await promptInspectingGeminiProvider.generate({
 });
 assert.match(geminiPrompt, /extract initiatives or activity units/);
 assert.match(geminiPrompt, /do not end Japanese bullets with "ください"/);
+assert.deepEqual(geminiGenerationConfig, {
+  responseMimeType: 'application/json',
+  responseSchema: {
+    properties: {
+      sections: {
+        items: {
+          properties: {
+            id: { enum: ['activity', 'progress', 'risks'], type: 'STRING' },
+            markdown: { type: 'STRING' },
+            sources: {
+              items: {
+                properties: {
+                  canonical_uri: { type: 'STRING' },
+                  doc_type: { type: 'STRING' },
+                  document_id: { type: 'STRING' },
+                  snippet: { type: 'STRING' },
+                  title: { type: 'STRING' },
+                },
+                required: ['document_id', 'doc_type', 'snippet', 'canonical_uri'],
+                type: 'OBJECT',
+              },
+              type: 'ARRAY',
+            },
+            title: { type: 'STRING' },
+          },
+          required: ['id', 'title', 'markdown'],
+          type: 'OBJECT',
+        },
+        type: 'ARRAY',
+      },
+      summary: { type: 'STRING' },
+      title: { type: 'STRING' },
+    },
+    required: ['title', 'summary', 'sections'],
+    type: 'OBJECT',
+  },
+});
 const pufuScore = createPufuScoreFromReport({
   ...generated.report,
   pufu_sources: [

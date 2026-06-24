@@ -102,7 +102,10 @@ export function createGeminiReportProvider(input: {
               ],
             },
           ],
-          generationConfig: { responseMimeType: 'application/json' },
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: GEMINI_REPORT_RESPONSE_SCHEMA,
+          },
         }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
@@ -137,6 +140,41 @@ export function createGeminiReportProvider(input: {
     },
   };
 }
+
+const GEMINI_REPORT_RESPONSE_SCHEMA = {
+  properties: {
+    sections: {
+      items: {
+        properties: {
+          id: { enum: ['activity', 'progress', 'risks'], type: 'STRING' },
+          markdown: { type: 'STRING' },
+          sources: {
+            items: {
+              properties: {
+                canonical_uri: { type: 'STRING' },
+                doc_type: { type: 'STRING' },
+                document_id: { type: 'STRING' },
+                snippet: { type: 'STRING' },
+                title: { type: 'STRING' },
+              },
+              required: ['document_id', 'doc_type', 'snippet', 'canonical_uri'],
+              type: 'OBJECT',
+            },
+            type: 'ARRAY',
+          },
+          title: { type: 'STRING' },
+        },
+        required: ['id', 'title', 'markdown'],
+        type: 'OBJECT',
+      },
+      type: 'ARRAY',
+    },
+    summary: { type: 'STRING' },
+    title: { type: 'STRING' },
+  },
+  required: ['title', 'summary', 'sections'],
+  type: 'OBJECT',
+} as const;
 
 function buildActivityMarkdown(
   documents: readonly ReportDocumentRecord[],
