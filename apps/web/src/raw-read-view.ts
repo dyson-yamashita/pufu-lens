@@ -361,8 +361,8 @@ function webSections(rawText: string): AgentRawReadViewSection[] {
       '',
   ).trim();
   const withoutScripts = rawText
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ');
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, ' ');
   const text = decodeHtml(withoutScripts.replace(/<[^>]+>/g, ' '))
     .replace(/\s+/g, ' ')
     .trim();
