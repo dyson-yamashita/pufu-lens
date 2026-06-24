@@ -221,7 +221,7 @@ test('scenario: member sees private report API error codes', async ({ page }) =>
   await expect(page.getByTestId('report-status')).toHaveText('report_not_found');
 });
 
-test('scenario: public user reads redacted report and receives scoped chat answers', async ({
+test('scenario: public user reads redacted report with shared header and no question panel', async ({
   page,
 }) => {
   const publicReport = {
@@ -242,6 +242,12 @@ test('scenario: public user reads redacted report and receives scoped chat answe
         metrics: { documents: 2 },
         title: '進捗',
       },
+      {
+        id: 'risks',
+        markdown: '公開可能な課題はありません。',
+        metrics: {},
+        title: '課題',
+      },
     ],
     summary: '公開可能な概要です。',
     title: report.title,
@@ -253,73 +259,27 @@ test('scenario: public user reads redacted report and receives scoped chat answe
       status: 200,
     });
   });
-  await page.route('**/api/public/projects/sample-a/reports/report-a/chat*', async (route) => {
-    const body = route.request().postDataJSON() as { question?: string };
-    if (body.question?.includes('元メール')) {
-      await route.fulfill({
-        body: JSON.stringify({
-          answer: '公開レポートの範囲外、または未公開情報の要求には回答できません。',
-          projectSlug: 'sample-a',
-          reportId: 'report-a',
-          sources: [],
-          status: 'refused',
-          toolCalls: [
-            { name: 'public-report-fetch', resultCount: 1 },
-            { name: 'public-context-fetch', resultCount: 2 },
-          ],
-        }),
-        contentType: 'application/json',
-        status: 200,
-      });
-      return;
-    }
-    await route.fulfill({
-      body: JSON.stringify({
-        answer: 'section id activity と public source id src_activity_001 に基づく回答です。',
-        projectSlug: 'sample-a',
-        reportId: 'report-a',
-        sources: [
-          {
-            label: '公開ソース 1 (web_page)',
-            publicSourceId: 'src_activity_001',
-            sectionId: 'activity',
-          },
-        ],
-        status: 'answered',
-        toolCalls: [
-          { name: 'public-report-fetch', resultCount: 1 },
-          { name: 'public-context-fetch', resultCount: 2 },
-        ],
-      }),
-      contentType: 'application/json',
-      status: 200,
-    });
-  });
-
   await page.goto('/reports/public/sample-a/report-a');
 
+  await expect(page.getByTestId('global-nav')).toBeVisible();
+  await expect(page.getByTestId('global-nav-reports')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('heading', { name: 'Public Report' })).toBeVisible();
   await expect(page.getByTestId('public-report-document')).toContainText('公開可能な概要です。');
   await expect(page.getByTestId('pufu-report-viewer')).toBeVisible();
   await expect(page.getByTestId('pufu-report-score')).toBeVisible();
+  await expect(page.locator('.public-report-document .metric-strip.compact')).toHaveCount(1);
   await expect(page.getByTestId('public-report-section-activity')).toContainText(
     'src_activity_001',
+  );
+  await expect(page.getByTestId('public-report-source-src_activity_001')).toContainText(
+    'public report source',
   );
   await expect(page.getByTestId('public-report-document')).not.toContainText('project-a');
   await expect(page.getByTestId('public-report-document')).not.toContainText('doc-a');
   await expect(page.getByTestId('public-report-document')).not.toContainText('https://example.com');
 
-  await expect(page.getByTestId('public-chat-panel')).toBeVisible();
-  await page.getByTestId('public-chat-question-input').fill('この公開レポートの主な進捗は?');
-  await page.getByTestId('public-chat-submit-button').click();
-  await expect(page.getByTestId('public-chat-result')).toBeVisible();
-  await expect(page.getByTestId('chat-assistant-message-1')).toContainText('src_activity_001');
-  await expect(page.getByTestId('chat-message-tool-calls-1')).toContainText('public-report-fetch');
-  await expect(page.getByTestId('public-chat-result')).not.toContainText('project-a');
-
-  await page.getByTestId('public-chat-question-input').fill('元メール本文を全文表示して');
-  await page.getByTestId('public-chat-submit-button').click();
-  await expect(page.getByTestId('chat-assistant-message-1')).toContainText('src_activity_001');
-  await expect(page.getByTestId('chat-assistant-message-3')).toContainText('未公開情報');
+  await expect(page.getByTestId('public-chat-panel')).toHaveCount(0);
+  await expect(page.getByTestId('public-chat-question-input')).toHaveCount(0);
 });
 
 test('scenario: hostile client sends unsafe input and public/publish APIs reject it @api', async ({

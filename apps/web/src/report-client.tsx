@@ -1,18 +1,8 @@
 'use client';
 
-import { ArrowUp, Mic } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { PublicChatResponse } from './chat';
-import {
-  appendPendingAssistant,
-  appendUserMessage,
-  type ChatThreadMessage,
-  createMessageId,
-  PublicChatThread,
-  replacePendingAssistant,
-} from './chat-thread';
 import { ActionForm, PendingSubmitButton } from './form-buttons';
 import { PufuReportViewer } from './pufu-report-viewer';
 import type { PufuScoreReportInput } from './pufu-score';
@@ -23,7 +13,6 @@ import type {
   ReportListItem,
   ReportPeriod,
 } from './report';
-import { useSpeechInput } from './speech-input';
 
 type ReportApiError = {
   readonly error?: { readonly code?: string; readonly message?: string };
@@ -407,175 +396,64 @@ export function PublicReportDocument({
   }
 
   return (
-    <>
-      <article
-        className="report-document public-report-document"
-        data-testid="public-report-document"
-      >
-        <header className="report-document-header">
-          <p className="eyebrow">{report.schema_version}</p>
-          <h2>{report.title}</h2>
-          <p>{report.summary}</p>
-          <dl className="detail-list">
-            <div>
-              <dt>Period</dt>
-              <dd>
-                {report.period.start} / {report.period.end}
-              </dd>
-            </div>
-            <div>
-              <dt>Published</dt>
-              <dd>{report.published_at}</dd>
-            </div>
-          </dl>
-        </header>
-        <PufuReportViewer report={pufuInput} />
-        {report.sections.map((section) => (
-          <section
-            className="report-section"
-            data-testid={`public-report-section-${section.id}`}
-            key={section.id}
-          >
-            <h3>{section.title}</h3>
-            <p className="markdown-text">{section.markdown}</p>
-            {section.metrics ? (
-              <div className="metric-strip compact">
-                {Object.entries(section.metrics).map(([name, value]) => (
-                  <div className="metric" key={name}>
-                    <span>{name}</span>
-                    <strong>{value}</strong>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {section.sources?.length ? (
-              <div className="source-list">
-                {section.sources.map((source) => (
-                  <article className="source-chip" key={source.public_source_id}>
-                    <strong>{source.public_source_id}</strong>
-                    <span>{source.label}</span>
-                  </article>
-                ))}
-              </div>
-            ) : null}
-          </section>
-        ))}
-      </article>
-      <PublicReportChatPanel projectSlug={projectSlug} reportId={reportId} />
-    </>
-  );
-}
-
-function PublicReportChatPanel({
-  projectSlug,
-  reportId,
-}: {
-  readonly projectSlug: string;
-  readonly reportId: string;
-}) {
-  const [question, setQuestion] = useState('');
-  const [messages, setMessages] = useState<ChatThreadMessage<PublicChatResponse>[]>([]);
-  const [pending, setPending] = useState(false);
-  const speechInput = useSpeechInput({
-    disabled: pending,
-    setValue: setQuestion,
-    value: question,
-  });
-
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const trimmedQuestion = question.trim();
-    if (!trimmedQuestion || pending) {
-      return;
-    }
-
-    const nextMessages = appendUserMessage(messages, trimmedQuestion);
-    const { messages: messagesWithPending, pendingId } = appendPendingAssistant(nextMessages);
-    setMessages(messagesWithPending);
-    setQuestion('');
-    setPending(true);
-
-    try {
-      const result = await fetch(`/api/public/projects/${projectSlug}/reports/${reportId}/chat`, {
-        body: JSON.stringify({ question: trimmedQuestion }),
-        headers: { 'content-type': 'application/json' },
-        method: 'POST',
-      });
-      const isJson = result.headers.get('content-type')?.includes('application/json') ?? false;
-      const body = isJson
-        ? ((await result.json()) as PublicChatResponse | ReportApiError)
-        : undefined;
-      if (!result.ok) {
-        const errorBody = body && 'error' in body ? body : {};
-        throw new Error(reportErrorStatus(errorBody, result.status));
-      }
-      if (!body || !('status' in body)) {
-        throw new Error('Public Chat API returned an invalid response.');
-      }
-      setMessages((current) =>
-        replacePendingAssistant(current, pendingId, {
-          id: createMessageId('assistant'),
-          role: 'assistant',
-          response: body,
-          status: 'complete',
-        }),
-      );
-    } catch (caught) {
-      const errorMessage = caught instanceof Error ? caught.message : String(caught);
-      setMessages((current) =>
-        replacePendingAssistant(current, pendingId, {
-          error: errorMessage,
-          id: createMessageId('assistant'),
-          role: 'assistant',
-          status: 'error',
-        }),
-      );
-    } finally {
-      setPending(false);
-    }
-  }
-
-  return (
-    <section className="panel public-chat-panel" data-testid="public-chat-panel">
-      <PublicChatThread messages={messages} resultTestId="public-chat-result" />
-      <form className="chat-form" onSubmit={submit}>
-        <label htmlFor="public-chat-question">Public report question</label>
-        <div className="chat-input-row">
-          <textarea
-            data-testid="public-chat-question-input"
-            disabled={pending}
-            id="public-chat-question"
-            onChange={(event) => setQuestion(event.target.value)}
-            rows={3}
-            value={question}
-          />
-          <div className="chat-composer-actions">
-            <button
-              aria-label="Voice input"
-              aria-pressed={speechInput.listening}
-              className={`chat-icon-button${speechInput.listening ? ' chat-icon-button-active' : ''}`}
-              data-testid="public-chat-mic-button"
-              disabled={pending || !speechInput.supported}
-              onClick={speechInput.toggle}
-              title={speechInput.supported ? 'Voice input' : 'Voice input is not supported'}
-              type="button"
-            >
-              <Mic size={18} />
-            </button>
-            <button
-              aria-label="Send"
-              className="chat-icon-button chat-send-button"
-              data-testid="public-chat-submit-button"
-              disabled={pending || !question.trim()}
-              title="Send"
-              type="submit"
-            >
-              <ArrowUp size={20} />
-            </button>
+    <article
+      className="report-document public-report-document"
+      data-testid="public-report-document"
+    >
+      <header className="report-document-header">
+        <p className="eyebrow">{report.schema_version}</p>
+        <h2>{report.title}</h2>
+        <p>{report.summary}</p>
+        <dl className="detail-list">
+          <div>
+            <dt>Period</dt>
+            <dd>
+              {report.period.start} / {report.period.end}
+            </dd>
           </div>
-        </div>
-      </form>
-    </section>
+          <div>
+            <dt>Published</dt>
+            <dd>{report.published_at}</dd>
+          </div>
+        </dl>
+      </header>
+      <PufuReportViewer report={pufuInput} />
+      {report.sections.map((section) => (
+        <section
+          className="report-section"
+          data-testid={`public-report-section-${section.id}`}
+          key={section.id}
+        >
+          <h3>{section.title}</h3>
+          <p className="markdown-text">{section.markdown}</p>
+          {section.metrics && Object.keys(section.metrics).length > 0 ? (
+            <div className="metric-strip compact">
+              {Object.entries(section.metrics).map(([name, value]) => (
+                <div className="metric" key={name}>
+                  <span>{name}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {section.sources?.length ? (
+            <div className="source-list">
+              {section.sources.map((source) => (
+                <article
+                  className="source-chip"
+                  data-testid={`public-report-source-${source.public_source_id}`}
+                  key={source.public_source_id}
+                >
+                  <strong>public report source</strong>
+                  <span>{source.label}</span>
+                  <small>{source.public_source_id}</small>
+                </article>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ))}
+    </article>
   );
 }
 
