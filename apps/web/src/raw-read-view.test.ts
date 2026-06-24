@@ -113,21 +113,29 @@ const webText = await fixtureText('web/release-notes.html');
   const htmlView = buildAgentRawReadView({
     rawDocument: { ...baseRawDocument, sourceType: 'web' },
     rawText:
-      '<html><head><script>console.log("hidden")</script\t\n bar></head><body><h1><span>Title &apos;&#X201D;&#xD800;</span></h1><p>First &#160; paragraph</p><div>Second block</div></body></html>',
+      '<html><head><script>console.log("hidden")</script\t\n bar></head><body><h1><span>Title &apos;&#X201D;&#xD800;</span></h1><p>First &#160; paragraph</p><div>Second block</div><pre>x < y > z &amp;#60;</pre></body></html>',
   });
   const htmlSectionText = htmlView.data.sections.map((section) => section.text).join('\n');
   assert.match(htmlSectionText, /Title '”/);
   assert.doesNotMatch(htmlSectionText, /span|\uD800/);
   assert.match(htmlSectionText, /First\s+paragraph/);
   assert.match(htmlSectionText, /Second block/);
+  assert.match(htmlSectionText, /x < y > z &#60;/);
   assert.doesNotMatch(JSON.stringify(htmlView), /console\.log/);
+
+  const malformedHtmlView = buildAgentRawReadView({
+    rawDocument: { ...baseRawDocument, sourceType: 'web' },
+    rawText: '<html><body><h1>Visible</h1><script>console.log("leaked")',
+  });
+  assert.match(malformedHtmlView.data.sections[0]?.text ?? '', /Visible/);
+  assert.doesNotMatch(JSON.stringify(malformedHtmlView), /console\.log|leaked/);
 }
 
 {
   const view = buildAgentRawReadView({
     rawDocument: { ...baseRawDocument, sourceType: 'github' },
     rawText: JSON.stringify({
-      body: 'my_api_key = "abcdef/ghijk+lmnop=" client_secret: abcdef~ghijk contact owner@example.test',
+      body: 'my_api_key = "abcdef/ghijk+lmnop=$value" client_secret: abcdef~ghijk contact owner@example.test',
       kind: 'issue',
       title: 'Redaction test',
     }),
@@ -136,7 +144,7 @@ const webText = await fixtureText('web/release-notes.html');
   assert.ok(view.data.redactions.some((redaction) => redaction.kind === 'email'));
   assert.match(view.data.sections[0]?.text ?? '', /my_api_key=\[redacted-secret\]/);
   assert.match(view.data.sections[0]?.text ?? '', /client_secret=\[redacted-secret\]/);
-  assert.doesNotMatch(JSON.stringify(view), /abcdef\/ghijk|owner@example\.test/);
+  assert.doesNotMatch(JSON.stringify(view), /abcdef\/ghijk|lmnop|\$value|owner@example\.test/);
 }
 
 {
@@ -153,6 +161,19 @@ const webText = await fixtureText('web/release-notes.html');
   assert.equal(view.data.limits.truncated, true);
   assert.equal(view.data.limits.nextCursor, 'section:1');
   assert.equal(view.data.sections.length, 1);
+
+  const zeroLimit = buildAgentRawReadView({
+    rawDocument: { ...baseRawDocument, sourceType: 'github' },
+    rawText: JSON.stringify({
+      body: 'body text',
+      comments: [{ body: 'comment text' }],
+      kind: 'issue',
+      title: 'Zero limit test',
+    }),
+    request: { maxChars: 0, maxSections: 1 },
+  });
+  assert.equal(zeroLimit.data.limits.truncated, true);
+  assert.equal(zeroLimit.data.limits.nextCursor, null);
 
   const selected = buildAgentRawReadView({
     rawDocument: { ...baseRawDocument, sourceType: 'github' },

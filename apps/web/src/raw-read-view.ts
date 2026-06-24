@@ -103,6 +103,7 @@ export class RawReadViewError extends Error {
 const DEFAULT_MAX_CHARS = 12_000;
 const DEFAULT_MAX_SECTIONS = 8;
 const MAX_AVAILABLE_SECTION_IDS = 100;
+const HTML_TAG_PATTERN = /<[a-zA-Z!?/][^>]*>/g;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function createRawReadViewRepository(input: {
@@ -194,7 +195,10 @@ export function buildAgentRawReadView(input: {
   const truncated = selected.truncated || bounded.truncated;
   const nextOffset = nextSectionOffset(selected, bounded);
   const nextCursor =
-    truncated && typeof nextOffset === 'number' && nextOffset < allSections.length
+    truncated &&
+    typeof nextOffset === 'number' &&
+    nextOffset > (selected.baseOffset ?? 0) &&
+    nextOffset < allSections.length
       ? encodeCursor(nextOffset)
       : null;
 
@@ -370,17 +374,17 @@ function webSections(rawText: string): AgentRawReadViewSection[] {
     headerSample.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ??
     headerSample.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ??
     '';
-  const title = decodeHtml(titleRaw.replace(/<[^>]+>/g, ' '))
+  const title = decodeHtml(titleRaw.replace(HTML_TAG_PATTERN, ' '))
     .replace(/[^\S\r\n]+/g, ' ')
     .trim();
   const withoutScripts = rawText
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, ' ')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, ' ');
+    .replace(/<script\b[^>]*>[\s\S]*?(?:<\/script\b[^>]*>|$)/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?(?:<\/style\b[^>]*>|$)/gi, ' ');
   const text = decodeHtml(
     withoutScripts
       .replace(/<\/(p|div|h[1-6]|li|blockquote|pre|tr)\s*>/gi, '\n\n')
       .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<[^>]+>/g, ' '),
+      .replace(HTML_TAG_PATTERN, ' '),
   )
     .replace(/[^\S\r\n]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
@@ -519,7 +523,7 @@ function createRedactionTracker() {
         return '[redacted-email]';
       });
       output = output.replace(
-        /\b([a-zA-Z0-9_-]*(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|token)[a-zA-Z0-9_-]*)\b\s*[:=]\s*["']?([^\s"']{6,})["']?/gi,
+        /\b([a-zA-Z0-9_-]*(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|token)[a-zA-Z0-9_-]*)\b\s*[:=]\s*(?:(["'])([^\n"']*?)\2|([^\s"']{6,}))/gi,
         (_match, key: string) => {
           secretCount += 1;
           return `${key}=[redacted-secret]`;
@@ -631,11 +635,11 @@ function decodeHtml(value: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&gt;/g, '>')
     .replace(/&lt;/g, '<')
-    .replace(/&amp;/g, '&')
     .replace(/&#(\d+);/g, (_match, value: string) => decodeNumericHtmlEntity(value, 10))
     .replace(/&#[xX]([a-fA-F0-9]+);/g, (_match, value: string) =>
       decodeNumericHtmlEntity(value, 16),
-    );
+    )
+    .replace(/&amp;/g, '&');
 }
 
 function decodeNumericHtmlEntity(value: string, radix: 10 | 16): string {
