@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import {
   buildAgentRawReadView,
+  createPostgresRawReadViewRepository,
   createRawReadViewRepository,
   RawReadViewError,
   type RawReadViewLookup,
@@ -112,10 +113,11 @@ const webText = await fixtureText('web/release-notes.html');
   const htmlView = buildAgentRawReadView({
     rawDocument: { ...baseRawDocument, sourceType: 'web' },
     rawText:
-      '<html><head><script>console.log("hidden")</script\t\n bar></head><body><h1>Title &apos;&#x201d;</h1><p>First &#160; paragraph</p><div>Second block</div></body></html>',
+      '<html><head><script>console.log("hidden")</script\t\n bar></head><body><h1><span>Title &apos;&#X201D;&#xD800;</span></h1><p>First &#160; paragraph</p><div>Second block</div></body></html>',
   });
   const htmlSectionText = htmlView.data.sections.map((section) => section.text).join('\n');
   assert.match(htmlSectionText, /Title '”/);
+  assert.doesNotMatch(htmlSectionText, /span|\uD800/);
   assert.match(htmlSectionText, /First\s+paragraph/);
   assert.match(htmlSectionText, /Second block/);
   assert.doesNotMatch(JSON.stringify(htmlView), /console\.log/);
@@ -201,6 +203,23 @@ const webText = await fixtureText('web/release-notes.html');
     rawDocumentId: 'raw-a',
   });
   assert.equal(denied, undefined);
+}
+
+{
+  let queried = false;
+  const repository = createPostgresRawReadViewRepository({
+    sql: (async () => {
+      queried = true;
+      return [];
+    }) as never,
+    storage: new MemoryStorage(new Map()),
+  });
+  const denied = await repository.fetchRawReadView({
+    projectId: 'not-a-uuid',
+    rawDocumentId: 'also-not-a-uuid',
+  });
+  assert.equal(denied, undefined);
+  assert.equal(queried, false);
 }
 
 assert.throws(

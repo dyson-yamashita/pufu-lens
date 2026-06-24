@@ -103,6 +103,7 @@ export class RawReadViewError extends Error {
 const DEFAULT_MAX_CHARS = 12_000;
 const DEFAULT_MAX_SECTIONS = 8;
 const MAX_AVAILABLE_SECTION_IDS = 100;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function createRawReadViewRepository(input: {
   readonly lookup: RawReadViewLookup;
@@ -127,6 +128,13 @@ export function createPostgresRawReadViewRepository(input: {
   return createRawReadViewRepository({
     lookup: {
       async lookupRawReadViewDocument({ documentId, projectId, rawDocumentId }) {
+        if (
+          !isUuid(projectId) ||
+          !isUuid(rawDocumentId) ||
+          (documentId !== undefined && !isUuid(documentId))
+        ) {
+          return undefined;
+        }
         const rows = (await input.sql`
           SELECT
             rd.project_id::text AS project_id,
@@ -357,11 +365,14 @@ function driveSections(value: unknown): AgentRawReadViewSection[] {
 }
 
 function webSections(rawText: string): AgentRawReadViewSection[] {
-  const title = decodeHtml(
-    rawText.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ??
-      rawText.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ??
-      '',
-  ).trim();
+  const headerSample = rawText.slice(0, 10_000);
+  const titleRaw =
+    headerSample.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ??
+    headerSample.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ??
+    '';
+  const title = decodeHtml(titleRaw.replace(/<[^>]+>/g, ' '))
+    .replace(/[^\S\r\n]+/g, ' ')
+    .trim();
   const withoutScripts = rawText
     .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, ' ')
     .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, ' ');
@@ -508,7 +519,7 @@ function createRedactionTracker() {
         return '[redacted-email]';
       });
       output = output.replace(
-        /\b([a-zA-Z0-9_-]*(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|token)[a-zA-Z0-9_-]*)\b\s*[:=]\s*["']?([A-Za-z0-9._~+/=-]{6,})["']?/gi,
+        /\b([a-zA-Z0-9_-]*(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|token)[a-zA-Z0-9_-]*)\b\s*[:=]\s*["']?([^\s"']{6,})["']?/gi,
         (_match, key: string) => {
           secretCount += 1;
           return `${key}=[redacted-secret]`;
@@ -622,13 +633,24 @@ function decodeHtml(value: string): string {
     .replace(/&lt;/g, '<')
     .replace(/&amp;/g, '&')
     .replace(/&#(\d+);/g, (_match, value: string) => decodeNumericHtmlEntity(value, 10))
-    .replace(/&#x([a-fA-F0-9]+);/g, (_match, value: string) => decodeNumericHtmlEntity(value, 16));
+    .replace(/&#[xX]([a-fA-F0-9]+);/g, (_match, value: string) =>
+      decodeNumericHtmlEntity(value, 16),
+    );
 }
 
 function decodeNumericHtmlEntity(value: string, radix: 10 | 16): string {
   const codePoint = Number.parseInt(value, radix);
-  if (!Number.isFinite(codePoint) || codePoint < 0 || codePoint > 0x10ffff) {
+  if (
+    !Number.isFinite(codePoint) ||
+    codePoint < 0 ||
+    codePoint > 0x10ffff ||
+    (codePoint >= 0xd800 && codePoint <= 0xdfff)
+  ) {
     return '';
   }
   return String.fromCodePoint(codePoint);
+}
+
+function isUuid(value: string): boolean {
+  return UUID_PATTERN.test(value);
 }
