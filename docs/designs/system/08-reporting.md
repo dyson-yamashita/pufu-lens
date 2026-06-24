@@ -64,6 +64,30 @@ Private report JSON スキーマ（`schema_version: "v1"`）：
 
 Public report JSON は private report JSON から公開可能な情報だけを抽出した別 schema とする。内部 `project_id`、`document_id`、raw / parsed の URI、社内 URL、メールアドレス、個人情報を含む可能性のある未加工 snippet は含めない。根拠は `section_id` と `public_source_id` だけで示し、プ譜用の redaction 済み snippet は public pufu source として分離する。
 
+#### Raw 補完を伴う private report 生成と public 公開
+
+Private report 生成では、まず parsed / graph / vector から context bundle を組み立て、根拠確認や文脈補完が必要な場合のみ [Agent Raw Read View](07-chat.md#agent-raw-read-view--raw-document-fetch-契約) の `sections` を **補助 evidence** として provider context に追加する。
+
+| フェーズ             | raw read view の扱い                                                                    |
+| -------------------- | --------------------------------------------------------------------------------------- |
+| Private 生成         | 利用可。bounded section を根拠補完に使う                                                |
+| Private JSON 保存    | `rawDocumentId`、private raw locator、内部 storage URI、raw/parsed URI は **含めない**  |
+| Public 公開          | raw 補完あり生成でも **公開可能**                                                       |
+| Public artifact 保存 | redaction / policy validation 済み **要約** と **公開可能 source label / snippet のみ** |
+
+public project の report を raw 補完付きで生成しても公開できる。ただし public artifact に保存できるのは次に限定する。
+
+- redaction / policy validation 済み summary と section markdown
+- 公開可能な `public_source_id` / label / title / occurred_at / redaction 済み snippet
+
+public artifact に **含めてはならない** もの:
+
+- private raw locator、`rawDocumentId`、内部 storage URI、raw URI、parsed URI
+- 未公開の raw excerpt（raw read view section text の生引用）
+- OAuth token、secret、メールアドレス等の PII
+
+private report detail では、raw 補完で参照した source（`document_id`、section id、canonical URI 等）を project member が追跡できる。public 側にはその内部追跡情報を漏らさない。
+
 ```jsonc
 {
   "schema_version": "public-v1",
