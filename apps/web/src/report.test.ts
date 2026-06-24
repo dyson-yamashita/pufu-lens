@@ -116,6 +116,7 @@ function createRepository(): ReportRepository & {
           docType: 'issue',
           documentId: 'doc-issue',
           occurredAt: '2026-06-03T00:00:00.000Z',
+          rawDocumentId: '00000000-0000-4000-8000-000000000101',
           summary: 'Login failure risk',
           title: 'Issue #42 Login failure',
         },
@@ -124,6 +125,7 @@ function createRepository(): ReportRepository & {
           docType: 'pull_request',
           documentId: 'doc-pr',
           occurredAt: '2026-06-02T00:00:00.000Z',
+          rawDocumentId: '00000000-0000-4000-8000-000000000102',
           summary: 'Merged report UI',
           title: 'PR #7 Report UI',
         },
@@ -448,6 +450,139 @@ assert.ok(
   await storage.exists(`sample-a/reports/public/${generated.report.report_id}/manifest.json`),
 );
 assert.ok(await storage.exists('sample-a/project-public-state.json'));
+
+const rawSupplementRepository = createRepository();
+const rawSupplementStorage = new MemoryStorage();
+let rawSupplementProviderSummaries: readonly string[] = [];
+const rawSupplemented = await runGenerateReport({
+  options: {
+    now: new Date('2026-06-04T12:30:00.000Z'),
+    provider: {
+      async generate({ documents, period, projectSlug }) {
+        rawSupplementProviderSummaries = documents.map((document) => document.summary);
+        return createExtractiveReportProvider().generate({ documents, period, projectSlug });
+      },
+    },
+    rawReadViewRepository: {
+      async fetchRawReadView({ projectId, rawDocumentId }) {
+        assert.equal(projectId, 'project-a');
+        return {
+          data: {
+            limits: {
+              availableSectionIds: ['body'],
+              maxChars: 1400,
+              maxSections: 3,
+              nextCursor: null,
+              truncated: false,
+            },
+            projectSlug: 'sample-a',
+            rawDocumentId,
+            redactions: [{ count: 1, kind: 'email' }],
+            sections: [
+              {
+                id: 'body',
+                label: 'body',
+                sourceLocator: { kind: 'issue_body' },
+                text: 'Customer rollout decision was discussed. contact@example.com was redacted upstream.',
+                untrusted: true,
+              },
+            ],
+            sourceId: 'source-a',
+            sourceType: 'github',
+            traceSummary: 'github raw read view: 1/1 sections',
+          },
+          kind: 'agent_raw_read_view',
+          trust: 'untrusted_external_content',
+        };
+      },
+    },
+    repository: rawSupplementRepository,
+    storage: rawSupplementStorage,
+  },
+  projectSlug: 'sample-a',
+});
+assert.ok(
+  rawSupplementProviderSummaries.some((summary) => summary.includes('Raw read view supplement')),
+);
+assert.match(JSON.stringify(rawSupplemented.report), /Customer rollout decision/);
+assert.doesNotMatch(
+  JSON.stringify(rawSupplemented.report),
+  /00000000-0000-4000-8000-00000000010[12]|storage_uri|file:\/\/|rawDocumentId/,
+);
+const rawSupplementPublicArtifacts = await getPublicReportArtifacts({
+  projectSlug: 'sample-a',
+  reportId: rawSupplemented.report.report_id,
+  storage: rawSupplementStorage,
+});
+const rawSupplementPublicText = JSON.stringify(rawSupplementPublicArtifacts.report);
+assert.doesNotMatch(
+  rawSupplementPublicText,
+  /00000000-0000-4000-8000-00000000010[12]|storage_uri|file:\/\/|rawDocumentId|contact@example\.com/,
+);
+assert.match(rawSupplementPublicText, /public_source_id/);
+
+const rawSupplementFailureRepository = createRepository();
+const rawSupplementFailureStorage = new MemoryStorage();
+let rawSupplementFailureSummaries: readonly string[] = [];
+const rawSupplementFailureReport = await runGenerateReport({
+  options: {
+    now: new Date('2026-06-04T12:30:00.000Z'),
+    provider: {
+      async generate({ documents, period, projectSlug }) {
+        rawSupplementFailureSummaries = documents.map((document) => document.summary);
+        return createExtractiveReportProvider().generate({ documents, period, projectSlug });
+      },
+    },
+    rawReadViewRepository: {
+      async fetchRawReadView() {
+        throw new Error('raw view temporarily unavailable');
+      },
+    },
+    repository: rawSupplementFailureRepository,
+    storage: rawSupplementFailureStorage,
+  },
+  projectSlug: 'sample-a',
+});
+assert.ok(rawSupplementFailureReport.report.sections.length > 0);
+assert.ok(
+  rawSupplementFailureSummaries.every((summary) => !summary.includes('Raw read view supplement')),
+);
+
+const malformedRawViewRepository = createRepository();
+const malformedRawViewStorage = new MemoryStorage();
+let malformedRawViewSummaries: readonly string[] = [];
+const malformedRawViewReport = await runGenerateReport({
+  options: {
+    now: new Date('2026-06-04T12:30:00.000Z'),
+    provider: {
+      async generate({ documents, period, projectSlug }) {
+        malformedRawViewSummaries = documents.map((document) => document.summary);
+        return createExtractiveReportProvider().generate({ documents, period, projectSlug });
+      },
+    },
+    rawReadViewRepository: {
+      async fetchRawReadView() {
+        return {
+          data: {
+            sections: [
+              { label: null, text: 42 },
+              { label: '', text: '   usable raw text   ' },
+            ],
+          },
+          kind: 'agent_raw_read_view',
+          trust: 'untrusted_external_content',
+        } as never;
+      },
+    },
+    repository: malformedRawViewRepository,
+    storage: malformedRawViewStorage,
+  },
+  projectSlug: 'sample-a',
+});
+assert.ok(malformedRawViewReport.report.sections.length > 0);
+assert.ok(
+  malformedRawViewSummaries.some((summary) => summary.includes('- section: usable raw text')),
+);
 
 const explicitPeriodRepository = createRepository();
 let providerPeriod: { readonly end: string; readonly start: string } | undefined;

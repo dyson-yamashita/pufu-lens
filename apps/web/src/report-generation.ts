@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
+import type { AgentRawReadViewEnvelope, RawReadViewRepository } from './raw-read-view.ts';
 import type { ReportGenerationProvider } from './report-provider.ts';
 import { publishGeneratedPublicReport } from './report-publication.ts';
 import type { ReportDocumentRecord, ReportRepository } from './report-repository.ts';
@@ -19,6 +20,7 @@ export interface RunGenerateReportOptions {
   readonly period?: ReportPeriod;
   readonly periodKind?: ReportPeriodKind;
   readonly provider: ReportGenerationProvider;
+  readonly rawReadViewRepository?: Pick<RawReadViewRepository, 'fetchRawReadView'>;
   readonly repository: ReportRepository;
   readonly storage: ObjectStorage;
 }
@@ -48,8 +50,13 @@ export async function runGenerateReport(input: {
     period,
     projectId: project.id,
   });
-  const generated = await input.options.provider.generate({
+  const providerDocuments = await supplementDocumentsWithRawReadViews({
     documents,
+    projectId: project.id,
+    rawReadViewRepository: input.options.rawReadViewRepository,
+  });
+  const generated = await input.options.provider.generate({
+    documents: providerDocuments,
     period,
     projectSlug: project.slug,
   });
@@ -132,6 +139,61 @@ function pufuSourceFromDocument(document: ReportDocumentRecord): PrivateReportPu
     snippet: truncate(document.summary || document.title, 220),
     title: document.title,
   };
+}
+
+async function supplementDocumentsWithRawReadViews(input: {
+  readonly documents: readonly ReportDocumentRecord[];
+  readonly projectId: string;
+  readonly rawReadViewRepository?: Pick<RawReadViewRepository, 'fetchRawReadView'>;
+}): Promise<readonly ReportDocumentRecord[]> {
+  if (!input.rawReadViewRepository) {
+    return input.documents;
+  }
+  const rawReadViewRepository = input.rawReadViewRepository;
+  return Promise.all(
+    input.documents.map(async (document) => {
+      if (!document.rawDocumentId) {
+        return document;
+      }
+      const view = await rawReadViewRepository
+        .fetchRawReadView({
+          documentId: document.documentId,
+          maxChars: 1400,
+          maxSections: 3,
+          projectId: input.projectId,
+          rawDocumentId: document.rawDocumentId,
+        })
+        .catch(() => undefined);
+      const rawSummary = view ? rawReadViewSummary(view) : '';
+      if (!rawSummary) {
+        return document;
+      }
+      return {
+        ...document,
+        summary: [document.summary, rawSummary].filter(Boolean).join('\n\n'),
+      };
+    }),
+  );
+}
+
+function rawReadViewSummary(view: AgentRawReadViewEnvelope): string {
+  const sections = Array.isArray(view.data.sections) ? view.data.sections : [];
+  const sectionLines = sections
+    .map((section) => {
+      const text =
+        typeof section.text === 'string' ? truncate(cleanWhitespace(section.text), 360) : '';
+      const label = typeof section.label === 'string' && section.label ? section.label : 'section';
+      return text ? `- ${label}: ${text}` : '';
+    })
+    .filter(Boolean)
+    .slice(0, 3);
+  return sectionLines.length > 0
+    ? ['Raw read view supplement (untrusted source text, redacted):', ...sectionLines].join('\n')
+    : '';
+}
+
+function cleanWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
 }
 
 function truncate(value: string, maxLength: number): string {

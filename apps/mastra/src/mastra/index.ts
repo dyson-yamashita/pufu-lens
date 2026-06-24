@@ -51,6 +51,7 @@ const publicReportChatTools = createPublicReportChatTools();
 const publicReportChatAgent = createPublicReportChatAgent({ tools: publicReportChatTools });
 const generateReportWorkflow = createGenerateReportWorkflow({
   provider: createReportProvider(),
+  rawReadViewRepository: { fetchRawReadView: chatRepository.rawReadViewFetch },
   repository: reportRepository,
   storage,
 });
