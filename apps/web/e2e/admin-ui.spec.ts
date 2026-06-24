@@ -78,20 +78,23 @@ test('scenario: public user discovers public projects without private admin link
 });
 
 test('scenario: public user cannot open admin operation pages directly', async ({ page }) => {
-  const adminPaths = [
+  const protectedAdminPaths = [
     '/projects/sample-a/admin/data-sources',
-    '/projects/sample-a/admin/parser-profiles',
     '/projects/sample-a/admin/settings',
   ];
 
-  for (const path of adminPaths) {
+  for (const path of protectedAdminPaths) {
     await page.goto(path);
     await expect(page).toHaveURL(/\/login$/);
     await expect(page.getByTestId('login-panel')).toBeVisible();
     await expect(page.getByTestId('data-source-table')).toHaveCount(0);
-    await expect(page.getByTestId('parser-profile-list')).toHaveCount(0);
     await expect(page.getByTestId('project-settings-form')).toHaveCount(0);
   }
+
+  const removedParserProfilesResponse = await page.goto('/projects/sample-a/admin/parser-profiles');
+  expect(removedParserProfilesResponse?.status()).toBe(404);
+  await expect(page.getByTestId('parser-profile-list')).toHaveCount(0);
+  await expect(page.getByTestId('parser-profile-create-button')).toHaveCount(0);
 });
 
 test.describe('authenticated admin operation controls', () => {
@@ -119,6 +122,7 @@ test.describe('authenticated admin operation controls', () => {
       '/projects/sample-a',
     );
     await expect(page.getByTestId('global-nav-settings')).toBeVisible();
+    await expect(page.getByTestId('global-nav-parser-profiles')).toHaveCount(0);
 
     await page.goto('/projects/sample-a/admin/data-sources?sourceType=web');
     await expect(page).toHaveURL(/\/projects\/sample-a\/admin\/data-sources\?sourceType=web$/);
@@ -148,11 +152,14 @@ test.describe('authenticated admin operation controls', () => {
     await expect(page.getByTestId('data-source-edit-name-input')).toBeVisible();
     await expect(page.getByTestId('data-source-save-button')).toBeEnabled();
 
-    await page.goto('/projects/sample-a/admin/parser-profiles');
-    await expect(page.getByTestId('parser-profile-list')).toBeVisible();
-    await expect(page.getByTestId('parser-profile-create-button')).toBeVisible();
-
     await page.goto('/projects/sample-a/admin/settings');
     await expect(page.getByTestId('project-settings-form')).toBeVisible();
+  });
+
+  test('scenario: admin user cannot open removed parser profiles route', async ({ page }) => {
+    const response = await page.goto('/projects/sample-a/admin/parser-profiles');
+    expect(response?.status()).toBe(404);
+    await expect(page.getByTestId('parser-profile-list')).toHaveCount(0);
+    await expect(page.getByTestId('parser-profile-create-button')).toHaveCount(0);
   });
 });

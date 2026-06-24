@@ -2,7 +2,6 @@ import {
   Clock3,
   Contact,
   Database,
-  FileSearch,
   FileText,
   GitBranch,
   Globe,
@@ -65,7 +64,6 @@ export async function AppShell({
     | 'graph'
     | 'members'
     | 'overview'
-    | 'parser-profiles'
     | 'reports'
     | 'settings';
   readonly canManageProject?: boolean;
@@ -164,15 +162,6 @@ export async function AppShell({
               >
                 <GitBranch size={18} />
                 Sources
-              </Link>
-              <Link
-                aria-current={active === 'parser-profiles' ? 'page' : undefined}
-                className={navClass(active === 'parser-profiles')}
-                href={`/projects/${projectSlug}/admin/parser-profiles`}
-                data-testid="global-nav-parser-profiles"
-              >
-                <FileSearch size={18} />
-                Parsers
               </Link>
               <Link
                 aria-current={active === 'settings' ? 'page' : undefined}

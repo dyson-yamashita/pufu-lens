@@ -38,7 +38,7 @@
 | Step | status      | 内容                                                              | 完了条件                                                                 |
 | ---- | ----------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | 1    | `completed` | Agent raw reading の tool contract と read view schema を定義する | source type 別 read view、limit、redaction、trace 表示方針が docs に残る |
-| 2    | `planned`   | parser 安定化方針と Parser Profiles 廃止を実装する                | parser は最小抽出に固定し、通常 UI から parser 更新導線が消える          |
+| 2    | `completed` | parser 安定化方針と Parser Profiles 廃止を実装する                | parser は最小抽出に固定し、通常 UI から parser 更新導線が消える          |
 | 3    | `planned`   | raw read adapter と repository 境界を実装する                     | raw / parsed を project 認可付きで read view に変換できる                |
 | 4    | `planned`   | private chat の tool selection に raw read を統合する             | chat が必要時だけ raw view を取得し、source 付きで回答できる             |
 | 5    | `planned`   | private report 生成に raw 補完を統合する                          | report が parsed context と raw view の根拠を併用して生成される          |
@@ -77,6 +77,8 @@
 - private chat / private report / public chat / public report の到達可能データ境界が明記されている。
 
 ## Step 2: Parser 安定化 / Parser Profiles 廃止
+
+**Outcome (Issue #294):** project admin の global nav から Parser Profiles を削除し、`/admin/parser-profiles` route を削除した。parser DB schema / registry / seed / ingestion は維持。parser 安定化方針は `docs/designs/system/06-ingestion-workflow.md` §3 に反映済み。
 
 ### 実装範囲
 
