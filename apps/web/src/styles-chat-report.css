@@ -386,19 +386,6 @@
   width: 100%;
 }
 
-.public-shell {
-  margin: 0 auto;
-  max-width: 1280px;
-  min-height: 100vh;
-  padding: 32px;
-}
-
-.page-header.compact {
-  align-items: flex-start;
-  display: grid;
-  gap: 4px;
-}
-
 .public-report-document {
   margin: 0 auto;
 }
