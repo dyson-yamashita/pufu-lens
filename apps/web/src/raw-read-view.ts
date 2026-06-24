@@ -72,6 +72,7 @@ export interface RawReadViewRequest {
 export interface RawReadViewRawDocument {
   readonly canonicalUri?: string | null;
   readonly documentId?: string | null;
+  readonly projectId: string;
   readonly projectSlug: string;
   readonly rawDocumentId: string;
   readonly sourceId: string;
@@ -128,6 +129,7 @@ export function createPostgresRawReadViewRepository(input: {
       async lookupRawReadViewDocument({ documentId, projectId, rawDocumentId }) {
         const rows = (await input.sql`
           SELECT
+            rd.project_id::text AS project_id,
             p.slug AS project_slug,
             rd.id::text AS raw_document_id,
             rd.source_id,
@@ -506,7 +508,7 @@ function createRedactionTracker() {
         return '[redacted-email]';
       });
       output = output.replace(
-        /\b(api[_-]?key|access[_-]?token|refresh[_-]?token|secret|token)\b\s*[:=]\s*["']?([A-Za-z0-9._-]{6,})["']?/gi,
+        /\b([a-zA-Z0-9_-]*(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|token)[a-zA-Z0-9_-]*)\b\s*[:=]\s*["']?([A-Za-z0-9._~+/=-]{6,})["']?/gi,
         (_match, key: string) => {
           secretCount += 1;
           return `${key}=[redacted-secret]`;
@@ -542,6 +544,7 @@ function rawDocumentFromRow(value: unknown): RawReadViewRawDocument {
   return {
     canonicalUri: optionalString(row.canonical_uri),
     documentId: optionalString(row.document_id),
+    projectId: requireString(row.project_id),
     projectSlug: requireString(row.project_slug),
     rawDocumentId: requireString(row.raw_document_id),
     sourceId: requireString(row.source_id),
@@ -613,6 +616,7 @@ function decodeHtml(value: string): string {
   return value
     .replace(/&nbsp;/g, ' ')
     .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
     .replace(/&#39;/g, "'")
     .replace(/&gt;/g, '>')
     .replace(/&lt;/g, '<')

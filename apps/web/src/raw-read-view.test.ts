@@ -42,7 +42,7 @@ class RawReadViewLookupStub implements RawReadViewLookup {
     return this.records.find((record) => {
       return (
         record.rawDocumentId === input.rawDocumentId &&
-        record.projectSlug === input.projectId &&
+        record.projectId === input.projectId &&
         (!input.documentId || record.documentId === input.documentId)
       );
     });
@@ -52,6 +52,7 @@ class RawReadViewLookupStub implements RawReadViewLookup {
 const baseRawDocument = {
   canonicalUri: 'https://example.test/source',
   documentId: 'doc-a',
+  projectId: '00000000-0000-4000-8000-000000000001',
   projectSlug: 'project-a',
   rawDocumentId: 'raw-a',
   sourceId: 'source-a',
@@ -111,13 +112,29 @@ const webText = await fixtureText('web/release-notes.html');
   const htmlView = buildAgentRawReadView({
     rawDocument: { ...baseRawDocument, sourceType: 'web' },
     rawText:
-      '<html><head><script>console.log("hidden")</script\t\n bar></head><body><h1>Title &#x201d;</h1><p>First &#160; paragraph</p><div>Second block</div></body></html>',
+      '<html><head><script>console.log("hidden")</script\t\n bar></head><body><h1>Title &apos;&#x201d;</h1><p>First &#160; paragraph</p><div>Second block</div></body></html>',
   });
   const htmlSectionText = htmlView.data.sections.map((section) => section.text).join('\n');
-  assert.match(htmlSectionText, /Title ”/);
+  assert.match(htmlSectionText, /Title '”/);
   assert.match(htmlSectionText, /First\s+paragraph/);
   assert.match(htmlSectionText, /Second block/);
   assert.doesNotMatch(JSON.stringify(htmlView), /console\.log/);
+}
+
+{
+  const view = buildAgentRawReadView({
+    rawDocument: { ...baseRawDocument, sourceType: 'github' },
+    rawText: JSON.stringify({
+      body: 'my_api_key = "abcdef/ghijk+lmnop=" client_secret: abcdef~ghijk contact owner@example.test',
+      kind: 'issue',
+      title: 'Redaction test',
+    }),
+  });
+  assert.ok(view.data.redactions.some((redaction) => redaction.kind === 'secret'));
+  assert.ok(view.data.redactions.some((redaction) => redaction.kind === 'email'));
+  assert.match(view.data.sections[0]?.text ?? '', /my_api_key=\[redacted-secret\]/);
+  assert.match(view.data.sections[0]?.text ?? '', /client_secret=\[redacted-secret\]/);
+  assert.doesNotMatch(JSON.stringify(view), /abcdef\/ghijk|owner@example\.test/);
 }
 
 {
@@ -175,12 +192,12 @@ const webText = await fixtureText('web/release-notes.html');
     storage: new MemoryStorage(new Map([[baseRawDocument.storageUri, githubText]])),
   });
   const allowed = await repository.fetchRawReadView({
-    projectId: 'project-a',
+    projectId: baseRawDocument.projectId,
     rawDocumentId: 'raw-a',
   });
   assert.equal(allowed?.data.rawDocumentId, 'raw-a');
   const denied = await repository.fetchRawReadView({
-    projectId: 'project-b',
+    projectId: '00000000-0000-4000-8000-000000000002',
     rawDocumentId: 'raw-a',
   });
   assert.equal(denied, undefined);
