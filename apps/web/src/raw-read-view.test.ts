@@ -111,7 +111,7 @@ const webText = await fixtureText('web/release-notes.html');
   const htmlView = buildAgentRawReadView({
     rawDocument: { ...baseRawDocument, sourceType: 'web' },
     rawText:
-      '<html><head><script>console.log("hidden")</script ></head><body><h1>Title &#x201d;</h1><p>First &#160; paragraph</p><div>Second block</div></body></html>',
+      '<html><head><script>console.log("hidden")</script\t\n bar></head><body><h1>Title &#x201d;</h1><p>First &#160; paragraph</p><div>Second block</div></body></html>',
   });
   const htmlSectionText = htmlView.data.sections.map((section) => section.text).join('\n');
   assert.match(htmlSectionText, /Title ”/);
