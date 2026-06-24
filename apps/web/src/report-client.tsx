@@ -465,6 +465,14 @@ function publicReportPufuInput(report: PublicReportJsonV1): PufuScoreReportInput
   return {
     period: report.period,
     report_id: report.report_id,
+    pufu_sources: report.pufu_sources?.map((source) => ({
+      canonical_uri: '',
+      doc_type: 'public_report_source',
+      document_id: source.public_source_id,
+      occurred_at: source.occurred_at,
+      snippet: source.snippet,
+      title: source.title,
+    })),
     sections: report.sections.map((section) => ({
       id: section.id,
       items: section.items,
