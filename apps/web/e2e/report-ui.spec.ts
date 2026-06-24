@@ -242,6 +242,12 @@ test('scenario: public user reads redacted report with shared header and no ques
         metrics: { documents: 2 },
         title: '進捗',
       },
+      {
+        id: 'risks',
+        markdown: '公開可能な課題はありません。',
+        metrics: {},
+        title: '課題',
+      },
     ],
     summary: '公開可能な概要です。',
     title: report.title,
@@ -261,6 +267,7 @@ test('scenario: public user reads redacted report with shared header and no ques
   await expect(page.getByTestId('public-report-document')).toContainText('公開可能な概要です。');
   await expect(page.getByTestId('pufu-report-viewer')).toBeVisible();
   await expect(page.getByTestId('pufu-report-score')).toBeVisible();
+  await expect(page.locator('.public-report-document .metric-strip.compact')).toHaveCount(1);
   await expect(page.getByTestId('public-report-section-activity')).toContainText(
     'src_activity_001',
   );

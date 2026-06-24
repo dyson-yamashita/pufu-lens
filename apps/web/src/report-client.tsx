@@ -426,7 +426,7 @@ export function PublicReportDocument({
         >
           <h3>{section.title}</h3>
           <p className="markdown-text">{section.markdown}</p>
-          {section.metrics ? (
+          {section.metrics && Object.keys(section.metrics).length > 0 ? (
             <div className="metric-strip compact">
               {Object.entries(section.metrics).map(([name, value]) => (
                 <div className="metric" key={name}>
