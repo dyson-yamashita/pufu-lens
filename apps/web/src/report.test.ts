@@ -29,6 +29,18 @@ import {
   writePublicProjectManifest,
 } from './report.ts';
 
+function pufuScoreTexts(score: ReturnType<typeof createPufuScoreFromReport>): readonly string[] {
+  return [
+    score.gainingGoal.text,
+    score.winCondition.text,
+    ...Object.values(score.elements).map((element) => element.text),
+    ...score.purposes.flatMap((purpose) => [
+      purpose.text,
+      ...purpose.measures.map((measure) => measure.text),
+    ]),
+  ];
+}
+
 class MemoryStorage implements ObjectStorage {
   readonly objects = new Map<string, string>();
 
@@ -540,6 +552,27 @@ assert.doesNotMatch(
   /project-a|doc-issue|doc-pr|doc-a|contact@example\.com|user@example\.com|internal|corp|file:\/\//,
 );
 assert.match(publicText, /public_source_id/);
+assert.equal(published.publicReport.pufu_sources?.length, privateReport.pufu_sources?.length);
+const privatePublishedPufuScore = createPufuScoreFromReport(privateReport);
+const publicPublishedPufuScore = createPufuScoreFromReport({
+  period: published.publicReport.period,
+  pufu_sources: published.publicReport.pufu_sources?.map((source) => ({
+    canonical_uri: '',
+    doc_type: 'public_report_source',
+    document_id: source.public_source_id,
+    occurred_at: source.occurred_at,
+    snippet: source.snippet,
+    title: source.title,
+  })),
+  report_id: published.publicReport.report_id,
+  sections: [],
+  summary: published.publicReport.summary,
+  title: published.publicReport.title,
+});
+assert.deepEqual(
+  pufuScoreTexts(publicPublishedPufuScore),
+  pufuScoreTexts(privatePublishedPufuScore),
+);
 validatePublicReportJson({
   ...published.publicReport,
   summary: 'Public host https://10.example.com is allowed when it is not a private IP.',
