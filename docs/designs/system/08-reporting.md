@@ -88,6 +88,8 @@ public artifact に **含めてはならない** もの:
 
 private report detail では、raw 補完で参照した source（`document_id`、section id、canonical URI 等）を project member が追跡できる。public 側にはその内部追跡情報を漏らさない。
 
+raw 補完あり report の regression では、private report / public artifact の両方で `rawDocumentId`、storage URI、private locator、token、secret、API key、メールアドレスが保存されていないことを確認する。Mastra workflow trace / log では raw 補完の有無を `raw-document-fetch.trace` と report workflow の成功 / 失敗 status で確認し、raw section text を trace-safe summary として保存しない。
+
 ```jsonc
 {
   "schema_version": "public-v1",

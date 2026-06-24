@@ -42,7 +42,7 @@
 | 3    | `completed` | raw read adapter と repository 境界を実装する                     | raw / parsed を project 認可付きで read view に変換できる                |
 | 4    | `completed` | private chat の tool selection に raw read を統合する             | chat が必要時だけ raw view を取得し、source 付きで回答できる             |
 | 5    | `completed` | private report 生成に raw 補完を統合する                          | report が parsed context と raw view の根拠を併用して生成される          |
-| 6    | `planned`   | Mastra trace / log / eval / docs を整備する                       | trace と log に raw 本文全文や secret が出ないことを確認できる           |
+| 6    | `completed` | Mastra trace / log / eval / docs を整備する                       | trace と log に raw 本文全文や secret が出ないことを確認できる           |
 
 ## Step 1: Tool Contract / Read View 設計
 
@@ -160,6 +160,8 @@
 - raw 補完で使った source は private report detail から追跡できる。
 
 ## Step 6: Trace / Eval / Docs
+
+**Outcome (Issue #302):** `raw-document-fetch` tool result に trace-safe な `trace` object を追加し、Mastra runtime test で raw 本文全文、OAuth token 風文字列、API key 風文字列、メールアドレス、prompt injection 文が trace に出ないことを確認する。Web 側の Mastra response adapter は raw view を API response に混ぜず tool call summary だけを返す regression を追加した。`fixtures/chat/private-chat-raw-injection-eval.json` と docs に smoke / eval コマンドを追加し、deterministic ingestion と Agent raw reading の責務分離を運用 docs に反映した。
 
 ### 実装範囲
 

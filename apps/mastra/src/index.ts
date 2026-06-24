@@ -98,6 +98,14 @@ export interface CrossProjectDataSourceStatus {
   readonly sourceType: string;
 }
 
+export interface MastraRawDocumentFetchTrace {
+  readonly resultCount: number;
+  readonly sectionCount: number;
+  readonly toolCallName: typeof mastraToolIds.rawDocumentFetch;
+  readonly traceSummary: string;
+  readonly truncated: boolean;
+}
+
 export interface CrossProjectInvestigationRepository {
   dataSourceStatus(input: {
     readonly limit: number;
@@ -231,8 +239,36 @@ const pufuScoreGenerateOutputSchema = z.object({
 });
 
 const rawReadViewFetchOutputSchema = z.object({
+  trace: z.object({
+    resultCount: z.number().int().min(0),
+    sectionCount: z.number().int().min(0),
+    toolCallName: z.literal(mastraToolIds.rawDocumentFetch),
+    traceSummary: z.string(),
+    truncated: z.boolean(),
+  }),
   view: z.unknown().nullable(),
 });
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export function rawReadViewTrace(input: unknown): MastraRawDocumentFetchTrace {
+  const view = isRecord(input) ? input : undefined;
+  const data = view && isRecord(view.data) ? view.data : undefined;
+  const limits = data && isRecord(data.limits) ? data.limits : undefined;
+  const sections = data && Array.isArray(data.sections) ? data.sections : [];
+  return {
+    resultCount: data ? 1 : 0,
+    sectionCount: sections.length,
+    toolCallName: mastraToolIds.rawDocumentFetch,
+    traceSummary:
+      data && typeof data.traceSummary === 'string'
+        ? data.traceSummary
+        : 'raw read view unavailable',
+    truncated: limits && typeof limits.truncated === 'boolean' ? limits.truncated : false,
+  };
+}
 
 export function createCrossProjectResearchTools(repository: CrossProjectInvestigationRepository) {
   return {
@@ -429,8 +465,8 @@ export function createProjectChatTools(repository: ChatRepository) {
       }),
       outputSchema: rawReadViewFetchOutputSchema,
       requestContextSchema: mastraProjectContextSchema,
-      execute: async (input, context) => ({
-        view:
+      execute: async (input, context) => {
+        const view =
           (await repository.rawReadViewFetch({
             aroundSectionId: input.aroundSectionId,
             cursor: input.cursor,
@@ -440,8 +476,12 @@ export function createProjectChatTools(repository: ChatRepository) {
             rawDocumentId: input.rawDocumentId,
             sectionSelector: input.sectionSelector,
             projectId: projectIdFromContext(context),
-          })) ?? null,
-      }),
+          })) ?? null;
+        return {
+          trace: rawReadViewTrace(view),
+          view,
+        };
+      },
     }),
     vectorSearch: createTool({
       id: mastraToolIds.vectorSearch,

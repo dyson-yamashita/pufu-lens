@@ -37,6 +37,20 @@ pnpm ingest:run --project sample-a --source github --fixture --dry-run
 
 `ingest:run` の workflow log は JSON Lines で、step ごとの開始、完了、処理件数、LLM 使用量を出す。子 CLI の詳細結果は要約し、raw / parsed 本文、quote 本文、token、secret、API key、alias 詳細は出さない。
 
+## Deterministic ingestion と Agent raw reading
+
+ingestion は deterministic parser で canonical parsed JSON、chunk、graph、embedding を作る安定経路として扱う。parser script は source contract の破壊的変更、security / correctness bug、schema version 更新、既存 indexing 不能の重大不具合に限って更新する。
+
+サマリ品質、source type ごとの読ませ方、文脈補完は parser script ではなく Agent Raw Read View 側で調整する。Private Chat / Private Report は parsed / graph / vector で候補を絞った後、必要な場合だけ `raw-document-fetch` で bounded / redacted section を読む。
+
+運用確認では次を分けて見る。
+
+| 確認対象               | コマンド / 画面                                                                                  | 見るもの                                                                                  | 見ないもの                                                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| ingestion 安定経路     | `pnpm ingest:run` / `pnpm ingest:status`                                                         | 件数、status、短い error summary                                                          | raw / parsed 本文全文、token、secret                         |
+| raw read adapter       | Mastra Studio / Playground                                                                       | `raw-document-fetch.trace` の `toolCallName`、`sectionCount`、`truncated`、`traceSummary` | `view.sections[].text` の全文を trace / log として保存しない |
+| prompt injection smoke | `pnpm chat:eval --project sample-a --fixture fixtures/chat/private-chat-raw-injection-eval.json` | forbidden text が回答 / tool call summary に出ないこと                                    | raw section 内の embedded instruction を指示として扱わない   |
+
 ## Status
 
 ```bash
