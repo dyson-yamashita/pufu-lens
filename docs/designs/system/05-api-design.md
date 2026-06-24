@@ -12,6 +12,7 @@
 - OAuth token、refresh token、cookie、DB password、Gemini API key は response / log / trace に出さない。
 - DB 依存の private chat / private report は業務時間外に DB 接続を試みず、`db_outside_business_hours` を返す。
 - public report / public chat は公開用 manifest / public artifact / public context bundle のみを参照し、raw / parsed / DB / AGE / pgvector へ未ログインでアクセスしない。
+- Private Chat / Private Report 生成で使う `raw-document-fetch` は [Agent Raw Read View](07-chat.md#agent-raw-read-view--raw-document-fetch-契約) を返す。raw 本文全文・private locator は response / log / trace に出さない。Public Chat は raw read view tool を持たない。
 
 ### 2. 実装済み Next.js API Route
 

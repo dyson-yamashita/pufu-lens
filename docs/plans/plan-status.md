@@ -24,6 +24,7 @@
 | `docs/plans/005-storage-recovery-artifacts/overview.md`    | `active`    | 2026-06-13 | Issue #117 / PR #118 で Step 1 完了。Step 2 以降の artifact 統合、reconcile、restore は未着手。                                                        |
 | `docs/plans/006-db-migration-management/overview.md`       | `completed` | 2026-06-13 | Issue #119 / #121 / #123 / #127 / #130 / #133 で DB migration 運用、検証、drift 検出、重い DB 変更方針を整備済み。                                     |
 | `docs/plans/007-data-source-content-preview/overview.md`   | `completed` | 2026-06-21 | Issue #148 / PR #150 で content preview を実装・検証。Issue #212 / PR #213 で row parsing を helper 化済み。Chat / Graph 導線は後続 plan 候補に分離。  |
+| `docs/plans/008-agent-raw-reading/overview.md`             | `active`    | 2026-06-24 | Step 1 完了: Agent Raw Read View contract を system design docs に定義。Step 2 以降で parser 安定化 / adapter / chat / report 統合。                 |
 
 ## 運用ルール
 
