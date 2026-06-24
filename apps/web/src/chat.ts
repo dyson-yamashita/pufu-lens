@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto';
 import type postgres from 'postgres';
+import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
+import {
+  type AgentRawReadViewEnvelope,
+  createPostgresRawReadViewRepository,
+  type RawReadViewRequest,
+} from './raw-read-view.ts';
 import type { PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 
 export type ChatToolName =
@@ -87,6 +93,7 @@ export interface ChatRepository {
     maxBytes: number;
     projectId: string;
   }): Promise<ChatSource[]>;
+  rawReadViewFetch(input: RawReadViewRequest): Promise<AgentRawReadViewEnvelope | undefined>;
   vectorSearch(input: {
     embedding: readonly number[];
     limit: number;
@@ -619,7 +626,13 @@ export function isWithinBusinessHours(date: Date, config: BusinessHoursConfig): 
   );
 }
 
-export function createPostgresChatRepository(sql: postgres.Sql): ChatRepository {
+export function createPostgresChatRepository(
+  sql: postgres.Sql,
+  options: { readonly rawStorage?: Pick<ObjectStorage, 'getText'> } = {},
+): ChatRepository {
+  const rawReadViewRepository = options.rawStorage
+    ? createPostgresRawReadViewRepository({ sql, storage: options.rawStorage })
+    : undefined;
   return {
     async lookupProjectMember({ projectSlug, userId }) {
       const access = await lookupProjectMemberAccess(sql, { projectSlug, userId });
@@ -731,6 +744,9 @@ export function createPostgresChatRepository(sql: postgres.Sql): ChatRepository 
         LIMIT ${limit}
       `) as readonly unknown[];
       return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
+    },
+    async rawReadViewFetch(input) {
+      return rawReadViewRepository?.fetchRawReadView(input);
     },
     async parsedDocFetch({ limit, projectId }) {
       const rows = (await sql`

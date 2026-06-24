@@ -29,8 +29,9 @@ if (process.env.GEMINI_API_KEY) {
 
 const databaseUrl = process.env.DATABASE_URL;
 const sql = postgres(databaseUrl ?? 'postgresql://localhost/pufu_lens_mastra_build', { max: 5 });
+const storage = createStorage();
 const chatRepository = databaseUrl
-  ? createPostgresChatRepository(sql)
+  ? createPostgresChatRepository(sql, { rawStorage: storage })
   : unavailableChatRepository('DATABASE_URL');
 const reportRepository = databaseUrl
   ? createPostgresReportRepository(sql)
@@ -51,7 +52,7 @@ const publicReportChatAgent = createPublicReportChatAgent({ tools: publicReportC
 const generateReportWorkflow = createGenerateReportWorkflow({
   provider: createReportProvider(),
   repository: reportRepository,
-  storage: createStorage(),
+  storage,
 });
 
 export const mastra = new Mastra({
@@ -252,6 +253,7 @@ function unavailableChatRepository(envName: string): ChatRepository {
     lookupProjectMember: unavailableMethod(envName),
     parsedDocFetch: unavailableMethod(envName),
     rawDocumentFetch: unavailableMethod(envName),
+    rawReadViewFetch: unavailableMethod(envName),
     vectorSearch: unavailableMethod(envName),
   };
 }
