@@ -110,6 +110,9 @@ function createRepository(): ChatRepository & {
       rawFetchInputs.push({ maxBytes });
       return [{ ...sampleSource, documentId: 'doc-raw', title: 'Raw Metadata' }];
     },
+    async rawReadViewFetch() {
+      return undefined;
+    },
     async parsedDocFetch({ projectId }) {
       assert.equal(projectId, 'project-a');
       return [{ ...sampleSource, documentId: 'doc-parsed', title: 'Parsed Metadata' }];
