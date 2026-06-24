@@ -167,8 +167,6 @@ const GEMINI_REPORT_RESPONSE_SCHEMA = {
         required: ['id', 'title', 'markdown'],
         type: 'OBJECT',
       },
-      maxItems: 3,
-      minItems: 3,
       type: 'ARRAY',
     },
     summary: { type: 'STRING' },

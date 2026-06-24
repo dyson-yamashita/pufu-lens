@@ -396,8 +396,6 @@ assert.deepEqual(geminiGenerationConfig, {
           required: ['id', 'title', 'markdown'],
           type: 'OBJECT',
         },
-        maxItems: 3,
-        minItems: 3,
         type: 'ARRAY',
       },
       summary: { type: 'STRING' },
