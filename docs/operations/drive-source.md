@@ -35,6 +35,59 @@ DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
     --embedding-provider deterministic
 ```
 
+Drive parse は `bodyText` と title を `TopicExtractionAgent` に渡し、parsed JSON の `topics` を生成する。Graph の `Topic` node / `MENTIONS` edge はこの parsed `topics` から materialize されるため、topic 抽出を有効にする実データ parse では `GEMINI_API_KEY` と `GEMINI_CHAT_MODEL` を設定する。
+
+既に topic 抽出対応前に parse / index 済みの Drive document は、既存 parsed JSON に `topics` が含まれない。対象 raw を原本再取得なしで再 parse するには、必ず `project_id` と `source_id` で対象を絞って status を戻す。
+
+```bash
+psql "$DATABASE_URL" <<'SQL'
+WITH target_raw AS (
+  SELECT rd.id, rd.project_id
+  FROM public.raw_documents rd
+  JOIN public.projects p ON p.id = rd.project_id
+  WHERE p.slug = 'sample-a'
+    AND rd.source_type = 'drive'
+    AND rd.source_id = 'DRIVE_FILE_ID:REVISION_ID'
+)
+UPDATE public.raw_documents rd
+SET ingest_status = 'fetched',
+    ingest_error = null,
+    hold_reason = null,
+    parsed_at = null
+FROM target_raw
+WHERE rd.id = target_raw.id;
+
+WITH target_raw AS (
+  SELECT rd.id, rd.project_id
+  FROM public.raw_documents rd
+  JOIN public.projects p ON p.id = rd.project_id
+  WHERE p.slug = 'sample-a'
+    AND rd.source_type = 'drive'
+    AND rd.source_id = 'DRIVE_FILE_ID:REVISION_ID'
+)
+UPDATE public.ingestion_queue q
+SET status = 'pending',
+    last_error = null,
+    hold_reason = null,
+    lease_expires_at = null,
+    scheduled_at = now()
+FROM target_raw
+WHERE q.project_id = target_raw.project_id
+  AND q.raw_document_id = target_raw.id;
+SQL
+```
+
+status を戻したら parse から workflow を再開する。`parse` で新しい parsed JSON が保存され、後続の `chunk` / `graph` で `Topic` node / `MENTIONS` edge が反映される。
+
+```bash
+DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
+  STORAGE_ROOT=/tmp/pufu-lens-storage \
+  GEMINI_API_KEY=... \
+  GEMINI_CHAT_MODEL=... \
+  pnpm ingest:run --project sample-a --source drive --resume-from parse --limit 1 \
+    --embedding-provider deterministic
+```
+
 取り込み後の状態と Drive source contract は `ingest:inspect` で確認する。
 
 ```bash
@@ -86,4 +139,4 @@ find "$STORAGE_ROOT/sample-a/raw/drive" -type f | sort
 - `metadata.fileId` / `metadata.revisionId` が存在し、`source_id` と一致する。
 - `metadata.mimeType` と `metadata.ownerCount` が存在する。
 - storage 上の Drive raw JSON SHA-256 が `raw_documents.content_hash` と一致する。
-- parsed document が `drive_doc` として読め、本文抽出結果が空ではない。
+- parsed document が `drive_doc` として読め、本文抽出結果が空ではなく、topic 抽出対象の本文を保持している。
