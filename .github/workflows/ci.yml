@@ -307,7 +307,7 @@ jobs:
 
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
-            changed_files="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "$GITHUB_SHA")"
+            changed_files="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" HEAD)"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
             exit 0
