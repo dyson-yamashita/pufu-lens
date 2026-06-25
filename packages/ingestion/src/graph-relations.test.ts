@@ -278,16 +278,9 @@ test('storeGraphRelations materializes parsed Drive keyword topics as mentions',
 
   assert.ok(repository.nodes.has('topic:keyword:spec%20draft'));
   assert.ok(
-    repository.hasEdge(
-      driveDocument.graphNodeId,
-      'MENTIONS',
-      'topic:keyword:spec%20draft',
-    ),
+    repository.hasEdge(driveDocument.graphNodeId, 'MENTIONS', 'topic:keyword:spec%20draft'),
   );
-  assert.equal(
-    repository.nodes.get('topic:keyword:spec%20draft')?.properties.target,
-    'Spec draft',
-  );
+  assert.equal(repository.nodes.get('topic:keyword:spec%20draft')?.properties.target, 'Spec draft');
 });
 
 test('storeGraphRelations skips blank reply relation targets', async () => {

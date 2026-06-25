@@ -164,11 +164,7 @@ export async function parseRawContent(
     case 'gmail':
       return parseGmail(fixtureCase, JSON.parse(rawText) as GmailRaw);
     case 'drive':
-      return parseDrive(
-        fixtureCase,
-        JSON.parse(rawText) as DriveRaw,
-        options.topicExtractionAgent,
-      );
+      return parseDrive(fixtureCase, JSON.parse(rawText) as DriveRaw, options.topicExtractionAgent);
   }
 }
 
