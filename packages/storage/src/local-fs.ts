@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream, type ReadStream } from 'node:fs';
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -79,6 +79,10 @@ export class LocalFsObjectStorage implements ObjectStorage {
 
       throw error;
     }
+  }
+
+  async delete(uri: string): Promise<void> {
+    await rm(this.pathForUri(uri), { force: true });
   }
 
   async *list(prefix: string): AsyncIterable<ObjectInfo> {

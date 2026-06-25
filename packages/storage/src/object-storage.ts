@@ -19,6 +19,7 @@ export interface ObjectStorage {
   get(uri: string): Promise<NodeJS.ReadableStream>;
   getText(uri: string): Promise<string>;
   exists(uri: string): Promise<boolean>;
+  delete?(uri: string): Promise<void>;
   signedUrl?(uri: string, ttlSeconds: number): Promise<string>;
   list(prefix: string): AsyncIterable<ObjectInfo>;
 }

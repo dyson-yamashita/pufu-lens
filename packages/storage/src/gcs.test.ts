@@ -72,6 +72,24 @@ test('GcsObjectStorage get reads directly and signedUrl uses v4', async () => {
   assert.equal(signedUrlOptions[0]?.version, 'v4');
 });
 
+test('GcsObjectStorage delete ignores missing objects', async () => {
+  const deleteOptions: Array<Record<string, unknown>> = [];
+  const file = {
+    name: 'project-a/raw/a.txt',
+    async delete(options: Record<string, unknown>) {
+      deleteOptions.push(options);
+    },
+  };
+  const storage = new GcsObjectStorage({
+    bucket: 'pufu-lens-test',
+    storage: fakeStorage(file),
+  });
+
+  await storage.delete('project-a/raw/a.txt');
+
+  assert.deepEqual(deleteOptions, [{ ignoreNotFound: true }]);
+});
+
 test('GcsObjectStorage list streams directory contents without matching sibling prefixes', async () => {
   const files = [
     fakeFile('project-a/raw/a.txt', { size: '1', updated: '2026-06-19T00:00:00.000Z' }),
@@ -168,6 +186,9 @@ function fakeFile(
     async getSignedUrl(options: Record<string, unknown>) {
       signedUrlOptions?.push(options);
       return [`https://signed.example.test/${name}`];
+    },
+    async delete() {
+      throw new Error('delete should not be called');
     },
   };
 }

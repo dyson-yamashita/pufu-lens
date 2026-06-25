@@ -45,6 +45,19 @@ export interface AdminActionRawDocumentRecordRow {
   readonly sourceType: SourceType;
 }
 
+export interface AdminActionDocumentGraphNodeRow {
+  readonly graphNodeId: string;
+}
+
+export interface AdminActionProjectGraphNameRow {
+  readonly graphName: string | null;
+}
+
+export interface AdminActionStorageObjectUriRow {
+  readonly parsedUri: string | null;
+  readonly storageUri: string;
+}
+
 export function parseAdminActionIdRow(value: unknown, context: string): AdminActionIdRow {
   const row = requireRecord(value, context);
   return { id: requireString(row.id, context, 'id') };
@@ -114,6 +127,34 @@ export function parseAdminActionDataSourceRecordRow(
         : requireRecord(row.ingestWindow, 'collection data source row field: ingestWindow'),
     projectId: requireString(row.projectId, 'collection data source row', 'projectId'),
     sourceType: requireSourceType(row.sourceType, 'collection data source row', 'sourceType'),
+  };
+}
+
+export function parseAdminActionDocumentGraphNodeRow(
+  value: unknown,
+): AdminActionDocumentGraphNodeRow {
+  const row = requireRecord(value, 'document graph node row');
+  return {
+    graphNodeId: requireString(row.graphNodeId, 'document graph node row', 'graphNodeId'),
+  };
+}
+
+export function parseAdminActionProjectGraphNameRow(
+  value: unknown,
+): AdminActionProjectGraphNameRow {
+  const row = requireRecord(value, 'project graph name row');
+  return {
+    graphName: requireNullableString(row.graphName, 'project graph name row', 'graphName'),
+  };
+}
+
+export function parseAdminActionStorageObjectUriRow(
+  value: unknown,
+): AdminActionStorageObjectUriRow {
+  const row = requireRecord(value, 'storage object uri row');
+  return {
+    parsedUri: requireNullableString(row.parsedUri, 'storage object uri row', 'parsedUri'),
+    storageUri: requireString(row.storageUri, 'storage object uri row', 'storageUri'),
   };
 }
 
