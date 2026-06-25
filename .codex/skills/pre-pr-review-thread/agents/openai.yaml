@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Pre-PR Review Thread'
+  short_description: 'Launch an independent pre-PR review thread.'
+  default_prompt: 'Use $pre-pr-review-thread to create an independent Codex review thread before opening a PR.'
