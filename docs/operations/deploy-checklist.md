@@ -33,6 +33,7 @@ API key、DB password は記録しない。
 - `AUTH_URL`: Auth.js callback URL の origin。例: `https://app.example.com`。
 - `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET`: GitHub アプリログイン用 OAuth。実値は記録しない。
 - `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`: Google アプリログイン用 OAuth。実値は記録しない。
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`: Google data source 連携用 OAuth。App Hosting runtime secret として設定し、実値は記録しない。
 - `AUTH_CREDENTIALS_EMAIL` / `AUTH_CREDENTIALS_PASSWORD`: Credentials user 作成時だけローカル環境で使う。実値は記録しない。
 - `GEMINI_API_KEY`: Google AI API key 利用時のみ。実値は記録しない。
 - `GEMINI_CHAT_MODEL`: Chat / report model。モデル名のみ記録可。
