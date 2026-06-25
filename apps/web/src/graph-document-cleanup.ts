@@ -30,14 +30,12 @@ export async function deleteExclusiveDocumentGraphNodes(
     await sql.begin(async (transaction) => {
       await transaction`LOAD 'age'`;
       await transaction`SET LOCAL search_path = ag_catalog, "$user", public`;
-      for (const graphNodeId of input.graphNodeIds) {
-        await transaction.unsafe(
-          `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
-            'MATCH (n:Document {graphNodeId: $graphNodeId}) WITH collect(n) AS nodes UNWIND nodes AS node DETACH DELETE node RETURN size(nodes) AS deletedCount',
-          )}, $1::agtype) AS (value agtype)`,
-          [JSON.stringify({ graphNodeId })],
-        );
-      }
+      await transaction.unsafe(
+        `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
+          'MATCH (n:Document) WHERE n.graphNodeId IN $graphNodeIds WITH collect(n) AS nodes UNWIND nodes AS node DETACH DELETE node RETURN size(nodes) AS deletedCount',
+        )}, $1::agtype) AS (value agtype)`,
+        [JSON.stringify({ graphNodeIds: input.graphNodeIds })],
+      );
     });
   } catch (error) {
     console.warn(

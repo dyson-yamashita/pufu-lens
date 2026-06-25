@@ -851,6 +851,7 @@ async function listStorageObjectUris(
     FROM public.raw_documents rd
     WHERE rd.project_id = ${projectId}
       AND rd.id IN ${tx([...rawDocumentIds])}
+      AND rd.storage_uri IS NOT NULL
   `) as readonly unknown[];
   const uris = parseAdminActionRows(rows, parseAdminActionStorageObjectUriRow).flatMap((row) =>
     row.parsedUri ? [row.storageUri, row.parsedUri] : [row.storageUri],
@@ -870,8 +871,23 @@ async function deleteStorageObjectsBestEffort(uris: readonly string[]): Promise<
       );
       return;
     }
-    for (const uri of uris) {
-      await storage.delete(uri);
+    const deleteObject = storage.delete.bind(storage);
+    const batchSize = 10;
+    for (let index = 0; index < uris.length; index += batchSize) {
+      const batch = uris.slice(index, index + batchSize);
+      await Promise.all(
+        batch.map(async (uri) => {
+          try {
+            await deleteObject(uri);
+          } catch (error) {
+            console.warn(
+              `Storage object cleanup failed for ${uri}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+        }),
+      );
     }
   } catch (error) {
     console.warn(
