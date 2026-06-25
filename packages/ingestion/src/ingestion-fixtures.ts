@@ -164,7 +164,7 @@ export async function parseRawContent(
     case 'gmail':
       return parseGmail(fixtureCase, JSON.parse(rawText) as GmailRaw);
     case 'drive':
-      return parseDrive(fixtureCase, JSON.parse(rawText) as DriveRaw);
+      return parseDrive(fixtureCase, JSON.parse(rawText) as DriveRaw, options.topicExtractionAgent);
   }
 }
 
@@ -613,18 +613,23 @@ function parseGmail(
   });
 }
 
-function parseDrive(
+async function parseDrive(
   fixtureCase: Pick<IngestionFixtureCase, 'raw' | 'sourceType'>,
   raw: DriveRaw,
-): ParsedDocument {
+  topicExtractionAgent: TopicExtractionAgent = createDeterministicTopicExtractionAgent(),
+): Promise<ParsedDocument> {
+  const title = raw.title;
+  const bodyText = raw.bodyText;
+  const canonicalUri = raw.webViewLink;
+
   return validateParsedDocument({
     actors: (raw.owners ?? []).map((owner) => ({
       displayName: owner.name,
       email: owner.email,
       role: 'owner',
     })),
-    bodyText: raw.bodyText,
-    canonicalUri: raw.webViewLink,
+    bodyText,
+    canonicalUri,
     docType: 'drive_doc',
     metadata: {
       fileId: raw.fileId,
@@ -636,7 +641,13 @@ function parseDrive(
     schemaVersion: 1,
     sourceId: fixtureCase.raw.sourceId,
     sourceType: 'drive',
-    title: raw.title,
+    title,
+    topics: await topicExtractionAgent.extractTopics({
+      bodyText,
+      canonicalUri,
+      html: '',
+      title,
+    }),
   });
 }
 

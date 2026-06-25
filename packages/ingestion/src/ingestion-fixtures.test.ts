@@ -7,9 +7,11 @@ import { fileURLToPath } from 'node:url';
 import type { IngestionFixtureCase, ParsedDocument } from './ingestion-fixtures.js';
 import {
   loadIngestionFixtureCases,
+  parseRawContent,
   parseRawFixture,
   validateParsedDocument,
 } from './ingestion-fixtures.js';
+import type { TopicExtractionAgent } from './topic-extraction-agent.js';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -96,6 +98,76 @@ test('drive parser accepts missing owners', async () => {
 
     assert.equal(parsed.actors.length, 0);
     assert.equal(parsed.docType, 'drive_doc');
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
+test('drive parser emits keyword topics from title and body via topic extraction agent', async () => {
+  const topicExtractionAgent: TopicExtractionAgent = {
+    async extractTopics(input) {
+      return [
+        {
+          metadata: { source: 'test_title' },
+          target: input.title,
+          topicType: 'keyword',
+        },
+        {
+          metadata: { source: 'test_body' },
+          target: input.bodyText.slice(0, 24),
+          topicType: 'keyword',
+        },
+      ];
+    },
+  };
+  const rawPath = await writeTempRawFixture(
+    'drive-topic-keywords.json',
+    JSON.stringify({
+      bodyText: 'Semantic topics should come from Drive body text.',
+      fileId: 'drive-file-topics',
+      mimeType: 'application/vnd.google-apps.document',
+      modifiedTime: '2026-05-08T10:30:00.000Z',
+      owners: [{ email: 'owner@example.test', name: 'Sample Owner' }],
+      revisionId: 'rev-topic-1',
+      title: 'Drive Topic Fixture',
+      webViewLink: 'https://docs.example.test/document/d/drive-file-topics/edit',
+    }),
+  );
+
+  try {
+    const parsed = await parseRawContent(
+      buildFixtureCase('drive-topic-keywords', 'drive', rawPath),
+      await readFile(join(repoRoot, rawPath), 'utf8'),
+      { topicExtractionAgent },
+    );
+
+    assert.deepEqual(parsed.relations, []);
+    assert.deepEqual(parsed.actors, [
+      {
+        displayName: 'Sample Owner',
+        email: 'owner@example.test',
+        role: 'owner',
+      },
+    ]);
+    assert.deepEqual(
+      parsed.topics?.map((topic) => ({
+        metadata: topic.metadata,
+        target: topic.target,
+        topicType: topic.topicType,
+      })),
+      [
+        {
+          metadata: { source: 'test_title' },
+          target: 'Drive Topic Fixture',
+          topicType: 'keyword',
+        },
+        {
+          metadata: { source: 'test_body' },
+          target: 'Semantic topics should c',
+          topicType: 'keyword',
+        },
+      ],
+    );
   } finally {
     await rm(join(repoRoot, rawPath), { force: true });
   }

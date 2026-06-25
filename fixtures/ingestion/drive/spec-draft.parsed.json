@@ -19,5 +19,14 @@
   "schemaVersion": 1,
   "sourceId": "drive-file-alpha:rev-0003",
   "sourceType": "drive",
-  "title": "Fixture Parser Contract Draft"
+  "title": "Fixture Parser Contract Draft",
+  "topics": [
+    {
+      "metadata": {
+        "source": "title"
+      },
+      "target": "Fixture Parser Contract Draft",
+      "topicType": "keyword"
+    }
+  ]
 }

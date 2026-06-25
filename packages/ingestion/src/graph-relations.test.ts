@@ -246,6 +246,43 @@ test('storeGraphRelations materializes parsed keyword topics as mentions', async
   assert.equal(repository.nodes.has('topic:uri:https%3A%2F%2Fexample.test%2Fignored'), false);
 });
 
+test('storeGraphRelations materializes parsed Drive keyword topics as mentions', async () => {
+  const driveDocument = documentRecord({
+    docType: 'drive_doc',
+    graphNodeId: 'document:drive_doc:drive%3Afile-1%3Arev-1',
+    id: 'document-drive-1',
+    rawDocumentId: 'raw-drive-1',
+  });
+  const repository = new InMemoryGraphRelationsRepository([
+    {
+      document: driveDocument,
+      parsed: driveParsed({
+        topics: [
+          {
+            metadata: { source: 'title' },
+            target: 'Spec draft',
+            topicType: 'keyword',
+          },
+        ],
+      }),
+      rawContentHash: 'drive-hash',
+      rawDocumentId: 'raw-drive-1',
+    },
+  ]);
+
+  await storeGraphRelations({
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  });
+
+  assert.ok(repository.nodes.has('topic:keyword:spec%20draft'));
+  assert.ok(
+    repository.hasEdge(driveDocument.graphNodeId, 'MENTIONS', 'topic:keyword:spec%20draft'),
+  );
+  assert.equal(repository.nodes.get('topic:keyword:spec%20draft')?.properties.target, 'Spec draft');
+});
+
 test('storeGraphRelations skips blank reply relation targets', async () => {
   const repository = new InMemoryGraphRelationsRepository([
     {
@@ -530,18 +567,21 @@ function webParsed(): ParsedDocument {
   };
 }
 
-function driveParsed(): ParsedDocument {
+function driveParsed(
+  input: Partial<Pick<ParsedDocument, 'actors' | 'relations' | 'topics'>> = {},
+): ParsedDocument {
   return {
-    actors: [],
+    actors: input.actors ?? [],
     bodyText: 'Shared spec content.',
     canonicalUri: 'https://drive.example.test/file-1',
     docType: 'drive_doc',
     metadata: {},
     occurredAt: '2026-05-02T09:00:00.000Z',
-    relations: [],
+    relations: input.relations ?? [],
     schemaVersion: 1,
     sourceId: 'drive:file-1:rev-1',
     sourceType: 'drive',
     title: 'Spec draft',
+    ...(input.topics ? { topics: input.topics } : {}),
   };
 }
