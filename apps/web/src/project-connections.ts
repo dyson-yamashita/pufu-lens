@@ -692,7 +692,7 @@ function readRequiredSearchParam(request: NextRequest, name: string): string {
   return value;
 }
 
-function appBaseUrl(): string {
+export function appBaseUrl(): string {
   const url = process.env.APP_BASE_URL ?? process.env.AUTH_URL ?? 'http://localhost:3000';
   return url.endsWith('/') ? url.slice(0, -1) : url;
 }

@@ -63,6 +63,14 @@ env:
     value: https://pufu-lens-web--pufu-lens.asia-east1.hosted.app
     availability:
       - RUNTIME
+  - variable: GOOGLE_CLIENT_ID
+    secret: GOOGLE_CLIENT_ID
+    availability:
+      - RUNTIME
+  - variable: GOOGLE_CLIENT_SECRET
+    secret: GOOGLE_CLIENT_SECRET
+    availability:
+      - RUNTIME
   - variable: DATABASE_URL
     secret: DATABASE_URL
     availability:

@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import {
+  appBaseUrl,
   completeGoogleConnection,
   connectionErrorSettingsUrl,
 } from '../../../../../src/project-connections';
@@ -17,10 +18,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         projectSlug = parsed.projectSlug ?? null;
       }
     }
-    return NextResponse.redirect(new URL(await completeGoogleConnection(request), request.url));
+    return NextResponse.redirect(new URL(await completeGoogleConnection(request), appBaseUrl()));
   } catch (error) {
     return NextResponse.redirect(
-      new URL(connectionErrorSettingsUrl(projectSlug, error), request.url),
+      new URL(connectionErrorSettingsUrl(projectSlug, error), appBaseUrl()),
     );
   }
 }
