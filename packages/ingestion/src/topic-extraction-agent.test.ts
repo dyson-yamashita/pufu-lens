@@ -15,7 +15,7 @@ test('topicsFromGeminiJson normalizes topic targets from JSON output', () => {
   );
 });
 
-test('Gemini TopicExtractionAgent sends web article context and parses JSON topics', async () => {
+test('Gemini TopicExtractionAgent sends document context and parses JSON topics', async () => {
   const requests: Array<{ body: unknown; url: string }> = [];
   const agent = createGeminiTopicExtractionAgent({
     apiKey: 'test-key',

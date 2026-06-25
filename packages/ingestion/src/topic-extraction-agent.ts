@@ -23,7 +23,7 @@ export interface GeminiTopicExtractionAgentOptions {
 export function createDeterministicTopicExtractionAgent(): TopicExtractionAgent {
   return {
     async extractTopics(input) {
-      return deterministicWebTopics(input);
+      return deterministicDocumentTopics(input);
     },
   };
 }
@@ -56,12 +56,12 @@ export function createGeminiTopicExtractionAgent(
                 {
                   text: [
                     'You are TopicExtractionAgent for Pufu Lens.',
-                    'Extract semantic topics for a web article.',
+                    'Extract semantic topics for a document or web page.',
                     'Return only JSON: {"topics":["topic1","topic2"]}.',
                     `Return 1 to ${maxTopics} concise topics.`,
-                    'Prefer explicit article tags/hashtags such as note.com hashtag tags when present.',
+                    'Prefer explicit content tags or hashtags when HTML metadata is present.',
                     'Prefer project/product names, technical concepts, and domain keywords.',
-                    'Do not return generic UI words, navigation labels, login/signup links, or quoted phrases unless they are actual article topics.',
+                    'Do not return generic UI words, navigation labels, login/signup links, or quoted phrases unless they are actual content topics.',
                     'Do not return URLs.',
                     'Keep Japanese topics in Japanese.',
                     `Title: ${input.title}`,
@@ -114,7 +114,7 @@ export function topicsFromGeminiJson(text: string, maxTopics = 10): ParsedTopic[
   return normalizeTopicTargets(topicsValue, 'llm', maxTopics);
 }
 
-function deterministicWebTopics(input: TopicExtractionInput): ParsedTopic[] {
+function deterministicDocumentTopics(input: TopicExtractionInput): ParsedTopic[] {
   const topics: ParsedTopic[] = [];
   const seen = new Set<string>();
 
