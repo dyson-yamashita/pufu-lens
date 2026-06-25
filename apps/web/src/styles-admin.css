@@ -25,6 +25,20 @@
   text-transform: uppercase;
 }
 
+.danger-button {
+  background: var(--status-danger-bg);
+  border-color: color-mix(in srgb, var(--red) 45%, var(--line));
+  color: var(--red);
+}
+
+.danger-button:hover:not(:disabled) {
+  border-color: var(--red);
+}
+
+.data-source-delete-form {
+  margin-top: 12px;
+}
+
 .content-preview-metrics {
   gap: 8px;
 }

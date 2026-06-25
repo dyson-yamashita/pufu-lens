@@ -4,6 +4,7 @@ import {
   collectAndIngestDataSource as collectAndIngestDataSourceAction,
   collectDataSource as collectDataSourceAction,
   createDataSource as createDataSourceAction,
+  deleteDataSource as deleteDataSourceAction,
   ingestDataSource as ingestDataSourceAction,
   retryFailedQueue as retryFailedQueueAction,
   updateDataSource as updateDataSourceAction,
@@ -64,6 +65,10 @@ export async function createDataSource(formData: FormData): Promise<void> {
 
 export async function updateDataSource(formData: FormData): Promise<void> {
   await updateDataSourceAction(formData);
+}
+
+export async function deleteDataSource(formData: FormData): Promise<void> {
+  await deleteDataSourceAction(formData);
 }
 
 export async function retryFailedQueue(formData: FormData): Promise<void> {

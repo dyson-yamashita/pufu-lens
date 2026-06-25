@@ -3,11 +3,14 @@ import {
   parseAdminActionDataSourceIngestRow,
   parseAdminActionDataSourceRecordRow,
   parseAdminActionDataSourceRow,
+  parseAdminActionDocumentGraphNodeRow,
   parseAdminActionIdRow,
   parseAdminActionParserVersionRow,
+  parseAdminActionProjectGraphNameRow,
   parseAdminActionProjectRecordRow,
   parseAdminActionRawDocumentRecordRow,
   parseAdminActionSameHashCandidateRow,
+  parseAdminActionStorageObjectUriRow,
 } from './admin-actions-guards.ts';
 
 assert.deepEqual(parseAdminActionIdRow({ id: 'row-a' }, 'sample row'), { id: 'row-a' });
@@ -211,6 +214,46 @@ assert.throws(
       sourceType: 'github',
     }),
   /Invalid same hash candidate row field: sourceId/,
+);
+
+assert.deepEqual(parseAdminActionDocumentGraphNodeRow({ graphNodeId: 'node-a' }), {
+  graphNodeId: 'node-a',
+});
+assert.throws(
+  () => parseAdminActionDocumentGraphNodeRow({ graphNodeId: null }),
+  /Invalid document graph node row field: graphNodeId/,
+);
+
+assert.deepEqual(parseAdminActionProjectGraphNameRow({ graphName: 'graph_sample_a' }), {
+  graphName: 'graph_sample_a',
+});
+assert.deepEqual(parseAdminActionProjectGraphNameRow({ graphName: null }), {
+  graphName: null,
+});
+
+assert.deepEqual(
+  parseAdminActionStorageObjectUriRow({
+    parsedUri: null,
+    storageUri: 'sample-a/raw/doc.json',
+  }),
+  {
+    parsedUri: null,
+    storageUri: 'sample-a/raw/doc.json',
+  },
+);
+assert.deepEqual(
+  parseAdminActionStorageObjectUriRow({
+    parsedUri: 'sample-a/parsed/doc.json',
+    storageUri: 'sample-a/raw/doc.json',
+  }),
+  {
+    parsedUri: 'sample-a/parsed/doc.json',
+    storageUri: 'sample-a/raw/doc.json',
+  },
+);
+assert.throws(
+  () => parseAdminActionStorageObjectUriRow({ parsedUri: null, storageUri: null }),
+  /Invalid storage object uri row field: storageUri/,
 );
 
 console.log('web admin actions guards tests passed');

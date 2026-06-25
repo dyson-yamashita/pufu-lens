@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
+import { shouldProceedWithConfirm } from './form-confirm.ts';
 
 type FormAction = (formData: FormData) => Promise<void>;
 
@@ -15,12 +16,14 @@ export function ActionForm({
   action,
   children,
   className,
+  confirmMessage,
   onSuccess,
   testId,
 }: {
   readonly action: FormAction;
   readonly children: React.ReactNode;
   readonly className?: string;
+  readonly confirmMessage?: string;
   readonly onSuccess?: () => void;
   readonly testId?: string;
 }) {
@@ -37,8 +40,23 @@ export function ActionForm({
     initialActionFormState,
   );
 
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>): void => {
+    const message = confirmMessage;
+    if (!message) {
+      return;
+    }
+    if (!shouldProceedWithConfirm(message, () => window.confirm(message))) {
+      event.preventDefault();
+    }
+  };
+
   return (
-    <form action={formAction} className={className} data-testid={testId}>
+    <form
+      action={formAction}
+      className={className}
+      data-testid={testId}
+      onSubmit={confirmMessage ? handleSubmit : undefined}
+    >
       {children}
       {state.error ? (
         <p className="action-error" role="alert">

@@ -20,6 +20,21 @@ test('LocalFsObjectStorage stores and reads text objects', async () => {
   }
 });
 
+test('LocalFsObjectStorage deletes objects idempotently', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pufu-lens-storage-'));
+  try {
+    const storage = new LocalFsObjectStorage(root);
+    const result = await storage.put('project-a/raw/doc.txt', 'hello');
+
+    await storage.delete(result.uri);
+    await storage.delete(result.uri);
+
+    assert.equal(await storage.exists(result.uri), false);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test('LocalFsObjectStorage lists only objects under the requested project prefix', async () => {
   const root = await mkdtemp(join(tmpdir(), 'pufu-lens-storage-'));
   try {

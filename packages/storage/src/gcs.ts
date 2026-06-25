@@ -88,6 +88,10 @@ export class GcsObjectStorage implements ObjectStorage {
     return exists;
   }
 
+  async delete(uri: string): Promise<void> {
+    await this.fileForUri(uri).delete({ ignoreNotFound: true });
+  }
+
   async signedUrl(uri: string, ttlSeconds: number): Promise<string> {
     if (!Number.isFinite(ttlSeconds) || ttlSeconds <= 0) {
       throw new Error(`signedUrl ttlSeconds must be positive: ${ttlSeconds}`);

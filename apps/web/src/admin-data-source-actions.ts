@@ -30,10 +30,13 @@ import {
   parseAdminActionDataSourceIngestRow,
   parseAdminActionDataSourceRecordRow,
   parseAdminActionDataSourceRow,
+  parseAdminActionDocumentGraphNodeRow,
   parseAdminActionIdRow,
+  parseAdminActionProjectGraphNameRow,
   parseAdminActionProjectRecordRow,
   parseAdminActionRawDocumentRecordRow,
   parseAdminActionSameHashCandidateRow,
+  parseAdminActionStorageObjectUriRow,
 } from './admin-actions-guards.ts';
 import {
   requireAdminProject,
@@ -49,6 +52,7 @@ import {
   type SourceType,
 } from './admin-data';
 import { listProjectConnectionsForProjectId } from './admin-db';
+import { deleteExclusiveDocumentGraphNodes } from './graph-document-cleanup.ts';
 import {
   createGitHubInstallationAccessToken,
   readProjectConnectionAccessToken,
@@ -193,6 +197,81 @@ export async function updateDataSource(formData: FormData): Promise<void> {
     `;
   });
 
+  revalidateProject(projectSlug);
+}
+
+export async function deleteDataSource(formData: FormData): Promise<void> {
+  const projectSlug = requireFormValue(formData, 'projectSlug');
+  const dataSourceId = requireFormValue(formData, 'dataSourceId');
+
+  let graphCleanup: { graphName: string | null; graphNodeIds: readonly string[] } = {
+    graphName: null,
+    graphNodeIds: [],
+  };
+  let storageObjectUris: readonly string[] = [];
+
+  await withSql(async (sql) => {
+    const project = await requireAdminProject(sql, projectSlug);
+    await lookupProjectDataSourceForDeletion(sql, project.id, dataSourceId);
+
+    const graphNameRows = (await sql`
+      SELECT graph_name AS "graphName"
+      FROM public.projects
+      WHERE id = ${project.id}
+    `) as readonly unknown[];
+    const projectGraph = parseOptionalAdminActionRow(
+      graphNameRows,
+      parseAdminActionProjectGraphNameRow,
+    );
+    if (!projectGraph) {
+      throw new Error('Project not found.');
+    }
+
+    graphCleanup = await sql.begin(async (tx) => {
+      const exclusiveRawDocumentIds = await listExclusiveRawDocumentIds(
+        tx,
+        project.id,
+        dataSourceId,
+      );
+      const graphNodeIds =
+        exclusiveRawDocumentIds.length === 0
+          ? []
+          : await listDocumentGraphNodeIds(tx, project.id, exclusiveRawDocumentIds);
+      storageObjectUris =
+        exclusiveRawDocumentIds.length === 0
+          ? []
+          : await listStorageObjectUris(tx, project.id, exclusiveRawDocumentIds);
+
+      if (exclusiveRawDocumentIds.length > 0) {
+        await tx`
+          DELETE FROM public.raw_documents
+          WHERE project_id = ${project.id}
+            AND id IN ${tx(exclusiveRawDocumentIds)}
+        `;
+      }
+
+      await reassignSharedRawDocumentQueues(tx, project.id, dataSourceId);
+
+      const deleted = (await tx`
+        DELETE FROM public.data_sources
+        WHERE id = ${dataSourceId}
+          AND project_id = ${project.id}
+        RETURNING id::text
+      `) as readonly unknown[];
+      if (!parseOptionalAdminActionIdRow(deleted, 'deleted data source row')) {
+        throw new Error('Data source not found in project.');
+      }
+
+      return {
+        graphName: projectGraph.graphName,
+        graphNodeIds,
+      };
+    });
+
+    await deleteExclusiveDocumentGraphNodes(sql, graphCleanup);
+  });
+
+  await deleteStorageObjectsBestEffort(storageObjectUris);
   revalidateProject(projectSlug);
 }
 
@@ -662,6 +741,145 @@ async function lookupProjectDataSource(
     throw new Error('Data source not found in project.');
   }
   return dataSource;
+}
+
+async function lookupProjectDataSourceForDeletion(
+  sql: postgres.Sql,
+  projectId: string,
+  dataSourceId: string,
+): Promise<AdminActionDataSourceRow> {
+  const dataSource = await lookupProjectDataSourceForDeletionRow(sql, projectId, dataSourceId);
+  if (!dataSource) {
+    throw new Error('Data source not found in project.');
+  }
+  return dataSource;
+}
+
+async function lookupProjectDataSourceForDeletionRow(
+  sql: postgres.Sql,
+  projectId: string,
+  dataSourceId: string,
+): Promise<AdminActionDataSourceRow | undefined> {
+  const rows = (await sql`
+    SELECT id::text, source_type
+    FROM public.data_sources
+    WHERE id = ${dataSourceId}
+      AND project_id = ${projectId}
+  `) as readonly unknown[];
+  return parseOptionalAdminActionRow(rows, parseAdminActionDataSourceRow);
+}
+
+async function reassignSharedRawDocumentQueues(
+  tx: postgres.TransactionSql,
+  projectId: string,
+  deletedDataSourceId: string,
+): Promise<void> {
+  await tx`
+    UPDATE public.ingestion_queue iq
+    SET data_source_id = replacement.data_source_id,
+        updated_at = now()
+    FROM (
+      SELECT DISTINCT ON (rdds.raw_document_id)
+        rdds.raw_document_id,
+        rdds.data_source_id
+      FROM public.raw_document_data_sources rdds
+      WHERE rdds.project_id = ${projectId}
+        AND rdds.data_source_id <> ${deletedDataSourceId}
+        AND EXISTS (
+          SELECT 1
+          FROM public.raw_document_data_sources deleted_link
+          WHERE deleted_link.project_id = ${projectId}
+            AND deleted_link.raw_document_id = rdds.raw_document_id
+            AND deleted_link.data_source_id = ${deletedDataSourceId}
+        )
+      ORDER BY rdds.raw_document_id, rdds.data_source_id ASC
+    ) replacement
+    WHERE iq.project_id = ${projectId}
+      AND iq.raw_document_id = replacement.raw_document_id
+      AND iq.data_source_id = ${deletedDataSourceId}
+  `;
+}
+
+async function listExclusiveRawDocumentIds(
+  tx: postgres.TransactionSql,
+  projectId: string,
+  dataSourceId: string,
+): Promise<string[]> {
+  const rows = (await tx`
+    SELECT rdds.raw_document_id::text AS id
+    FROM public.raw_document_data_sources rdds
+    WHERE rdds.project_id = ${projectId}
+      AND rdds.data_source_id = ${dataSourceId}
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.raw_document_data_sources other
+        WHERE other.raw_document_id = rdds.raw_document_id
+          AND other.data_source_id <> rdds.data_source_id
+      )
+  `) as readonly unknown[];
+  return parseAdminActionRows(rows, (row) =>
+    parseAdminActionIdRow(row, 'exclusive raw document row'),
+  ).map((row) => row.id);
+}
+
+async function listDocumentGraphNodeIds(
+  tx: postgres.TransactionSql,
+  projectId: string,
+  rawDocumentIds: readonly string[],
+): Promise<string[]> {
+  const rows = (await tx`
+    SELECT d.graph_node_id AS "graphNodeId"
+    FROM public.documents d
+    WHERE d.project_id = ${projectId}
+      AND d.raw_document_id IN ${tx([...rawDocumentIds])}
+      AND d.graph_node_id IS NOT NULL
+  `) as readonly unknown[];
+  return parseAdminActionRows(rows, parseAdminActionDocumentGraphNodeRow).map(
+    (row) => row.graphNodeId,
+  );
+}
+
+async function listStorageObjectUris(
+  tx: postgres.TransactionSql,
+  projectId: string,
+  rawDocumentIds: readonly string[],
+): Promise<string[]> {
+  const rows = (await tx`
+    SELECT
+      rd.storage_uri AS "storageUri",
+      rd.parsed_uri AS "parsedUri"
+    FROM public.raw_documents rd
+    WHERE rd.project_id = ${projectId}
+      AND rd.id IN ${tx([...rawDocumentIds])}
+  `) as readonly unknown[];
+  const uris = parseAdminActionRows(rows, parseAdminActionStorageObjectUriRow).flatMap((row) =>
+    row.parsedUri ? [row.storageUri, row.parsedUri] : [row.storageUri],
+  );
+  return [...new Set(uris)];
+}
+
+async function deleteStorageObjectsBestEffort(uris: readonly string[]): Promise<void> {
+  if (uris.length === 0) {
+    return;
+  }
+  try {
+    const storage = createObjectStorageFromEnv();
+    if (!storage.delete) {
+      console.warn(
+        `Storage object cleanup skipped for ${uris.length} object(s): delete unsupported`,
+      );
+      return;
+    }
+    for (const uri of uris) {
+      await storage.delete(uri);
+    }
+  } catch (error) {
+    console.warn(
+      `Storage object cleanup skipped for ${uris.length} object(s): ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 }
 
 async function lookupProjectDataSourceRow(

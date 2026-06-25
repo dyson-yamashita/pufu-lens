@@ -2,6 +2,7 @@ import Link from 'next/link';
 import {
   collectAndIngestDataSource,
   createDataSource,
+  deleteDataSource,
   retryFailedQueue,
   updateDataSource,
 } from '../../../../../src/admin-actions';
@@ -257,6 +258,23 @@ export default async function DataSourcesPage({
                       </PendingSubmitButton>
                     </ActionForm>
                   </div>
+                  <ActionForm
+                    action={deleteDataSource}
+                    className="inline-action-form data-source-delete-form"
+                    confirmMessage={`Delete "${selectedSource.name}"? Exclusive ingest data for this data source will be removed. Documents shared with other data sources will keep their content.`}
+                    testId="data-source-delete-form"
+                  >
+                    <input name="projectSlug" type="hidden" value={project.slug} />
+                    <input name="dataSourceId" type="hidden" value={selectedSource.id} />
+                    <PendingSubmitButton
+                      className="icon-button danger-button"
+                      pendingLabel="Deleting"
+                      testId="data-source-delete-button"
+                      title="Delete data source"
+                    >
+                      Delete
+                    </PendingSubmitButton>
+                  </ActionForm>
                 </section>
                 {contentPreview ? (
                   <>
