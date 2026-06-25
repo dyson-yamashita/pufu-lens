@@ -8,7 +8,9 @@ import {
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const projectSlug = request.nextUrl.searchParams.get('projectSlug');
   if (!projectSlug) {
-    return NextResponse.redirect(new URL('/projects?connectionError=missing-project', appBaseUrl()));
+    return NextResponse.redirect(
+      new URL('/projects?connectionError=missing-project', appBaseUrl()),
+    );
   }
   try {
     return NextResponse.redirect(await githubConnectionStartUrl({ projectSlug }));
