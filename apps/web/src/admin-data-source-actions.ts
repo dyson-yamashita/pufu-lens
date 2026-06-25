@@ -864,7 +864,7 @@ async function deleteStorageObjectsBestEffort(uris: readonly string[]): Promise<
     return;
   }
   try {
-    const storage = createObjectStorageFromEnv();
+    const storage = createCollectionStorageFromEnv();
     if (!storage.delete) {
       console.warn(
         `Storage object cleanup skipped for ${uris.length} object(s): delete unsupported`,
