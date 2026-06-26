@@ -114,7 +114,7 @@ private data は authenticated runtime だけが読める。public report に必
 
 Database は PostgreSQL を前提にする。Graph 機能には Apache AGE、embedding / vector data には pgvector、id / token 補助には pgcrypto を使う。
 
-provider が managed PostgreSQL を提供していても、Apache AGE を有効化できない場合は別の運用方式が必要になる。GCP の既存設計では Cloud SQL ではなく PostgreSQL + AGE の container / VM 構成を採る。
+provider が managed PostgreSQL を提供していても、Apache AGE を有効化できない場合は別の運用方式が必要になる。
 
 deployment 前後では次を確認する。
 
