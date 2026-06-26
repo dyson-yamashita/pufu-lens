@@ -143,7 +143,7 @@ The secret values are not read into the build log. Cloud Run receives secret ref
 
 If your environment uses Google or GitHub OAuth data-source refresh in jobs, add the corresponding runtime secrets in your fork or environment-specific copy:
 
-- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
 - `GITHUB_CLIENT_SECRET` / `AUTH_GITHUB_SECRET`
 - `CONNECTION_SECRET_KEY` when you do not want to fall back to `AUTH_SECRET`
 
