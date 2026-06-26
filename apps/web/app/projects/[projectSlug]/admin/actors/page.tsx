@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { mergeActors, rejectActorMergeCandidate } from '../../../../../src/admin-actions';
 import type {
   ProjectActorAliasSummary,
   ProjectActorSummary,
@@ -59,6 +60,7 @@ export default async function ActorsPage({
               <thead>
                 <tr>
                   <th>Actor</th>
+                  <th>Status</th>
                   <th>Strong</th>
                   <th>Weak</th>
                   <th>Sources</th>
@@ -72,9 +74,18 @@ export default async function ActorsPage({
                     <td>
                       <span className="source-name">
                         <span>
-                          <strong>{actor.displayName}</strong>
+                          <strong>
+                            <Link href={`/projects/${project.slug}/admin/actors/${actor.id}`}>
+                              {actor.displayName}
+                            </Link>
+                          </strong>
                           <small>{actor.actorType}</small>
                         </span>
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`status-badge status-actor-${actor.status}`}>
+                        {actor.status}
                       </span>
                     </td>
                     <td>
@@ -132,25 +143,25 @@ export default async function ActorsPage({
                     <dd>{candidate.evidence.join(', ') || 'none'}</dd>
                   </div>
                 </dl>
-                <div className="action-row">
-                  <button
-                    className="icon-button"
-                    data-testid={`actor-merge-${candidate.id}`}
-                    disabled
-                    title="Merge persistence is not implemented yet"
-                    type="button"
-                  >
-                    Merge
-                  </button>
-                  <button
-                    className="icon-button muted"
-                    data-testid={`actor-reject-${candidate.id}`}
-                    disabled
-                    title="Reject persistence is not implemented yet"
-                    type="button"
-                  >
-                    Reject
-                  </button>
+                <div className="actor-candidate-actions">
+                  <MergeActorForm
+                    candidateId={candidate.id}
+                    primaryActor={candidate.actorA}
+                    projectSlug={project.slug}
+                    secondaryActor={candidate.actorB}
+                  />
+                  <MergeActorForm
+                    candidateId={candidate.id}
+                    primaryActor={candidate.actorB}
+                    projectSlug={project.slug}
+                    secondaryActor={candidate.actorA}
+                  />
+                  <RejectActorForm
+                    actorA={candidate.actorA}
+                    actorB={candidate.actorB}
+                    candidateId={candidate.id}
+                    projectSlug={project.slug}
+                  />
                 </div>
               </article>
             ))
@@ -163,6 +174,72 @@ export default async function ActorsPage({
         </section>
       )}
     </AppShell>
+  );
+}
+
+function MergeActorForm({
+  candidateId,
+  primaryActor,
+  projectSlug,
+  secondaryActor,
+}: {
+  readonly candidateId: string;
+  readonly primaryActor: ProjectActorSummary;
+  readonly projectSlug: string;
+  readonly secondaryActor: ProjectActorSummary;
+}) {
+  return (
+    <form action={mergeActors} className="actor-decision-form">
+      <input name="projectSlug" type="hidden" value={projectSlug} />
+      <input name="primaryActorId" type="hidden" value={primaryActor.id} />
+      <input name="secondaryActorId" type="hidden" value={secondaryActor.id} />
+      <input
+        aria-label={`${secondaryActor.displayName} を ${primaryActor.displayName} にマージする理由`}
+        name="reason"
+        placeholder="Reason"
+        type="text"
+      />
+      <button
+        className="icon-button"
+        data-testid={`actor-merge-${candidateId}-into-${primaryActor.id}`}
+        type="submit"
+      >
+        Merge into {primaryActor.displayName}
+      </button>
+    </form>
+  );
+}
+
+function RejectActorForm({
+  actorA,
+  actorB,
+  candidateId,
+  projectSlug,
+}: {
+  readonly actorA: ProjectActorSummary;
+  readonly actorB: ProjectActorSummary;
+  readonly candidateId: string;
+  readonly projectSlug: string;
+}) {
+  return (
+    <form action={rejectActorMergeCandidate} className="actor-decision-form">
+      <input name="projectSlug" type="hidden" value={projectSlug} />
+      <input name="primaryActorId" type="hidden" value={actorA.id} />
+      <input name="secondaryActorId" type="hidden" value={actorB.id} />
+      <input
+        aria-label={`${actorA.displayName} と ${actorB.displayName} を reject する理由`}
+        name="reason"
+        placeholder="Reason"
+        type="text"
+      />
+      <button
+        className="icon-button muted"
+        data-testid={`actor-reject-${candidateId}`}
+        type="submit"
+      >
+        Reject
+      </button>
+    </form>
   );
 }
 

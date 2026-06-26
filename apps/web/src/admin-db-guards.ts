@@ -1,3 +1,4 @@
+import type { ActorDecisionType, ActorStatus } from './admin-actors.ts';
 import {
   isProjectVisibility,
   isSourceType,
@@ -58,12 +59,18 @@ export type AdminDbOAuthConnectionRow = {
 export type AdminDbActorRow = {
   readonly actor_type: string;
   readonly created_at: Date | string;
+  readonly disabled_at: Date | string | null;
+  readonly disabled_by_user_id: string | null;
+  readonly disabled_reason: string | null;
   readonly display_name: string;
   readonly graph_node_id: string;
   readonly id: string;
+  readonly merged_into_actor_id: string | null;
+  readonly merged_into_actor_name: string | null;
   readonly metadata: unknown;
   readonly primary_email: string | null;
   readonly primary_login: string | null;
+  readonly status: ActorStatus;
   readonly updated_at: Date | string;
 };
 
@@ -73,6 +80,18 @@ export type AdminDbActorAliasRow = {
   readonly alias_value: string;
   readonly confidence: number | string;
   readonly source: string | null;
+};
+
+export type AdminDbActorMergeDecisionRow = {
+  readonly created_at: Date | string;
+  readonly created_by_user_id: string | null;
+  readonly decision_type: ActorDecisionType;
+  readonly id: string;
+  readonly primary_actor_display_name: string;
+  readonly primary_actor_id: string;
+  readonly reason: string | null;
+  readonly secondary_actor_display_name: string;
+  readonly secondary_actor_id: string;
 };
 
 export type AdminDbDataSourceRow = {
@@ -264,23 +283,43 @@ export function parseAdminDbActorRow(value: unknown): AdminDbActorRow {
   const {
     actor_type,
     created_at,
+    disabled_at,
+    disabled_by_user_id,
+    disabled_reason,
     display_name,
     graph_node_id,
     id,
+    merged_into_actor_id,
+    merged_into_actor_name,
     metadata,
     primary_email,
     primary_login,
+    status,
     updated_at,
   } = value;
   return {
     actor_type: parseRequiredString(actor_type, context, 'actor_type'),
     created_at: parseDateLike(created_at, context, 'created_at'),
+    disabled_at: parseNullableDateLike(disabled_at, context, 'disabled_at'),
+    disabled_by_user_id: parseNullableString(disabled_by_user_id, context, 'disabled_by_user_id'),
+    disabled_reason: parseNullableString(disabled_reason, context, 'disabled_reason'),
     display_name: parseRequiredString(display_name, context, 'display_name'),
     graph_node_id: parseRequiredString(graph_node_id, context, 'graph_node_id'),
     id: parseRequiredString(id, context, 'id'),
+    merged_into_actor_id: parseNullableString(
+      merged_into_actor_id,
+      context,
+      'merged_into_actor_id',
+    ),
+    merged_into_actor_name: parseNullableString(
+      merged_into_actor_name,
+      context,
+      'merged_into_actor_name',
+    ),
     metadata,
     primary_email: parseNullableString(primary_email, context, 'primary_email'),
     primary_login: parseNullableString(primary_login, context, 'primary_login'),
+    status: parseActorStatus(status, context, 'status'),
     updated_at: parseDateLike(updated_at, context, 'updated_at'),
   };
 }
@@ -297,6 +336,43 @@ export function parseAdminDbActorAliasRow(value: unknown): AdminDbActorAliasRow 
     alias_value: parseRequiredString(alias_value, context, 'alias_value'),
     confidence: parseConfidenceLike(confidence, context, 'confidence'),
     source: parseNullableString(source, context, 'source'),
+  };
+}
+
+export function parseAdminDbActorMergeDecisionRow(value: unknown): AdminDbActorMergeDecisionRow {
+  const context = 'actor merge decision';
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${context} row.`);
+  }
+  const {
+    created_at,
+    created_by_user_id,
+    decision_type,
+    id,
+    primary_actor_display_name,
+    primary_actor_id,
+    reason,
+    secondary_actor_display_name,
+    secondary_actor_id,
+  } = value;
+  return {
+    created_at: parseDateLike(created_at, context, 'created_at'),
+    created_by_user_id: parseNullableString(created_by_user_id, context, 'created_by_user_id'),
+    decision_type: parseActorDecisionType(decision_type, context, 'decision_type'),
+    id: parseRequiredString(id, context, 'id'),
+    primary_actor_display_name: parseRequiredString(
+      primary_actor_display_name,
+      context,
+      'primary_actor_display_name',
+    ),
+    primary_actor_id: parseRequiredString(primary_actor_id, context, 'primary_actor_id'),
+    reason: parseNullableString(reason, context, 'reason'),
+    secondary_actor_display_name: parseRequiredString(
+      secondary_actor_display_name,
+      context,
+      'secondary_actor_display_name',
+    ),
+    secondary_actor_id: parseRequiredString(secondary_actor_id, context, 'secondary_actor_id'),
   };
 }
 
@@ -503,6 +579,24 @@ function parseBoolean(value: unknown, context: string, fieldName: string): boole
 
 function parseMemberRole(value: unknown, context: string, fieldName: string): 'admin' | 'member' {
   if (value === 'admin' || value === 'member') {
+    return value;
+  }
+  throw new Error(`Invalid ${context} row field: ${fieldName}`);
+}
+
+function parseActorStatus(value: unknown, context: string, fieldName: string): ActorStatus {
+  if (value === 'active' || value === 'merged' || value === 'disabled') {
+    return value;
+  }
+  throw new Error(`Invalid ${context} row field: ${fieldName}`);
+}
+
+function parseActorDecisionType(
+  value: unknown,
+  context: string,
+  fieldName: string,
+): ActorDecisionType {
+  if (value === 'merge' || value === 'reject') {
     return value;
   }
   throw new Error(`Invalid ${context} row field: ${fieldName}`);

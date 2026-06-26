@@ -69,6 +69,7 @@ export function revalidateProject(projectSlug: string): void {
   revalidatePath(`/projects/${projectSlug}/graph`);
   revalidatePath(`/projects/${projectSlug}/members`);
   revalidatePath(`/projects/${projectSlug}/admin/data-sources`);
+  revalidatePath(`/projects/${projectSlug}/admin/actors`);
   revalidatePath(`/projects/${projectSlug}/admin/parser-profiles`);
   revalidatePath(`/projects/${projectSlug}/admin/settings`);
   revalidatePath(`/projects/${projectSlug}/reports`);

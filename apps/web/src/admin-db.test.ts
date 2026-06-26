@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   parseAdminDbActorAliasRow,
+  parseAdminDbActorMergeDecisionRow,
   parseAdminDbActorRow,
   parseAdminDbAppMemberRow,
   parseAdminDbDataSourcePreviewDocumentRow,
@@ -139,12 +140,18 @@ assert.throws(
 const validActorRow = {
   actor_type: 'person',
   created_at: '2026-06-13T08:00:00.000Z',
+  disabled_at: null,
+  disabled_by_user_id: null,
+  disabled_reason: null,
   display_name: 'Sample Actor',
   graph_node_id: 'actor:sample',
   id: 'actor-a',
+  merged_into_actor_id: null,
+  merged_into_actor_name: null,
   metadata: { resolution: { sourceType: 'web' } },
   primary_email: 'actor@example.test',
   primary_login: 'sample-actor',
+  status: 'active',
   updated_at: new Date('2026-06-14T08:00:00.000Z'),
 };
 
@@ -164,6 +171,10 @@ assert.throws(
 assert.throws(
   () => parseAdminDbActorRow({ ...validActorRow, updated_at: 123 }),
   /Invalid actor row field: updated_at/,
+);
+assert.throws(
+  () => parseAdminDbActorRow({ ...validActorRow, status: 'archived' }),
+  /Invalid actor row field: status/,
 );
 
 const validActorAliasRow = {
@@ -198,6 +209,41 @@ assert.throws(
 assert.throws(
   () => parseAdminDbActorAliasRow({ ...validActorAliasRow, source: 123 }),
   /Invalid actor alias row field: source/,
+);
+
+const validActorMergeDecisionRow = {
+  created_at: '2026-06-26T00:00:00.000Z',
+  created_by_user_id: 'user-a',
+  decision_type: 'merge',
+  id: 'decision-a',
+  primary_actor_display_name: 'Primary Actor',
+  primary_actor_id: 'actor-a',
+  reason: 'same person',
+  secondary_actor_display_name: 'Secondary Actor',
+  secondary_actor_id: 'actor-b',
+};
+
+assert.deepEqual(
+  parseAdminDbActorMergeDecisionRow(validActorMergeDecisionRow),
+  validActorMergeDecisionRow,
+);
+assert.deepEqual(
+  parseAdminDbActorMergeDecisionRow({
+    ...validActorMergeDecisionRow,
+    created_by_user_id: null,
+    decision_type: 'reject',
+    reason: null,
+  }),
+  {
+    ...validActorMergeDecisionRow,
+    created_by_user_id: null,
+    decision_type: 'reject',
+    reason: null,
+  },
+);
+assert.throws(
+  () => parseAdminDbActorMergeDecisionRow({ ...validActorMergeDecisionRow, decision_type: 'skip' }),
+  /Invalid actor merge decision row field: decision_type/,
 );
 
 const validDataSourceRow = {

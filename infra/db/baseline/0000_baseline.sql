@@ -282,11 +282,19 @@ CREATE TABLE public.actors (
   primary_login TEXT,
   metadata JSONB NOT NULL DEFAULT '{}',
   graph_node_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'merged', 'disabled')),
+  merged_into_actor_id UUID REFERENCES public.actors(id) ON DELETE SET NULL,
+  disabled_at TIMESTAMPTZ,
+  disabled_by_user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  disabled_reason TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (project_id, graph_node_id)
+  UNIQUE (project_id, graph_node_id),
+  CHECK (merged_into_actor_id IS NULL OR merged_into_actor_id <> id)
 );
 CREATE INDEX actors_project_type_idx ON public.actors (project_id, actor_type);
+CREATE INDEX actors_project_status_idx ON public.actors (project_id, status);
+CREATE INDEX actors_project_merged_into_idx ON public.actors (project_id, merged_into_actor_id);
 
 CREATE TABLE public.actor_aliases (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -317,6 +325,30 @@ CREATE TABLE public.email_quotes (
   UNIQUE (project_id, document_id, quote_index)
 );
 CREATE INDEX email_quotes_project_document_idx ON public.email_quotes (project_id, document_id, quote_index);
+
+CREATE TABLE public.actor_merge_decisions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  primary_actor_id UUID NOT NULL REFERENCES public.actors(id) ON DELETE CASCADE,
+  secondary_actor_id UUID NOT NULL REFERENCES public.actors(id) ON DELETE CASCADE,
+  decision_type TEXT NOT NULL CHECK (decision_type IN ('merge', 'reject')),
+  reason TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}',
+  created_by_user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (primary_actor_id <> secondary_actor_id)
+);
+CREATE INDEX actor_merge_decisions_project_primary_idx
+  ON public.actor_merge_decisions (project_id, primary_actor_id, created_at DESC);
+CREATE INDEX actor_merge_decisions_project_secondary_idx
+  ON public.actor_merge_decisions (project_id, secondary_actor_id, created_at DESC);
+CREATE UNIQUE INDEX actor_merge_decisions_project_pair_type_idx
+  ON public.actor_merge_decisions (
+    project_id,
+    decision_type,
+    LEAST(primary_actor_id, secondary_actor_id),
+    GREATEST(primary_actor_id, secondary_actor_id)
+  );
 
 CREATE TABLE public.reports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
