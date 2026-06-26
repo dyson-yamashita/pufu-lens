@@ -75,6 +75,7 @@ Do not configure these secrets on the CI trigger:
 - provider access tokens
 
 Runtime secrets belong to provider-specific deploy examples or operations docs.
+For the full GCP trigger and operations flow, see `docs/deployment/gcp-cloud-build.md`.
 
 ## Deploy Trigger
 
@@ -204,6 +205,7 @@ Confirm after deploy that:
 
 ## References
 
+- `docs/deployment/gcp-cloud-build.md`
 - `docs/deployment/overview.md`
 - `docs/designs/system/11-deployment.md`
 - `docs/operations/deploy-checklist.md`
