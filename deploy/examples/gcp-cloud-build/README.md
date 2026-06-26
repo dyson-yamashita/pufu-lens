@@ -2,17 +2,19 @@
 
 This directory contains Cloud Build examples for OSS users who want to run CI or deployment in their own GCP project.
 
+The current Pufu Lens project uses GitHub Actions for PR / push CI and Cloud Build only for production deployment. `cloudbuild.ci.yaml` remains an optional example for users who want CI checks to run in Cloud Build in their own project.
+
 The examples are split by responsibility:
 
-- `cloudbuild.ci.yaml`: checks formatting, lint, migration metadata, deploy dry-run, typecheck, and tests.
+- `cloudbuild.ci.yaml`: optional Cloud Build CI example that checks formatting, lint, migration metadata, deploy dry-run, typecheck, and tests.
 - `cloudbuild.deploy.yaml`: builds and deploys the GCP runtime after a protected branch or release trigger fires.
 - `apphosting.example.yaml`: provider example for Web runtime configuration in a user's fork or release workspace.
 
 Deploy examples are intentionally handled separately so a pull request or feature branch cannot deploy production by accident.
 
-## CI Trigger
+## Optional CI Trigger
 
-Create a Cloud Build trigger in your GCP project and point it at this config:
+If you want Cloud Build to run CI in your own GCP project, create a trigger and point it at this config:
 
 ```text
 deploy/examples/gcp-cloud-build/cloudbuild.ci.yaml
@@ -25,7 +27,7 @@ Recommended trigger events:
 | Pull request CI | Pull request   | target branch `^main$`  | `cloudbuild.ci.yaml` |
 | Branch CI       | Push to branch | non-production branches | `cloudbuild.ci.yaml` |
 
-Do not attach this CI trigger to a deploy config. Production deploy should use a separate trigger and a separate service account.
+Do not attach this CI trigger to a deploy config. Production deploy should use a separate trigger and a separate service account. The Pufu Lens project itself does not create this Cloud Build CI trigger; it uses GitHub Actions for CI.
 
 ## CI Commands
 
@@ -87,10 +89,11 @@ deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml
 
 Recommended deploy trigger events:
 
-| use case          | event            | guard                                          |
-| ----------------- | ---------------- | ---------------------------------------------- |
-| staging deploy    | Push to `^main$` | dedicated staging deploy service account       |
-| production deploy | Push tag `^v.*$` | approval required + production service account |
+| use case          | event                                            | guard                                          |
+| ----------------- | ------------------------------------------------ | ---------------------------------------------- |
+| production deploy | Push to `^main$`                                 | approval required + production service account |
+| staging deploy    | Push to a protected staging branch or manual run | dedicated staging deploy service account       |
+| tag release       | Push tag `^v.*$`                                 | approval required + production service account |
 
 Do not use the deploy config for pull request events. For monorepo-style deployments, use Cloud Build included / ignored file filters so docs-only changes or unrelated app changes do not trigger deploy builds.
 
@@ -110,7 +113,7 @@ Set these trigger substitutions in the user's GCP project:
 | `_MASTRA_SERVICE`            | `mastra-server`                                     | Cloud Run service name.                                               |
 | `_MASTRA_IMAGE`              | `mastra-server`                                     | Artifact Registry image name for Mastra Server.                       |
 | `_JOBS_IMAGE`                | `workflow-job`                                      | Artifact Registry image name for workflow jobs.                       |
-| `_FIREBASE_DEPLOY`           | `true`                                              | Set to `false` if Web deploy is handled outside Cloud Build.          |
+| `_FIREBASE_DEPLOY`           | `false`                                             | Set to `true` only when Web deploy is handled by Cloud Build.         |
 | `_FIREBASE_TOOLS_VERSION`    | `14.4.0`                                            | Firebase CLI version for local-source App Hosting deploy.             |
 
 `PROJECT_ID` and `SHORT_SHA` are Cloud Build built-in substitutions. The example uses `SHORT_SHA` as the immutable image tag and also pushes `latest` as a convenience tag.
@@ -128,6 +131,8 @@ Set these trigger substitutions in the user's GCP project:
 7. Read the deployed Mastra Server URL dynamically and run `deploy:smoke`.
 
 The deploy config does not create the PostgreSQL VM, VPC connector, Artifact Registry repository, GCS bucket, Firebase App Hosting backend, or Secret Manager secrets. Provision those before enabling the trigger.
+
+The Pufu Lens GCP project currently sets `_FIREBASE_DEPLOY=false`, so Cloud Build deploys the Mastra Server and Workflow Jobs and then runs smoke checks. Web deployment is handled outside this trigger.
 
 ## Deploy Secrets
 
@@ -192,8 +197,8 @@ Use `docs/operations/deploy-checklist.md` for the environment-specific sequence:
 pnpm db:migrate --check
 pnpm db:migrate --plan
 pnpm db:migrate
-pnpm infra:check --env staging
-pnpm deploy:smoke --env staging
+pnpm infra:check --env production
+pnpm deploy:smoke --env production
 ```
 
 Confirm after deploy that:

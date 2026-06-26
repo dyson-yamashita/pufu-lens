@@ -18,7 +18,7 @@ substitutions:
   _MASTRA_SERVICE: mastra-server
   _MASTRA_IMAGE: mastra-server
   _JOBS_IMAGE: workflow-job
-  _FIREBASE_DEPLOY: 'true'
+  _FIREBASE_DEPLOY: 'false'
   _FIREBASE_TOOLS_VERSION: 14.4.0
 
 steps:
