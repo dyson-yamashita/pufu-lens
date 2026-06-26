@@ -6,6 +6,10 @@ timeout: 3600s
 
 options:
   logging: CLOUD_LOGGING_ONLY
+  # Parallel image builds and Firebase App Hosting rollout are CPU/network
+  # intensive. A larger worker shortens deploy wall-clock time at a higher
+  # per-minute build cost.
+  machineType: E2_HIGHCPU_8
 
 substitutions:
   _ENV: staging
@@ -58,6 +62,8 @@ steps:
 
   - id: build-mastra-server
     name: gcr.io/cloud-builders/docker
+    waitFor:
+      - validate-deploy-substitutions
     args:
       - build
       - --file
@@ -70,6 +76,8 @@ steps:
 
   - id: push-mastra-server
     name: gcr.io/cloud-builders/docker
+    waitFor:
+      - build-mastra-server
     args:
       - push
       - --all-tags
@@ -77,6 +85,8 @@ steps:
 
   - id: build-workflow-job
     name: gcr.io/cloud-builders/docker
+    waitFor:
+      - validate-deploy-substitutions
     args:
       - build
       - --file
@@ -89,6 +99,8 @@ steps:
 
   - id: push-workflow-job
     name: gcr.io/cloud-builders/docker
+    waitFor:
+      - build-workflow-job
     args:
       - push
       - --all-tags
@@ -96,6 +108,8 @@ steps:
 
   - id: deploy-mastra-server
     name: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+    waitFor:
+      - push-mastra-server
     entrypoint: bash
     args:
       - -c
@@ -119,6 +133,8 @@ steps:
 
   - id: deploy-workflow-jobs
     name: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+    waitFor:
+      - push-workflow-job
     entrypoint: bash
     args:
       - -c
@@ -145,6 +161,8 @@ steps:
 
   - id: deploy-web-app-hosting
     name: node:22-bookworm
+    waitFor:
+      - validate-deploy-substitutions
     entrypoint: bash
     args:
       - -c
@@ -161,6 +179,10 @@ steps:
 
   - id: smoke
     name: node:22-bookworm
+    waitFor:
+      - deploy-mastra-server
+      - deploy-workflow-jobs
+      - deploy-web-app-hosting
     entrypoint: bash
     args:
       - -c
