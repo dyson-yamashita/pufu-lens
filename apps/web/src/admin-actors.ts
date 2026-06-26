@@ -1,4 +1,6 @@
 export type ActorAliasStrength = 'strong' | 'weak';
+export type ActorDecisionType = 'merge' | 'reject';
+export type ActorStatus = 'active' | 'merged' | 'disabled';
 
 export type ProjectActorAliasSummary = {
   readonly aliasType: string;
@@ -12,12 +14,18 @@ export type ProjectActorSummary = {
   readonly actorType: string;
   readonly aliases: readonly ProjectActorAliasSummary[];
   readonly createdAt: string;
+  readonly disabledAt: string;
+  readonly disabledReason: string;
+  readonly disabledByUserId: string;
   readonly displayName: string;
   readonly graphNodeId: string;
   readonly id: string;
+  readonly mergedIntoActorId: string;
+  readonly mergedIntoActorName: string;
   readonly primaryEmail: string;
   readonly primaryLogin: string;
   readonly sourceTypes: readonly string[];
+  readonly status: ActorStatus;
   readonly strongAliasCount: number;
   readonly updatedAt: string;
   readonly weakAliasCount: number;
@@ -37,13 +45,35 @@ export type ProjectActorDirectory = {
   readonly mergeCandidates: readonly ActorMergeCandidateSummary[];
 };
 
+export type ActorMergeDecisionSummary = {
+  readonly createdAt: string;
+  readonly createdByUserId: string;
+  readonly decisionType: ActorDecisionType;
+  readonly id: string;
+  readonly primaryActorDisplayName: string;
+  readonly primaryActorId: string;
+  readonly reason: string;
+  readonly secondaryActorDisplayName: string;
+  readonly secondaryActorId: string;
+};
+
+export type ProjectActorDetail = {
+  readonly actor: ProjectActorSummary;
+  readonly aliases: readonly ProjectActorAliasSummary[];
+  readonly decisions: readonly ActorMergeDecisionSummary[];
+};
+
 const maxMergeCandidateGroupSize = 15;
 
 export function buildActorMergeCandidates(
   actors: readonly ProjectActorSummary[],
+  rejectedPairs: ReadonlySet<string> = new Set(),
 ): readonly ActorMergeCandidateSummary[] {
   const actorsByDisplayName = new Map<string, ProjectActorSummary[]>();
   for (const actor of actors) {
+    if (actor.status !== 'active') {
+      continue;
+    }
     const normalized = normalizeActorDisplayName(actor.displayName);
     if (!normalized) {
       continue;
@@ -67,6 +97,9 @@ export function buildActorMergeCandidates(
         const actorA = limitedGroup[first];
         const actorB = limitedGroup[second];
         if (!actorA || !actorB) {
+          continue;
+        }
+        if (rejectedPairs.has(actorPairKey(actorA.id, actorB.id))) {
           continue;
         }
         candidates.push({
@@ -94,6 +127,10 @@ function mergeCandidateEvidence(
   actorB: ProjectActorSummary,
 ): readonly string[] {
   return Array.from(new Set([...actorA.sourceTypes, ...actorB.sourceTypes])).sort();
+}
+
+export function actorPairKey(actorAId: string, actorBId: string): string {
+  return [actorAId, actorBId].sort().join('--');
 }
 
 function normalizeActorDisplayName(value: string | null | undefined): string {

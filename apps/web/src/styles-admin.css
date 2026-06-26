@@ -141,6 +141,65 @@
   color: var(--red);
 }
 
+.status-actor-active {
+  background: var(--status-success-bg);
+  color: var(--green);
+}
+
+.status-actor-merged {
+  background: var(--status-warning-bg);
+  color: var(--amber);
+}
+
+.status-actor-disabled {
+  background: var(--status-muted-bg);
+  color: var(--muted);
+}
+
+.actor-candidate-actions,
+.actor-decision-form {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.actor-decision-form {
+  align-items: center;
+  grid-template-columns: minmax(160px, 1fr) auto;
+}
+
+.actor-decision-form input[type="text"] {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.actor-detail-nav {
+  margin-bottom: 16px;
+}
+
+.actor-detail-section {
+  margin-top: 16px;
+}
+
+.actor-decision-list {
+  display: grid;
+  gap: 8px;
+}
+
+.actor-decision-card {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
 .connections-panel {
   margin-top: 16px;
 }
@@ -388,10 +447,15 @@
 @media (max-width: 1023px) {
   .split-layout,
   .actor-compare-grid,
+  .actor-decision-form,
   .status-row,
   .content-preview-row-header,
   .member-create-form {
     grid-template-columns: 1fr;
+  }
+
+  .actor-decision-form {
+    align-items: stretch;
   }
 
   .content-preview-row-header {

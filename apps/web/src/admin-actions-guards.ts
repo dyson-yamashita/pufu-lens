@@ -1,3 +1,4 @@
+import type { ActorStatus } from './admin-actors.ts';
 import { isSourceType, type SourceType } from './admin-data.ts';
 
 export interface AdminActionIdRow {
@@ -51,6 +52,12 @@ export interface AdminActionDocumentGraphNodeRow {
 
 export interface AdminActionProjectGraphNameRow {
   readonly graphName: string | null;
+}
+
+export interface AdminActionActorRow {
+  readonly displayName: string;
+  readonly id: string;
+  readonly status: ActorStatus;
 }
 
 export interface AdminActionStorageObjectUriRow {
@@ -148,6 +155,15 @@ export function parseAdminActionProjectGraphNameRow(
   };
 }
 
+export function parseAdminActionActorRow(value: unknown): AdminActionActorRow {
+  const row = requireRecord(value, 'admin actor row');
+  return {
+    displayName: requireString(row.displayName, 'admin actor row', 'displayName'),
+    id: requireString(row.id, 'admin actor row', 'id'),
+    status: requireActorStatus(row.status, 'admin actor row', 'status'),
+  };
+}
+
 export function parseAdminActionStorageObjectUriRow(
   value: unknown,
 ): AdminActionStorageObjectUriRow {
@@ -221,6 +237,13 @@ function requireRawIngestStatus(
 
 function requireSourceType(value: unknown, context: string, fieldName: string): SourceType {
   if (isSourceType(value)) {
+    return value;
+  }
+  throw new Error(`Invalid ${context} field: ${fieldName}`);
+}
+
+function requireActorStatus(value: unknown, context: string, fieldName: string): ActorStatus {
+  if (value === 'active' || value === 'merged' || value === 'disabled') {
     return value;
   }
   throw new Error(`Invalid ${context} field: ${fieldName}`);

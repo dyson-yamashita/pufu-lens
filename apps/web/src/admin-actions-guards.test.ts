@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  parseAdminActionActorRow,
   parseAdminActionDataSourceIngestRow,
   parseAdminActionDataSourceRecordRow,
   parseAdminActionDataSourceRow,
@@ -36,6 +37,23 @@ assert.deepEqual(parseAdminActionDataSourceRow({ id: 'source-a', source_type: 'g
 assert.throws(
   () => parseAdminActionDataSourceRow({ id: 'source-a', source_type: 'slack' }),
   /Invalid admin data source row field: source_type/,
+);
+
+assert.deepEqual(
+  parseAdminActionActorRow({
+    displayName: 'Sample Actor',
+    id: 'actor-a',
+    status: 'active',
+  }),
+  {
+    displayName: 'Sample Actor',
+    id: 'actor-a',
+    status: 'active',
+  },
+);
+assert.throws(
+  () => parseAdminActionActorRow({ displayName: 'Sample Actor', id: 'actor-a', status: 'old' }),
+  /Invalid admin actor row field: status/,
 );
 
 assert.deepEqual(

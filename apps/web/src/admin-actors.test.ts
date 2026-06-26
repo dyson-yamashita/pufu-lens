@@ -1,14 +1,24 @@
 import assert from 'node:assert/strict';
-import { buildActorMergeCandidates, type ProjectActorSummary } from './admin-actors.ts';
+import {
+  actorPairKey,
+  buildActorMergeCandidates,
+  type ProjectActorSummary,
+} from './admin-actors.ts';
 
 const baseActor = {
   actorType: 'person',
   aliases: [],
   createdAt: '2026-06-13 08:00',
+  disabledAt: 'none',
+  disabledByUserId: 'none',
+  disabledReason: 'none',
   graphNodeId: 'actor:unresolved',
+  mergedIntoActorId: 'none',
+  mergedIntoActorName: 'none',
   primaryEmail: 'none',
   primaryLogin: 'none',
   sourceTypes: [],
+  status: 'active',
   strongAliasCount: 0,
   updatedAt: '2026-06-13 08:00',
   weakAliasCount: 0,
@@ -85,5 +95,22 @@ const missingNameCandidates = buildActorMergeCandidates([
 ]);
 
 assert.equal(missingNameCandidates.length, 0);
+
+const inactiveCandidates = buildActorMergeCandidates([
+  { ...baseActor, displayName: 'Inactive Actor', id: 'actor-active' },
+  { ...baseActor, displayName: 'Inactive Actor', id: 'actor-merged', status: 'merged' },
+]);
+
+assert.equal(inactiveCandidates.length, 0);
+
+const rejectedPairCandidates = buildActorMergeCandidates(
+  [
+    { ...baseActor, displayName: 'Rejected Actor', id: 'actor-rejected-a' },
+    { ...baseActor, displayName: 'Rejected Actor', id: 'actor-rejected-b' },
+  ],
+  new Set([actorPairKey('actor-rejected-b', 'actor-rejected-a')]),
+);
+
+assert.equal(rejectedPairCandidates.length, 0);
 
 console.log('web admin actors tests passed');

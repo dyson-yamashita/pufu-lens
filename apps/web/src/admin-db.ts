@@ -1,7 +1,10 @@
 import type postgres from 'postgres';
 import {
+  type ActorMergeDecisionSummary,
+  actorPairKey,
   buildActorMergeCandidates,
   type ProjectActorAliasSummary,
+  type ProjectActorDetail,
   type ProjectActorDirectory,
   type ProjectActorSummary,
 } from './admin-actors';
@@ -31,6 +34,7 @@ import {
 } from './admin-data';
 import {
   type AdminDbActorAliasRow,
+  type AdminDbActorMergeDecisionRow,
   type AdminDbActorRow,
   type AdminDbAppMemberRow,
   type AdminDbDataSourcePreviewDocumentRow,
@@ -44,6 +48,7 @@ import {
   type AdminDbProjectRow,
   type AdminDbPublicProjectReportRow,
   parseAdminDbActorAliasRow,
+  parseAdminDbActorMergeDecisionRow,
   parseAdminDbActorRow,
   parseAdminDbAppMemberRow,
   parseAdminDbDataSourcePreviewDocumentRow,
@@ -637,14 +642,53 @@ async function listProjectActorRows(
       actors.primary_login,
       actors.metadata,
       actors.graph_node_id,
+      actors.status,
+      actors.merged_into_actor_id::text AS merged_into_actor_id,
+      merged_actor.display_name AS merged_into_actor_name,
+      actors.disabled_at,
+      actors.disabled_by_user_id::text AS disabled_by_user_id,
+      actors.disabled_reason,
       actors.created_at,
       actors.updated_at
     FROM public.actors
     JOIN public.projects ON projects.id = actors.project_id
+    LEFT JOIN public.actors merged_actor ON merged_actor.id = actors.merged_into_actor_id
     WHERE projects.slug = ${projectSlug}
-    ORDER BY lower(actors.display_name), actors.created_at
+    ORDER BY actors.status, lower(actors.display_name), actors.created_at
   `) as readonly unknown[];
   return parseAdminDbRows(rawRows, parseAdminDbActorRow);
+}
+
+async function getProjectActorRow(
+  sql: postgres.Sql,
+  projectSlug: string,
+  actorId: string,
+): Promise<AdminDbActorRow | undefined> {
+  const rawRows = (await sql`
+    SELECT
+      actors.id::text AS id,
+      actors.actor_type,
+      actors.display_name,
+      actors.primary_email,
+      actors.primary_login,
+      actors.metadata,
+      actors.graph_node_id,
+      actors.status,
+      actors.merged_into_actor_id::text AS merged_into_actor_id,
+      merged_actor.display_name AS merged_into_actor_name,
+      actors.disabled_at,
+      actors.disabled_by_user_id::text AS disabled_by_user_id,
+      actors.disabled_reason,
+      actors.created_at,
+      actors.updated_at
+    FROM public.actors
+    JOIN public.projects ON projects.id = actors.project_id
+    LEFT JOIN public.actors merged_actor ON merged_actor.id = actors.merged_into_actor_id
+    WHERE projects.slug = ${projectSlug}
+      AND actors.id = ${actorId}
+    LIMIT 1
+  `) as readonly unknown[];
+  return rawRows[0] ? parseAdminDbActorRow(rawRows[0]) : undefined;
 }
 
 async function listProjectActorAliasRows(
@@ -667,6 +711,83 @@ async function listProjectActorAliasRows(
   return parseAdminDbRows(rawRows, parseAdminDbActorAliasRow);
 }
 
+async function listProjectActorAliasRowsForActor(
+  sql: postgres.Sql,
+  projectSlug: string,
+  actorId: string,
+): Promise<readonly AdminDbActorAliasRow[]> {
+  const rawRows = (await sql`
+    SELECT
+      actor_aliases.actor_id::text AS actor_id,
+      actor_aliases.alias_type,
+      actor_aliases.alias_value,
+      actor_aliases.confidence,
+      actor_aliases.source
+    FROM public.actor_aliases
+    JOIN public.actors ON actors.id = actor_aliases.actor_id
+    JOIN public.projects ON projects.id = actors.project_id
+    WHERE projects.slug = ${projectSlug}
+      AND actors.id = ${actorId}
+    ORDER BY actor_aliases.alias_type, actor_aliases.alias_value
+  `) as readonly unknown[];
+  return parseAdminDbRows(rawRows, parseAdminDbActorAliasRow);
+}
+
+async function listProjectActorMergeDecisionRows(
+  sql: postgres.Sql,
+  projectSlug: string,
+): Promise<readonly AdminDbActorMergeDecisionRow[]> {
+  const rawRows = (await sql`
+    SELECT
+      actor_merge_decisions.id::text AS id,
+      actor_merge_decisions.decision_type,
+      actor_merge_decisions.primary_actor_id::text AS primary_actor_id,
+      primary_actor.display_name AS primary_actor_display_name,
+      actor_merge_decisions.secondary_actor_id::text AS secondary_actor_id,
+      secondary_actor.display_name AS secondary_actor_display_name,
+      actor_merge_decisions.reason,
+      actor_merge_decisions.created_by_user_id::text AS created_by_user_id,
+      actor_merge_decisions.created_at
+    FROM public.actor_merge_decisions
+    JOIN public.projects ON projects.id = actor_merge_decisions.project_id
+    JOIN public.actors primary_actor ON primary_actor.id = actor_merge_decisions.primary_actor_id
+    JOIN public.actors secondary_actor ON secondary_actor.id = actor_merge_decisions.secondary_actor_id
+    WHERE projects.slug = ${projectSlug}
+    ORDER BY actor_merge_decisions.created_at DESC
+  `) as readonly unknown[];
+  return parseAdminDbRows(rawRows, parseAdminDbActorMergeDecisionRow);
+}
+
+async function listProjectActorMergeDecisionRowsForActor(
+  sql: postgres.Sql,
+  projectSlug: string,
+  actorId: string,
+): Promise<readonly AdminDbActorMergeDecisionRow[]> {
+  const rawRows = (await sql`
+    SELECT
+      actor_merge_decisions.id::text AS id,
+      actor_merge_decisions.decision_type,
+      actor_merge_decisions.primary_actor_id::text AS primary_actor_id,
+      primary_actor.display_name AS primary_actor_display_name,
+      actor_merge_decisions.secondary_actor_id::text AS secondary_actor_id,
+      secondary_actor.display_name AS secondary_actor_display_name,
+      actor_merge_decisions.reason,
+      actor_merge_decisions.created_by_user_id::text AS created_by_user_id,
+      actor_merge_decisions.created_at
+    FROM public.actor_merge_decisions
+    JOIN public.projects ON projects.id = actor_merge_decisions.project_id
+    JOIN public.actors primary_actor ON primary_actor.id = actor_merge_decisions.primary_actor_id
+    JOIN public.actors secondary_actor ON secondary_actor.id = actor_merge_decisions.secondary_actor_id
+    WHERE projects.slug = ${projectSlug}
+      AND (
+        actor_merge_decisions.primary_actor_id = ${actorId}
+        OR actor_merge_decisions.secondary_actor_id = ${actorId}
+      )
+    ORDER BY actor_merge_decisions.created_at DESC
+  `) as readonly unknown[];
+  return parseAdminDbRows(rawRows, parseAdminDbActorMergeDecisionRow);
+}
+
 export async function getProjectActorDirectory(
   projectSlug: string,
 ): Promise<ProjectActorDirectory> {
@@ -680,12 +801,44 @@ export async function getProjectActorDirectory(
     const aliasRows = await listProjectActorAliasRows(sql, projectSlug);
     const aliasesByActor = groupAliasesByActor(aliasRows);
     const actors = actorRows.map((row) => actorFromRow(row, aliasesByActor.get(row.id) ?? []));
+    const decisions = await listProjectActorMergeDecisionRows(sql, projectSlug);
+    const rejectedPairs = new Set(
+      decisions
+        .filter((decision) => decision.decision_type === 'reject')
+        .map((decision) => actorPairKey(decision.primary_actor_id, decision.secondary_actor_id)),
+    );
 
     return {
       actors,
-      mergeCandidates: buildActorMergeCandidates(actors),
+      mergeCandidates: buildActorMergeCandidates(actors, rejectedPairs),
     };
   }, fallbackActorDirectory(projectSlug));
+}
+
+export async function getProjectActorDetail(
+  projectSlug: string,
+  actorId: string,
+): Promise<ProjectActorDetail | null> {
+  return withOptionalSql(
+    async (sql) => {
+      const actorRow = await getProjectActorRow(sql, projectSlug, actorId);
+      if (!actorRow) {
+        return null;
+      }
+      const aliasRows = await listProjectActorAliasRowsForActor(sql, projectSlug, actorId);
+      const aliases = aliasRows.map(aliasFromRow);
+      const actor = actorFromRow(actorRow, aliases);
+      const decisions = (
+        await listProjectActorMergeDecisionRowsForActor(sql, projectSlug, actorId)
+      ).map(decisionFromRow);
+      return {
+        actor,
+        aliases: actor.aliases,
+        decisions,
+      };
+    },
+    fallbackActorDetail(projectSlug, actorId),
+  );
 }
 
 function groupAliasesByActor(
@@ -714,15 +867,35 @@ function actorFromRow(
     actorType: row.actor_type,
     aliases,
     createdAt: formatDate(row.created_at),
+    disabledAt: row.disabled_at === null ? 'none' : formatDate(row.disabled_at),
+    disabledByUserId: row.disabled_by_user_id ?? 'none',
+    disabledReason: row.disabled_reason ?? 'none',
     displayName: row.display_name,
     graphNodeId: row.graph_node_id,
     id: row.id,
+    mergedIntoActorId: row.merged_into_actor_id ?? 'none',
+    mergedIntoActorName: row.merged_into_actor_name ?? 'none',
     primaryEmail: row.primary_email ?? 'none',
     primaryLogin: row.primary_login ?? 'none',
     sourceTypes: sourceTypesFromActor(row.metadata, aliases),
+    status: row.status,
     strongAliasCount,
     updatedAt: formatDate(row.updated_at),
     weakAliasCount,
+  };
+}
+
+function decisionFromRow(row: AdminDbActorMergeDecisionRow): ActorMergeDecisionSummary {
+  return {
+    createdAt: formatDate(row.created_at),
+    createdByUserId: row.created_by_user_id ?? 'unknown',
+    decisionType: row.decision_type,
+    id: row.id,
+    primaryActorDisplayName: row.primary_actor_display_name,
+    primaryActorId: row.primary_actor_id,
+    reason: row.reason ?? 'none',
+    secondaryActorDisplayName: row.secondary_actor_display_name,
+    secondaryActorId: row.secondary_actor_id,
   };
 }
 
@@ -741,6 +914,20 @@ function fallbackActorDirectory(projectSlug: string): ProjectActorDirectory {
   return {
     actors,
     mergeCandidates: buildActorMergeCandidates(actors),
+  };
+}
+
+function fallbackActorDetail(projectSlug: string, actorId: string): ProjectActorDetail | null {
+  const actor = (projectSlug === 'sample-a' ? sampleAActors() : []).find(
+    (candidate) => candidate.id === actorId,
+  );
+  if (!actor) {
+    return null;
+  }
+  return {
+    actor,
+    aliases: actor.aliases,
+    decisions: [],
   };
 }
 
@@ -808,12 +995,18 @@ function sampleActor(
     actorType: actor.actorType ?? 'person',
     aliases,
     createdAt: actor.createdAt ?? '2026-06-13 08:00',
+    disabledAt: actor.disabledAt ?? 'none',
+    disabledByUserId: actor.disabledByUserId ?? 'none',
+    disabledReason: actor.disabledReason ?? 'none',
     displayName: actor.displayName,
     graphNodeId: actor.graphNodeId,
     id: actor.id,
+    mergedIntoActorId: actor.mergedIntoActorId ?? 'none',
+    mergedIntoActorName: actor.mergedIntoActorName ?? 'none',
     primaryEmail: actor.primaryEmail ?? 'none',
     primaryLogin: actor.primaryLogin ?? 'none',
     sourceTypes: actor.sourceTypes ?? sourceTypesFromAliases(aliases),
+    status: actor.status ?? 'active',
     strongAliasCount:
       actor.strongAliasCount ?? aliases.filter((alias) => alias.strength === 'strong').length,
     updatedAt: actor.updatedAt ?? '2026-06-13 08:00',

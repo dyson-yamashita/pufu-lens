@@ -23,6 +23,14 @@ pnpm ingest:resolve-actors --project sample-a --limit 10
 - 後続の parsed document で email と GitHub login が同一人物として bridge された場合、既存 alias の `actor_id` は解決先 Actor に更新される。
 - `graph_node_id` は alias や source id などの component を URL encode した安定 ID として保存する。
 
+## 手動マージ
+
+- 管理画面で project admin が Actor merge を確定した場合、代表 Actor は `active` のまま残し、吸収元 Actor は物理削除せず `status = 'merged'`、`merged_into_actor_id = <代表 Actor>`、`disabled_at`、`disabled_by_user_id`、`disabled_reason` を保存する。
+- merge 時は `actor_aliases.actor_id` と `email_quotes.sender_actor_id` を代表 Actor に寄せ、判断内容を `actor_merge_decisions` に `decision_type = 'merge'` として保存する。
+- reject した候補は `actor_merge_decisions` に `decision_type = 'reject'` として保存し、同じ Actor ペアを候補として再表示しない。
+- Actor 詳細画面では、その Actor が代表・吸収元・reject 対象として関係した判断履歴を表示する。
+- AGE graph の Actor node / edge は手動 merge 時に破壊的更新せず、後続の graph materialize / reconcile で代表 Actor に寄せる。
+
 ## 確認 SQL
 
 ```bash
