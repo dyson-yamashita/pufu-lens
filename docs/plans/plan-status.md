@@ -25,6 +25,7 @@
 | `docs/plans/006-db-migration-management/overview.md`       | `completed` | 2026-06-13 | Issue #119 / #121 / #123 / #127 / #130 / #133 で DB migration 運用、検証、drift 検出、重い DB 変更方針を整備済み。                                     |
 | `docs/plans/007-data-source-content-preview/overview.md`   | `completed` | 2026-06-21 | Issue #148 / PR #150 で content preview を実装・検証。Issue #212 / PR #213 で row parsing を helper 化済み。Chat / Graph 導線は後続 plan 候補に分離。  |
 | `docs/plans/008-agent-raw-reading/overview.md`             | `completed` | 2026-06-24 | Step 1–6 完了: Agent Raw Read View contract、Parser Profiles 廃止、adapter / repository、private chat/report raw 補完、trace / eval / docs 整備済み。  |
+| `docs/plans/009-oss-deployment-options/overview.md`        | `planned`   | 2026-06-26 | OSS 利用者が deploy provider を選べる構成にする。初期実装は GCP Cloud Build example に限定し、将来の AWS Amplify 等を provider 分離で扱う。            |
 
 ## 運用ルール
 
