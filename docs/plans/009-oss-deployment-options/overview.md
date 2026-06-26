@@ -99,7 +99,7 @@ AWS Amplify などを追加するときも、次の境界を守る。
 | Step 1 | `completed` | deployment example の情報設計と共通 runtime contract を定義する | `docs/deployment/overview.md` に provider-neutral な env / secret / service contract がまとまる |
 | Step 2 | `completed` | GCP Cloud Build CI example を追加する                           | PR / branch 用 `cloudbuild.ci.yaml` と README が追加され、deploy しない検査手順が説明される     |
 | Step 3 | `completed` | GCP Cloud Build deploy example を追加する                       | Mastra / Jobs / Web の build + deploy template と trigger 設定手順が追加される                  |
-| Step 4 | `planned`   | GCP deploy example の検証と運用ドキュメントを整える             | dry-run / smoke / Secret Manager / IAM / approval / rollback の手順が docs に反映される         |
+| Step 4 | `completed` | GCP deploy example の検証と運用ドキュメントを整える             | dry-run / smoke / Secret Manager / IAM / approval / rollback の手順が docs に反映される         |
 | Step 5 | `planned`   | 複数 provider 追加の入口を整備する                              | AWS Amplify などを追加する際の配置ルールと比較観点が docs に残る                                |
 
 ## Step 1: Provider-neutral Runtime Contract
@@ -187,6 +187,11 @@ AWS Amplify などを追加するときも、次の境界を守る。
 - 新規利用者が GCP project 側で trigger を作成できる。
 - deploy 発火条件が branch / tag / approval / path filter で説明されている。
 - secret / token / PII が build log に出ない検証項目がある。
+
+### 対応状況
+
+- Issue #329 で `docs/deployment/gcp-cloud-build.md` を追加し、Cloud Build Trigger の console / gcloud 作成手順、PR CI / staging / production / manual deploy の発火制御、IAM、Secret Manager、Firebase App Hosting、migration、manual run、approval、post-deploy verification、rollback を整理した。
+- provider example の `deploy/examples/gcp-cloud-build/README.md` と provider-neutral な `docs/deployment/overview.md` から GCP 運用ガイドへリンクし、公式 repository に project id / secret / bucket 実値を持たせない境界を維持した。
 
 ## Step 5: Multi-provider Expansion Guide
 

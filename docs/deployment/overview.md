@@ -2,7 +2,7 @@
 
 Pufu Lens は特定の hosting provider を前提にしない。公式 repository は production deploy を自動発火せず、利用者が自分の環境に合う provider example を選び、project id、secret、IAM、trigger を自分の管理下で設定する。
 
-この文書は provider に依存しない runtime contract を定義する。GCP Cloud Build など provider 固有の手順は `deploy/examples/<provider>/` と provider 別 document に分離する。
+この文書は provider に依存しない runtime contract を定義する。GCP Cloud Build など provider 固有の手順は `deploy/examples/<provider>/` と provider 別 document に分離する。GCP Cloud Build の trigger / IAM / Secret Manager / rollback 手順は `docs/deployment/gcp-cloud-build.md` を参照する。
 
 ## Runtime Components
 
@@ -158,6 +158,7 @@ Provider example は次の境界を守る。
 
 ## References
 
+- `docs/deployment/gcp-cloud-build.md`
 - `docs/designs/system/11-deployment.md`
 - `docs/operations/deploy-checklist.md`
 - `docs/plans/009-oss-deployment-options/overview.md`
