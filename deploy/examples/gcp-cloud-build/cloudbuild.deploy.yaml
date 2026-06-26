@@ -126,8 +126,9 @@ steps:
         set -euo pipefail
 
         for workflow_id in curate-workflow ingest-workflow generate-report; do
+          job_name="${_ENV}-$${workflow_id}"
           job_args=(
-            "$${workflow_id}"
+            "$${job_name}"
             --image "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_JOBS_IMAGE}:${SHORT_SHA}"
             --region "${_REGION}"
             --service-account "${_RUNTIME_SERVICE_ACCOUNT}"
@@ -135,7 +136,7 @@ steps:
             --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},WORKFLOW_ID=$${workflow_id},GEMINI_CHAT_MODEL=gemini-2.5-flash,GEMINI_EMBEDDING_MODEL=gemini-embedding-2,GEMINI_EMBEDDING_DIMENSIONS=1536,GOOGLE_GENAI_USE_VERTEXAI=false"
             --set-secrets "DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,AUTH_SECRET=AUTH_SECRET:latest"
           )
-          if gcloud run jobs describe "$${workflow_id}" --region "${_REGION}" >/dev/null 2>&1; then
+          if gcloud run jobs describe "$${job_name}" --region "${_REGION}" >/dev/null 2>&1; then
             gcloud run jobs update "$${job_args[@]}"
           else
             gcloud run jobs create "$${job_args[@]}"

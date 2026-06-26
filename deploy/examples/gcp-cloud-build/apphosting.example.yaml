@@ -36,7 +36,7 @@ env:
     availability:
       - RUNTIME
   - variable: PUFU_LENS_INGEST_WORKFLOW_JOB_NAME
-    value: ingest-workflow
+    value: <env>-ingest-workflow
     availability:
       - RUNTIME
   - variable: GEMINI_CHAT_MODEL

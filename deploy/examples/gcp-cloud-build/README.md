@@ -122,7 +122,7 @@ Set these trigger substitutions in the user's GCP project:
 2. Build and push the Mastra Server image from `infra/docker/mastra/Dockerfile`.
 3. Build and push the Workflow Job image from `infra/docker/jobs/Dockerfile`.
 4. Deploy the Mastra Server to Cloud Run.
-5. Deploy `curate-workflow`, `ingest-workflow`, and `generate-report` as Cloud Run Jobs.
+5. Deploy `${_ENV}-curate-workflow`, `${_ENV}-ingest-workflow`, and `${_ENV}-generate-report` as Cloud Run Jobs while keeping each runtime `WORKFLOW_ID` unchanged.
 6. Deploy the Web app with Firebase App Hosting when `_FIREBASE_DEPLOY=true`.
 7. Read the deployed Mastra Server URL dynamically and run `deploy:smoke`.
 
@@ -176,6 +176,8 @@ firebase deploy --only apphosting --project "$PROJECT_ID" --non-interactive
 ```
 
 Firebase App Hosting reads runtime configuration from `apps/web/apphosting.yaml` and `firebase.json`. In an OSS fork, copy `apphosting.example.yaml` to `apps/web/apphosting.yaml` in the user's own repository or generated release workspace, then replace placeholder values there. Do not upstream project ids, hosted domains, bucket names, OAuth client ids, or secret values.
+
+When using the environment-prefixed Cloud Run Job names from `cloudbuild.deploy.yaml`, set `PUFU_LENS_INGEST_WORKFLOW_JOB_NAME` in `apps/web/apphosting.yaml` to the matching value such as `staging-ingest-workflow` or `production-ingest-workflow`.
 
 If Web deployment is handled by Firebase's own GitHub integration or another release process, set `_FIREBASE_DEPLOY=false` and keep Cloud Build responsible for Mastra Server and Workflow Jobs only.
 
