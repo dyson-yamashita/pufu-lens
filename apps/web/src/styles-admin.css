@@ -177,6 +177,101 @@
   padding: 8px 10px;
 }
 
+.actor-manual-merge-panel {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.actor-manual-merge-summary,
+.actor-manual-merge-actions,
+.actor-manual-merge-selection,
+.actor-manual-merge-row-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.actor-manual-merge-summary {
+  justify-content: space-between;
+}
+
+.actor-manual-merge-summary h3 {
+  font-size: 16px;
+  margin: 4px 0 0;
+}
+
+.actor-manual-merge-selection {
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.actor-manual-merge-selection div {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 180px;
+  padding: 8px 10px;
+}
+
+.actor-manual-merge-selection dt {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.actor-manual-merge-selection dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.actor-manual-merge-actions {
+  align-items: stretch;
+}
+
+.actor-manual-merge-form {
+  flex: 1;
+}
+
+.actor-manual-merge-message,
+.muted-text {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.actor-manual-merge-message {
+  margin: 0;
+}
+
+.actor-manual-merge-row-actions {
+  flex-wrap: wrap;
+  min-width: 180px;
+}
+
+.actor-manual-merge-row-actions a {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 12px;
+  line-height: 1;
+  padding: 7px 8px;
+  text-decoration: none;
+}
+
+.actor-manual-merge-row-actions a.selected {
+  background: var(--status-info-bg);
+  border-color: color-mix(in srgb, var(--blue) 45%, var(--line));
+  color: var(--blue);
+}
+
 .actor-detail-nav {
   margin-bottom: 16px;
 }
@@ -456,6 +551,12 @@
 
   .actor-decision-form {
     align-items: stretch;
+  }
+
+  .actor-manual-merge-summary,
+  .actor-manual-merge-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .content-preview-row-header {

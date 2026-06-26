@@ -3,6 +3,7 @@ import {
   actorPairKey,
   buildActorMergeCandidates,
   type ProjectActorSummary,
+  resolveActorManualMergeSelection,
 } from './admin-actors.ts';
 
 const baseActor = {
@@ -112,5 +113,47 @@ const rejectedPairCandidates = buildActorMergeCandidates(
 );
 
 assert.equal(rejectedPairCandidates.length, 0);
+
+const manualMergeSelection = resolveActorManualMergeSelection(
+  [
+    { ...baseActor, displayName: 'Primary Actor', id: 'actor-primary' },
+    { ...baseActor, displayName: 'Secondary Actor', id: 'actor-secondary' },
+    { ...baseActor, displayName: 'Merged Actor', id: 'actor-merged', status: 'merged' },
+  ],
+  {
+    primaryActorId: 'actor-primary',
+    secondaryActorId: 'actor-secondary',
+  },
+);
+
+assert.equal(manualMergeSelection.hasDuplicateSelection, false);
+assert.equal(manualMergeSelection.primaryActor?.id, 'actor-primary');
+assert.equal(manualMergeSelection.secondaryActor?.id, 'actor-secondary');
+
+const inactiveManualMergeSelection = resolveActorManualMergeSelection(
+  [
+    { ...baseActor, displayName: 'Active Actor', id: 'actor-active' },
+    { ...baseActor, displayName: 'Merged Actor', id: 'actor-merged', status: 'merged' },
+  ],
+  {
+    primaryActorId: 'actor-active',
+    secondaryActorId: 'actor-merged',
+  },
+);
+
+assert.equal(inactiveManualMergeSelection.primaryActor?.id, 'actor-active');
+assert.equal(inactiveManualMergeSelection.secondaryActor, null);
+
+const duplicateManualMergeSelection = resolveActorManualMergeSelection(
+  [{ ...baseActor, displayName: 'Duplicate Actor', id: 'actor-duplicate' }],
+  {
+    primaryActorId: 'actor-duplicate',
+    secondaryActorId: 'actor-duplicate',
+  },
+);
+
+assert.equal(duplicateManualMergeSelection.hasDuplicateSelection, true);
+assert.equal(duplicateManualMergeSelection.primaryActor?.id, 'actor-duplicate');
+assert.equal(duplicateManualMergeSelection.secondaryActor?.id, 'actor-duplicate');
 
 console.log('web admin actors tests passed');
