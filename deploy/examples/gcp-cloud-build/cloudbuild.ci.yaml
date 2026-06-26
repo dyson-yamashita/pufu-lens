@@ -7,7 +7,7 @@ options:
 timeout: 1800s
 
 steps:
-  - id: install
+  - id: ci
     name: node:24-bookworm
     entrypoint: bash
     args:
@@ -17,69 +17,9 @@ steps:
         corepack enable
         corepack prepare pnpm@11.1.1 --activate
         pnpm install --frozen-lockfile
-
-  - id: format-check
-    name: node:24-bookworm
-    entrypoint: bash
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        corepack enable
-        corepack prepare pnpm@11.1.1 --activate
         pnpm format:check
-
-  - id: lint
-    name: node:24-bookworm
-    entrypoint: bash
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        corepack enable
-        corepack prepare pnpm@11.1.1 --activate
         pnpm lint
-
-  - id: migration-check
-    name: node:24-bookworm
-    entrypoint: bash
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        corepack enable
-        corepack prepare pnpm@11.1.1 --activate
         pnpm db:migrate --check
-
-  - id: deploy-dry-run
-    name: node:24-bookworm
-    entrypoint: bash
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        corepack enable
-        corepack prepare pnpm@11.1.1 --activate
         pnpm deploy:dry-run
-
-  - id: typecheck
-    name: node:24-bookworm
-    entrypoint: bash
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        corepack enable
-        corepack prepare pnpm@11.1.1 --activate
         pnpm typecheck
-
-  - id: test
-    name: node:24-bookworm
-    entrypoint: bash
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        corepack enable
-        corepack prepare pnpm@11.1.1 --activate
         pnpm test
