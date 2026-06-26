@@ -126,17 +126,24 @@ steps:
         set -euo pipefail
 
         for workflow_id in curate-workflow ingest-workflow generate-report; do
-          gcloud run jobs deploy "$${workflow_id}" \
-            --image "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_JOBS_IMAGE}:${SHORT_SHA}" \
-            --region "${_REGION}" \
-            --service-account "${_RUNTIME_SERVICE_ACCOUNT}" \
-            --vpc-connector "${_VPC_CONNECTOR}" \
-            --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},WORKFLOW_ID=$${workflow_id},GEMINI_CHAT_MODEL=gemini-2.5-flash,GEMINI_EMBEDDING_MODEL=gemini-embedding-2,GEMINI_EMBEDDING_DIMENSIONS=1536,GOOGLE_GENAI_USE_VERTEXAI=false" \
+          job_args=(
+            "$${workflow_id}"
+            --image "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_JOBS_IMAGE}:${SHORT_SHA}"
+            --region "${_REGION}"
+            --service-account "${_RUNTIME_SERVICE_ACCOUNT}"
+            --vpc-connector "${_VPC_CONNECTOR}"
+            --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},WORKFLOW_ID=$${workflow_id},GEMINI_CHAT_MODEL=gemini-2.5-flash,GEMINI_EMBEDDING_MODEL=gemini-embedding-2,GEMINI_EMBEDDING_DIMENSIONS=1536,GOOGLE_GENAI_USE_VERTEXAI=false"
             --set-secrets "DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,AUTH_SECRET=AUTH_SECRET:latest"
+          )
+          if gcloud run jobs describe "$${workflow_id}" --region "${_REGION}" >/dev/null 2>&1; then
+            gcloud run jobs update "$${job_args[@]}"
+          else
+            gcloud run jobs create "$${job_args[@]}"
+          fi
         done
 
   - id: deploy-web-app-hosting
-    name: node:24-bookworm
+    name: node:22-bookworm
     entrypoint: bash
     args:
       - -c
@@ -152,7 +159,7 @@ steps:
         firebase deploy --only apphosting --project "${PROJECT_ID}" --non-interactive
 
   - id: smoke
-    name: node:24-bookworm
+    name: node:22-bookworm
     entrypoint: bash
     args:
       - -c
