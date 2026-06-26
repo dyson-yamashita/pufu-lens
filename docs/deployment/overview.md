@@ -34,7 +34,7 @@ Web は provider によって build 方法が異なる。Firebase App Hosting、
 | --------------------------- | ------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `DATABASE_URL`              | secret | Web、Mastra Server、Workflow Jobs、migration scripts | PostgreSQL 接続文字列。実値は repository に置かない                                        |
 | `AUTH_SECRET`               | secret | Web                                                  | Auth.js と local encrypted metadata の fallback に使う                                     |
-| `STORAGE_DRIVER`            | env    | Web、Mastra Server、Workflow Jobs                    | `local` または provider storage driver。production は managed object storage を使う        |
+| `STORAGE_DRIVER`            | env    | Web、Mastra Server、Workflow Jobs                    | 現在の実装値は `local` / `gcs`。production は `gcs` など managed object storage を使う     |
 | `STORAGE_ROOT`              | env    | local storage                                        | local driver の root。production secret ではないが provider 固有値として扱う               |
 | `STORAGE_BUCKET`            | env    | managed object storage                               | bucket / container 名。実 bucket 名は provider example や trigger substitutions で注入する |
 | `APP_BASE_URL` / `AUTH_URL` | env    | Web、OAuth callbacks                                 | public origin。provider の assigned URL または custom domain を設定する                    |
@@ -53,13 +53,13 @@ Web は provider によって build 方法が異なる。Firebase App Hosting、
 
 ### Auth And Connections
 
-| name                                                   | kind              | used by                       | note                                                                              |
-| ------------------------------------------------------ | ----------------- | ----------------------------- | --------------------------------------------------------------------------------- |
-| `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET`                | env / secret      | Web login                     | GitHub login を使う場合に設定する                                                 |
-| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`                | env / secret      | Web login                     | Google login を使う場合に設定する                                                 |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`            | env / secret      | Google data source connection | Gmail / Drive data source 連携用。login OAuth と責務を分けられる                  |
-| `CONNECTION_SECRET_KEY`                                | secret            | Web、collection scripts       | project connection token metadata の暗号化 key。未設定時は `AUTH_SECRET` fallback |
-| `AUTH_CREDENTIALS_EMAIL` / `AUTH_CREDENTIALS_PASSWORD` | local-only secret | initial admin script          | credentials user 作成時だけ使い、repository や deploy config に置かない           |
+| name                                                   | kind              | used by                       | note                                                                                                                                                  |
+| ------------------------------------------------------ | ----------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET`                | env / secret      | Web login                     | GitHub login を使う場合に設定する                                                                                                                     |
+| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`                | env / secret      | Web login                     | Google login を使う場合に設定する                                                                                                                     |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`            | env / secret      | Google data source connection | Gmail / Drive data source 連携用。login OAuth と責務を分けられる                                                                                      |
+| `CONNECTION_SECRET_KEY`                                | secret            | Web、collection scripts       | project connection token metadata の暗号化 key。任意の高エントロピー文字列を SHA-256 で AES-256-GCM key に派生する。未設定時は `AUTH_SECRET` fallback |
+| `AUTH_CREDENTIALS_EMAIL` / `AUTH_CREDENTIALS_PASSWORD` | local-only secret | initial admin script          | credentials user 作成時だけ使い、repository や deploy config に置かない                                                                               |
 
 ### Workflow Jobs And Smoke
 
