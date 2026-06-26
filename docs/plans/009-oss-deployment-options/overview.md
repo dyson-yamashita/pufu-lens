@@ -52,6 +52,7 @@ docs/
 `cloudbuild*.yaml` は再利用可能な template として扱い、環境固有値は次で注入する。
 
 - Cloud Build Trigger substitutions:
+  - `_ENV`
   - `_REGION`
   - `_ARTIFACT_REPO`
   - `_RUNTIME_SERVICE_ACCOUNT`
@@ -74,10 +75,10 @@ project id、実 URL、secret 値、実 bucket 名は example に直書きしな
 
 deploy の発火条件は `cloudbuild.yaml` 内ではなく Cloud Build Trigger 側で制御する。
 
-| trigger | event | build config | 用途 |
-| --- | --- | --- | --- |
-| PR CI | Pull request | `cloudbuild.ci.yaml` | lint / typecheck / test / dry-run |
-| main deploy | Push to `^main$` | `cloudbuild.deploy.yaml` | staging または利用者既定環境へ deploy |
+| trigger        | event            | build config             | 用途                                      |
+| -------------- | ---------------- | ------------------------ | ----------------------------------------- |
+| PR CI          | Pull request     | `cloudbuild.ci.yaml`     | lint / typecheck / test / dry-run         |
+| main deploy    | Push to `^main$` | `cloudbuild.deploy.yaml` | staging または利用者既定環境へ deploy     |
 | release deploy | Push tag `^v.*$` | `cloudbuild.deploy.yaml` | production deploy。approval required 推奨 |
 
 production 相当の trigger は `require approval` を推奨する。Cloud Build service account は trigger ごとに分け、CI 用 identity が deploy 権限を持たないようにする。
@@ -93,13 +94,13 @@ AWS Amplify などを追加するときも、次の境界を守る。
 
 ## Step 一覧
 
-| step | status | 内容 | 完了条件 |
-| --- | --- | --- | --- |
+| step   | status    | 内容                                                            | 完了条件                                                                                        |
+| ------ | --------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | Step 1 | `planned` | deployment example の情報設計と共通 runtime contract を定義する | `docs/deployment/overview.md` に provider-neutral な env / secret / service contract がまとまる |
-| Step 2 | `planned` | GCP Cloud Build CI example を追加する | PR / branch 用 `cloudbuild.ci.yaml` と README が追加され、deploy しない検査手順が説明される |
-| Step 3 | `planned` | GCP Cloud Build deploy example を追加する | Mastra / Jobs / Web の build + deploy template と trigger 設定手順が追加される |
-| Step 4 | `planned` | GCP deploy example の検証と運用ドキュメントを整える | dry-run / smoke / Secret Manager / IAM / approval / rollback の手順が docs に反映される |
-| Step 5 | `planned` | 複数 provider 追加の入口を整備する | AWS Amplify などを追加する際の配置ルールと比較観点が docs に残る |
+| Step 2 | `planned` | GCP Cloud Build CI example を追加する                           | PR / branch 用 `cloudbuild.ci.yaml` と README が追加され、deploy しない検査手順が説明される     |
+| Step 3 | `planned` | GCP Cloud Build deploy example を追加する                       | Mastra / Jobs / Web の build + deploy template と trigger 設定手順が追加される                  |
+| Step 4 | `planned` | GCP deploy example の検証と運用ドキュメントを整える             | dry-run / smoke / Secret Manager / IAM / approval / rollback の手順が docs に反映される         |
+| Step 5 | `planned` | 複数 provider 追加の入口を整備する                              | AWS Amplify などを追加する際の配置ルールと比較観点が docs に残る                                |
 
 ## Step 1: Provider-neutral Runtime Contract
 
@@ -147,11 +148,12 @@ AWS Amplify などを追加するときも、次の境界を守る。
 - Workflow Job image を `infra/docker/jobs/Dockerfile` で build / push し、Cloud Run Jobs を deploy する。
 - Firebase App Hosting の deploy 方法を README に整理する。
 - substitutions と Secret Manager の責務を明確化する。
+- デプロイ後の smoke test に必要な `MASTRA_SERVER_URL` を `gcloud run services describe` 等で動的に取得し、`SCHEDULER_SERVICE_ACCOUNT` と合わせて `pnpm deploy:smoke --env ${_ENV}` に渡す手順を検討する。
 
 ### 受け入れ条件
 
 - GCP project id、secret 値、実 bucket 名が example に含まれない。
-- deploy trigger の substitution 一覧が README にある。
+- deploy trigger の substitution 一覧が README にあり、`_ENV` は `staging` / `production` のどちらかとして `deploy:smoke` に渡される。
 - production trigger では approval required と dedicated service account が推奨されている。
 - 既存の `docs/operations/deploy-checklist.md` と同じ検証観点を参照できる。
 
