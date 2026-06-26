@@ -94,13 +94,13 @@ AWS Amplify などを追加するときも、次の境界を守る。
 
 ## Step 一覧
 
-| step   | status    | 内容                                                            | 完了条件                                                                                        |
-| ------ | --------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Step 1 | `planned` | deployment example の情報設計と共通 runtime contract を定義する | `docs/deployment/overview.md` に provider-neutral な env / secret / service contract がまとまる |
-| Step 2 | `planned` | GCP Cloud Build CI example を追加する                           | PR / branch 用 `cloudbuild.ci.yaml` と README が追加され、deploy しない検査手順が説明される     |
-| Step 3 | `planned` | GCP Cloud Build deploy example を追加する                       | Mastra / Jobs / Web の build + deploy template と trigger 設定手順が追加される                  |
-| Step 4 | `planned` | GCP deploy example の検証と運用ドキュメントを整える             | dry-run / smoke / Secret Manager / IAM / approval / rollback の手順が docs に反映される         |
-| Step 5 | `planned` | 複数 provider 追加の入口を整備する                              | AWS Amplify などを追加する際の配置ルールと比較観点が docs に残る                                |
+| step   | status      | 内容                                                            | 完了条件                                                                                        |
+| ------ | ----------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Step 1 | `completed` | deployment example の情報設計と共通 runtime contract を定義する | `docs/deployment/overview.md` に provider-neutral な env / secret / service contract がまとまる |
+| Step 2 | `planned`   | GCP Cloud Build CI example を追加する                           | PR / branch 用 `cloudbuild.ci.yaml` と README が追加され、deploy しない検査手順が説明される     |
+| Step 3 | `planned`   | GCP Cloud Build deploy example を追加する                       | Mastra / Jobs / Web の build + deploy template と trigger 設定手順が追加される                  |
+| Step 4 | `planned`   | GCP deploy example の検証と運用ドキュメントを整える             | dry-run / smoke / Secret Manager / IAM / approval / rollback の手順が docs に反映される         |
+| Step 5 | `planned`   | 複数 provider 追加の入口を整備する                              | AWS Amplify などを追加する際の配置ルールと比較観点が docs に残る                                |
 
 ## Step 1: Provider-neutral Runtime Contract
 
@@ -123,6 +123,11 @@ AWS Amplify などを追加するときも、次の境界を守る。
 - 利用者が「何を用意すればどの provider でも動くか」を把握できる。
 - secret の実値を repository に置かない方針が明記されている。
 - `docs/designs/system/11-deployment.md` の GCP 実績と矛盾しない。
+
+### 対応状況
+
+- Issue #318 で `docs/deployment/overview.md` を追加し、Web、Mastra Server、Workflow Jobs、PostgreSQL + AGE、Object Storage、Secret Store、Scheduler の provider-neutral runtime contract を整理した。
+- GCP 固有の構築手順は `docs/designs/system/11-deployment.md` と後続の provider 別 document / example に分離する方針を明記した。
 
 ## Step 2: GCP Cloud Build CI Example
 
