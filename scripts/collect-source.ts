@@ -762,8 +762,8 @@ async function resolveConnectionToken(input: {
 }
 
 async function refreshGoogleAccessToken(refreshToken: string): Promise<GoogleTokenResponse> {
-  const clientId = process.env.GOOGLE_CLIENT_ID ?? process.env.AUTH_GOOGLE_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET ?? process.env.AUTH_GOOGLE_SECRET;
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
     throw new Error(
       'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required for Google token refresh.',

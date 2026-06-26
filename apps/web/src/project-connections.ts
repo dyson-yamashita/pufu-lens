@@ -56,9 +56,9 @@ export async function googleConnectionStartUrl(input: {
   readonly sourceType?: SourceType;
 }): Promise<string> {
   await requireProjectAdmin(input.projectSlug);
-  const clientId = process.env.GOOGLE_CLIENT_ID ?? process.env.AUTH_GOOGLE_ID;
+  const clientId = process.env.GOOGLE_CLIENT_ID;
   if (!clientId) {
-    throw new ConnectionConfigError('GOOGLE_CLIENT_ID or AUTH_GOOGLE_ID is required.');
+    throw new ConnectionConfigError('GOOGLE_CLIENT_ID is required.');
   }
   const scopes = googleScopes(input.sourceType);
   const params = new URLSearchParams({
@@ -305,8 +305,8 @@ function safeEqual(actual: string, expected: string): boolean {
 }
 
 async function exchangeGoogleCode(code: string): Promise<GoogleTokenResponse> {
-  const clientId = process.env.GOOGLE_CLIENT_ID ?? process.env.AUTH_GOOGLE_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET ?? process.env.AUTH_GOOGLE_SECRET;
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
     throw new ConnectionConfigError(
       'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required for Google connection callback.',
@@ -595,8 +595,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 async function refreshGoogleAccessToken(refreshToken: string): Promise<GoogleTokenResponse> {
-  const clientId = process.env.GOOGLE_CLIENT_ID ?? process.env.AUTH_GOOGLE_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET ?? process.env.AUTH_GOOGLE_SECRET;
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
     throw new ConnectionConfigError(
       'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required for Google token refresh.',
