@@ -104,7 +104,7 @@ Set these trigger substitutions in the user's GCP project:
 | `_ARTIFACT_REPO`             | `pufu-lens`                                         | Existing Artifact Registry Docker repository.                         |
 | `_RUNTIME_SERVICE_ACCOUNT`   | `mastra-runtime@PROJECT_ID.iam.gserviceaccount.com` | Runtime identity for Cloud Run service and jobs.                      |
 | `_SCHEDULER_SERVICE_ACCOUNT` | `scheduler-oidc@PROJECT_ID.iam.gserviceaccount.com` | Used by smoke checks and future scheduler integration.                |
-| `_STORAGE_BUCKET`            | `pufu-lens-staging`                                 | Object storage bucket name; do not commit the real value.             |
+| `_STORAGE_BUCKET`            | `YOUR_STORAGE_BUCKET`                               | Object storage bucket name; do not commit the real value.             |
 | `_VPC_CONNECTOR`             | `mastra-connector`                                  | VPC connector used to reach private PostgreSQL.                       |
 | `_MASTRA_SERVICE`            | `mastra-server`                                     | Cloud Run service name.                                               |
 | `_MASTRA_IMAGE`              | `mastra-server`                                     | Artifact Registry image name for Mastra Server.                       |
