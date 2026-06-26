@@ -1,6 +1,44 @@
 language: 'ja-JP'
 
 reviews:
+  profile: 'chill'
+  review_details: true
   auto_review:
     enabled: true
     drafts: true
+  path_instructions:
+    - path: 'apps/web/src/**'
+      instructions: |
+        Pufu Lens の Web 実装として、認可、server action、UI 表示崩れ、data-testid、責務分離を重点確認してください。
+        認可判定は `apps/web/src/authz.ts` または専用 authz module に集約されているか確認してください。
+        server action に SQL、外部 process 実行、storage 操作、複雑な mapping が蓄積していないか確認してください。
+    - path: 'apps/**/src/**/*.ts'
+      instructions: |
+        SQL row の戻り値を runtime guard / parser なしに `as` cast していないか確認してください。
+        `rows[0] as SomeRow` や `as SomeRow[]` の新規追加は原則指摘してください。
+    - path: 'packages/**'
+      instructions: |
+        app 間の `src` 相対 import を避け、共有型・関数・定数が package 境界として妥当か確認してください。
+        workspace dependency と turbo の依存グラフから外れる暗黙依存を指摘してください。
+    - path: 'scripts/**'
+      instructions: |
+        `requiredEnv`、`parseArgs`、`validateGraphName` などの汎用 helper が重複定義されていないか確認してください。
+        secret、OAuth token、PII がログ出力されないことを確認してください。
+    - path: 'docs/**'
+      instructions: |
+        日本語で明確に書かれているか、実装や `AGENTS.md` / `.codex/rules` のルールと矛盾しないか確認してください。
+        `docs/plans` を参照する内容では `docs/plans/plan-status.md` の `completed` / `deprecated` 扱いと矛盾しないか確認してください。
+    - path: '.codex/skills/**'
+      instructions: |
+        スキルが Pufu Lens の `AGENTS.md`、`.codex/rules`、`docs/plans/plan-status.md` の運用と矛盾しないか確認してください。
+        修正を行うスキルか、レビューだけを行うスキルか、失敗時の挙動が明確か確認してください。
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - 'AGENTS.md'
+      - '.codex/rules/*.md'
+      - 'docs/designs/system/*.md'
+      - 'docs/designs/ui/*.md'
+      - 'docs/plans/plan-status.md'
