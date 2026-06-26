@@ -100,7 +100,7 @@ AWS Amplify などを追加するときも、次の境界を守る。
 | Step 2 | `completed` | GCP Cloud Build CI example を追加する                           | PR / branch 用 `cloudbuild.ci.yaml` と README が追加され、deploy しない検査手順が説明される     |
 | Step 3 | `completed` | GCP Cloud Build deploy example を追加する                       | Mastra / Jobs / Web の build + deploy template と trigger 設定手順が追加される                  |
 | Step 4 | `completed` | GCP deploy example の検証と運用ドキュメントを整える             | dry-run / smoke / Secret Manager / IAM / approval / rollback の手順が docs に反映される         |
-| Step 5 | `planned`   | 複数 provider 追加の入口を整備する                              | AWS Amplify などを追加する際の配置ルールと比較観点が docs に残る                                |
+| Step 5 | `completed` | 複数 provider 追加の入口を整備する                              | AWS Amplify などを追加する際の配置ルールと比較観点が docs に残る                                |
 
 ## Step 1: Provider-neutral Runtime Contract
 
@@ -212,6 +212,12 @@ AWS Amplify などを追加するときも、次の境界を守る。
 
 - GCP 初期実装が AWS Amplify などの将来追加を前提にした命名・配置になっている。
 - provider ごとの deploy DSL がアプリ本体や root config に漏れない。
+
+### 対応状況
+
+- Issue #331 で `docs/deployment/overview.md` に provider 追加時の checklist、provider comparison、example directory status を追加した。
+- `deploy/examples/aws-amplify/README.md` と `deploy/examples/docker-compose/README.md` を placeholder として追加し、未実装 provider の責務境界、secret 実値を repository に入れない方針、provider 固有 DSL を `deploy/examples/<provider>/` に閉じる方針を明記した。
+- AWS Amplify は Web hosting / preview entrypoint として検討し、Mastra Server / Workflow Jobs / PostgreSQL + AGE / Object Storage / Scheduler は別途設計が必要であることを明記した。
 
 ## 検証方針
 

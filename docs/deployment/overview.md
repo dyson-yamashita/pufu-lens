@@ -146,6 +146,48 @@ pnpm deploy:smoke --env staging
 
 `deploy:smoke` の `--env` は `staging` または `production` に限定する。provider 固有の deploy URL が実行後に決まる場合は、provider CLI で URL を取得して `MASTRA_SERVER_URL` に注入する。
 
+## Provider Expansion Checklist
+
+新しい provider を `deploy/examples/<provider>/` に追加するときは、アプリ本体の runtime contract を変えず、provider 固有の build / deploy / IAM / secret 注入だけを example 側へ閉じる。
+
+追加 PR では次を確認する。
+
+- `deploy/examples/<provider>/README.md` に、その provider が担当する runtime component を明記する。
+- Web、Mastra Server、Workflow Jobs、PostgreSQL + AGE、Object Storage、Secret Store、Scheduler のうち、provider が直接扱わない component の外部依存を明記する。
+- provider 固有 DSL、workflow、manifest、Terraform、CLI script は `deploy/examples/<provider>/` 配下に置く。
+- root 直下の production deploy 設定や利用者固有 config を追加しない。
+- `apps/**`、`packages/**`、`infra/**` の実装を provider 固有に分岐させない。
+- 必須 env / secret はこの文書の runtime contract と同じ名前を優先し、provider の注入方法だけを README に書く。
+- project id、account id、bucket 名、OAuth client secret、DB password、API key、token の実値を example に入れない。
+- PR / preview / staging / production の発火条件、approval、path filter、rollback、manual run を provider trigger 側で説明する。
+- `pnpm deploy:dry-run`、`pnpm db:migrate --check`、`pnpm infra:check --env <env>`、`pnpm deploy:smoke --env <env>` のどれをどの段階で実行するかを説明する。
+- secret / token / PII が provider build log / runtime log に出ない確認方法を書く。
+
+## Provider Comparison
+
+provider を選ぶときは、Web hosting の可否だけでなく、Pufu Lens の runtime component 全体を配置できるかで判断する。
+
+| 観点                | 確認すること                                                                                  |
+| ------------------- | --------------------------------------------------------------------------------------------- |
+| Web runtime         | Next.js server runtime、Auth callback URL、private backend 呼び出し、preview URL を扱えるか。 |
+| Mastra Server       | `infra/docker/mastra/Dockerfile` から作る container image を HTTP service として動かせるか。  |
+| Workflow Jobs       | `infra/docker/jobs/Dockerfile` の image を manual / scheduled job として実行できるか。        |
+| PostgreSQL + AGE    | Apache AGE、pgvector、pgcrypto を有効化できる PostgreSQL を運用できるか。                     |
+| Object Storage      | private raw data と public report artifact の境界を分けられるか。                             |
+| Secret Store        | runtime secret を repository / build log に出さず注入できるか。                               |
+| Scheduler           | OIDC などで認証された job 起動、または provider job scheduler を使えるか。                    |
+| Preview Environment | PR preview が本番 DB / production secret / production storage を参照しないよう分離できるか。  |
+| Production Approval | tag release、manual approval、protected environment など production guard を設定できるか。    |
+| Rollback            | Web、service、jobs、DB、storage artifact を component ごとに戻せるか。                        |
+
+## Example Directory Status
+
+| directory                          | status      | scope                                                                                                     |
+| ---------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------- |
+| `deploy/examples/gcp-cloud-build/` | implemented | GCP Cloud Build / Cloud Run / Cloud Run Jobs / Firebase App Hosting の CI と deploy example。             |
+| `deploy/examples/aws-amplify/`     | placeholder | AWS Amplify を Web hosting / preview entrypoint として検討するための境界メモ。backend / jobs は別途必要。 |
+| `deploy/examples/docker-compose/`  | placeholder | self-hosted / local reproduction 用の配置方針メモ。production hardening は利用者環境で追加する。          |
+
 ## Provider Example Boundary
 
 Provider example は次の境界を守る。
@@ -158,6 +200,9 @@ Provider example は次の境界を守る。
 
 ## References
 
+- `deploy/examples/aws-amplify/README.md`
+- `deploy/examples/docker-compose/README.md`
+- `deploy/examples/gcp-cloud-build/README.md`
 - `docs/deployment/gcp-cloud-build.md`
 - `docs/designs/system/11-deployment.md`
 - `docs/operations/deploy-checklist.md`
