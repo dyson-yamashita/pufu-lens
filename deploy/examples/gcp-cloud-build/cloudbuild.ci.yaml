@@ -1,0 +1,25 @@
+# Cloud Build CI example for OSS users.
+# This config intentionally does not deploy and does not require runtime secrets.
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1800s
+
+steps:
+  - id: ci
+    name: node:24-bookworm
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        corepack enable
+        corepack prepare pnpm@11.1.1 --activate
+        pnpm install --frozen-lockfile
+        pnpm format:check
+        pnpm lint
+        pnpm db:migrate --check
+        pnpm deploy:dry-run
+        pnpm typecheck
+        pnpm test

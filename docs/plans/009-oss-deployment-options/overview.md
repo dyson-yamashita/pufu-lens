@@ -97,7 +97,7 @@ AWS Amplify などを追加するときも、次の境界を守る。
 | step   | status      | 内容                                                            | 完了条件                                                                                        |
 | ------ | ----------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | Step 1 | `completed` | deployment example の情報設計と共通 runtime contract を定義する | `docs/deployment/overview.md` に provider-neutral な env / secret / service contract がまとまる |
-| Step 2 | `planned`   | GCP Cloud Build CI example を追加する                           | PR / branch 用 `cloudbuild.ci.yaml` と README が追加され、deploy しない検査手順が説明される     |
+| Step 2 | `completed` | GCP Cloud Build CI example を追加する                           | PR / branch 用 `cloudbuild.ci.yaml` と README が追加され、deploy しない検査手順が説明される     |
 | Step 3 | `planned`   | GCP Cloud Build deploy example を追加する                       | Mastra / Jobs / Web の build + deploy template と trigger 設定手順が追加される                  |
 | Step 4 | `planned`   | GCP deploy example の検証と運用ドキュメントを整える             | dry-run / smoke / Secret Manager / IAM / approval / rollback の手順が docs に反映される         |
 | Step 5 | `planned`   | 複数 provider 追加の入口を整備する                              | AWS Amplify などを追加する際の配置ルールと比較観点が docs に残る                                |
@@ -143,6 +143,12 @@ AWS Amplify などを追加するときも、次の境界を守る。
 - CI example が secret を必要最小限にできる。
 - CI trigger の service account に deploy 権限が不要である。
 - PR から production deploy が発火しないことが README に明記されている。
+
+### 対応状況
+
+- Issue #325 で `deploy/examples/gcp-cloud-build/cloudbuild.ci.yaml` と `deploy/examples/gcp-cloud-build/README.md` を追加した。
+- CI example は `pnpm install --frozen-lockfile`、`pnpm format:check`、`pnpm lint`、`pnpm db:migrate --check`、`pnpm deploy:dry-run`、`pnpm typecheck`、`pnpm test` を実行し、deploy step と runtime secret を含まない。
+- README に CI trigger の推奨 event、CI service account に deploy 権限を付与しないこと、production deploy は別 trigger / 別 service account / approval で分離することを明記した。
 
 ## Step 3: GCP Cloud Build Deploy Example
 
