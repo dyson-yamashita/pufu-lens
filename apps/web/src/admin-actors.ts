@@ -80,16 +80,15 @@ export function resolveActorManualMergeSelection(
 ): ActorManualMergeSelection {
   const primaryActorId = normalizeActorId(input.primaryActorId);
   const secondaryActorId = normalizeActorId(input.secondaryActorId);
+  const primaryActor = primaryActorId ? findActiveActor(actors, primaryActorId) : null;
+  const secondaryActor = secondaryActorId ? findActiveActor(actors, secondaryActorId) : null;
   const hasDuplicateSelection =
-    primaryActorId !== undefined &&
-    secondaryActorId !== undefined &&
-    primaryActorId === secondaryActorId;
+    primaryActor !== null && secondaryActor !== null && primaryActor.id === secondaryActor.id;
 
   return {
     hasDuplicateSelection,
-    primaryActor: primaryActorId ? findActiveActor(actors, primaryActorId) : null,
-    secondaryActor:
-      secondaryActorId && !hasDuplicateSelection ? findActiveActor(actors, secondaryActorId) : null,
+    primaryActor,
+    secondaryActor,
   };
 }
 

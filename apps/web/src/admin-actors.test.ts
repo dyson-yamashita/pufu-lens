@@ -154,6 +154,6 @@ const duplicateManualMergeSelection = resolveActorManualMergeSelection(
 
 assert.equal(duplicateManualMergeSelection.hasDuplicateSelection, true);
 assert.equal(duplicateManualMergeSelection.primaryActor?.id, 'actor-duplicate');
-assert.equal(duplicateManualMergeSelection.secondaryActor, null);
+assert.equal(duplicateManualMergeSelection.secondaryActor?.id, 'actor-duplicate');
 
 console.log('web admin actors tests passed');

@@ -227,9 +227,6 @@ function ManualMergePanel({
           <dd>{secondaryActor ? secondaryActor.displayName : 'not selected'}</dd>
         </div>
       </dl>
-      {hasDuplicateSelection ? (
-        <p className="actor-manual-merge-message">同じ Actor はマージ対象にできません。</p>
-      ) : null}
       {canMerge ? (
         <div className="actor-manual-merge-actions">
           <Link
@@ -258,7 +255,9 @@ function ManualMergePanel({
         </div>
       ) : (
         <p className="actor-manual-merge-message">
-          active Actor を primary と secondary に 1 件ずつ選択してください。
+          {hasDuplicateSelection
+            ? '同じ Actor はマージ対象にできません。'
+            : 'active Actor を primary と secondary に 1 件ずつ選択してください。'}
         </p>
       )}
     </section>
@@ -288,7 +287,7 @@ function ManualMergeRowActions({
         className={isPrimary ? 'selected' : ''}
         data-testid={`actor-select-primary-${actor.id}`}
         href={actorSelectionHref(projectSlug, {
-          primaryActorId: actor.id,
+          primaryActorId: isPrimary ? undefined : actor.id,
           secondaryActorId:
             selection.secondaryActor?.id === actor.id ? undefined : selection.secondaryActor?.id,
         })}
@@ -302,7 +301,7 @@ function ManualMergeRowActions({
         href={actorSelectionHref(projectSlug, {
           primaryActorId:
             selection.primaryActor?.id === actor.id ? undefined : selection.primaryActor?.id,
-          secondaryActorId: actor.id,
+          secondaryActorId: isSecondary ? undefined : actor.id,
         })}
       >
         Secondary
