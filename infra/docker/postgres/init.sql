@@ -287,7 +287,8 @@ CREATE TABLE public.actors (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (project_id, graph_node_id),
   UNIQUE (project_id, id),
-  CHECK (merged_into_actor_id IS NULL OR merged_into_actor_id <> id),
+  CONSTRAINT actors_merged_into_not_self_check
+    CHECK (merged_into_actor_id IS NULL OR merged_into_actor_id <> id),
   CONSTRAINT actors_merged_into_same_project_fk
     FOREIGN KEY (project_id, merged_into_actor_id)
     REFERENCES public.actors (project_id, id)
@@ -476,5 +477,6 @@ CREATE TABLE IF NOT EXISTS public.schema_migrations (
 INSERT INTO public.schema_migrations (version)
 VALUES
   ('0001_auth_login'),
-  ('0002_project_oauth_connections')
+  ('0002_project_oauth_connections'),
+  ('0003_actor_merge_decisions')
 ON CONFLICT (version) DO NOTHING;

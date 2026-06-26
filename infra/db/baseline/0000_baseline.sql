@@ -291,7 +291,8 @@ CREATE TABLE public.actors (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (project_id, graph_node_id),
   UNIQUE (project_id, id),
-  CHECK (merged_into_actor_id IS NULL OR merged_into_actor_id <> id),
+  CONSTRAINT actors_merged_into_not_self_check
+    CHECK (merged_into_actor_id IS NULL OR merged_into_actor_id <> id),
   CONSTRAINT actors_merged_into_same_project_fk
     FOREIGN KEY (project_id, merged_into_actor_id)
     REFERENCES public.actors (project_id, id)
