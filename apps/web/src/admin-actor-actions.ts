@@ -10,8 +10,6 @@ import {
   withSql,
 } from './admin-actions-shared.ts';
 
-type SqlExecutor = postgres.Sql | postgres.TransactionSql;
-
 export async function mergeActors(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
   const primaryActorId = requireFormValue(formData, 'primaryActorId');
@@ -25,11 +23,12 @@ export async function mergeActors(formData: FormData): Promise<void> {
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
     await sql.begin(async (tx) => {
-      const primaryActor = await lookupProjectActor(tx, project.id, primaryActorId);
-      const secondaryActor = await lookupProjectActor(tx, project.id, secondaryActorId);
-      if (primaryActor.status !== 'active' || secondaryActor.status !== 'active') {
-        throw new Error('Only active actors can be merged.');
-      }
+      const { primaryActor, secondaryActor } = await lookupProjectActorPairForUpdate(tx, {
+        primaryActorId,
+        projectId: project.id,
+        secondaryActorId,
+      });
+      requireActiveActors(primaryActor, secondaryActor, 'merged');
 
       await tx`
         UPDATE public.actor_aliases
@@ -43,7 +42,7 @@ export async function mergeActors(formData: FormData): Promise<void> {
         WHERE project_id = ${project.id}
           AND sender_actor_id = ${secondaryActor.id}
       `;
-      await tx`
+      const updatedRows = (await tx`
         UPDATE public.actors
         SET status = 'merged',
             merged_into_actor_id = ${primaryActor.id},
@@ -53,7 +52,16 @@ export async function mergeActors(formData: FormData): Promise<void> {
             updated_at = now()
         WHERE project_id = ${project.id}
           AND id = ${secondaryActor.id}
-      `;
+          AND status = 'active'
+        RETURNING
+          id::text AS id,
+          display_name AS "displayName",
+          status
+      `) as readonly unknown[];
+      const updatedActor = updatedRows[0] ? parseAdminActionActorRow(updatedRows[0]) : undefined;
+      if (!updatedActor) {
+        throw new Error('Actor merge failed because the secondary actor is no longer active.');
+      }
       await upsertActorDecision(tx, {
         createdByUserId: project.adminUserId,
         decisionType: 'merge',
@@ -85,8 +93,12 @@ export async function rejectActorMergeCandidate(formData: FormData): Promise<voi
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
     await sql.begin(async (tx) => {
-      await lookupProjectActor(tx, project.id, primaryActorId);
-      await lookupProjectActor(tx, project.id, secondaryActorId);
+      const { primaryActor, secondaryActor } = await lookupProjectActorPairForUpdate(tx, {
+        primaryActorId,
+        projectId: project.id,
+        secondaryActorId,
+      });
+      requireActiveActors(primaryActor, secondaryActor, 'rejected');
       await upsertActorDecision(tx, {
         createdByUserId: project.adminUserId,
         decisionType: 'reject',
@@ -102,26 +114,46 @@ export async function rejectActorMergeCandidate(formData: FormData): Promise<voi
   revalidateActorPaths(projectSlug, primaryActorId, secondaryActorId);
 }
 
-async function lookupProjectActor(
-  sql: SqlExecutor,
-  projectId: string,
-  actorId: string,
-): Promise<AdminActionActorRow> {
+async function lookupProjectActorPairForUpdate(
+  sql: postgres.TransactionSql,
+  input: {
+    readonly primaryActorId: string;
+    readonly projectId: string;
+    readonly secondaryActorId: string;
+  },
+): Promise<{
+  readonly primaryActor: AdminActionActorRow;
+  readonly secondaryActor: AdminActionActorRow;
+}> {
+  const actorIds = [input.primaryActorId, input.secondaryActorId].sort();
   const rows = (await sql`
     SELECT
       id::text AS id,
       display_name AS "displayName",
       status
     FROM public.actors
-    WHERE project_id = ${projectId}
-      AND id = ${actorId}
-    LIMIT 1
+    WHERE project_id = ${input.projectId}
+      AND id IN ${sql(actorIds)}
+    ORDER BY id
+    FOR UPDATE
   `) as readonly unknown[];
-  const actor = rows[0] ? parseAdminActionActorRow(rows[0]) : undefined;
-  if (!actor) {
+  const actors = rows.map(parseAdminActionActorRow);
+  const primaryActor = actors.find((actor) => actor.id === input.primaryActorId);
+  const secondaryActor = actors.find((actor) => actor.id === input.secondaryActorId);
+  if (!primaryActor || !secondaryActor) {
     throw new Error('Actor not found in project.');
   }
-  return actor;
+  return { primaryActor, secondaryActor };
+}
+
+function requireActiveActors(
+  primaryActor: AdminActionActorRow,
+  secondaryActor: AdminActionActorRow,
+  action: 'merged' | 'rejected',
+): void {
+  if (primaryActor.status !== 'active' || secondaryActor.status !== 'active') {
+    throw new Error(`Only active actors can be ${action}.`);
+  }
 }
 
 async function upsertActorDecision(

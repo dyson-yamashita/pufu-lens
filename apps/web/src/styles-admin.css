@@ -447,10 +447,15 @@
 @media (max-width: 1023px) {
   .split-layout,
   .actor-compare-grid,
+  .actor-decision-form,
   .status-row,
   .content-preview-row-header,
   .member-create-form {
     grid-template-columns: 1fr;
+  }
+
+  .actor-decision-form {
+    align-items: stretch;
   }
 
   .content-preview-row-header {
