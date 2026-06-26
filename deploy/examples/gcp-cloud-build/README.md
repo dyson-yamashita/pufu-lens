@@ -103,7 +103,6 @@ packages/**
 scripts/**
 infra/**
 deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml
-deploy/examples/gcp-cloud-build/apphosting.example.yaml
 .dockerignore
 .firebaserc
 firebase.json

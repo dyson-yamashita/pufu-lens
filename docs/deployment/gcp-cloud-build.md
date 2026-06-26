@@ -133,7 +133,7 @@ gcloud builds triggers create github \
   --build-config deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml \
   --service-account "$PRODUCTION_DEPLOY_SA" \
   --require-approval \
-  --included-files 'apps/**,packages/**,scripts/**,infra/**,deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml,deploy/examples/gcp-cloud-build/apphosting.example.yaml,.dockerignore,.firebaserc,firebase.json,pnpm-lock.yaml,pnpm-workspace.yaml,package.json,turbo.json,tsconfig*.json' \
+  --included-files 'apps/**,packages/**,scripts/**,infra/**,deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml,.dockerignore,.firebaserc,firebase.json,pnpm-lock.yaml,pnpm-workspace.yaml,package.json,turbo.json,tsconfig*.json' \
   --substitutions "_ENV=production,_REGION=${RUNTIME_REGION},_ARTIFACT_REPO=<artifact-repo>,_RUNTIME_SERVICE_ACCOUNT=${RUNTIME_SA},_SCHEDULER_SERVICE_ACCOUNT=${SCHEDULER_SA},_STORAGE_BUCKET=<storage-bucket>,_VPC_CONNECTOR=<vpc-connector>,_MASTRA_SERVICE=mastra-server,_MASTRA_IMAGE=mastra-server,_JOBS_IMAGE=workflow-job,_FIREBASE_DEPLOY=true,_FIREBASE_TOOLS_VERSION=14.4.0"
 ```
 
@@ -143,7 +143,7 @@ gcloud builds triggers create github \
 gcloud builds triggers update github "<trigger-id-or-name>" \
   --project "$PROJECT_ID" \
   --region "$BUILD_REGION" \
-  --included-files 'apps/**,packages/**,scripts/**,infra/**,deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml,deploy/examples/gcp-cloud-build/apphosting.example.yaml,.dockerignore,.firebaserc,firebase.json,pnpm-lock.yaml,pnpm-workspace.yaml,package.json,turbo.json,tsconfig*.json'
+  --included-files 'apps/**,packages/**,scripts/**,infra/**,deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml,.dockerignore,.firebaserc,firebase.json,pnpm-lock.yaml,pnpm-workspace.yaml,package.json,turbo.json,tsconfig*.json'
 ```
 
 `docs/**`、`README.md`、`deploy/examples/gcp-cloud-build/README.md` だけの変更は production deploy の対象外にする。deploy 手順書の変更を本番反映の契機にしたい場合は、manual trigger を明示的に実行する。
