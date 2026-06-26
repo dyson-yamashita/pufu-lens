@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { mergeActors, rejectActorMergeCandidate } from '../../../../../src/admin-actions';
 import type {
+  ActorManualMergeSelection,
   ProjectActorAliasSummary,
   ProjectActorSummary,
 } from '../../../../../src/admin-actors';
+import { resolveActorManualMergeSelection } from '../../../../../src/admin-actors';
 import { getProjectActorDirectory } from '../../../../../src/admin-db';
 import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
 import { AppShell, PageHeader } from '../../../../../src/ui';
@@ -15,13 +17,21 @@ export default async function ActorsPage({
   searchParams,
 }: {
   readonly params: Promise<{ readonly projectSlug: string }>;
-  readonly searchParams: Promise<{ readonly view?: string }>;
+  readonly searchParams: Promise<{
+    readonly primaryActorId?: string;
+    readonly secondaryActorId?: string;
+    readonly view?: string;
+  }>;
 }) {
   const { projectSlug } = await params;
-  const { view } = await searchParams;
+  const { primaryActorId, secondaryActorId, view } = await searchParams;
   const project = await requireProjectAdminPage(projectSlug);
   const directory = await getProjectActorDirectory(projectSlug);
   const activeView = parseActorView(view);
+  const manualMergeSelection = resolveActorManualMergeSelection(directory.actors, {
+    primaryActorId,
+    secondaryActorId,
+  });
 
   return (
     <AppShell active="actors" canManageProject project={project}>
@@ -55,6 +65,7 @@ export default async function ActorsPage({
             <h2>Actor List</h2>
             <span className="mono">{directory.actors.length} actors</span>
           </div>
+          <ManualMergePanel projectSlug={project.slug} selection={manualMergeSelection} />
           <div className="table-frame">
             <table data-testid="actor-table">
               <thead>
@@ -66,6 +77,7 @@ export default async function ActorsPage({
                   <th>Sources</th>
                   <th>Primary</th>
                   <th>Graph node</th>
+                  <th>Manual merge</th>
                 </tr>
               </thead>
               <tbody>
@@ -109,6 +121,13 @@ export default async function ActorsPage({
                       {actor.primaryEmail !== 'none' ? actor.primaryEmail : actor.primaryLogin}
                     </td>
                     <td className="truncate mono">{actor.graphNodeId}</td>
+                    <td>
+                      <ManualMergeRowActions
+                        actor={actor}
+                        projectSlug={project.slug}
+                        selection={manualMergeSelection}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -174,6 +193,121 @@ export default async function ActorsPage({
         </section>
       )}
     </AppShell>
+  );
+}
+
+function ManualMergePanel({
+  projectSlug,
+  selection,
+}: {
+  readonly projectSlug: string;
+  readonly selection: ActorManualMergeSelection;
+}) {
+  const { hasDuplicateSelection, primaryActor, secondaryActor } = selection;
+  const canMerge = primaryActor && secondaryActor && primaryActor.id !== secondaryActor.id;
+
+  return (
+    <section className="actor-manual-merge-panel" data-testid="actor-manual-merge-panel">
+      <div className="actor-manual-merge-summary">
+        <div>
+          <p className="eyebrow">Manual merge</p>
+          <h3>任意の 2 Actor を選択してマージ</h3>
+        </div>
+        <Link className="icon-button muted" href={`/projects/${projectSlug}/admin/actors`}>
+          Clear
+        </Link>
+      </div>
+      <dl className="actor-manual-merge-selection">
+        <div>
+          <dt>Primary</dt>
+          <dd>{primaryActor ? primaryActor.displayName : 'not selected'}</dd>
+        </div>
+        <div>
+          <dt>Secondary</dt>
+          <dd>{secondaryActor ? secondaryActor.displayName : 'not selected'}</dd>
+        </div>
+      </dl>
+      {hasDuplicateSelection ? (
+        <p className="actor-manual-merge-message">同じ Actor はマージ対象にできません。</p>
+      ) : null}
+      {canMerge ? (
+        <div className="actor-manual-merge-actions">
+          <Link
+            className="icon-button muted"
+            href={actorSelectionHref(projectSlug, {
+              primaryActorId: secondaryActor.id,
+              secondaryActorId: primaryActor.id,
+            })}
+          >
+            Swap
+          </Link>
+          <form action={mergeActors} className="actor-decision-form actor-manual-merge-form">
+            <input name="projectSlug" type="hidden" value={projectSlug} />
+            <input name="primaryActorId" type="hidden" value={primaryActor.id} />
+            <input name="secondaryActorId" type="hidden" value={secondaryActor.id} />
+            <input
+              aria-label={`${secondaryActor.displayName} を ${primaryActor.displayName} に手動マージする理由`}
+              name="reason"
+              placeholder="Reason"
+              type="text"
+            />
+            <button className="icon-button" data-testid="actor-manual-merge-submit" type="submit">
+              Merge selected
+            </button>
+          </form>
+        </div>
+      ) : (
+        <p className="actor-manual-merge-message">
+          active Actor を primary と secondary に 1 件ずつ選択してください。
+        </p>
+      )}
+    </section>
+  );
+}
+
+function ManualMergeRowActions({
+  actor,
+  projectSlug,
+  selection,
+}: {
+  readonly actor: ProjectActorSummary;
+  readonly projectSlug: string;
+  readonly selection: ActorManualMergeSelection;
+}) {
+  if (actor.status !== 'active') {
+    return <span className="muted-text">not selectable</span>;
+  }
+
+  const isPrimary = selection.primaryActor?.id === actor.id;
+  const isSecondary = selection.secondaryActor?.id === actor.id;
+
+  return (
+    <span className="actor-manual-merge-row-actions">
+      <Link
+        aria-current={isPrimary ? 'true' : undefined}
+        className={isPrimary ? 'selected' : ''}
+        data-testid={`actor-select-primary-${actor.id}`}
+        href={actorSelectionHref(projectSlug, {
+          primaryActorId: actor.id,
+          secondaryActorId:
+            selection.secondaryActor?.id === actor.id ? undefined : selection.secondaryActor?.id,
+        })}
+      >
+        Primary
+      </Link>
+      <Link
+        aria-current={isSecondary ? 'true' : undefined}
+        className={isSecondary ? 'selected' : ''}
+        data-testid={`actor-select-secondary-${actor.id}`}
+        href={actorSelectionHref(projectSlug, {
+          primaryActorId:
+            selection.primaryActor?.id === actor.id ? undefined : selection.primaryActor?.id,
+          secondaryActorId: actor.id,
+        })}
+      >
+        Secondary
+      </Link>
+    </span>
   );
 }
 
@@ -284,4 +418,22 @@ function aliasList(aliases: readonly ProjectActorAliasSummary[]) {
 
 function parseActorView(value: string | undefined): ActorView {
   return value === 'merge-candidates' ? 'merge-candidates' : 'actors';
+}
+
+function actorSelectionHref(
+  projectSlug: string,
+  selection: {
+    readonly primaryActorId?: string;
+    readonly secondaryActorId?: string;
+  },
+): string {
+  const params = new URLSearchParams();
+  if (selection.primaryActorId) {
+    params.set('primaryActorId', selection.primaryActorId);
+  }
+  if (selection.secondaryActorId) {
+    params.set('secondaryActorId', selection.secondaryActorId);
+  }
+  const query = params.toString();
+  return `/projects/${projectSlug}/admin/actors${query ? `?${query}` : ''}`;
 }

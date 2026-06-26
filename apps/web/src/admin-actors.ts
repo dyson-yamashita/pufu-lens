@@ -63,7 +63,35 @@ export type ProjectActorDetail = {
   readonly decisions: readonly ActorMergeDecisionSummary[];
 };
 
+export type ActorManualMergeSelection = {
+  readonly hasDuplicateSelection: boolean;
+  readonly primaryActor: ProjectActorSummary | null;
+  readonly secondaryActor: ProjectActorSummary | null;
+};
+
 const maxMergeCandidateGroupSize = 15;
+
+export function resolveActorManualMergeSelection(
+  actors: readonly ProjectActorSummary[],
+  input: {
+    readonly primaryActorId?: string;
+    readonly secondaryActorId?: string;
+  },
+): ActorManualMergeSelection {
+  const primaryActorId = normalizeActorId(input.primaryActorId);
+  const secondaryActorId = normalizeActorId(input.secondaryActorId);
+  const hasDuplicateSelection =
+    primaryActorId !== undefined &&
+    secondaryActorId !== undefined &&
+    primaryActorId === secondaryActorId;
+
+  return {
+    hasDuplicateSelection,
+    primaryActor: primaryActorId ? findActiveActor(actors, primaryActorId) : null,
+    secondaryActor:
+      secondaryActorId && !hasDuplicateSelection ? findActiveActor(actors, secondaryActorId) : null,
+  };
+}
 
 export function buildActorMergeCandidates(
   actors: readonly ProjectActorSummary[],
@@ -135,4 +163,16 @@ export function actorPairKey(actorAId: string, actorBId: string): string {
 
 function normalizeActorDisplayName(value: string | null | undefined): string {
   return (value ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function normalizeActorId(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
+
+function findActiveActor(
+  actors: readonly ProjectActorSummary[],
+  actorId: string,
+): ProjectActorSummary | null {
+  return actors.find((actor) => actor.id === actorId && actor.status === 'active') ?? null;
 }
