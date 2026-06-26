@@ -134,10 +134,10 @@ gcloud builds triggers create github \
   --service-account "$PRODUCTION_DEPLOY_SA" \
   --require-approval \
   --included-files 'apps/**,packages/**,scripts/**,infra/**,deploy/examples/gcp-cloud-build/**,firebase.json,pnpm-lock.yaml,pnpm-workspace.yaml,package.json,turbo.json,tsconfig*.json' \
-  --substitutions "_ENV=production,_REGION=${RUNTIME_REGION},_ARTIFACT_REPO=<artifact-repo>,_RUNTIME_SERVICE_ACCOUNT=${RUNTIME_SA},_SCHEDULER_SERVICE_ACCOUNT=${SCHEDULER_SA},_STORAGE_BUCKET=<storage-bucket>,_VPC_CONNECTOR=<vpc-connector>,_MASTRA_SERVICE=mastra-server,_MASTRA_IMAGE=mastra-server,_JOBS_IMAGE=workflow-job,_FIREBASE_DEPLOY=false,_FIREBASE_TOOLS_VERSION=14.4.0"
+  --substitutions "_ENV=production,_REGION=${RUNTIME_REGION},_ARTIFACT_REPO=<artifact-repo>,_RUNTIME_SERVICE_ACCOUNT=${RUNTIME_SA},_SCHEDULER_SERVICE_ACCOUNT=${SCHEDULER_SA},_STORAGE_BUCKET=<storage-bucket>,_VPC_CONNECTOR=<vpc-connector>,_MASTRA_SERVICE=mastra-server,_MASTRA_IMAGE=mastra-server,_JOBS_IMAGE=workflow-job,_FIREBASE_DEPLOY=true,_FIREBASE_TOOLS_VERSION=14.4.0"
 ```
 
-Pufu Lens の現在の GCP project では `_FIREBASE_DEPLOY=false` とし、Web deploy は Firebase App Hosting 側の運用に分離する。Cloud Build から Web deploy まで行う利用者は、`apps/web/apphosting.yaml` と Cloud Run Job 名の整合を確認してから `_FIREBASE_DEPLOY=true` に変更する。
+Pufu Lens の現在の GCP project では `_FIREBASE_DEPLOY=true` とし、Cloud Build から Web deploy まで実行する。`apps/web/apphosting.yaml` と Cloud Run Job 名の整合、Firebase App Hosting backend、secret access、deploy service account 権限を事前に確認する。
 
 production release を tag や manual trigger に寄せる場合も、production deploy service account と approval required は維持する。
 

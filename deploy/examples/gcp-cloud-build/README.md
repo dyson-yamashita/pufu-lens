@@ -113,7 +113,7 @@ Set these trigger substitutions in the user's GCP project:
 | `_MASTRA_SERVICE`            | `mastra-server`                                     | Cloud Run service name.                                               |
 | `_MASTRA_IMAGE`              | `mastra-server`                                     | Artifact Registry image name for Mastra Server.                       |
 | `_JOBS_IMAGE`                | `workflow-job`                                      | Artifact Registry image name for workflow jobs.                       |
-| `_FIREBASE_DEPLOY`           | `false`                                             | Set to `true` only when Web deploy is handled by Cloud Build.         |
+| `_FIREBASE_DEPLOY`           | `true`                                              | Set to `false` only when Web deploy is handled outside Cloud Build.   |
 | `_FIREBASE_TOOLS_VERSION`    | `14.4.0`                                            | Firebase CLI version for local-source App Hosting deploy.             |
 
 `PROJECT_ID` and `SHORT_SHA` are Cloud Build built-in substitutions. The example uses `SHORT_SHA` as the immutable image tag and also pushes `latest` as a convenience tag.
@@ -132,7 +132,7 @@ Set these trigger substitutions in the user's GCP project:
 
 The deploy config does not create the PostgreSQL VM, VPC connector, Artifact Registry repository, GCS bucket, Firebase App Hosting backend, or Secret Manager secrets. Provision those before enabling the trigger.
 
-The Pufu Lens GCP project currently sets `_FIREBASE_DEPLOY=false`, so Cloud Build deploys the Mastra Server and Workflow Jobs and then runs smoke checks. Web deployment is handled outside this trigger.
+The Pufu Lens GCP project currently sets `_FIREBASE_DEPLOY=true`, so Cloud Build deploys the Mastra Server, Workflow Jobs, and Web app before running smoke checks.
 
 ## Deploy Secrets
 
