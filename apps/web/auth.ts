@@ -3,7 +3,6 @@ import NextAuth from 'next-auth';
 import type { Provider } from 'next-auth/providers';
 import Credentials from 'next-auth/providers/credentials';
 import GitHub from 'next-auth/providers/github';
-import Google from 'next-auth/providers/google';
 import { getRequiredAdminSql } from './src/admin-sql';
 import { createPostgresAuthUserRepository, resolveAuthUser } from './src/auth-db';
 import {
@@ -62,13 +61,10 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
 });
 export const { GET, POST } = handlers;
 
-export function getConfiguredAuthProviders(): readonly { id: 'github' | 'google'; name: string }[] {
-  const providers: Array<{ id: 'github' | 'google'; name: string }> = [];
+export function getConfiguredAuthProviders(): readonly { id: 'github'; name: string }[] {
+  const providers: Array<{ id: 'github'; name: string }> = [];
   if (hasGithubProviderEnv()) {
     providers.push({ id: 'github', name: 'GitHub' });
-  }
-  if (hasGoogleProviderEnv()) {
-    providers.push({ id: 'google', name: 'Google' });
   }
   return providers;
 }
@@ -96,11 +92,6 @@ function buildProviders(): Provider[] {
     providers.push(GitHub(githubEnv));
   }
 
-  const googleEnv = getGoogleProviderEnv();
-  if (googleEnv) {
-    providers.push(Google(googleEnv));
-  }
-
   return providers;
 }
 
@@ -108,19 +99,9 @@ function hasGithubProviderEnv(): boolean {
   return Boolean(getGithubProviderEnv());
 }
 
-function hasGoogleProviderEnv(): boolean {
-  return Boolean(getGoogleProviderEnv());
-}
-
 function getGithubProviderEnv(): { clientId: string; clientSecret: string } | undefined {
   const clientId = process.env.AUTH_GITHUB_ID ?? process.env.GITHUB_CLIENT_ID;
   const clientSecret = process.env.AUTH_GITHUB_SECRET ?? process.env.GITHUB_CLIENT_SECRET;
-  return clientId && clientSecret ? { clientId, clientSecret } : undefined;
-}
-
-function getGoogleProviderEnv(): { clientId: string; clientSecret: string } | undefined {
-  const clientId = process.env.AUTH_GOOGLE_ID ?? process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.AUTH_GOOGLE_SECRET ?? process.env.GOOGLE_CLIENT_SECRET;
   return clientId && clientSecret ? { clientId, clientSecret } : undefined;
 }
 

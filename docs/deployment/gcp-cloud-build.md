@@ -217,7 +217,6 @@ printf '%s' "$GEMINI_API_KEY_VALUE" | gcloud secrets create GEMINI_API_KEY --pro
 
 OAuth / data source 連携を使う環境では、必要に応じて次も Secret Manager または App Hosting secret として管理する。
 
-- `AUTH_GOOGLE_SECRET`
 - `AUTH_GITHUB_SECRET`
 - `GOOGLE_CLIENT_SECRET`
 - `GITHUB_CLIENT_SECRET`
