@@ -163,6 +163,10 @@ The deploy service account generally needs:
 - Cloud Run Jobs developer/admin permissions for workflow jobs.
 - Service Account User on `_RUNTIME_SERVICE_ACCOUNT`.
 - Firebase App Hosting deploy permissions when `_FIREBASE_DEPLOY=true`.
+- Service Usage read permission, such as `roles/serviceusage.serviceUsageViewer`,
+  when `_FIREBASE_DEPLOY=true`; Firebase CLI checks enabled APIs before deploy.
+- Project browser permission, such as `roles/browser`, when
+  `_FIREBASE_DEPLOY=true`; Firebase CLI reads project IAM policy during deploy.
 - Permission to attach Secret Manager secret references to Cloud Run resources.
 - Logging permissions required by Cloud Build in the project.
 
