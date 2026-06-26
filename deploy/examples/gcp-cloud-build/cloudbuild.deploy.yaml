@@ -1,0 +1,172 @@
+# Cloud Build deploy example for OSS users.
+#
+# Trigger deploys from a protected branch or release tag only. Do not reuse this
+# config for pull request CI.
+timeout: 3600s
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+substitutions:
+  _ENV: staging
+  _REGION: asia-east1
+  _ARTIFACT_REPO: pufu-lens
+  _RUNTIME_SERVICE_ACCOUNT: ''
+  _SCHEDULER_SERVICE_ACCOUNT: ''
+  _STORAGE_BUCKET: ''
+  _VPC_CONNECTOR: mastra-connector
+  _MASTRA_SERVICE: mastra-server
+  _MASTRA_IMAGE: mastra-server
+  _JOBS_IMAGE: workflow-job
+  _FIREBASE_DEPLOY: 'true'
+  _FIREBASE_TOOLS_VERSION: 14.4.0
+
+steps:
+  - id: validate-deploy-substitutions
+    name: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+
+        case "${_ENV}" in
+          staging|production) ;;
+          *)
+            echo "_ENV must be staging or production." >&2
+            exit 1
+            ;;
+        esac
+
+        for pair in \
+          "_REGION=${_REGION}" \
+          "_ARTIFACT_REPO=${_ARTIFACT_REPO}" \
+          "_RUNTIME_SERVICE_ACCOUNT=${_RUNTIME_SERVICE_ACCOUNT}" \
+          "_SCHEDULER_SERVICE_ACCOUNT=${_SCHEDULER_SERVICE_ACCOUNT}" \
+          "_STORAGE_BUCKET=${_STORAGE_BUCKET}" \
+          "_VPC_CONNECTOR=${_VPC_CONNECTOR}" \
+          "_MASTRA_SERVICE=${_MASTRA_SERVICE}" \
+          "_MASTRA_IMAGE=${_MASTRA_IMAGE}" \
+          "_JOBS_IMAGE=${_JOBS_IMAGE}"; do
+          name="$${pair%%=*}"
+          value="$${pair#*=}"
+          if [[ -z "$${value}" ]]; then
+            echo "$${name} is required." >&2
+            exit 1
+          fi
+        done
+
+  - id: build-mastra-server
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --file
+      - infra/docker/mastra/Dockerfile
+      - --tag
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_MASTRA_IMAGE}:${SHORT_SHA}
+      - --tag
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_MASTRA_IMAGE}:latest
+      - .
+
+  - id: push-mastra-server
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_MASTRA_IMAGE}
+
+  - id: build-workflow-job
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --file
+      - infra/docker/jobs/Dockerfile
+      - --tag
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_JOBS_IMAGE}:${SHORT_SHA}
+      - --tag
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_JOBS_IMAGE}:latest
+      - .
+
+  - id: push-workflow-job
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_JOBS_IMAGE}
+
+  - id: deploy-mastra-server
+    name: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+
+        gcloud run deploy "${_MASTRA_SERVICE}" \
+          --image "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_MASTRA_IMAGE}:${SHORT_SHA}" \
+          --region "${_REGION}" \
+          --service-account "${_RUNTIME_SERVICE_ACCOUNT}" \
+          --vpc-connector "${_VPC_CONNECTOR}" \
+          --no-allow-unauthenticated \
+          --port 8080 \
+          --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},GEMINI_CHAT_MODEL=gemini-2.5-flash,GEMINI_EMBEDDING_MODEL=gemini-embedding-2,GOOGLE_GENAI_USE_VERTEXAI=false" \
+          --set-secrets "DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_GENERATIVE_AI_API_KEY=GEMINI_API_KEY:latest"
+
+        mkdir -p /workspace/.cloudbuild
+        gcloud run services describe "${_MASTRA_SERVICE}" \
+          --region "${_REGION}" \
+          --format "value(status.url)" > /workspace/.cloudbuild/mastra-server-url
+
+  - id: deploy-workflow-jobs
+    name: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+
+        for workflow_id in curate-workflow ingest-workflow generate-report; do
+          job_name="${_ENV}-$${workflow_id}"
+          job_args=(
+            "$${job_name}"
+            --image "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_JOBS_IMAGE}:${SHORT_SHA}"
+            --region "${_REGION}"
+            --service-account "${_RUNTIME_SERVICE_ACCOUNT}"
+            --vpc-connector "${_VPC_CONNECTOR}"
+            --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},WORKFLOW_ID=$${workflow_id},GEMINI_CHAT_MODEL=gemini-2.5-flash,GEMINI_EMBEDDING_MODEL=gemini-embedding-2,GEMINI_EMBEDDING_DIMENSIONS=1536,GOOGLE_GENAI_USE_VERTEXAI=false"
+            --set-secrets "DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,AUTH_SECRET=AUTH_SECRET:latest"
+          )
+          if gcloud run jobs describe "$${job_name}" --region "${_REGION}" >/dev/null 2>&1; then
+            gcloud run jobs update "$${job_args[@]}"
+          else
+            gcloud run jobs create "$${job_args[@]}"
+          fi
+        done
+
+  - id: deploy-web-app-hosting
+    name: node:22-bookworm
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+
+        if [[ "${_FIREBASE_DEPLOY}" != "true" ]]; then
+          echo "Skipping Firebase App Hosting deploy because _FIREBASE_DEPLOY is not true."
+          exit 0
+        fi
+
+        npm install --global "firebase-tools@${_FIREBASE_TOOLS_VERSION}"
+        firebase deploy --only apphosting --project "${PROJECT_ID}" --non-interactive
+
+  - id: smoke
+    name: node:22-bookworm
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+
+        MASTRA_SERVER_URL="$$(cat /workspace/.cloudbuild/mastra-server-url)" \
+          SCHEDULER_SERVICE_ACCOUNT="${_SCHEDULER_SERVICE_ACCOUNT}" \
+          node --experimental-strip-types scripts/deploy-smoke.ts --env "${_ENV}"

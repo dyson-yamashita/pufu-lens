@@ -98,7 +98,7 @@ AWS Amplify などを追加するときも、次の境界を守る。
 | ------ | ----------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | Step 1 | `completed` | deployment example の情報設計と共通 runtime contract を定義する | `docs/deployment/overview.md` に provider-neutral な env / secret / service contract がまとまる |
 | Step 2 | `completed` | GCP Cloud Build CI example を追加する                           | PR / branch 用 `cloudbuild.ci.yaml` と README が追加され、deploy しない検査手順が説明される     |
-| Step 3 | `planned`   | GCP Cloud Build deploy example を追加する                       | Mastra / Jobs / Web の build + deploy template と trigger 設定手順が追加される                  |
+| Step 3 | `completed` | GCP Cloud Build deploy example を追加する                       | Mastra / Jobs / Web の build + deploy template と trigger 設定手順が追加される                  |
 | Step 4 | `planned`   | GCP deploy example の検証と運用ドキュメントを整える             | dry-run / smoke / Secret Manager / IAM / approval / rollback の手順が docs に反映される         |
 | Step 5 | `planned`   | 複数 provider 追加の入口を整備する                              | AWS Amplify などを追加する際の配置ルールと比較観点が docs に残る                                |
 
@@ -167,6 +167,11 @@ AWS Amplify などを追加するときも、次の境界を守る。
 - deploy trigger の substitution 一覧が README にあり、`_ENV` は `staging` / `production` のどちらかとして `deploy:smoke` に渡される。
 - production trigger では approval required と dedicated service account が推奨されている。
 - 既存の `docs/operations/deploy-checklist.md` と同じ検証観点を参照できる。
+
+### 対応状況
+
+- Issue #327 で `deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml` と `apphosting.example.yaml` を追加し、Mastra Server / Workflow Jobs の image build、Artifact Registry push、Cloud Run / Cloud Run Jobs deploy、Firebase App Hosting deploy、`deploy:smoke` の template を整理した。
+- README に deploy trigger の substitutions、Secret Manager secret 名、staging / production service account 分離、production approval、Firebase App Hosting の扱い、online migration / operations checklist 参照を追記した。
 
 ## Step 4: GCP Verification / Operations Docs
 

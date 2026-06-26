@@ -1,0 +1,89 @@
+# Copy this file to apps/web/apphosting.yaml in your fork or release workspace,
+# then replace placeholder values with environment-specific identifiers.
+runConfig:
+  minInstances: 0
+  maxInstances: 10
+  concurrency: 40
+  cpu: 1
+  memoryMiB: 2048
+  vpcAccess:
+    egress: PRIVATE_RANGES_ONLY
+    connector: <vpc-connector-name>
+
+env:
+  - variable: STORAGE_DRIVER
+    value: gcs
+    availability:
+      - RUNTIME
+  - variable: STORAGE_BUCKET
+    value: <storage-bucket-name>
+    availability:
+      - RUNTIME
+  - variable: MASTRA_API_URL
+    value: <mastra-service-url>
+    availability:
+      - RUNTIME
+  - variable: MASTRA_SERVER_URL
+    value: <mastra-service-url>
+    availability:
+      - RUNTIME
+  - variable: PUFU_LENS_GCP_PROJECT_ID
+    value: <gcp-project-id>
+    availability:
+      - RUNTIME
+  - variable: PUFU_LENS_CLOUD_RUN_JOBS_REGION
+    value: <gcp-region>
+    availability:
+      - RUNTIME
+  - variable: PUFU_LENS_INGEST_WORKFLOW_JOB_NAME
+    value: <env>-ingest-workflow
+    availability:
+      - RUNTIME
+  - variable: GEMINI_CHAT_MODEL
+    value: gemini-2.5-flash
+    availability:
+      - RUNTIME
+  - variable: GEMINI_EMBEDDING_MODEL
+    value: gemini-embedding-2
+    availability:
+      - RUNTIME
+  - variable: GEMINI_EMBEDDING_DIMENSIONS
+    value: '1536'
+    availability:
+      - RUNTIME
+  - variable: GOOGLE_GENAI_USE_VERTEXAI
+    value: 'false'
+    availability:
+      - RUNTIME
+  - variable: AUTH_URL
+    value: <web-public-origin>
+    availability:
+      - RUNTIME
+  - variable: GOOGLE_CLIENT_ID
+    secret: GOOGLE_CLIENT_ID
+    availability:
+      - RUNTIME
+  - variable: GOOGLE_CLIENT_SECRET
+    secret: GOOGLE_CLIENT_SECRET
+    availability:
+      - RUNTIME
+  - variable: DATABASE_URL
+    secret: DATABASE_URL
+    availability:
+      - RUNTIME
+  - variable: AUTH_SECRET
+    secret: AUTH_SECRET
+    availability:
+      - RUNTIME
+  - variable: GEMINI_API_KEY
+    secret: GEMINI_API_KEY
+    availability:
+      - RUNTIME
+  - variable: GOOGLE_GENERATIVE_AI_API_KEY
+    secret: GEMINI_API_KEY
+    availability:
+      - RUNTIME
+  - variable: GOOGLE_API_KEY
+    secret: GEMINI_API_KEY
+    availability:
+      - RUNTIME
