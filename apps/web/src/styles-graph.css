@@ -33,14 +33,35 @@
 .graph-canvas-wrap:fullscreen {
   border: 0;
   border-radius: 0;
-  height: 100vh;
+  height: 100dvh;
   width: 100vw;
 }
 
 .graph-canvas-wrap:fullscreen .graph-canvas,
 .graph-canvas-wrap:fullscreen .graph-empty {
-  height: 100vh;
-  min-height: 100vh;
+  height: 100dvh;
+  min-height: 100dvh;
+}
+
+.graph-canvas-wrap-fallback-fullscreen {
+  border: 0;
+  border-radius: 0;
+  height: 100dvh;
+  inset: 0;
+  min-height: 100dvh;
+  position: fixed;
+  width: 100vw;
+  z-index: 1000;
+}
+
+.graph-canvas-wrap-fallback-fullscreen .graph-canvas,
+.graph-canvas-wrap-fallback-fullscreen .graph-empty {
+  height: 100dvh;
+  min-height: 100dvh;
+}
+
+body.graph-fallback-fullscreen-active {
+  overflow: hidden;
 }
 
 .graph-empty {
