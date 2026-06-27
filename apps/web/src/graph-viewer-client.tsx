@@ -6,7 +6,7 @@ import cytoscape, {
   type NodeSingular,
   type StylesheetJson,
 } from 'cytoscape';
-import { RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import { Maximize2, Minimize2, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   GraphPresetId,
@@ -171,7 +171,9 @@ function GraphCanvas({
   readonly onSelect: (selection: GraphSelection | undefined) => void;
 }) {
   const [containerElement, setContainerElement] = useState<HTMLDivElement | null>(null);
+  const canvasWrapRef = useRef<HTMLDivElement | null>(null);
   const cytoscapeRef = useRef<Core | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const edgesById = useMemo(() => new Map(edges.map((edge) => [edge.id, edge])), [edges]);
 
@@ -193,6 +195,37 @@ function GraphCanvas({
     }
     cy.fit(undefined, 56);
   }, []);
+
+  const resizeGraph = useCallback(() => {
+    window.setTimeout(() => {
+      const cy = cytoscapeRef.current;
+      if (cy) {
+        cy.resize();
+      }
+    }, 0);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    const canvasWrap = canvasWrapRef.current;
+    if (!canvasWrap) {
+      return;
+    }
+    if (document.fullscreenElement === canvasWrap) {
+      await document.exitFullscreen();
+      return;
+    }
+    await canvasWrap.requestFullscreen();
+  }, []);
+
+  useEffect(() => {
+    const updateFullscreenState = () => {
+      setIsFullscreen(document.fullscreenElement === canvasWrapRef.current);
+      resizeGraph();
+    };
+
+    document.addEventListener('fullscreenchange', updateFullscreenState);
+    return () => document.removeEventListener('fullscreenchange', updateFullscreenState);
+  }, [resizeGraph]);
 
   useEffect(() => {
     const container = containerElement;
@@ -274,7 +307,7 @@ function GraphCanvas({
   }, [containerElement, edges, edgesById, nodes, nodesById, onSelect]);
 
   return (
-    <div className="graph-canvas-wrap">
+    <div className="graph-canvas-wrap" ref={canvasWrapRef}>
       {nodes.length ? (
         <>
           <div className="graph-canvas" data-testid="graph-canvas" ref={setContainerElement} />
@@ -312,6 +345,20 @@ function GraphCanvas({
               type="button"
             >
               <RotateCcw aria-hidden="true" size={16} />
+            </button>
+            <button
+              aria-label={isFullscreen ? '最大化を解除' : '画面最大化'}
+              className="graph-viewport-button"
+              data-testid="graph-fullscreen-button"
+              onClick={() => void toggleFullscreen()}
+              title={isFullscreen ? '最大化を解除' : '画面最大化'}
+              type="button"
+            >
+              {isFullscreen ? (
+                <Minimize2 aria-hidden="true" size={16} />
+              ) : (
+                <Maximize2 aria-hidden="true" size={16} />
+              )}
             </button>
           </div>
         </>
