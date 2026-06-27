@@ -257,7 +257,7 @@ Cloud Build の regional build で installed SDK の `gcloud beta builds approve
 
 ```bash
 ACCESS_TOKEN="$(gcloud auth print-access-token)"
-curl -sS -X POST \
+curl --fail-with-body -sS -X POST \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   "https://cloudbuild.googleapis.com/v1/projects/${PROJECT_ID}/locations/${BUILD_REGION}/builds/${BUILD_ID}:approve" \
