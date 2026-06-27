@@ -42,17 +42,25 @@ assert.throws(
 assert.deepEqual(
   parseAdminActionActorRow({
     displayName: 'Sample Actor',
+    graphNodeId: 'actor:sample',
     id: 'actor-a',
     status: 'active',
   }),
   {
     displayName: 'Sample Actor',
+    graphNodeId: 'actor:sample',
     id: 'actor-a',
     status: 'active',
   },
 );
 assert.throws(
-  () => parseAdminActionActorRow({ displayName: 'Sample Actor', id: 'actor-a', status: 'old' }),
+  () =>
+    parseAdminActionActorRow({
+      displayName: 'Sample Actor',
+      graphNodeId: 'actor:sample',
+      id: 'actor-a',
+      status: 'old',
+    }),
   /Invalid admin actor row field: status/,
 );
 

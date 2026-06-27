@@ -90,7 +90,6 @@ export default async function ActorDetailPage({
                 <tr>
                   <th>Type</th>
                   <th>Value</th>
-                  <th>Strength</th>
                   <th>Source</th>
                 </tr>
               </thead>
@@ -99,7 +98,6 @@ export default async function ActorDetailPage({
                   <tr key={`${alias.aliasType}:${alias.aliasValue}`}>
                     <td>{alias.aliasType}</td>
                     <td className="truncate">{alias.aliasValue}</td>
-                    <td>{alias.strength}</td>
                     <td className="truncate">{alias.source}</td>
                   </tr>
                 ))}

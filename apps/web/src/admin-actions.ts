@@ -1,9 +1,6 @@
 'use server';
 
-import {
-  mergeActors as mergeActorsAction,
-  rejectActorMergeCandidate as rejectActorMergeCandidateAction,
-} from './admin-actor-actions.ts';
+import { mergeActors as mergeActorsAction } from './admin-actor-actions.ts';
 import {
   collectAndIngestDataSource as collectAndIngestDataSourceAction,
   collectDataSource as collectDataSourceAction,
@@ -49,10 +46,6 @@ export async function updateGithubAppConnectionSettings(formData: FormData): Pro
 
 export async function mergeActors(formData: FormData): Promise<void> {
   await mergeActorsAction(formData);
-}
-
-export async function rejectActorMergeCandidate(formData: FormData): Promise<void> {
-  await rejectActorMergeCandidateAction(formData);
 }
 
 export async function createMember(formData: FormData): Promise<void> {
