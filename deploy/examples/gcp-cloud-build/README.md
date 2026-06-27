@@ -115,6 +115,8 @@ tsconfig*.json
 
 Do not include broad documentation paths such as `docs/**`, `README.md`, or `deploy/examples/gcp-cloud-build/README.md` in production deploy triggers. If a documentation-only change should be deployed for operational reasons, run the trigger manually and record the reason.
 
+Production deploy triggers should require approval. After a protected branch merge, identify the pending build by region, trigger name, branch, and commit SHA before approving it. For the full command sequence, including regional `gcloud alpha builds approve --location`, see `docs/deployment/gcp-cloud-build.md`.
+
 ## Deploy Substitutions
 
 Set these trigger substitutions in the user's GCP project:
