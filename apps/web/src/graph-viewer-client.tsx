@@ -210,12 +210,16 @@ function GraphCanvas({
     if (!canvasWrap) {
       return;
     }
-    if (document.fullscreenElement === canvasWrap) {
-      await document.exitFullscreen();
-      return;
+    try {
+      if (document.fullscreenElement === canvasWrap) {
+        await document.exitFullscreen();
+        return;
+      }
+      await canvasWrap.requestFullscreen();
+    } catch {
+      resizeGraph();
     }
-    await canvasWrap.requestFullscreen();
-  }, []);
+  }, [resizeGraph]);
 
   useEffect(() => {
     const updateFullscreenState = () => {
