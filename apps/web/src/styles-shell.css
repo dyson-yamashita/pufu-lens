@@ -437,10 +437,18 @@
 
   .global-nav:has(.guest-menu:not([data-open="true"])),
   .guest-global-nav:has(.guest-menu:not([data-open="true"])) {
-    background: var(--nav-bg);
+    background: var(--surface);
     border-bottom: 1px solid var(--line);
     box-shadow: var(--shadow);
     pointer-events: auto;
+    right: 0;
+  }
+
+  .guest-app-shell:has(.guest-menu:not([data-open="true"])) .guest-global-nav,
+  .app-shell:not(.guest-app-shell):has(.guest-menu:not([data-open="true"])) .global-nav {
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    box-shadow: var(--shadow);
     right: 0;
   }
 
