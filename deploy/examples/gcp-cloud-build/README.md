@@ -95,7 +95,25 @@ Recommended deploy trigger events:
 | staging deploy    | Push to a protected staging branch or manual run | dedicated staging deploy service account       |
 | tag release       | Push tag `^v.*$`                                 | approval required + production service account |
 
-Do not use the deploy config for pull request events. For monorepo-style deployments, use Cloud Build included / ignored file filters so docs-only changes or unrelated app changes do not trigger deploy builds.
+Do not use the deploy config for pull request events. For monorepo-style deployments, use Cloud Build included file filters so docs-only changes or unrelated app changes do not trigger deploy builds. Keep the filter scoped to runtime and deploy config paths, for example:
+
+```text
+apps/**
+packages/**
+scripts/**
+infra/**
+deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml
+.dockerignore
+.firebaserc
+firebase.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
+package.json
+turbo.json
+tsconfig*.json
+```
+
+Do not include broad documentation paths such as `docs/**`, `README.md`, or `deploy/examples/gcp-cloud-build/README.md` in production deploy triggers. If a documentation-only change should be deployed for operational reasons, run the trigger manually and record the reason.
 
 ## Deploy Substitutions
 
@@ -123,12 +141,13 @@ Set these trigger substitutions in the user's GCP project:
 `cloudbuild.deploy.yaml` performs:
 
 1. Validate required substitutions and `_ENV`.
-2. Build and push the Mastra Server image from `infra/docker/mastra/Dockerfile`.
-3. Build and push the Workflow Job image from `infra/docker/jobs/Dockerfile`.
-4. Deploy the Mastra Server to Cloud Run.
-5. Deploy `${_ENV}-curate-workflow`, `${_ENV}-ingest-workflow`, and `${_ENV}-generate-report` as Cloud Run Jobs while keeping each runtime `WORKFLOW_ID` unchanged.
-6. Deploy the Web app with Firebase App Hosting when `_FIREBASE_DEPLOY=true`.
-7. Read the deployed Mastra Server URL dynamically and run `deploy:smoke`.
+2. In parallel, build the Mastra Server image, build the Workflow Job image, and deploy the Web app with Firebase App Hosting when `_FIREBASE_DEPLOY=true`.
+3. Push each image after its build finishes.
+4. Deploy the Mastra Server to Cloud Run after its image is pushed.
+5. Deploy `${_ENV}-curate-workflow`, `${_ENV}-ingest-workflow`, and `${_ENV}-generate-report` as Cloud Run Jobs after the jobs image is pushed, while keeping each runtime `WORKFLOW_ID` unchanged.
+6. Read the deployed Mastra Server URL dynamically and run `deploy:smoke` after Mastra Server, Workflow Jobs, and Web deploy all finish.
+
+The deploy config keeps the default Cloud Build worker and uses `waitFor` only to remove avoidable serial waits. Cost-sensitive environments should keep this default-worker shape unless they explicitly accept higher per-minute build costs.
 
 The deploy config does not create the PostgreSQL VM, VPC connector, Artifact Registry repository, GCS bucket, Firebase App Hosting backend, or Secret Manager secrets. Provision those before enabling the trigger.
 

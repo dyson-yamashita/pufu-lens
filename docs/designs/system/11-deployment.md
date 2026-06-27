@@ -11,6 +11,8 @@
 > - **`--no-address` の PostgreSQL VM を使う場合、サブネットで Private Google Access を有効化**しないと konlet / コンテナイメージの pull に失敗する。
 > - **App Hosting backend に custom service account を割り当てた場合**、その SA に App Hosting ソースバケットの閲覧権 + `roles/firebaseapphosting.computeRunner` を付与し、参照する secret に `firebase apphosting:secrets:grantaccess` を実行する。
 > - Cloud Build が Compute default SA を使う構成では `roles/cloudbuild.builds.builder` の付与が必要。
+> - production deploy trigger は runtime / deploy config path だけを included files に設定し、`docs/**` や README だけの変更では本番 deploy を起動しない。必要な場合は manual trigger を明示的に実行する。
+> - Cloud Build deploy は substitution 検証後に Mastra image build、Workflow Job image build、Firebase App Hosting deploy を並列実行し、smoke は全 deploy 完了後に実行する。`options.machineType` は指定せず、標準 worker のまま不要な直列待ちを減らす。
 
 ### 1. ローカル開発
 
