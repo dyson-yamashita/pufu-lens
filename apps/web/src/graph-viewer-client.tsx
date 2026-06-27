@@ -6,6 +6,7 @@ import cytoscape, {
   type NodeSingular,
   type StylesheetJson,
 } from 'cytoscape';
+import { RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   GraphPresetId,
@@ -137,21 +138,25 @@ export function GraphViewerPanel({
         )}
       </section>
 
-      <section className="panel graph-raw-panel" data-testid="graph-raw-panel">
-        <div className="panel-heading">
-          <div>
-            <h2>Raw Result</h2>
-            <p className="mono">{result ? `${result.rawRows.length} rows` : 'empty'}</p>
+      <details className="panel graph-raw-panel" data-testid="graph-raw-panel">
+        <summary className="graph-raw-summary">
+          <div className="panel-heading">
+            <div>
+              <h2>Raw Result</h2>
+              <p className="mono">{result ? `${result.rawRows.length} rows` : 'empty'}</p>
+            </div>
           </div>
+        </summary>
+        <div className="graph-raw-content">
+          {result?.rawRows.length ? (
+            <pre className="json-preview" data-testid="graph-raw-json">
+              {JSON.stringify(result.rawRows, null, 2)}
+            </pre>
+          ) : (
+            <p className="notice">まだ query は実行されていません。</p>
+          )}
         </div>
-        {result?.rawRows.length ? (
-          <pre className="json-preview" data-testid="graph-raw-json">
-            {JSON.stringify(result.rawRows, null, 2)}
-          </pre>
-        ) : (
-          <p className="notice">まだ query は実行されていません。</p>
-        )}
-      </section>
+      </details>
     </div>
   );
 }
@@ -169,6 +174,25 @@ function GraphCanvas({
   const cytoscapeRef = useRef<Core | null>(null);
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const edgesById = useMemo(() => new Map(edges.map((edge) => [edge.id, edge])), [edges]);
+
+  const zoomGraph = useCallback((factor: number) => {
+    const cy = cytoscapeRef.current;
+    if (!cy) {
+      return;
+    }
+    cy.zoom({
+      level: cy.zoom() * factor,
+      renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 },
+    });
+  }, []);
+
+  const resetGraphView = useCallback(() => {
+    const cy = cytoscapeRef.current;
+    if (!cy) {
+      return;
+    }
+    cy.fit(undefined, 56);
+  }, []);
 
   useEffect(() => {
     const container = containerElement;
@@ -225,7 +249,8 @@ function GraphCanvas({
         numIter: 2000,
         padding: 56,
       },
-      minZoom: 0.45,
+      maxZoom: 4,
+      minZoom: 0.08,
       style: buildGraphStyles(graphTheme),
     });
     cytoscapeRef.current = cy;
@@ -251,7 +276,42 @@ function GraphCanvas({
   return (
     <div className="graph-canvas-wrap">
       {nodes.length ? (
-        <div className="graph-canvas" data-testid="graph-canvas" ref={setContainerElement} />
+        <>
+          <div className="graph-canvas" data-testid="graph-canvas" ref={setContainerElement} />
+          <div
+            className="graph-viewport-controls"
+            aria-label="Graph viewport controls"
+            role="toolbar"
+          >
+            <button
+              aria-label="拡大"
+              className="graph-viewport-button"
+              onClick={() => zoomGraph(1.25)}
+              title="拡大"
+              type="button"
+            >
+              <ZoomIn aria-hidden="true" size={16} />
+            </button>
+            <button
+              aria-label="縮小"
+              className="graph-viewport-button"
+              onClick={() => zoomGraph(0.8)}
+              title="縮小"
+              type="button"
+            >
+              <ZoomOut aria-hidden="true" size={16} />
+            </button>
+            <button
+              aria-label="初期表示位置に戻す"
+              className="graph-viewport-button"
+              onClick={resetGraphView}
+              title="初期表示位置に戻す"
+              type="button"
+            >
+              <RotateCcw aria-hidden="true" size={16} />
+            </button>
+          </div>
+        </>
       ) : (
         <div className="graph-empty" data-testid="graph-empty">
           Loading graph nodes and edges.
@@ -270,6 +330,10 @@ function truncateGraphLabel(value: string): string {
 }
 
 function PropertyList({ item }: { readonly item: GraphViewerEdge | GraphViewerNode }) {
+  const propertyRows = Object.entries(item.properties).sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
+
   return (
     <dl className="detail-list stacked">
       <div>
@@ -295,11 +359,54 @@ function PropertyList({ item }: { readonly item: GraphViewerEdge | GraphViewerNo
       <div>
         <dt>Properties</dt>
         <dd>
-          <pre className="json-preview">{JSON.stringify(item.properties, null, 2)}</pre>
+          {propertyRows.length ? (
+            <div className="graph-property-table-frame">
+              <table className="graph-property-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Property</th>
+                    <th scope="col">Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {propertyRows.map(([key, value]) => (
+                    <tr key={key}>
+                      <th className="mono" scope="row">
+                        {key}
+                      </th>
+                      <td className="mono">{formatPropertyValue(value)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="notice">property はありません。</p>
+          )}
         </dd>
       </div>
     </dl>
   );
+}
+
+function formatPropertyValue(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (
+    value === null ||
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    typeof value === 'bigint' ||
+    typeof value === 'undefined'
+  ) {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function readGraphTheme(container: HTMLElement) {

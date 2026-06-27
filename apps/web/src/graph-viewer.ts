@@ -3,7 +3,7 @@ import type postgres from 'postgres';
 import { getRequiredAdminSql } from './admin-sql.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
 
-export type GraphPresetId = 'actor-documents' | 'recent-relations' | 'same-as';
+export type GraphPresetId = 'actor-documents' | 'recent-relations';
 
 export type GraphPresetSummary = {
   readonly description: string;
@@ -103,21 +103,6 @@ LIMIT 100`,
     maxEdges: 100,
     maxNodes: 120,
     preview: `MATCH (source:Actor)-[relation]->(target:Document)
-RETURN source, relation, target
-LIMIT 100`,
-    recordDefinition: 'source agtype, relation agtype, target agtype',
-    rowLimit: 100,
-  },
-  {
-    cypher: `MATCH (source)-[relation:SAME_AS]->(target)
-RETURN source, relation, target
-LIMIT 100`,
-    description: '重複・同一実体候補の SAME_AS 関係を確認します。',
-    id: 'same-as',
-    label: 'SAME_AS',
-    maxEdges: 100,
-    maxNodes: 120,
-    preview: `MATCH (source)-[relation:SAME_AS]->(target)
 RETURN source, relation, target
 LIMIT 100`,
     recordDefinition: 'source agtype, relation agtype, target agtype',
