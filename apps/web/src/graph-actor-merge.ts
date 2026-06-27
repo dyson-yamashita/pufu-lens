@@ -43,8 +43,28 @@ export async function mergeActorGraphElements(
   const safeGraphName = validateGraphName(input.graphName);
   await sql`LOAD 'age'`;
   await sql`SET LOCAL search_path = ag_catalog, "$user", public`;
+  const primaryCount = await countActorGraphNode(
+    sql,
+    safeGraphName,
+    input.primaryGraphNodeId,
+    'primary actor graph node',
+  );
+  if (primaryCount !== 1) {
+    throw new Error(`Actor graph merge failed: expected 1 primary node, found ${primaryCount}.`);
+  }
+  const secondaryCount = await countActorGraphNode(
+    sql,
+    safeGraphName,
+    input.secondaryGraphNodeId,
+    'secondary actor graph node',
+  );
+  if (secondaryCount !== 1) {
+    throw new Error(
+      `Actor graph merge failed: expected 1 secondary node, found ${secondaryCount}.`,
+    );
+  }
   for (const edgeType of ACTOR_EDGE_TYPES) {
-    await sql.unsafe(
+    const outgoingRows = (await sql.unsafe(
       `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
         [
           'MATCH (primary {graphNodeId: $primaryGraphNodeId})',
@@ -57,8 +77,9 @@ export async function mergeActorGraphElements(
         ].join(' '),
       )}, $1::jsonb::agtype) AS (value agtype)`,
       [JSON.stringify(input)],
-    );
-    await sql.unsafe(
+    )) as readonly unknown[];
+    parseActorGraphCountRows(outgoingRows, `${edgeType} outgoing merge count`);
+    const incomingRows = (await sql.unsafe(
       `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
         [
           'MATCH (primary {graphNodeId: $primaryGraphNodeId})',
@@ -71,9 +92,10 @@ export async function mergeActorGraphElements(
         ].join(' '),
       )}, $1::jsonb::agtype) AS (value agtype)`,
       [JSON.stringify(input)],
-    );
+    )) as readonly unknown[];
+    parseActorGraphCountRows(incomingRows, `${edgeType} incoming merge count`);
   }
-  await sql.unsafe(
+  const deleteRows = (await sql.unsafe(
     `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
       [
         'MATCH (secondary {graphNodeId: $secondaryGraphNodeId})',
@@ -82,5 +104,63 @@ export async function mergeActorGraphElements(
       ].join(' '),
     )}, $1::jsonb::agtype) AS (value agtype)`,
     [JSON.stringify(input)],
-  );
+  )) as readonly unknown[];
+  const deletedCount = parseActorGraphCountRows(deleteRows, 'secondary actor delete count');
+  if (deletedCount !== 1) {
+    throw new Error(
+      `Actor graph merge failed: expected to delete 1 secondary node, deleted ${deletedCount}.`,
+    );
+  }
+}
+
+async function countActorGraphNode(
+  sql: postgres.TransactionSql,
+  safeGraphName: string,
+  graphNodeId: string,
+  label: string,
+): Promise<number> {
+  const rows = (await sql.unsafe(
+    `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
+      ['MATCH (node {graphNodeId: $graphNodeId})', 'RETURN count(node) AS nodeCount'].join(' '),
+    )}, $1::jsonb::agtype) AS (value agtype)`,
+    [JSON.stringify({ graphNodeId })],
+  )) as readonly unknown[];
+  return parseActorGraphCountRows(rows, label);
+}
+
+export function parseActorGraphCountRows(rows: readonly unknown[], label: string): number {
+  if (rows.length !== 1) {
+    throw new Error(`Invalid AGE ${label}: expected 1 row, received ${rows.length}.`);
+  }
+  const row = rows[0];
+  if (!isRecord(row)) {
+    throw new Error(`Invalid AGE ${label}: row is not an object.`);
+  }
+  return parseAgeInteger(row.value, label);
+}
+
+function parseAgeInteger(value: unknown, label: string): number {
+  if (typeof value === 'number' && Number.isSafeInteger(value)) {
+    return value;
+  }
+  if (typeof value === 'bigint') {
+    const parsed = Number(value);
+    if (Number.isSafeInteger(parsed)) {
+      return parsed;
+    }
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (/^-?\d+$/.test(trimmed)) {
+      const parsed = Number(trimmed);
+      if (Number.isSafeInteger(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  throw new Error(`Invalid AGE ${label}: value is not a safe integer.`);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
