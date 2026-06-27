@@ -54,26 +54,28 @@
   z-index: 2;
 }
 
-.guest-app-shell:has(.guest-menu[data-open="false"]) .guest-global-nav {
-  background: transparent;
-  border-right: 0;
-  height: auto;
-  left: 0;
-  padding: 24px 16px;
-  position: fixed;
-  top: 0;
-  width: auto;
-}
+@media (min-width: 721px) {
+  .guest-app-shell:has(.guest-menu[data-open="false"]) .guest-global-nav {
+    background: transparent;
+    border-right: 0;
+    height: auto;
+    left: 0;
+    padding: 24px 16px;
+    position: fixed;
+    top: 0;
+    width: auto;
+  }
 
-.app-shell:not(.guest-app-shell):has(.guest-menu[data-open="false"]) .global-nav {
-  background: transparent;
-  border-right: 0;
-  height: auto;
-  left: 0;
-  padding: 24px 16px;
-  position: fixed;
-  top: 0;
-  width: auto;
+  .app-shell:not(.guest-app-shell):has(.guest-menu[data-open="false"]) .global-nav {
+    background: transparent;
+    border-right: 0;
+    height: auto;
+    left: 0;
+    padding: 24px 16px;
+    position: fixed;
+    top: 0;
+    width: auto;
+  }
 }
 
 .brand {
@@ -441,14 +443,6 @@
     border-bottom: 1px solid var(--line);
     box-shadow: var(--shadow);
     pointer-events: auto;
-    right: 0;
-  }
-
-  .guest-app-shell:has(.guest-menu:not([data-open="true"])) .guest-global-nav,
-  .app-shell:not(.guest-app-shell):has(.guest-menu:not([data-open="true"])) .global-nav {
-    background: var(--surface);
-    border-bottom: 1px solid var(--line);
-    box-shadow: var(--shadow);
     right: 0;
   }
 
