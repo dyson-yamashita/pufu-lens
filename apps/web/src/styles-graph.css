@@ -8,6 +8,7 @@
 .graph-detail-panel,
 .graph-raw-panel {
   align-self: start;
+  min-width: 0;
 }
 
 .graph-canvas-panel {
@@ -135,15 +136,23 @@
   padding: 0 20px 20px;
 }
 
+.graph-detail-panel .detail-list > div {
+  min-width: 0;
+}
+
 .graph-property-table-frame {
   border: 1px solid var(--line);
   border-radius: 8px;
   max-height: 320px;
+  max-width: 100%;
   overflow: auto;
+  width: 100%;
 }
 
 .graph-property-table {
+  border-collapse: collapse;
   min-width: 560px;
+  width: max-content;
 }
 
 .graph-property-table th,
@@ -166,12 +175,14 @@
 .graph-property-table tbody th {
   color: var(--muted);
   font-weight: 500;
-  width: 34%;
+  min-width: 140px;
+  white-space: nowrap;
 }
 
 .graph-property-table td {
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
+  min-width: 320px;
+  overflow-wrap: normal;
+  white-space: pre;
 }
 
 @media (max-width: 1023px) {
