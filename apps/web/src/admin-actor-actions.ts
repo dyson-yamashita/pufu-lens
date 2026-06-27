@@ -22,13 +22,6 @@ export async function mergeActors(formData: FormData): Promise<void> {
   }
 
   await withSql(async (sql) => {
-    let graphMerge:
-      | {
-          readonly graphName: string | null;
-          readonly primaryGraphNodeId: string;
-          readonly secondaryGraphNodeId: string;
-        }
-      | undefined;
     const project = await requireAdminProject(sql, projectSlug);
     await sql.begin(async (tx) => {
       const { primaryActor, secondaryActor } = await lookupProjectActorPairForUpdate(tx, {
@@ -83,15 +76,12 @@ export async function mergeActors(formData: FormData): Promise<void> {
         reason,
         secondaryActorId: secondaryActor.id,
       });
-      graphMerge = {
+      await mergeActorGraphElements(tx, {
         graphName: project.graphName,
         primaryGraphNodeId: primaryActor.graphNodeId,
         secondaryGraphNodeId: secondaryActor.graphNodeId,
-      };
+      });
     });
-    if (graphMerge) {
-      await mergeActorGraphElements(sql, graphMerge);
-    }
   });
 
   revalidateActorPaths(projectSlug, primaryActorId, secondaryActorId);

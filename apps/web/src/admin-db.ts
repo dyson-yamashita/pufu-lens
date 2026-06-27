@@ -1,10 +1,11 @@
 import type postgres from 'postgres';
-import type {
-  ActorMergeDecisionSummary,
-  ProjectActorAliasSummary,
-  ProjectActorDetail,
-  ProjectActorDirectory,
-  ProjectActorSummary,
+import {
+  type ActorMergeDecisionSummary,
+  buildProjectActorSummary,
+  type ProjectActorAliasSummary,
+  type ProjectActorDetail,
+  type ProjectActorDirectory,
+  type ProjectActorSummary,
 } from './admin-actors';
 import {
   availabilityFromConnections,
@@ -827,25 +828,7 @@ function actorFromRow(
   row: AdminDbActorRow,
   aliases: readonly ProjectActorAliasSummary[],
 ): ProjectActorSummary {
-  return {
-    aliasCount: aliases.length,
-    actorType: row.actor_type,
-    aliases,
-    createdAt: formatDate(row.created_at),
-    disabledAt: row.disabled_at === null ? 'none' : formatDate(row.disabled_at),
-    disabledByUserId: row.disabled_by_user_id ?? 'none',
-    disabledReason: row.disabled_reason ?? 'none',
-    displayName: row.display_name,
-    graphNodeId: row.graph_node_id,
-    id: row.id,
-    mergedIntoActorId: row.merged_into_actor_id ?? 'none',
-    mergedIntoActorName: row.merged_into_actor_name ?? 'none',
-    primaryEmail: row.primary_email ?? 'none',
-    primaryLogin: row.primary_login ?? 'none',
-    sourceTypes: sourceTypesFromActor(row.metadata, aliases),
-    status: row.status,
-    updatedAt: formatDate(row.updated_at),
-  };
+  return buildProjectActorSummary(row, aliases);
 }
 
 function decisionFromRow(row: AdminDbActorMergeDecisionRow): ActorMergeDecisionSummary {
@@ -963,20 +946,6 @@ function sourceTypesFromAliases(aliases: readonly ProjectActorAliasSummary[]): r
     const sourceType = alias.source.split(':')[0]?.trim();
     if (sourceType && sourceType !== 'unknown') {
       sourceTypes.add(sourceType);
-    }
-  }
-  return Array.from(sourceTypes).sort();
-}
-
-function sourceTypesFromActor(
-  metadata: unknown,
-  aliases: readonly ProjectActorAliasSummary[],
-): readonly string[] {
-  const sourceTypes = new Set(sourceTypesFromAliases(aliases));
-  if (isRecord(metadata) && isRecord(metadata.resolution)) {
-    const sourceType = metadata.resolution.sourceType;
-    if (typeof sourceType === 'string' && sourceType.trim()) {
-      sourceTypes.add(sourceType.trim());
     }
   }
   return Array.from(sourceTypes).sort();

@@ -63,6 +63,16 @@ assert.throws(
     }),
   /Invalid admin actor row field: status/,
 );
+assert.throws(
+  () =>
+    parseAdminActionActorRow({
+      displayName: 'Sample Actor',
+      graphNodeId: null,
+      id: 'actor-a',
+      status: 'active',
+    }),
+  /Invalid admin actor row field: graphNodeId/,
+);
 
 assert.deepEqual(
   parseAdminActionDataSourceRecordRow({

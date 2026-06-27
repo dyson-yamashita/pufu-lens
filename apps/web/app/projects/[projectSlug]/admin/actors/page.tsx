@@ -120,7 +120,11 @@ function ManualMergePanel({
           <h3>Actor を統合するには?</h3>
         </div>
       </summary>
-      <form action={mergeActors} className="actor-decision-form actor-manual-merge-form">
+      <form
+        action={mergeActors}
+        className="actor-decision-form actor-manual-merge-form"
+        data-testid="actor-manual-merge-form"
+      >
         <input name="projectSlug" type="hidden" value={projectSlug} />
         <label>
           <span>Primary</span>
@@ -133,7 +137,7 @@ function ManualMergePanel({
             <option value="">Select primary actor</option>
             {activeActors.map((actor) => (
               <option key={actor.id} value={actor.id}>
-                {actor.displayName}
+                {actorSelectLabel(actor)}
               </option>
             ))}
           </select>
@@ -149,14 +153,20 @@ function ManualMergePanel({
             <option value="">Select secondary actor</option>
             {activeActors.map((actor) => (
               <option key={actor.id} value={actor.id}>
-                {actor.displayName}
+                {actorSelectLabel(actor)}
               </option>
             ))}
           </select>
         </label>
         <label>
           <span>Reason</span>
-          <input aria-label="手動マージする理由" name="reason" placeholder="Reason" type="text" />
+          <input
+            aria-label="手動マージする理由"
+            data-testid="actor-manual-merge-reason-input"
+            name="reason"
+            placeholder="Reason"
+            type="text"
+          />
         </label>
         <button className="icon-button" data-testid="actor-manual-merge-submit" type="submit">
           Merge selected
@@ -181,6 +191,7 @@ function ActorStatusFilterForm({
     <form
       action={`/projects/${projectSlug}/admin/actors`}
       className="actor-filter-form"
+      data-testid="actor-status-filter-form"
       method="get"
     >
       <label>
@@ -209,4 +220,14 @@ function parseActorStatusFilter(value: string | undefined): ActorStatusFilter {
     return value;
   }
   return 'active';
+}
+
+function actorSelectLabel(actor: ProjectActorSummary): string {
+  const identifier =
+    actor.primaryEmail !== 'none'
+      ? actor.primaryEmail
+      : actor.primaryLogin !== 'none'
+        ? actor.primaryLogin
+        : actor.graphNodeId;
+  return `${actor.displayName} (${identifier})`;
 }

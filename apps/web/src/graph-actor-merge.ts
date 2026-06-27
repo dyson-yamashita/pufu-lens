@@ -29,7 +29,7 @@ function dollarQuote(value: string): string {
 }
 
 export async function mergeActorGraphElements(
-  sql: postgres.Sql,
+  sql: postgres.TransactionSql,
   input: {
     readonly graphName: string | null;
     readonly primaryGraphNodeId: string;
@@ -40,58 +40,47 @@ export async function mergeActorGraphElements(
     return;
   }
 
-  try {
-    const safeGraphName = validateGraphName(input.graphName);
-    await sql.begin(async (transaction) => {
-      await transaction`LOAD 'age'`;
-      await transaction`SET LOCAL search_path = ag_catalog, "$user", public`;
-      for (const edgeType of ACTOR_EDGE_TYPES) {
-        await transaction.unsafe(
-          `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
-            [
-              'MATCH (primary {graphNodeId: $primaryGraphNodeId})',
-              'MATCH (secondary {graphNodeId: $secondaryGraphNodeId})',
-              `MATCH (secondary)-[relation:${edgeType}]->(target)`,
-              'WHERE target.graphNodeId IS NULL OR target.graphNodeId <> $primaryGraphNodeId',
-              `CREATE (primary)-[merged:${edgeType}]->(target)`,
-              'SET merged += properties(relation)',
-              'RETURN count(merged) AS mergedCount',
-            ].join(' '),
-          )}, $1::jsonb::agtype) AS (value agtype)`,
-          [JSON.stringify(input)],
-        );
-        await transaction.unsafe(
-          `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
-            [
-              'MATCH (primary {graphNodeId: $primaryGraphNodeId})',
-              'MATCH (secondary {graphNodeId: $secondaryGraphNodeId})',
-              `MATCH (source)-[relation:${edgeType}]->(secondary)`,
-              'WHERE source.graphNodeId IS NULL OR source.graphNodeId <> $primaryGraphNodeId',
-              `CREATE (source)-[merged:${edgeType}]->(primary)`,
-              'SET merged += properties(relation)',
-              'RETURN count(merged) AS mergedCount',
-            ].join(' '),
-          )}, $1::jsonb::agtype) AS (value agtype)`,
-          [JSON.stringify(input)],
-        );
-      }
-      await transaction.unsafe(
-        `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
-          [
-            'MATCH (primary {graphNodeId: $primaryGraphNodeId})',
-            'MATCH (secondary {graphNodeId: $secondaryGraphNodeId})',
-            'DETACH DELETE secondary',
-            'RETURN primary',
-          ].join(' '),
-        )}, $1::jsonb::agtype) AS (value agtype)`,
-        [JSON.stringify(input)],
-      );
-    });
-  } catch (error) {
-    console.warn(
-      `AGE actor graph merge skipped for ${input.secondaryGraphNodeId}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+  const safeGraphName = validateGraphName(input.graphName);
+  await sql`LOAD 'age'`;
+  await sql`SET LOCAL search_path = ag_catalog, "$user", public`;
+  for (const edgeType of ACTOR_EDGE_TYPES) {
+    await sql.unsafe(
+      `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
+        [
+          'MATCH (primary {graphNodeId: $primaryGraphNodeId})',
+          'MATCH (secondary {graphNodeId: $secondaryGraphNodeId})',
+          `MATCH (secondary)-[relation:${edgeType}]->(target)`,
+          'WHERE target.graphNodeId IS NULL OR target.graphNodeId <> $primaryGraphNodeId',
+          `CREATE (primary)-[merged:${edgeType}]->(target)`,
+          'SET merged += properties(relation)',
+          'RETURN count(merged) AS mergedCount',
+        ].join(' '),
+      )}, $1::jsonb::agtype) AS (value agtype)`,
+      [JSON.stringify(input)],
+    );
+    await sql.unsafe(
+      `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
+        [
+          'MATCH (primary {graphNodeId: $primaryGraphNodeId})',
+          'MATCH (secondary {graphNodeId: $secondaryGraphNodeId})',
+          `MATCH (source)-[relation:${edgeType}]->(secondary)`,
+          'WHERE source.graphNodeId IS NULL OR source.graphNodeId <> $primaryGraphNodeId',
+          `CREATE (source)-[merged:${edgeType}]->(primary)`,
+          'SET merged += properties(relation)',
+          'RETURN count(merged) AS mergedCount',
+        ].join(' '),
+      )}, $1::jsonb::agtype) AS (value agtype)`,
+      [JSON.stringify(input)],
     );
   }
+  await sql.unsafe(
+    `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
+      [
+        'MATCH (secondary {graphNodeId: $secondaryGraphNodeId})',
+        'DETACH DELETE secondary',
+        'RETURN count(secondary) AS deletedCount',
+      ].join(' '),
+    )}, $1::jsonb::agtype) AS (value agtype)`,
+    [JSON.stringify(input)],
+  );
 }
