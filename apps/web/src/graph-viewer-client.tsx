@@ -311,7 +311,7 @@ function GraphCanvas({
   }, [containerElement, edges, edgesById, nodes, nodesById, onSelect]);
 
   return (
-    <div className="graph-canvas-wrap" ref={canvasWrapRef}>
+    <div className="graph-canvas-wrap" data-testid="graph-canvas-wrap" ref={canvasWrapRef}>
       {nodes.length ? (
         <>
           <div className="graph-canvas" data-testid="graph-canvas" ref={setContainerElement} />
