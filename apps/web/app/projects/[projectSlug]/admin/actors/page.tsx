@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { mergeActors } from '../../../../../src/admin-actions';
 import type { ActorStatus, ProjectActorSummary } from '../../../../../src/admin-actors';
 import { getProjectActorDirectory } from '../../../../../src/admin-db';
+import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
 import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
 import { AppShell, PageHeader } from '../../../../../src/ui';
 
@@ -120,10 +121,10 @@ function ManualMergePanel({
           <h3>Actor を統合するには?</h3>
         </div>
       </summary>
-      <form
+      <ActionForm
         action={mergeActors}
         className="actor-decision-form actor-manual-merge-form"
-        data-testid="actor-manual-merge-form"
+        testId="actor-manual-merge-form"
       >
         <input name="projectSlug" type="hidden" value={projectSlug} />
         <label>
@@ -168,10 +169,15 @@ function ManualMergePanel({
             type="text"
           />
         </label>
-        <button className="icon-button" data-testid="actor-manual-merge-submit" type="submit">
+        <PendingSubmitButton
+          className="icon-button"
+          pendingLabel="Merging..."
+          testId="actor-manual-merge-submit"
+          title="選択した Actor を統合"
+        >
           Merge selected
-        </button>
-      </form>
+        </PendingSubmitButton>
+      </ActionForm>
       <p className="actor-manual-merge-message">
         active Actor から統合先と統合対象を 1 件ずつ選択してください。同じ Actor
         はマージできません。
