@@ -20,6 +20,7 @@
   border-radius: 8px;
   min-height: 460px;
   overflow: hidden;
+  position: relative;
 }
 
 .graph-canvas,
@@ -59,6 +60,117 @@
   max-height: 320px;
   overflow: auto;
   padding: 12px;
+  white-space: pre-wrap;
+}
+
+.graph-viewport-controls {
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  bottom: 12px;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  position: absolute;
+  right: 12px;
+  z-index: 2;
+}
+
+.graph-viewport-button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text);
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  padding: 0;
+  width: 30px;
+}
+
+.graph-viewport-button:hover {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.graph-raw-panel {
+  padding: 0;
+}
+
+.graph-raw-summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  list-style: none;
+  padding: 20px;
+}
+
+.graph-raw-summary::-webkit-details-marker {
+  display: none;
+}
+
+.graph-raw-summary-title {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 28px;
+}
+
+.graph-raw-summary .mono {
+  margin-left: auto;
+}
+
+.graph-raw-summary::after {
+  color: var(--muted);
+  content: "Open";
+  font: 12px / 16px var(--font-mono);
+}
+
+.graph-raw-panel[open] .graph-raw-summary::after {
+  content: "Close";
+}
+
+.graph-raw-content {
+  padding: 0 20px 20px;
+}
+
+.graph-property-table-frame {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.graph-property-table {
+  min-width: 560px;
+}
+
+.graph-property-table th,
+.graph-property-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.graph-property-table thead th {
+  background: var(--surface-2);
+  color: var(--muted);
+  font: 12px / 16px var(--font-mono);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.graph-property-table tbody th {
+  color: var(--muted);
+  font-weight: 500;
+  width: 34%;
+}
+
+.graph-property-table td {
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 
