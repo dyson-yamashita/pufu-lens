@@ -231,6 +231,47 @@ production では事前 backup、適用予定 migration、heavy migration の有
 - production trigger は approval required か。
 - 実行者が approval と trigger run の権限を持つか。
 
+production approval は、承認対象 build の commit が意図した release commit と一致することを確認してから実行する。
+
+```bash
+PROJECT_ID="<gcp-project-id>"
+BUILD_REGION="<cloud-build-region>"
+BUILD_ID="<pending-build-id>"
+
+gcloud builds describe "$BUILD_ID" \
+  --project "$PROJECT_ID" \
+  --region "$BUILD_REGION" \
+  --format 'yaml(id,status,substitutions.TRIGGER_NAME,substitutions.COMMIT_SHA,approval.state,logUrl)'
+```
+
+`status: PENDING`、`approval.state: PENDING`、`TRIGGER_NAME`、`COMMIT_SHA` を確認し、GitHub の merge commit または release commit と一致する場合だけ承認する。`gcloud beta builds approve` が対象 region の build を解決できる環境では次を使う。
+
+```bash
+gcloud beta builds approve "$BUILD_ID" \
+  --project "$PROJECT_ID" \
+  --comment "Approved after release commit verification."
+```
+
+Cloud Build の regional build で `gcloud beta builds approve` が location 付き build を解決できない場合は、Cloud Build REST API で承認する。access token は表示せず、shell 変数内だけで扱う。
+
+```bash
+ACCESS_TOKEN="$(gcloud auth print-access-token)"
+curl -sS -X POST \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+  -H "Content-Type: application/json" \
+  "https://cloudbuild.googleapis.com/v1/projects/${PROJECT_ID}/locations/${BUILD_REGION}/builds/${BUILD_ID}:approve" \
+  -d '{"approvalResult":{"decision":"APPROVED","comment":"Approved after release commit verification."}}'
+```
+
+承認後は `status` が `QUEUED` または `WORKING` に進むことを確認する。
+
+```bash
+gcloud builds describe "$BUILD_ID" \
+  --project "$PROJECT_ID" \
+  --region "$BUILD_REGION" \
+  --format 'yaml(status,approval.state,approval.result.approvalTime,logUrl)'
+```
+
 失敗した build をそのまま再実行する前に、原因が config / IAM / secret / source commit のどれかを切り分ける。source commit を修正した場合は新しい commit で実行する。
 
 ## Post-deploy Verification
