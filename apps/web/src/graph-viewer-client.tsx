@@ -144,12 +144,16 @@ export function GraphViewerPanel({
           <span className="mono">{result ? `${result.rawRows.length} rows` : 'empty'}</span>
         </summary>
         <div className="graph-raw-content">
-          {result?.rawRows.length ? (
+          {!result ? (
+            <p className="notice">まだ query は実行されていません。</p>
+          ) : result.rawRows.length ? (
             <pre className="json-preview" data-testid="graph-raw-json">
               {JSON.stringify(result.rawRows, null, 2)}
             </pre>
           ) : (
-            <p className="notice">まだ query は実行されていません。</p>
+            <p className="notice" data-testid="graph-raw-empty">
+              Raw rows はありません。
+            </p>
           )}
         </div>
       </details>
@@ -282,6 +286,7 @@ function GraphCanvas({
             <button
               aria-label="拡大"
               className="graph-viewport-button"
+              data-testid="graph-zoom-in-button"
               onClick={() => zoomGraph(1.25)}
               title="拡大"
               type="button"
@@ -291,6 +296,7 @@ function GraphCanvas({
             <button
               aria-label="縮小"
               className="graph-viewport-button"
+              data-testid="graph-zoom-out-button"
               onClick={() => zoomGraph(0.8)}
               title="縮小"
               type="button"
@@ -300,6 +306,7 @@ function GraphCanvas({
             <button
               aria-label="初期表示位置に戻す"
               className="graph-viewport-button"
+              data-testid="graph-reset-view-button"
               onClick={resetGraphView}
               title="初期表示位置に戻す"
               type="button"
