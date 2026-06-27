@@ -53,11 +53,11 @@ export async function mergeActorGraphElements(
               'MATCH (secondary {graphNodeId: $secondaryGraphNodeId})',
               `MATCH (secondary)-[relation:${edgeType}]->(target)`,
               'WHERE target.graphNodeId IS NULL OR target.graphNodeId <> $primaryGraphNodeId',
-              `MERGE (primary)-[merged:${edgeType}]->(target)`,
+              `CREATE (primary)-[merged:${edgeType}]->(target)`,
               'SET merged += properties(relation)',
               'RETURN count(merged) AS mergedCount',
             ].join(' '),
-          )}, $1::agtype) AS (value agtype)`,
+          )}, $1::jsonb::agtype) AS (value agtype)`,
           [JSON.stringify(input)],
         );
         await transaction.unsafe(
@@ -67,11 +67,11 @@ export async function mergeActorGraphElements(
               'MATCH (secondary {graphNodeId: $secondaryGraphNodeId})',
               `MATCH (source)-[relation:${edgeType}]->(secondary)`,
               'WHERE source.graphNodeId IS NULL OR source.graphNodeId <> $primaryGraphNodeId',
-              `MERGE (source)-[merged:${edgeType}]->(primary)`,
+              `CREATE (source)-[merged:${edgeType}]->(primary)`,
               'SET merged += properties(relation)',
               'RETURN count(merged) AS mergedCount',
             ].join(' '),
-          )}, $1::agtype) AS (value agtype)`,
+          )}, $1::jsonb::agtype) AS (value agtype)`,
           [JSON.stringify(input)],
         );
       }
@@ -83,7 +83,7 @@ export async function mergeActorGraphElements(
             'DETACH DELETE secondary',
             'RETURN primary',
           ].join(' '),
-        )}, $1::agtype) AS (value agtype)`,
+        )}, $1::jsonb::agtype) AS (value agtype)`,
         [JSON.stringify(input)],
       );
     });
