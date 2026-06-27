@@ -141,13 +141,14 @@ Set these trigger substitutions in the user's GCP project:
 `cloudbuild.deploy.yaml` performs:
 
 1. Validate required substitutions and `_ENV`.
-2. In parallel, build the Mastra Server image, build the Workflow Job image, and deploy the Web app with Firebase App Hosting when `_FIREBASE_DEPLOY=true`.
+2. In parallel, build the Mastra Server image and build the Workflow Job image.
 3. Push each image after its build finishes.
 4. Deploy the Mastra Server to Cloud Run after its image is pushed.
 5. Deploy `${_ENV}-curate-workflow`, `${_ENV}-ingest-workflow`, and `${_ENV}-generate-report` as Cloud Run Jobs after the jobs image is pushed, while keeping each runtime `WORKFLOW_ID` unchanged.
-6. Read the deployed Mastra Server URL dynamically and run `deploy:smoke` after Mastra Server, Workflow Jobs, and Web deploy all finish.
+6. Deploy the Web app with Firebase App Hosting after Mastra Server and Workflow Jobs finish when `_FIREBASE_DEPLOY=true`.
+7. Read the deployed Mastra Server URL dynamically and run `deploy:smoke` after Mastra Server, Workflow Jobs, and Web deploy all finish.
 
-The deploy config keeps the default Cloud Build worker and uses `waitFor` only to remove avoidable serial waits. Cost-sensitive environments should keep this default-worker shape unless they explicitly accept higher per-minute build costs.
+The deploy config keeps the default Cloud Build worker and uses `waitFor` only to remove avoidable serial waits. App Hosting deploy still waits for backend deploy completion so the Web rollout does not expose a newer frontend before the matching backend is live. Cost-sensitive environments should keep this default-worker shape unless they explicitly accept higher per-minute build costs.
 
 The deploy config does not create the PostgreSQL VM, VPC connector, Artifact Registry repository, GCS bucket, Firebase App Hosting backend, or Secret Manager secrets. Provision those before enabling the trigger.
 

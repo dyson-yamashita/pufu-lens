@@ -158,7 +158,8 @@ steps:
   - id: deploy-web-app-hosting
     name: node:22-bookworm
     waitFor:
-      - validate-deploy-substitutions
+      - deploy-mastra-server
+      - deploy-workflow-jobs
     entrypoint: bash
     args:
       - -c
