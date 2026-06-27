@@ -440,7 +440,7 @@
     background: var(--nav-bg);
     border-bottom: 1px solid var(--line);
     box-shadow: var(--shadow);
-    pointer-events: none;
+    pointer-events: auto;
     right: 0;
   }
 
