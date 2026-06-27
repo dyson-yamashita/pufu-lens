@@ -244,7 +244,7 @@ gcloud config set project "$PROJECT_ID"
 
 gcloud builds list \
   --region "$BUILD_REGION" \
-  --filter='approval.state=PENDING' \
+  --filter="approval.state=PENDING AND substitutions.TRIGGER_NAME=${TRIGGER_NAME}" \
   --format='table(id,createTime,substitutions.BRANCH_NAME,substitutions.COMMIT_SHA,substitutions.TRIGGER_NAME,status,approval.state)' \
   --limit=20
 ```
@@ -253,6 +253,8 @@ gcloud builds list \
 
 ```bash
 git ls-remote origin refs/heads/main
+
+BUILD_ID="<pending-build-id>"
 
 gcloud builds describe "$BUILD_ID" \
   --region "$BUILD_REGION" \
