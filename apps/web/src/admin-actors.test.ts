@@ -31,6 +31,7 @@ const actor = buildProjectActorSummary(
 
 assert.equal(actor.aliasCount, actor.aliases.length);
 assert.equal(actor.aliases[0]?.aliasType, 'github_login');
+assert.equal(actor.createdAt, '2026-06-13 17:00');
 assert.equal(actor.primaryEmail, 'none');
 assert.deepEqual(actor.sourceTypes, ['github']);
 
