@@ -1,16 +1,12 @@
 import Link from 'next/link';
-import { mergeActors, rejectActorMergeCandidate } from '../../../../../src/admin-actions';
-import type {
-  ActorManualMergeSelection,
-  ProjectActorAliasSummary,
-  ProjectActorSummary,
-} from '../../../../../src/admin-actors';
-import { resolveActorManualMergeSelection } from '../../../../../src/admin-actors';
+import { mergeActors } from '../../../../../src/admin-actions';
+import type { ActorStatus, ProjectActorSummary } from '../../../../../src/admin-actors';
 import { getProjectActorDirectory } from '../../../../../src/admin-db';
+import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
 import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
 import { AppShell, PageHeader } from '../../../../../src/ui';
 
-type ActorView = 'actors' | 'merge-candidates';
+type ActorStatusFilter = ActorStatus | 'all';
 
 export default async function ActorsPage({
   params,
@@ -18,421 +14,226 @@ export default async function ActorsPage({
 }: {
   readonly params: Promise<{ readonly projectSlug: string }>;
   readonly searchParams: Promise<{
-    readonly primaryActorId?: string;
-    readonly secondaryActorId?: string;
-    readonly view?: string;
+    readonly status?: string;
   }>;
 }) {
   const { projectSlug } = await params;
-  const { primaryActorId, secondaryActorId, view } = await searchParams;
+  const { status } = await searchParams;
   const project = await requireProjectAdminPage(projectSlug);
   const directory = await getProjectActorDirectory(projectSlug);
-  const activeView = parseActorView(view);
-  const manualMergeSelection = resolveActorManualMergeSelection(directory.actors, {
-    primaryActorId,
-    secondaryActorId,
-  });
+  const statusFilter = parseActorStatusFilter(status);
+  const filteredActors =
+    statusFilter === 'all'
+      ? directory.actors
+      : directory.actors.filter((actor) => actor.status === statusFilter);
 
   return (
     <AppShell active="actors" canManageProject project={project}>
       <PageHeader
         title={`${project.name} Actors`}
-        subtitle="project scope の Actor、strong alias、weak alias、名寄せ候補を確認します。"
+        subtitle="project scope の Actor、alias、名寄せ判断履歴を確認します。"
       />
-      <div className="segmented-control actor-tabs" role="tablist" aria-label="Actor views">
-        <Link
-          aria-selected={activeView === 'actors'}
-          className={activeView === 'actors' ? 'selected' : ''}
-          data-testid="actor-view-actors-tab"
-          href={`/projects/${project.slug}/admin/actors`}
-          role="tab"
-        >
-          Actors
-        </Link>
-        <Link
-          aria-selected={activeView === 'merge-candidates'}
-          className={activeView === 'merge-candidates' ? 'selected' : ''}
-          data-testid="actor-view-merge-candidates-tab"
-          href={`/projects/${project.slug}/admin/actors?view=merge-candidates`}
-          role="tab"
-        >
-          Merge Candidates
-        </Link>
-      </div>
-      {activeView === 'actors' ? (
-        <section className="panel">
-          <div className="panel-heading">
+      <section className="panel">
+        <div className="panel-heading">
+          <div>
             <h2>Actor List</h2>
-            <span className="mono">{directory.actors.length} actors</span>
+            <span className="mono">
+              {filteredActors.length} / {directory.actors.length} actors
+            </span>
           </div>
-          <ManualMergePanel projectSlug={project.slug} selection={manualMergeSelection} />
-          <div className="table-frame">
-            <table data-testid="actor-table">
-              <thead>
-                <tr>
-                  <th>Actor</th>
-                  <th>Status</th>
-                  <th>Strong</th>
-                  <th>Weak</th>
-                  <th>Sources</th>
-                  <th>Primary</th>
-                  <th>Graph node</th>
-                  <th>Manual merge</th>
+          <ActorStatusFilterForm projectSlug={project.slug} statusFilter={statusFilter} />
+        </div>
+        <ManualMergePanel actors={directory.actors} projectSlug={project.slug} />
+        <div className="table-frame">
+          <table data-testid="actor-table">
+            <thead>
+              <tr>
+                <th>Actor</th>
+                <th>Status</th>
+                <th>Alias</th>
+                <th>Sources</th>
+                <th>Primary</th>
+                <th>Graph node</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredActors.map((actor) => (
+                <tr data-testid={`actor-row-${actor.id}`} key={actor.id}>
+                  <td>
+                    <span className="source-name">
+                      <span>
+                        <strong>
+                          <Link href={`/projects/${project.slug}/admin/actors/${actor.id}`}>
+                            {actor.displayName}
+                          </Link>
+                        </strong>
+                        <small>{actor.actorType}</small>
+                      </span>
+                    </span>
+                  </td>
+                  <td>
+                    <span className={`status-badge status-actor-${actor.status}`}>
+                      {actor.status}
+                    </span>
+                  </td>
+                  <td>
+                    <span className="mono">{actor.aliasCount}</span>
+                  </td>
+                  <td>
+                    <span className="alias-chip-list">
+                      {actor.sourceTypes.length > 0
+                        ? actor.sourceTypes.map((sourceType) => (
+                            <span className="alias-chip" key={sourceType}>
+                              {sourceType}
+                            </span>
+                          ))
+                        : 'none'}
+                    </span>
+                  </td>
+                  <td className="truncate">
+                    {actor.primaryEmail !== 'none' ? actor.primaryEmail : actor.primaryLogin}
+                  </td>
+                  <td className="truncate mono">{actor.graphNodeId}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {directory.actors.map((actor) => (
-                  <tr data-testid={`actor-row-${actor.id}`} key={actor.id}>
-                    <td>
-                      <span className="source-name">
-                        <span>
-                          <strong>
-                            <Link href={`/projects/${project.slug}/admin/actors/${actor.id}`}>
-                              {actor.displayName}
-                            </Link>
-                          </strong>
-                          <small>{actor.actorType}</small>
-                        </span>
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`status-badge status-actor-${actor.status}`}>
-                        {actor.status}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="mono">{actor.strongAliasCount}</span>
-                    </td>
-                    <td>
-                      <span className="mono">{actor.weakAliasCount}</span>
-                    </td>
-                    <td>
-                      <span className="alias-chip-list">
-                        {actor.sourceTypes.length > 0
-                          ? actor.sourceTypes.map((sourceType) => (
-                              <span className="alias-chip" key={sourceType}>
-                                {sourceType}
-                              </span>
-                            ))
-                          : 'none'}
-                      </span>
-                    </td>
-                    <td className="truncate">
-                      {actor.primaryEmail !== 'none' ? actor.primaryEmail : actor.primaryLogin}
-                    </td>
-                    <td className="truncate mono">{actor.graphNodeId}</td>
-                    <td>
-                      <ManualMergeRowActions
-                        actor={actor}
-                        projectSlug={project.slug}
-                        selection={manualMergeSelection}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ) : (
-        <section className="actor-candidate-list" data-testid="actor-merge-candidate-list">
-          {directory.mergeCandidates.length > 0 ? (
-            directory.mergeCandidates.map((candidate) => (
-              <article className="panel actor-candidate-card" key={candidate.id}>
-                <div className="panel-heading">
-                  <div>
-                    <p className="eyebrow">confidence {candidate.confidence.toFixed(2)}</p>
-                    <h2>
-                      {candidate.actorA.displayName} / {candidate.actorB.displayName}
-                    </h2>
-                  </div>
-                  <span className="status-badge status-draft">pending</span>
-                </div>
-                <div className="actor-compare-grid">
-                  <ActorSummary actor={candidate.actorA} label="Actor A" />
-                  <ActorSummary actor={candidate.actorB} label="Actor B" />
-                </div>
-                <dl className="detail-list">
-                  <div>
-                    <dt>Reasons</dt>
-                    <dd>{candidate.reasons.join(', ')}</dd>
-                  </div>
-                  <div>
-                    <dt>Evidence</dt>
-                    <dd>{candidate.evidence.join(', ') || 'none'}</dd>
-                  </div>
-                </dl>
-                <div className="actor-candidate-actions">
-                  <MergeActorForm
-                    candidateId={candidate.id}
-                    primaryActor={candidate.actorA}
-                    projectSlug={project.slug}
-                    secondaryActor={candidate.actorB}
-                  />
-                  <MergeActorForm
-                    candidateId={candidate.id}
-                    primaryActor={candidate.actorB}
-                    projectSlug={project.slug}
-                    secondaryActor={candidate.actorA}
-                  />
-                  <RejectActorForm
-                    actorA={candidate.actorA}
-                    actorB={candidate.actorB}
-                    candidateId={candidate.id}
-                    projectSlug={project.slug}
-                  />
-                </div>
-              </article>
-            ))
-          ) : (
-            <section className="panel empty-state" data-testid="actor-merge-candidate-empty">
-              <h2>No merge candidates</h2>
-              <p>weak alias から確認が必要な同一 Actor 候補はまだ見つかっていません。</p>
-            </section>
-          )}
-        </section>
-      )}
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </AppShell>
   );
 }
 
 function ManualMergePanel({
+  actors,
   projectSlug,
-  selection,
 }: {
+  readonly actors: readonly ProjectActorSummary[];
   readonly projectSlug: string;
-  readonly selection: ActorManualMergeSelection;
 }) {
-  const { hasDuplicateSelection, primaryActor, secondaryActor } = selection;
-  const canMerge = primaryActor && secondaryActor && primaryActor.id !== secondaryActor.id;
+  const activeActors = actors.filter((actor) => actor.status === 'active');
 
   return (
-    <section className="actor-manual-merge-panel" data-testid="actor-manual-merge-panel">
-      <div className="actor-manual-merge-summary">
+    <details className="actor-manual-merge-panel" data-testid="actor-manual-merge-panel">
+      <summary className="actor-manual-merge-summary">
         <div>
           <p className="eyebrow">Manual merge</p>
-          <h3>任意の 2 Actor を選択してマージ</h3>
+          <h3>Actor を統合するには?</h3>
         </div>
-        <Link className="icon-button muted" href={`/projects/${projectSlug}/admin/actors`}>
-          Clear
-        </Link>
-      </div>
-      <dl className="actor-manual-merge-selection">
-        <div>
-          <dt>Primary</dt>
-          <dd>{primaryActor ? primaryActor.displayName : 'not selected'}</dd>
-        </div>
-        <div>
-          <dt>Secondary</dt>
-          <dd>{secondaryActor ? secondaryActor.displayName : 'not selected'}</dd>
-        </div>
-      </dl>
-      {canMerge ? (
-        <div className="actor-manual-merge-actions">
-          <Link
-            className="icon-button muted"
-            href={actorSelectionHref(projectSlug, {
-              primaryActorId: secondaryActor.id,
-              secondaryActorId: primaryActor.id,
-            })}
+      </summary>
+      <ActionForm
+        action={mergeActors}
+        className="actor-decision-form actor-manual-merge-form"
+        testId="actor-manual-merge-form"
+      >
+        <input name="projectSlug" type="hidden" value={projectSlug} />
+        <label>
+          <span>Primary</span>
+          <select
+            aria-label="統合先 Actor"
+            data-testid="actor-manual-merge-primary-select"
+            name="primaryActorId"
+            required
           >
-            Swap
-          </Link>
-          <form action={mergeActors} className="actor-decision-form actor-manual-merge-form">
-            <input name="projectSlug" type="hidden" value={projectSlug} />
-            <input name="primaryActorId" type="hidden" value={primaryActor.id} />
-            <input name="secondaryActorId" type="hidden" value={secondaryActor.id} />
-            <input
-              aria-label={`${secondaryActor.displayName} を ${primaryActor.displayName} に手動マージする理由`}
-              name="reason"
-              placeholder="Reason"
-              type="text"
-            />
-            <button className="icon-button" data-testid="actor-manual-merge-submit" type="submit">
-              Merge selected
-            </button>
-          </form>
-        </div>
-      ) : (
-        <p className="actor-manual-merge-message">
-          {hasDuplicateSelection
-            ? '同じ Actor はマージ対象にできません。'
-            : 'active Actor を primary と secondary に 1 件ずつ選択してください。'}
-        </p>
-      )}
-    </section>
+            <option value="">Select primary actor</option>
+            {activeActors.map((actor) => (
+              <option key={actor.id} value={actor.id}>
+                {actorSelectLabel(actor)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Secondary</span>
+          <select
+            aria-label="統合される Actor"
+            data-testid="actor-manual-merge-secondary-select"
+            name="secondaryActorId"
+            required
+          >
+            <option value="">Select secondary actor</option>
+            {activeActors.map((actor) => (
+              <option key={actor.id} value={actor.id}>
+                {actorSelectLabel(actor)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Reason</span>
+          <input
+            aria-label="手動マージする理由"
+            data-testid="actor-manual-merge-reason-input"
+            name="reason"
+            placeholder="Reason"
+            type="text"
+          />
+        </label>
+        <PendingSubmitButton
+          className="icon-button"
+          pendingLabel="Merging..."
+          testId="actor-manual-merge-submit"
+          title="選択した Actor を統合"
+        >
+          Merge selected
+        </PendingSubmitButton>
+      </ActionForm>
+      <p className="actor-manual-merge-message">
+        active Actor から統合先と統合対象を 1 件ずつ選択してください。同じ Actor
+        はマージできません。
+      </p>
+    </details>
   );
 }
 
-function ManualMergeRowActions({
-  actor,
+function ActorStatusFilterForm({
   projectSlug,
-  selection,
+  statusFilter,
 }: {
-  readonly actor: ProjectActorSummary;
   readonly projectSlug: string;
-  readonly selection: ActorManualMergeSelection;
-}) {
-  if (actor.status !== 'active') {
-    return <span className="muted-text">not selectable</span>;
-  }
-
-  const isPrimary = selection.primaryActor?.id === actor.id;
-  const isSecondary = selection.secondaryActor?.id === actor.id;
-
-  return (
-    <span className="actor-manual-merge-row-actions">
-      <Link
-        aria-current={isPrimary ? 'true' : undefined}
-        className={isPrimary ? 'selected' : ''}
-        data-testid={`actor-select-primary-${actor.id}`}
-        href={actorSelectionHref(projectSlug, {
-          primaryActorId: isPrimary ? undefined : actor.id,
-          secondaryActorId:
-            selection.secondaryActor?.id === actor.id ? undefined : selection.secondaryActor?.id,
-        })}
-      >
-        Primary
-      </Link>
-      <Link
-        aria-current={isSecondary ? 'true' : undefined}
-        className={isSecondary ? 'selected' : ''}
-        data-testid={`actor-select-secondary-${actor.id}`}
-        href={actorSelectionHref(projectSlug, {
-          primaryActorId:
-            selection.primaryActor?.id === actor.id ? undefined : selection.primaryActor?.id,
-          secondaryActorId: isSecondary ? undefined : actor.id,
-        })}
-      >
-        Secondary
-      </Link>
-    </span>
-  );
-}
-
-function MergeActorForm({
-  candidateId,
-  primaryActor,
-  projectSlug,
-  secondaryActor,
-}: {
-  readonly candidateId: string;
-  readonly primaryActor: ProjectActorSummary;
-  readonly projectSlug: string;
-  readonly secondaryActor: ProjectActorSummary;
+  readonly statusFilter: ActorStatusFilter;
 }) {
   return (
-    <form action={mergeActors} className="actor-decision-form">
-      <input name="projectSlug" type="hidden" value={projectSlug} />
-      <input name="primaryActorId" type="hidden" value={primaryActor.id} />
-      <input name="secondaryActorId" type="hidden" value={secondaryActor.id} />
-      <input
-        aria-label={`${secondaryActor.displayName} を ${primaryActor.displayName} にマージする理由`}
-        name="reason"
-        placeholder="Reason"
-        type="text"
-      />
-      <button
-        className="icon-button"
-        data-testid={`actor-merge-${candidateId}-into-${primaryActor.id}`}
-        type="submit"
-      >
-        Merge into {primaryActor.displayName}
+    <form
+      action={`/projects/${projectSlug}/admin/actors`}
+      className="actor-filter-form"
+      data-testid="actor-status-filter-form"
+      method="get"
+    >
+      <label>
+        <span>Status</span>
+        <select
+          aria-label="Actor status filter"
+          data-testid="actor-status-filter-select"
+          defaultValue={statusFilter}
+          name="status"
+        >
+          <option value="active">active</option>
+          <option value="merged">merged</option>
+          <option value="disabled">disabled</option>
+          <option value="all">all</option>
+        </select>
+      </label>
+      <button className="icon-button muted" data-testid="actor-status-filter-submit" type="submit">
+        Apply
       </button>
     </form>
   );
 }
 
-function RejectActorForm({
-  actorA,
-  actorB,
-  candidateId,
-  projectSlug,
-}: {
-  readonly actorA: ProjectActorSummary;
-  readonly actorB: ProjectActorSummary;
-  readonly candidateId: string;
-  readonly projectSlug: string;
-}) {
-  return (
-    <form action={rejectActorMergeCandidate} className="actor-decision-form">
-      <input name="projectSlug" type="hidden" value={projectSlug} />
-      <input name="primaryActorId" type="hidden" value={actorA.id} />
-      <input name="secondaryActorId" type="hidden" value={actorB.id} />
-      <input
-        aria-label={`${actorA.displayName} と ${actorB.displayName} を reject する理由`}
-        name="reason"
-        placeholder="Reason"
-        type="text"
-      />
-      <button
-        className="icon-button muted"
-        data-testid={`actor-reject-${candidateId}`}
-        type="submit"
-      >
-        Reject
-      </button>
-    </form>
-  );
-}
-
-function ActorSummary({
-  actor,
-  label,
-}: {
-  readonly actor: ProjectActorSummary;
-  readonly label: string;
-}) {
-  const strongAliases = actor.aliases.filter((alias) => alias.strength === 'strong');
-  const weakAliases = actor.aliases.filter((alias) => alias.strength === 'weak');
-
-  return (
-    <section className="actor-summary">
-      <p className="eyebrow">{label}</p>
-      <h3>{actor.displayName}</h3>
-      <dl className="detail-list stacked">
-        <div>
-          <dt>Strong aliases</dt>
-          <dd>{aliasList(strongAliases)}</dd>
-        </div>
-        <div>
-          <dt>Weak aliases</dt>
-          <dd>{aliasList(weakAliases)}</dd>
-        </div>
-        <div>
-          <dt>Sources</dt>
-          <dd>{actor.sourceTypes.join(', ') || 'none'}</dd>
-        </div>
-      </dl>
-    </section>
-  );
-}
-
-function aliasList(aliases: readonly ProjectActorAliasSummary[]) {
-  if (aliases.length === 0) {
-    return 'none';
+function parseActorStatusFilter(value: string | undefined): ActorStatusFilter {
+  if (value === 'all' || value === 'merged' || value === 'disabled') {
+    return value;
   }
-  return aliases.map((alias) => `${alias.aliasType}:${alias.aliasValue}`).join(', ');
+  return 'active';
 }
 
-function parseActorView(value: string | undefined): ActorView {
-  return value === 'merge-candidates' ? 'merge-candidates' : 'actors';
-}
-
-function actorSelectionHref(
-  projectSlug: string,
-  selection: {
-    readonly primaryActorId?: string;
-    readonly secondaryActorId?: string;
-  },
-): string {
-  const params = new URLSearchParams();
-  if (selection.primaryActorId) {
-    params.set('primaryActorId', selection.primaryActorId);
-  }
-  if (selection.secondaryActorId) {
-    params.set('secondaryActorId', selection.secondaryActorId);
-  }
-  const query = params.toString();
-  return `/projects/${projectSlug}/admin/actors${query ? `?${query}` : ''}`;
+function actorSelectLabel(actor: ProjectActorSummary): string {
+  const identifier =
+    actor.primaryEmail !== 'none'
+      ? actor.primaryEmail
+      : actor.primaryLogin !== 'none'
+        ? actor.primaryLogin
+        : actor.graphNodeId;
+  return `${actor.displayName} (${identifier})`;
 }

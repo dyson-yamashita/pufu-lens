@@ -156,7 +156,6 @@
   color: var(--muted);
 }
 
-.actor-candidate-actions,
 .actor-decision-form {
   display: grid;
   gap: 8px;
@@ -168,11 +167,48 @@
   grid-template-columns: minmax(160px, 1fr) auto;
 }
 
+.actor-filter-form {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.actor-filter-form label,
+.actor-manual-merge-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.actor-filter-form span,
+.actor-manual-merge-form span {
+  color: var(--muted);
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
 .actor-decision-form input[type="text"] {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 6px;
   color: var(--text);
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.actor-filter-form select,
+.actor-manual-merge-form select {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  min-height: 38px;
   min-width: 0;
   padding: 8px 10px;
 }
@@ -188,10 +224,7 @@
   padding: 14px;
 }
 
-.actor-manual-merge-summary,
-.actor-manual-merge-actions,
-.actor-manual-merge-selection,
-.actor-manual-merge-row-actions {
+.actor-manual-merge-summary {
   align-items: center;
   display: flex;
   gap: 8px;
@@ -199,7 +232,23 @@
 }
 
 .actor-manual-merge-summary {
+  cursor: pointer;
+  list-style: none;
   justify-content: space-between;
+}
+
+.actor-manual-merge-summary::-webkit-details-marker {
+  display: none;
+}
+
+.actor-manual-merge-summary::after {
+  color: var(--muted);
+  content: "Open";
+  font-size: 12px;
+}
+
+.actor-manual-merge-panel[open] .actor-manual-merge-summary::after {
+  content: "Close";
 }
 
 .actor-manual-merge-summary h3 {
@@ -207,69 +256,19 @@
   margin: 4px 0 0;
 }
 
-.actor-manual-merge-selection {
-  flex-wrap: wrap;
-  margin: 0;
-}
-
-.actor-manual-merge-selection div {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  min-width: 180px;
-  padding: 8px 10px;
-}
-
-.actor-manual-merge-selection dt {
-  color: var(--muted);
-  font-size: 11px;
-  text-transform: uppercase;
-}
-
-.actor-manual-merge-selection dd {
-  margin: 2px 0 0;
-  overflow-wrap: anywhere;
-}
-
-.actor-manual-merge-actions {
-  align-items: stretch;
-}
-
 .actor-manual-merge-form {
-  flex: 1;
+  align-items: end;
+  grid-template-columns: repeat(3, minmax(160px, 1fr)) auto;
+  margin-top: 12px;
 }
 
-.actor-manual-merge-message,
-.muted-text {
+.actor-manual-merge-message {
   color: var(--muted);
   font-size: 13px;
 }
 
 .actor-manual-merge-message {
   margin: 0;
-}
-
-.actor-manual-merge-row-actions {
-  flex-wrap: wrap;
-  min-width: 180px;
-}
-
-.actor-manual-merge-row-actions a {
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--muted);
-  display: inline-flex;
-  font-size: 12px;
-  line-height: 1;
-  padding: 7px 8px;
-  text-decoration: none;
-}
-
-.actor-manual-merge-row-actions a.selected {
-  background: var(--status-info-bg);
-  border-color: color-mix(in srgb, var(--blue) 45%, var(--line));
-  color: var(--blue);
 }
 
 .actor-detail-nav {
@@ -394,11 +393,6 @@
   color: white;
 }
 
-.actor-tabs {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  max-width: 420px;
-}
-
 .alias-chip-list {
   display: flex;
   flex-wrap: wrap;
@@ -413,34 +407,6 @@
   font-size: 12px;
   line-height: 1;
   padding: 6px 8px;
-}
-
-.actor-candidate-list {
-  display: grid;
-  gap: 16px;
-}
-
-.actor-candidate-card {
-  display: grid;
-  gap: 16px;
-}
-
-.actor-compare-grid {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.actor-summary {
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  min-width: 0;
-  padding: 14px;
-}
-
-.actor-summary h3 {
-  margin: 4px 0 0;
 }
 
 .split-layout {
@@ -541,8 +507,8 @@
 
 @media (max-width: 1023px) {
   .split-layout,
-  .actor-compare-grid,
   .actor-decision-form,
+  .actor-manual-merge-form,
   .status-row,
   .content-preview-row-header,
   .member-create-form {
@@ -554,7 +520,7 @@
   }
 
   .actor-manual-merge-summary,
-  .actor-manual-merge-actions {
+  .actor-filter-form {
     align-items: stretch;
     flex-direction: column;
   }

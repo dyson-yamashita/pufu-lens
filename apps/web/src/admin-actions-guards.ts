@@ -56,6 +56,7 @@ export interface AdminActionProjectGraphNameRow {
 
 export interface AdminActionActorRow {
   readonly displayName: string;
+  readonly graphNodeId: string;
   readonly id: string;
   readonly status: ActorStatus;
 }
@@ -159,6 +160,7 @@ export function parseAdminActionActorRow(value: unknown): AdminActionActorRow {
   const row = requireRecord(value, 'admin actor row');
   return {
     displayName: requireString(row.displayName, 'admin actor row', 'displayName'),
+    graphNodeId: requireString(row.graphNodeId, 'admin actor row', 'graphNodeId'),
     id: requireString(row.id, 'admin actor row', 'id'),
     status: requireActorStatus(row.status, 'admin actor row', 'status'),
   };

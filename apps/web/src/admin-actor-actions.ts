@@ -9,6 +9,7 @@ import {
   revalidateProject,
   withSql,
 } from './admin-actions-shared.ts';
+import { mergeActorGraphElements } from './graph-actor-merge.ts';
 
 export async function mergeActors(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
@@ -56,6 +57,7 @@ export async function mergeActors(formData: FormData): Promise<void> {
         RETURNING
           id::text AS id,
           display_name AS "displayName",
+          graph_node_id AS "graphNodeId",
           status
       `) as readonly unknown[];
       const updatedActor = updatedRows[0] ? parseAdminActionActorRow(updatedRows[0]) : undefined;
@@ -74,39 +76,10 @@ export async function mergeActors(formData: FormData): Promise<void> {
         reason,
         secondaryActorId: secondaryActor.id,
       });
-    });
-  });
-
-  revalidateActorPaths(projectSlug, primaryActorId, secondaryActorId);
-}
-
-export async function rejectActorMergeCandidate(formData: FormData): Promise<void> {
-  const projectSlug = requireFormValue(formData, 'projectSlug');
-  const primaryActorId = requireFormValue(formData, 'primaryActorId');
-  const secondaryActorId = requireFormValue(formData, 'secondaryActorId');
-  const reason = optionalFormValue(formData, 'reason');
-
-  if (primaryActorId === secondaryActorId) {
-    throw new Error('Cannot reject an actor against itself.');
-  }
-
-  await withSql(async (sql) => {
-    const project = await requireAdminProject(sql, projectSlug);
-    await sql.begin(async (tx) => {
-      const { primaryActor, secondaryActor } = await lookupProjectActorPairForUpdate(tx, {
-        primaryActorId,
-        projectId: project.id,
-        secondaryActorId,
-      });
-      requireActiveActors(primaryActor, secondaryActor, 'rejected');
-      await upsertActorDecision(tx, {
-        createdByUserId: project.adminUserId,
-        decisionType: 'reject',
-        metadata: { source: 'admin-actor-actions' },
-        primaryActorId,
-        projectId: project.id,
-        reason,
-        secondaryActorId,
+      await mergeActorGraphElements(tx, {
+        graphName: project.graphName,
+        primaryGraphNodeId: primaryActor.graphNodeId,
+        secondaryGraphNodeId: secondaryActor.graphNodeId,
       });
     });
   });
@@ -130,6 +103,7 @@ async function lookupProjectActorPairForUpdate(
     SELECT
       id::text AS id,
       display_name AS "displayName",
+      graph_node_id AS "graphNodeId",
       status
     FROM public.actors
     WHERE project_id = ${input.projectId}
@@ -149,7 +123,7 @@ async function lookupProjectActorPairForUpdate(
 function requireActiveActors(
   primaryActor: AdminActionActorRow,
   secondaryActor: AdminActionActorRow,
-  action: 'merged' | 'rejected',
+  action: 'merged',
 ): void {
   if (primaryActor.status !== 'active' || secondaryActor.status !== 'active') {
     throw new Error(`Only active actors can be ${action}.`);
@@ -160,7 +134,7 @@ async function upsertActorDecision(
   sql: postgres.TransactionSql,
   input: {
     readonly createdByUserId: string;
-    readonly decisionType: 'merge' | 'reject';
+    readonly decisionType: 'merge';
     readonly metadata: Record<string, unknown>;
     readonly primaryActorId: string;
     readonly projectId: string;

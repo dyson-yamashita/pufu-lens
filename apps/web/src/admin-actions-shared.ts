@@ -34,6 +34,7 @@ export async function requireAdminProject(
 ): Promise<{
   readonly adminUserId: string;
   readonly description: string | null;
+  readonly graphName: string | null;
   readonly id: string;
   readonly name: string;
   readonly slug: string;
@@ -47,6 +48,7 @@ export async function requireAdminProject(
   return {
     adminUserId,
     description: access.description,
+    graphName: access.graphName,
     id: access.id,
     name: access.name,
     slug: access.slug,
