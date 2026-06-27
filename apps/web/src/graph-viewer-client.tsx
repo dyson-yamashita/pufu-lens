@@ -140,12 +140,8 @@ export function GraphViewerPanel({
 
       <details className="panel graph-raw-panel" data-testid="graph-raw-panel">
         <summary className="graph-raw-summary">
-          <div className="panel-heading">
-            <div>
-              <h2>Raw Result</h2>
-              <p className="mono">{result ? `${result.rawRows.length} rows` : 'empty'}</p>
-            </div>
-          </div>
+          <span className="graph-raw-summary-title">Raw Result</span>
+          <span className="mono">{result ? `${result.rawRows.length} rows` : 'empty'}</span>
         </summary>
         <div className="graph-raw-content">
           {result?.rawRows.length ? (
@@ -280,7 +276,7 @@ function GraphCanvas({
           <div className="graph-canvas" data-testid="graph-canvas" ref={setContainerElement} />
           <div
             className="graph-viewport-controls"
-            aria-label="Graph viewport controls"
+            aria-label="グラフ表示コントロール"
             role="toolbar"
           >
             <button
