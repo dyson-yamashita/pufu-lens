@@ -60,15 +60,23 @@ steps:
     name: gcr.io/cloud-builders/docker
     waitFor:
       - validate-deploy-substitutions
+    entrypoint: bash
     args:
-      - build
-      - --file
-      - infra/docker/mastra/Dockerfile
-      - --tag
-      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_MASTRA_IMAGE}:${SHORT_SHA}
-      - --tag
-      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_MASTRA_IMAGE}:latest
-      - .
+      - -c
+      - |
+        set -euo pipefail
+
+        image="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_MASTRA_IMAGE}"
+        docker buildx create --name mastra-cache-builder --driver docker-container --use || docker buildx use mastra-cache-builder
+        docker buildx inspect --bootstrap
+        docker buildx build \
+          --cache-from "type=registry,ref=$${image}:buildcache" \
+          --cache-to "type=registry,ref=$${image}:buildcache,mode=max" \
+          --file infra/docker/mastra/Dockerfile \
+          --tag "$${image}:${SHORT_SHA}" \
+          --tag "$${image}:latest" \
+          --load \
+          .
 
   - id: push-mastra-server
     name: gcr.io/cloud-builders/docker
@@ -83,15 +91,23 @@ steps:
     name: gcr.io/cloud-builders/docker
     waitFor:
       - validate-deploy-substitutions
+    entrypoint: bash
     args:
-      - build
-      - --file
-      - infra/docker/jobs/Dockerfile
-      - --tag
-      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_JOBS_IMAGE}:${SHORT_SHA}
-      - --tag
-      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_JOBS_IMAGE}:latest
-      - .
+      - -c
+      - |
+        set -euo pipefail
+
+        image="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_JOBS_IMAGE}"
+        docker buildx create --name jobs-cache-builder --driver docker-container --use || docker buildx use jobs-cache-builder
+        docker buildx inspect --bootstrap
+        docker buildx build \
+          --cache-from "type=registry,ref=$${image}:buildcache" \
+          --cache-to "type=registry,ref=$${image}:buildcache,mode=max" \
+          --file infra/docker/jobs/Dockerfile \
+          --tag "$${image}:${SHORT_SHA}" \
+          --tag "$${image}:latest" \
+          --load \
+          .
 
   - id: push-workflow-job
     name: gcr.io/cloud-builders/docker

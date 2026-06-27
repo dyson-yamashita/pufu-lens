@@ -148,7 +148,7 @@ Set these trigger substitutions in the user's GCP project:
 6. Deploy the Web app with Firebase App Hosting after Mastra Server and Workflow Jobs finish when `_FIREBASE_DEPLOY=true`.
 7. Read the deployed Mastra Server URL dynamically and run `deploy:smoke` after Mastra Server, Workflow Jobs, and Web deploy all finish.
 
-The deploy config keeps the default Cloud Build worker and uses `waitFor` only to remove avoidable serial waits. App Hosting deploy still waits for backend deploy completion so the Web rollout does not expose a newer frontend before the matching backend is live. Cost-sensitive environments should keep this default-worker shape unless they explicitly accept higher per-minute build costs.
+The deploy config keeps the default Cloud Build worker and uses `waitFor` only to remove avoidable serial waits. Docker image builds use `docker buildx` registry caches at each image's `:buildcache` tag so unchanged layers, including multi-stage intermediate layers, can be reused without pulling the full previous runtime image first. App Hosting deploy still waits for backend deploy completion so the Web rollout does not expose a newer frontend before the matching backend is live. Cost-sensitive environments should keep this default-worker shape unless they explicitly accept higher per-minute build costs.
 
 The deploy config does not create the PostgreSQL VM, VPC connector, Artifact Registry repository, GCS bucket, Firebase App Hosting backend, or Secret Manager secrets. Provision those before enabling the trigger.
 
