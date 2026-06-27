@@ -301,7 +301,7 @@ gcloud run services update-traffic mastra-server \
 | Cloud Run が DB に接続できない            | VPC connector、firewall、Private Google Access、`DATABASE_URL` secret             |
 | App Hosting が build / rollout で失敗する | `apps/web/package.json` の Next.js version、App Hosting source bucket、backend SA |
 | secret 参照で失敗する                     | Secret Manager accessor、App Hosting secret grant、secret 名の typo               |
-| docs-only 変更で deploy が走る            | trigger の included / ignored files                                               |
+| docs-only 変更で deploy が走る            | trigger の included files                                                         |
 | production が勝手に走りそう               | branch pattern、approval required、deploy SA 分離                                 |
 
 Cloud Run Job の log は次のように確認する。
