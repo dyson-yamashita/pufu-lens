@@ -231,6 +231,54 @@ production では事前 backup、適用予定 migration、heavy migration の有
 - production trigger は approval required か。
 - 実行者が approval と trigger run の権限を持つか。
 
+### Approve Pending Production Build
+
+`main` merge 後の production deploy trigger は approval required で `PENDING` になる。承認前に、古い pending build や別 trigger を誤って承認しないよう、対象 build の branch、trigger、commit を確認する。
+
+```bash
+PROJECT_ID="<gcp-project-id>"
+BUILD_REGION="<cloud-build-region>"
+TRIGGER_NAME="pufu-lens-production-deploy"
+
+gcloud config set project "$PROJECT_ID"
+
+gcloud builds list \
+  --region "$BUILD_REGION" \
+  --filter="approval.state=PENDING AND substitutions.TRIGGER_NAME=${TRIGGER_NAME}" \
+  --format='table(id,createTime,substitutions.BRANCH_NAME,substitutions.COMMIT_SHA,substitutions.TRIGGER_NAME,status,approval.state)' \
+  --limit=20
+```
+
+複数の pending build がある場合は、通常は `createTime` が最新で、`BRANCH_NAME=main`、`TRIGGER_NAME` が production deploy trigger、`COMMIT_SHA` が承認したい merge commit と一致するものだけを承認する。GitHub repository の最新 `main` と照合する例:
+
+```bash
+git ls-remote origin refs/heads/main
+
+BUILD_ID="<pending-build-id>"
+
+gcloud builds describe "$BUILD_ID" \
+  --region "$BUILD_REGION" \
+  --format='yaml(id,createTime,status,approval,substitutions.BRANCH_NAME,substitutions.COMMIT_SHA,substitutions.TRIGGER_NAME,logUrl)'
+```
+
+承認する build が確定したら、Cloud Build の regional build を承認する。`gcloud builds approve` が使える環境では stable コマンドを使ってよいが、regional approval が stable / beta に未対応の gcloud では alpha コマンドの `--location` を使う。
+
+```bash
+gcloud alpha builds approve "$BUILD_ID" \
+  --location "$BUILD_REGION" \
+  --comment "Approve production deploy for merged main <commit-sha>"
+```
+
+承認後は `approval.state=APPROVED`、`approval.result.decision=APPROVED`、`status=QUEUED` または `WORKING` になったことを確認する。
+
+```bash
+gcloud builds describe "$BUILD_ID" \
+  --region "$BUILD_REGION" \
+  --format='yaml(id,status,approval.state,approval.result.decision,approval.result.approvalTime,substitutions.COMMIT_SHA,substitutions.TRIGGER_NAME,logUrl)'
+```
+
+トークンを端末に表示して Cloud Build REST API を直接叩く運用は避ける。通常は `gcloud alpha builds approve --location` で承認できる。承認権限が不足する場合は、実行者に Cloud Build approver 相当の権限があるか、対象 project / region / trigger が正しいかを先に確認する。
+
 失敗した build をそのまま再実行する前に、原因が config / IAM / secret / source commit のどれかを切り分ける。source commit を修正した場合は新しい commit で実行する。
 
 ## Post-deploy Verification
