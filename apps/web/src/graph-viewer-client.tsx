@@ -173,7 +173,9 @@ function GraphCanvas({
   const [containerElement, setContainerElement] = useState<HTMLDivElement | null>(null);
   const canvasWrapRef = useRef<HTMLDivElement | null>(null);
   const cytoscapeRef = useRef<Core | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
+  const [isFallbackFullscreen, setIsFallbackFullscreen] = useState(false);
+  const isMaximized = isNativeFullscreen || isFallbackFullscreen;
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const edgesById = useMemo(() => new Map(edges.map((edge) => [edge.id, edge])), [edges]);
 
@@ -210,26 +212,67 @@ function GraphCanvas({
     if (!canvasWrap) {
       return;
     }
-    try {
-      if (document.fullscreenElement === canvasWrap) {
+
+    if (document.fullscreenElement === canvasWrap) {
+      try {
         await document.exitFullscreen();
+      } catch {
         return;
       }
-      await canvasWrap.requestFullscreen();
-    } catch {
-      resizeGraph();
+      return;
     }
-  }, [resizeGraph]);
+
+    if (isFallbackFullscreen) {
+      setIsFallbackFullscreen(false);
+      resizeGraph();
+      return;
+    }
+
+    try {
+      if (document.fullscreenEnabled && canvasWrap.requestFullscreen) {
+        await canvasWrap.requestFullscreen();
+        return;
+      }
+    } catch {
+      // Some mobile browsers expose the API but reject fullscreen requests.
+    }
+    setIsFallbackFullscreen(true);
+    resizeGraph();
+  }, [isFallbackFullscreen, resizeGraph]);
 
   useEffect(() => {
     const updateFullscreenState = () => {
-      setIsFullscreen(document.fullscreenElement === canvasWrapRef.current);
+      const nextIsNativeFullscreen = document.fullscreenElement === canvasWrapRef.current;
+      setIsNativeFullscreen(nextIsNativeFullscreen);
+      if (nextIsNativeFullscreen) {
+        setIsFallbackFullscreen(false);
+      }
       resizeGraph();
     };
 
     document.addEventListener('fullscreenchange', updateFullscreenState);
     return () => document.removeEventListener('fullscreenchange', updateFullscreenState);
   }, [resizeGraph]);
+
+  useEffect(() => {
+    document.body.classList.toggle('graph-fallback-fullscreen-active', isFallbackFullscreen);
+    resizeGraph();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsFallbackFullscreen(false);
+      }
+    };
+
+    if (isFallbackFullscreen) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+
+    return () => {
+      document.body.classList.remove('graph-fallback-fullscreen-active');
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isFallbackFullscreen, resizeGraph]);
 
   useEffect(() => {
     const container = containerElement;
@@ -311,7 +354,15 @@ function GraphCanvas({
   }, [containerElement, edges, edgesById, nodes, nodesById, onSelect]);
 
   return (
-    <div className="graph-canvas-wrap" data-testid="graph-canvas-wrap" ref={canvasWrapRef}>
+    <div
+      className={
+        isFallbackFullscreen
+          ? 'graph-canvas-wrap graph-canvas-wrap-fallback-fullscreen'
+          : 'graph-canvas-wrap'
+      }
+      data-testid="graph-canvas-wrap"
+      ref={canvasWrapRef}
+    >
       {nodes.length ? (
         <>
           <div className="graph-canvas" data-testid="graph-canvas" ref={setContainerElement} />
@@ -351,14 +402,14 @@ function GraphCanvas({
               <RotateCcw aria-hidden="true" size={16} />
             </button>
             <button
-              aria-label={isFullscreen ? '最大化を解除' : '画面最大化'}
+              aria-label={isMaximized ? '最大化を解除' : '画面最大化'}
               className="graph-viewport-button"
               data-testid="graph-fullscreen-button"
               onClick={() => void toggleFullscreen()}
-              title={isFullscreen ? '最大化を解除' : '画面最大化'}
+              title={isMaximized ? '最大化を解除' : '画面最大化'}
               type="button"
             >
-              {isFullscreen ? (
+              {isMaximized ? (
                 <Minimize2 aria-hidden="true" size={16} />
               ) : (
                 <Maximize2 aria-hidden="true" size={16} />
