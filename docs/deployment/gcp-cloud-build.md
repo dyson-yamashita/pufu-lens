@@ -244,15 +244,16 @@ gcloud builds describe "$BUILD_ID" \
   --format 'yaml(id,status,substitutions.TRIGGER_NAME,substitutions.COMMIT_SHA,approval.state,logUrl)'
 ```
 
-`status: PENDING`、`approval.state: PENDING`、`TRIGGER_NAME`、`COMMIT_SHA` を確認し、GitHub の merge commit または release commit と一致する場合だけ承認する。`gcloud beta builds approve` が対象 region の build を解決できる環境では次を使う。
+`status: PENDING`、`approval.state: PENDING`、`TRIGGER_NAME`、`COMMIT_SHA` を確認し、GitHub の merge commit または release commit と一致する場合だけ承認する。`gcloud beta builds approve` が対象 region の build を解決できる環境では次を使う。installed SDK が `--region` / `--location` を受け付ける場合は、必ず対象 build の region を指定する。
 
 ```bash
 gcloud beta builds approve "$BUILD_ID" \
   --project "$PROJECT_ID" \
+  --region "$BUILD_REGION" \
   --comment "Approved after release commit verification."
 ```
 
-Cloud Build の regional build で `gcloud beta builds approve` が location 付き build を解決できない場合は、Cloud Build REST API で承認する。access token は表示せず、shell 変数内だけで扱う。
+Cloud Build の regional build で installed SDK の `gcloud beta builds approve` が `--region` を受け付けない、または location 付き build を解決できない場合は、Cloud Build REST API で承認する。access token は表示せず、shell 変数内だけで扱う。
 
 ```bash
 ACCESS_TOKEN="$(gcloud auth print-access-token)"
