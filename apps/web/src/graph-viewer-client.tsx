@@ -212,16 +212,23 @@ function GraphCanvas({
     if (!canvasWrap) {
       return;
     }
-    try {
-      if (document.fullscreenElement === canvasWrap) {
+
+    if (document.fullscreenElement === canvasWrap) {
+      try {
         await document.exitFullscreen();
+      } catch {
         return;
       }
-      if (isFallbackFullscreen) {
-        setIsFallbackFullscreen(false);
-        resizeGraph();
-        return;
-      }
+      return;
+    }
+
+    if (isFallbackFullscreen) {
+      setIsFallbackFullscreen(false);
+      resizeGraph();
+      return;
+    }
+
+    try {
       if (document.fullscreenEnabled && canvasWrap.requestFullscreen) {
         await canvasWrap.requestFullscreen();
         return;

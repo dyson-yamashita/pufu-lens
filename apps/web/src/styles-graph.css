@@ -51,7 +51,7 @@
   min-height: 100dvh;
   position: fixed;
   width: 100vw;
-  z-index: 1000;
+  z-index: 9999;
 }
 
 .graph-canvas-wrap-fallback-fullscreen .graph-canvas,
