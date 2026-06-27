@@ -6,10 +6,6 @@ timeout: 3600s
 
 options:
   logging: CLOUD_LOGGING_ONLY
-  # Parallel image builds and Firebase App Hosting rollout are CPU/network
-  # intensive. A larger worker shortens deploy wall-clock time at a higher
-  # per-minute build cost.
-  machineType: E2_HIGHCPU_8
 
 substitutions:
   _ENV: staging

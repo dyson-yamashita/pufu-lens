@@ -248,7 +248,7 @@ deploy 後は次を確認する。
 
 `cloudbuild.deploy.yaml` は、substitution 検証後に Mastra Server image build、Workflow Job image build、Firebase App Hosting deploy を並列で開始する。Mastra Server と Workflow Jobs はそれぞれ image push 後に deploy し、smoke check は Cloud Run service、Cloud Run Jobs、Web deploy の完了を待つ。
 
-この並列化は wall-clock time を短縮する一方で、Cloud Build worker は `E2_HIGHCPU_8` を使うため build 単価は上がる。コスト優先の環境では `options.machineType` を外し、標準 worker に戻してよい。
+この並列化は `options.machineType` を指定せず、Cloud Build の標準 worker のまま不要な直列待ちだけを減らす。より大きい worker を指定すると wall-clock time は短縮できる可能性があるが、build 単価が上がるため、コスト優先の環境では標準 worker を維持する。
 
 Cloud Run Job の dry-run 実行例:
 

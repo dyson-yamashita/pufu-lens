@@ -147,7 +147,7 @@ Set these trigger substitutions in the user's GCP project:
 5. Deploy `${_ENV}-curate-workflow`, `${_ENV}-ingest-workflow`, and `${_ENV}-generate-report` as Cloud Run Jobs after the jobs image is pushed, while keeping each runtime `WORKFLOW_ID` unchanged.
 6. Read the deployed Mastra Server URL dynamically and run `deploy:smoke` after Mastra Server, Workflow Jobs, and Web deploy all finish.
 
-The deploy config uses `options.machineType: E2_HIGHCPU_8` because the parallel image builds and Firebase deploy are CPU/network intensive. This reduces wall-clock time at a higher per-minute Cloud Build cost. Cost-sensitive environments can remove the machine type override and keep the same dependency graph.
+The deploy config keeps the default Cloud Build worker and uses `waitFor` only to remove avoidable serial waits. Cost-sensitive environments should keep this default-worker shape unless they explicitly accept higher per-minute build costs.
 
 The deploy config does not create the PostgreSQL VM, VPC connector, Artifact Registry repository, GCS bucket, Firebase App Hosting backend, or Secret Manager secrets. Provision those before enabling the trigger.
 
