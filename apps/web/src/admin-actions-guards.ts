@@ -10,6 +10,11 @@ export interface AdminActionDataSourceRow {
   readonly source_type: SourceType;
 }
 
+export interface AdminActionConnectionOwnerRow {
+  readonly id: string;
+  readonly userId: string;
+}
+
 export interface AdminActionDataSourceIngestRow extends AdminActionDataSourceRow {
   readonly storage_uri: string | null;
 }
@@ -76,6 +81,14 @@ export function parseAdminActionDataSourceRow(value: unknown): AdminActionDataSo
   return {
     id: requireString(row.id, 'admin data source row', 'id'),
     source_type: requireSourceType(row.source_type, 'admin data source row', 'source_type'),
+  };
+}
+
+export function parseAdminActionConnectionOwnerRow(value: unknown): AdminActionConnectionOwnerRow {
+  const row = requireRecord(value, 'admin connection owner row');
+  return {
+    id: requireString(row.id, 'admin connection owner row', 'id'),
+    userId: requireString(row.userId, 'admin connection owner row', 'userId'),
   };
 }
 

@@ -24,9 +24,11 @@ import {
 import { createObjectStorageFromEnv } from '../../../packages/storage/src/factory.ts';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import {
+  type AdminActionConnectionOwnerRow,
   type AdminActionDataSourceIngestRow,
   type AdminActionDataSourceRow,
   type AdminActionIdRow,
+  parseAdminActionConnectionOwnerRow,
   parseAdminActionDataSourceIngestRow,
   parseAdminActionDataSourceRecordRow,
   parseAdminActionDataSourceRow,
@@ -48,10 +50,9 @@ import {
   isAdminUiCollectionSupported,
   isAdminUiIngestSupported,
   isSourceType,
-  isSourceTypeAvailable,
+  requiredProviderForSourceType,
   type SourceType,
 } from './admin-data';
-import { listProjectConnectionsForProjectId } from './admin-db';
 import { deleteExclusiveDocumentGraphNodes } from './graph-document-cleanup.ts';
 import {
   createGitHubInstallationAccessToken,
@@ -81,15 +82,62 @@ function parseAdminActionRows<T>(rows: readonly unknown[], parser: (row: unknown
   return rows.map((row) => parser(row));
 }
 
+async function assertDataSourceConnectionReady(
+  sql: SqlExecutor,
+  projectId: string,
+  sourceType: SourceType,
+): Promise<AdminActionConnectionOwnerRow | undefined> {
+  const provider = requiredProviderForSourceType(sourceType);
+  if (!provider) {
+    return undefined;
+  }
+  const sourceScope = requiredScopeForSourceType(sourceType);
+  const scopeFilter = sourceScope ? sql`${sourceScope} = ANY(oc.scopes)` : sql`true`;
+  const githubFilter = provider === 'github' ? sql`AND oc.metadata ? 'installationId'` : sql``;
+  const rows = (await sql`
+    SELECT oc.id::text, oc.user_id::text AS "userId"
+    FROM public.oauth_connections oc
+    WHERE oc.project_id = ${projectId}
+      AND oc.provider = ${provider}
+      AND (oc.expires_at IS NULL OR oc.expires_at > now())
+      AND (oc.metadata->>'connectionError') IS DISTINCT FROM 'true'
+      AND (oc.metadata->>'scopeMissing') IS DISTINCT FROM 'true'
+      AND COALESCE(oc.metadata->>'status', '') NOT IN ('error', 'scope_missing')
+      AND ${scopeFilter}
+      ${githubFilter}
+    ORDER BY oc.updated_at DESC
+    LIMIT 1
+  `) as readonly unknown[];
+  const connection = parseOptionalAdminActionRow(rows, parseAdminActionConnectionOwnerRow);
+  if (!connection) {
+    throw new Error(
+      `Project connection is required before using a ${sourceType} data source. Connect or reconnect the provider in Settings.`,
+    );
+  }
+  return connection;
+}
+
+function requiredScopeForSourceType(sourceType: SourceType): string | null {
+  if (sourceType === 'gmail') {
+    return 'https://www.googleapis.com/auth/gmail.readonly';
+  }
+  if (sourceType === 'drive') {
+    return 'https://www.googleapis.com/auth/drive.readonly';
+  }
+  return null;
+}
+
 async function insertCreatedDataSourceRow(
   sql: SqlExecutor,
   {
+    connectionId,
     config,
     name,
     ownerUserId,
     projectId,
     sourceType,
   }: {
+    readonly connectionId: string | null;
     readonly config: Record<string, unknown>;
     readonly name: string;
     readonly ownerUserId: string;
@@ -98,10 +146,18 @@ async function insertCreatedDataSourceRow(
   },
 ): Promise<AdminActionIdRow | undefined> {
   const rows = (await sql`
-    INSERT INTO public.data_sources (project_id, owner_user_id, source_type, name, config)
+    INSERT INTO public.data_sources (
+      project_id,
+      owner_user_id,
+      connection_id,
+      source_type,
+      name,
+      config
+    )
     VALUES (
       ${projectId},
       ${ownerUserId},
+      ${connectionId},
       ${sourceType},
       ${name},
       ${sql.json(config as postgres.JSONValue)}
@@ -127,17 +183,13 @@ export async function createDataSource(formData: FormData): Promise<void> {
 
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
-    const connections = await listProjectConnectionsForProjectId(sql, project.id);
-    if (!isSourceTypeAvailable(sourceType, connections)) {
-      throw new Error(
-        `Project connection is required before creating a ${sourceType} data source. Connect the provider in Settings.`,
-      );
-    }
+    const connection = await assertDataSourceConnectionReady(sql, project.id, sourceType);
     await sql.begin(async (tx) => {
       const dataSource = await insertCreatedDataSourceRow(tx, {
+        connectionId: connection?.id ?? null,
         config,
         name,
-        ownerUserId: project.adminUserId,
+        ownerUserId: connection?.userId ?? project.adminUserId,
         projectId: project.id,
         sourceType,
       });
@@ -186,10 +238,17 @@ export async function updateDataSource(formData: FormData): Promise<void> {
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
     const dataSource = await lookupProjectDataSource(sql, project.id, dataSourceId);
+    const connection = await assertDataSourceConnectionReady(
+      sql,
+      project.id,
+      dataSource.source_type,
+    );
     const config = buildDataSourceConfig(dataSource.source_type, scope);
     await sql`
       UPDATE public.data_sources
       SET name = ${name},
+          owner_user_id = ${connection?.userId ?? project.adminUserId},
+          connection_id = ${connection?.id ?? null},
           config = ${sql.json(config as postgres.JSONValue)},
           updated_at = now()
       WHERE id = ${dataSource.id}
@@ -663,6 +722,7 @@ async function collectProjectDataSource(
   if (!isAdminUiCollectionSupported(dataSource.source_type)) {
     throw new Error(`Collect from admin UI is not supported for ${dataSource.source_type} yet.`);
   }
+  await assertDataSourceConnectionReady(sql, project.id, dataSource.source_type);
   if (dataSource.source_type === 'drive' || dataSource.source_type === 'gmail') {
     const token = await readProjectConnectionAccessToken({
       projectId: project.id,
@@ -929,6 +989,7 @@ async function lookupProjectDataSourceIngestInput(
   if (!isAdminUiIngestSupported(dataSource.source_type)) {
     throw new Error(`Ingest from admin UI is not supported for ${dataSource.source_type} yet.`);
   }
+  await assertDataSourceConnectionReady(sql, projectId, dataSource.source_type);
   return {
     sourceType: dataSource.source_type,
     storageRoot: storageRootFromObjectUri(dataSource.storage_uri, projectSlug),

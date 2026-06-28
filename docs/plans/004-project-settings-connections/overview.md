@@ -192,7 +192,7 @@ UI は補助にすぎないため、以下でも同じ制約を検証する。
 - `createDataSource` は project の connection availability を server action 側で確認し、未連携 provider の data source 作成を拒否する。
 - `collectDataSource` / `collectAndIngestDataSource` は Drive / Gmail では Google connection token、GitHub では GitHub App installation token を取得できない場合に実行前に拒否する。
 - `updateDataSource` は既存 data source の `source_type` を変更しないため、source type と connection の再選択経路は UI 上存在しない。
-- 残作業: API route 追加時の同等 enforcement、workflow / CLI entrypoint が DB の data source を読む箇所での connection 状態・scope・期限検証、`connection_id` 改ざんや expired / scope_missing の server action test を追加する。
+- Issue #363 で API route 追加時の同等 enforcement、workflow / CLI entrypoint が DB の data source を読む箇所での connection 状態・scope・期限検証、`connection_id` 改ざんや expired / scope_missing の server action test を追加する。
 
 ## Step 7: 運用・失効・Scope 不足の検証
 

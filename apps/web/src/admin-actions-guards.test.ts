@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   parseAdminActionActorRow,
+  parseAdminActionConnectionOwnerRow,
   parseAdminActionDataSourceIngestRow,
   parseAdminActionDataSourceRecordRow,
   parseAdminActionDataSourceRow,
@@ -37,6 +38,15 @@ assert.deepEqual(parseAdminActionDataSourceRow({ id: 'source-a', source_type: 'g
 assert.throws(
   () => parseAdminActionDataSourceRow({ id: 'source-a', source_type: 'slack' }),
   /Invalid admin data source row field: source_type/,
+);
+
+assert.deepEqual(parseAdminActionConnectionOwnerRow({ id: 'conn-a', userId: 'user-a' }), {
+  id: 'conn-a',
+  userId: 'user-a',
+});
+assert.throws(
+  () => parseAdminActionConnectionOwnerRow({ id: 'conn-a', userId: null }),
+  /Invalid admin connection owner row field: userId/,
 );
 
 assert.deepEqual(
