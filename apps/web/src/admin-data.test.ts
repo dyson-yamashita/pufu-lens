@@ -119,7 +119,7 @@ const expiredGoogleWithDriveScope = disconnected.map((connection) =>
       }
     : connection,
 );
-assert.equal(isSourceTypeAvailable('drive', expiredGoogleWithDriveScope), true);
+assert.equal(isSourceTypeAvailable('drive', expiredGoogleWithDriveScope), false);
 assert.equal(isSourceTypeAvailable('gmail', expiredGoogleWithDriveScope), false);
 
 assert.equal(truncateSnippet('  hello   world  ', 20), 'hello world');

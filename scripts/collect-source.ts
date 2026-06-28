@@ -63,10 +63,11 @@ async function main(): Promise<void> {
           connectionId: options.connectionId,
           projectSlug,
           provider,
+          sourceType,
           sql,
         })
       : provider
-        ? await readProjectCollectionConnection({ projectSlug, provider, sql })
+        ? await readProjectCollectionConnection({ projectSlug, provider, sourceType, sql })
         : undefined;
 
     const connectionToken =
@@ -629,11 +630,26 @@ function requiredCollectionToken(
   return connection.token;
 }
 
+function requiredScopeForSourceType(sourceType: RealSourceType): string | undefined {
+  if (sourceType === 'gmail') {
+    return 'https://www.googleapis.com/auth/gmail.readonly';
+  }
+  if (sourceType === 'drive') {
+    return 'https://www.googleapis.com/auth/drive.readonly';
+  }
+  return undefined;
+}
+
 async function readProjectCollectionConnection(input: {
   projectSlug: string;
   provider: ConnectionProvider;
+  sourceType: RealSourceType;
   sql: postgres.Sql;
 }): Promise<CollectionConnection | undefined> {
+  const sourceScope = requiredScopeForSourceType(input.sourceType);
+  const scopeFilter = sourceScope ? input.sql`${sourceScope} = ANY(oc.scopes)` : input.sql`true`;
+  const githubFilter =
+    input.provider === 'github' ? input.sql`AND oc.metadata ? 'installationId'` : input.sql``;
   const rows = (await input.sql`
     SELECT
       oc.id::text AS id,
@@ -647,6 +663,12 @@ async function readProjectCollectionConnection(input: {
     JOIN public.projects p ON p.id = oc.project_id
     WHERE p.slug = ${input.projectSlug}
       AND oc.provider = ${input.provider}
+      AND (oc.expires_at IS NULL OR oc.expires_at > now())
+      AND (oc.metadata->>'connectionError') IS DISTINCT FROM 'true'
+      AND (oc.metadata->>'scopeMissing') IS DISTINCT FROM 'true'
+      AND COALESCE(oc.metadata->>'status', 'connected') = 'connected'
+      AND ${scopeFilter}
+      ${githubFilter}
     LIMIT 1
   `) as Array<{
     accessTokenSecret: string | null;
@@ -673,12 +695,17 @@ async function readCollectionConnection(input: {
   connectionId: string;
   projectSlug: string;
   provider?: ConnectionProvider;
+  sourceType: RealSourceType;
   sql: postgres.Sql;
 }): Promise<CollectionConnection> {
   if (!input.provider) {
     throw new Error('--connection-id is supported only for gmail, drive, and github sources.');
   }
   assertUuid(input.connectionId, '--connection-id');
+  const sourceScope = requiredScopeForSourceType(input.sourceType);
+  const scopeFilter = sourceScope ? input.sql`${sourceScope} = ANY(oc.scopes)` : input.sql`true`;
+  const githubFilter =
+    input.provider === 'github' ? input.sql`AND oc.metadata ? 'installationId'` : input.sql``;
   const rows = (await input.sql`
     SELECT
       oc.id::text AS id,
@@ -693,6 +720,12 @@ async function readCollectionConnection(input: {
     WHERE oc.id = ${input.connectionId}
       AND p.slug = ${input.projectSlug}
       AND oc.provider = ${input.provider}
+      AND (oc.expires_at IS NULL OR oc.expires_at > now())
+      AND (oc.metadata->>'connectionError') IS DISTINCT FROM 'true'
+      AND (oc.metadata->>'scopeMissing') IS DISTINCT FROM 'true'
+      AND COALESCE(oc.metadata->>'status', 'connected') = 'connected'
+      AND ${scopeFilter}
+      ${githubFilter}
     LIMIT 1
   `) as Array<{
     accessTokenSecret: string | null;

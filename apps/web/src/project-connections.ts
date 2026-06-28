@@ -402,10 +402,14 @@ async function upsertProjectConnection(input: {
 }
 
 export async function readProjectConnectionAccessToken(input: {
+  readonly connectionId?: string;
   readonly projectId: string;
   readonly provider: ConnectionProvider;
   readonly sql: postgres.Sql;
 }): Promise<string | null> {
+  const connectionFilter = input.connectionId
+    ? input.sql`AND id = ${input.connectionId}`
+    : input.sql``;
   const rows = (await input.sql`
     SELECT
       access_token_secret,
@@ -414,6 +418,7 @@ export async function readProjectConnectionAccessToken(input: {
     FROM public.oauth_connections
     WHERE project_id = ${input.projectId}
       AND provider = ${input.provider}
+      ${connectionFilter}
     LIMIT 1
   `) as Array<{
     access_token_secret: string | null;
@@ -451,19 +456,25 @@ export async function readProjectConnectionAccessToken(input: {
       updated_at = now()
     WHERE project_id = ${input.projectId}
       AND provider = ${input.provider}
+      ${connectionFilter}
   `;
   return refreshed.access_token;
 }
 
 export async function createGitHubInstallationAccessToken(input: {
+  readonly connectionId?: string;
   readonly projectId: string;
   readonly sql: postgres.Sql;
 }): Promise<string | null> {
+  const connectionFilter = input.connectionId
+    ? input.sql`AND id = ${input.connectionId}`
+    : input.sql``;
   const rows = (await input.sql`
     SELECT metadata
     FROM public.oauth_connections
     WHERE project_id = ${input.projectId}
       AND provider = 'github'
+      ${connectionFilter}
     LIMIT 1
   `) as Array<{ metadata: unknown }>;
   const metadata = rows[0] && isRecord(rows[0].metadata) ? rows[0].metadata : {};

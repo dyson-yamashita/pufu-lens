@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   parseAdminActionActorRow,
+  parseAdminActionConnectionOwnerRow,
   parseAdminActionDataSourceIngestRow,
   parseAdminActionDataSourceRecordRow,
   parseAdminActionDataSourceRow,
@@ -31,12 +32,34 @@ assert.throws(
 );
 
 assert.deepEqual(parseAdminActionDataSourceRow({ id: 'source-a', source_type: 'github' }), {
+  connectionId: null,
   id: 'source-a',
   source_type: 'github',
 });
+assert.deepEqual(
+  parseAdminActionDataSourceRow({
+    connection_id: 'conn-a',
+    id: 'source-a',
+    source_type: 'github',
+  }),
+  {
+    connectionId: 'conn-a',
+    id: 'source-a',
+    source_type: 'github',
+  },
+);
 assert.throws(
   () => parseAdminActionDataSourceRow({ id: 'source-a', source_type: 'slack' }),
   /Invalid admin data source row field: source_type/,
+);
+
+assert.deepEqual(parseAdminActionConnectionOwnerRow({ id: 'conn-a', userId: 'user-a' }), {
+  id: 'conn-a',
+  userId: 'user-a',
+});
+assert.throws(
+  () => parseAdminActionConnectionOwnerRow({ id: 'conn-a', userId: null }),
+  /Invalid admin connection owner row field: userId/,
 );
 
 assert.deepEqual(
@@ -169,7 +192,7 @@ assert.deepEqual(
     id: 'source-a',
     source_type: 'drive',
   }),
-  { id: 'source-a', source_type: 'drive', storage_uri: null },
+  { connectionId: null, id: 'source-a', source_type: 'drive', storage_uri: null },
 );
 assert.throws(
   () =>

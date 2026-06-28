@@ -6,8 +6,14 @@ export interface AdminActionIdRow {
 }
 
 export interface AdminActionDataSourceRow {
+  readonly connectionId: string | null;
   readonly id: string;
   readonly source_type: SourceType;
+}
+
+export interface AdminActionConnectionOwnerRow {
+  readonly id: string;
+  readonly userId: string;
 }
 
 export interface AdminActionDataSourceIngestRow extends AdminActionDataSourceRow {
@@ -74,8 +80,21 @@ export function parseAdminActionIdRow(value: unknown, context: string): AdminAct
 export function parseAdminActionDataSourceRow(value: unknown): AdminActionDataSourceRow {
   const row = requireRecord(value, 'admin data source row');
   return {
+    connectionId: requireNullableString(
+      row.connection_id,
+      'admin data source row',
+      'connection_id',
+    ),
     id: requireString(row.id, 'admin data source row', 'id'),
     source_type: requireSourceType(row.source_type, 'admin data source row', 'source_type'),
+  };
+}
+
+export function parseAdminActionConnectionOwnerRow(value: unknown): AdminActionConnectionOwnerRow {
+  const row = requireRecord(value, 'admin connection owner row');
+  return {
+    id: requireString(row.id, 'admin connection owner row', 'id'),
+    userId: requireString(row.userId, 'admin connection owner row', 'userId'),
   };
 }
 
@@ -84,6 +103,11 @@ export function parseAdminActionDataSourceIngestRow(
 ): AdminActionDataSourceIngestRow {
   const row = requireRecord(value, 'admin data source ingest row');
   return {
+    connectionId: requireNullableString(
+      row.connection_id,
+      'admin data source ingest row',
+      'connection_id',
+    ),
     id: requireString(row.id, 'admin data source ingest row', 'id'),
     source_type: requireSourceType(row.source_type, 'admin data source ingest row', 'source_type'),
     storage_uri: requireNullableString(

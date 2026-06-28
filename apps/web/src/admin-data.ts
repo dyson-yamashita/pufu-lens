@@ -56,7 +56,7 @@ export function requiredProviderForSourceType(sourceType: SourceType): Connectio
 }
 
 export function isConnectionUsable(status: ProjectConnectionStatus): boolean {
-  return status === 'connected' || status === 'expired';
+  return status === 'connected';
 }
 
 export function isSourceTypeAvailable(
