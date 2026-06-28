@@ -74,7 +74,7 @@ UI は補助にすぎないため、以下でも同じ制約を検証する。
 | Step 4 | `completed` | Settings に Connections セクションを追加する                                        | project admin が connection 状態を確認し、Connect / Reconnect へ進める         |
 | Step 5 | `completed` | Data Source 作成 UI で未連携 source type を選択不可にする                           | 未連携 provider の option / tab / submit が e2e で選択不可と確認できる         |
 | Step 6 | `completed` | server action / API / workflow 側の connection 必須検証を入れる                     | 直接 form submit / API 呼び出しでも未連携 source type の作成・実行が拒否される |
-| Step 7 | `active`    | 失効・scope 不足・解除済み connection の運用表示と検証を追加する                    | expired / scope_missing の表示、再接続導線、secret 漏れ検査が通る              |
+| Step 7 | `completed` | 失効・scope 不足・解除済み connection の運用表示と検証を追加する                    | expired / scope_missing の表示、再接続導線、secret 漏れ検査が通る              |
 
 ## Step 1: Connection Contract と UI 設計
 
@@ -214,7 +214,7 @@ UI は補助にすぎないため、以下でも同じ制約を検証する。
 
 ### 対応状況
 
-- Issue #365 で Settings の expired / scope_missing / revoked 相当の表示、Data Sources の既存 source 実行不可表示、deploy checklist / `.env.example` / deployment overview の運用情報を追加する。
+- Issue #365 / PR #366 で Settings の expired / scope_missing / revoked 相当の表示、Data Sources の既存 source 実行不可表示、deploy checklist / `.env.example` / deployment overview の運用情報を追加済み。
 
 ## 検証方針
 
