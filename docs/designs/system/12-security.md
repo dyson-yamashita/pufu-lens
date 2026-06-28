@@ -47,16 +47,16 @@ API は以下の認可をかける：
 - `/projects/[projectSlug]/members` の閲覧は、global admin または対象 project の `project_members` に含まれるログインユーザーのみ可。プロジェクトへの紐付け追加は global admin または対象 project の `project_members.role = 'admin'` のみ可。解除は `project_members.role = 'member'` の紐付けだけを対象にし、global admin と project admin は解除不可とする。
 - Mastra のツール呼び出しは `projectId` 必須、context にない場合エラー。
 - 公開レポートは通常の `/api/projects/[projectSlug]/...` とは別に、未ログイン用の `/api/public/projects/[projectSlug]/reports/[reportId]` を用意する。公開ページの正規 URL は `/reports/public/[projectSlug]/[reportId]` とする。
-- `/api/public/projects/[projectSlug]/reports/[reportId]` は API entrypoint で `projectSlug` と `reportId` を storage-safe pattern に validate し、Object Storage 上の公開用 manifest / metadata で公開可否を確認できた場合だけ redaction 済み public report JSON を取得して返す。private report JSON は直接公開しない。`is_public = false`、存在しない、または project が無効な場合は同じ `404` を返し、非公開レポートの存在有無を漏らさない。
-- `/api/public/projects/[projectSlug]/reports/[reportId]/chat` は公開済みレポートに紐づく public chat だけを提供する。public chat は redaction 済み public report JSON と公開用 context bundle のみ参照し、DB / AGE / pgvector / raw document / parsed document にはアクセスしない。Public Chat tool はユーザー入力や LLM が指定した URI を読まず、Next.js が検証済み manifest から解決した URI だけを使う。
-- private レポートの閲覧と signed URL 発行は DB 依存 API として扱う。`/api/projects/[projectSlug]/reports/[reportId]` または `/api/projects/[projectSlug]/reports/[reportId]/signed-url` で必ず `project_members` 認可後に返し、業務時間外はチャットと同様に `db_outside_business_hours` を返す。公開 API では private レポート本体や signed URL を返さない。
+- `/api/public/projects/[projectSlug]/reports/[reportId]` は API entrypoint で `projectSlug` と `reportId` を storage-safe pattern に validate し、DB 上の `projects.visibility = 'public'` と `reports.is_public = true` を確認できた場合だけ private report JSON を返す。`visibility = 'private'`、`is_public = false`、存在しない、または project が無効な場合は同じ `404` を返し、非公開レポートの存在有無を漏らさない。
+- `/api/public/projects/[projectSlug]/reports/[reportId]/chat` は公開済みレポートに紐づく public chat だけを提供する。public chat は同じ project の private chat と同じ project chat agent を使うが、入口で `projects.visibility = 'public'` と `reports.is_public = true` を要求する。
+- private レポートの閲覧と signed URL 発行は DB 依存 API として扱う。`/api/projects/[projectSlug]/reports/[reportId]` または `/api/projects/[projectSlug]/reports/[reportId]/signed-url` で必ず `project_members` 認可後に返し、業務時間外はチャットと同様に `db_outside_business_hours` を返す。public report / public chat も DB 依存の公開可否確認を行うため、業務時間外は同じく利用不可にする。
 
 ### 3. 公開レポートの保護
 
 - Object Storage（GCS）バケットは Private
-- 公開用 manifest / metadata で `is_public = true` のレポートは Next.js の公開ページ `/reports/public/[projectSlug]/[reportId]` から `/api/public/projects/[projectSlug]/reports/[reportId]` 経由で redaction 済み public report JSON を取得・描画
+- `projects.visibility = 'public'` かつ `reports.is_public = true` のレポートは Next.js の公開ページ `/reports/public/[projectSlug]/[reportId]` から `/api/public/projects/[projectSlug]/reports/[reportId]` 経由で private report JSON を取得・描画
 - `is_public = false` のレポートは `/api/projects/[projectSlug]/reports/[reportId]` で DB による認可チェック後にサーバから JSON を返す、または短時間の signed URL を発行する。DB 停止中は利用不可にする
-- public chat は個人情報、メールアドレス、未公開 URL、raw / parsed 本文全文、secret を回答しない。公開 report と対象 project の公開済み情報に関係しない質問は拒否する
+- public chat は private chat と同じ処理を使う。private project では public chat を許可せず、public project でも対象 report が `is_public = true` の場合だけ入口を開く
 - レート制限を Cloud Armor または Hono middleware で実装する。public chat は信頼プロキシが付与した `x-forwarded-for` を右端から走査し、private / local IP と無効値を除いた最初の有効値（なければ `x-real-ip`、最後に anonymous bucket）+ report id 単位で 1 時間 / 1 日 / 質問長の上限を設け、クライアントが任意に付与できる左端値は信用しない。private chat は user + project 単位で public より緩い上限にする。Mastra 側で使う rate limit 用 header は OIDC 検証済みの Next.js から来たものだけを信頼する
 - App Hosting の runtime env と secret は `apphosting.yaml` で参照し、secret 値をリポジトリに含めない。
 
@@ -113,7 +113,7 @@ pnpm chat:eval --project sample-a --fixture fixtures/chat/private-chat-raw-injec
 
 #### Public 境界の再確認
 
-- Public Chat / Public Report API / public artifact は [API デザイン](05-api-design.md) の public 入口ルールに従い、DB / raw / parsed / private locator に到達しない。
-- public project でも public chat は **public report / public context bundle のみ**。raw read view tool は private 入口専用。
+- Public Chat / Public Report API / public artifact は [API デザイン](05-api-design.md) の public 入口ルールに従う。public 入口は DB で public project / public report を確認し、private project では許可しない。
+- public project の public chat は private chat と同じ project chat agent を使う。違いは入口のアクセス権だけにする。
 
 ---

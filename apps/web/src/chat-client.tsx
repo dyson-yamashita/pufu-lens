@@ -9,7 +9,6 @@ import {
   type ChatThreadMessage,
   createMessageId,
   PrivateChatThread,
-  PublicChatThread,
   replacePendingAssistant,
 } from './chat-thread';
 import { useSpeechInput } from './speech-input';
@@ -131,7 +130,7 @@ export function ChatPanel({
 
 export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: string }) {
   const [question, setQuestion] = useState('');
-  const [messages, setMessages] = useState<ChatThreadMessage<PublicChatResponse>[]>([]);
+  const [messages, setMessages] = useState<ChatThreadMessage<ChatResponse>[]>([]);
   const [pending, setPending] = useState(false);
   const speechInput = useSpeechInput({
     disabled: pending,
@@ -159,9 +158,7 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
         method: 'POST',
       });
       const isJson = result.headers.get('content-type')?.includes('application/json') ?? false;
-      const body = isJson
-        ? ((await result.json()) as PublicChatResponse | ChatErrorResponse)
-        : null;
+      const body = isJson ? ((await result.json()) as ChatResponse | ChatErrorResponse) : null;
       if (!result.ok) {
         throw new Error(chatErrorMessage(body, result.status));
       }
@@ -196,7 +193,7 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
       className="panel public-chat-panel public-project-chat-panel"
       data-testid="public-project-chat-panel"
     >
-      <PublicChatThread messages={messages} resultTestId="public-project-chat-result" />
+      <PrivateChatThread messages={messages} resultTestId="public-project-chat-result" />
       <form className="chat-form" onSubmit={submit}>
         <label htmlFor="public-project-chat-question">Question</label>
         <div className="chat-input-row">

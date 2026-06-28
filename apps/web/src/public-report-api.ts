@@ -1,23 +1,26 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { getVisiblePublicProject } from './admin-db';
+import { getRequiredAdminSql } from './admin-sql';
 import {
+  businessHoursFromEnv,
+  chatNowFromEnv,
   createPublicChatMemoryRateLimiter,
-  inferPublicChatEditingMetadata,
-  publicChatSources,
-  shouldRefusePublicQuestion,
+  isWithinBusinessHours,
 } from './chat';
 import {
-  createMastraPublicReportChatBody,
+  createMastraProjectChatBody,
   mastraFetchHeaders,
-  mastraGenerateToPublicChatResponse,
-  mastraPublicReportChatGenerateUrl,
+  mastraGenerateToChatResponse,
+  mastraProjectChatGenerateUrl,
 } from './mastra-chat';
 import {
+  createPostgresReportRepository,
   createReportStorageFromEnv,
   getPublicReport,
-  getPublicReportArtifacts,
   isSafePublicReportLocator,
   PublicReportNotFoundError,
+  type ReportRepository,
+  reportNowFromEnv,
 } from './report';
 import { parsePositiveEnvInt, trustedClientIp } from './request-client';
 
@@ -43,12 +46,21 @@ export async function handlePublicReportGet(input: {
   }
 
   try {
+    const businessHours = businessHoursFromEnv(process.env);
+    const now = reportNowFromEnv(process.env) ?? new Date();
     const response = await getPublicReport({
+      options: {
+        businessHours,
+        now,
+        repository: createPostgresReportRepository(getRequiredAdminSql()),
+        storage: createReportStorageFromEnv(),
+      },
       projectSlug: input.projectSlug,
       reportId: input.reportId,
-      storage: createReportStorageFromEnv(),
     });
-    return NextResponse.json(response);
+    return NextResponse.json(response, {
+      status: response.status === 'db_outside_business_hours' ? 503 : 200,
+    });
   } catch (error) {
     if (error instanceof PublicReportNotFoundError) {
       return publicReportNotFound();
@@ -94,10 +106,24 @@ export async function handlePublicChatPost(
   }
 
   try {
-    const artifacts = await getPublicReportArtifacts({
+    const businessHours = businessHoursFromEnv(process.env);
+    if (!isWithinBusinessHours(chatNowFromEnv(process.env) ?? new Date(), businessHours)) {
+      return NextResponse.json(
+        {
+          answer: 'db_outside_business_hours',
+          projectSlug: input.projectSlug,
+          sources: [],
+          status: 'db_outside_business_hours',
+          toolCalls: [],
+        },
+        { status: 503 },
+      );
+    }
+    const repository = createPostgresReportRepository(getRequiredAdminSql());
+    const project = await lookupPublicReportProject({
       projectSlug: input.projectSlug,
       reportId: input.reportId,
-      storage: createReportStorageFromEnv(),
+      repository,
     });
     for (const rateLimiter of [hourlyRateLimiter, dailyRateLimiter]) {
       if (
@@ -107,7 +133,6 @@ export async function handlePublicChatPost(
           {
             answer: 'rate limit exceeded',
             projectSlug: input.projectSlug,
-            reportId: input.reportId,
             sources: [],
             status: 'rate_limited',
             toolCalls: [],
@@ -116,31 +141,12 @@ export async function handlePublicChatPost(
         );
       }
     }
-    const toolCalls = [
-      { name: 'public-report-fetch', resultCount: 1 },
-      { name: 'public-context-fetch', resultCount: artifacts.contextBundle.sections.length },
-    ] as const;
-    if (shouldRefusePublicQuestion(question)) {
-      return NextResponse.json({
-        answer:
-          '公開レポートの範囲外、または未公開情報の要求には回答できません。公開済み section id / public source id に基づく質問をしてください。',
-        editing: inferPublicChatEditingMetadata(question),
-        projectSlug: input.projectSlug,
-        reportId: input.reportId,
-        sources: [],
-        status: 'refused',
-        toolCalls,
-      });
-    }
-    const mastraUrl = mastraPublicReportChatGenerateUrl();
+    const mastraUrl = mastraProjectChatGenerateUrl();
     const mastraResponse = await fetch(mastraUrl, {
       body: JSON.stringify(
-        createMastraPublicReportChatBody({
-          contextBundle: artifacts.contextBundle,
-          projectSlug: input.projectSlug,
+        createMastraProjectChatBody({
+          projectId: project.id,
           question,
-          report: artifacts.report,
-          reportId: input.reportId,
         }),
       ),
       headers: await mastraFetchHeaders({ url: mastraUrl }),
@@ -150,21 +156,16 @@ export async function handlePublicChatPost(
     if (!mastraResponse.ok) {
       const errorText = await mastraResponse.text().catch(() => '');
       throw new Error(
-        `Mastra public report chat agent failed: HTTP ${mastraResponse.status} - ${errorText}`,
+        `Mastra project chat agent failed: HTTP ${mastraResponse.status} - ${errorText}`,
       );
     }
     const mastraBody = (await mastraResponse.json()) as unknown;
     return NextResponse.json(
-      withPublicFallbackSources(
-        mastraGenerateToPublicChatResponse({
-          mastraResponse: mastraBody,
-          projectSlug: input.projectSlug,
-          question,
-          reportId: input.reportId,
-        }),
-        publicChatSources(artifacts.report, artifacts.contextBundle),
-        toolCalls,
-      ),
+      mastraGenerateToChatResponse({
+        mastraResponse: mastraBody,
+        projectSlug: input.projectSlug,
+        question,
+      }),
     );
   } catch (error) {
     if (error instanceof PublicReportNotFoundError) {
@@ -177,25 +178,6 @@ export async function handlePublicChatPost(
       500,
     );
   }
-}
-
-function withPublicFallbackSources(
-  response: ReturnType<typeof mastraGenerateToPublicChatResponse>,
-  sources: ReturnType<typeof publicChatSources>,
-  toolCalls: readonly [
-    { readonly name: 'public-report-fetch'; readonly resultCount: number },
-    { readonly name: 'public-context-fetch'; readonly resultCount: number },
-  ],
-) {
-  const toolCallNames = new Set(response.toolCalls.map((toolCall) => toolCall.name));
-  return {
-    ...response,
-    sources: response.sources.length ? response.sources : sources,
-    toolCalls: [
-      ...response.toolCalls,
-      ...toolCalls.filter((toolCall) => !toolCallNames.has(toolCall.name)),
-    ],
-  };
 }
 
 export async function handlePublicProjectChatPost(
@@ -223,6 +205,25 @@ export async function handlePublicProjectChatPost(
     projectSlug: input.projectSlug,
     reportId: latestReport.id,
   });
+}
+
+async function lookupPublicReportProject(input: {
+  readonly projectSlug: string;
+  readonly reportId: string;
+  readonly repository: ReportRepository;
+}) {
+  const project = await input.repository.lookupProject({ projectSlug: input.projectSlug });
+  if (project?.visibility !== 'public') {
+    throw new PublicReportNotFoundError(input.reportId);
+  }
+  const report = await input.repository.readReportMetadata({
+    projectId: project.id,
+    reportId: input.reportId,
+  });
+  if (!report?.isPublic) {
+    throw new PublicReportNotFoundError(input.reportId);
+  }
+  return project;
 }
 
 function publicReportNotFound() {

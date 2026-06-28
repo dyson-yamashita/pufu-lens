@@ -15,16 +15,17 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
             questionType: 'status',
           },
           projectSlug: 'sample-a',
-          reportId: 'report-a',
           sources: [
             {
-              label: 'Issue Summary',
-              publicSourceId: 'src_issue_001',
-              sectionId: 'issues',
+              canonicalUri: 'https://example.com/issues/1',
+              docType: 'issue',
+              documentId: 'doc-issue-001',
+              rawDocumentId: 'raw-issue-001',
+              title: 'Issue Summary',
             },
           ],
           status: 'answered',
-          toolCalls: [{ name: 'public-context-fetch', resultCount: 2 }],
+          toolCalls: [{ name: 'graph-query', resultCount: 2 }],
         }),
         contentType: 'application/json',
         status: 200,
@@ -43,18 +44,19 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
           questionType: 'fact',
         },
         projectSlug: 'sample-a',
-        reportId: 'report-a',
         sources: [
           {
-            label: 'https://example.com/spec',
-            publicSourceId: 'src_spec_001',
-            sectionId: 'activity',
+            canonicalUri: 'https://example.com/spec',
+            docType: 'web_page',
+            documentId: 'doc-spec-001',
+            rawDocumentId: 'raw-spec-001',
+            title: 'Spec Update',
           },
         ],
         status: 'answered',
         toolCalls: [
-          { name: 'public-report-fetch', resultCount: 1 },
-          { name: 'public-context-fetch', resultCount: 1 },
+          { name: 'vector-search', resultCount: 1 },
+          { name: 'document-fetch', resultCount: 1 },
         ],
       }),
       contentType: 'application/json',
@@ -83,7 +85,7 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
   await expect(page.getByTestId('chat-message-sources-1')).toContainText(
     'https://example.com/spec',
   );
-  await expect(page.getByTestId('chat-message-tool-calls-1')).toContainText('public-report-fetch');
+  await expect(page.getByTestId('chat-message-tool-calls-1')).toContainText('vector-search');
   await expect(page.getByTestId('chat-message-editing-1')).toContainText('要約');
   await expect(page.getByTestId('chat-message-editing-1')).toContainText('凝縮');
 

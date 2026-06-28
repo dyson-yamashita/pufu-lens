@@ -270,12 +270,30 @@ export async function revokePublicReport(input: {
 }
 
 export async function getPublicReport(input: {
+  readonly options: ReportAccessOptions & { readonly storage: ObjectStorage };
   readonly projectSlug: string;
   readonly reportId: string;
-  readonly storage: ObjectStorage;
-}): Promise<{ readonly report: PublicReportJsonV1; readonly status: 'ok' }> {
-  const artifacts = await getPublicReportArtifacts(input);
-  return { report: artifacts.report, status: 'ok' };
+}): Promise<
+  | { readonly report: PrivateReportJsonV1; readonly status: 'ok' }
+  | { readonly report: null; readonly status: 'db_outside_business_hours' }
+> {
+  if (!isReportDbAvailable(input.options)) {
+    return { report: null, status: 'db_outside_business_hours' };
+  }
+  const project = await input.options.repository.lookupProject({ projectSlug: input.projectSlug });
+  if (project?.visibility !== 'public') {
+    throw new PublicReportNotFoundError(input.reportId);
+  }
+  const metadata = await input.options.repository.readReportMetadata({
+    projectId: project.id,
+    reportId: input.reportId,
+  });
+  if (!metadata?.isPublic) {
+    throw new PublicReportNotFoundError(input.reportId);
+  }
+  const report = JSON.parse(await input.options.storage.getText(metadata.storageUri)) as unknown;
+  validatePrivateReportJson(report);
+  return { report, status: 'ok' };
 }
 
 export async function getPublicReportArtifacts(input: {
