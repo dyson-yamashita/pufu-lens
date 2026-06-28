@@ -9,6 +9,8 @@ import {
   createMemoryRateLimiter,
   createPublicChatMemoryRateLimiter,
   graphQuerySearchPatterns,
+  inferChatEditingMetadata,
+  inferPublicChatEditingMetadata,
   isWithinBusinessHours,
   ProjectAccessDeniedError,
   parseChatSourceRow,
@@ -39,6 +41,17 @@ const sampleSource = {
   rawDocumentId: 'raw-a',
   title: 'Spec Update',
 };
+
+assert.equal(inferChatEditingMetadata('このスレッドを要約して').inferredMode, 'summary');
+assert.equal(inferChatEditingMetadata('停滞要因とリスクは?').inferredMode, 'risk_scan');
+assert.equal(inferChatEditingMetadata('意思決定の経緯を時系列で教えて').inferredMode, 'timeline');
+assert.equal(inferChatEditingMetadata('次に確認すべきアクションは?').inferredMode, 'next_actions');
+assert.equal(inferChatEditingMetadata('全体像と関係を構造化して').inferredMode, 'structure');
+assert.equal(inferChatEditingMetadata('仕様変更は?').inferredMode, 'default');
+assert.equal(inferChatEditingMetadata('次年度の仕様変更は?').inferredMode, 'default');
+assert.equal(inferChatEditingMetadata('Nextcloud 連携の仕様変更は?').inferredMode, 'default');
+assert.equal(inferPublicChatEditingMetadata('公開レポートのリスクは?').inferredMode, 'default');
+assert.equal(inferPublicChatEditingMetadata('公開レポートを要約して').questionType, 'fact');
 
 assert.deepEqual(
   parseChatSourceRow({
@@ -122,12 +135,14 @@ function createRepository(): ChatRepository & {
 
 const repository = createRepository();
 const response = await runPrivateChat(
-  { projectSlug: 'sample-a', question: '仕様変更は?', userId: 'user-a' },
+  { projectSlug: 'sample-a', question: '停滞要因とリスクは?', userId: 'user-a' },
   { provider: createExtractiveChatProvider(), repository },
 );
 
 assert.equal(response.status, 'answered');
 assert.ok(response.answer.includes('Spec Update'));
+assert.equal(response.editing?.inferredMode, 'risk_scan');
+assert.equal(response.editing?.questionType, 'risk');
 assert.equal(response.sources.length, 4);
 assert.deepEqual(
   response.toolCalls.map((toolCall) => toolCall.name),
@@ -196,10 +211,16 @@ assert.equal(
   mastraGenerateReportWorkflowStartUrl({ MASTRA_API_URL: 'https://mastra.example.com/api' }),
   'https://mastra.example.com/api/workflows/generate-report/start-async',
 );
-assert.deepEqual(createMastraProjectChatBody({ projectId: 'project-a', question: '仕様変更は?' }), {
-  messages: [{ content: '仕様変更は?', role: 'user' }],
-  requestContext: { projectId: 'project-a' },
-});
+assert.deepEqual(
+  createMastraProjectChatBody({ projectId: 'project-a', question: '仕様変更を要約して' }),
+  {
+    messages: [{ content: '仕様変更を要約して', role: 'user' }],
+    requestContext: {
+      editing: inferChatEditingMetadata('仕様変更を要約して'),
+      projectId: 'project-a',
+    },
+  },
+);
 assert.deepEqual(
   createMastraGenerateReportWorkflowBody({
     generatedBy: 'admin-ui',
@@ -293,8 +314,10 @@ const mastraChatResponse = mastraGenerateToChatResponse({
     text: 'Mastra agent answer',
   },
   projectSlug: 'sample-a',
+  question: '未決の論点を整理して',
 });
 assert.equal(mastraChatResponse.answer, 'Mastra agent answer');
+assert.equal(mastraChatResponse.editing?.inferredMode, 'issue_mapping');
 assert.deepEqual(
   mastraChatResponse.toolCalls.map((toolCall) => toolCall.name),
   ['parsed-doc-fetch', 'graph-query'],
@@ -426,7 +449,12 @@ const failingGeminiProvider = createGeminiChatProvider({
   model: 'gemini-test',
 });
 await assert.rejects(
-  () => failingGeminiProvider.complete({ question: 'test', sources: [] }),
+  () =>
+    failingGeminiProvider.complete({
+      editing: inferChatEditingMetadata('test'),
+      question: 'test',
+      sources: [],
+    }),
   /Gemini chat request failed: HTTP 429: quota exceeded/,
 );
 
@@ -486,6 +514,8 @@ const publicChat = await runPublicChat(
 );
 assert.equal(publicChat.status, 'answered');
 assert.match(publicChat.answer, /activity|progress|src_activity_001/);
+assert.equal(publicChat.editing?.inferredMode, 'default');
+assert.match(publicChat.editing?.caveats.join(' ') ?? '', /公開レポート/);
 assert.deepEqual(
   publicChat.toolCalls.map((toolCall) => toolCall.name),
   ['public-report-fetch', 'public-context-fetch'],
@@ -508,6 +538,7 @@ assert.deepEqual(
     messages: [{ content: '公開レポートの主な進捗は?', role: 'user' }],
     requestContext: {
       contextBundle: publicContextBundle,
+      editing: inferPublicChatEditingMetadata('公開レポートの主な進捗は?'),
       projectSlug: 'sample-a',
       report: publicReport,
       reportId: 'report-a',
@@ -552,9 +583,11 @@ const mastraPublicChatResponse = mastraGenerateToPublicChatResponse({
     text: 'Mastra public agent answer',
   },
   projectSlug: 'sample-a',
+  question: '公開レポートを要約して',
   reportId: 'report-a',
 });
 assert.equal(mastraPublicChatResponse.answer, 'Mastra public agent answer');
+assert.equal(mastraPublicChatResponse.editing?.inferredMode, 'summary');
 assert.deepEqual(
   mastraPublicChatResponse.toolCalls.map((toolCall) => toolCall.name),
   ['public-report-fetch', 'public-context-fetch'],
@@ -582,6 +615,7 @@ const refusedPublicChat = await runPublicChat(
 );
 assert.equal(refusedPublicChat.status, 'refused');
 assert.equal(refusedPublicChat.sources.length, 0);
+assert.equal(refusedPublicChat.editing?.questionType, 'public_explanation');
 
 const publicLimiter = createPublicChatMemoryRateLimiter({ limit: 1, windowMs: 60_000 });
 await runPublicChat(
@@ -627,6 +661,7 @@ await assert.rejects(
   () =>
     failingGeminiPublicProvider.complete({
       contextBundle: publicContextBundle,
+      editing: inferPublicChatEditingMetadata('test'),
       projectSlug: 'sample-a',
       question: 'test',
       report: publicReport,

@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { getVisiblePublicProject } from './admin-db';
 import {
   createPublicChatMemoryRateLimiter,
+  inferPublicChatEditingMetadata,
   publicChatSources,
   shouldRefusePublicQuestion,
 } from './chat';
@@ -123,6 +124,7 @@ export async function handlePublicChatPost(
       return NextResponse.json({
         answer:
           '公開レポートの範囲外、または未公開情報の要求には回答できません。公開済み section id / public source id に基づく質問をしてください。',
+        editing: inferPublicChatEditingMetadata(question),
         projectSlug: input.projectSlug,
         reportId: input.reportId,
         sources: [],
@@ -157,6 +159,7 @@ export async function handlePublicChatPost(
         mastraGenerateToPublicChatResponse({
           mastraResponse: mastraBody,
           projectSlug: input.projectSlug,
+          question,
           reportId: input.reportId,
         }),
         publicChatSources(artifacts.report, artifacts.contextBundle),

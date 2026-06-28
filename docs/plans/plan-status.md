@@ -26,6 +26,7 @@
 | `docs/plans/007-data-source-content-preview/overview.md`   | `completed` | 2026-06-21 | Issue #148 / PR #150 で content preview を実装・検証。Issue #212 / PR #213 で row parsing を helper 化済み。Chat / Graph 導線は後続 plan 候補に分離。                                                                                                                             |
 | `docs/plans/008-agent-raw-reading/overview.md`             | `completed` | 2026-06-24 | Step 1–6 完了: Agent Raw Read View contract、Parser Profiles 廃止、adapter / repository、private chat/report raw 補完、trace / eval / docs 整備済み。                                                                                                                             |
 | `docs/plans/009-oss-deployment-options/overview.md`        | `completed` | 2026-06-26 | Issue #318 で Step 1 完了。Issue #325 で Step 2 の GCP Cloud Build CI example を追加。Issue #327 で Step 3 の deploy example を追加。Issue #329 で Step 4 の GCP Cloud Build operations docs を追加。Issue #331 で Step 5 の provider expansion guide を追加し、plan 全体を完了。 |
+| `docs/plans/010-editing-techniques-chat/overview.md`       | `completed` | 2026-06-28 | Issue #361 で selector なしの editing metadata 自動判定、Agent instructions、response metadata、compact UI 表示、unit / e2e / eval fixture 検証を実装。                                                                                                                           |
 
 ## 運用ルール
 

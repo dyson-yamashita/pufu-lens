@@ -10,6 +10,7 @@ interface ChatEvalFixture {
 interface ChatEvalCase {
   readonly expectAnswerIncludes?: readonly string[];
   readonly expectErrorIncludes?: string;
+  readonly expectEditingMode?: string;
   readonly expectForbiddenAnswerIncludes?: readonly string[];
   readonly expectHttpStatus?: number;
   readonly expectStatus: string;
@@ -24,6 +25,7 @@ interface ChatEvalCase {
 interface ChatEvalResponse {
   readonly answer?: string;
   readonly error?: { readonly code?: string; readonly message?: string } | string | null;
+  readonly editing?: { readonly inferredMode?: string };
   readonly sources?: readonly unknown[];
   readonly status?: string;
   readonly toolCalls?: ReadonlyArray<{ readonly name?: string }>;
@@ -119,6 +121,13 @@ function assertCase(testCase: ChatEvalCase, httpStatus: number, response: ChatEv
         `Expected answer not to include "${forbidden}" for "${testCase.question}", got "${answer}".`,
       );
     }
+  }
+  if (testCase.expectEditingMode && response.editing?.inferredMode !== testCase.expectEditingMode) {
+    throw new Error(
+      `Expected editing mode ${testCase.expectEditingMode} for "${testCase.question}", got ${String(
+        response.editing?.inferredMode,
+      )}.`,
+    );
   }
   const sourceCount = response.sources?.length ?? 0;
   if (sourceCount < testCase.minSources) {

@@ -1,7 +1,13 @@
 'use client';
 
 import { type ReactNode, useEffect, useRef } from 'react';
-import type { ChatResponse, ChatSource, PublicChatResponse, PublicChatSource } from './chat';
+import type {
+  ChatEditingMetadata,
+  ChatResponse,
+  ChatSource,
+  PublicChatResponse,
+  PublicChatSource,
+} from './chat';
 
 export type ChatThreadUserMessage = {
   readonly id: string;
@@ -173,6 +179,7 @@ function ChatThreadMessageItem({
       ) : (
         <PublicSourceStrip index={index} sources={(response as PublicChatResponse).sources} />
       )}
+      <EditingDetails editing={response.editing} index={index} />
       <ToolCallsDetails index={index} toolCalls={response.toolCalls} />
     </article>
   );
@@ -389,6 +396,71 @@ function ToolCallsDetails({
       </div>
     </details>
   );
+}
+
+function EditingDetails({
+  editing,
+  index,
+}: {
+  readonly editing?: ChatEditingMetadata | null;
+  readonly index: number;
+}) {
+  if (!editing) {
+    return null;
+  }
+  const operations = editing.operations ?? [];
+  const caveats = editing.caveats ?? [];
+
+  return (
+    <details className="chat-editing-metadata" data-testid={`chat-message-editing-${index}`}>
+      <summary>編集方針: {editingModeLabel(editing.inferredMode)}</summary>
+      <div className="tool-call-list">
+        <span className="status-badge">確度: {editingConfidenceLabel(editing.confidence)}</span>
+        <span className="status-badge">種別: {editingQuestionTypeLabel(editing.questionType)}</span>
+        {operations.map((operation) => (
+          <span className="status-badge" key={operation}>
+            {operation}
+          </span>
+        ))}
+      </div>
+      {caveats.length > 0 ? <p className="chat-editing-caveats">{caveats.join(' / ')}</p> : null}
+    </details>
+  );
+}
+
+function editingModeLabel(mode: ChatEditingMetadata['inferredMode']): string {
+  const labels: Record<ChatEditingMetadata['inferredMode'], string> = {
+    default: '通常回答',
+    issue_mapping: '論点整理',
+    next_actions: '次の行動',
+    risk_scan: 'リスク確認',
+    structure: '構造化',
+    summary: '要約',
+    timeline: '時系列',
+  };
+  return labels[mode];
+}
+
+function editingConfidenceLabel(confidence: ChatEditingMetadata['confidence']): string {
+  const labels: Record<ChatEditingMetadata['confidence'], string> = {
+    high: '高',
+    low: '低',
+    medium: '中',
+  };
+  return labels[confidence];
+}
+
+function editingQuestionTypeLabel(questionType: ChatEditingMetadata['questionType']): string {
+  const labels: Record<ChatEditingMetadata['questionType'], string> = {
+    fact: '事実確認',
+    planning: '計画',
+    public_explanation: '公開説明',
+    risk: 'リスク',
+    status: '状態確認',
+    timeline: '時系列',
+    unknown: '未分類',
+  };
+  return labels[questionType];
 }
 
 function toolCallDisplayItems(
