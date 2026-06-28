@@ -256,7 +256,7 @@ function publicChatSourcesFromReport(
     section.sources?.forEach((source, index) => {
       if (!references.has(source.document_id)) {
         references.set(source.document_id, {
-          label: source.title ?? source.doc_type,
+          label: source.title?.trim() || source.doc_type,
           publicSourceId: `src_${section.id}_${index + 1}`,
           sectionId: section.id,
         });
