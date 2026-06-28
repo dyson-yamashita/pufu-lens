@@ -198,7 +198,7 @@ UI は補助にすぎないため、以下でも同じ制約を検証する。
 
 ### 実装範囲
 
-- expired / scope_missing / revoked の表示と再接続導線を追加する。
+- expired / scope_missing / revoked 相当の表示と再接続導線を追加する。
 - disconnect 時の既存 data source の表示と実行拒否を e2e に追加する。
 - `.env.example` と deploy checklist に provider OAuth client、callback URL、secret 名を追記する。
 - GitHub App id、private key secret、webhook secret、setup callback URL、installation 権限の確認手順を deploy checklist に追記する。
@@ -214,7 +214,7 @@ UI は補助にすぎないため、以下でも同じ制約を検証する。
 
 ### 対応状況
 
-- Issue #365 で Settings の expired / scope_missing / error / not_connected 表示、Data Sources の既存 source 実行不可表示、deploy checklist / `.env.example` / deployment overview の運用情報を追加する。
+- Issue #365 で Settings の expired / scope_missing / revoked 相当の表示、Data Sources の既存 source 実行不可表示、deploy checklist / `.env.example` / deployment overview の運用情報を追加する。
 
 ## 検証方針
 

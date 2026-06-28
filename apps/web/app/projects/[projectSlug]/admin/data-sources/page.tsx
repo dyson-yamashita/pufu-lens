@@ -189,8 +189,8 @@ export default async function DataSourcesPage({
                       className="connection-required-notice"
                       data-testid="data-source-selected-connection-notice"
                     >
-                      {sourceTypeLabel(selectedSource.sourceType)} の connection が未接続、失効、
-                      または scope 不足です。Settings で再接続するまで Save / Test / Collect
+                      {sourceTypeLabel(selectedSource.sourceType)} の connection
+                      を利用できません。Settings で接続状態を確認するまで Save / Test / Collect
                       は実行できません。{' '}
                       <Link href={connectionStartHref(project.slug, selectedSource.sourceType)}>
                         接続を確認

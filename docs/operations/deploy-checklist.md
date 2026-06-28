@@ -35,6 +35,7 @@ API key、DB password は記録しない。
 - `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET`: GitHub アプリログイン用 OAuth。callback URL は `${AUTH_URL}/api/auth/callback/github`。実値は記録しない。
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`: Google data source 連携用 OAuth。callback URL は `${APP_BASE_URL}/api/connections/google/callback`。App Hosting runtime secret として設定し、実値は記録しない。
 - `CONNECTION_SECRET_KEY`: OAuth token と GitHub App private key metadata の暗号化 key。App Hosting runtime secret として設定し、実値は記録しない。
+- `GITHUB_APP_WEBHOOK_SECRET`: GitHub App webhook を有効化する場合だけ provider 側に設定する。現行 runtime は GitHub App setup callback を使い、webhook 受信 route は持たない。実値は記録しない。
 - `AUTH_CREDENTIALS_EMAIL` / `AUTH_CREDENTIALS_PASSWORD`: Credentials user 作成時だけローカル環境で使う。実値は記録しない。
 - `GEMINI_API_KEY`: Google AI API key 利用時のみ。実値は記録しない。
 - `GEMINI_CHAT_MODEL`: Chat / report model。モデル名のみ記録可。
@@ -52,6 +53,7 @@ API key、DB password は記録しない。
 - GitHub App:
   - setup callback URL: `${APP_BASE_URL}/api/connections/github/callback`
   - App slug、App ID、private key は project Settings の GitHub App form で登録する。private key 実値は docs、issue、PR、log に記録しない。
+  - webhook を provider 側で有効化する場合は、webhook secret を provider secret store に保存し、docs、issue、PR、log に記録しない。
   - repository permission は Issues / Pull requests / Contents の読み取りを有効にする。
   - installation 対象 repository に data source の `owner/repo` が含まれることを確認する。
   - installation 解除または App 設定不備時は、Settings の GitHub 連携から再設定する。
