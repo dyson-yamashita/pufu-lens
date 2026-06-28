@@ -221,40 +221,12 @@ test('scenario: member sees private report API error codes', async ({ page }) =>
   await expect(page.getByTestId('report-status')).toHaveText('report_not_found');
 });
 
-test('scenario: public user reads redacted report with shared header and no question panel', async ({
+test('scenario: public user reads report with shared private rendering and no question panel', async ({
   page,
 }) => {
-  const publicReport = {
-    period: report.period,
-    published_at: '2026-06-04T10:00:00.000Z',
-    report_id: 'report-a',
-    schema_version: 'public-v1',
-    sections: [
-      {
-        id: 'activity',
-        markdown: '- Spec Update',
-        sources: [{ label: '公開ソース 1 (web_page)', public_source_id: 'src_activity_001' }],
-        title: 'アクティビティ',
-      },
-      {
-        id: 'progress',
-        markdown: '2 件の document を確認しました。',
-        metrics: { documents: 2 },
-        title: '進捗',
-      },
-      {
-        id: 'risks',
-        markdown: '公開可能な課題はありません。',
-        metrics: {},
-        title: '課題',
-      },
-    ],
-    summary: '公開可能な概要です。',
-    title: report.title,
-  };
   await page.route('**/api/public/projects/sample-a/reports/report-a*', async (route) => {
     await route.fulfill({
-      body: JSON.stringify({ report: publicReport, status: 'ok' }),
+      body: JSON.stringify({ report, status: 'ok' }),
       contentType: 'application/json',
       status: 200,
     });
@@ -264,22 +236,36 @@ test('scenario: public user reads redacted report with shared header and no ques
   await expect(page.getByTestId('global-nav')).toBeVisible();
   await expect(page.getByTestId('global-nav-reports')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('heading', { name: 'Public Report' })).toBeVisible();
-  await expect(page.getByTestId('public-report-document')).toContainText('公開可能な概要です。');
+  await expect(page.getByTestId('public-report-document')).toContainText(report.summary);
   await expect(page.getByTestId('pufu-report-viewer')).toBeVisible();
   await expect(page.getByTestId('pufu-report-score')).toBeVisible();
-  await expect(page.locator('.public-report-document .metric-strip.compact')).toHaveCount(1);
-  await expect(page.getByTestId('public-report-section-activity')).toContainText(
-    'src_activity_001',
+  await expect(page.getByTestId('public-report-section-progress')).toContainText('判断材料');
+  await expect(page.getByTestId('public-report-source-doc-a')).toContainText('web');
+  await expect(page.getByTestId('public-report-source-doc-a').getByRole('link')).toHaveAttribute(
+    'href',
+    'https://example.com/spec',
   );
-  await expect(page.getByTestId('public-report-source-src_activity_001')).toContainText(
-    'public report source',
-  );
-  await expect(page.getByTestId('public-report-document')).not.toContainText('project-a');
-  await expect(page.getByTestId('public-report-document')).not.toContainText('doc-a');
-  await expect(page.getByTestId('public-report-document')).not.toContainText('https://example.com');
+  await expect(page.getByTestId('public-report-document')).toContainText('Spec Update');
 
   await expect(page.getByTestId('public-chat-panel')).toHaveCount(0);
   await expect(page.getByTestId('public-chat-question-input')).toHaveCount(0);
+});
+
+test('scenario: public report gate hides private project reports', async ({ page }) => {
+  await page.route('**/api/public/projects/private-a/reports/report-a*', async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        error: { code: 'public_report_not_found', message: 'Public report not found' },
+      }),
+      contentType: 'application/json',
+      status: 404,
+    });
+  });
+
+  await page.goto('/reports/public/private-a/report-a');
+
+  await expect(page.getByTestId('public-report-status')).toHaveText('public_report_not_found');
+  await expect(page.getByTestId('public-report-document')).toHaveCount(0);
 });
 
 test('scenario: hostile client sends unsafe input and public/publish APIs reject it @api', async ({

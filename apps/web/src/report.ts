@@ -127,6 +127,9 @@ export async function getPrivateReport(input: {
   }
   const report = JSON.parse(await input.options.storage.getText(metadata.storageUri)) as unknown;
   validatePrivateReportJson(report);
+  if (report.report_id !== input.reportId || report.project_id !== project.id) {
+    throw new ReportNotFoundError(input.reportId);
+  }
   return { report, status: 'ok' };
 }
 
@@ -270,12 +273,49 @@ export async function revokePublicReport(input: {
 }
 
 export async function getPublicReport(input: {
+  readonly options: ReportAccessOptions & { readonly storage: ObjectStorage };
   readonly projectSlug: string;
   readonly reportId: string;
-  readonly storage: ObjectStorage;
-}): Promise<{ readonly report: PublicReportJsonV1; readonly status: 'ok' }> {
-  const artifacts = await getPublicReportArtifacts(input);
-  return { report: artifacts.report, status: 'ok' };
+}): Promise<
+  | { readonly report: PrivateReportJsonV1; readonly status: 'ok' }
+  | { readonly report: null; readonly status: 'db_outside_business_hours' }
+> {
+  if (!isReportDbAvailable(input.options)) {
+    return { report: null, status: 'db_outside_business_hours' };
+  }
+  const { metadata, project } = await assertPublicReportAccess({
+    projectSlug: input.projectSlug,
+    reportId: input.reportId,
+    repository: input.options.repository,
+  });
+  const report = JSON.parse(await input.options.storage.getText(metadata.storageUri)) as unknown;
+  validatePrivateReportJson(report);
+  if (report.report_id !== input.reportId || report.project_id !== project.id) {
+    throw new PublicReportNotFoundError(input.reportId);
+  }
+  return { report, status: 'ok' };
+}
+
+export async function assertPublicReportAccess(input: {
+  readonly projectSlug: string;
+  readonly reportId: string;
+  readonly repository: ReportRepository;
+}): Promise<{
+  readonly metadata: ReportListItem;
+  readonly project: NonNullable<Awaited<ReturnType<ReportRepository['lookupProject']>>>;
+}> {
+  const project = await input.repository.lookupProject({ projectSlug: input.projectSlug });
+  if (project?.visibility !== 'public') {
+    throw new PublicReportNotFoundError(input.reportId);
+  }
+  const metadata = await input.repository.readReportMetadata({
+    projectId: project.id,
+    reportId: input.reportId,
+  });
+  if (!metadata?.isPublic) {
+    throw new PublicReportNotFoundError(input.reportId);
+  }
+  return { metadata, project };
 }
 
 export async function getPublicReportArtifacts(input: {

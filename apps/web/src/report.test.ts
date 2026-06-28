@@ -26,7 +26,6 @@ import {
   validatePrivateReportJson,
   validatePublicContextBundle,
   validatePublicReportJson,
-  writePublicProjectManifest,
 } from './report.ts';
 
 function pufuScoreTexts(score: ReturnType<typeof createPufuScoreFromReport>): readonly string[] {
@@ -104,9 +103,13 @@ function createRepository(): ReportRepository & {
       return undefined;
     },
     async lookupProject({ projectSlug }) {
-      return projectSlug === 'sample-a'
-        ? { id: 'project-a', slug: 'sample-a', visibility: 'public' }
-        : undefined;
+      if (projectSlug === 'sample-a') {
+        return { id: 'project-a', slug: 'sample-a', visibility: 'public' };
+      }
+      if (projectSlug === 'sample-b') {
+        return { id: 'project-b', slug: 'sample-b', visibility: 'private' };
+      }
+      return undefined;
     },
     async listRecentDocuments({ projectId }) {
       assert.equal(projectId, 'project-a');
@@ -823,12 +826,28 @@ assert.match(JSON.stringify(markdownSourceScore), /Markdown Source/);
 assert.doesNotMatch(JSON.stringify(markdownSourceScore), / {2}Markdown Source/);
 
 const publicDetail = await getPublicReport({
+  options: { repository, storage },
   projectSlug: 'sample-a',
   reportId: generated.report.report_id,
-  storage,
 });
 assert.equal(publicDetail.status, 'ok');
 assert.equal(publicDetail.report.report_id, generated.report.report_id);
+assert.equal(publicDetail.report.schema_version, 'v1');
+assert.match(publicDetail.report.summary, /contact@example\.com/);
+await storage.put(
+  generated.storageUri,
+  `${JSON.stringify({ ...privateReport, report_id: 'other-report' }, null, 2)}\n`,
+);
+await assert.rejects(
+  () =>
+    getPublicReport({
+      options: { repository, storage },
+      projectSlug: 'sample-a',
+      reportId: generated.report.report_id,
+    }),
+  PublicReportNotFoundError,
+);
+await storage.put(generated.storageUri, `${JSON.stringify(privateReport, null, 2)}\n`);
 const publicArtifacts = await getPublicReportArtifacts({
   projectSlug: 'sample-a',
   reportId: generated.report.report_id,
@@ -891,32 +910,22 @@ gsStorage.objects.set(
     public_report_uri: gsReportUri,
   }),
 );
-const gsPublicDetail = await getPublicReport({
+const gsPublicDetail = await getPublicReportArtifacts({
   projectSlug: 'sample-a',
   reportId: generated.report.report_id,
   storage: gsStorage,
 });
 assert.equal(gsPublicDetail.status, 'ok');
 
-await writePublicProjectManifest({
-  projectSlug: 'sample-a',
-  storage,
-  visibility: 'private',
-});
 await assert.rejects(
   () =>
     getPublicReport({
-      projectSlug: 'sample-a',
-      reportId: generated.report.report_id,
-      storage,
+      options: { repository, storage },
+      projectSlug: 'sample-b',
+      reportId: 'project-b-report',
     }),
   PublicReportNotFoundError,
 );
-await writePublicProjectManifest({
-  projectSlug: 'sample-a',
-  storage,
-  visibility: 'public',
-});
 
 const revoked = await revokePublicReport({
   now: new Date('2026-06-04T14:00:00.000Z'),
@@ -930,9 +939,9 @@ assert.equal(typeof revoked.manifest.revoked_at, 'string');
 await assert.rejects(
   () =>
     getPublicReport({
+      options: { repository, storage },
       projectSlug: 'sample-a',
       reportId: generated.report.report_id,
-      storage,
     }),
   PublicReportNotFoundError,
 );

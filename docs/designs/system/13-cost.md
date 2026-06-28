@@ -23,7 +23,7 @@ LLM を使う主な場面は、チャット応答、レポート生成、embeddi
 
 GCE VM 上の PostgreSQL はコスト最適化のため業務時間のみ起動する。業務時間外は DB 依存機能（チャット、管理 UI、取り込み状況、データソース管理、手動 ingestion、private レポート閲覧）は利用不可にし、UI では営業時間外メッセージを表示する。定期 `curate-workflow` / `ingest-workflow` / `generate-report` job も DB 依存のため、初期構築では DB 稼働時間内に実行する。夜間実行が必要になった場合は、VM 起動・job 実行・VM 停止を 1 つの運用単位として自動化する。
 
-公開済みレポートの閲覧は DB 稼働確認に依存させず、Object Storage 上の report JSON と公開用 manifest / metadata を取得して表示する。そのため業務時間外でも、public report は閲覧できる。private report は project member 認可に DB が必要なため、業務時間外は利用不可にする。
+public report / public chat は private report / private chat と同じ処理を使い、DB 上の `projects.visibility` と `reports.is_public` でアクセス権を確認する。そのため業務時間外は public / private とも report 閲覧と chat を利用不可にする。公開用 artifact は互換・検証用途として保存できるが、表示可否の正は DB metadata とする。
 
 ### 2. コスト最適化施策
 

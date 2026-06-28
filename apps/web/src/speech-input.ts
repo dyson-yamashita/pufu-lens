@@ -67,18 +67,25 @@ export function useSpeechInput({
     setSupported(Boolean(speechRecognitionConstructor()));
   }, []);
 
-  useEffect(() => {
-    return () => {
-      recognitionRef.current?.stop();
-      recognitionRef.current = null;
-    };
-  }, []);
-
-  const stop = useCallback(() => {
+  const stop = useCallback((options?: { readonly updateState?: boolean }) => {
     recognitionRef.current?.stop();
     recognitionRef.current = null;
-    setListening(false);
+    if (options?.updateState ?? true) {
+      setListening(false);
+    }
   }, []);
+
+  useEffect(() => {
+    return () => {
+      stop({ updateState: false });
+    };
+  }, [stop]);
+
+  useEffect(() => {
+    if (disabled) {
+      stop();
+    }
+  }, [disabled, stop]);
 
   const toggle = useCallback(() => {
     if (disabled) {

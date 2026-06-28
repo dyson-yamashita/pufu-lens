@@ -8,7 +8,7 @@ Report API、Public Report API、signed URL の共通契約は [API デザイン
 
 レポートは **JSON ファイル** として生成し、Object Storage に保存する。Web からは `/api/projects/[projectSlug]/reports/[reportId]` API 経由で JSON を取得し、Next.js 側で描画する（HTML レンダリングはフロント側責務）。
 
-PostgreSQL は業務時間のみ起動するため、業務時間外でも閲覧可能にするのは公開済みレポートだけに限定する。public report は private report JSON をそのまま公開せず、公開時に redaction 済みの public report JSON、公開用 manifest / metadata、public chat 用 context bundle を Object Storage 側へ別 artifact として保存する。public report は DB 稼働確認に依存せず JSON を取得できるようにする。private report は project member 認可のため DB 依存 API として扱い、業務時間外はチャットと同様に利用不可にする。
+PostgreSQL は業務時間のみ起動するため、DB 依存の report / chat 入口は業務時間外に利用不可にする。public report / public chat も表示・回答生成の処理は private report / private chat と同じ経路を使い、違いはアクセス権だけに限定する。public 入口は `projects.visibility = 'public'` かつ `reports.is_public = true` のときだけ未ログインで許可し、private project では public report / public chat のいずれも許可しない。
 
 Private report JSON スキーマ（`schema_version: "v1"`）：
 
@@ -60,22 +60,22 @@ Private report JSON スキーマ（`schema_version: "v1"`）：
 }
 ```
 
-プ譜ビューは `sections.markdown` の本文をそのまま流し込まず、private report に保存した `pufu_sources`（生成時に参照した data source の title / snippet / doc_type / canonical_uri）を第一入力にして ProjectScoreModel を組み立てる。過去 artifact など `pufu_sources` がない private report では、`sections[].sources` または activity section の source 行を後方互換の入力として扱う。public report でもログイン済みの private report と同じプ譜を描画できるよう、公開可能な title / snippet だけを redaction 済み `pufu_sources` として保存し、内部 `document_id` や `canonical_uri` は公開しない。
+プ譜ビューは `sections.markdown` の本文をそのまま流し込まず、private report に保存した `pufu_sources`（生成時に参照した data source の title / snippet / doc_type / canonical_uri）を第一入力にして ProjectScoreModel を組み立てる。過去 artifact など `pufu_sources` がない private report では、`sections[].sources` または activity section の source 行を後方互換の入力として扱う。public report でも同じ private report JSON を描画するため、プ譜表示結果は member 向け report と一致する。
 
-Public report JSON は private report JSON から公開可能な情報だけを抽出した別 schema とする。内部 `project_id`、`document_id`、raw / parsed の URI、社内 URL、メールアドレス、個人情報を含む可能性のある未加工 snippet は含めない。根拠は `section_id` と `public_source_id` だけで示し、プ譜用の redaction 済み snippet は public pufu source として分離する。
+Public report JSON / context bundle は公開 artifact 互換や検証用途として生成できるが、現行の public report 表示と public chat の実行経路では private report / private chat の処理を使う。公開可否の判定は DB の project visibility と report `is_public` metadata を正とする。
 
 #### Raw 補完を伴う private report 生成と public 公開
 
 Private report 生成では、まず parsed / graph / vector から context bundle を組み立て、根拠確認や文脈補完が必要な場合のみ [Agent Raw Read View](07-chat.md#agent-raw-read-view--raw-document-fetch-契約) の `sections` を **補助 evidence** として provider context に追加する。
 
-| フェーズ             | raw read view の扱い                                                                    |
-| -------------------- | --------------------------------------------------------------------------------------- |
-| Private 生成         | 利用可。bounded section を根拠補完に使う                                                |
-| Private JSON 保存    | `rawDocumentId`、private raw locator、内部 storage URI、raw/parsed URI は **含めない**  |
-| Public 公開          | raw 補完あり生成でも **公開可能**                                                       |
-| Public artifact 保存 | redaction / policy validation 済み **要約** と **公開可能 source label / snippet のみ** |
+| フェーズ             | raw read view の扱い                                                                   |
+| -------------------- | -------------------------------------------------------------------------------------- |
+| Private 生成         | 利用可。bounded section を根拠補完に使う                                               |
+| Private JSON 保存    | `rawDocumentId`、private raw locator、内部 storage URI、raw/parsed URI は **含めない** |
+| Public 公開          | raw 補完あり生成でも **公開可能**。表示処理は private report と同じ                    |
+| Public artifact 保存 | 互換・検証用に redaction / policy validation 済み artifact を保存可能                  |
 
-public project の report を raw 補完付きで生成しても公開できる。ただし public artifact に保存できるのは次に限定する。
+public project の report を raw 補完付きで生成しても公開できる。互換・検証用 public artifact に保存できるのは次に限定する。
 
 - redaction / policy validation 済み summary と section markdown
 - 公開可能な `public_source_id` / label / title / occurred_at / redaction 済み snippet
@@ -86,7 +86,7 @@ public artifact に **含めてはならない** もの:
 - 未公開の raw excerpt（raw read view section text の生引用）
 - OAuth token、secret、メールアドレス等の PII
 
-private report detail では、raw 補完で参照した source（`document_id`、section id、canonical URI 等）を project member が追跡できる。public 側にはその内部追跡情報を漏らさない。
+private report detail と public report detail は同じ private report JSON を描画する。public 入口に出すかどうかは project visibility と report `is_public` metadata で制御する。
 
 raw 補完あり report の regression では、private report / public artifact の両方で `rawDocumentId`、storage URI、private locator、token、secret、API key、メールアドレスが保存されていないことを確認する。Mastra workflow trace / log では raw 補完の有無を `raw-document-fetch.trace` と report workflow の成功 / 失敗 status で確認し、raw section text を trace-safe summary として保存しない。
 
@@ -199,28 +199,29 @@ const generateReportWorkflow = createWorkflow({
 
 ### 3. 配信方針
 
-| 配置                                   | 配置先                               | 理由                                                                      |
-| -------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------- |
-| レポート本体 JSON                      | Object Storage（local volume / GCS） | 大きな本文をリレーショナル DB に置かない                                  |
-| Public report JSON                     | Object Storage（local volume / GCS） | private report JSON を直接公開せず、公開可能な情報だけを配信する          |
-| 公開レポート閲覧用 metadata / manifest | Object Storage（local volume / GCS） | DB 停止中でも公開済みレポートを表示する                                   |
-| Public Chat 用 context bundle          | Object Storage（local volume / GCS） | public chat が DB / raw / parsed に触れず、公開許可済み情報だけで回答する |
-| メタデータ・要約                       | PostgreSQL `reports`                 | 業務時間内の private report 一覧、全文検索、管理操作                      |
-| 検索用埋め込み                         | pgvector `report_chunks`             | 過去レポートの意味検索                                                    |
+| 配置                                   | 配置先                               | 理由                                                 |
+| -------------------------------------- | ------------------------------------ | ---------------------------------------------------- |
+| レポート本体 JSON                      | Object Storage（local volume / GCS） | 大きな本文をリレーショナル DB に置かない             |
+| Public report JSON                     | Object Storage（local volume / GCS） | 旧互換・検証用の redaction 済み artifact             |
+| 公開レポート閲覧用 metadata / manifest | Object Storage（local volume / GCS） | 旧互換・検証用の公開 artifact metadata               |
+| Public Chat 用 context bundle          | Object Storage（local volume / GCS） | 旧互換・検証用の public context artifact             |
+| メタデータ・要約                       | PostgreSQL `reports`                 | 業務時間内の private report 一覧、全文検索、管理操作 |
+| 検索用埋め込み                         | pgvector `report_chunks`             | 過去レポートの意味検索                               |
 
 Web は以下のエンドポイントで JSON を取得する：
 
 - `GET /api/projects/[projectSlug]/reports` → private report を含む project member 向け一覧（DB 依存。業務時間外は `db_outside_business_hours`）
 - `GET /api/projects/[projectSlug]/reports/[reportId]` → private report JSON 本体（DB で project member 認可後、Object Storage から取得。業務時間外は `db_outside_business_hours`）
 - `GET /api/projects/[projectSlug]/reports/[reportId]/signed-url` → private report 向けに短時間 signed URL を発行（DB 依存。オプション）
-- `GET /api/public/reports/[reportId]` → redaction 済み public report JSON 本体（公開用 manifest / metadata で公開可否を判定し、業務時間外でも Object Storage から取得）
-- `POST /api/public/reports/[reportId]/chat` → redaction 済み public report と public context bundle だけを使う public chat（DB 非依存、厳しめの rate limit）
+- `GET /api/public/projects/[projectSlug]/reports/[reportId]` → public project かつ公開済み report の private report JSON 本体（DB で公開可否を判定。業務時間外は `db_outside_business_hours`）
+- `POST /api/public/projects/[projectSlug]/reports/[reportId]/chat` → public project かつ公開済み report を確認したうえで private chat と同じ project chat agent を使う public chat（DB 依存、厳しめの rate limit）
+- `GET /api/public/reports/[reportId]` / `POST /api/public/reports/[reportId]/chat` → 旧互換 alias。`projectSlug` を解決できない場合は `404` とし、正規入口は project-scoped path とする
 
-report 生成時は既定で private report として `<project_slug>/reports/private/<report_id>.json` に保存する。project admin が `is_public=false` から `true` に変更したとき、公開用 redaction を実行し、public report JSON、公開用 manifest / metadata、public chat 用 context bundle を作成・更新する。`true` から `false` に戻したときは、公開用 manifest / metadata と public artifact を削除または無効化し、Public Report API / Public Chat API は同じ `404` を返す。
+report 生成時は既定で private report として `<project_slug>/reports/private/<report_id>.json` に保存する。project admin が `is_public=false` から `true` に変更したときも、現行の Public Report API / Public Chat API は DB metadata で公開可否を確認し、private report JSON と private chat と同じ project chat agent を使う。private / public の処理差分はアクセス権判定だけにし、private project または未公開 report は Public Report API / Public Chat API の両方で同じ `404` を返す。`true` から `false` に戻したときも DB metadata を正として即時に非公開化する。
 
-公開用 manifest は `<project_slug>/reports/public/<report_id>/manifest.json` の固定パスに保存する。manifest は `report_id`、`schema_version`、`project_slug`、`public_report_uri`、`public_context_bundle_uri`、`published_at`、`revoked_at`、`etag`、`artifact_version` を持つ。manifest は未公開化の反映を優先して `Cache-Control: no-store` または短い TTL にし、public report JSON と context bundle は `<project_slug>/reports/public/<report_id>/<artifact_version>/...` の versioned URI に保存する。Next.js は manifest に載った URI だけを server side で解決し、ブラウザや LLM から渡された URI は使わない。
+旧互換の公開用 manifest は `<project_slug>/reports/public/<report_id>/manifest.json` の固定パスに保存する。manifest は `report_id`、`schema_version`、`project_slug`、`public_report_uri`、`public_context_bundle_uri`、`published_at`、`revoked_at`、`etag`、`artifact_version` を持つ。manifest は未公開化の反映を優先して `Cache-Control: no-store` または短い TTL にし、public report JSON と context bundle は `<project_slug>/reports/public/<report_id>/<artifact_version>/...` の versioned URI に保存する。ただし現行の Next.js public 表示・chat は manifest / public artifact を正とせず、DB metadata と private report JSON を使う。
 
-Public API は DB 停止中でも `reportId` を解決できる必要があるため、公開ページの正規 URL は `/reports/public/[projectSlug]/[reportId]` とする。Next.js は URL の `projectSlug` から `<project_slug>/reports/public/<report_id>/manifest.json` を読み、manifest 不在、`revoked_at` 設定済み、許可 prefix 外 URI、etag / artifact version 不一致はいずれも同じ `404` とする。
+公開ページの正規 URL は `/reports/public/[projectSlug]/[reportId]` とする。Next.js は URL の `projectSlug` と `reportId` を正規キーとして扱い、DB 上の project visibility / report `is_public` を確認して同じ access / 404 contract を適用する。公開用 manifest / artifact は互換・検証用であり、現行の表示可否判定の正は DB metadata とする。
 
 Next.js のページ `app/projects/[projectSlug]/reports/[reportId]/page.tsx` はクライアント or サーバーから JSON を取得し、`schema_version` に従ってレンダリングする。
 

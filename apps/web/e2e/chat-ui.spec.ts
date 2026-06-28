@@ -19,12 +19,12 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
           sources: [
             {
               label: 'Issue Summary',
-              publicSourceId: 'src_issue_001',
+              publicSourceId: 'src_issues_1',
               sectionId: 'issues',
             },
           ],
           status: 'answered',
-          toolCalls: [{ name: 'public-context-fetch', resultCount: 2 }],
+          toolCalls: [{ name: 'public-report-fetch', resultCount: 2 }],
         }),
         contentType: 'application/json',
         status: 200,
@@ -46,16 +46,13 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
         reportId: 'report-a',
         sources: [
           {
-            label: 'https://example.com/spec',
-            publicSourceId: 'src_spec_001',
-            sectionId: 'activity',
+            label: 'Spec Update',
+            publicSourceId: 'src_progress_1',
+            sectionId: 'progress',
           },
         ],
         status: 'answered',
-        toolCalls: [
-          { name: 'public-report-fetch', resultCount: 1 },
-          { name: 'public-context-fetch', resultCount: 1 },
-        ],
+        toolCalls: [{ name: 'public-report-fetch', resultCount: 2 }],
       }),
       contentType: 'application/json',
       status: 200,
@@ -80,9 +77,12 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
   await expect(page.locator('[data-testid="chat-assistant-message-1"] li')).toContainText(
     'Markdown bullet',
   );
-  await expect(page.getByTestId('chat-message-sources-1')).toContainText(
+  await expect(page.getByTestId('chat-message-sources-1')).toContainText('src_progress_1');
+  await expect(page.getByTestId('chat-message-sources-1')).toContainText('Spec Update');
+  await expect(page.getByTestId('chat-message-sources-1')).not.toContainText(
     'https://example.com/spec',
   );
+  await expect(page.getByTestId('chat-message-sources-1')).not.toContainText('doc-spec-001');
   await expect(page.getByTestId('chat-message-tool-calls-1')).toContainText('public-report-fetch');
   await expect(page.getByTestId('chat-message-editing-1')).toContainText('要約');
   await expect(page.getByTestId('chat-message-editing-1')).toContainText('凝縮');
@@ -91,7 +91,40 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
   await page.getByTestId('public-project-chat-submit-button').click();
   await expect(page.getByTestId('chat-assistant-message-1')).toContainText('Spec Update');
   await expect(page.getByTestId('chat-assistant-message-3')).toContainText('2件目の回答');
+  await expect(page.getByTestId('chat-message-sources-3')).toContainText('src_issues_1');
   await expect(page.getByTestId('chat-message-sources-3')).toContainText('Issue Summary');
+  await expect(page.getByTestId('chat-message-sources-3')).not.toContainText('raw-issue-001');
   await expect(page.getByTestId('chat-message-editing-3')).toContainText('論点整理');
   await expect(page.getByTestId('chat-message-editing-3')).toContainText('状態確認');
+});
+
+test('scenario: public project chat locks input outside database business hours', async ({
+  page,
+}) => {
+  await page.route('**/api/public/projects/sample-a/chat', async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        answer: 'db_outside_business_hours',
+        projectSlug: 'sample-a',
+        reportId: 'report-a',
+        sources: [],
+        status: 'db_outside_business_hours',
+        toolCalls: [],
+      }),
+      contentType: 'application/json',
+      status: 503,
+    });
+  });
+
+  await page.goto('/projects/sample-a/chat');
+
+  await page.getByTestId('public-project-chat-question-input').fill('営業時間外ですか');
+  await page.getByTestId('public-project-chat-submit-button').click();
+
+  await expect(page.getByTestId('public-project-chat-disabled-notice')).toHaveText(
+    'db_outside_business_hours',
+  );
+  await expect(page.getByTestId('public-project-chat-question-input')).toBeDisabled();
+  await expect(page.getByTestId('public-project-chat-submit-button')).toBeDisabled();
+  await expect(page.getByTestId('public-project-chat-mic-button')).toBeDisabled();
 });

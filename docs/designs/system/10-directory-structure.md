@@ -72,8 +72,8 @@ project-root/
 │       │       │   │   ├── route.ts            # public project 一覧
 │       │       │   │   └── [projectSlug]/
 │       │       │   │       └── reports/[reportId]/
-│       │       │   │           ├── route.ts    # redaction 済み public report JSON 配信
-│       │       │   │           └── chat/route.ts # Public Chat Agent へ stream proxy
+│       │       │   │           ├── route.ts    # public project/report 確認後に private report JSON 配信
+│       │       │   │           └── chat/route.ts # public project/report 確認後に Project Chat Agent へ proxy
 │       │       │   └── reports/[reportId]/     # 短期互換 alias
 │       │       └── projects/[projectSlug]/
 │       │           ├── chat/route.ts

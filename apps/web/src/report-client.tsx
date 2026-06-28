@@ -2,14 +2,12 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActionForm, PendingSubmitButton } from './form-buttons';
 import { PufuReportViewer } from './pufu-report-viewer';
-import type { PufuScoreReportInput } from './pufu-score';
 import type {
   PrivateReportJsonV1,
   PrivateReportSource,
-  PublicReportJsonV1,
   ReportListItem,
   ReportPeriod,
 } from './report';
@@ -349,9 +347,8 @@ export function PublicReportDocument({
   readonly projectSlug: string;
   readonly reportId: string;
 }) {
-  const [report, setReport] = useState<PublicReportJsonV1 | undefined>();
+  const [report, setReport] = useState<PrivateReportJsonV1 | undefined>();
   const [status, setStatus] = useState('loading');
-  const pufuInput = useMemo(() => (report ? publicReportPufuInput(report) : undefined), [report]);
 
   useEffect(() => {
     let cancelled = false;
@@ -361,7 +358,7 @@ export function PublicReportDocument({
       .then(async (response) => {
         const body = (await response.json()) as {
           readonly error?: { readonly code?: string; readonly message?: string };
-          readonly report?: PublicReportJsonV1 | null;
+          readonly report?: PrivateReportJsonV1 | null;
           readonly status?: string;
         };
         if (!cancelled) {
@@ -387,7 +384,7 @@ export function PublicReportDocument({
   if (status === 'loading') {
     return <p className="notice">loading</p>;
   }
-  if (!report || !pufuInput || status !== 'ok') {
+  if (!report || status !== 'ok') {
     return (
       <p className="notice error" data-testid="public-report-status">
         {status}
@@ -412,12 +409,12 @@ export function PublicReportDocument({
             </dd>
           </div>
           <div>
-            <dt>Published</dt>
-            <dd>{report.published_at}</dd>
+            <dt>Generated</dt>
+            <dd>{report.generated_at}</dd>
           </div>
         </dl>
       </header>
-      <PufuReportViewer report={pufuInput} />
+      <PufuReportViewer report={report} />
       {report.sections.map((section) => (
         <section
           className="report-section"
@@ -441,12 +438,25 @@ export function PublicReportDocument({
               {section.sources.map((source) => (
                 <article
                   className="source-chip"
-                  data-testid={`public-report-source-${source.public_source_id}`}
-                  key={source.public_source_id}
+                  data-testid={`public-report-source-${source.document_id}`}
+                  key={source.document_id}
                 >
-                  <strong>public report source</strong>
-                  <span>{source.label}</span>
-                  <small>{source.public_source_id}</small>
+                  <strong>{normalizePrivateReportSourceLabel(source.doc_type)}</strong>
+                  {isPublicHttpUrl(source.canonical_uri) ? (
+                    <a
+                      href={source.canonical_uri}
+                      rel="noreferrer"
+                      target="_blank"
+                      title={source.canonical_uri}
+                    >
+                      {privateReportSourceTitle(source)}
+                    </a>
+                  ) : (
+                    <>
+                      <span>{privateReportSourceTitle(source)}</span>
+                      <small>{source.document_id}</small>
+                    </>
+                  )}
                 </article>
               ))}
             </div>
@@ -459,37 +469,6 @@ export function PublicReportDocument({
 
 function reportErrorStatus(body: ReportApiError, status: number): string {
   return body.error?.code ?? body.error?.message ?? `http_${status}`;
-}
-
-function publicReportPufuInput(report: PublicReportJsonV1): PufuScoreReportInput {
-  return {
-    period: report.period,
-    report_id: report.report_id,
-    pufu_sources: report.pufu_sources?.map((source) => ({
-      canonical_uri: '',
-      doc_type: 'public_report_source',
-      document_id: source.public_source_id,
-      occurred_at: source.occurred_at,
-      snippet: source.snippet,
-      title: source.title,
-    })),
-    sections: report.sections.map((section) => ({
-      id: section.id,
-      items: section.items,
-      markdown: section.markdown,
-      metrics: section.metrics,
-      sources: section.sources?.map((source) => ({
-        canonical_uri: '',
-        doc_type: 'public_report_source',
-        document_id: source.public_source_id,
-        snippet: source.label,
-        title: source.label,
-      })),
-      title: section.title,
-    })),
-    summary: report.summary,
-    title: report.title,
-  };
 }
 
 function normalizePrivateReportSourceLabel(docType: string): string {
