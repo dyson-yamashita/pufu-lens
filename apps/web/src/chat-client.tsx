@@ -9,6 +9,7 @@ import {
   type ChatThreadMessage,
   createMessageId,
   PrivateChatThread,
+  PublicChatThread,
   replacePendingAssistant,
 } from './chat-thread';
 import { useSpeechInput } from './speech-input';
@@ -130,7 +131,7 @@ export function ChatPanel({
 
 export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: string }) {
   const [question, setQuestion] = useState('');
-  const [messages, setMessages] = useState<ChatThreadMessage<ChatResponse>[]>([]);
+  const [messages, setMessages] = useState<ChatThreadMessage<PublicChatResponse>[]>([]);
   const [pending, setPending] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
   const speechInput = useSpeechInput({
@@ -176,7 +177,7 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
         replacePendingAssistant(current, pendingId, {
           id: createMessageId('assistant'),
           role: 'assistant',
-          response: body,
+          response: publicSafeChatResponse(body, projectSlug),
           status: 'complete',
         }),
       );
@@ -203,7 +204,7 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
       className="panel public-chat-panel public-project-chat-panel"
       data-testid="public-project-chat-panel"
     >
-      <PrivateChatThread messages={messages} resultTestId="public-project-chat-result" />
+      <PublicChatThread messages={messages} resultTestId="public-project-chat-result" />
       <form className="chat-form" onSubmit={submit}>
         <label htmlFor="public-project-chat-question">Question</label>
         <div className="chat-input-row">
@@ -253,6 +254,33 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
 type ChatErrorResponse = {
   readonly error?: string | { readonly code?: string; readonly message?: string };
 };
+
+function publicSafeChatResponse(response: ChatResponse, projectSlug: string): PublicChatResponse {
+  return {
+    answer: response.answer,
+    ...(response.editing ? { editing: response.editing } : {}),
+    projectSlug: response.projectSlug || projectSlug,
+    reportId: '',
+    sources: response.sources.map((_source, index) => ({
+      label: `Source ${index + 1}`,
+      publicSourceId: `public-source-${index + 1}`,
+      sectionId: 'project-chat',
+    })),
+    status: response.status === 'answered' ? 'answered' : 'rate_limited',
+    toolCalls:
+      response.toolCalls.length > 0
+        ? [
+            {
+              name: 'public-report-fetch',
+              resultCount: response.toolCalls.reduce(
+                (total, toolCall) => total + toolCall.resultCount,
+                0,
+              ),
+            },
+          ]
+        : [],
+  };
+}
 
 function chatErrorMessage(
   body: ChatResponse | PublicChatResponse | ChatErrorResponse | null,
