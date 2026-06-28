@@ -118,6 +118,7 @@ export async function handlePublicChatPost(
         {
           answer: 'db_outside_business_hours',
           projectSlug: input.projectSlug,
+          reportId: input.reportId,
           sources: [],
           status: 'db_outside_business_hours',
           toolCalls: [],
@@ -139,6 +140,7 @@ export async function handlePublicChatPost(
           {
             answer: 'rate limit exceeded',
             projectSlug: input.projectSlug,
+            reportId: input.reportId,
             sources: [],
             status: 'rate_limited',
             toolCalls: [],
@@ -163,13 +165,15 @@ export async function handlePublicChatPost(
       throw new Error(`Mastra project chat agent failed: HTTP ${mastraResponse.status}`);
     }
     const mastraBody = (await mastraResponse.json()) as unknown;
-    return NextResponse.json(
-      mastraGenerateToChatResponse({
-        mastraResponse: mastraBody,
-        projectSlug: input.projectSlug,
-        question,
-      }),
-    );
+    const chatResponse = mastraGenerateToChatResponse({
+      mastraResponse: mastraBody,
+      projectSlug: input.projectSlug,
+      question,
+    });
+    return NextResponse.json({
+      ...chatResponse,
+      reportId: input.reportId,
+    });
   } catch (error) {
     if (error instanceof PublicReportNotFoundError) {
       return publicChatNotFound();

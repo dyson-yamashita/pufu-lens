@@ -160,7 +160,9 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
         method: 'POST',
       });
       const isJson = result.headers.get('content-type')?.includes('application/json') ?? false;
-      const body = isJson ? ((await result.json()) as ChatResponse | ChatErrorResponse) : null;
+      const body = isJson
+        ? ((await result.json()) as PublicProjectChatApiResponse | ChatErrorResponse)
+        : null;
       if (!result.ok) {
         if (body && 'status' in body && body.status === 'db_outside_business_hours') {
           setUnavailable(true);
@@ -177,7 +179,9 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
         replacePendingAssistant(current, pendingId, {
           id: createMessageId('assistant'),
           role: 'assistant',
-          response: publicSafeChatResponse(body, projectSlug),
+          response: publicSafeChatResponse(body, {
+            projectSlug,
+          }),
           status: 'complete',
         }),
       );
@@ -255,18 +259,25 @@ type ChatErrorResponse = {
   readonly error?: string | { readonly code?: string; readonly message?: string };
 };
 
-function publicSafeChatResponse(response: ChatResponse, projectSlug: string): PublicChatResponse {
+type PublicProjectChatApiResponse =
+  | (ChatResponse & { readonly reportId: string })
+  | PublicChatResponse;
+
+function publicSafeChatResponse(
+  response: PublicProjectChatApiResponse,
+  options: { readonly projectSlug: string },
+): PublicChatResponse {
   return {
     answer: response.answer,
     ...(response.editing ? { editing: response.editing } : {}),
-    projectSlug: response.projectSlug || projectSlug,
-    reportId: '',
+    projectSlug: options.projectSlug,
+    reportId: response.reportId,
     sources: response.sources.map((_source, index) => ({
       label: `Source ${index + 1}`,
       publicSourceId: `public-source-${index + 1}`,
       sectionId: 'project-chat',
     })),
-    status: response.status === 'answered' ? 'answered' : 'rate_limited',
+    status: publicSafeChatStatus(response.status),
     toolCalls:
       response.toolCalls.length > 0
         ? [
@@ -280,6 +291,20 @@ function publicSafeChatResponse(response: ChatResponse, projectSlug: string): Pu
           ]
         : [],
   };
+}
+
+function publicSafeChatStatus(
+  status: PublicProjectChatApiResponse['status'],
+): PublicChatResponse['status'] {
+  if (
+    status === 'answered' ||
+    status === 'no_public_report' ||
+    status === 'rate_limited' ||
+    status === 'refused'
+  ) {
+    return status;
+  }
+  return 'rate_limited';
 }
 
 function chatErrorMessage(

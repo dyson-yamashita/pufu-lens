@@ -15,6 +15,7 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
             questionType: 'status',
           },
           projectSlug: 'sample-a',
+          reportId: 'report-a',
           sources: [
             {
               canonicalUri: 'https://example.com/issues/1',
@@ -44,6 +45,7 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
           questionType: 'fact',
         },
         projectSlug: 'sample-a',
+        reportId: 'report-a',
         sources: [
           {
             canonicalUri: 'https://example.com/spec',
@@ -111,6 +113,7 @@ test('scenario: public project chat locks input outside database business hours'
       body: JSON.stringify({
         answer: 'db_outside_business_hours',
         projectSlug: 'sample-a',
+        reportId: 'report-a',
         sources: [],
         status: 'db_outside_business_hours',
         toolCalls: [],
