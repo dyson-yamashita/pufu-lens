@@ -3,7 +3,7 @@ import {
   updateGithubAppConnectionSettings,
   updateProjectSettings,
 } from '../../../../../src/admin-actions';
-import type { ProjectConnectionStatus } from '../../../../../src/admin-data';
+import type { ConnectionProvider, ProjectConnectionStatus } from '../../../../../src/admin-data';
 import { listProjectConnections } from '../../../../../src/admin-db';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
 import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
@@ -305,11 +305,13 @@ function connectionStatusLabel(status: ProjectConnectionStatus): string {
 }
 
 function connectionOperationNotice(
-  provider: 'google' | 'github',
+  provider: ConnectionProvider,
   status: ProjectConnectionStatus,
 ): string {
   const providerLabel = provider === 'google' ? 'Google' : 'GitHub';
   switch (status) {
+    case 'connected':
+      return '';
     case 'expired':
       return `${providerLabel} 連携が失効しています。再接続するまで、この provider を使う data source の作成・保存・収集は停止します。`;
     case 'scope_missing':
