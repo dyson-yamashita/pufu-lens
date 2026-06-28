@@ -1,4 +1,5 @@
 import type {
+  ChatEditingMetadata,
   ChatResponse,
   ChatSource,
   ChatToolCall,
@@ -8,6 +9,7 @@ import type {
   PublicChatToolCall,
   PublicChatToolName,
 } from './chat.ts';
+import { inferChatEditingMetadata, inferPublicChatEditingMetadata } from './chat.ts';
 import type { PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 
 const PROJECT_CHAT_AGENT_ID = 'project-chat-agent';
@@ -112,9 +114,10 @@ export function createMastraProjectChatBody(input: {
   readonly projectId: string;
   readonly question: string;
 }) {
+  const editing = inferChatEditingMetadata(input.question);
   return {
     messages: [{ content: input.question, role: 'user' }],
-    requestContext: { projectId: input.projectId },
+    requestContext: { editing, projectId: input.projectId },
   };
 }
 
@@ -125,10 +128,12 @@ export function createMastraPublicReportChatBody(input: {
   readonly report: PublicReportJsonV1;
   readonly reportId: string;
 }) {
+  const editing = inferPublicChatEditingMetadata(input.question);
   return {
     messages: [{ content: input.question, role: 'user' }],
     requestContext: {
       contextBundle: input.contextBundle,
+      editing,
       projectSlug: input.projectSlug,
       report: input.report,
       reportId: input.reportId,
@@ -137,8 +142,10 @@ export function createMastraPublicReportChatBody(input: {
 }
 
 export function mastraGenerateToChatResponse(input: {
+  readonly editing?: ChatEditingMetadata;
   readonly mastraResponse: unknown;
   readonly projectSlug: string;
+  readonly question?: string;
 }): ChatResponse {
   const mastraResponse = asMastraGenerateResponse(input.mastraResponse);
   const toolResults = (mastraResponse.steps ?? [])
@@ -149,6 +156,9 @@ export function mastraGenerateToChatResponse(input: {
   ).slice(0, 5);
   return {
     answer: mastraResponse.text ?? '',
+    ...(input.editing || input.question
+      ? { editing: input.editing ?? inferChatEditingMetadata(input.question ?? '') }
+      : {}),
     projectSlug: input.projectSlug,
     sources,
     status: 'answered',
@@ -172,8 +182,10 @@ export function mastraGenerateToChatResponse(input: {
 }
 
 export function mastraGenerateToPublicChatResponse(input: {
+  readonly editing?: ChatEditingMetadata;
   readonly mastraResponse: unknown;
   readonly projectSlug: string;
+  readonly question?: string;
   readonly reportId: string;
 }): PublicChatResponse {
   const mastraResponse = asMastraPublicGenerateResponse(input.mastraResponse);
@@ -182,6 +194,9 @@ export function mastraGenerateToPublicChatResponse(input: {
     .filter((content) => content.type === 'tool-result');
   return {
     answer: mastraResponse.text ?? '',
+    ...(input.editing || input.question
+      ? { editing: input.editing ?? inferPublicChatEditingMetadata(input.question ?? '') }
+      : {}),
     projectSlug: input.projectSlug,
     reportId: input.reportId,
     sources: uniquePublicSources(

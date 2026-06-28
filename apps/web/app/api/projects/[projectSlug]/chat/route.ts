@@ -97,7 +97,7 @@ export async function POST(
     }
     const mastraBody = (await mastraResponse.json()) as unknown;
     return NextResponse.json(
-      mastraGenerateToChatResponse({ mastraResponse: mastraBody, projectSlug }),
+      mastraGenerateToChatResponse({ mastraResponse: mastraBody, projectSlug, question }),
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -6,6 +6,7 @@
       "question": "直近の未解決 Issue を要約して",
       "expectStatus": "answered",
       "expectHttpStatus": 200,
+      "expectEditingMode": "summary",
       "minSources": 1,
       "requiredToolCalls": ["vector-search", "graph-query", "document-fetch"]
     },

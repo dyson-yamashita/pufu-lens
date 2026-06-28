@@ -1,7 +1,13 @@
 'use client';
 
 import { type ReactNode, useEffect, useRef } from 'react';
-import type { ChatResponse, ChatSource, PublicChatResponse, PublicChatSource } from './chat';
+import type {
+  ChatEditingMetadata,
+  ChatResponse,
+  ChatSource,
+  PublicChatResponse,
+  PublicChatSource,
+} from './chat';
 
 export type ChatThreadUserMessage = {
   readonly id: string;
@@ -173,6 +179,7 @@ function ChatThreadMessageItem({
       ) : (
         <PublicSourceStrip index={index} sources={(response as PublicChatResponse).sources} />
       )}
+      <EditingDetails editing={response.editing} index={index} />
       <ToolCallsDetails index={index} toolCalls={response.toolCalls} />
     </article>
   );
@@ -387,6 +394,36 @@ function ToolCallsDetails({
           </span>
         ))}
       </div>
+    </details>
+  );
+}
+
+function EditingDetails({
+  editing,
+  index,
+}: {
+  readonly editing?: ChatEditingMetadata | null;
+  readonly index: number;
+}) {
+  if (!editing) {
+    return null;
+  }
+
+  return (
+    <details className="chat-editing-metadata" data-testid={`chat-message-editing-${index}`}>
+      <summary>Editing: {editing.inferredMode}</summary>
+      <div className="tool-call-list">
+        <span className="status-badge">confidence: {editing.confidence}</span>
+        <span className="status-badge">type: {editing.questionType}</span>
+        {editing.operations.map((operation) => (
+          <span className="status-badge" key={operation}>
+            {operation}
+          </span>
+        ))}
+      </div>
+      {editing.caveats.length > 0 ? (
+        <p className="chat-editing-caveats">{editing.caveats.join(' / ')}</p>
+      ) : null}
     </details>
   );
 }

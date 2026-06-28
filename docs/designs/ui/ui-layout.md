@@ -156,7 +156,7 @@ Top Bar は次の要素を持つ。
 └───────────────┴──────────────────────────────────────┴─────────────────────┘
 ```
 
-Chat Thread はメッセージ一覧と Composer に分ける。Composer は画面下部に固定し、送信中も入力欄の高さが急に変化しないようにする。AI メッセージには回答本文、参照元、生成状態を分けて表示し、詳細な根拠は Evidence Panel に送る。
+Chat Thread はメッセージ一覧と Composer に分ける。Composer は画面下部に固定し、送信中も入力欄の高さが急に変化しないようにする。編集方針は対話内容から自動判定するため、Composer に mode selector は置かない。AI メッセージには回答本文、参照元、生成状態を分けて表示し、詳細な根拠は Evidence Panel に送る。
 
 Evidence Panel には次をタブで表示する。
 
@@ -165,7 +165,7 @@ Evidence Panel には次をタブで表示する。
 | Sources | `document_id`、`canonical_uri`、スニペット      |
 | Graph   | 起点ドキュメントと関連 Actor / Topic / Document |
 | Raw     | 原本または parsed JSON のプレビュー             |
-| Runs    | ツール呼び出し、検索条件、エラー                |
+| Runs    | ツール呼び出し、検索条件、編集 metadata、エラー |
 
 モバイルでは Evidence Panel を「Sources」ボタンから開く下部シートにする。
 

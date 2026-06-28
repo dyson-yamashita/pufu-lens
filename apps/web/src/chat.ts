@@ -32,8 +32,35 @@ export interface ChatToolCall {
   readonly resultCount: number;
 }
 
+export type ChatEditingMode =
+  | 'default'
+  | 'issue_mapping'
+  | 'next_actions'
+  | 'risk_scan'
+  | 'structure'
+  | 'summary'
+  | 'timeline';
+
+export type ChatEditingQuestionType =
+  | 'fact'
+  | 'planning'
+  | 'public_explanation'
+  | 'risk'
+  | 'status'
+  | 'timeline'
+  | 'unknown';
+
+export interface ChatEditingMetadata {
+  readonly caveats: readonly string[];
+  readonly confidence: 'high' | 'low' | 'medium';
+  readonly inferredMode: ChatEditingMode;
+  readonly operations: readonly string[];
+  readonly questionType: ChatEditingQuestionType;
+}
+
 export interface ChatResponse {
   readonly answer: string;
+  readonly editing?: ChatEditingMetadata;
   readonly projectSlug: string;
   readonly sources: readonly ChatSource[];
   readonly status: 'answered' | 'db_outside_business_hours' | 'rate_limited';
@@ -53,6 +80,7 @@ export interface PublicChatToolCall {
 
 export interface PublicChatResponse {
   readonly answer: string;
+  readonly editing?: ChatEditingMetadata;
   readonly projectSlug: string;
   readonly reportId: string;
   readonly sources: readonly PublicChatSource[];
@@ -103,7 +131,11 @@ export interface ChatRepository {
 }
 
 export interface ChatProvider {
-  complete(input: { question: string; sources: readonly ChatSource[] }): Promise<string>;
+  complete(input: {
+    editing: ChatEditingMetadata;
+    question: string;
+    sources: readonly ChatSource[];
+  }): Promise<string>;
 }
 
 export interface RunPrivateChatOptions {
@@ -131,12 +163,76 @@ export interface PublicChatRateLimiter {
 export interface PublicChatProvider {
   complete(input: {
     readonly contextBundle: PublicContextBundleV1;
+    readonly editing: ChatEditingMetadata;
     readonly projectSlug: string;
     readonly question: string;
     readonly report: PublicReportJsonV1;
     readonly sources: readonly PublicChatSource[];
   }): Promise<string>;
 }
+
+const EDITING_MODE_DEFINITIONS: Record<
+  ChatEditingMode,
+  {
+    readonly caveats: readonly string[];
+    readonly keywords: readonly string[];
+    readonly operations: readonly string[];
+    readonly questionType: ChatEditingQuestionType;
+  }
+> = {
+  default: {
+    caveats: ['質問意図を特定の編集方針に寄せず、通常の根拠確認を優先します。'],
+    keywords: [],
+    operations: ['収集', '選択', '引用'],
+    questionType: 'unknown',
+  },
+  issue_mapping: {
+    caveats: ['論点の分類は根拠 source の範囲に限定します。'],
+    keywords: ['issue', '課題', '問題', '論点', '未決', '争点', '整理', '何が決まっていない'],
+    operations: ['分類', '比較', '境界', '焦点化'],
+    questionType: 'status',
+  },
+  next_actions: {
+    caveats: ['推奨アクションは根拠と未確認事項を分けて扱います。'],
+    keywords: ['next', 'todo', 'action', 'アクション', 'やること', '次', 'すべき', '確認すべき'],
+    operations: ['道筋', '脚本', '統御'],
+    questionType: 'planning',
+  },
+  risk_scan: {
+    caveats: ['リスク判断は複数 source の一致や未確認事項を優先して扱います。'],
+    keywords: [
+      'risk',
+      'blocked',
+      'blocker',
+      'リスク',
+      '懸念',
+      '停滞',
+      'ボトルネック',
+      '危険',
+      '詰ま',
+    ],
+    operations: ['競合', '推理', '構造', '生態'],
+    questionType: 'risk',
+  },
+  structure: {
+    caveats: ['構造化は source 間の関係を説明する補助であり、根拠の代替ではありません。'],
+    keywords: ['map', 'structure', '構造', '全体像', '関係', '地図', '図解', 'つながり'],
+    operations: ['地図', '図解', '構造', '模型'],
+    questionType: 'status',
+  },
+  summary: {
+    caveats: ['要約は根拠 source の内容を圧縮し、未確認情報を補いません。'],
+    keywords: ['summary', 'summarize', '要約', 'まとめ', 'サマリ', '短く', '概要'],
+    operations: ['要約', '凝縮', '引用'],
+    questionType: 'fact',
+  },
+  timeline: {
+    caveats: ['時系列は日付や actor hint が確認できる範囲に限定します。'],
+    keywords: ['timeline', 'history', '経緯', 'いつ', '時系列', '履歴', '流れ', 'なぜ判断'],
+    operations: ['系統', '順番', '注釈', '場面'],
+    questionType: 'timeline',
+  },
+};
 
 export function graphQuerySearchPatterns(query: string): string[] {
   const normalized = normalizeSpaces(query);
@@ -151,6 +247,58 @@ export function graphQuerySearchPatterns(query: string): string[] {
     .map((candidate) => stripGraphQueryPrefix(candidate).trim())
     .filter((candidate) => candidate.length > 0);
   return [...new Set(candidates)].slice(0, 5).map((candidate) => `%${candidate}%`);
+}
+
+export function inferChatEditingMetadata(question: string): ChatEditingMetadata {
+  const normalized = normalizeSpaces(question).toLowerCase();
+  const matches = (Object.keys(EDITING_MODE_DEFINITIONS) as ChatEditingMode[])
+    .filter((mode) => mode !== 'default')
+    .map((mode) => ({
+      mode,
+      score: EDITING_MODE_DEFINITIONS[mode].keywords.filter((keyword) =>
+        normalized.includes(keyword.toLowerCase()),
+      ).length,
+    }))
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score);
+  const best = matches[0];
+  if (!best) {
+    return editingMetadataFromMode('default', 'low');
+  }
+  return editingMetadataFromMode(best.mode, best.score >= 2 ? 'high' : 'medium');
+}
+
+export function inferPublicChatEditingMetadata(question: string): ChatEditingMetadata {
+  const inferred = inferChatEditingMetadata(question);
+  const publicCaveat = '公開レポートと public context bundle の範囲だけで回答します。';
+  if (inferred.inferredMode === 'risk_scan') {
+    return {
+      ...editingMetadataFromMode('default', 'low'),
+      caveats: [publicCaveat, '内部リスク分析や未公開資料の探索は行いません。'],
+      operations: ['要約', '焦点化', '引用'],
+      questionType: 'public_explanation',
+    };
+  }
+  return {
+    ...inferred,
+    caveats: [...inferred.caveats, publicCaveat],
+    questionType:
+      inferred.questionType === 'unknown' ? 'public_explanation' : inferred.questionType,
+  };
+}
+
+function editingMetadataFromMode(
+  inferredMode: ChatEditingMode,
+  confidence: ChatEditingMetadata['confidence'],
+): ChatEditingMetadata {
+  const definition = EDITING_MODE_DEFINITIONS[inferredMode];
+  return {
+    caveats: definition.caveats,
+    confidence,
+    inferredMode,
+    operations: definition.operations,
+    questionType: definition.questionType,
+  };
 }
 
 function normalizeSpaces(value: string): string {
@@ -263,6 +411,7 @@ export async function runPrivateChat(
     throw new ProjectAccessDeniedError(request.projectSlug);
   }
 
+  const editing = inferChatEditingMetadata(request.question);
   const embedding = deterministicVector(request.question, 1536);
   const [vectorSources, graphSources, rawSources, parsedSources] = await Promise.all([
     options.repository.vectorSearch({
@@ -299,7 +448,8 @@ export async function runPrivateChat(
   ]).slice(0, 5);
 
   return {
-    answer: await options.provider.complete({ question: request.question, sources }),
+    answer: await options.provider.complete({ editing, question: request.question, sources }),
+    editing,
     projectSlug: request.projectSlug,
     sources,
     status: 'answered',
@@ -333,6 +483,7 @@ export async function runPublicChat(
     }
   }
 
+  const editing = inferPublicChatEditingMetadata(request.question);
   const sources = publicChatSources(options.report, options.contextBundle);
   const toolCalls: PublicChatToolCall[] = [
     { name: 'public-report-fetch', resultCount: 1 },
@@ -346,6 +497,7 @@ export async function runPublicChat(
       reportId: request.reportId,
       sources: [],
       status: 'refused',
+      editing,
       toolCalls,
     });
   }
@@ -353,6 +505,7 @@ export async function runPublicChat(
   return publicChatResponse({
     answer: await options.provider.complete({
       contextBundle: options.contextBundle,
+      editing,
       projectSlug: request.projectSlug,
       question: request.question,
       report: options.report,
@@ -362,6 +515,7 @@ export async function runPublicChat(
     reportId: request.reportId,
     sources,
     status: 'answered',
+    editing,
     toolCalls,
   });
 }
@@ -385,7 +539,7 @@ export function createGeminiChatProvider(input: {
       input.model,
     )}:generateContent`;
   return {
-    async complete({ question, sources }) {
+    async complete({ editing, question, sources }) {
       const response = await fetchImpl(`${endpoint}?key=${encodeURIComponent(input.apiKey)}`, {
         body: JSON.stringify({
           contents: [
@@ -394,6 +548,8 @@ export function createGeminiChatProvider(input: {
                 {
                   text: [
                     'Answer using only the provided project sources.',
+                    'Use the editing metadata only to choose response structure. Do not infer facts outside the sources.',
+                    `Editing metadata: ${JSON.stringify(editing)}`,
                     `Question: ${question}`,
                     `Sources: ${JSON.stringify(sources)}`,
                   ].join('\n'),
@@ -407,9 +563,7 @@ export function createGeminiChatProvider(input: {
       });
       if (!response.ok) {
         throw new Error(
-          `Gemini chat request failed: HTTP ${response.status}${await geminiErrorDetails(
-            response,
-          )}`,
+          `Gemini chat request failed: HTTP ${response.status}${await geminiErrorDetails(response)}`,
         );
       }
       const body = (await response.json()) as {
@@ -479,7 +633,7 @@ export function createGeminiPublicChatProvider(input: {
       input.model,
     )}:generateContent`;
   return {
-    async complete({ contextBundle, projectSlug, question, report, sources }) {
+    async complete({ contextBundle, editing, projectSlug, question, report, sources }) {
       const response = await fetchImpl(`${endpoint}?key=${encodeURIComponent(input.apiKey)}`, {
         body: JSON.stringify({
           contents: [
@@ -491,6 +645,8 @@ export function createGeminiPublicChatProvider(input: {
                     'Do not reveal email addresses, private URLs, raw or parsed content, secrets, projectId, storageUri, or documentId.',
                     'If the question asks for information outside the public report, refuse briefly.',
                     'Cite section id or public source id in the answer.',
+                    'Use the editing metadata only to choose response structure. Do not infer facts outside the public report/context.',
+                    `Editing metadata: ${JSON.stringify(editing)}`,
                     `Project slug: ${projectSlug}`,
                     `Question: ${question}`,
                     `Public report: ${JSON.stringify(report)}`,
@@ -789,6 +945,7 @@ function unavailableResponse(projectSlug: string): ChatResponse {
 
 function publicChatResponse(input: {
   readonly answer: string;
+  readonly editing?: ChatEditingMetadata;
   readonly projectSlug: string;
   readonly reportId: string;
   readonly sources?: readonly PublicChatSource[];
@@ -797,6 +954,7 @@ function publicChatResponse(input: {
 }): PublicChatResponse {
   return {
     answer: input.answer,
+    ...(input.editing ? { editing: input.editing } : {}),
     projectSlug: input.projectSlug,
     reportId: input.reportId,
     sources: input.sources ?? [],
