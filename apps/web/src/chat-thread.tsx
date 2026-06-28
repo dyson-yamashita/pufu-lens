@@ -408,6 +408,8 @@ function EditingDetails({
   if (!editing) {
     return null;
   }
+  const operations = editing.operations ?? [];
+  const caveats = editing.caveats ?? [];
 
   return (
     <details className="chat-editing-metadata" data-testid={`chat-message-editing-${index}`}>
@@ -415,15 +417,13 @@ function EditingDetails({
       <div className="tool-call-list">
         <span className="status-badge">confidence: {editing.confidence}</span>
         <span className="status-badge">type: {editing.questionType}</span>
-        {editing.operations.map((operation) => (
+        {operations.map((operation) => (
           <span className="status-badge" key={operation}>
             {operation}
           </span>
         ))}
       </div>
-      {editing.caveats.length > 0 ? (
-        <p className="chat-editing-caveats">{editing.caveats.join(' / ')}</p>
-      ) : null}
+      {caveats.length > 0 ? <p className="chat-editing-caveats">{caveats.join(' / ')}</p> : null}
     </details>
   );
 }
