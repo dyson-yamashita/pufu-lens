@@ -10,10 +10,8 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
         body: JSON.stringify({
           answer: '2件目の回答です。',
           editing: {
-            caveats: ['公開レポートと public context bundle の範囲だけで回答します。'],
             confidence: 'medium',
             inferredMode: 'issue_mapping',
-            operations: ['分類', '比較'],
             questionType: 'status',
           },
           projectSlug: 'sample-a',
@@ -86,13 +84,14 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
     'https://example.com/spec',
   );
   await expect(page.getByTestId('chat-message-tool-calls-1')).toContainText('public-report-fetch');
-  await expect(page.getByTestId('chat-message-editing-1')).toContainText('summary');
   await expect(page.getByTestId('chat-message-editing-1')).toContainText('要約');
+  await expect(page.getByTestId('chat-message-editing-1')).toContainText('凝縮');
 
   await page.getByTestId('public-project-chat-question-input').fill('2件目の質問');
   await page.getByTestId('public-project-chat-submit-button').click();
   await expect(page.getByTestId('chat-assistant-message-1')).toContainText('Spec Update');
   await expect(page.getByTestId('chat-assistant-message-3')).toContainText('2件目の回答');
   await expect(page.getByTestId('chat-message-sources-3')).toContainText('Issue Summary');
-  await expect(page.getByTestId('chat-message-editing-3')).toContainText('issue_mapping');
+  await expect(page.getByTestId('chat-message-editing-3')).toContainText('論点整理');
+  await expect(page.getByTestId('chat-message-editing-3')).toContainText('状態確認');
 });

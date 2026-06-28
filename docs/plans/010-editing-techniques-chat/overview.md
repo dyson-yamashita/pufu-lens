@@ -81,15 +81,15 @@ Public Chat では編集技法を表現支援に限定する。
 
 ### Evidence Panel
 
-Evidence Panel では、回答生成に使った編集操作を tool call とは別の補助情報として扱う。
+Evidence Panel では、回答生成に使った `editing metadata` を tool call とは別の補助情報として扱う。
 
 - Sources: 根拠 source と snippet。
 - Graph: 関係探索の起点、関連 Actor / Topic / Document。
 - Raw: raw read view / parsed preview。
 - Runs: tool call、検索条件、エラー。
-- Thinking summary: 任意で `classification`、`comparison`、`focus` など短い編集操作ラベルを表示する。
+- Editing metadata: 任意で `classification`、`comparison`、`focus` などの編集操作ラベル、`inferredMode`、`questionType`、`confidence` を表示する。
 
-初期実装では Thinking summary を UI に出さず、API response / eval fixture の metadata として扱ってよい。
+初期実装では `editing metadata` を API response / eval fixture の metadata として扱い、UI では回答直下の折りたたみ補助情報として表示する。
 
 ## Step 構成
 

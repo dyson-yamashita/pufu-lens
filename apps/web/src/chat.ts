@@ -188,13 +188,22 @@ const EDITING_MODE_DEFINITIONS: Record<
   },
   issue_mapping: {
     caveats: ['論点の分類は根拠 source の範囲に限定します。'],
-    keywords: ['issue', '課題', '問題', '論点', '未決', '争点', '整理', '何が決まっていない'],
+    keywords: ['issue', '課題', '問題点', '論点', '未決', '争点', '整理して', '何が決まっていない'],
     operations: ['分類', '比較', '境界', '焦点化'],
     questionType: 'status',
   },
   next_actions: {
     caveats: ['推奨アクションは根拠と未確認事項を分けて扱います。'],
-    keywords: ['next', 'todo', 'action', 'アクション', 'やること', '次', 'すべき', '確認すべき'],
+    keywords: [
+      'next action',
+      'todo',
+      'action item',
+      'アクション',
+      'やること',
+      '次に',
+      'すべきこと',
+      '確認すべき',
+    ],
     operations: ['道筋', '脚本', '統御'],
     questionType: 'planning',
   },
@@ -228,7 +237,7 @@ const EDITING_MODE_DEFINITIONS: Record<
   },
   timeline: {
     caveats: ['時系列は日付や actor hint が確認できる範囲に限定します。'],
-    keywords: ['timeline', 'history', '経緯', 'いつ', '時系列', '履歴', '流れ', 'なぜ判断'],
+    keywords: ['timeline', 'history', '経緯', 'いつ決ま', '時系列', '履歴', '流れ', 'なぜ判断'],
     operations: ['系統', '順番', '注釈', '場面'],
     questionType: 'timeline',
   },
@@ -256,7 +265,7 @@ export function inferChatEditingMetadata(question: string): ChatEditingMetadata 
     .map((mode) => ({
       mode,
       score: EDITING_MODE_DEFINITIONS[mode].keywords.filter((keyword) =>
-        normalized.includes(keyword.toLowerCase()),
+        matchesEditingKeyword(normalized, keyword),
       ).length,
     }))
     .filter((candidate) => candidate.score > 0)
@@ -266,6 +275,17 @@ export function inferChatEditingMetadata(question: string): ChatEditingMetadata 
     return editingMetadataFromMode('default', 'low');
   }
   return editingMetadataFromMode(best.mode, best.score >= 2 ? 'high' : 'medium');
+}
+
+function matchesEditingKeyword(normalizedQuestion: string, keyword: string): boolean {
+  const normalizedKeyword = keyword.toLowerCase();
+  if (/^[a-z0-9][a-z0-9 -]*$/i.test(normalizedKeyword)) {
+    const escaped = normalizedKeyword
+      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      .replace(/\s+/g, '\\s+');
+    return new RegExp(`\\b${escaped}\\b`, 'i').test(normalizedQuestion);
+  }
+  return normalizedQuestion.includes(normalizedKeyword);
 }
 
 export function inferPublicChatEditingMetadata(question: string): ChatEditingMetadata {
