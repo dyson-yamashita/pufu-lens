@@ -18,15 +18,13 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
           reportId: 'report-a',
           sources: [
             {
-              canonicalUri: 'https://example.com/issues/1',
-              docType: 'issue',
-              documentId: 'doc-issue-001',
-              rawDocumentId: 'raw-issue-001',
-              title: 'Issue Summary',
+              label: 'Issue Summary',
+              publicSourceId: 'src_issues_1',
+              sectionId: 'issues',
             },
           ],
           status: 'answered',
-          toolCalls: [{ name: 'graph-query', resultCount: 2 }],
+          toolCalls: [{ name: 'public-report-fetch', resultCount: 2 }],
         }),
         contentType: 'application/json',
         status: 200,
@@ -48,18 +46,13 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
         reportId: 'report-a',
         sources: [
           {
-            canonicalUri: 'https://example.com/spec',
-            docType: 'web_page',
-            documentId: 'doc-spec-001',
-            rawDocumentId: 'raw-spec-001',
-            title: 'Spec Update',
+            label: 'Spec Update',
+            publicSourceId: 'src_progress_1',
+            sectionId: 'progress',
           },
         ],
         status: 'answered',
-        toolCalls: [
-          { name: 'vector-search', resultCount: 1 },
-          { name: 'document-fetch', resultCount: 1 },
-        ],
+        toolCalls: [{ name: 'public-report-fetch', resultCount: 2 }],
       }),
       contentType: 'application/json',
       status: 200,
@@ -84,8 +77,8 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
   await expect(page.locator('[data-testid="chat-assistant-message-1"] li')).toContainText(
     'Markdown bullet',
   );
-  await expect(page.getByTestId('chat-message-sources-1')).toContainText('public-source-1');
-  await expect(page.getByTestId('chat-message-sources-1')).toContainText('Source 1');
+  await expect(page.getByTestId('chat-message-sources-1')).toContainText('src_progress_1');
+  await expect(page.getByTestId('chat-message-sources-1')).toContainText('Spec Update');
   await expect(page.getByTestId('chat-message-sources-1')).not.toContainText(
     'https://example.com/spec',
   );
@@ -98,8 +91,8 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
   await page.getByTestId('public-project-chat-submit-button').click();
   await expect(page.getByTestId('chat-assistant-message-1')).toContainText('Spec Update');
   await expect(page.getByTestId('chat-assistant-message-3')).toContainText('2件目の回答');
-  await expect(page.getByTestId('chat-message-sources-3')).toContainText('public-source-1');
-  await expect(page.getByTestId('chat-message-sources-3')).not.toContainText('Issue Summary');
+  await expect(page.getByTestId('chat-message-sources-3')).toContainText('src_issues_1');
+  await expect(page.getByTestId('chat-message-sources-3')).toContainText('Issue Summary');
   await expect(page.getByTestId('chat-message-sources-3')).not.toContainText('raw-issue-001');
   await expect(page.getByTestId('chat-message-editing-3')).toContainText('論点整理');
   await expect(page.getByTestId('chat-message-editing-3')).toContainText('状態確認');
