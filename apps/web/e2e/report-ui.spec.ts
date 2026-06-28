@@ -251,6 +251,23 @@ test('scenario: public user reads report with shared private rendering and no qu
   await expect(page.getByTestId('public-chat-question-input')).toHaveCount(0);
 });
 
+test('scenario: public report gate hides private project reports', async ({ page }) => {
+  await page.route('**/api/public/projects/private-a/reports/report-a*', async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        error: { code: 'public_report_not_found', message: 'Public report not found' },
+      }),
+      contentType: 'application/json',
+      status: 404,
+    });
+  });
+
+  await page.goto('/reports/public/private-a/report-a');
+
+  await expect(page.getByTestId('public-report-status')).toHaveText('public_report_not_found');
+  await expect(page.getByTestId('public-report-document')).toHaveCount(0);
+});
+
 test('scenario: hostile client sends unsafe input and public/publish APIs reject it @api', async ({
   request,
 }) => {

@@ -127,6 +127,9 @@ export async function getPrivateReport(input: {
   }
   const report = JSON.parse(await input.options.storage.getText(metadata.storageUri)) as unknown;
   validatePrivateReportJson(report);
+  if (report.report_id !== input.reportId || report.project_id !== project.id) {
+    throw new ReportNotFoundError(input.reportId);
+  }
   return { report, status: 'ok' };
 }
 
@@ -280,20 +283,39 @@ export async function getPublicReport(input: {
   if (!isReportDbAvailable(input.options)) {
     return { report: null, status: 'db_outside_business_hours' };
   }
-  const project = await input.options.repository.lookupProject({ projectSlug: input.projectSlug });
+  const { metadata, project } = await assertPublicReportAccess({
+    projectSlug: input.projectSlug,
+    reportId: input.reportId,
+    repository: input.options.repository,
+  });
+  const report = JSON.parse(await input.options.storage.getText(metadata.storageUri)) as unknown;
+  validatePrivateReportJson(report);
+  if (report.report_id !== input.reportId || report.project_id !== project.id) {
+    throw new PublicReportNotFoundError(input.reportId);
+  }
+  return { report, status: 'ok' };
+}
+
+export async function assertPublicReportAccess(input: {
+  readonly projectSlug: string;
+  readonly reportId: string;
+  readonly repository: ReportRepository;
+}): Promise<{
+  readonly metadata: ReportListItem;
+  readonly project: NonNullable<Awaited<ReturnType<ReportRepository['lookupProject']>>>;
+}> {
+  const project = await input.repository.lookupProject({ projectSlug: input.projectSlug });
   if (project?.visibility !== 'public') {
     throw new PublicReportNotFoundError(input.reportId);
   }
-  const metadata = await input.options.repository.readReportMetadata({
+  const metadata = await input.repository.readReportMetadata({
     projectId: project.id,
     reportId: input.reportId,
   });
   if (!metadata?.isPublic) {
     throw new PublicReportNotFoundError(input.reportId);
   }
-  const report = JSON.parse(await input.options.storage.getText(metadata.storageUri)) as unknown;
-  validatePrivateReportJson(report);
-  return { report, status: 'ok' };
+  return { metadata, project };
 }
 
 export async function getPublicReportArtifacts(input: {

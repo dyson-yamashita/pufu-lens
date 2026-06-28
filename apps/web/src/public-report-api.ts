@@ -14,12 +14,12 @@ import {
   mastraProjectChatGenerateUrl,
 } from './mastra-chat';
 import {
+  assertPublicReportAccess,
   createPostgresReportRepository,
   createReportStorageFromEnv,
   getPublicReport,
   isSafePublicReportLocator,
   PublicReportNotFoundError,
-  type ReportRepository,
   reportNowFromEnv,
 } from './report';
 import { parsePositiveEnvInt, trustedClientIp } from './request-client';
@@ -126,7 +126,7 @@ export async function handlePublicChatPost(
       );
     }
     const repository = createPostgresReportRepository(getRequiredAdminSql());
-    const project = await lookupPublicReportProject({
+    const { project } = await assertPublicReportAccess({
       projectSlug: input.projectSlug,
       reportId: input.reportId,
       repository,
@@ -160,10 +160,7 @@ export async function handlePublicChatPost(
       signal: request.signal,
     });
     if (!mastraResponse.ok) {
-      const errorText = await mastraResponse.text().catch(() => '');
-      throw new Error(
-        `Mastra project chat agent failed: HTTP ${mastraResponse.status} - ${errorText}`,
-      );
+      throw new Error(`Mastra project chat agent failed: HTTP ${mastraResponse.status}`);
     }
     const mastraBody = (await mastraResponse.json()) as unknown;
     return NextResponse.json(
@@ -211,25 +208,6 @@ export async function handlePublicProjectChatPost(
     projectSlug: input.projectSlug,
     reportId: latestReport.id,
   });
-}
-
-async function lookupPublicReportProject(input: {
-  readonly projectSlug: string;
-  readonly reportId: string;
-  readonly repository: ReportRepository;
-}) {
-  const project = await input.repository.lookupProject({ projectSlug: input.projectSlug });
-  if (project?.visibility !== 'public') {
-    throw new PublicReportNotFoundError(input.reportId);
-  }
-  const report = await input.repository.readReportMetadata({
-    projectId: project.id,
-    reportId: input.reportId,
-  });
-  if (!report?.isPublic) {
-    throw new PublicReportNotFoundError(input.reportId);
-  }
-  return project;
 }
 
 function publicReportNotFound() {

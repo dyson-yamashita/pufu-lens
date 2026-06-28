@@ -97,3 +97,33 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
   await expect(page.getByTestId('chat-message-editing-3')).toContainText('論点整理');
   await expect(page.getByTestId('chat-message-editing-3')).toContainText('状態確認');
 });
+
+test('scenario: public project chat locks input outside database business hours', async ({
+  page,
+}) => {
+  await page.route('**/api/public/projects/sample-a/chat', async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        answer: 'db_outside_business_hours',
+        projectSlug: 'sample-a',
+        sources: [],
+        status: 'db_outside_business_hours',
+        toolCalls: [],
+      }),
+      contentType: 'application/json',
+      status: 503,
+    });
+  });
+
+  await page.goto('/projects/sample-a/chat');
+
+  await page.getByTestId('public-project-chat-question-input').fill('営業時間外ですか');
+  await page.getByTestId('public-project-chat-submit-button').click();
+
+  await expect(page.getByTestId('public-project-chat-disabled-notice')).toHaveText(
+    'db_outside_business_hours',
+  );
+  await expect(page.getByTestId('public-project-chat-question-input')).toBeDisabled();
+  await expect(page.getByTestId('public-project-chat-submit-button')).toBeDisabled();
+  await expect(page.getByTestId('public-project-chat-mic-button')).toBeDisabled();
+});

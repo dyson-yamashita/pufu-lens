@@ -834,6 +834,20 @@ assert.equal(publicDetail.status, 'ok');
 assert.equal(publicDetail.report.report_id, generated.report.report_id);
 assert.equal(publicDetail.report.schema_version, 'v1');
 assert.match(publicDetail.report.summary, /contact@example\.com/);
+await storage.put(
+  generated.storageUri,
+  `${JSON.stringify({ ...privateReport, report_id: 'other-report' }, null, 2)}\n`,
+);
+await assert.rejects(
+  () =>
+    getPublicReport({
+      options: { repository, storage },
+      projectSlug: 'sample-a',
+      reportId: generated.report.report_id,
+    }),
+  PublicReportNotFoundError,
+);
+await storage.put(generated.storageUri, `${JSON.stringify(privateReport, null, 2)}\n`);
 const publicArtifacts = await getPublicReportArtifacts({
   projectSlug: 'sample-a',
   reportId: generated.report.report_id,
