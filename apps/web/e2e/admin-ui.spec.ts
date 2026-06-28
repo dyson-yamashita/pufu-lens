@@ -152,8 +152,19 @@ test.describe('authenticated admin operation controls', () => {
     await expect(page.getByTestId('data-source-edit-name-input')).toBeVisible();
     await expect(page.getByTestId('data-source-save-button')).toBeEnabled();
 
+    await page.goto('/projects/sample-a/admin/data-sources?dataSourceId=sample-a-github-main');
+    await expect(page.getByTestId('data-source-selected-connection-notice')).toBeVisible();
+    await expect(page.getByTestId('data-source-save-button')).toBeDisabled();
+    await expect(page.getByTestId('data-source-test-button')).toBeDisabled();
+    await expect(page.getByTestId('data-source-run-button')).toBeDisabled();
+    await expect(
+      page.getByTestId('data-source-collect-ingest-sample-a-github-main'),
+    ).toBeDisabled();
+
     await page.goto('/projects/sample-a/admin/settings');
     await expect(page.getByTestId('project-settings-form')).toBeVisible();
+    await expect(page.getByTestId('connection-google-operation-notice')).toBeVisible();
+    await expect(page.getByTestId('connection-github-operation-notice')).toBeVisible();
   });
 
   test('scenario: admin user cannot open removed parser profiles route', async ({ page }) => {

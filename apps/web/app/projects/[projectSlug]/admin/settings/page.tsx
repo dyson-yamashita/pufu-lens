@@ -172,6 +172,14 @@ export default async function ProjectSettingsPage({
                   </div>
                 ) : null}
               </dl>
+              {connection.status !== 'connected' ? (
+                <p
+                  className="connection-required-notice"
+                  data-testid={`connection-${connection.provider}-operation-notice`}
+                >
+                  {connectionOperationNotice(connection.provider, connection.status)}
+                </p>
+              ) : null}
               <div className="action-row">
                 <Link
                   className="primary-button"
@@ -293,5 +301,22 @@ function connectionStatusLabel(status: ProjectConnectionStatus): string {
       return 'Error';
     default:
       return 'Not connected';
+  }
+}
+
+function connectionOperationNotice(
+  provider: 'google' | 'github',
+  status: ProjectConnectionStatus,
+): string {
+  const providerLabel = provider === 'google' ? 'Google' : 'GitHub';
+  switch (status) {
+    case 'expired':
+      return `${providerLabel} 連携が失効しています。再接続するまで、この provider を使う data source の作成・保存・収集は停止します。`;
+    case 'scope_missing':
+      return `${providerLabel} 連携の scope が不足しています。必要な scope を追加するまで、対象 data source は選択・実行できません。`;
+    case 'error':
+      return `${providerLabel} 連携の設定にエラーがあります。provider 側の設定を確認してから再接続してください。`;
+    default:
+      return `${providerLabel} 連携が未設定です。接続後に対象 data source を作成・実行できます。`;
   }
 }

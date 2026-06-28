@@ -55,12 +55,16 @@ Web は provider によって build 方法が異なる。Firebase App Hosting、
 
 ### Auth And Connections
 
-| name                                                   | kind              | used by                       | note                                                                                                                                                  |
-| ------------------------------------------------------ | ----------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET`                | env / secret      | Web login                     | GitHub login を使う場合に設定する                                                                                                                     |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`            | env / secret      | Google data source connection | Gmail / Drive data source 連携用。Google はアプリログイン provider としては使わない                                                                   |
-| `CONNECTION_SECRET_KEY`                                | secret            | Web、collection scripts       | project connection token metadata の暗号化 key。任意の高エントロピー文字列を SHA-256 で AES-256-GCM key に派生する。未設定時は `AUTH_SECRET` fallback |
-| `AUTH_CREDENTIALS_EMAIL` / `AUTH_CREDENTIALS_PASSWORD` | local-only secret | initial admin script          | credentials user 作成時だけ使い、repository や deploy config に置かない                                                                               |
+| name                                                   | kind              | used by                       | note                                                                                                                                                                            |
+| ------------------------------------------------------ | ----------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET`                | env / secret      | Web login                     | GitHub login を使う場合に設定する。callback URL は `${AUTH_URL}/api/auth/callback/github`                                                                                       |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`            | env / secret      | Google data source connection | Gmail / Drive data source 連携用。callback URL は `${APP_BASE_URL}/api/connections/google/callback`。Google はアプリログイン provider としては使わない                          |
+| `CONNECTION_SECRET_KEY`                                | secret            | Web、collection scripts       | project connection token と GitHub App private key metadata の暗号化 key。任意の高エントロピー文字列を SHA-256 で AES-256-GCM key に派生する。未設定時は `AUTH_SECRET` fallback |
+| `AUTH_CREDENTIALS_EMAIL` / `AUTH_CREDENTIALS_PASSWORD` | local-only secret | initial admin script          | credentials user 作成時だけ使い、repository や deploy config に置かない                                                                                                         |
+
+GitHub data source は OAuth App ではなく GitHub App installation を使う。GitHub App の setup callback URL は `${APP_BASE_URL}/api/connections/github/callback` とし、App slug、App ID、private key は project Settings で登録する。GitHub App には Issues / Pull requests / Contents の読み取り権限を付与し、installation 対象 repository が data source scope の `owner/repo` を含むことを確認する。
+
+Google data source の incremental authorization では、Drive source に `https://www.googleapis.com/auth/drive.readonly`、Gmail source に `https://www.googleapis.com/auth/gmail.readonly` を追加要求する。scope 不足、token 失効、installation 解除の状態では、対象 source type の作成・保存・収集は UI と server action の両方で拒否される。
 
 ### Workflow Jobs And Smoke
 

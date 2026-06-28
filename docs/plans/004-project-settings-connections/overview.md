@@ -73,8 +73,8 @@ UI は補助にすぎないため、以下でも同じ制約を検証する。
 | Step 3 | `completed` | Google OAuth と GitHub App installation の start / callback / disconnect を実装する | callback が token / app secret を secret 管理し、画面やログへ実値を出さない    |
 | Step 4 | `completed` | Settings に Connections セクションを追加する                                        | project admin が connection 状態を確認し、Connect / Reconnect へ進める         |
 | Step 5 | `completed` | Data Source 作成 UI で未連携 source type を選択不可にする                           | 未連携 provider の option / tab / submit が e2e で選択不可と確認できる         |
-| Step 6 | `active`    | server action / API / workflow 側の connection 必須検証を入れる                     | 直接 form submit / API 呼び出しでも未連携 source type の作成・実行が拒否される |
-| Step 7 | `planned`   | 失効・scope 不足・解除済み connection の運用表示と検証を追加する                    | expired / scope_missing の表示、再接続導線、secret 漏れ検査が通る              |
+| Step 6 | `completed` | server action / API / workflow 側の connection 必須検証を入れる                     | 直接 form submit / API 呼び出しでも未連携 source type の作成・実行が拒否される |
+| Step 7 | `active`    | 失効・scope 不足・解除済み connection の運用表示と検証を追加する                    | expired / scope_missing の表示、再接続導線、secret 漏れ検査が通る              |
 
 ## Step 1: Connection Contract と UI 設計
 
@@ -192,7 +192,7 @@ UI は補助にすぎないため、以下でも同じ制約を検証する。
 - `createDataSource` は project の connection availability を server action 側で確認し、未連携 provider の data source 作成を拒否する。
 - `collectDataSource` / `collectAndIngestDataSource` は Drive / Gmail では Google connection token、GitHub では GitHub App installation token を取得できない場合に実行前に拒否する。
 - `updateDataSource` は既存 data source の `source_type` を変更しないため、source type と connection の再選択経路は UI 上存在しない。
-- Issue #363 で API route 追加時の同等 enforcement、workflow / CLI entrypoint が DB の data source を読む箇所での connection 状態・scope・期限検証、`connection_id` 改ざんや expired / scope_missing の server action test を追加する。
+- Issue #363 / PR #364 で server action、CLI entrypoint、collect / ingest の connection 状態・scope・期限検証を追加済み。
 
 ## Step 7: 運用・失効・Scope 不足の検証
 
@@ -211,6 +211,10 @@ UI は補助にすぎないため、以下でも同じ制約を検証する。
 - 再接続後に対象 source type が選択可能になる。
 - disconnect 後に対象 source type が選択不可になる。
 - 運用手順に callback URL、必要 scope、secret 名、手動確認項目が残る。
+
+### 対応状況
+
+- Issue #365 で Settings の expired / scope_missing / error / not_connected 表示、Data Sources の既存 source 実行不可表示、deploy checklist / `.env.example` / deployment overview の運用情報を追加する。
 
 ## 検証方針
 

@@ -22,8 +22,9 @@ API key、DB password は記録しない。
 - [ ] Cloud Run / Cloud Run Jobs / Firebase App Hosting の service account を確認した。
 - [ ] Secret Manager に runtime secret を作成した。
 - [ ] Google AI API key または Vertex AI 認証方式を設定した。
-- [ ] Auth.js アプリログイン用の Google OAuth / GitHub OAuth callback URL を設定した。
-- [ ] Google / GitHub data source 連携用の callback URL を設定した。
+- [ ] Auth.js アプリログイン用の GitHub OAuth callback URL を設定した。
+- [ ] Google data source 連携用の OAuth client と callback URL を設定した。
+- [ ] GitHub App installation 用の setup callback URL と repository permissions を設定した。
 - [ ] Cloud Scheduler の OIDC service account を作成した。
 
 ## Secret 記録
@@ -31,13 +32,29 @@ API key、DB password は記録しない。
 - `DATABASE_URL`: PostgreSQL 接続。実値は記録しない。
 - `AUTH_SECRET`: Auth.js。実値は記録しない。
 - `AUTH_URL`: Auth.js callback URL の origin。例: `https://app.example.com`。
-- `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET`: GitHub アプリログイン用 OAuth。実値は記録しない。
-- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`: Google data source 連携用 OAuth。App Hosting runtime secret として設定し、実値は記録しない。
+- `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET`: GitHub アプリログイン用 OAuth。callback URL は `${AUTH_URL}/api/auth/callback/github`。実値は記録しない。
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`: Google data source 連携用 OAuth。callback URL は `${APP_BASE_URL}/api/connections/google/callback`。App Hosting runtime secret として設定し、実値は記録しない。
+- `CONNECTION_SECRET_KEY`: OAuth token と GitHub App private key metadata の暗号化 key。App Hosting runtime secret として設定し、実値は記録しない。
 - `AUTH_CREDENTIALS_EMAIL` / `AUTH_CREDENTIALS_PASSWORD`: Credentials user 作成時だけローカル環境で使う。実値は記録しない。
 - `GEMINI_API_KEY`: Google AI API key 利用時のみ。実値は記録しない。
 - `GEMINI_CHAT_MODEL`: Chat / report model。モデル名のみ記録可。
 - `GEMINI_EMBEDDING_MODEL`: embedding model。モデル名のみ記録可。
 - `GEMINI_EMBEDDING_DIMENSIONS`: embedding 次元。既定は `1536`。
+
+## Provider 連携設定
+
+- Google data source OAuth client:
+  - callback URL: `${APP_BASE_URL}/api/connections/google/callback`
+  - Drive source 追加時に要求する scope: `https://www.googleapis.com/auth/drive.readonly`
+  - Gmail source 追加時に要求する scope: `https://www.googleapis.com/auth/gmail.readonly`
+  - base profile scope: `openid email profile`
+  - scope 不足または access token 失効時は、Settings の Google 連携から再接続する。
+- GitHub App:
+  - setup callback URL: `${APP_BASE_URL}/api/connections/github/callback`
+  - App slug、App ID、private key は project Settings の GitHub App form で登録する。private key 実値は docs、issue、PR、log に記録しない。
+  - repository permission は Issues / Pull requests / Contents の読み取りを有効にする。
+  - installation 対象 repository に data source の `owner/repo` が含まれることを確認する。
+  - installation 解除または App 設定不備時は、Settings の GitHub 連携から再設定する。
 
 ## IAM 記録
 
