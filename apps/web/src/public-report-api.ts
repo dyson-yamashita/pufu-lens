@@ -48,6 +48,12 @@ export async function handlePublicReportGet(input: {
   try {
     const businessHours = businessHoursFromEnv(process.env);
     const now = reportNowFromEnv(process.env) ?? new Date();
+    if (!isWithinBusinessHours(now, businessHours)) {
+      return NextResponse.json(
+        { report: null, status: 'db_outside_business_hours' },
+        { status: 503 },
+      );
+    }
     const response = await getPublicReport({
       options: {
         businessHours,

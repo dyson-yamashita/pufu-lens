@@ -454,7 +454,7 @@ export function PublicReportDocument({
                   ) : (
                     <>
                       <span>{privateReportSourceTitle(source)}</span>
-                      <small>{source.canonical_uri || source.document_id}</small>
+                      <small>{source.document_id}</small>
                     </>
                   )}
                 </article>
