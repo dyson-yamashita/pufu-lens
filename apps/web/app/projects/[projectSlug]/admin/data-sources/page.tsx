@@ -49,6 +49,7 @@ export default async function DataSourcesPage({
     : project.dataSources;
   const selectedSource =
     visibleSources.find((source) => source.id === dataSourceId) ?? visibleSources[0];
+  const selectedSourceAvailable = selectedSource ? availability[selectedSource.sourceType] : true;
   const counts = getSourceTypeCounts(project);
   let contentPreview = null;
   if (selectedSource) {
@@ -159,7 +160,8 @@ export default async function DataSourcesPage({
             collectAndIngestAction={collectAndIngestDataSource}
             canCollectAndIngest={(source) =>
               isAdminUiCollectionSupported(source.sourceType) &&
-              isAdminUiIngestSupported(source.sourceType)
+              isAdminUiIngestSupported(source.sourceType) &&
+              availability[source.sourceType]
             }
             projectSlug={project.slug}
             retryAction={retryFailedQueue}
@@ -182,6 +184,19 @@ export default async function DataSourcesPage({
                   data-testid="data-source-settings-section"
                 >
                   <h3 className="data-source-section-title">Settings</h3>
+                  {!selectedSourceAvailable ? (
+                    <p
+                      className="connection-required-notice"
+                      data-testid="data-source-selected-connection-notice"
+                    >
+                      {sourceTypeLabel(selectedSource.sourceType)} の connection
+                      を利用できません。Settings で接続状態を確認するまで Save / Test / Collect
+                      は実行できません。{' '}
+                      <Link href={connectionStartHref(project.slug, selectedSource.sourceType)}>
+                        接続を確認
+                      </Link>
+                    </p>
+                  ) : null}
                   <ActionForm action={updateDataSource} className="detail-edit-form">
                     <input name="projectSlug" type="hidden" value={project.slug} />
                     <input name="dataSourceId" type="hidden" value={selectedSource.id} />
@@ -226,6 +241,7 @@ export default async function DataSourcesPage({
                     <div className="action-row">
                       <PendingSubmitButton
                         className="icon-button"
+                        disabled={!selectedSourceAvailable}
                         testId="data-source-save-button"
                         title="Save data source"
                       >
@@ -237,6 +253,7 @@ export default async function DataSourcesPage({
                     <button
                       className="icon-button muted"
                       data-testid="data-source-test-button"
+                      disabled={!selectedSourceAvailable}
                       type="button"
                     >
                       Test
@@ -247,6 +264,7 @@ export default async function DataSourcesPage({
                       <PendingSubmitButton
                         className="icon-button muted"
                         disabled={
+                          !selectedSourceAvailable ||
                           !isAdminUiCollectionSupported(selectedSource.sourceType) ||
                           !isAdminUiIngestSupported(selectedSource.sourceType)
                         }

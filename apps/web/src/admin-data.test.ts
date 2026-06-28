@@ -6,6 +6,7 @@ import {
   getFallbackDataSourceContentPreview,
   getProject,
   getSourceTypeCounts,
+  isConnectionUsable,
   isProjectVisibility,
   isSourceType,
   isSourceTypeAvailable,
@@ -121,6 +122,28 @@ const expiredGoogleWithDriveScope = disconnected.map((connection) =>
 );
 assert.equal(isSourceTypeAvailable('drive', expiredGoogleWithDriveScope), false);
 assert.equal(isSourceTypeAvailable('gmail', expiredGoogleWithDriveScope), false);
+
+const scopeMissingGoogleWithDriveScope = disconnected.map((connection) =>
+  connection.provider === 'google'
+    ? {
+        ...connection,
+        grantedScopes: ['https://www.googleapis.com/auth/drive.readonly'],
+        status: 'scope_missing' as const,
+      }
+    : connection,
+);
+assert.equal(isSourceTypeAvailable('drive', scopeMissingGoogleWithDriveScope), false);
+assert.equal(isSourceTypeAvailable('gmail', scopeMissingGoogleWithDriveScope), false);
+
+const errorGitHub = disconnected.map((connection) =>
+  connection.provider === 'github' ? { ...connection, status: 'error' as const } : connection,
+);
+assert.equal(isSourceTypeAvailable('github', errorGitHub), false);
+assert.equal(isConnectionUsable('connected'), true);
+assert.equal(isConnectionUsable('expired'), false);
+assert.equal(isConnectionUsable('scope_missing'), false);
+assert.equal(isConnectionUsable('error'), false);
+assert.equal(isConnectionUsable('not_connected'), false);
 
 assert.equal(truncateSnippet('  hello   world  ', 20), 'hello world');
 assert.equal(
