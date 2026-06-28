@@ -86,23 +86,31 @@ async function assertDataSourceConnectionReady(
   sql: SqlExecutor,
   projectId: string,
   sourceType: SourceType,
+  connectionId?: string | null,
 ): Promise<AdminActionConnectionOwnerRow | undefined> {
   const provider = requiredProviderForSourceType(sourceType);
   if (!provider) {
     return undefined;
   }
+  if (connectionId === null) {
+    throw new Error(
+      `Project connection is required before using a ${sourceType} data source. Connect or reconnect the provider in Settings.`,
+    );
+  }
   const sourceScope = requiredScopeForSourceType(sourceType);
   const scopeFilter = sourceScope ? sql`${sourceScope} = ANY(oc.scopes)` : sql`true`;
   const githubFilter = provider === 'github' ? sql`AND oc.metadata ? 'installationId'` : sql``;
+  const connectionFilter = connectionId ? sql`AND oc.id = ${connectionId}` : sql``;
   const rows = (await sql`
     SELECT oc.id::text AS id, oc.user_id::text AS "userId"
     FROM public.oauth_connections oc
     WHERE oc.project_id = ${projectId}
       AND oc.provider = ${provider}
+      ${connectionFilter}
       AND (oc.expires_at IS NULL OR oc.expires_at > now())
       AND (oc.metadata->>'connectionError') IS DISTINCT FROM 'true'
       AND (oc.metadata->>'scopeMissing') IS DISTINCT FROM 'true'
-      AND COALESCE(oc.metadata->>'status', '') NOT IN ('error', 'scope_missing')
+      AND COALESCE(oc.metadata->>'status', 'connected') = 'connected'
       AND ${scopeFilter}
       ${githubFilter}
     ORDER BY oc.updated_at DESC
@@ -722,9 +730,15 @@ async function collectProjectDataSource(
   if (!isAdminUiCollectionSupported(dataSource.source_type)) {
     throw new Error(`Collect from admin UI is not supported for ${dataSource.source_type} yet.`);
   }
-  await assertDataSourceConnectionReady(sql, project.id, dataSource.source_type);
+  const connection = await assertDataSourceConnectionReady(
+    sql,
+    project.id,
+    dataSource.source_type,
+    dataSource.connectionId,
+  );
   if (dataSource.source_type === 'drive' || dataSource.source_type === 'gmail') {
     const token = await readProjectConnectionAccessToken({
+      connectionId: connection?.id,
       projectId: project.id,
       provider: 'google',
       sql,
@@ -755,6 +769,7 @@ async function collectProjectDataSource(
   }
   if (dataSource.source_type === 'github') {
     const token = await createGitHubInstallationAccessToken({
+      connectionId: connection?.id,
       projectId: project.id,
       sql,
     });
@@ -821,7 +836,7 @@ async function lookupProjectDataSourceForDeletionRow(
   dataSourceId: string,
 ): Promise<AdminActionDataSourceRow | undefined> {
   const rows = (await sql`
-    SELECT id::text, source_type
+    SELECT connection_id::text AS connection_id, id::text AS id, source_type
     FROM public.data_sources
     WHERE id = ${dataSourceId}
       AND project_id = ${projectId}
@@ -964,7 +979,7 @@ async function lookupProjectDataSourceRow(
   dataSourceId: string,
 ): Promise<AdminActionDataSourceRow | undefined> {
   const rows = (await sql`
-    SELECT id::text, source_type
+    SELECT connection_id::text AS connection_id, id::text AS id, source_type
     FROM public.data_sources
     WHERE id = ${dataSourceId}
       AND project_id = ${projectId}
@@ -989,7 +1004,12 @@ async function lookupProjectDataSourceIngestInput(
   if (!isAdminUiIngestSupported(dataSource.source_type)) {
     throw new Error(`Ingest from admin UI is not supported for ${dataSource.source_type} yet.`);
   }
-  await assertDataSourceConnectionReady(sql, projectId, dataSource.source_type);
+  await assertDataSourceConnectionReady(
+    sql,
+    projectId,
+    dataSource.source_type,
+    dataSource.connectionId,
+  );
   return {
     sourceType: dataSource.source_type,
     storageRoot: storageRootFromObjectUri(dataSource.storage_uri, projectSlug),
@@ -1003,7 +1023,8 @@ async function lookupProjectDataSourceIngestRow(
 ): Promise<AdminActionDataSourceIngestRow | undefined> {
   const rows = (await sql`
     SELECT
-      ds.id::text,
+      ds.connection_id::text AS connection_id,
+      ds.id::text AS id,
       ds.source_type,
       (
         SELECT rd.storage_uri

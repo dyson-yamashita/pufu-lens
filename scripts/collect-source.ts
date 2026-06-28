@@ -666,7 +666,7 @@ async function readProjectCollectionConnection(input: {
       AND (oc.expires_at IS NULL OR oc.expires_at > now())
       AND (oc.metadata->>'connectionError') IS DISTINCT FROM 'true'
       AND (oc.metadata->>'scopeMissing') IS DISTINCT FROM 'true'
-      AND COALESCE(oc.metadata->>'status', '') NOT IN ('error', 'scope_missing')
+      AND COALESCE(oc.metadata->>'status', 'connected') = 'connected'
       AND ${scopeFilter}
       ${githubFilter}
     LIMIT 1
@@ -723,7 +723,7 @@ async function readCollectionConnection(input: {
       AND (oc.expires_at IS NULL OR oc.expires_at > now())
       AND (oc.metadata->>'connectionError') IS DISTINCT FROM 'true'
       AND (oc.metadata->>'scopeMissing') IS DISTINCT FROM 'true'
-      AND COALESCE(oc.metadata->>'status', '') NOT IN ('error', 'scope_missing')
+      AND COALESCE(oc.metadata->>'status', 'connected') = 'connected'
       AND ${scopeFilter}
       ${githubFilter}
     LIMIT 1
