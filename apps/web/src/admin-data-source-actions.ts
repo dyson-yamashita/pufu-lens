@@ -95,7 +95,7 @@ async function assertDataSourceConnectionReady(
   const scopeFilter = sourceScope ? sql`${sourceScope} = ANY(oc.scopes)` : sql`true`;
   const githubFilter = provider === 'github' ? sql`AND oc.metadata ? 'installationId'` : sql``;
   const rows = (await sql`
-    SELECT oc.id::text, oc.user_id::text AS "userId"
+    SELECT oc.id::text AS id, oc.user_id::text AS "userId"
     FROM public.oauth_connections oc
     WHERE oc.project_id = ${projectId}
       AND oc.provider = ${provider}
