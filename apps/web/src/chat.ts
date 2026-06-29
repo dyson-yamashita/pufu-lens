@@ -444,6 +444,16 @@ const DEFAULT_BUSINESS_HOURS: BusinessHoursConfig = {
 const VECTOR_SEARCH_MIN_CANDIDATE_LIMIT = 50;
 const VECTOR_SEARCH_MAX_CANDIDATE_LIMIT = 200;
 
+/**
+ * Runs the private chat workflow for a project member.
+ *
+ * Returns an unavailable response outside business hours, a rate-limited response when the limiter rejects the request, or an answered response with retrieved sources and the generated answer.
+ *
+ * @param request - The private chat request
+ * @param options - The chat runtime dependencies and policy settings
+ * @returns The private chat response
+ * @throws ProjectAccessDeniedError If the user does not have access to the project
+ */
 export async function runPrivateChat(
   request: ChatRequest,
   options: RunPrivateChatOptions,
@@ -846,6 +856,12 @@ export function isWithinBusinessHours(date: Date, config: BusinessHoursConfig): 
   );
 }
 
+/**
+ * Creates a Postgres-backed chat repository.
+ *
+ * @param options - Optional raw storage used to enable raw read view fetches
+ * @returns A chat repository implementation backed by the provided SQL client
+ */
 export function createPostgresChatRepository(
   sql: postgres.Sql,
   options: { readonly rawStorage?: Pick<ObjectStorage, 'getText'> } = {},
@@ -1221,6 +1237,11 @@ export function parseChatSourceRow(value: unknown): ChatSourceRow {
   };
 }
 
+/**
+ * Converts a database row into a chat source.
+ *
+ * @returns The mapped chat source with trimmed snippet text.
+ */
 function sourceFromRow(row: ChatSourceRow): ChatSource {
   return {
     canonicalUri: row.canonical_uri,
@@ -1232,7 +1253,12 @@ function sourceFromRow(row: ChatSourceRow): ChatSource {
   };
 }
 
-/** ハイブリッド検索で pgvector / PGroonga それぞれから取得する候補数の上限を算出する。 */
+/**
+ * ハイブリッド検索の候補数上限を算出します。
+ *
+ * @param limit - 基準となる取得件数
+ * @returns pgvector / PGroonga の候補数上限
+ */
 export function hybridSearchCandidateLimit(limit: number): number {
   return Math.min(
     Math.max(limit * 20, VECTOR_SEARCH_MIN_CANDIDATE_LIMIT),
@@ -1241,8 +1267,13 @@ export function hybridSearchCandidateLimit(limit: number): number {
 }
 
 /**
- * PGroonga キーワード検索向けにクエリ文字列を正規化する。
- * 制御文字を空白に置換し、連続空白を整形して最大 512 文字に切り詰める。
+ * Normalizes a query string for hybrid keyword search.
+ *
+ * Converts the text to NFKC, replaces ASCII control characters with spaces, collapses whitespace,
+ * trims the result, and limits it to 512 characters.
+ *
+ * @param query - The input query text
+ * @returns The normalized query string, or an empty string when `query` is not a string
  */
 export function normalizeHybridKeywordQuery(query: string | null | undefined): string {
   if (typeof query !== 'string') {
@@ -1256,12 +1287,25 @@ export function normalizeHybridKeywordQuery(query: string | null | undefined): s
     .slice(0, 512);
 }
 
-/** 文字が ASCII 制御文字（0x00–0x1F または 0x7F）かどうかを判定する。 */
+/**
+ * 文字が ASCII 制御文字かどうかを判定する。
+ *
+ * @param character - 判定対象の文字
+ * @returns `true` なら ASCII 制御文字、`false` それ以外
+ */
 function isControlCharacter(character: string): boolean {
   const codePoint = character.codePointAt(0);
   return codePoint !== undefined && (codePoint < 0x20 || codePoint === 0x7f);
 }
 
+/**
+ * Fetches chat sources for the specified documents.
+ *
+ * @param sql - Database connection.
+ * @param input.documentIds - Document IDs to retrieve.
+ * @param input.projectId - Project that owns the documents.
+ * @returns Chat sources for the matching documents.
+ */
 async function fetchChatSourcesByDocumentIds(
   sql: postgres.Sql,
   input: { documentIds: readonly string[]; projectId: string },
