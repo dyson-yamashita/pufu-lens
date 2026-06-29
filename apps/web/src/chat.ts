@@ -277,16 +277,18 @@ export function graphQuerySearchPatterns(query: string): string[] {
 export function shouldUseGraphRelatedSource(input: {
   candidate: ChatGraphRelatedSource;
   question: string;
-  seedSources: readonly ChatSource[];
+  seedDocumentIds: readonly string[];
 }): boolean {
-  const { candidate, seedSources } = input;
-  if (seedSources.some((source) => source.documentId === candidate.documentId)) {
+  const { candidate, seedDocumentIds } = input;
+  if (seedDocumentIds.includes(candidate.documentId)) {
     return false;
   }
   if (candidate.relationType !== 'SAME_AS' || candidate.hopCount !== 1) {
     return false;
   }
-  return Boolean(candidate.title.trim() || candidate.snippet?.trim());
+  const title = candidate.title.trim();
+  const snippet = candidate.snippet?.trim() ?? '';
+  return Boolean((title && title !== 'Untitled') || snippet);
 }
 
 export function inferChatEditingMetadata(question: string): ChatEditingMetadata {
@@ -492,9 +494,12 @@ export async function runPrivateChat(
     documentIds: vectorSources.map((source) => source.documentId),
     projectId: project.id,
   });
+  const graphSourceBudget = Math.min(graphSources.length, 2);
+  const vectorSourceBudget = 5 - graphSourceBudget;
   const sources = uniqueSources([
-    ...vectorSources,
-    ...graphSources,
+    ...vectorSources.slice(0, vectorSourceBudget),
+    ...graphSources.slice(0, graphSourceBudget),
+    ...vectorSources.slice(vectorSourceBudget),
     ...documentSources,
     ...rawSources,
     ...parsedSources,
@@ -873,15 +878,22 @@ export function createPostgresChatRepository(
     },
     async graphQuery({ graphName, limit, projectId, query, seedDocumentIds }) {
       const seedIds = seedDocumentIds ?? [];
-      const relatedDocumentIds =
-        graphName && seedIds.length > 0
-          ? await querySameAsRelatedDocumentIds(sql, {
-              graphName,
-              limit,
-              projectId,
-              seedDocumentIds: seedIds,
-            })
-          : [];
+      let relatedDocumentIds: readonly {
+        readonly documentId: string;
+        readonly seedDocumentId: string;
+      }[] = [];
+      if (graphName && seedIds.length > 0) {
+        try {
+          relatedDocumentIds = await querySameAsRelatedDocumentIds(sql, {
+            graphName,
+            limit,
+            projectId,
+            seedDocumentIds: seedIds,
+          });
+        } catch {
+          relatedDocumentIds = [];
+        }
+      }
       if (relatedDocumentIds.length > 0) {
         const candidates = await fetchChatSourcesByDocumentIds(sql, {
           documentIds: relatedDocumentIds.map((candidate) => candidate.documentId),
@@ -905,13 +917,7 @@ export function createPostgresChatRepository(
             shouldUseGraphRelatedSource({
               candidate,
               question: query,
-              seedSources: seedIds.map((documentId) => ({
-                canonicalUri: '',
-                documentId,
-                docType: '',
-                rawDocumentId: '',
-                title: '',
-              })),
+              seedDocumentIds: seedIds,
             }),
           )
           .slice(0, limit);
@@ -1185,11 +1191,14 @@ LIMIT ${Math.max(1, Math.min(input.limit, 10))}`;
       `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
         cypher,
       )}) AS (seed agtype, related agtype)`,
-    ) as Promise<readonly Record<string, unknown>[]>;
+    ) as Promise<readonly unknown[]>;
   });
   const candidates: Array<{ documentId: string; seedDocumentId: string }> = [];
   const seen = new Set<string>();
   for (const row of rows) {
+    if (!isRecord(row)) {
+      continue;
+    }
     const seedDocumentId = documentIdFromAgeVertex(row.seed);
     const documentId = documentIdFromAgeVertex(row.related);
     if (!seedDocumentId || !documentId || seen.has(documentId)) {

@@ -163,7 +163,7 @@ assert.equal(
       seedDocumentId: 'doc-a',
     },
     question: '仕様変更を要約して',
-    seedSources: [sampleSource],
+    seedDocumentIds: ['doc-a'],
   }),
   true,
 );
@@ -176,9 +176,73 @@ assert.equal(
       seedDocumentId: 'doc-a',
     },
     question: '仕様変更を要約して',
-    seedSources: [sampleSource],
+    seedDocumentIds: ['doc-a'],
   }),
   false,
+);
+assert.equal(
+  shouldUseGraphRelatedSource({
+    candidate: {
+      ...sampleSource,
+      documentId: 'doc-same-as',
+      hopCount: 1,
+      relationType: 'SAME_AS',
+      seedDocumentId: 'doc-a',
+      title: 'Untitled',
+    },
+    question: '仕様変更を要約して',
+    seedDocumentIds: ['doc-a'],
+  }),
+  false,
+);
+assert.equal(
+  shouldUseGraphRelatedSource({
+    candidate: {
+      ...sampleSource,
+      documentId: 'doc-same-as',
+      hopCount: 1,
+      relationType: 'SAME_AS',
+      seedDocumentId: 'doc-a',
+      snippet: '関連する本文断片',
+      title: 'Untitled',
+    },
+    question: '仕様変更を要約して',
+    seedDocumentIds: ['doc-a'],
+  }),
+  true,
+);
+
+const graphBudgetResponse = await runPrivateChat(
+  { projectSlug: 'sample-a', question: '関連資料は?', userId: 'user-a' },
+  {
+    provider: createExtractiveChatProvider(),
+    repository: {
+      ...createRepository(),
+      async vectorSearch() {
+        return Array.from({ length: 5 }, (_, index) => ({
+          ...sampleSource,
+          documentId: `doc-vector-${index + 1}`,
+          title: `Vector ${index + 1}`,
+        }));
+      },
+      async graphQuery() {
+        return [{ ...sampleSource, documentId: 'doc-graph-budget', title: 'Graph Related' }];
+      },
+      async documentFetch() {
+        return [];
+      },
+      async rawDocumentFetch() {
+        return [];
+      },
+      async parsedDocFetch() {
+        return [];
+      },
+    },
+  },
+);
+assert.deepEqual(
+  graphBudgetResponse.sources.map((source) => source.documentId),
+  ['doc-vector-1', 'doc-vector-2', 'doc-vector-3', 'doc-vector-4', 'doc-graph-budget'],
 );
 
 const adminResponse = await runPrivateChat(
