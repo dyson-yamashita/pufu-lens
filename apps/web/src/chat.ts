@@ -922,23 +922,32 @@ export function createPostgresChatRepository(
           ORDER BY dc.embedding <=> ${vector}::vector
           LIMIT ${candidateLimit}
         ),
+        keyword_candidates_limit AS (
+          SELECT
+            dc.id AS chunk_id,
+            dc.document_id,
+            dc.content,
+            dc.embedding,
+            pgroonga_score(dc.tableoid, dc.ctid) AS keyword_score
+          FROM public.document_chunks dc
+          WHERE dc.project_id = ${projectId}
+            AND dc.content &@~ pgroonga_query_escape(${keywordQuery})
+          ORDER BY pgroonga_score(dc.tableoid, dc.ctid) DESC
+          LIMIT ${candidateLimit}
+        ),
         keyword_candidates AS (
           SELECT
-            dc.id::text AS chunk_id,
+            kcl.chunk_id::text AS chunk_id,
             d.id::text AS document_id,
             d.raw_document_id::text AS raw_document_id,
             d.doc_type,
             coalesce(d.title, 'Untitled') AS title,
             coalesce(d.canonical_uri, '') AS canonical_uri,
-            left(coalesce(dc.content, d.summary, ''), 700) AS snippet,
-            dc.embedding <=> ${vector}::vector AS distance,
-            pgroonga_score(dc.tableoid, dc.ctid) AS keyword_score
-          FROM public.document_chunks dc
-          JOIN public.documents d ON d.id = dc.document_id
-          WHERE dc.project_id = ${projectId}
-            AND dc.content &@~ pgroonga_query_escape(${keywordQuery})
-          ORDER BY pgroonga_score(dc.tableoid, dc.ctid) DESC
-          LIMIT ${candidateLimit}
+            left(coalesce(kcl.content, d.summary, ''), 700) AS snippet,
+            kcl.embedding <=> ${vector}::vector AS distance,
+            kcl.keyword_score
+          FROM keyword_candidates_limit kcl
+          JOIN public.documents d ON d.id = kcl.document_id
         ),
         keyword_score_bounds AS (
           SELECT COALESCE(MAX(keyword_score), 0) AS max_score FROM keyword_candidates
