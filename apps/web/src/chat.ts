@@ -1162,11 +1162,52 @@ async function fetchChatSourcesByDocumentIds(
   return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
 }
 
-interface GraphRelatedDocumentCandidate {
+export interface GraphRelatedDocumentCandidate {
   readonly documentId: string;
   readonly hopCount: 1 | 2;
   readonly relationType: ChatGraphRelationType;
   readonly seedDocumentId: string;
+}
+
+export interface GraphRelatedDocumentRows {
+  readonly hopCount: 1 | 2;
+  readonly relationType: ChatGraphRelationType;
+  readonly rows: readonly unknown[];
+}
+
+export function selectGraphRelatedDocumentCandidates(input: {
+  limit: number;
+  relationRows: readonly GraphRelatedDocumentRows[];
+}): GraphRelatedDocumentCandidate[] {
+  const maxResults = Math.max(1, Math.min(input.limit, 10));
+  const candidates: GraphRelatedDocumentCandidate[] = [];
+  const seen = new Set<string>();
+  for (const relationRows of input.relationRows) {
+    if (candidates.length >= maxResults) {
+      break;
+    }
+    for (const row of relationRows.rows) {
+      if (!isRecord(row)) {
+        continue;
+      }
+      const seedDocumentId = documentIdFromAgeVertex(row.seed);
+      const documentId = documentIdFromAgeVertex(row.related);
+      if (!seedDocumentId || !documentId || seen.has(documentId)) {
+        continue;
+      }
+      seen.add(documentId);
+      candidates.push({
+        documentId,
+        hopCount: relationRows.hopCount,
+        relationType: relationRows.relationType,
+        seedDocumentId,
+      });
+      if (candidates.length >= maxResults) {
+        break;
+      }
+    }
+  }
+  return candidates;
 }
 
 async function queryGraphRelatedDocumentIds(
@@ -1189,7 +1230,7 @@ async function queryGraphRelatedDocumentIds(
   const whereBase = `seed.projectId = ${projectIdLiteral}
   AND related.projectId = ${projectIdLiteral}
   AND seed.documentId IN [${seedIdList}]
-  AND related.documentId <> seed.documentId`;
+  AND NOT related.documentId IN [${seedIdList}]`;
   const relationQueries: Array<{
     cypher: string;
     hopCount: 1 | 2;
@@ -1217,55 +1258,35 @@ WHERE seed.projectId = ${projectIdLiteral}
   AND topic.projectId = ${projectIdLiteral}
   AND related.projectId = ${projectIdLiteral}
   AND seed.documentId IN [${seedIdList}]
-  AND related.documentId <> seed.documentId
+  AND NOT related.documentId IN [${seedIdList}]
 RETURN DISTINCT seed, related
 ORDER BY seed.documentId, related.documentId`,
       hopCount: 2,
       relationType: 'MENTIONS',
     },
   ];
-  const candidates: GraphRelatedDocumentCandidate[] = [];
-  const seen = new Set<string>();
+  const relationRows: GraphRelatedDocumentRows[] = [];
   await sql.begin(async (transaction) => {
     await transaction`SET TRANSACTION READ ONLY`;
     await transaction`LOAD 'age'`;
     await transaction`SET LOCAL search_path = ag_catalog, "$user", public`;
     await transaction`SET LOCAL statement_timeout = '5000ms'`;
     for (const relationQuery of relationQueries) {
-      if (candidates.length >= maxResults) {
-        break;
-      }
-      const remaining = maxResults - candidates.length;
       const cypher = `${relationQuery.cypher}
-LIMIT ${remaining}`;
+LIMIT ${maxResults}`;
       const rows = (await transaction.unsafe(
         `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
           cypher,
         )}) AS (seed agtype, related agtype)`,
       )) as readonly unknown[];
-      for (const row of rows) {
-        if (!isRecord(row)) {
-          continue;
-        }
-        const seedDocumentId = documentIdFromAgeVertex(row.seed);
-        const documentId = documentIdFromAgeVertex(row.related);
-        if (!seedDocumentId || !documentId || seen.has(documentId)) {
-          continue;
-        }
-        seen.add(documentId);
-        candidates.push({
-          documentId,
-          hopCount: relationQuery.hopCount,
-          relationType: relationQuery.relationType,
-          seedDocumentId,
-        });
-        if (candidates.length >= maxResults) {
-          break;
-        }
-      }
+      relationRows.push({
+        hopCount: relationQuery.hopCount,
+        relationType: relationQuery.relationType,
+        rows,
+      });
     }
   });
-  return candidates;
+  return selectGraphRelatedDocumentCandidates({ limit: maxResults, relationRows });
 }
 
 function documentIdFromAgeVertex(value: unknown): string | undefined {
