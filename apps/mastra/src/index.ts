@@ -202,6 +202,7 @@ const optionalSourceTypeFilterSchema = z
   .optional();
 
 const mastraProjectContextSchema = z.object({
+  graphName: z.string().nullable().optional(),
   projectId: z.string().min(1),
 });
 
@@ -350,6 +351,7 @@ export function createProjectChatTools(repository: ChatRepository) {
           requestContext?:
             | { get<T>(key: string): T }
             | {
+                graphName?: string | null;
                 projectId?: string;
               };
         }
@@ -366,6 +368,27 @@ export function createProjectChatTools(repository: ChatRepository) {
       throw new Error('Mastra project tool requires requestContext.projectId.');
     }
     return projectId;
+  };
+  const graphNameFromContext = (
+    context:
+      | {
+          requestContext?:
+            | { get<T>(key: string): T }
+            | {
+                graphName?: string | null;
+              };
+        }
+      | undefined,
+  ): string | null => {
+    const requestContext = context?.requestContext;
+    if (requestContext && 'get' in requestContext && typeof requestContext.get === 'function') {
+      return requestContext.get<string | null>('graphName') ?? null;
+    }
+    return requestContext &&
+      'graphName' in requestContext &&
+      typeof requestContext.graphName === 'string'
+      ? requestContext.graphName
+      : null;
   };
 
   return {
@@ -386,15 +409,21 @@ export function createProjectChatTools(repository: ChatRepository) {
     graphQuery: createTool({
       id: mastraToolIds.graphQuery,
       description:
-        'Query graph-backed document metadata and short summary snippets for the active project.',
-      inputSchema: z.object({ limit: z.number().int().min(1).max(10), query: z.string() }),
+        'Query graph-backed document metadata and short summary snippets for the active project. When seedDocumentIds are provided, fetch SAME_AS 1-hop related documents first and gate them before returning sources.',
+      inputSchema: z.object({
+        limit: z.number().int().min(1).max(10),
+        query: z.string(),
+        seedDocumentIds: z.array(z.string()).max(10).optional(),
+      }),
       outputSchema: chatSourceListSchema,
       requestContextSchema: mastraProjectContextSchema,
-      execute: async ({ limit, query }, context) => ({
+      execute: async ({ limit, query, seedDocumentIds }, context) => ({
         sources: await repository.graphQuery({
+          graphName: graphNameFromContext(context),
           limit,
           projectId: projectIdFromContext(context),
           query,
+          seedDocumentIds,
         }),
       }),
     }),

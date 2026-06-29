@@ -27,6 +27,14 @@ export interface ChatSource {
   readonly title: string;
 }
 
+export type ChatGraphRelationType = 'SAME_AS';
+
+export type ChatGraphRelatedSource = ChatSource & {
+  readonly hopCount: 1;
+  readonly relationType: ChatGraphRelationType;
+  readonly seedDocumentId: string;
+};
+
 export interface ChatToolCall {
   readonly name: ChatToolName;
   readonly resultCount: number;
@@ -110,11 +118,19 @@ export interface ChatRepository {
     documentIds: readonly string[];
     projectId: string;
   }): Promise<ChatSource[]>;
-  graphQuery(input: { limit: number; projectId: string; query: string }): Promise<ChatSource[]>;
+  graphQuery(input: {
+    graphName?: string | null;
+    limit: number;
+    projectId: string;
+    query: string;
+    seedDocumentIds?: readonly string[];
+  }): Promise<ChatSource[]>;
   lookupProjectMember(input: {
     projectSlug: string;
     userId: string;
-  }): Promise<{ readonly id: string; readonly slug: string } | undefined>;
+  }): Promise<
+    { readonly graphName: string | null; readonly id: string; readonly slug: string } | undefined
+  >;
   parsedDocFetch(input: { limit: number; projectId: string }): Promise<ChatSource[]>;
   rawDocumentFetch(input: {
     limit: number;
@@ -256,6 +272,21 @@ export function graphQuerySearchPatterns(query: string): string[] {
     .map((candidate) => stripGraphQueryPrefix(candidate).trim())
     .filter((candidate) => candidate.length > 0);
   return [...new Set(candidates)].slice(0, 5).map((candidate) => `%${candidate}%`);
+}
+
+export function shouldUseGraphRelatedSource(input: {
+  candidate: ChatGraphRelatedSource;
+  question: string;
+  seedSources: readonly ChatSource[];
+}): boolean {
+  const { candidate, seedSources } = input;
+  if (seedSources.some((source) => source.documentId === candidate.documentId)) {
+    return false;
+  }
+  if (candidate.relationType !== 'SAME_AS' || candidate.hopCount !== 1) {
+    return false;
+  }
+  return Boolean(candidate.title.trim() || candidate.snippet?.trim());
 }
 
 export function inferChatEditingMetadata(question: string): ChatEditingMetadata {
@@ -433,17 +464,19 @@ export async function runPrivateChat(
 
   const editing = inferChatEditingMetadata(request.question);
   const embedding = deterministicVector(request.question, 1536);
-  const [vectorSources, graphSources, rawSources, parsedSources] = await Promise.all([
-    options.repository.vectorSearch({
-      embedding,
-      limit: 5,
-      projectId: project.id,
-      query: request.question,
-    }),
+  const vectorSources = await options.repository.vectorSearch({
+    embedding,
+    limit: 5,
+    projectId: project.id,
+    query: request.question,
+  });
+  const [graphSources, rawSources, parsedSources] = await Promise.all([
     options.repository.graphQuery({
+      graphName: project.graphName,
       limit: 5,
       projectId: project.id,
       query: request.question,
+      seedDocumentIds: vectorSources.map((source) => source.documentId),
     }),
     options.repository.rawDocumentFetch({
       limit: 5,
@@ -812,7 +845,7 @@ export function createPostgresChatRepository(
   return {
     async lookupProjectMember({ projectSlug, userId }) {
       const access = await lookupProjectMemberAccess(sql, { projectSlug, userId });
-      return access ? { id: access.id, slug: access.slug } : undefined;
+      return access ? { graphName: access.graphName, id: access.id, slug: access.slug } : undefined;
     },
     async vectorSearch({ embedding, limit, projectId }) {
       const vector = `[${embedding.join(',')}]`;
@@ -838,7 +871,54 @@ export function createPostgresChatRepository(
       `) as readonly unknown[];
       return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
     },
-    async graphQuery({ limit, projectId, query }) {
+    async graphQuery({ graphName, limit, projectId, query, seedDocumentIds }) {
+      const seedIds = seedDocumentIds ?? [];
+      const relatedDocumentIds =
+        graphName && seedIds.length > 0
+          ? await querySameAsRelatedDocumentIds(sql, {
+              graphName,
+              limit,
+              projectId,
+              seedDocumentIds: seedIds,
+            })
+          : [];
+      if (relatedDocumentIds.length > 0) {
+        const candidates = await fetchChatSourcesByDocumentIds(sql, {
+          documentIds: relatedDocumentIds.map((candidate) => candidate.documentId),
+          projectId,
+        });
+        const byDocumentId = new Map(candidates.map((source) => [source.documentId, source]));
+        const acceptedSources = relatedDocumentIds
+          .map((candidate) => {
+            const source = byDocumentId.get(candidate.documentId);
+            return source
+              ? ({
+                  ...source,
+                  hopCount: 1,
+                  relationType: 'SAME_AS',
+                  seedDocumentId: candidate.seedDocumentId,
+                } satisfies ChatGraphRelatedSource)
+              : undefined;
+          })
+          .filter((candidate): candidate is ChatGraphRelatedSource => Boolean(candidate))
+          .filter((candidate) =>
+            shouldUseGraphRelatedSource({
+              candidate,
+              question: query,
+              seedSources: seedIds.map((documentId) => ({
+                canonicalUri: '',
+                documentId,
+                docType: '',
+                rawDocumentId: '',
+                title: '',
+              })),
+            }),
+          )
+          .slice(0, limit);
+        if (acceptedSources.length > 0) {
+          return acceptedSources;
+        }
+      }
       const patterns = graphQuerySearchPatterns(query);
       const searchPatterns = patterns.length > 0 ? patterns : [`%${query}%`];
       const rows = (await sql`
@@ -872,28 +952,7 @@ export function createPostgresChatRepository(
       if (documentIds.length === 0) {
         return [];
       }
-      const rows = (await sql`
-        SELECT
-          d.id::text AS document_id,
-          d.raw_document_id::text AS raw_document_id,
-          d.doc_type,
-          coalesce(d.title, 'Untitled') AS title,
-          coalesce(d.canonical_uri, '') AS canonical_uri,
-          left(coalesce(d.summary, dc.content, ''), 700) AS snippet
-        FROM public.documents d
-        LEFT JOIN LATERAL (
-          SELECT content
-          FROM public.document_chunks
-          WHERE project_id = d.project_id
-            AND document_id = d.id
-          ORDER BY chunk_index ASC
-          LIMIT 1
-        ) dc ON true
-        WHERE d.project_id = ${projectId}
-          AND d.id IN ${sql(documentIds)}
-        ORDER BY d.occurred_at DESC NULLS LAST, d.updated_at DESC
-      `) as readonly unknown[];
-      return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
+      return fetchChatSourcesByDocumentIds(sql, { documentIds, projectId });
     },
     async rawDocumentFetch({ limit, maxBytes, projectId }) {
       const rows = (await sql`
@@ -1063,6 +1122,119 @@ function sourceFromRow(row: ChatSourceRow): ChatSource {
     snippet: row.snippet?.trim() || undefined,
     title: row.title,
   };
+}
+
+async function fetchChatSourcesByDocumentIds(
+  sql: postgres.Sql,
+  input: { documentIds: readonly string[]; projectId: string },
+): Promise<ChatSource[]> {
+  if (input.documentIds.length === 0) {
+    return [];
+  }
+  const rows = (await sql`
+    SELECT
+      d.id::text AS document_id,
+      d.raw_document_id::text AS raw_document_id,
+      d.doc_type,
+      coalesce(d.title, 'Untitled') AS title,
+      coalesce(d.canonical_uri, '') AS canonical_uri,
+      left(coalesce(d.summary, dc.content, ''), 700) AS snippet
+    FROM public.documents d
+    LEFT JOIN LATERAL (
+      SELECT content
+      FROM public.document_chunks
+      WHERE project_id = d.project_id
+        AND document_id = d.id
+      ORDER BY chunk_index ASC
+      LIMIT 1
+    ) dc ON true
+    WHERE d.project_id = ${input.projectId}
+      AND d.id IN ${sql(input.documentIds)}
+    ORDER BY d.occurred_at DESC NULLS LAST, d.updated_at DESC
+  `) as readonly unknown[];
+  return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
+}
+
+async function querySameAsRelatedDocumentIds(
+  sql: postgres.Sql,
+  input: {
+    graphName: string;
+    limit: number;
+    projectId: string;
+    seedDocumentIds: readonly string[];
+  },
+): Promise<readonly { readonly documentId: string; readonly seedDocumentId: string }[]> {
+  const safeGraphName = validateAgeGraphName(input.graphName);
+  const seedDocumentIds = [...new Set(input.seedDocumentIds)].slice(0, 10);
+  if (seedDocumentIds.length === 0) {
+    return [];
+  }
+  const cypher = `MATCH (seed:Document)-[relation:SAME_AS]-(related:Document)
+WHERE seed.projectId = ${cypherString(input.projectId)}
+  AND related.projectId = ${cypherString(input.projectId)}
+  AND seed.documentId IN [${seedDocumentIds.map(cypherString).join(', ')}]
+  AND related.documentId <> seed.documentId
+RETURN seed, related
+LIMIT ${Math.max(1, Math.min(input.limit, 10))}`;
+  const rows = await sql.begin(async (transaction) => {
+    await transaction`SET TRANSACTION READ ONLY`;
+    await transaction`LOAD 'age'`;
+    await transaction`SET LOCAL search_path = ag_catalog, "$user", public`;
+    await transaction`SET LOCAL statement_timeout = '5000ms'`;
+    return transaction.unsafe(
+      `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
+        cypher,
+      )}) AS (seed agtype, related agtype)`,
+    ) as Promise<readonly Record<string, unknown>[]>;
+  });
+  const candidates: Array<{ documentId: string; seedDocumentId: string }> = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const seedDocumentId = documentIdFromAgeVertex(row.seed);
+    const documentId = documentIdFromAgeVertex(row.related);
+    if (!seedDocumentId || !documentId || seen.has(documentId)) {
+      continue;
+    }
+    seen.add(documentId);
+    candidates.push({ documentId, seedDocumentId });
+  }
+  return candidates;
+}
+
+function documentIdFromAgeVertex(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.endsWith('::vertex')) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(value.slice(0, -'::vertex'.length)) as unknown;
+    if (!isRecord(parsed) || !isRecord(parsed.properties)) {
+      return undefined;
+    }
+    const documentId = parsed.properties.documentId;
+    return typeof documentId === 'string' && documentId ? documentId : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function validateAgeGraphName(graphName: string): string {
+  if (!/^graph_[a-z0-9_]+$/.test(graphName) || graphName.length > 63) {
+    throw new Error(`Invalid AGE graph name: ${graphName}`);
+  }
+  return graphName;
+}
+
+function dollarQuote(value: string): string {
+  const tag = `$pufu_${createHash('sha256').update(value).digest('hex')}$`;
+  return `${tag}${value}${tag}`;
+}
+
+function sqlString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function cypherString(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
