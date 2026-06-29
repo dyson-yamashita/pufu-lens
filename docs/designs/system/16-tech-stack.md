@@ -7,7 +7,7 @@
 | Agent Framework | Mastra                                                         |
 | LLM             | Gemini API（Google AI / Vertex AI、初期構築の既定 provider）   |
 | Frontend        | Next.js + AI SDK + Auth.js                                     |
-| Database        | PostgreSQL 18 + pgvector + Apache AGE + pgcrypto               |
+| Database        | PostgreSQL 18 + pgvector + PGroonga + Apache AGE + pgcrypto    |
 | Object Storage  | ローカル: Docker Volume / クラウド: Google Cloud Storage       |
 | MCP             | Google MCP、GitHub MCP                                         |
 | Web Hosting     | Firebase App Hosting（Next.js）                                |
@@ -22,7 +22,7 @@
 
 補足：
 
-- PostgreSQL は Apache AGE / pgvector を同梱したカスタム Docker イメージで運用する。
+- PostgreSQL は Apache AGE / pgvector / PGroonga を同梱したカスタム Docker イメージで運用する。
 - Cloud SQL は Apache AGE を前提にできないため、本番 DB の第一候補にはしない。
 - AGE を使う DB 接続では、接続確立時に `LOAD 'age'` と `SET search_path = ag_catalog, "$user", public` を実行する。
 - Gemini の生成モデルと embedding モデルは `GEMINI_CHAT_MODEL` / `GEMINI_EMBEDDING_MODEL` で固定し、モデル更新時は再現性と embedding 再生成要否を確認する。

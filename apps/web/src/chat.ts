@@ -441,6 +441,8 @@ const DEFAULT_BUSINESS_HOURS: BusinessHoursConfig = {
   startHour: 9,
   timeZone: 'Asia/Tokyo',
 };
+const VECTOR_SEARCH_MIN_CANDIDATE_LIMIT = 50;
+const VECTOR_SEARCH_MAX_CANDIDATE_LIMIT = 200;
 
 export async function runPrivateChat(
   request: ChatRequest,
@@ -856,26 +858,86 @@ export function createPostgresChatRepository(
       const access = await lookupProjectMemberAccess(sql, { projectSlug, userId });
       return access ? { graphName: access.graphName, id: access.id, slug: access.slug } : undefined;
     },
-    async vectorSearch({ embedding, limit, projectId }) {
+    async vectorSearch({ embedding, limit, projectId, query }) {
       const vector = `[${embedding.join(',')}]`;
+      const keywordQuery = normalizeHybridKeywordQuery(query);
+      const useKeywordSearch = keywordQuery.length > 0;
+      const candidateLimit = hybridSearchCandidateLimit(limit);
       const rows = (await sql`
-        WITH distinct_chunks AS (
-          SELECT DISTINCT ON (d.id)
+        WITH vector_candidates AS (
+          SELECT
+            dc.id::text AS chunk_id,
             d.id::text AS document_id,
             d.raw_document_id::text AS raw_document_id,
             d.doc_type,
             coalesce(d.title, 'Untitled') AS title,
             coalesce(d.canonical_uri, '') AS canonical_uri,
             left(coalesce(dc.content, d.summary, ''), 700) AS snippet,
-            dc.embedding <=> ${vector}::vector AS distance
+            dc.embedding <=> ${vector}::vector AS distance,
+            0.0 AS keyword_score
           FROM public.document_chunks dc
           JOIN public.documents d ON d.id = dc.document_id
           WHERE dc.project_id = ${projectId}
-          ORDER BY d.id, dc.embedding <=> ${vector}::vector
+          ORDER BY dc.embedding <=> ${vector}::vector
+          LIMIT ${candidateLimit}
+        ),
+        keyword_candidates AS (
+          SELECT
+            dc.id::text AS chunk_id,
+            d.id::text AS document_id,
+            d.raw_document_id::text AS raw_document_id,
+            d.doc_type,
+            coalesce(d.title, 'Untitled') AS title,
+            coalesce(d.canonical_uri, '') AS canonical_uri,
+            left(coalesce(dc.content, d.summary, ''), 700) AS snippet,
+            dc.embedding <=> ${vector}::vector AS distance,
+            1.0 AS keyword_score
+          FROM public.document_chunks dc
+          JOIN public.documents d ON d.id = dc.document_id
+          WHERE dc.project_id = ${projectId}
+            AND ${useKeywordSearch}
+            AND dc.content &@ ${keywordQuery}
+          LIMIT ${candidateLimit}
+        ),
+        chunk_candidates AS (
+          SELECT * FROM vector_candidates
+          UNION ALL
+          SELECT * FROM keyword_candidates
+        ),
+        scored_chunks AS (
+          SELECT
+            chunk_id,
+            document_id,
+            raw_document_id,
+            doc_type,
+            title,
+            canonical_uri,
+            snippet,
+            min(distance) AS distance,
+            max(keyword_score) AS keyword_score,
+            (
+              0.75 * (1.0 / (1.0 + min(distance))) +
+              0.25 * max(keyword_score)
+            ) AS hybrid_score
+          FROM chunk_candidates
+          GROUP BY chunk_id, document_id, raw_document_id, doc_type, title, canonical_uri, snippet
+        ),
+        distinct_chunks AS (
+          SELECT DISTINCT ON (document_id)
+            document_id,
+            raw_document_id,
+            doc_type,
+            title,
+            canonical_uri,
+            snippet,
+            distance,
+            hybrid_score
+          FROM scored_chunks
+          ORDER BY document_id, hybrid_score DESC, distance ASC
         )
         SELECT document_id, raw_document_id, doc_type, title, canonical_uri, snippet
         FROM distinct_chunks
-        ORDER BY distance
+        ORDER BY hybrid_score DESC, distance ASC
         LIMIT ${limit}
       `) as readonly unknown[];
       return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
@@ -1129,6 +1191,27 @@ function sourceFromRow(row: ChatSourceRow): ChatSource {
     snippet: row.snippet?.trim() || undefined,
     title: row.title,
   };
+}
+
+function hybridSearchCandidateLimit(limit: number): number {
+  return Math.min(
+    Math.max(limit * 20, VECTOR_SEARCH_MIN_CANDIDATE_LIMIT),
+    VECTOR_SEARCH_MAX_CANDIDATE_LIMIT,
+  );
+}
+
+function normalizeHybridKeywordQuery(query: string): string {
+  return Array.from(query.normalize('NFKC'))
+    .map((character) => (isControlCharacter(character) ? ' ' : character))
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 512);
+}
+
+function isControlCharacter(character: string): boolean {
+  const codePoint = character.codePointAt(0);
+  return codePoint !== undefined && (codePoint < 0x20 || codePoint === 0x7f);
 }
 
 async function fetchChatSourcesByDocumentIds(

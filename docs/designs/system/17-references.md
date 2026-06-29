@@ -5,6 +5,7 @@
 - Mastra Docs: https://mastra.ai/docs
 - Apache AGE: https://age.apache.org
 - pgvector: https://github.com/pgvector/pgvector
+- PGroonga: https://pgroonga.github.io/
 - CloudNativePG: https://cloudnative-pg.io
 - Firebase App Hosting: https://firebase.google.com/docs/app-hosting
 - Firebase App Hosting configuration: https://firebase.google.com/docs/app-hosting/configure

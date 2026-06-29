@@ -47,7 +47,7 @@ schema drift を確認するときは、create database 権限のある PostgreS
 DATABASE_URL=postgres://... pnpm db:schema-drift
 ```
 
-この check は同じ PostgreSQL server 上に一時 DB を 2 つ作り、片方へ `infra/docker/postgres/init.sql`、もう片方へ `infra/db/baseline/0000_baseline.sql` と全 migration を適用して、public schema と `schema_migrations` version を比較する。AGE / pgvector / pgcrypto の extension は extension 名と version だけを比較し、extension 内部 object は比較対象にしない。
+この check は同じ PostgreSQL server 上に一時 DB を 2 つ作り、片方へ `infra/docker/postgres/init.sql`、もう片方へ `infra/db/baseline/0000_baseline.sql` と全 migration を適用して、public schema と `schema_migrations` version を比較する。AGE / pgvector / PGroonga / pgcrypto の extension は extension 名と version だけを比較し、extension 内部 object は比較対象にしない。
 
 `infra/db/baseline/0000_baseline.sql` は migration 履歴の起点であり、空 DB から全 migration を再生する前提ではない。baseline fixture を変更するのは、migration 履歴の起点を明示的に作り直す場合に限る。
 

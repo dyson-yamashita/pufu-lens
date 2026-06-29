@@ -1,6 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS age;
+CREATE EXTENSION IF NOT EXISTS pgroonga;
 
 LOAD 'age';
 SET search_path = ag_catalog, "$user", public;
@@ -233,6 +234,7 @@ CREATE TABLE public.document_chunks (
 );
 CREATE INDEX document_chunks_embedding_idx ON public.document_chunks USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX document_chunks_project_document_idx ON public.document_chunks (project_id, document_id);
+CREATE INDEX document_chunks_content_pgroonga_idx ON public.document_chunks USING pgroonga (content);
 
 CREATE TABLE public.document_chunk_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -478,5 +480,6 @@ INSERT INTO public.schema_migrations (version)
 VALUES
   ('0001_auth_login'),
   ('0002_project_oauth_connections'),
-  ('0003_actor_merge_decisions')
+  ('0003_actor_merge_decisions'),
+  ('0004_pgroonga_hybrid_search')
 ON CONFLICT (version) DO NOTHING;

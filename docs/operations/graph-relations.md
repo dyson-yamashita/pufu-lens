@@ -4,7 +4,7 @@ Step 8 では、`documents` と `actors` を AGE graph に materialize し、`em
 
 ## 前提
 
-- `DATABASE_URL` が PostgreSQL / AGE / pgvector 入りの DB を指している。
+- `DATABASE_URL` が PostgreSQL / AGE / pgvector / PGroonga 入りの DB を指している。
 - `STORAGE_ROOT` または `LOCAL_STORAGE_ROOT` が local object storage の root を指している。
 - 対象 project で collection、parse、actor resolution、chunk / embedding が完了している。
 
