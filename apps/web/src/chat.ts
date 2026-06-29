@@ -1232,6 +1232,7 @@ function sourceFromRow(row: ChatSourceRow): ChatSource {
   };
 }
 
+/** ハイブリッド検索で pgvector / PGroonga それぞれから取得する候補数の上限を算出する。 */
 export function hybridSearchCandidateLimit(limit: number): number {
   return Math.min(
     Math.max(limit * 20, VECTOR_SEARCH_MIN_CANDIDATE_LIMIT),
@@ -1239,6 +1240,10 @@ export function hybridSearchCandidateLimit(limit: number): number {
   );
 }
 
+/**
+ * PGroonga キーワード検索向けにクエリ文字列を正規化する。
+ * 制御文字を空白に置換し、連続空白を整形して最大 512 文字に切り詰める。
+ */
 export function normalizeHybridKeywordQuery(query: string | null | undefined): string {
   if (typeof query !== 'string') {
     return '';
@@ -1251,6 +1256,7 @@ export function normalizeHybridKeywordQuery(query: string | null | undefined): s
     .slice(0, 512);
 }
 
+/** 文字が ASCII 制御文字（0x00–0x1F または 0x7F）かどうかを判定する。 */
 function isControlCharacter(character: string): boolean {
   const codePoint = character.codePointAt(0);
   return codePoint !== undefined && (codePoint < 0x20 || codePoint === 0x7f);
