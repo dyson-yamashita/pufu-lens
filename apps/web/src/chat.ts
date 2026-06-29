@@ -27,10 +27,10 @@ export interface ChatSource {
   readonly title: string;
 }
 
-export type ChatGraphRelationType = 'SAME_AS';
+export type ChatGraphRelationType = 'MENTIONS' | 'RELATED_TO' | 'SAME_AS';
 
 export type ChatGraphRelatedSource = ChatSource & {
-  readonly hopCount: 1;
+  readonly hopCount: 1 | 2;
   readonly relationType: ChatGraphRelationType;
   readonly seedDocumentId: string;
 };
@@ -283,7 +283,11 @@ export function shouldUseGraphRelatedSource(input: {
   if (seedDocumentIds.includes(candidate.documentId)) {
     return false;
   }
-  if (candidate.relationType !== 'SAME_AS' || candidate.hopCount !== 1) {
+  const validCombination =
+    (candidate.relationType === 'SAME_AS' && candidate.hopCount === 1) ||
+    (candidate.relationType === 'RELATED_TO' && candidate.hopCount === 1) ||
+    (candidate.relationType === 'MENTIONS' && candidate.hopCount === 2);
+  if (!validCombination) {
     return false;
   }
   const title = candidate.title.trim();
@@ -878,13 +882,10 @@ export function createPostgresChatRepository(
     },
     async graphQuery({ graphName, limit, projectId, query, seedDocumentIds }) {
       const seedIds = seedDocumentIds ?? [];
-      let relatedDocumentIds: readonly {
-        readonly documentId: string;
-        readonly seedDocumentId: string;
-      }[] = [];
+      let relatedDocumentIds: readonly GraphRelatedDocumentCandidate[] = [];
       if (graphName && seedIds.length > 0) {
         try {
-          relatedDocumentIds = await querySameAsRelatedDocumentIds(sql, {
+          relatedDocumentIds = await queryGraphRelatedDocumentIds(sql, {
             graphName,
             limit,
             projectId,
@@ -906,8 +907,8 @@ export function createPostgresChatRepository(
             return source
               ? ({
                   ...source,
-                  hopCount: 1,
-                  relationType: 'SAME_AS',
+                  hopCount: candidate.hopCount,
+                  relationType: candidate.relationType,
                   seedDocumentId: candidate.seedDocumentId,
                 } satisfies ChatGraphRelatedSource)
               : undefined;
@@ -1161,7 +1162,55 @@ async function fetchChatSourcesByDocumentIds(
   return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
 }
 
-async function querySameAsRelatedDocumentIds(
+export interface GraphRelatedDocumentCandidate {
+  readonly documentId: string;
+  readonly hopCount: 1 | 2;
+  readonly relationType: ChatGraphRelationType;
+  readonly seedDocumentId: string;
+}
+
+export interface GraphRelatedDocumentRows {
+  readonly hopCount: 1 | 2;
+  readonly relationType: ChatGraphRelationType;
+  readonly rows: readonly unknown[];
+}
+
+export function selectGraphRelatedDocumentCandidates(input: {
+  limit: number;
+  relationRows: readonly GraphRelatedDocumentRows[];
+}): GraphRelatedDocumentCandidate[] {
+  const maxResults = Math.max(1, Math.min(input.limit, 10));
+  const candidates: GraphRelatedDocumentCandidate[] = [];
+  const seen = new Set<string>();
+  for (const relationRows of input.relationRows) {
+    if (candidates.length >= maxResults) {
+      break;
+    }
+    for (const row of relationRows.rows) {
+      if (!isRecord(row)) {
+        continue;
+      }
+      const seedDocumentId = documentIdFromAgeVertex(row.seed);
+      const documentId = documentIdFromAgeVertex(row.related);
+      if (!seedDocumentId || !documentId || seen.has(documentId)) {
+        continue;
+      }
+      seen.add(documentId);
+      candidates.push({
+        documentId,
+        hopCount: relationRows.hopCount,
+        relationType: relationRows.relationType,
+        seedDocumentId,
+      });
+      if (candidates.length >= maxResults) {
+        break;
+      }
+    }
+  }
+  return candidates;
+}
+
+async function queryGraphRelatedDocumentIds(
   sql: postgres.Sql,
   input: {
     graphName: string;
@@ -1169,45 +1218,75 @@ async function querySameAsRelatedDocumentIds(
     projectId: string;
     seedDocumentIds: readonly string[];
   },
-): Promise<readonly { readonly documentId: string; readonly seedDocumentId: string }[]> {
+): Promise<readonly GraphRelatedDocumentCandidate[]> {
   const safeGraphName = validateAgeGraphName(input.graphName);
   const seedDocumentIds = [...new Set(input.seedDocumentIds)].slice(0, 10);
   if (seedDocumentIds.length === 0) {
     return [];
   }
-  const cypher = `MATCH (seed:Document)-[relation:SAME_AS]-(related:Document)
-WHERE seed.projectId = ${cypherString(input.projectId)}
-  AND related.projectId = ${cypherString(input.projectId)}
-  AND seed.documentId IN [${seedDocumentIds.map(cypherString).join(', ')}]
-  AND related.documentId <> seed.documentId
-RETURN seed, related
-LIMIT ${Math.max(1, Math.min(input.limit, 10))}`;
-  const rows = await sql.begin(async (transaction) => {
+  const maxResults = Math.max(1, Math.min(input.limit, 10));
+  const projectIdLiteral = cypherString(input.projectId);
+  const seedIdList = seedDocumentIds.map(cypherString).join(', ');
+  const whereBase = `seed.projectId = ${projectIdLiteral}
+  AND related.projectId = ${projectIdLiteral}
+  AND seed.documentId IN [${seedIdList}]
+  AND NOT related.documentId IN [${seedIdList}]`;
+  const relationQueries: Array<{
+    cypher: string;
+    hopCount: 1 | 2;
+    relationType: ChatGraphRelationType;
+  }> = [
+    {
+      cypher: `MATCH (seed:Document)-[:SAME_AS]-(related:Document)
+WHERE ${whereBase}
+RETURN DISTINCT seed, related
+ORDER BY seed.documentId, related.documentId`,
+      hopCount: 1,
+      relationType: 'SAME_AS',
+    },
+    {
+      cypher: `MATCH (seed:Document)-[:RELATED_TO]-(related:Document)
+WHERE ${whereBase}
+RETURN DISTINCT seed, related
+ORDER BY seed.documentId, related.documentId`,
+      hopCount: 1,
+      relationType: 'RELATED_TO',
+    },
+    {
+      cypher: `MATCH (seed:Document)-[:MENTIONS]-(topic:Topic)-[:MENTIONS]-(related:Document)
+WHERE seed.projectId = ${projectIdLiteral}
+  AND topic.projectId = ${projectIdLiteral}
+  AND related.projectId = ${projectIdLiteral}
+  AND seed.documentId IN [${seedIdList}]
+  AND NOT related.documentId IN [${seedIdList}]
+RETURN DISTINCT seed, related
+ORDER BY seed.documentId, related.documentId`,
+      hopCount: 2,
+      relationType: 'MENTIONS',
+    },
+  ];
+  const relationRows: GraphRelatedDocumentRows[] = [];
+  await sql.begin(async (transaction) => {
     await transaction`SET TRANSACTION READ ONLY`;
     await transaction`LOAD 'age'`;
     await transaction`SET LOCAL search_path = ag_catalog, "$user", public`;
     await transaction`SET LOCAL statement_timeout = '5000ms'`;
-    return transaction.unsafe(
-      `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
-        cypher,
-      )}) AS (seed agtype, related agtype)`,
-    ) as Promise<readonly unknown[]>;
+    for (const relationQuery of relationQueries) {
+      const cypher = `${relationQuery.cypher}
+LIMIT ${maxResults}`;
+      const rows = (await transaction.unsafe(
+        `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
+          cypher,
+        )}) AS (seed agtype, related agtype)`,
+      )) as readonly unknown[];
+      relationRows.push({
+        hopCount: relationQuery.hopCount,
+        relationType: relationQuery.relationType,
+        rows,
+      });
+    }
   });
-  const candidates: Array<{ documentId: string; seedDocumentId: string }> = [];
-  const seen = new Set<string>();
-  for (const row of rows) {
-    if (!isRecord(row)) {
-      continue;
-    }
-    const seedDocumentId = documentIdFromAgeVertex(row.seed);
-    const documentId = documentIdFromAgeVertex(row.related);
-    if (!seedDocumentId || !documentId || seen.has(documentId)) {
-      continue;
-    }
-    seen.add(documentId);
-    candidates.push({ documentId, seedDocumentId });
-  }
-  return candidates;
+  return selectGraphRelatedDocumentCandidates({ limit: maxResults, relationRows });
 }
 
 function documentIdFromAgeVertex(value: unknown): string | undefined {

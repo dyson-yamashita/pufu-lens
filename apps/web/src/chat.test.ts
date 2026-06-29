@@ -16,6 +16,7 @@ import {
   parseChatSourceRow,
   runPrivateChat,
   runPublicChat,
+  selectGraphRelatedDocumentCandidates,
   shouldUseGraphRelatedSource,
 } from './chat.ts';
 import {
@@ -42,6 +43,10 @@ const sampleSource = {
   rawDocumentId: 'raw-a',
   title: 'Spec Update',
 };
+
+function ageDocumentVertex(documentId: string): string {
+  return `${JSON.stringify({ properties: { documentId } })}::vertex`;
+}
 
 assert.equal(inferChatEditingMetadata('このスレッドを要約して').inferredMode, 'summary');
 assert.equal(inferChatEditingMetadata('停滞要因とリスクは?').inferredMode, 'risk_scan');
@@ -205,6 +210,147 @@ assert.equal(
       seedDocumentId: 'doc-a',
       snippet: '関連する本文断片',
       title: 'Untitled',
+    },
+    question: '仕様変更を要約して',
+    seedDocumentIds: ['doc-a'],
+  }),
+  true,
+);
+assert.equal(
+  shouldUseGraphRelatedSource({
+    candidate: {
+      ...sampleSource,
+      documentId: 'doc-related-to',
+      hopCount: 1,
+      relationType: 'RELATED_TO',
+      seedDocumentId: 'doc-a',
+      title: 'Related Document',
+    },
+    question: '仕様変更を要約して',
+    seedDocumentIds: ['doc-a'],
+  }),
+  true,
+);
+assert.equal(
+  shouldUseGraphRelatedSource({
+    candidate: {
+      ...sampleSource,
+      documentId: 'doc-mentions',
+      hopCount: 2,
+      relationType: 'MENTIONS',
+      seedDocumentId: 'doc-a',
+      title: 'Shared Topic Document',
+    },
+    question: '仕様変更を要約して',
+    seedDocumentIds: ['doc-a'],
+  }),
+  true,
+);
+assert.equal(
+  shouldUseGraphRelatedSource({
+    candidate: {
+      ...sampleSource,
+      documentId: 'doc-mentions-invalid',
+      hopCount: 1,
+      relationType: 'MENTIONS',
+      seedDocumentId: 'doc-a',
+      title: 'Invalid Hop',
+    },
+    question: '仕様変更を要約して',
+    seedDocumentIds: ['doc-a'],
+  }),
+  false,
+);
+assert.equal(
+  shouldUseGraphRelatedSource({
+    candidate: {
+      ...sampleSource,
+      documentId: 'doc-related-to-invalid',
+      hopCount: 2,
+      relationType: 'RELATED_TO',
+      seedDocumentId: 'doc-a',
+      title: 'Invalid Hop',
+    },
+    question: '仕様変更を要約して',
+    seedDocumentIds: ['doc-a'],
+  }),
+  false,
+);
+
+const selectedGraphCandidates = selectGraphRelatedDocumentCandidates({
+  limit: 10,
+  relationRows: [
+    {
+      hopCount: 1,
+      relationType: 'SAME_AS',
+      rows: [
+        { related: ageDocumentVertex('doc-same-as'), seed: ageDocumentVertex('doc-a') },
+        { related: ageDocumentVertex('doc-shared'), seed: ageDocumentVertex('doc-a') },
+      ],
+    },
+    {
+      hopCount: 1,
+      relationType: 'RELATED_TO',
+      rows: [
+        { related: ageDocumentVertex('doc-related-to'), seed: ageDocumentVertex('doc-a') },
+        { related: ageDocumentVertex('doc-shared'), seed: ageDocumentVertex('doc-a') },
+      ],
+    },
+    {
+      hopCount: 2,
+      relationType: 'MENTIONS',
+      rows: [{ related: ageDocumentVertex('doc-mentioned'), seed: ageDocumentVertex('doc-a') }],
+    },
+  ],
+});
+assert.deepEqual(selectedGraphCandidates, [
+  {
+    documentId: 'doc-same-as',
+    hopCount: 1,
+    relationType: 'SAME_AS',
+    seedDocumentId: 'doc-a',
+  },
+  {
+    documentId: 'doc-shared',
+    hopCount: 1,
+    relationType: 'SAME_AS',
+    seedDocumentId: 'doc-a',
+  },
+  {
+    documentId: 'doc-related-to',
+    hopCount: 1,
+    relationType: 'RELATED_TO',
+    seedDocumentId: 'doc-a',
+  },
+  {
+    documentId: 'doc-mentioned',
+    hopCount: 2,
+    relationType: 'MENTIONS',
+    seedDocumentId: 'doc-a',
+  },
+]);
+const selectedRelatedToCandidate = selectedGraphCandidates[2];
+const selectedMentionsCandidate = selectedGraphCandidates[3];
+assert.ok(selectedRelatedToCandidate);
+assert.ok(selectedMentionsCandidate);
+assert.equal(
+  shouldUseGraphRelatedSource({
+    candidate: {
+      ...sampleSource,
+      ...selectedRelatedToCandidate,
+      title: 'Related Document',
+    },
+    question: '仕様変更を要約して',
+    seedDocumentIds: ['doc-a'],
+  }),
+  true,
+);
+assert.equal(
+  shouldUseGraphRelatedSource({
+    candidate: {
+      ...sampleSource,
+      ...selectedMentionsCandidate,
+      title: 'Mentioned Document',
     },
     question: '仕様変更を要約して',
     seedDocumentIds: ['doc-a'],
