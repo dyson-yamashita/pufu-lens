@@ -122,6 +122,8 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 - 適用対象 migration:
 - `schema_migrations` 確認:
 - fresh DB の `init.sql` baseline stamp 更新確認:
+- PGroonga migration 適用前に PostgreSQL VM / Docker イメージを PGroonga 入りへ更新済みか確認:
+- PGroonga extension / index 確認: `SELECT extname FROM pg_extension WHERE extname = 'pgroonga';` と `\d document_chunks_content_pgroonga_idx`
 - data backfill 有無:
 - AGE graph 更新有無:
 - vector / embedding 再生成有無:
@@ -132,6 +134,7 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 - progress query:
 - retry / resume 条件:
 - graph / embedding smoke:
+- chat hybrid search smoke: 固有名詞 / Issue 番号を含む質問で `vector-search` が keyword 候補を返すこと
 - 実行後 smoke:
 - 失敗時の判断: restore / forward fix / 再実行 / deploy 停止
 - 記録先: PR、Issue、release note、または環境別運用ログの URL

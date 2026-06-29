@@ -861,7 +861,30 @@ export function createPostgresChatRepository(
     async vectorSearch({ embedding, limit, projectId, query }) {
       const vector = `[${embedding.join(',')}]`;
       const keywordQuery = normalizeHybridKeywordQuery(query);
-      const useKeywordSearch = keywordQuery.length > 0;
+      if (keywordQuery.length === 0) {
+        const rows = (await sql`
+          WITH distinct_chunks AS (
+            SELECT DISTINCT ON (d.id)
+              d.id::text AS document_id,
+              d.raw_document_id::text AS raw_document_id,
+              d.doc_type,
+              coalesce(d.title, 'Untitled') AS title,
+              coalesce(d.canonical_uri, '') AS canonical_uri,
+              left(coalesce(dc.content, d.summary, ''), 700) AS snippet,
+              dc.embedding <=> ${vector}::vector AS distance
+            FROM public.document_chunks dc
+            JOIN public.documents d ON d.id = dc.document_id
+            WHERE dc.project_id = ${projectId}
+            ORDER BY d.id, dc.embedding <=> ${vector}::vector
+          )
+          SELECT document_id, raw_document_id, doc_type, title, canonical_uri, snippet
+          FROM distinct_chunks
+          ORDER BY distance
+          LIMIT ${limit}
+        `) as readonly unknown[];
+        return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
+      }
+
       const candidateLimit = hybridSearchCandidateLimit(limit);
       const rows = (await sql`
         WITH vector_candidates AS (
@@ -891,13 +914,16 @@ export function createPostgresChatRepository(
             coalesce(d.canonical_uri, '') AS canonical_uri,
             left(coalesce(dc.content, d.summary, ''), 700) AS snippet,
             dc.embedding <=> ${vector}::vector AS distance,
-            1.0 AS keyword_score
+            pgroonga_score(dc.tableoid, dc.ctid) AS keyword_score
           FROM public.document_chunks dc
           JOIN public.documents d ON d.id = dc.document_id
           WHERE dc.project_id = ${projectId}
-            AND ${useKeywordSearch}
-            AND dc.content &@ ${keywordQuery}
+            AND dc.content &@~ pgroonga_query_escape(${keywordQuery})
+          ORDER BY pgroonga_score(dc.tableoid, dc.ctid) DESC
           LIMIT ${candidateLimit}
+        ),
+        keyword_score_bounds AS (
+          SELECT COALESCE(MAX(keyword_score), 0) AS max_score FROM keyword_candidates
         ),
         chunk_candidates AS (
           SELECT * FROM vector_candidates
@@ -906,21 +932,34 @@ export function createPostgresChatRepository(
         ),
         scored_chunks AS (
           SELECT
-            chunk_id,
-            document_id,
-            raw_document_id,
-            doc_type,
-            title,
-            canonical_uri,
-            snippet,
-            min(distance) AS distance,
-            max(keyword_score) AS keyword_score,
+            cc.chunk_id,
+            cc.document_id,
+            cc.raw_document_id,
+            cc.doc_type,
+            cc.title,
+            cc.canonical_uri,
+            cc.snippet,
+            min(cc.distance) AS distance,
+            max(cc.keyword_score) AS keyword_score,
             (
-              0.75 * (1.0 / (1.0 + min(distance))) +
-              0.25 * max(keyword_score)
+              0.75 * (1.0 / (1.0 + min(cc.distance))) +
+              0.25 * CASE
+                WHEN max(cc.keyword_score) > 0 AND bounds.max_score > 0
+                THEN max(cc.keyword_score) / bounds.max_score
+                ELSE 0
+              END
             ) AS hybrid_score
-          FROM chunk_candidates
-          GROUP BY chunk_id, document_id, raw_document_id, doc_type, title, canonical_uri, snippet
+          FROM chunk_candidates cc
+          CROSS JOIN keyword_score_bounds bounds
+          GROUP BY
+            cc.chunk_id,
+            cc.document_id,
+            cc.raw_document_id,
+            cc.doc_type,
+            cc.title,
+            cc.canonical_uri,
+            cc.snippet,
+            bounds.max_score
         ),
         distinct_chunks AS (
           SELECT DISTINCT ON (document_id)
@@ -1193,14 +1232,17 @@ function sourceFromRow(row: ChatSourceRow): ChatSource {
   };
 }
 
-function hybridSearchCandidateLimit(limit: number): number {
+export function hybridSearchCandidateLimit(limit: number): number {
   return Math.min(
     Math.max(limit * 20, VECTOR_SEARCH_MIN_CANDIDATE_LIMIT),
     VECTOR_SEARCH_MAX_CANDIDATE_LIMIT,
   );
 }
 
-function normalizeHybridKeywordQuery(query: string): string {
+export function normalizeHybridKeywordQuery(query: string | null | undefined): string {
+  if (typeof query !== 'string') {
+    return '';
+  }
   return Array.from(query.normalize('NFKC'))
     .map((character) => (isControlCharacter(character) ? ' ' : character))
     .join('')

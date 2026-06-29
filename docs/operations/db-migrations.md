@@ -94,6 +94,7 @@ AGE graph、vector、embedding の変更は、schema とデータ再生成の適
 
 ### Vector / Embedding
 
+- PGroonga を追加する migration は、PostgreSQL ランタイム（Docker イメージ / VM）へ PGroonga パッケージを反映してから適用する。`CREATE EXTENSION pgroonga` は package 未導入の DB では失敗する。
 - `vector(1536)` の次元を変える場合は、既存 column を直接型変更しない。新しい column / table を追加し、アプリコードで dual read / dual write または read fallback できる期間を作る。
 - embedding model を変える場合は、`embedding_model` に新旧 model 名が混在する期間を許容し、検索 query が対象 model / dimension を明示できるようにする。
 - 再生成は migration SQL ではなく batch script で行う。対象件数、project、document、chunk 範囲、provider、rate limit、失敗時 resume 方法を deploy checklist に記録する。
