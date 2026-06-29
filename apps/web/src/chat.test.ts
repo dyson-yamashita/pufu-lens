@@ -211,6 +211,66 @@ assert.equal(
   }),
   true,
 );
+assert.equal(
+  shouldUseGraphRelatedSource({
+    candidate: {
+      ...sampleSource,
+      documentId: 'doc-related-to',
+      hopCount: 1,
+      relationType: 'RELATED_TO',
+      seedDocumentId: 'doc-a',
+      title: 'Related Document',
+    },
+    question: '仕様変更を要約して',
+    seedDocumentIds: ['doc-a'],
+  }),
+  true,
+);
+assert.equal(
+  shouldUseGraphRelatedSource({
+    candidate: {
+      ...sampleSource,
+      documentId: 'doc-mentions',
+      hopCount: 2,
+      relationType: 'MENTIONS',
+      seedDocumentId: 'doc-a',
+      title: 'Shared Topic Document',
+    },
+    question: '仕様変更を要約して',
+    seedDocumentIds: ['doc-a'],
+  }),
+  true,
+);
+assert.equal(
+  shouldUseGraphRelatedSource({
+    candidate: {
+      ...sampleSource,
+      documentId: 'doc-mentions-invalid',
+      hopCount: 1,
+      relationType: 'MENTIONS',
+      seedDocumentId: 'doc-a',
+      title: 'Invalid Hop',
+    },
+    question: '仕様変更を要約して',
+    seedDocumentIds: ['doc-a'],
+  }),
+  false,
+);
+assert.equal(
+  shouldUseGraphRelatedSource({
+    candidate: {
+      ...sampleSource,
+      documentId: 'doc-related-to-invalid',
+      hopCount: 2,
+      relationType: 'RELATED_TO',
+      seedDocumentId: 'doc-a',
+      title: 'Invalid Hop',
+    },
+    question: '仕様変更を要約して',
+    seedDocumentIds: ['doc-a'],
+  }),
+  false,
+);
 
 const graphBudgetResponse = await runPrivateChat(
   { projectSlug: 'sample-a', question: '関連資料は?', userId: 'user-a' },

@@ -409,7 +409,7 @@ export function createProjectChatTools(repository: ChatRepository) {
     graphQuery: createTool({
       id: mastraToolIds.graphQuery,
       description:
-        'Query graph-backed document metadata and short summary snippets for the active project. When seedDocumentIds are provided, fetch SAME_AS 1-hop related documents first and gate them before returning sources.',
+        'Query graph-backed document metadata and short summary snippets for the active project. When seedDocumentIds are provided, fetch related document candidates via SAME_AS (1-hop), RELATED_TO (1-hop), and MENTIONS shared-topic traversal (2-hop), then gate them before returning sources.',
       inputSchema: z.object({
         limit: z.number().int().min(1).max(10),
         query: z.string(),
