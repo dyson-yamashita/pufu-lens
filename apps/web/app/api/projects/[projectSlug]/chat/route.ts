@@ -84,7 +84,13 @@ export async function POST(
     }
     const mastraUrl = mastraProjectChatGenerateUrl();
     const mastraResponse = await fetch(mastraUrl, {
-      body: JSON.stringify(createMastraProjectChatBody({ projectId: project.id, question })),
+      body: JSON.stringify(
+        createMastraProjectChatBody({
+          graphName: project.graphName,
+          projectId: project.id,
+          question,
+        }),
+      ),
       headers: await mastraFetchHeaders({ url: mastraUrl }),
       method: 'POST',
       signal: request.signal,

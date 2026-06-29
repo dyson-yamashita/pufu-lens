@@ -16,6 +16,7 @@ import {
   parseChatSourceRow,
   runPrivateChat,
   runPublicChat,
+  shouldUseGraphRelatedSource,
 } from './chat.ts';
 import {
   createMastraProjectChatBody,
@@ -102,15 +103,17 @@ function createRepository(): ChatRepository & {
     rawFetchInputs,
     async lookupProjectMember({ projectSlug, userId }) {
       return projectSlug === 'sample-a' && (userId === 'user-a' || userId === 'admin-a')
-        ? { id: 'project-a', slug: 'sample-a' }
+        ? { graphName: 'graph_sample_a', id: 'project-a', slug: 'sample-a' }
         : undefined;
     },
     async vectorSearch({ projectId }) {
       assert.equal(projectId, 'project-a');
       return [sampleSource];
     },
-    async graphQuery({ projectId }) {
+    async graphQuery({ graphName, projectId, seedDocumentIds }) {
+      assert.equal(graphName, 'graph_sample_a');
       assert.equal(projectId, 'project-a');
+      assert.deepEqual(seedDocumentIds, ['doc-a']);
       return [{ ...sampleSource, documentId: 'doc-graph', title: 'Related Issue' }];
     },
     async documentFetch({ documentIds, projectId }) {
@@ -149,6 +152,98 @@ assert.deepEqual(
   ['vector-search', 'graph-query', 'document-fetch', 'raw-document-fetch', 'parsed-doc-fetch'],
 );
 assert.equal(repository.rawFetchInputs[0]?.maxBytes, 64 * 1024);
+
+assert.equal(
+  shouldUseGraphRelatedSource({
+    candidate: {
+      ...sampleSource,
+      documentId: 'doc-same-as',
+      hopCount: 1,
+      relationType: 'SAME_AS',
+      seedDocumentId: 'doc-a',
+    },
+    question: '仕様変更を要約して',
+    seedDocumentIds: ['doc-a'],
+  }),
+  true,
+);
+assert.equal(
+  shouldUseGraphRelatedSource({
+    candidate: {
+      ...sampleSource,
+      hopCount: 1,
+      relationType: 'SAME_AS',
+      seedDocumentId: 'doc-a',
+    },
+    question: '仕様変更を要約して',
+    seedDocumentIds: ['doc-a'],
+  }),
+  false,
+);
+assert.equal(
+  shouldUseGraphRelatedSource({
+    candidate: {
+      ...sampleSource,
+      documentId: 'doc-same-as',
+      hopCount: 1,
+      relationType: 'SAME_AS',
+      seedDocumentId: 'doc-a',
+      title: 'Untitled',
+    },
+    question: '仕様変更を要約して',
+    seedDocumentIds: ['doc-a'],
+  }),
+  false,
+);
+assert.equal(
+  shouldUseGraphRelatedSource({
+    candidate: {
+      ...sampleSource,
+      documentId: 'doc-same-as',
+      hopCount: 1,
+      relationType: 'SAME_AS',
+      seedDocumentId: 'doc-a',
+      snippet: '関連する本文断片',
+      title: 'Untitled',
+    },
+    question: '仕様変更を要約して',
+    seedDocumentIds: ['doc-a'],
+  }),
+  true,
+);
+
+const graphBudgetResponse = await runPrivateChat(
+  { projectSlug: 'sample-a', question: '関連資料は?', userId: 'user-a' },
+  {
+    provider: createExtractiveChatProvider(),
+    repository: {
+      ...createRepository(),
+      async vectorSearch() {
+        return Array.from({ length: 5 }, (_, index) => ({
+          ...sampleSource,
+          documentId: `doc-vector-${index + 1}`,
+          title: `Vector ${index + 1}`,
+        }));
+      },
+      async graphQuery() {
+        return [{ ...sampleSource, documentId: 'doc-graph-budget', title: 'Graph Related' }];
+      },
+      async documentFetch() {
+        return [];
+      },
+      async rawDocumentFetch() {
+        return [];
+      },
+      async parsedDocFetch() {
+        return [];
+      },
+    },
+  },
+);
+assert.deepEqual(
+  graphBudgetResponse.sources.map((source) => source.documentId),
+  ['doc-vector-1', 'doc-vector-2', 'doc-vector-3', 'doc-vector-4', 'doc-graph-budget'],
+);
 
 const adminResponse = await runPrivateChat(
   { projectSlug: 'sample-a', question: 'admin は?', userId: 'admin-a' },
@@ -212,11 +307,16 @@ assert.equal(
   'https://mastra.example.com/api/workflows/generate-report/start-async',
 );
 assert.deepEqual(
-  createMastraProjectChatBody({ projectId: 'project-a', question: '仕様変更を要約して' }),
+  createMastraProjectChatBody({
+    graphName: 'graph_sample_a',
+    projectId: 'project-a',
+    question: '仕様変更を要約して',
+  }),
   {
     messages: [{ content: '仕様変更を要約して', role: 'user' }],
     requestContext: {
       editing: inferChatEditingMetadata('仕様変更を要約して'),
+      graphName: 'graph_sample_a',
       projectId: 'project-a',
     },
   },

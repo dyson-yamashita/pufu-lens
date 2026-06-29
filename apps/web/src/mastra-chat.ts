@@ -111,13 +111,14 @@ export async function mastraFetchHeaders(input: {
 }
 
 export function createMastraProjectChatBody(input: {
+  readonly graphName?: string | null;
   readonly projectId: string;
   readonly question: string;
 }) {
   const editing = inferChatEditingMetadata(input.question);
   return {
     messages: [{ content: input.question, role: 'user' }],
-    requestContext: { editing, projectId: input.projectId },
+    requestContext: { editing, graphName: input.graphName ?? null, projectId: input.projectId },
   };
 }
 

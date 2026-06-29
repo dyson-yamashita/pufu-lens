@@ -59,7 +59,7 @@ function createChatRepository(): ChatRepository & { projectIds: string[] } {
     projectIds,
     async lookupProjectMember({ projectSlug, userId }) {
       return projectSlug === 'sample-a' && userId === 'user-a'
-        ? { id: 'project-a', slug: 'sample-a' }
+        ? { graphName: 'graph_sample_a', id: 'project-a', slug: 'sample-a' }
         : undefined;
     },
     async vectorSearch({ projectId }) {
