@@ -443,6 +443,8 @@ const DEFAULT_BUSINESS_HOURS: BusinessHoursConfig = {
 };
 const VECTOR_SEARCH_MIN_CANDIDATE_LIMIT = 50;
 const VECTOR_SEARCH_MAX_CANDIDATE_LIMIT = 200;
+const HYBRID_KEYWORD_QUERY_INPUT_MAX = 1024;
+const HYBRID_KEYWORD_QUERY_OUTPUT_MAX = 512;
 
 /**
  * Runs the private chat workflow for a project member.
@@ -895,7 +897,7 @@ export function createPostgresChatRepository(
           )
           SELECT document_id, raw_document_id, doc_type, title, canonical_uri, snippet
           FROM distinct_chunks
-          ORDER BY distance
+          ORDER BY distance ASC NULLS LAST
           LIMIT ${limit}
         `) as readonly unknown[];
         return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
@@ -958,7 +960,7 @@ export function createPostgresChatRepository(
             min(cc.distance) AS distance,
             max(cc.keyword_score) AS keyword_score,
             (
-              0.75 * (1.0 / (1.0 + min(cc.distance))) +
+              0.75 * COALESCE(1.0 / (1.0 + min(cc.distance)), 0.0) +
               0.25 * CASE
                 WHEN max(cc.keyword_score) > 0 AND bounds.max_score > 0
                 THEN max(cc.keyword_score) / bounds.max_score
@@ -988,11 +990,11 @@ export function createPostgresChatRepository(
             distance,
             hybrid_score
           FROM scored_chunks
-          ORDER BY document_id, hybrid_score DESC, distance ASC
+          ORDER BY document_id, hybrid_score DESC NULLS LAST, distance ASC NULLS LAST
         )
         SELECT document_id, raw_document_id, doc_type, title, canonical_uri, snippet
         FROM distinct_chunks
-        ORDER BY hybrid_score DESC, distance ASC
+        ORDER BY hybrid_score DESC NULLS LAST, distance ASC NULLS LAST
         LIMIT ${limit}
       `) as readonly unknown[];
       return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
@@ -1270,7 +1272,8 @@ export function hybridSearchCandidateLimit(limit: number): number {
  * Normalizes a query string for hybrid keyword search.
  *
  * Converts the text to NFKC, replaces ASCII control characters with spaces, collapses whitespace,
- * trims the result, and limits it to 512 characters.
+ * trims the result, and limits it to 512 characters. Inputs longer than 1024 characters are
+ * truncated before normalization to limit CPU usage.
  *
  * @param query - The input query text
  * @returns The normalized query string, or an empty string when `query` is not a string
@@ -1279,12 +1282,13 @@ export function normalizeHybridKeywordQuery(query: string | null | undefined): s
   if (typeof query !== 'string') {
     return '';
   }
-  return Array.from(query.normalize('NFKC'))
+  const truncated = query.slice(0, HYBRID_KEYWORD_QUERY_INPUT_MAX);
+  return Array.from(truncated.normalize('NFKC'))
     .map((character) => (isControlCharacter(character) ? ' ' : character))
     .join('')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 512);
+    .slice(0, HYBRID_KEYWORD_QUERY_OUTPUT_MAX);
 }
 
 /**

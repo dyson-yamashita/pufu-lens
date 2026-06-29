@@ -697,6 +697,7 @@ assert.equal(normalizeHybridKeywordQuery(null), '');
 assert.equal(normalizeHybridKeywordQuery('  Issue\u0007#123  '), 'Issue #123');
 assert.equal(normalizeHybridKeywordQuery('ＰＧｒｏｏｎｇａ'), 'PGroonga');
 assert.equal(normalizeHybridKeywordQuery('a'.repeat(600)).length, 512);
+assert.equal(normalizeHybridKeywordQuery('b'.repeat(2000)).length, 512);
 
 const failingGeminiProvider = createGeminiChatProvider({
   apiKey: 'test-key',

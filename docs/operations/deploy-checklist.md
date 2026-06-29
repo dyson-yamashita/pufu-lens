@@ -77,7 +77,7 @@ pnpm infra:check --env staging
 pnpm deploy:smoke --env staging
 ```
 
-- `deploy:dry-run`: `pnpm db:migrate --check` と、`curate-workflow`、`ingest-workflow`、`generate-report` の `WORKFLOW_ID` / `WORKFLOW_INPUT_JSON` entrypoint 計画をローカル dry-run で検査する。
+- `deploy:dry-run`: `pnpm db:migrate --check` と、`curate-workflow`、`ingest-workflow`、`generate-report` の `WORKFLOW_ID` / `WORKFLOW_INPUT_JSON` entrypoint 計画をローカル dry-run で検査する。PGroonga migration を含む DB 変更では、dry-run 前に PostgreSQL イメージ更新 → `pnpm db:migrate` の順序を deploy checklist の DB Migration 記録へ残す。
 - `db:migrate --check`: migration file の命名、番号重複、履歴との整合を検査する。`DATABASE_URL` がある場合は online check として `schema_migrations` も照合する。
 - `db:migrate --plan`: staging / production の `DATABASE_URL` に対して、適用予定 migration を表示する。ここではまだ適用しない。
 - `db:migrate`: `infra/db/migrations/*.sql` を番号順に適用し、`auth_accounts`、`auth_password_credentials`、project scoped `oauth_connections` など既存 DB に必要な schema を用意する。既存互換の `auth:migrate` も同じ migration runner を呼び出す。
