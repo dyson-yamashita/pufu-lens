@@ -251,7 +251,6 @@ export async function deleteProject(formData: FormData): Promise<void> {
       }`,
     );
   }
-  revalidatePath('/projects');
   revalidateProject(projectSlug);
   redirect('/projects');
 }
@@ -367,7 +366,7 @@ async function prepareProjectStorageCleanup(projectSlug: string): Promise<() => 
   const prefix = `${projectSlug}/`;
 
   return async () => {
-    const batchSize = 10;
+    const batchSize = 50;
     let pendingDeletes: Promise<void>[] = [];
 
     for await (const object of storage.list(prefix)) {
