@@ -77,12 +77,16 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
   await expect(page.locator('[data-testid="chat-assistant-message-1"] li')).toContainText(
     'Markdown bullet',
   );
-  await expect(page.getByTestId('chat-message-sources-1')).toContainText('src_progress_1');
-  await expect(page.getByTestId('chat-message-sources-1')).toContainText('Spec Update');
-  await expect(page.getByTestId('chat-message-sources-1')).not.toContainText(
-    'https://example.com/spec',
-  );
-  await expect(page.getByTestId('chat-message-sources-1')).not.toContainText('doc-spec-001');
+  const firstSources = page.getByTestId('chat-message-sources-1');
+  const firstSourcesToggle = page.getByTestId('chat-message-sources-toggle-1');
+  await expect(firstSources).toContainText('Sources (1)');
+  await expect(firstSources.locator('.source-chip')).toBeHidden();
+  await firstSourcesToggle.click();
+  await expect(firstSources.locator('.source-chip')).toBeVisible();
+  await expect(firstSources).toContainText('src_progress_1');
+  await expect(firstSources).toContainText('Spec Update');
+  await expect(firstSources).not.toContainText('https://example.com/spec');
+  await expect(firstSources).not.toContainText('doc-spec-001');
   await expect(page.getByTestId('chat-message-tool-calls-1')).toContainText('public-report-fetch');
   await expect(page.getByTestId('chat-message-editing-1')).toContainText('要約');
   await expect(page.getByTestId('chat-message-editing-1')).toContainText('凝縮');
@@ -91,9 +95,15 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
   await page.getByTestId('public-project-chat-submit-button').click();
   await expect(page.getByTestId('chat-assistant-message-1')).toContainText('Spec Update');
   await expect(page.getByTestId('chat-assistant-message-3')).toContainText('2件目の回答');
-  await expect(page.getByTestId('chat-message-sources-3')).toContainText('src_issues_1');
-  await expect(page.getByTestId('chat-message-sources-3')).toContainText('Issue Summary');
-  await expect(page.getByTestId('chat-message-sources-3')).not.toContainText('raw-issue-001');
+  const secondSources = page.getByTestId('chat-message-sources-3');
+  const secondSourcesToggle = page.getByTestId('chat-message-sources-toggle-3');
+  await expect(secondSources).toContainText('Sources (1)');
+  await expect(secondSources.locator('.source-chip')).toBeHidden();
+  await secondSourcesToggle.click();
+  await expect(secondSources.locator('.source-chip')).toBeVisible();
+  await expect(secondSources).toContainText('src_issues_1');
+  await expect(secondSources).toContainText('Issue Summary');
+  await expect(secondSources).not.toContainText('raw-issue-001');
   await expect(page.getByTestId('chat-message-editing-3')).toContainText('論点整理');
   await expect(page.getByTestId('chat-message-editing-3')).toContainText('状態確認');
 });

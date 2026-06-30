@@ -297,26 +297,37 @@
 }
 
 .chat-editing-metadata,
+.chat-message-sources,
 .chat-tool-calls {
   font-size: 12px;
 }
 
 .chat-editing-metadata summary,
+.chat-message-sources summary,
 .chat-tool-calls summary {
   color: var(--muted);
   cursor: pointer;
   font-weight: 600;
   list-style: none;
   text-transform: uppercase;
+  transition: color 120ms ease;
   user-select: none;
 }
 
+.chat-editing-metadata summary:hover,
+.chat-message-sources summary:hover,
+.chat-tool-calls summary:hover {
+  color: var(--text);
+}
+
 .chat-editing-metadata summary::-webkit-details-marker,
+.chat-message-sources summary::-webkit-details-marker,
 .chat-tool-calls summary::-webkit-details-marker {
   display: none;
 }
 
 .chat-editing-metadata[open] summary,
+.chat-message-sources[open] summary,
 .chat-tool-calls[open] summary {
   margin-bottom: 8px;
 }
