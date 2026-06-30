@@ -203,7 +203,7 @@ export async function deleteProject(formData: FormData): Promise<void> {
 
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
-    if (confirmationProjectName !== project.name) {
+    if (confirmationProjectName !== project.name.trim()) {
       throw new Error('Project name confirmation does not match.');
     }
 

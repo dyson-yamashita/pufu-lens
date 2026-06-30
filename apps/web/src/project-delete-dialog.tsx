@@ -24,7 +24,8 @@ export function ProjectDeleteDialog({
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [confirmationName, setConfirmationName] = useState('');
-  const nameMatches = confirmationName.trim() === projectName;
+  const expectedProjectName = projectName.trim();
+  const nameMatches = confirmationName.trim() === expectedProjectName;
 
   return (
     <>
@@ -64,14 +65,14 @@ export function ProjectDeleteDialog({
             <input name="projectSlug" type="hidden" value={projectSlug} />
             <label>
               <span>
-                確認のため、プロジェクト名 <strong>{projectName}</strong> を入力してください
+                確認のため、プロジェクト名 <strong>{expectedProjectName}</strong> を入力してください
               </span>
               <input
                 autoComplete="off"
                 data-testid="project-delete-confirm-input"
                 name="confirmationProjectName"
                 onChange={(event) => setConfirmationName(event.target.value)}
-                placeholder={projectName}
+                placeholder={expectedProjectName}
                 required
                 type="text"
                 value={confirmationName}
