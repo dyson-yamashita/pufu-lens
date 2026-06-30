@@ -37,33 +37,39 @@ export async function prepareProjectStorageCleanup(
     let failedCount = 0;
     const failedObjectSamples: string[] = [];
     let pendingDeletes: Promise<void>[] = [];
-
-    for await (const object of storage.list(prefix)) {
-      pendingDeletes.push(
-        deleteObject(object.uri)
-          .then(() => {
-            deletedCount += 1;
-          })
-          .catch((error) => {
-            failedCount += 1;
-            if (failedObjectSamples.length < 5) {
-              failedObjectSamples.push(object.uri);
-            }
-            console.warn(
-              `Project storage object cleanup failed for ${object.uri}: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            );
-          }),
-      );
-      if (pendingDeletes.length >= PROJECT_STORAGE_DELETE_BATCH_SIZE) {
-        await Promise.all(pendingDeletes);
-        pendingDeletes = [];
+    const flushPendingDeletes = async () => {
+      if (pendingDeletes.length === 0) {
+        return;
       }
-    }
-
-    if (pendingDeletes.length > 0) {
       await Promise.all(pendingDeletes);
+      pendingDeletes = [];
+    };
+
+    try {
+      for await (const object of storage.list(prefix)) {
+        pendingDeletes.push(
+          deleteObject(object.uri)
+            .then(() => {
+              deletedCount += 1;
+            })
+            .catch((error) => {
+              failedCount += 1;
+              if (failedObjectSamples.length < 5) {
+                failedObjectSamples.push(object.uri);
+              }
+              console.warn(
+                `Project storage object cleanup failed for ${object.uri}: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+            }),
+        );
+        if (pendingDeletes.length >= PROJECT_STORAGE_DELETE_BATCH_SIZE) {
+          await flushPendingDeletes();
+        }
+      }
+    } finally {
+      await flushPendingDeletes();
     }
 
     return { deletedCount, failedCount, failedObjectSamples };
