@@ -441,7 +441,21 @@ const DEFAULT_BUSINESS_HOURS: BusinessHoursConfig = {
   startHour: 9,
   timeZone: 'Asia/Tokyo',
 };
+const VECTOR_SEARCH_MIN_CANDIDATE_LIMIT = 50;
+const VECTOR_SEARCH_MAX_CANDIDATE_LIMIT = 200;
+const HYBRID_KEYWORD_QUERY_INPUT_MAX = 1024;
+const HYBRID_KEYWORD_QUERY_OUTPUT_MAX = 512;
 
+/**
+ * Runs the private chat workflow for a project member.
+ *
+ * Returns an unavailable response outside business hours, a rate-limited response when the limiter rejects the request, or an answered response with retrieved sources and the generated answer.
+ *
+ * @param request - The private chat request
+ * @param options - The chat runtime dependencies and policy settings
+ * @returns The private chat response
+ * @throws ProjectAccessDeniedError If the user does not have access to the project
+ */
 export async function runPrivateChat(
   request: ChatRequest,
   options: RunPrivateChatOptions,
@@ -844,6 +858,12 @@ export function isWithinBusinessHours(date: Date, config: BusinessHoursConfig): 
   );
 }
 
+/**
+ * Creates a Postgres-backed chat repository.
+ *
+ * @param options - Optional raw storage used to enable raw read view fetches
+ * @returns A chat repository implementation backed by the provided SQL client
+ */
 export function createPostgresChatRepository(
   sql: postgres.Sql,
   options: { readonly rawStorage?: Pick<ObjectStorage, 'getText'> } = {},
@@ -856,26 +876,134 @@ export function createPostgresChatRepository(
       const access = await lookupProjectMemberAccess(sql, { projectSlug, userId });
       return access ? { graphName: access.graphName, id: access.id, slug: access.slug } : undefined;
     },
-    async vectorSearch({ embedding, limit, projectId }) {
+    async vectorSearch({ embedding, limit, projectId, query }) {
       const vector = `[${embedding.join(',')}]`;
+      const keywordQuery = normalizeHybridKeywordQuery(query);
+      if (keywordQuery.length === 0) {
+        const rows = (await sql`
+          WITH distinct_chunks AS (
+            SELECT DISTINCT ON (d.id)
+              d.id::text AS document_id,
+              d.raw_document_id::text AS raw_document_id,
+              d.doc_type,
+              coalesce(d.title, 'Untitled') AS title,
+              coalesce(d.canonical_uri, '') AS canonical_uri,
+              left(coalesce(dc.content, d.summary, ''), 700) AS snippet,
+              dc.embedding <=> ${vector}::vector AS distance
+            FROM public.document_chunks dc
+            JOIN public.documents d ON d.id = dc.document_id
+            WHERE dc.project_id = ${projectId}
+            ORDER BY d.id, dc.embedding <=> ${vector}::vector
+          )
+          SELECT document_id, raw_document_id, doc_type, title, canonical_uri, snippet
+          FROM distinct_chunks
+          ORDER BY distance ASC NULLS LAST
+          LIMIT ${limit}
+        `) as readonly unknown[];
+        return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
+      }
+
+      const candidateLimit = hybridSearchCandidateLimit(limit);
       const rows = (await sql`
-        WITH distinct_chunks AS (
-          SELECT DISTINCT ON (d.id)
+        WITH vector_candidates AS (
+          SELECT
+            dc.id::text AS chunk_id,
             d.id::text AS document_id,
             d.raw_document_id::text AS raw_document_id,
             d.doc_type,
             coalesce(d.title, 'Untitled') AS title,
             coalesce(d.canonical_uri, '') AS canonical_uri,
             left(coalesce(dc.content, d.summary, ''), 700) AS snippet,
-            dc.embedding <=> ${vector}::vector AS distance
+            dc.embedding <=> ${vector}::vector AS distance,
+            0.0 AS keyword_score
           FROM public.document_chunks dc
           JOIN public.documents d ON d.id = dc.document_id
           WHERE dc.project_id = ${projectId}
-          ORDER BY d.id, dc.embedding <=> ${vector}::vector
+          ORDER BY dc.embedding <=> ${vector}::vector
+          LIMIT ${candidateLimit}
+        ),
+        keyword_candidates_limit AS (
+          SELECT
+            dc.id AS chunk_id,
+            dc.document_id,
+            dc.content,
+            dc.embedding,
+            pgroonga_score(dc.tableoid, dc.ctid) AS keyword_score
+          FROM public.document_chunks dc
+          WHERE dc.project_id = ${projectId}
+            AND dc.content &@~ pgroonga_query_escape(${keywordQuery})
+          ORDER BY pgroonga_score(dc.tableoid, dc.ctid) DESC
+          LIMIT ${candidateLimit}
+        ),
+        keyword_candidates AS (
+          SELECT
+            kcl.chunk_id::text AS chunk_id,
+            d.id::text AS document_id,
+            d.raw_document_id::text AS raw_document_id,
+            d.doc_type,
+            coalesce(d.title, 'Untitled') AS title,
+            coalesce(d.canonical_uri, '') AS canonical_uri,
+            left(coalesce(kcl.content, d.summary, ''), 700) AS snippet,
+            kcl.embedding <=> ${vector}::vector AS distance,
+            kcl.keyword_score
+          FROM keyword_candidates_limit kcl
+          JOIN public.documents d ON d.id = kcl.document_id
+        ),
+        keyword_score_bounds AS (
+          SELECT COALESCE(MAX(keyword_score), 0) AS max_score FROM keyword_candidates
+        ),
+        chunk_candidates AS (
+          SELECT * FROM vector_candidates
+          UNION ALL
+          SELECT * FROM keyword_candidates
+        ),
+        scored_chunks AS (
+          SELECT
+            cc.chunk_id,
+            cc.document_id,
+            cc.raw_document_id,
+            cc.doc_type,
+            cc.title,
+            cc.canonical_uri,
+            cc.snippet,
+            min(cc.distance) AS distance,
+            max(cc.keyword_score) AS keyword_score,
+            (
+              0.75 * COALESCE(1.0 / (1.0 + min(cc.distance)), 0.0) +
+              0.25 * CASE
+                WHEN max(cc.keyword_score) > 0 AND bounds.max_score > 0
+                THEN max(cc.keyword_score) / bounds.max_score
+                ELSE 0
+              END
+            ) AS hybrid_score
+          FROM chunk_candidates cc
+          CROSS JOIN keyword_score_bounds bounds
+          GROUP BY
+            cc.chunk_id,
+            cc.document_id,
+            cc.raw_document_id,
+            cc.doc_type,
+            cc.title,
+            cc.canonical_uri,
+            cc.snippet,
+            bounds.max_score
+        ),
+        distinct_chunks AS (
+          SELECT DISTINCT ON (document_id)
+            document_id,
+            raw_document_id,
+            doc_type,
+            title,
+            canonical_uri,
+            snippet,
+            distance,
+            hybrid_score
+          FROM scored_chunks
+          ORDER BY document_id, hybrid_score DESC NULLS LAST, distance ASC NULLS LAST
         )
         SELECT document_id, raw_document_id, doc_type, title, canonical_uri, snippet
         FROM distinct_chunks
-        ORDER BY distance
+        ORDER BY hybrid_score DESC NULLS LAST, distance ASC NULLS LAST
         LIMIT ${limit}
       `) as readonly unknown[];
       return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
@@ -1120,6 +1248,11 @@ export function parseChatSourceRow(value: unknown): ChatSourceRow {
   };
 }
 
+/**
+ * Converts a database row into a chat source.
+ *
+ * @returns The mapped chat source with trimmed snippet text.
+ */
 function sourceFromRow(row: ChatSourceRow): ChatSource {
   return {
     canonicalUri: row.canonical_uri,
@@ -1131,6 +1264,61 @@ function sourceFromRow(row: ChatSourceRow): ChatSource {
   };
 }
 
+/**
+ * ハイブリッド検索の候補数上限を算出します。
+ *
+ * @param limit - 基準となる取得件数
+ * @returns pgvector / PGroonga の候補数上限
+ */
+export function hybridSearchCandidateLimit(limit: number): number {
+  return Math.min(
+    Math.max(limit * 20, VECTOR_SEARCH_MIN_CANDIDATE_LIMIT),
+    VECTOR_SEARCH_MAX_CANDIDATE_LIMIT,
+  );
+}
+
+/**
+ * Normalizes a query string for hybrid keyword search.
+ *
+ * Converts the text to NFKC, replaces ASCII control characters with spaces, collapses whitespace,
+ * trims the result, and limits it to 512 characters. Inputs longer than 1024 characters are
+ * truncated before normalization to limit CPU usage.
+ *
+ * @param query - The input query text
+ * @returns The normalized query string, or an empty string when `query` is not a string
+ */
+export function normalizeHybridKeywordQuery(query: string | null | undefined): string {
+  if (typeof query !== 'string') {
+    return '';
+  }
+  const truncated = query.slice(0, HYBRID_KEYWORD_QUERY_INPUT_MAX);
+  return Array.from(truncated.normalize('NFKC'))
+    .map((character) => (isControlCharacter(character) ? ' ' : character))
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, HYBRID_KEYWORD_QUERY_OUTPUT_MAX);
+}
+
+/**
+ * 文字が ASCII 制御文字かどうかを判定する。
+ *
+ * @param character - 判定対象の文字
+ * @returns `true` なら ASCII 制御文字、`false` それ以外
+ */
+function isControlCharacter(character: string): boolean {
+  const codePoint = character.codePointAt(0);
+  return codePoint !== undefined && (codePoint < 0x20 || codePoint === 0x7f);
+}
+
+/**
+ * Fetches chat sources for the specified documents.
+ *
+ * @param sql - Database connection.
+ * @param input.documentIds - Document IDs to retrieve.
+ * @param input.projectId - Project that owns the documents.
+ * @returns Chat sources for the matching documents.
+ */
 async function fetchChatSourcesByDocumentIds(
   sql: postgres.Sql,
   input: { documentIds: readonly string[]; projectId: string },

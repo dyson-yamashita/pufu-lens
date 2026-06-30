@@ -9,9 +9,11 @@ import {
   createMemoryRateLimiter,
   createPublicChatMemoryRateLimiter,
   graphQuerySearchPatterns,
+  hybridSearchCandidateLimit,
   inferChatEditingMetadata,
   inferPublicChatEditingMetadata,
   isWithinBusinessHours,
+  normalizeHybridKeywordQuery,
   ProjectAccessDeniedError,
   parseChatSourceRow,
   runPrivateChat,
@@ -684,6 +686,18 @@ assert.ok(
     '%プロジェクトエディター%',
   ),
 );
+
+assert.equal(hybridSearchCandidateLimit(1), 50);
+assert.equal(hybridSearchCandidateLimit(5), 100);
+assert.equal(hybridSearchCandidateLimit(20), 200);
+assert.equal(hybridSearchCandidateLimit(100), 200);
+
+assert.equal(normalizeHybridKeywordQuery(undefined), '');
+assert.equal(normalizeHybridKeywordQuery(null), '');
+assert.equal(normalizeHybridKeywordQuery('  Issue\u0007#123  '), 'Issue #123');
+assert.equal(normalizeHybridKeywordQuery('ＰＧｒｏｏｎｇａ'), 'PGroonga');
+assert.equal(normalizeHybridKeywordQuery('a'.repeat(600)).length, 512);
+assert.equal(normalizeHybridKeywordQuery('b'.repeat(2000)).length, 512);
 
 const failingGeminiProvider = createGeminiChatProvider({
   apiKey: 'test-key',

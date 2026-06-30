@@ -77,7 +77,7 @@ pnpm infra:check --env staging
 pnpm deploy:smoke --env staging
 ```
 
-- `deploy:dry-run`: `pnpm db:migrate --check` と、`curate-workflow`、`ingest-workflow`、`generate-report` の `WORKFLOW_ID` / `WORKFLOW_INPUT_JSON` entrypoint 計画をローカル dry-run で検査する。
+- `deploy:dry-run`: `pnpm db:migrate --check` と、`curate-workflow`、`ingest-workflow`、`generate-report` の `WORKFLOW_ID` / `WORKFLOW_INPUT_JSON` entrypoint 計画をローカル dry-run で検査する。PGroonga migration を含む DB 変更では、dry-run 前に PostgreSQL イメージ更新 → `pnpm db:migrate` の順序を deploy checklist の DB Migration 記録へ残す。
 - `db:migrate --check`: migration file の命名、番号重複、履歴との整合を検査する。`DATABASE_URL` がある場合は online check として `schema_migrations` も照合する。
 - `db:migrate --plan`: staging / production の `DATABASE_URL` に対して、適用予定 migration を表示する。ここではまだ適用しない。
 - `db:migrate`: `infra/db/migrations/*.sql` を番号順に適用し、`auth_accounts`、`auth_password_credentials`、project scoped `oauth_connections` など既存 DB に必要な schema を用意する。既存互換の `auth:migrate` も同じ migration runner を呼び出す。
@@ -122,6 +122,8 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 - 適用対象 migration:
 - `schema_migrations` 確認:
 - fresh DB の `init.sql` baseline stamp 更新確認:
+- PGroonga migration 適用前に PostgreSQL VM / Docker イメージを PGroonga 入りへ更新済みか確認:
+- PGroonga extension / index 確認: `SELECT extname FROM pg_extension WHERE extname = 'pgroonga';` と `\d document_chunks_content_pgroonga_idx`
 - data backfill 有無:
 - AGE graph 更新有無:
 - vector / embedding 再生成有無:
@@ -132,6 +134,7 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 - progress query:
 - retry / resume 条件:
 - graph / embedding smoke:
+- chat hybrid search smoke: 固有名詞 / Issue 番号を含む質問で `vector-search` が keyword 候補を返すこと
 - 実行後 smoke:
 - 失敗時の判断: restore / forward fix / 再実行 / deploy 停止
 - 記録先: PR、Issue、release note、または環境別運用ログの URL
