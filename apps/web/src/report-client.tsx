@@ -331,7 +331,7 @@ export function ReportDocument({
         </dl>
         <button
           className="secondary-button"
-          data-testid="report-pdf-download-link"
+          data-testid="report-pdf-download-button"
           disabled={pdfDownloading}
           onClick={() => {
             void handlePdfDownload();
@@ -474,7 +474,7 @@ export function PublicReportDocument({
         </dl>
         <button
           className="secondary-button"
-          data-testid="public-report-pdf-download-link"
+          data-testid="public-report-pdf-download-button"
           disabled={pdfDownloading}
           onClick={() => {
             void handlePdfDownload();
@@ -539,8 +539,13 @@ async function downloadReportPdf(input: {
   const anchor = document.createElement('a');
   anchor.href = objectUrl;
   anchor.download = fileName;
+  anchor.style.display = 'none';
+  document.body.append(anchor);
   anchor.click();
-  URL.revokeObjectURL(objectUrl);
+  anchor.remove();
+  window.setTimeout(() => {
+    URL.revokeObjectURL(objectUrl);
+  }, 0);
   return { ok: true };
 }
 

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,10 +17,11 @@ const PDF_TEXT_DENYLIST = [
   /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu,
 ];
 
-const JAPANESE_FONT_PATH = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '../assets/fonts/IPAexGothic.ttf',
-);
+const MAX_LINE_CHARS = 2_000;
+const MAX_WRAP_CHUNKS = 50;
+const MAX_PDF_LINES = 850;
+
+const JAPANESE_FONT_PATH = resolveJapaneseFontPath();
 
 export interface ReportPdfFile {
   readonly bytes: ArrayBuffer;
@@ -70,7 +72,12 @@ export function safeReportPdfLines(report: PrivateReportJsonV1): readonly string
   } else {
     for (const section of report.sections) {
       lines.push('', section.title, section.markdown);
-      if (section.metrics && Object.keys(section.metrics).length > 0) {
+      if (
+        section.metrics &&
+        typeof section.metrics === 'object' &&
+        !Array.isArray(section.metrics) &&
+        Object.keys(section.metrics).length > 0
+      ) {
         lines.push(
           `Metrics: ${Object.entries(section.metrics)
             .map(([key, value]) => `${key}=${value}`)
@@ -82,7 +89,8 @@ export function safeReportPdfLines(report: PrivateReportJsonV1): readonly string
   return lines
     .map(redactPdfText)
     .flatMap((line) => (line ? line.split(/\r?\n/) : ['']))
-    .slice(0, 850);
+    .map((line) => line.slice(0, MAX_LINE_CHARS))
+    .slice(0, MAX_PDF_LINES);
 }
 
 /**
@@ -111,13 +119,13 @@ function partLines(part: CustomReportPart, snapshot: CustomReportSnapshotV1): st
     case 'slider_judgement': {
       const result = snapshot.results[part.result_key];
       return result?.type === 'slider_judgement'
-        ? [`${result.left_label} / ${result.right_label}: ${result.score}`, result.reason]
+        ? [`${result.left_label} / ${result.right_label}: ${result.score}`, result.reason ?? '']
         : [`Missing result: ${part.result_key}`];
     }
     case 'classification_result': {
       const result = snapshot.results[part.result_key];
       return result?.type === 'classification_result'
-        ? [result.title, result.description, result.reason]
+        ? [result.title ?? '', result.description ?? '', result.reason ?? '']
         : [`Missing result: ${part.result_key}`];
     }
     case 'fixed_text': {
@@ -149,7 +157,10 @@ function partLines(part: CustomReportPart, snapshot: CustomReportSnapshotV1): st
  * @param value - The input text to sanitize
  * @returns The sanitized text with sensitive substrings replaced by `[redacted]`
  */
-function redactPdfText(value: string): string {
+function redactPdfText(value: string | null | undefined): string {
+  if (value == null) {
+    return '';
+  }
   let text = stripControlCharacters(value);
   for (const pattern of PDF_TEXT_DENYLIST) {
     text = text.replace(pattern, '[redacted]');
@@ -204,7 +215,7 @@ function wrapLineToWidth(
   if (current) {
     chunks.push(current);
   }
-  return chunks.length > 0 ? chunks : [''];
+  return chunks.length > 0 ? chunks.slice(0, MAX_WRAP_CHUNKS) : [''];
 }
 
 /**
@@ -254,7 +265,7 @@ async function createSimplePdf(lines: readonly string[]): Promise<ArrayBuffer> {
 
   for (const line of lines) {
     for (const wrappedLine of wrapLineToWidth(line, font, fontSize, maxWidth)) {
-      if (y < margin) {
+      if (y - fontSize < margin) {
         page = pdfDoc.addPage([pageWidth, pageHeight]);
         y = pageHeight - margin;
       }
@@ -286,4 +297,18 @@ function stripControlCharacters(value: string): string {
       return (code < 32 && code !== 10 && code !== 13) || code === 127 ? ' ' : character;
     })
     .join('');
+}
+
+function resolveJapaneseFontPath(): string {
+  const candidates = [
+    join(process.cwd(), 'assets/fonts/IPAexGothic.ttf'),
+    join(process.cwd(), 'apps/web/assets/fonts/IPAexGothic.ttf'),
+    join(dirname(fileURLToPath(import.meta.url)), '../assets/fonts/IPAexGothic.ttf'),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return candidates[0];
 }

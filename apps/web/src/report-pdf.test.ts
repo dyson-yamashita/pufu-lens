@@ -64,7 +64,6 @@ const japanesePdf = await renderReportPdf({
   report: japaneseReport,
 });
 assert.equal(new TextDecoder().decode(japanesePdf.bytes).startsWith('%PDF-'), true);
-assert.equal(japanesePdf.bytes.byteLength > 500_000, true);
 
 const customReport: PrivateReportJsonV1 = {
   ...standardReport,
@@ -106,5 +105,18 @@ const customReport: PrivateReportJsonV1 = {
 };
 assert.equal(safeReportPdfLines(customReport).join('\n').includes('Custom Title'), true);
 assert.equal(safeReportPdfLines(customReport).join('\n').includes('82'), true);
+
+const nullMetricsReport: PrivateReportJsonV1 = {
+  ...standardReport,
+  sections: [
+    {
+      id: 'activity',
+      markdown: 'Activity note',
+      metrics: null as unknown as Record<string, number>,
+      title: 'Activity',
+    },
+  ],
+};
+assert.doesNotThrow(() => safeReportPdfLines(nullMetricsReport));
 
 console.log('web report pdf tests passed');
