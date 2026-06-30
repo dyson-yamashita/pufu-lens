@@ -93,7 +93,7 @@ function CustomReportPartRenderer({
           {part.columns.map((column) => (
             <div
               className="custom-report-column"
-              key={`${part.id}-column-${column.children.map((child) => child.id).join('-')}`}
+              key={`${part.id}-column-${column.children[0]?.id ?? 'empty'}`}
               style={{ flex: column.width_fraction ? `${column.width_fraction} 1 0` : undefined }}
             >
               {column.children.map((child) => (
@@ -129,6 +129,10 @@ function CustomReportPartRenderer({
           {part.text}
         </p>
       );
+    default: {
+      const _exhaustiveCheck: never = part;
+      return null;
+    }
   }
 }
 
@@ -187,14 +191,23 @@ function FixedImageView({
   caption,
   partId,
 }: {
-  readonly altText: string;
+  readonly altText?: string;
   readonly assetRef: string;
   readonly caption?: string;
   readonly partId: string;
 }) {
+  const trimmedAltText = altText?.trim();
+  const trimmedCaption = caption?.trim();
+  const placeholderLabel =
+    trimmedAltText && trimmedAltText.length > 0
+      ? trimmedAltText
+      : trimmedCaption && trimmedCaption.length > 0
+        ? trimmedCaption
+        : 'Image';
+
   return (
     <figure className="custom-report-image" data-testid={`custom-report-part-${partId}`}>
-      <FixedImagePlaceholder assetRef={assetRef} label={altText} />
+      <FixedImagePlaceholder assetRef={assetRef} label={placeholderLabel} />
       {caption ? <figcaption>{caption}</figcaption> : null}
     </figure>
   );
@@ -238,6 +251,7 @@ export function StandardReportSections({
 }) {
   return (
     <>
+      <PufuReportViewer report={report} />
       {report.sections.map((section) => (
         <StandardReportSection key={section.id} publicView={publicView} section={section} />
       ))}
@@ -259,7 +273,7 @@ function StandardReportSection({
     >
       <h3>{section.title}</h3>
       <p className="markdown-text">{section.markdown}</p>
-      {publicView && section.metrics && Object.keys(section.metrics).length > 0 ? (
+      {section.metrics && Object.keys(section.metrics).length > 0 ? (
         <div className="metric-strip compact">
           {Object.entries(section.metrics).map(([name, value]) => (
             <div className="metric" key={name}>
@@ -311,7 +325,7 @@ function normalizePrivateReportSourceLabel(docType: string): string {
 }
 
 function privateReportSourceTitle(source: {
-  readonly canonical_uri: string;
+  readonly canonical_uri?: string | null;
   readonly document_id: string;
   readonly title?: string;
 }): string {
@@ -328,6 +342,6 @@ function privateReportSourceTitle(source: {
   return source.document_id;
 }
 
-function isPublicHttpUrl(uri: string): boolean {
-  return /^https?:\/\//i.test(uri);
+function isPublicHttpUrl(uri?: string | null): boolean {
+  return typeof uri === 'string' && /^https?:\/\//i.test(uri);
 }
