@@ -20,6 +20,7 @@ import {
   publishPublicReport,
   ReportNotFoundError,
   type ReportRepository,
+  type ReportTemplateRunInsert,
   readPublicReportManifest,
   resolveReportPeriod,
   revokePublicReport,
@@ -75,7 +76,7 @@ class MemoryStorage implements ObjectStorage {
 function createRepository(): ReportRepository & {
   insertedChunkContents: string[];
   insertedChunks: number;
-  insertedTemplateRun?: unknown;
+  insertedTemplateRun?: ReportTemplateRunInsert;
   storageUri?: string;
 } {
   const reports = new Map<
@@ -294,7 +295,14 @@ assert.equal(
   customGenerated.report.custom_layout?.results.status_category?.type,
   'classification_result',
 );
-assert.ok(customRepository.insertedTemplateRun);
+const templateRun = customRepository.insertedTemplateRun;
+assert.ok(templateRun);
+assert.equal(templateRun.templateId, 'template-a');
+assert.equal(templateRun.templateVersion, 3);
+assert.equal(
+  templateRun.templateSnapshotHash,
+  customGenerated.report.custom_layout?.template_snapshot_hash,
+);
 assert.doesNotMatch(risksSection.markdown, /ください/);
 const titleFallbackRiskReport = await createExtractiveReportProvider().generate({
   documents: [

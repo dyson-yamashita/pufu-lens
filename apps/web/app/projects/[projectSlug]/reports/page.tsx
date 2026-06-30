@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { generatePrivateReport } from '../../../../src/admin-actions';
-import { requireAdminProject } from '../../../../src/admin-actions-shared';
 import {
   getAdminProject,
   getProjectMembership,
@@ -9,8 +8,12 @@ import {
 } from '../../../../src/admin-db';
 import { getOptionalAdminSql } from '../../../../src/admin-sql';
 import { AuthRequiredError, requireSessionUserId } from '../../../../src/auth-session';
-import { listCustomReportTemplates } from '../../../../src/custom-report-repository';
-import { reportNowFromEnv, resolveReportPeriod } from '../../../../src/report';
+import { lookupProjectAdminAccess } from '../../../../src/authz';
+import {
+  createPostgresReportRepository,
+  reportNowFromEnv,
+  resolveReportPeriod,
+} from '../../../../src/report';
 import { ReportGenerateForm, ReportsList } from '../../../../src/report-client';
 import { AppShell, PageHeader } from '../../../../src/ui';
 
@@ -87,15 +90,14 @@ export default async function ReportsPage({
 
   const defaultPeriod = resolveReportPeriod(reportNowFromEnv(process.env) ?? new Date(), 'weekly');
   const sql = getOptionalAdminSql();
-  const customTemplates = sql
-    ? (await listCustomReportTemplates(sql, (await requireAdminProject(sql, project.slug)).id))
-        .filter((template) => template.is_active)
-        .map((template) => ({
-          id: template.id,
-          name: template.name,
-          templateVersion: template.template_version,
-        }))
-    : [];
+  const adminAccess =
+    sql && userId ? await lookupProjectAdminAccess(sql, { projectSlug, userId }) : undefined;
+  const customTemplates =
+    sql && adminAccess
+      ? ((await createPostgresReportRepository(sql).listActiveCustomReportTemplates?.({
+          projectId: adminAccess.id,
+        })) ?? [])
+      : [];
 
   return (
     <AppShell active="reports" project={project}>
