@@ -310,5 +310,5 @@ function resolveJapaneseFontPath(): string {
       return candidate;
     }
   }
-  return candidates[0];
+  return candidates[0] ?? join(process.cwd(), 'assets/fonts/IPAexGothic.ttf');
 }
