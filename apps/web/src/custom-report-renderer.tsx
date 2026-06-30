@@ -342,6 +342,6 @@ function privateReportSourceTitle(source: {
   return source.document_id;
 }
 
-function isPublicHttpUrl(uri?: string | null): boolean {
+function isPublicHttpUrl(uri?: string | null): uri is string {
   return typeof uri === 'string' && /^https?:\/\//i.test(uri);
 }
