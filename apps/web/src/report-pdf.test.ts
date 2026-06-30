@@ -26,10 +26,41 @@ assert.equal(lines.join('\n').includes('alice@example.com'), false);
 assert.equal(lines.join('\n').includes('raw_document_id'), false);
 assert.equal(lines.join('\n').includes('storage_uri'), false);
 
-const pdf = renderReportPdf({ projectSlug: 'sample/project', report: standardReport });
+const pdf = await renderReportPdf({ projectSlug: 'sample/project', report: standardReport });
 assert.equal(pdf.fileName, 'sample-project-report-a.pdf');
-assert.equal(new TextDecoder().decode(pdf.bytes).startsWith('%PDF-1.4'), true);
-assert.equal(new TextDecoder().decode(pdf.bytes).includes('/Type /Catalog'), true);
+assert.equal(new TextDecoder().decode(pdf.bytes).startsWith('%PDF-'), true);
+
+const japaneseReport: PrivateReportJsonV1 = {
+  ...standardReport,
+  sections: [
+    {
+      id: 'activity',
+      markdown: '判定結果\n\nプ譜の進捗は順調です。',
+      title: '活動',
+    },
+  ],
+  summary: '週次サマリー',
+  title: '週次レポート',
+};
+const japaneseLines = safeReportPdfLines(japaneseReport);
+assert.equal(
+  japaneseLines.some((line) => line.includes('週次レポート')),
+  true,
+);
+assert.equal(
+  japaneseLines.some((line) => line.includes('判定結果')),
+  true,
+);
+assert.equal(
+  japaneseLines.some((line) => line.includes('プ譜')),
+  true,
+);
+const japanesePdf = await renderReportPdf({
+  projectSlug: 'sample-project',
+  report: japaneseReport,
+});
+assert.equal(new TextDecoder().decode(japanesePdf.bytes).startsWith('%PDF-'), true);
+assert.equal(japanesePdf.bytes.byteLength > 500_000, true);
 
 const customReport: PrivateReportJsonV1 = {
   ...standardReport,

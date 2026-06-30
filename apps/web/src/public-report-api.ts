@@ -116,7 +116,7 @@ export async function handlePublicReportPdfGet(input: {
     if (response.status === 'db_outside_business_hours') {
       return NextResponse.json(response, { status: 503 });
     }
-    const pdf = renderReportPdf({ projectSlug: input.projectSlug, report: response.report });
+    const pdf = await renderReportPdf({ projectSlug: input.projectSlug, report: response.report });
     return new NextResponse(pdf.bytes, {
       headers: {
         'Cache-Control': 'no-store',

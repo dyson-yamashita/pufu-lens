@@ -47,7 +47,7 @@ export async function GET(
     if (response.status === 'db_outside_business_hours') {
       return NextResponse.json(response, { status: 503 });
     }
-    const pdf = renderReportPdf({ projectSlug, report: response.report });
+    const pdf = await renderReportPdf({ projectSlug, report: response.report });
     return new NextResponse(pdf.bytes, {
       headers: {
         'Cache-Control': 'no-store',

@@ -94,7 +94,7 @@ PDF 生成は report detail と同じ renderer を使い、PDF 専用 CSS でペ
 | 5    | `completed` | PDF ダウンロード                          | private/public API で認可どおり PDF を取得できる                                                          |
 | 6    | `planned`   | セキュリティ・公開境界の regression       | import、asset、PDF、public report で private data 混入を防ぐテストがある                                  |
 
-**Outcome:** private/public の PDF endpoint と report detail の download link を追加した。PDF は Next.js route 上で report JSON からサーバー生成する最小 PDF とし、private は session + project member 認可、public は public project + published report 判定、DB 業務時間外 contract を既存 report API と揃える。PDF テキスト生成時に raw document id / private locator / storage URI / secret / token / API key / メールアドレスを redaction する regression を追加した。
+**Outcome:** private/public の PDF endpoint と report detail の download link を追加した。PDF は Next.js route 上で report JSON からサーバー生成する最小 PDF とし、private は session + project member 認可、public は public project + published report 判定、DB 業務時間外 contract を既存 report API と揃える。PDF テキスト生成時に raw document id / private locator / storage URI / secret / token / API key / メールアドレスを redaction する regression test を追加した。
 
 ## テスト方針
 

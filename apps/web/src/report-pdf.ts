@@ -1,3 +1,8 @@
+import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import fontkit from '@pdf-lib/fontkit';
+import { PDFDocument } from 'pdf-lib';
 import type { CustomReportPart, CustomReportSnapshotV1 } from './custom-report-schema.ts';
 import type { PrivateReportJsonV1 } from './report-schema.ts';
 
@@ -11,18 +16,25 @@ const PDF_TEXT_DENYLIST = [
   /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/iu,
 ];
 
+const JAPANESE_FONT_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '../assets/fonts/IPAexGothic.ttf',
+);
+
 export interface ReportPdfFile {
   readonly bytes: ArrayBuffer;
   readonly fileName: string;
 }
 
-export function renderReportPdf(input: {
+let cachedFontBytes: Uint8Array | undefined;
+
+export async function renderReportPdf(input: {
   readonly projectSlug: string;
   readonly report: PrivateReportJsonV1;
-}): ReportPdfFile {
+}): Promise<ReportPdfFile> {
   const lines = safeReportPdfLines(input.report);
   return {
-    bytes: createSimplePdf(lines),
+    bytes: await createSimplePdf(lines),
     fileName: safePdfFileName(`${input.projectSlug}-${input.report.report_id}.pdf`),
   };
 }
@@ -41,7 +53,7 @@ export function safeReportPdfLines(report: PrivateReportJsonV1): readonly string
     lines.push('', 'Custom layout', ...customLayoutLines(report.custom_layout));
   } else {
     for (const section of report.sections) {
-      lines.push('', section.title, stripMarkdown(section.markdown));
+      lines.push('', section.title, section.markdown);
       if (section.metrics && Object.keys(section.metrics).length > 0) {
         lines.push(
           `Metrics: ${Object.entries(section.metrics)
@@ -114,98 +126,72 @@ function stripMarkdown(value: string): string {
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
     .replace(/[#>*_~|-]+/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(/[^\S\r\n]+/g, ' ')
     .trim();
 }
 
 function wrapPdfLine(value: string): readonly string[] {
   if (!value) return [''];
-  const chunks: string[] = [];
-  for (let index = 0; index < value.length; index += 92) {
-    chunks.push(value.slice(index, index + 92));
-  }
-  return chunks;
+  return value.split(/\r?\n/).flatMap((line) => {
+    if (!line) return [''];
+    const chunks: string[] = [];
+    for (let index = 0; index < line.length; index += 92) {
+      chunks.push(line.slice(index, index + 92));
+    }
+    return chunks;
+  });
 }
 
 function safePdfFileName(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, '-');
 }
 
-function createSimplePdf(lines: readonly string[]): ArrayBuffer {
+async function loadJapaneseFontBytes(): Promise<Uint8Array> {
+  if (!cachedFontBytes) {
+    cachedFontBytes = new Uint8Array(await readFile(JAPANESE_FONT_PATH));
+  }
+  return cachedFontBytes;
+}
+
+async function createSimplePdf(lines: readonly string[]): Promise<ArrayBuffer> {
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.registerFontkit(fontkit);
+  const font = await pdfDoc.embedFont(await loadJapaneseFontBytes());
+
+  const pageWidth = 612;
   const pageHeight = 792;
+  const margin = 50;
+  const fontSize = 11;
   const lineHeight = 14;
-  const linesPerPage = 48;
-  const pageLineGroups: readonly string[][] = chunk(lines, linesPerPage);
-  const objects: string[] = [];
-  const pageObjectIds: number[] = [];
-  const fontObjectId = 3;
-  objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
-  objects[2] = '';
-  objects[fontObjectId] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
-  let nextObjectId = 4;
-  for (const pageLines of pageLineGroups) {
-    const contentObjectId = nextObjectId++;
-    const pageObjectId = nextObjectId++;
-    const stream = pageContentStream(pageLines, pageHeight, lineHeight);
-    objects[contentObjectId] = `<< /Length ${byteLength(stream)} >>\nstream\n${stream}\nendstream`;
-    objects[pageObjectId] =
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 ${pageHeight}] /Resources << /Font << /F1 ${fontObjectId} 0 R >> >> /Contents ${contentObjectId} 0 R >>`;
-    pageObjectIds.push(pageObjectId);
-  }
-  objects[2] = `<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageObjectIds.length} >>`;
-  const offsets = [0];
-  let pdf = '%PDF-1.4\n';
-  for (let id = 1; id < objects.length; id += 1) {
-    offsets[id] = byteLength(pdf);
-    pdf += `${id} 0 obj\n${objects[id]}\nendobj\n`;
-  }
-  const xrefOffset = byteLength(pdf);
-  pdf += `xref\n0 ${objects.length}\n0000000000 65535 f \n`;
-  for (let id = 1; id < objects.length; id += 1) {
-    pdf += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`;
-  }
-  pdf += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
-  return new TextEncoder().encode(pdf).buffer as ArrayBuffer;
-}
 
-function pageContentStream(
-  lines: readonly string[],
-  pageHeight: number,
-  lineHeight: number,
-): string {
-  const operations = ['BT', '/F1 11 Tf', `50 ${pageHeight - 56} Td`];
-  lines.forEach((line, index) => {
-    if (index > 0) operations.push(`0 -${lineHeight} Td`);
-    operations.push(`(${escapePdfText(line)}) Tj`);
-  });
-  operations.push('ET');
-  return operations.join('\n');
-}
+  let page = pdfDoc.addPage([pageWidth, pageHeight]);
+  let y = pageHeight - margin;
 
-function escapePdfText(value: string): string {
-  return value
-    .normalize('NFKC')
-    .replace(/[^\u0020-\u007e]/g, '?')
-    .replace(/([\\()])/g, '\\$1');
-}
-
-function chunk<T>(values: readonly T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let index = 0; index < values.length; index += size) {
-    chunks.push([...values.slice(index, index + size)]);
+  for (const line of lines) {
+    if (y < margin) {
+      page = pdfDoc.addPage([pageWidth, pageHeight]);
+      y = pageHeight - margin;
+    }
+    if (line) {
+      page.drawText(line, {
+        font,
+        maxWidth: pageWidth - margin * 2,
+        size: fontSize,
+        x: margin,
+        y: y - fontSize,
+      });
+    }
+    y -= lineHeight;
   }
-  return chunks.length > 0 ? chunks : [[]];
-}
 
-function byteLength(value: string): number {
-  return new TextEncoder().encode(value).length;
+  return pdfDoc.save().then((bytes) => bytes.buffer as ArrayBuffer);
 }
 
 function stripControlCharacters(value: string): string {
   return [...value]
     .map((character) => {
       const code = character.charCodeAt(0);
-      return code < 32 || code === 127 ? ' ' : character;
+      return (code < 32 && code !== 10 && code !== 13) || code === 127 ? ' ' : character;
     })
     .join('');
 }
