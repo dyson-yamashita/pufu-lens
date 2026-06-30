@@ -78,9 +78,10 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
     'Markdown bullet',
   );
   const firstSources = page.getByTestId('chat-message-sources-1');
+  const firstSourcesToggle = page.getByTestId('chat-message-sources-toggle-1');
   await expect(firstSources).toContainText('Sources (1)');
   await expect(firstSources.locator('.source-chip')).toBeHidden();
-  await firstSources.locator('summary').click();
+  await firstSourcesToggle.click();
   await expect(firstSources.locator('.source-chip')).toBeVisible();
   await expect(firstSources).toContainText('src_progress_1');
   await expect(firstSources).toContainText('Spec Update');
@@ -95,9 +96,10 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
   await expect(page.getByTestId('chat-assistant-message-1')).toContainText('Spec Update');
   await expect(page.getByTestId('chat-assistant-message-3')).toContainText('2件目の回答');
   const secondSources = page.getByTestId('chat-message-sources-3');
+  const secondSourcesToggle = page.getByTestId('chat-message-sources-toggle-3');
   await expect(secondSources).toContainText('Sources (1)');
   await expect(secondSources.locator('.source-chip')).toBeHidden();
-  await secondSources.locator('summary').click();
+  await secondSourcesToggle.click();
   await expect(secondSources.locator('.source-chip')).toBeVisible();
   await expect(secondSources).toContainText('src_issues_1');
   await expect(secondSources).toContainText('Issue Summary');
