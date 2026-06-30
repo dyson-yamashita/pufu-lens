@@ -1,3 +1,8 @@
+import {
+  type CustomReportSnapshotV1,
+  validateCustomReportSnapshot,
+} from './custom-report-schema.ts';
+
 export type ReportPeriodKind = 'weekly';
 
 export interface ReportPeriod {
@@ -28,6 +33,7 @@ export interface PrivateReportSection {
 }
 
 export interface PrivateReportJsonV1 {
+  readonly custom_layout?: CustomReportSnapshotV1;
   readonly generated_at: string;
   readonly period: ReportPeriod;
   readonly project_id: string;
@@ -117,6 +123,9 @@ export function validatePrivateReportJson(value: unknown): asserts value is Priv
         throw new Error('Report pufu source is invalid.');
       }
     }
+  }
+  if (value.custom_layout !== undefined) {
+    validateCustomReportSnapshot(value.custom_layout);
   }
   for (const section of value.sections) {
     if (!isRecord(section) || typeof section.id !== 'string' || typeof section.title !== 'string') {

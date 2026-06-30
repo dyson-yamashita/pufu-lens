@@ -1,4 +1,4 @@
--- Migration: 0005_private_chat_history
+-- Migration: 0006_private_chat_history
 -- Purpose: Persist private logged-in project chat turns per project/user.
 -- Fresh DB sync:
 --   - Reflect the final schema in infra/docker/postgres/init.sql.
