@@ -203,7 +203,7 @@ export async function deleteProject(formData: FormData): Promise<void> {
   let cleanupProjectStorage: PreparedProjectStorageCleanup = async () => ({
     deletedCount: 0,
     failedCount: 0,
-    failedObjectSamples: [],
+    failedObjectDigests: [],
   });
 
   await withSql(async (sql) => {
@@ -247,11 +247,19 @@ export async function deleteProject(formData: FormData): Promise<void> {
     }
   });
 
-  const storageCleanupResult = await cleanupProjectStorage().finally(() => {
+  try {
+    const storageCleanupResult = await cleanupProjectStorage();
+    if (storageCleanupResult.failedCount > 0) {
+      console.warn(formatProjectStorageCleanupFailure(storageCleanupResult));
+    }
+  } catch (error) {
+    console.warn(
+      `Project storage cleanup failed for ${projectSlug}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  } finally {
     revalidateProject(projectSlug);
-  });
-  if (storageCleanupResult.failedCount > 0) {
-    throw new Error(formatProjectStorageCleanupFailure(storageCleanupResult));
   }
   redirect('/projects');
 }

@@ -1,15 +1,13 @@
-import { createObjectStorageFromEnv } from '../../../packages/storage/src/factory.ts';
-import type {
-  ObjectStorage,
-  ProjectStoragePrefixes,
-} from '../../../packages/storage/src/object-storage.ts';
+import { createHash } from 'node:crypto';
+import type { ObjectStorage, ProjectStoragePrefixes } from '@pufu-lens/storage';
+import { createObjectStorageFromEnv } from '@pufu-lens/storage';
 
 const PROJECT_STORAGE_DELETE_BATCH_SIZE = 50;
 
 export interface ProjectStorageCleanupResult {
   readonly deletedCount: number;
   readonly failedCount: number;
-  readonly failedObjectSamples: readonly string[];
+  readonly failedObjectDigests: readonly string[];
 }
 
 export type PreparedProjectStorageCleanup = () => Promise<ProjectStorageCleanupResult>;
@@ -19,7 +17,7 @@ export async function prepareProjectStorageCleanup(
 ): Promise<PreparedProjectStorageCleanup> {
   const driver = process.env.STORAGE_DRIVER ?? process.env.OBJECT_STORAGE_DRIVER ?? 'local';
   if (driver === 'local' && !process.env.STORAGE_ROOT && !process.env.LOCAL_STORAGE_ROOT) {
-    return async () => ({ deletedCount: 0, failedCount: 0, failedObjectSamples: [] });
+    return async () => ({ deletedCount: 0, failedCount: 0, failedObjectDigests: [] });
   }
 
   const storage = createObjectStorageFromEnv(process.env);
@@ -35,7 +33,7 @@ export async function prepareProjectStorageCleanup(
   return async () => {
     let deletedCount = 0;
     let failedCount = 0;
-    const failedObjectSamples: string[] = [];
+    const failedObjectDigests: string[] = [];
     let pendingDeletes: Promise<void>[] = [];
     const flushPendingDeletes = async () => {
       if (pendingDeletes.length === 0) {
@@ -53,12 +51,13 @@ export async function prepareProjectStorageCleanup(
               deletedCount += 1;
             })
             .catch((error) => {
+              const objectDigest = digestStorageObjectUri(object.uri);
               failedCount += 1;
-              if (failedObjectSamples.length < 5) {
-                failedObjectSamples.push(object.uri);
+              if (failedObjectDigests.length < 5) {
+                failedObjectDigests.push(objectDigest);
               }
               console.warn(
-                `Project storage object cleanup failed for ${object.uri}: ${
+                `Project storage object cleanup failed for digest ${objectDigest}: ${
                   error instanceof Error ? error.message : String(error)
                 }`,
               );
@@ -72,16 +71,20 @@ export async function prepareProjectStorageCleanup(
       await flushPendingDeletes();
     }
 
-    return { deletedCount, failedCount, failedObjectSamples };
+    return { deletedCount, failedCount, failedObjectDigests };
   };
 }
 
 export function formatProjectStorageCleanupFailure(result: ProjectStorageCleanupResult): string {
   const samples =
-    result.failedObjectSamples.length > 0
-      ? ` Samples: ${result.failedObjectSamples.join(', ')}`
+    result.failedObjectDigests.length > 0
+      ? ` Digests: ${result.failedObjectDigests.join(', ')}`
       : '';
   return `Project storage cleanup incomplete: ${result.failedCount} object(s) failed to delete.${samples}`;
+}
+
+function digestStorageObjectUri(uri: string): string {
+  return createHash('sha256').update(uri).digest('hex').slice(0, 16);
 }
 
 export async function ensureProjectStoragePrefixes(projectSlug: string): Promise<void> {
