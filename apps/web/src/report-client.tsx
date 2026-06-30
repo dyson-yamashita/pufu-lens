@@ -208,6 +208,12 @@ export function ReportsList({ projectSlug }: { readonly projectSlug: string }) {
   );
 }
 
+/**
+ * Displays a private report and provides PDF download and deletion actions.
+ *
+ * @param projectSlug - The project slug that identifies the report source
+ * @param reportId - The report identifier
+ */
 export function ReportDocument({
   projectSlug,
   reportId,
@@ -367,6 +373,12 @@ export function ReportDocument({
   );
 }
 
+/**
+ * Displays a public report and lets the user download it as a PDF.
+ *
+ * @param projectSlug - The project identifier used to load the report.
+ * @param reportId - The report identifier used to load the report.
+ */
 export function PublicReportDocument({
   projectSlug,
   reportId,
@@ -486,10 +498,24 @@ export function PublicReportDocument({
   );
 }
 
+/**
+ * Converts a report API error response into a status string.
+ *
+ * @param body - The parsed error response body.
+ * @param status - The HTTP status code.
+ * @returns The error code, error message, or `http_<status>`.
+ */
 function reportErrorStatus(body: ReportApiError, status: number): string {
   return body.error?.code ?? body.error?.message ?? `http_${status}`;
 }
 
+/**
+ * Downloads a report PDF and starts a browser file download.
+ *
+ * @param input.fallbackFileName - File name to use when the response does not provide one.
+ * @param input.url - PDF endpoint to request.
+ * @returns `{ ok: true }` when the download is started, or `{ ok: false, message }` when the request fails.
+ */
 async function downloadReportPdf(input: {
   readonly fallbackFileName: string;
   readonly url: string;
@@ -518,6 +544,12 @@ async function downloadReportPdf(input: {
   return { ok: true };
 }
 
+/**
+ * Extracts a filename from a Content-Disposition header value.
+ *
+ * @param value - The header value to inspect
+ * @returns The quoted filename if present, otherwise `undefined`
+ */
 function parseContentDispositionFileName(value: string | null): string | undefined {
   if (!value) return undefined;
   const match = /filename="([^"]+)"/u.exec(value);

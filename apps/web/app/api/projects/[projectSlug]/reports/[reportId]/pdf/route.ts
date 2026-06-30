@@ -15,6 +15,12 @@ import {
 } from '../../../../../../../src/report';
 import { renderReportPdf } from '../../../../../../../src/report-pdf';
 
+/**
+ * Generates a PDF for a private project report.
+ *
+ * @param params - Route parameters containing the project slug and report ID.
+ * @returns A PDF download, or a JSON error response when the report cannot be retrieved or rendered.
+ */
 export async function GET(
   _request: Request,
   {
@@ -72,6 +78,14 @@ export async function GET(
   }
 }
 
+/**
+ * Creates a standardized JSON error response.
+ *
+ * @param code - The error code to include in the response.
+ * @param message - The error message to include in the response.
+ * @param status - The HTTP status code for the response.
+ * @returns A JSON response containing the error payload.
+ */
 function reportErrorResponse(code: string, message: string, status: number) {
   return NextResponse.json({ error: { code, message } }, { status });
 }
