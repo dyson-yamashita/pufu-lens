@@ -7,11 +7,6 @@ import {
   deriveProjectIdentifiers,
   validateProjectSlug,
 } from '../../../packages/project-tenancy/src/project-tenancy.ts';
-import { createObjectStorageFromEnv } from '../../../packages/storage/src/factory.ts';
-import type {
-  ObjectStorage,
-  ProjectStoragePrefixes,
-} from '../../../packages/storage/src/object-storage.ts';
 import { type AdminActionIdRow, parseAdminActionIdRow } from './admin-actions-guards.ts';
 import {
   parseOptionalAdminActionRow,
@@ -23,6 +18,12 @@ import {
 } from './admin-actions-shared.ts';
 import { isProjectVisibility, type ProjectVisibility } from './admin-data';
 import { saveGithubAppConnectionConfig } from './project-connections';
+import {
+  ensureProjectStoragePrefixes,
+  formatProjectStorageCleanupFailure,
+  type PreparedProjectStorageCleanup,
+  prepareProjectStorageCleanup,
+} from './project-storage-cleanup.ts';
 import { createReportStorageFromEnv, writePublicProjectManifest } from './report';
 
 type SqlExecutor = postgres.Sql | postgres.TransactionSql;
@@ -199,7 +200,11 @@ export async function updateProjectSettings(formData: FormData): Promise<void> {
 export async function deleteProject(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
   const confirmationProjectName = requireFormValue(formData, 'confirmationProjectName').trim();
-  let cleanupProjectStorage: () => Promise<void> = async () => {};
+  let cleanupProjectStorage: PreparedProjectStorageCleanup = async () => ({
+    deletedCount: 0,
+    failedCount: 0,
+    failedObjectSamples: [],
+  });
 
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
@@ -242,16 +247,12 @@ export async function deleteProject(formData: FormData): Promise<void> {
     }
   });
 
-  try {
-    await cleanupProjectStorage();
-  } catch (error) {
-    console.warn(
-      `Project storage cleanup failed for ${projectSlug}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
+  const storageCleanupResult = await cleanupProjectStorage().finally(() => {
+    revalidateProject(projectSlug);
+  });
+  if (storageCleanupResult.failedCount > 0) {
+    throw new Error(formatProjectStorageCleanupFailure(storageCleanupResult));
   }
-  revalidateProject(projectSlug);
   redirect('/projects');
 }
 
@@ -347,67 +348,6 @@ async function updateProjectSettingsRow(
         updated_at = now()
     WHERE id = ${projectId}
   `;
-}
-
-async function prepareProjectStorageCleanup(projectSlug: string): Promise<() => Promise<void>> {
-  const driver = process.env.STORAGE_DRIVER ?? process.env.OBJECT_STORAGE_DRIVER ?? 'local';
-  if (driver === 'local' && !process.env.STORAGE_ROOT && !process.env.LOCAL_STORAGE_ROOT) {
-    return async () => {};
-  }
-
-  const storage = createObjectStorageFromEnv(process.env);
-  if (!storage.delete) {
-    throw new Error(
-      'Configured object storage does not support delete; project storage cleanup cannot complete.',
-    );
-  }
-
-  const deleteObject = storage.delete.bind(storage);
-  const prefix = `${projectSlug}/`;
-
-  return async () => {
-    const batchSize = 50;
-    let pendingDeletes: Promise<void>[] = [];
-
-    for await (const object of storage.list(prefix)) {
-      pendingDeletes.push(
-        deleteObject(object.uri).catch((error) => {
-          console.warn(
-            `Project storage object cleanup failed for ${object.uri}: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        }),
-      );
-      if (pendingDeletes.length >= batchSize) {
-        await Promise.all(pendingDeletes);
-        pendingDeletes = [];
-      }
-    }
-
-    if (pendingDeletes.length > 0) {
-      await Promise.all(pendingDeletes);
-    }
-  };
-}
-
-async function ensureProjectStoragePrefixes(projectSlug: string): Promise<void> {
-  const driver = process.env.STORAGE_DRIVER ?? process.env.OBJECT_STORAGE_DRIVER ?? 'local';
-  if (driver === 'local' && !process.env.STORAGE_ROOT && !process.env.LOCAL_STORAGE_ROOT) {
-    return;
-  }
-
-  const storage = createObjectStorageFromEnv(process.env);
-  if (!hasProjectPrefixSupport(storage)) {
-    return;
-  }
-  await storage.ensureProjectPrefixes(projectSlug);
-}
-
-function hasProjectPrefixSupport(storage: ObjectStorage): storage is ObjectStorage & {
-  ensureProjectPrefixes(projectSlug: string): Promise<ProjectStoragePrefixes>;
-} {
-  return 'ensureProjectPrefixes' in storage && typeof storage.ensureProjectPrefixes === 'function';
 }
 
 async function writePublicProjectVisibilityManifest(
