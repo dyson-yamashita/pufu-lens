@@ -46,12 +46,12 @@ export async function prepareProjectStorageCleanup(
     try {
       for await (const object of storage.list(prefix)) {
         pendingDeletes.push(
-          deleteObject(object.uri)
-            .then(() => {
+          (async () => {
+            const objectDigest = digestStorageObjectUri(object.uri);
+            try {
+              await deleteObject(object.uri);
               deletedCount += 1;
-            })
-            .catch((error) => {
-              const objectDigest = digestStorageObjectUri(object.uri);
+            } catch (error) {
               failedCount += 1;
               if (failedObjectDigests.length < 5) {
                 failedObjectDigests.push(objectDigest);
@@ -61,7 +61,8 @@ export async function prepareProjectStorageCleanup(
                   error,
                 )}`,
               );
-            }),
+            }
+          })(),
         );
         if (pendingDeletes.length >= PROJECT_STORAGE_DELETE_BATCH_SIZE) {
           await flushPendingDeletes();
