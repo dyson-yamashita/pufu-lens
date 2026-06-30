@@ -48,15 +48,15 @@ export {
 export {
   createPostgresReportRepository,
   type ProjectLookupResult,
-  type ReportCustomTemplate,
-  type ReportCustomTemplateSummary,
-  type ReportTemplateRunInsert,
   parseReportDocumentRow,
   parseReportMetadataRow,
   parseReportProjectLookupRow,
+  type ReportCustomTemplate,
+  type ReportCustomTemplateSummary,
   type ReportDocumentRecord,
   type ReportListItem,
   type ReportRepository,
+  type ReportTemplateRunInsert,
 } from './report-repository.ts';
 export {
   type PreparedReportChunk,

@@ -26,8 +26,12 @@ export async function generatePrivateReport(formData: FormData): Promise<void> {
 }
 
 function optionalFormValue(formData: FormData, key: string): string | undefined {
-  const value = formData.get(key)?.toString().trim();
-  return value ? value : undefined;
+  const value = formData.get(key);
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 function requireReportPeriod(formData: FormData): { readonly end: string; readonly start: string } {

@@ -7,7 +7,7 @@ import {
   getProjectMembership,
   getVisiblePublicProject,
 } from '../../../../src/admin-db';
-import { getRequiredAdminSql } from '../../../../src/admin-sql';
+import { getOptionalAdminSql } from '../../../../src/admin-sql';
 import { AuthRequiredError, requireSessionUserId } from '../../../../src/auth-session';
 import { listCustomReportTemplates } from '../../../../src/custom-report-repository';
 import { reportNowFromEnv, resolveReportPeriod } from '../../../../src/report';
@@ -86,15 +86,16 @@ export default async function ReportsPage({
   }
 
   const defaultPeriod = resolveReportPeriod(reportNowFromEnv(process.env) ?? new Date(), 'weekly');
-  const sql = getRequiredAdminSql();
-  const adminProject = await requireAdminProject(sql, project.slug);
-  const customTemplates = (await listCustomReportTemplates(sql, adminProject.id))
-    .filter((template) => template.is_active)
-    .map((template) => ({
-      id: template.id,
-      name: template.name,
-      templateVersion: template.template_version,
-    }));
+  const sql = getOptionalAdminSql();
+  const customTemplates = sql
+    ? (await listCustomReportTemplates(sql, (await requireAdminProject(sql, project.slug)).id))
+        .filter((template) => template.is_active)
+        .map((template) => ({
+          id: template.id,
+          name: template.name,
+          templateVersion: template.template_version,
+        }))
+    : [];
 
   return (
     <AppShell active="reports" project={project}>

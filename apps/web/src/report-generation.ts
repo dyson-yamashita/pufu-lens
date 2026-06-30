@@ -146,16 +146,25 @@ async function readCustomTemplateOrThrow(input: {
   readonly templateId: string;
 }) {
   if (!input.repository.readActiveCustomReportTemplate) {
-    throw new Error('Custom report templates are not supported by this repository.');
+    throw new CustomReportTemplateError(
+      'Custom report templates are not supported by this repository.',
+    );
   }
   const template = await input.repository.readActiveCustomReportTemplate({
     projectId: input.projectId,
     templateId: input.templateId,
   });
   if (!template) {
-    throw new Error('Custom report template not found or inactive.');
+    throw new CustomReportTemplateError('Custom report template not found or inactive.');
   }
   return template;
+}
+
+export class CustomReportTemplateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CustomReportTemplateError';
+  }
 }
 
 function buildCustomReportSnapshot(input: {
@@ -200,7 +209,7 @@ function collectCustomResults(
 ): void {
   switch (part.type) {
     case 'classification_result':
-      results[part.result_key] = classificationResult(part, reportContext);
+      setCustomResult(results, part.result_key, classificationResult(part, reportContext));
       break;
     case 'columns':
       part.columns.forEach((column) => {
@@ -210,10 +219,14 @@ function collectCustomResults(
       });
       break;
     case 'fixed_image':
-      results[part.id] = { asset_ref: part.asset_ref, part_id: part.id, type: 'fixed_image' };
+      setCustomResult(results, part.id, {
+        asset_ref: part.asset_ref,
+        part_id: part.id,
+        type: 'fixed_image',
+      });
       break;
     case 'fixed_text':
-      results[part.id] = { part_id: part.id, text: part.text, type: 'fixed_text' };
+      setCustomResult(results, part.id, { part_id: part.id, text: part.text, type: 'fixed_text' });
       break;
     case 'row':
       part.children.forEach((child) => {
@@ -221,9 +234,20 @@ function collectCustomResults(
       });
       break;
     case 'slider_judgement':
-      results[part.result_key] = sliderResult(part, reportContext);
+      setCustomResult(results, part.result_key, sliderResult(part, reportContext));
       break;
   }
+}
+
+function setCustomResult(
+  results: Record<string, CustomReportResult>,
+  key: string,
+  result: CustomReportResult,
+): void {
+  if (key in results) {
+    throw new Error(`Duplicate custom report result key: ${key}`);
+  }
+  results[key] = result;
 }
 
 function sliderResult(
@@ -250,7 +274,7 @@ function classificationResult(
 ): CustomReportResult {
   const signal = `${part.prompt}\n${reportContext.title}\n${reportContext.summary}`;
   const index = Math.abs(hashNumber(signal)) % part.categories.length;
-  const category = part.categories[index] ?? part.categories[0];
+  const category = part.categories[index];
   if (!category) {
     throw new Error('Custom report classification_result must have categories.');
   }
