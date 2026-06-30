@@ -893,6 +893,18 @@ export function trimPrivateChatHistoryContent(
   return `${content.slice(0, maxLength - 1)}…`;
 }
 
+export function privateChatHistorySourcesForStorage(
+  sources: readonly ChatSource[],
+): ChatSource[] {
+  return sources.map((source) => ({
+    canonicalUri: source.canonicalUri,
+    documentId: source.documentId,
+    docType: source.docType,
+    rawDocumentId: source.rawDocumentId,
+    title: source.title,
+  }));
+}
+
 export function privateChatHistoryToMastraMessages(
   history: readonly PrivateChatHistoryItem[],
 ): MastraChatHistoryMessage[] {
@@ -1245,7 +1257,7 @@ export function createPostgresChatRepository(
         FROM public.private_chat_messages
         WHERE project_id = ${projectId}
           AND user_id = ${userId}
-        ORDER BY created_at DESC
+        ORDER BY created_at DESC, id DESC
         LIMIT ${limit ?? PRIVATE_CHAT_CONTEXT_TURN_LIMIT}
       `;
       return rows
@@ -1265,7 +1277,7 @@ export function createPostgresChatRepository(
         FROM public.private_chat_messages
         WHERE project_id = ${projectId}
           AND user_id = ${userId}
-        ORDER BY created_at DESC
+        ORDER BY created_at DESC, id DESC
         LIMIT ${limit ?? PRIVATE_CHAT_HISTORY_UI_LIMIT}
       `;
       return privateChatHistoryItemsForUiDisplay(
@@ -1288,7 +1300,7 @@ export function createPostgresChatRepository(
           ${input.userId},
           ${input.question},
           ${input.answer},
-          ${JSON.stringify(input.sources)}::jsonb,
+          ${JSON.stringify(privateChatHistorySourcesForStorage(input.sources))}::jsonb,
           ${JSON.stringify(input.toolCalls)}::jsonb,
           ${input.editing ? JSON.stringify(input.editing) : null}
         )

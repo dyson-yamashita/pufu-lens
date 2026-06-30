@@ -20,6 +20,7 @@ import {
   parseChatSourceRow,
   parsePrivateChatHistoryRow,
   privateChatHistoryItemsForUiDisplay,
+  privateChatHistorySourcesForStorage,
   privateChatHistoryToMastraMessages,
   resolvePrivateChatHistoryApplyAction,
   runPrivateChat,
@@ -506,6 +507,9 @@ assert.equal(
   trimPrivateChatHistoryContent('x'.repeat(PRIVATE_CHAT_HISTORY_CONTENT_MAX + 10)).length,
   PRIVATE_CHAT_HISTORY_CONTENT_MAX,
 );
+assert.deepEqual(privateChatHistorySourcesForStorage([{ ...sampleSource, snippet: 'secret body' }]), [
+  sampleSource,
+]);
 assert.deepEqual(
   privateChatHistoryItemsForUiDisplay([
     {

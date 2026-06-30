@@ -548,7 +548,7 @@ CREATE TABLE IF NOT EXISTS public.private_chat_messages (
 );
 
 CREATE INDEX IF NOT EXISTS private_chat_messages_project_user_created_idx
-ON public.private_chat_messages (project_id, user_id, created_at DESC);
+ON public.private_chat_messages (project_id, user_id, created_at DESC, id DESC);
 
 CREATE TABLE IF NOT EXISTS public.schema_migrations (
   version TEXT PRIMARY KEY,

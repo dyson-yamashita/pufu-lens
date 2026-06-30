@@ -34,7 +34,11 @@ export async function GET(
       return chatHistoryErrorResponse('project_access_denied', message, 403);
     }
     console.error('Private chat history API error:', error);
-    return chatHistoryErrorResponse('chat_history_internal_error', message, 500);
+    return chatHistoryErrorResponse(
+      'chat_history_internal_error',
+      'Failed to load private chat history.',
+      500,
+    );
   }
 }
 

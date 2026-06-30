@@ -32,8 +32,16 @@ export function ChatPanel({
   const [pending, setPending] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const historyRequestSeqRef = useRef(0);
   const pendingRef = useRef(false);
   pendingRef.current = pending;
+
+  useEffect(() => {
+    historyRequestSeqRef.current += 1;
+    setMessages([]);
+    setHistoryError(null);
+    setHistoryLoading(false);
+  }, [projectSlug]);
   const speechInput = useSpeechInput({
     disabled: disabled || pending,
     setValue: setQuestion,
@@ -45,6 +53,7 @@ export function ChatPanel({
       if (disabled) {
         return;
       }
+      const requestSeq = ++historyRequestSeqRef.current;
       setHistoryLoading(true);
       setHistoryError(null);
       try {
@@ -59,6 +68,9 @@ export function ChatPanel({
         if (!body || !('items' in body)) {
           throw new Error('Chat history API returned an invalid response.');
         }
+        if (requestSeq !== historyRequestSeqRef.current) {
+          return;
+        }
         const historyMessages = mapPrivateChatHistoryToThreadMessages(body.items, projectSlug);
         setMessages((current) => {
           const action = resolvePrivateChatHistoryApplyAction({
@@ -72,9 +84,13 @@ export function ChatPanel({
           return action === 'apply' ? historyMessages : current;
         });
       } catch (caught) {
-        setHistoryError(caught instanceof Error ? caught.message : String(caught));
+        if (requestSeq === historyRequestSeqRef.current) {
+          setHistoryError(caught instanceof Error ? caught.message : String(caught));
+        }
       } finally {
-        setHistoryLoading(false);
+        if (requestSeq === historyRequestSeqRef.current) {
+          setHistoryLoading(false);
+        }
       }
     },
     [disabled, projectSlug],
