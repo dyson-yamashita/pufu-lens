@@ -1,17 +1,13 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import type postgres from 'postgres';
 import { requireAdminProject, requireFormValue, withSql } from './admin-actions-shared.ts';
+import * as customReportRepository from './custom-report-repository.ts';
 import {
-  CUSTOM_REPORT_TEMPLATE_SCHEMA_VERSION,
   type CustomReportLayoutV1,
   validateCustomReportLayout,
   validateCustomReportTemplateExport,
 } from './custom-report-schema.ts';
-
-type AdminProject = Awaited<ReturnType<typeof requireAdminProject>>;
-type SqlExecutor = postgres.Sql | postgres.TransactionSql;
 
 export async function createCustomReportTemplate(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
@@ -20,7 +16,13 @@ export async function createCustomReportTemplate(formData: FormData): Promise<vo
   const layout = parseLayoutJson(requireFormValue(formData, 'layoutJson'));
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
-    await insertCustomReportTemplate(sql, project, { name, description, layout });
+    await customReportRepository.insertCustomReportTemplate(sql, {
+      projectId: project.id,
+      name,
+      description,
+      layout,
+      createdByUserId: project.adminUserId,
+    });
   });
   revalidateCustomReportTemplates(projectSlug);
 }
@@ -33,18 +35,14 @@ export async function updateCustomReportTemplate(formData: FormData): Promise<vo
   const layout = parseLayoutJson(requireFormValue(formData, 'layoutJson'));
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
-    const result = await sql`
-      UPDATE public.custom_report_templates
-      SET name = ${name},
-          description = ${description},
-          layout = ${JSON.stringify(layout)}::jsonb,
-          template_version = template_version + 1,
-          updated_by_user_id = ${project.adminUserId}
-      WHERE project_id = ${project.id} AND id = ${templateId}
-    `;
-    if (result.count === 0) {
-      throw new Error('Template not found or access denied.');
-    }
+    await customReportRepository.updateCustomReportTemplate(sql, {
+      projectId: project.id,
+      templateId,
+      name,
+      description,
+      layout,
+      updatedByUserId: project.adminUserId,
+    });
   });
   revalidateCustomReportTemplates(projectSlug);
 }
@@ -54,14 +52,11 @@ export async function disableCustomReportTemplate(formData: FormData): Promise<v
   const templateId = requireFormValue(formData, 'templateId');
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
-    const result = await sql`
-      UPDATE public.custom_report_templates
-      SET is_active = false, updated_by_user_id = ${project.adminUserId}
-      WHERE project_id = ${project.id} AND id = ${templateId}
-    `;
-    if (result.count === 0) {
-      throw new Error('Template not found or access denied.');
-    }
+    await customReportRepository.disableCustomReportTemplate(sql, {
+      projectId: project.id,
+      templateId,
+      updatedByUserId: project.adminUserId,
+    });
   });
   revalidateCustomReportTemplates(projectSlug);
 }
@@ -77,33 +72,15 @@ export async function importCustomReportTemplate(formData: FormData): Promise<vo
   }
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
-    await insertCustomReportTemplate(sql, project, {
+    await customReportRepository.insertCustomReportTemplate(sql, {
+      projectId: project.id,
       name: exportJson.template.name,
       description: exportJson.template.description ?? null,
       layout: exportJson.template.layout,
+      createdByUserId: project.adminUserId,
     });
   });
   revalidateCustomReportTemplates(projectSlug);
-}
-
-async function insertCustomReportTemplate(
-  sql: SqlExecutor,
-  project: AdminProject,
-  params: {
-    readonly name: string;
-    readonly description: string | null;
-    readonly layout: CustomReportLayoutV1;
-  },
-): Promise<void> {
-  await sql`
-    INSERT INTO public.custom_report_templates (
-      project_id, name, description, schema_version, layout, created_by_user_id, updated_by_user_id
-    )
-    VALUES (
-      ${project.id}, ${params.name}, ${params.description}, ${CUSTOM_REPORT_TEMPLATE_SCHEMA_VERSION},
-      ${JSON.stringify(params.layout)}::jsonb, ${project.adminUserId}, ${project.adminUserId}
-    )
-  `;
 }
 
 function requireNonEmptyTemplateName(value: string): string {

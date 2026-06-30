@@ -200,8 +200,80 @@ export function parseReportTemplateRunRow(value: unknown): ReportTemplateRunRow 
   };
 }
 
+type SqlExecutor = import('postgres').Sql | import('postgres').TransactionSql;
+
+export interface InsertCustomReportTemplateInput {
+  readonly createdByUserId: string;
+  readonly description: string | null;
+  readonly layout: CustomReportLayoutV1;
+  readonly name: string;
+  readonly projectId: string;
+}
+
+export interface UpdateCustomReportTemplateInput {
+  readonly description: string | null;
+  readonly layout: CustomReportLayoutV1;
+  readonly name: string;
+  readonly projectId: string;
+  readonly templateId: string;
+  readonly updatedByUserId: string;
+}
+
+export interface DisableCustomReportTemplateInput {
+  readonly projectId: string;
+  readonly templateId: string;
+  readonly updatedByUserId: string;
+}
+
+export async function insertCustomReportTemplate(
+  sql: SqlExecutor,
+  input: InsertCustomReportTemplateInput,
+): Promise<void> {
+  await sql`
+    INSERT INTO public.custom_report_templates (
+      project_id, name, description, schema_version, layout, created_by_user_id, updated_by_user_id
+    )
+    VALUES (
+      ${input.projectId}, ${input.name}, ${input.description}, ${CUSTOM_REPORT_TEMPLATE_SCHEMA_VERSION},
+      ${JSON.stringify(input.layout)}::jsonb, ${input.createdByUserId}, ${input.createdByUserId}
+    )
+  `;
+}
+
+export async function updateCustomReportTemplate(
+  sql: SqlExecutor,
+  input: UpdateCustomReportTemplateInput,
+): Promise<void> {
+  const result = await sql`
+    UPDATE public.custom_report_templates
+    SET name = ${input.name},
+        description = ${input.description},
+        layout = ${JSON.stringify(input.layout)}::jsonb,
+        template_version = template_version + 1,
+        updated_by_user_id = ${input.updatedByUserId}
+    WHERE project_id = ${input.projectId} AND id = ${input.templateId}
+  `;
+  if (result.count === 0) {
+    throw new Error('Template not found or access denied.');
+  }
+}
+
+export async function disableCustomReportTemplate(
+  sql: SqlExecutor,
+  input: DisableCustomReportTemplateInput,
+): Promise<void> {
+  const result = await sql`
+    UPDATE public.custom_report_templates
+    SET is_active = false, updated_by_user_id = ${input.updatedByUserId}
+    WHERE project_id = ${input.projectId} AND id = ${input.templateId}
+  `;
+  if (result.count === 0) {
+    throw new Error('Template not found or access denied.');
+  }
+}
+
 export async function listCustomReportTemplates(
-  sql: import('postgres').Sql | import('postgres').TransactionSql,
+  sql: SqlExecutor,
   projectId: string,
 ): Promise<readonly CustomReportTemplateRow[]> {
   const rawRows = (await sql`
@@ -226,7 +298,7 @@ export async function listCustomReportTemplates(
 }
 
 export async function listCustomReportAssets(
-  sql: import('postgres').Sql | import('postgres').TransactionSql,
+  sql: SqlExecutor,
   projectId: string,
 ): Promise<readonly CustomReportAssetRow[]> {
   const rawRows = (await sql`
