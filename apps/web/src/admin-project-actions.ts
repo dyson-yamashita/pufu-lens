@@ -199,12 +199,15 @@ export async function updateProjectSettings(formData: FormData): Promise<void> {
 export async function deleteProject(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
   const confirmationProjectName = requireFormValue(formData, 'confirmationProjectName').trim();
+  let cleanupProjectStorage: () => Promise<void> = async () => {};
 
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
     if (confirmationProjectName !== project.name) {
       throw new Error('Project name confirmation does not match.');
     }
+
+    cleanupProjectStorage = await prepareProjectStorageCleanup(projectSlug);
 
     await writePublicProjectVisibilityManifest(projectSlug, 'private');
 
@@ -239,6 +242,7 @@ export async function deleteProject(formData: FormData): Promise<void> {
     }
   });
 
+  await cleanupProjectStorage();
   revalidatePath('/projects');
   revalidateProject(projectSlug);
   redirect('/projects');
@@ -336,6 +340,29 @@ async function updateProjectSettingsRow(
         updated_at = now()
     WHERE id = ${projectId}
   `;
+}
+
+async function prepareProjectStorageCleanup(projectSlug: string): Promise<() => Promise<void>> {
+  const driver = process.env.STORAGE_DRIVER ?? process.env.OBJECT_STORAGE_DRIVER ?? 'local';
+  if (driver === 'local' && !process.env.STORAGE_ROOT && !process.env.LOCAL_STORAGE_ROOT) {
+    return async () => {};
+  }
+
+  const storage = createObjectStorageFromEnv(process.env);
+  if (!storage.delete) {
+    throw new Error(
+      'Configured object storage does not support delete; project storage cleanup cannot complete.',
+    );
+  }
+
+  const deleteObject = storage.delete.bind(storage);
+  const prefix = `${projectSlug}/`;
+
+  return async () => {
+    for await (const object of storage.list(prefix)) {
+      await deleteObject(object.uri);
+    }
+  };
 }
 
 async function ensureProjectStoragePrefixes(projectSlug: string): Promise<void> {
