@@ -22,10 +22,16 @@ const reportsUpdatedEvent = 'pufu:reports-updated';
 
 export function ReportGenerateForm({
   action,
+  customTemplates = [],
   defaultPeriod,
   projectSlug,
 }: {
   readonly action: ReportGenerateAction;
+  readonly customTemplates?: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly templateVersion: number;
+  }[];
   readonly defaultPeriod: ReportPeriod;
   readonly projectSlug: string;
 }) {
@@ -38,6 +44,22 @@ export function ReportGenerateForm({
       }}
     >
       <input name="projectSlug" type="hidden" value={projectSlug} />
+      <label>
+        <span>Format</span>
+        <select
+          aria-label="Report format"
+          data-testid="reports-template-select"
+          defaultValue=""
+          name="customTemplateId"
+        >
+          <option value="">Standard report</option>
+          {customTemplates.map((template) => (
+            <option key={template.id} value={template.id}>
+              {template.name} v{template.templateVersion}
+            </option>
+          ))}
+        </select>
+      </label>
       <label>
         <span>Start</span>
         <input

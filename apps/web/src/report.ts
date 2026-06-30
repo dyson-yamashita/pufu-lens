@@ -48,6 +48,9 @@ export {
 export {
   createPostgresReportRepository,
   type ProjectLookupResult,
+  type ReportCustomTemplate,
+  type ReportCustomTemplateSummary,
+  type ReportTemplateRunInsert,
   parseReportDocumentRow,
   parseReportMetadataRow,
   parseReportProjectLookupRow,

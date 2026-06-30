@@ -666,6 +666,7 @@ export function createGenerateReportWorkflow(options: RunGenerateReportOptions) 
   });
   const inputSchema = z.object({
     generatedBy: z.string().min(1).optional(),
+    customTemplateId: z.string().min(1).optional(),
     nowIso: z.string().datetime().optional(),
     period: periodSchema.optional(),
     periodKind: z.literal('weekly').optional(),
@@ -686,6 +687,7 @@ export function createGenerateReportWorkflow(options: RunGenerateReportOptions) 
         options: {
           ...options,
           ...(inputData.generatedBy ? { generatedBy: inputData.generatedBy } : {}),
+          ...(inputData.customTemplateId ? { customTemplateId: inputData.customTemplateId } : {}),
           now: inputData.nowIso ? new Date(inputData.nowIso) : options.now,
           ...(inputData.period ? { period: validateReportPeriod(inputData.period) } : {}),
           periodKind: inputData.periodKind ?? options.periodKind,

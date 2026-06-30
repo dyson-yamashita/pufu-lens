@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import type { ObjectInfo, ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import { ProjectAccessDeniedError } from './chat.ts';
+import { CUSTOM_REPORT_LAYOUT_SCHEMA_VERSION } from './custom-report-schema.ts';
 import { createPufuScoreFromReport } from './pufu-score.ts';
 import {
   createExtractiveReportProvider,
@@ -74,6 +75,7 @@ class MemoryStorage implements ObjectStorage {
 function createRepository(): ReportRepository & {
   insertedChunkContents: string[];
   insertedChunks: number;
+  insertedTemplateRun?: unknown;
   storageUri?: string;
 } {
   const reports = new Map<
@@ -134,9 +136,10 @@ function createRepository(): ReportRepository & {
         },
       ];
     },
-    async insertReport({ chunks, report, storageUri }) {
+    async insertReport({ chunks, customTemplateRun, report, storageUri }) {
       this.insertedChunkContents = chunks.map((chunk) => chunk.content);
       this.insertedChunks = chunks.length;
+      this.insertedTemplateRun = customTemplateRun;
       this.storageUri = storageUri;
       reports.set(report.report_id, {
         isPublic: false,
@@ -144,6 +147,48 @@ function createRepository(): ReportRepository & {
         storageUri,
         title: report.title,
       });
+    },
+    async readActiveCustomReportTemplate({ projectId, templateId }) {
+      if (projectId !== 'project-a' || templateId !== 'template-a') {
+        return undefined;
+      }
+      return {
+        id: templateId,
+        layout: {
+          root: {
+            children: [
+              {
+                id: 'intro',
+                text: '固定コメント',
+                type: 'fixed_text',
+              },
+              {
+                id: 'health',
+                left_label: '要注意',
+                prompt: '進捗と課題のバランスを判定してください。',
+                result_key: 'health_score',
+                right_label: '順調',
+                type: 'slider_judgement',
+              },
+              {
+                categories: [
+                  { description: '課題が目立つ', key: 'risk', title: 'Risk' },
+                  { description: '進捗が目立つ', key: 'progress', title: 'Progress' },
+                ],
+                id: 'classification',
+                prompt: 'レポートの主な状態を分類してください。',
+                result_key: 'status_category',
+                type: 'classification_result',
+              },
+            ],
+            id: 'root',
+            type: 'row',
+          },
+          schema_version: CUSTOM_REPORT_LAYOUT_SCHEMA_VERSION,
+        },
+        name: 'Template A',
+        templateVersion: 3,
+      };
     },
     async listReports({ projectId }) {
       return [...reports.entries()]
@@ -228,6 +273,28 @@ assert.equal(progressSection.sources?.[0]?.title, 'Issue #42 Login failure');
 assert.doesNotMatch(progressSection.markdown, /documents|discussion_points|目指す状態/);
 assert.match(risksSection.markdown, /Login failure risk.*対応として/);
 assert.doesNotMatch(risksSection.markdown, /。 対応として/);
+
+const customRepository = createRepository();
+const customStorage = new MemoryStorage();
+const customGenerated = await runGenerateReport({
+  options: {
+    customTemplateId: 'template-a',
+    now: new Date('2026-06-04T12:00:00.000Z'),
+    provider: createExtractiveReportProvider(),
+    repository: customRepository,
+    storage: customStorage,
+  },
+  projectSlug: 'sample-a',
+});
+assert.equal(customGenerated.report.custom_layout?.template_id, 'template-a');
+assert.equal(customGenerated.report.custom_layout?.template_version, 3);
+assert.equal(customGenerated.report.custom_layout?.results.intro?.type, 'fixed_text');
+assert.equal(customGenerated.report.custom_layout?.results.health_score?.type, 'slider_judgement');
+assert.equal(
+  customGenerated.report.custom_layout?.results.status_category?.type,
+  'classification_result',
+);
+assert.ok(customRepository.insertedTemplateRun);
 assert.doesNotMatch(risksSection.markdown, /ください/);
 const titleFallbackRiskReport = await createExtractiveReportProvider().generate({
   documents: [

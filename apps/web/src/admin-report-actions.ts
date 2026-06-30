@@ -16,12 +16,18 @@ export async function generatePrivateReport(formData: FormData): Promise<void> {
     await requireAdminProject(sql, projectSlug);
   });
   await runMastraGenerateReportWorkflow({
+    customTemplateId: optionalFormValue(formData, 'customTemplateId'),
     generatedBy: 'admin-ui',
     nowIso: reportNowFromEnv(process.env)?.toISOString(),
     period,
     projectSlug,
   });
   revalidateProject(projectSlug);
+}
+
+function optionalFormValue(formData: FormData, key: string): string | undefined {
+  const value = formData.get(key)?.toString().trim();
+  return value ? value : undefined;
 }
 
 function requireReportPeriod(formData: FormData): { readonly end: string; readonly start: string } {

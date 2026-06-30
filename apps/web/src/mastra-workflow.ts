@@ -18,6 +18,7 @@ export function mastraGenerateReportWorkflowStartUrl(env: MastraWorkflowEnv = pr
 
 export function createMastraGenerateReportWorkflowBody(input: {
   readonly generatedBy?: string;
+  readonly customTemplateId?: string;
   readonly nowIso?: string;
   readonly period?: ReportPeriod;
   readonly projectSlug: string;
@@ -25,6 +26,7 @@ export function createMastraGenerateReportWorkflowBody(input: {
   return {
     inputData: {
       ...(input.generatedBy ? { generatedBy: input.generatedBy } : {}),
+      ...(input.customTemplateId ? { customTemplateId: input.customTemplateId } : {}),
       ...(input.nowIso ? { nowIso: input.nowIso } : {}),
       ...(input.period ? { period: input.period } : {}),
       projectSlug: input.projectSlug,
@@ -36,6 +38,7 @@ export async function runMastraGenerateReportWorkflow(input: {
   readonly env?: MastraWorkflowEnv;
   readonly fetchImpl?: typeof fetch;
   readonly generatedBy?: string;
+  readonly customTemplateId?: string;
   readonly nowIso?: string;
   readonly period?: ReportPeriod;
   readonly projectSlug: string;
@@ -46,6 +49,7 @@ export async function runMastraGenerateReportWorkflow(input: {
     body: JSON.stringify(
       createMastraGenerateReportWorkflowBody({
         generatedBy: input.generatedBy,
+        customTemplateId: input.customTemplateId,
         nowIso: input.nowIso,
         period: input.period,
         projectSlug: input.projectSlug,

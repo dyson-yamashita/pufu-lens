@@ -1,5 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
+import {
+  type ClassificationResultPart,
+  CUSTOM_REPORT_SNAPSHOT_SCHEMA_VERSION,
+  type CustomReportLayoutV1,
+  type CustomReportPart,
+  type CustomReportResult,
+  type CustomReportSnapshotV1,
+  type SliderJudgementPart,
+} from './custom-report-schema.ts';
 import type { AgentRawReadViewEnvelope, RawReadViewRepository } from './raw-read-view.ts';
 import type { ReportGenerationProvider } from './report-provider.ts';
 import { publishGeneratedPublicReport } from './report-publication.ts';
@@ -19,6 +28,7 @@ export interface RunGenerateReportOptions {
   readonly now?: Date;
   readonly period?: ReportPeriod;
   readonly periodKind?: ReportPeriodKind;
+  readonly customTemplateId?: string;
   readonly provider: ReportGenerationProvider;
   readonly rawReadViewRepository?: Pick<RawReadViewRepository, 'fetchRawReadView'>;
   readonly repository: ReportRepository;
@@ -61,7 +71,23 @@ export async function runGenerateReport(input: {
     projectSlug: project.slug,
   });
   const reportId = randomUUID();
+  const customTemplate = input.options.customTemplateId
+    ? await readCustomTemplateOrThrow({
+        projectId: project.id,
+        repository: input.options.repository,
+        templateId: input.options.customTemplateId,
+      })
+    : undefined;
+  const customSnapshot = customTemplate
+    ? buildCustomReportSnapshot({
+        layout: customTemplate.layout,
+        reportContext: generated,
+        templateId: customTemplate.id,
+        templateVersion: customTemplate.templateVersion,
+      })
+    : undefined;
   const report: PrivateReportJsonV1 = {
+    ...(customSnapshot ? { custom_layout: customSnapshot.snapshot } : {}),
     generated_at: now.toISOString(),
     period,
     project_id: project.id,
@@ -81,6 +107,17 @@ export async function runGenerateReport(input: {
   });
   await input.options.repository.insertReport({
     chunks: prepareReportChunks(report),
+    ...(customSnapshot
+      ? {
+          customTemplateRun: {
+            judgementSummary: customSnapshot.judgementSummary,
+            layoutSnapshot: customSnapshot.snapshot.layout,
+            templateId: customSnapshot.snapshot.template_id,
+            templateSnapshotHash: customSnapshot.snapshot.template_snapshot_hash,
+            templateVersion: customSnapshot.snapshot.template_version,
+          },
+        }
+      : {}),
     generatedBy: input.options.generatedBy ?? 'generate-report-job',
     projectId: project.id,
     report,
@@ -101,6 +138,152 @@ export async function runGenerateReport(input: {
     reportUrl: `/projects/${project.slug}/reports/${report.report_id}`,
     storageUri: put.uri,
   };
+}
+
+async function readCustomTemplateOrThrow(input: {
+  readonly projectId: string;
+  readonly repository: ReportRepository;
+  readonly templateId: string;
+}) {
+  if (!input.repository.readActiveCustomReportTemplate) {
+    throw new Error('Custom report templates are not supported by this repository.');
+  }
+  const template = await input.repository.readActiveCustomReportTemplate({
+    projectId: input.projectId,
+    templateId: input.templateId,
+  });
+  if (!template) {
+    throw new Error('Custom report template not found or inactive.');
+  }
+  return template;
+}
+
+function buildCustomReportSnapshot(input: {
+  readonly layout: CustomReportLayoutV1;
+  readonly reportContext: Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'>;
+  readonly templateId: string;
+  readonly templateVersion: number;
+}): {
+  readonly judgementSummary: Record<string, unknown>;
+  readonly snapshot: CustomReportSnapshotV1;
+} {
+  const results: Record<string, CustomReportResult> = {};
+  collectCustomResults(input.layout.root, input.reportContext, results);
+  const snapshotHash = createHash('sha256')
+    .update(
+      JSON.stringify({
+        layout: input.layout,
+        templateId: input.templateId,
+        version: input.templateVersion,
+      }),
+    )
+    .digest('hex');
+  return {
+    judgementSummary: Object.fromEntries(
+      Object.entries(results).map(([key, result]) => [key, summarizeCustomResult(result)]),
+    ),
+    snapshot: {
+      layout: input.layout,
+      results,
+      schema_version: CUSTOM_REPORT_SNAPSHOT_SCHEMA_VERSION,
+      template_id: input.templateId,
+      template_snapshot_hash: snapshotHash,
+      template_version: input.templateVersion,
+    },
+  };
+}
+
+function collectCustomResults(
+  part: CustomReportPart,
+  reportContext: Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'>,
+  results: Record<string, CustomReportResult>,
+): void {
+  switch (part.type) {
+    case 'classification_result':
+      results[part.result_key] = classificationResult(part, reportContext);
+      break;
+    case 'columns':
+      part.columns.forEach((column) => {
+        column.children.forEach((child) => {
+          collectCustomResults(child, reportContext, results);
+        });
+      });
+      break;
+    case 'fixed_image':
+      results[part.id] = { asset_ref: part.asset_ref, part_id: part.id, type: 'fixed_image' };
+      break;
+    case 'fixed_text':
+      results[part.id] = { part_id: part.id, text: part.text, type: 'fixed_text' };
+      break;
+    case 'row':
+      part.children.forEach((child) => {
+        collectCustomResults(child, reportContext, results);
+      });
+      break;
+    case 'slider_judgement':
+      results[part.result_key] = sliderResult(part, reportContext);
+      break;
+  }
+}
+
+function sliderResult(
+  part: SliderJudgementPart,
+  reportContext: Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'>,
+): CustomReportResult {
+  const signal = `${part.prompt}\n${reportContext.title}\n${reportContext.summary}\n${reportContext.sections
+    .map((section) => section.markdown)
+    .join('\n')}`;
+  const score = Math.round(Math.min(100, Math.max(0, 50 + sentimentSignal(signal) * 10)));
+  return {
+    left_label: part.left_label,
+    part_id: part.id,
+    reason: `標準レポート本文と判定指示から ${score}/100 と判定しました。`,
+    right_label: part.right_label,
+    score,
+    type: 'slider_judgement',
+  };
+}
+
+function classificationResult(
+  part: ClassificationResultPart,
+  reportContext: Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'>,
+): CustomReportResult {
+  const signal = `${part.prompt}\n${reportContext.title}\n${reportContext.summary}`;
+  const index = Math.abs(hashNumber(signal)) % part.categories.length;
+  const category = part.categories[index] ?? part.categories[0];
+  if (!category) {
+    throw new Error('Custom report classification_result must have categories.');
+  }
+  return {
+    ...(category.asset_ref ? { asset_ref: category.asset_ref } : {}),
+    category_key: category.key,
+    description: category.description,
+    part_id: part.id,
+    reason: '標準レポートの要約と分類指示に最も近いカテゴリとして選択しました。',
+    title: category.title,
+    type: 'classification_result',
+  };
+}
+
+function sentimentSignal(value: string): number {
+  const lower = value.toLowerCase();
+  const positive = (lower.match(/progress|done|success|解決|完了|進捗|成功/g) ?? []).length;
+  const negative = (lower.match(/risk|block|fail|error|遅延|障害|課題/g) ?? []).length;
+  return positive - negative;
+}
+
+function hashNumber(value: string): number {
+  return createHash('sha256').update(value).digest().readInt32BE(0);
+}
+
+function summarizeCustomResult(result: CustomReportResult): Record<string, unknown> {
+  if (result.type === 'slider_judgement') {
+    return { score: result.score, type: result.type };
+  }
+  if (result.type === 'classification_result') {
+    return { category_key: result.category_key, type: result.type };
+  }
+  return { type: result.type };
 }
 
 function prepareReportChunks(report: PrivateReportJsonV1): PreparedReportChunk[] {
