@@ -200,6 +200,54 @@ export function parseReportTemplateRunRow(value: unknown): ReportTemplateRunRow 
   };
 }
 
+export async function listCustomReportTemplates(
+  sql: import('postgres').Sql | import('postgres').TransactionSql,
+  projectId: string,
+): Promise<readonly CustomReportTemplateRow[]> {
+  const rawRows = (await sql`
+    SELECT
+      id::text AS id,
+      project_id::text AS project_id,
+      name,
+      description,
+      schema_version,
+      template_version,
+      layout,
+      is_active,
+      created_by_user_id::text AS created_by_user_id,
+      updated_by_user_id::text AS updated_by_user_id,
+      created_at,
+      updated_at
+    FROM public.custom_report_templates
+    WHERE project_id = ${projectId}
+    ORDER BY is_active DESC, updated_at DESC, name ASC
+  `) as readonly unknown[];
+  return rawRows.map((row) => parseCustomReportTemplateRow(row));
+}
+
+export async function listCustomReportAssets(
+  sql: import('postgres').Sql | import('postgres').TransactionSql,
+  projectId: string,
+): Promise<readonly CustomReportAssetRow[]> {
+  const rawRows = (await sql`
+    SELECT
+      id::text AS id,
+      project_id::text AS project_id,
+      display_name,
+      object_storage_uri,
+      content_type,
+      byte_size,
+      status,
+      created_by_user_id::text AS created_by_user_id,
+      created_at,
+      updated_at
+    FROM public.custom_report_assets
+    WHERE project_id = ${projectId}
+    ORDER BY status ASC, created_at DESC, display_name ASC
+  `) as readonly unknown[];
+  return rawRows.map((row) => parseCustomReportAssetRow(row));
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
