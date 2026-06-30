@@ -329,7 +329,8 @@ function PrivateSourceStrip({
   }
 
   return (
-    <div className="chat-message-sources" data-testid={`chat-message-sources-${index}`}>
+    <details className="chat-message-sources" data-testid={`chat-message-sources-${index}`}>
+      <summary>Sources ({sources.length})</summary>
       <div className="source-list source-list-compact">
         {sources.map((source) => (
           <article className="source-chip source-chip-compact" key={source.documentId}>
@@ -339,7 +340,7 @@ function PrivateSourceStrip({
           </article>
         ))}
       </div>
-    </div>
+    </details>
   );
 }
 
@@ -355,7 +356,8 @@ function PublicSourceStrip({
   }
 
   return (
-    <div className="chat-message-sources" data-testid={`chat-message-sources-${index}`}>
+    <details className="chat-message-sources" data-testid={`chat-message-sources-${index}`}>
+      <summary>Sources ({sources.length})</summary>
       <div className="source-list source-list-compact">
         {sources.map((source) => (
           <article
@@ -368,7 +370,7 @@ function PublicSourceStrip({
           </article>
         ))}
       </div>
-    </div>
+    </details>
   );
 }
 
