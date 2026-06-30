@@ -1,6 +1,6 @@
 'use client';
 
-import { isRedirectError } from 'next/dist/client/components/redirect-error';
+import { unstable_rethrow } from 'next/navigation';
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { shouldProceedWithConfirm } from './form-confirm.ts';
@@ -35,9 +35,7 @@ export function ActionForm({
         onSuccess?.();
         return {};
       } catch (error) {
-        if (isRedirectError(error)) {
-          throw error;
-        }
+        unstable_rethrow(error);
         return { error: error instanceof Error ? error.message : 'Action failed.' };
       }
     },
