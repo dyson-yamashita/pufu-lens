@@ -149,6 +149,7 @@ export default async function CustomReportTemplatesPage({
                     description: template.description,
                     layout: template.layout,
                     name: template.name,
+                    updatedAt: template.updated_at,
                   })}
                 />
               </details>
@@ -241,11 +242,12 @@ function buildExportJson(input: {
   readonly description: string | null;
   readonly layout: CustomReportLayoutV1;
   readonly name: string;
+  readonly updatedAt: Date | string;
 }): string {
   return JSON.stringify(
     {
       assets: [],
-      exported_at: new Date().toISOString(),
+      exported_at: toIsoTimestamp(input.updatedAt),
       schema_version: CUSTOM_REPORT_TEMPLATE_EXPORT_SCHEMA_VERSION,
       template: {
         description: input.description ?? undefined,
@@ -257,4 +259,8 @@ function buildExportJson(input: {
     null,
     2,
   );
+}
+
+function toIsoTimestamp(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : value;
 }
