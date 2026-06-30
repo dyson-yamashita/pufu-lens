@@ -27,11 +27,12 @@
   - `fixed_image` と `classification_result` の画像は同じ asset 管理を使う。
   - 過去 report が参照する asset は物理削除せず、soft delete / disabled 状態で新規 template からの選択だけを止める。
 - `report_template_runs`
-  - 必要に応じて、生成時に使った template id、template version、判定結果 summary を保存する。
+  - 生成時に使った template id、template version、template snapshot hash、判定結果 summary を保存する。
+  - 後から template や asset が編集されても過去 report の表示が変わらないよう、生成時点の layout snapshot と asset 参照 snapshot を report に固定する。
 
-既存 `reports` metadata と private report JSON は互換性を維持する。カスタム生成結果は private report JSON の `custom_layout` などの optional field に保存し、標準 report renderer はこの field がない場合に従来表示を続ける。
+既存 `reports` metadata と private report JSON は互換性を維持する。カスタム生成結果は private report JSON の `custom_layout` などの optional field に保存し、`custom_layout` は renderer がそのまま使える生成時 snapshot として扱う。標準 report renderer はこの field がない場合に従来表示を続ける。
 
-template export は、template JSON と asset manifest を 1 つの JSON artifact として出力する。asset manifest は export 内の安定した `export_asset_key` と元の asset metadata を持ち、template JSON 内の画像参照も `asset_id` ではなく `export_asset_key` で表す。import 時は画像再登録で新しい `asset_id` を発行し、`export_asset_key` と新 `asset_id` の mapping で template JSON の参照を置き換える。import 時は schema version、part type、columns / row の構造、判定プロンプト長、画像 MIME / サイズ、asset 参照、path traversal を検証する。import は任意 module path や任意コードを受け付けない。
+template export は、template JSON と asset manifest を 1 つの JSON artifact として出力する。asset manifest は export 内の安定した `export_asset_key` と元の asset metadata を持ち、template JSON 内の画像参照も `asset_id` ではなく `export_asset_key` で表す。import 時は画像再登録で新しい `asset_id` を発行し、`export_asset_key` と新 `asset_id` の mapping で template JSON の参照を置き換える。import 時は schema version、part type、part id 一意性、columns / row の構造、layout tree のネスト深度上限、循環参照の不存在、未解決 asset 参照、判定プロンプト長、画像 MIME / サイズ、path traversal を検証し、renderer に構造破損した template を渡さない。import は任意 module path や任意コードを受け付けない。
 
 ## 生成 workflow
 
