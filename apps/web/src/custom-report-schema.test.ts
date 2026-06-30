@@ -103,6 +103,22 @@ assert.throws(
 );
 
 assert.throws(
+  () =>
+    validateCustomReportLayout({
+      root: {
+        columns: [
+          { children: [{ id: 'left-title', text: 'left', type: 'title' }], width_fraction: 0.7 },
+          { children: [{ id: 'right-title', text: 'right', type: 'title' }], width_fraction: 0.6 },
+        ],
+        id: 'wide-columns',
+        type: 'columns',
+      },
+      schema_version: CUSTOM_REPORT_LAYOUT_SCHEMA_VERSION,
+    }),
+  /width_fraction sum/,
+);
+
+assert.throws(
   () => validateCustomReportLayout(validLayout, { allowedAssetRefs: ['asset-logo'] }),
   /asset reference/,
 );
@@ -168,6 +184,23 @@ assert.throws(
   /asset manifest/,
 );
 
+assert.throws(
+  () =>
+    validateCustomReportTemplateExport({
+      ...validExport,
+      assets: [
+        {
+          byte_size: 1,
+          content_type: null,
+          display_name: 'missing-content-type',
+          export_asset_key: 'asset-logo',
+          requires_upload: true,
+        },
+      ],
+    }),
+  /asset manifest/,
+);
+
 const validSnapshot = {
   layout: validLayout,
   results: {
@@ -196,6 +229,25 @@ const validSnapshot = {
 } as const;
 
 validateCustomReportSnapshot(validSnapshot);
+
+assert.throws(
+  () =>
+    validateCustomReportSnapshot({
+      ...validSnapshot,
+      results: {
+        thinking_type: {
+          asset_ref: '',
+          category_key: 'cheetah',
+          description: '状況を突破する戦略性が高い。',
+          part_id: 'thinking-type',
+          reason: 'reason',
+          title: 'チーター',
+          type: 'classification_result',
+        },
+      },
+    }),
+  /asset_ref/,
+);
 
 validatePrivateReportJson({
   custom_layout: validSnapshot,

@@ -382,6 +382,7 @@ function validateColumnsPart(
   if (!Array.isArray(value.columns) || value.columns.length < 2 || value.columns.length > 4) {
     throw new Error('Custom report columns must include 2 to 4 columns.');
   }
+  let totalFraction = 0;
   for (const column of value.columns) {
     if (!isRecord(column)) {
       throw new Error('Custom report column must be an object.');
@@ -394,7 +395,13 @@ function validateColumnsPart(
     ) {
       throw new Error('Custom report column width_fraction is invalid.');
     }
+    if (column.width_fraction !== undefined) {
+      totalFraction += column.width_fraction;
+    }
     validateChildren(column.children, state, depth);
+  }
+  if (totalFraction > 1.001) {
+    throw new Error('Custom report column width_fraction sum is invalid.');
   }
 }
 
@@ -452,7 +459,8 @@ function validateAssetManifest(value: unknown): Set<string> {
     if (
       !isSafeIdentifier(asset.export_asset_key) ||
       !isNonEmptyString(asset.display_name, 255) ||
-      !ALLOWED_IMAGE_CONTENT_TYPES.has(String(asset.content_type)) ||
+      typeof asset.content_type !== 'string' ||
+      !ALLOWED_IMAGE_CONTENT_TYPES.has(asset.content_type) ||
       typeof asset.byte_size !== 'number' ||
       !Number.isInteger(asset.byte_size) ||
       asset.byte_size <= 0 ||
@@ -505,6 +513,9 @@ function validateResult(value: unknown): void {
       !isStringWithin(value.reason, 1000)
     ) {
       throw new Error('Custom report classification result is invalid.');
+    }
+    if (value.asset_ref !== undefined && !isNonEmptyString(value.asset_ref, 200)) {
+      throw new Error('Custom report classification result asset_ref is invalid.');
     }
     return;
   }
