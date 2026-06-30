@@ -242,7 +242,15 @@ export async function deleteProject(formData: FormData): Promise<void> {
     }
   });
 
-  await cleanupProjectStorage();
+  try {
+    await cleanupProjectStorage();
+  } catch (error) {
+    console.warn(
+      `Project storage cleanup failed for ${projectSlug}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
   revalidatePath('/projects');
   revalidateProject(projectSlug);
   redirect('/projects');
@@ -359,8 +367,27 @@ async function prepareProjectStorageCleanup(projectSlug: string): Promise<() => 
   const prefix = `${projectSlug}/`;
 
   return async () => {
+    const batchSize = 10;
+    let pendingDeletes: Promise<void>[] = [];
+
     for await (const object of storage.list(prefix)) {
-      await deleteObject(object.uri);
+      pendingDeletes.push(
+        deleteObject(object.uri).catch((error) => {
+          console.warn(
+            `Project storage object cleanup failed for ${object.uri}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }),
+      );
+      if (pendingDeletes.length >= batchSize) {
+        await Promise.all(pendingDeletes);
+        pendingDeletes = [];
+      }
+    }
+
+    if (pendingDeletes.length > 0) {
+      await Promise.all(pendingDeletes);
     }
   };
 }
