@@ -3,14 +3,9 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { CustomReportLayoutRenderer, StandardReportSections } from './custom-report-renderer';
 import { ActionForm, PendingSubmitButton } from './form-buttons';
-import { PufuReportViewer } from './pufu-report-viewer';
-import type {
-  PrivateReportJsonV1,
-  PrivateReportSource,
-  ReportListItem,
-  ReportPeriod,
-} from './report';
+import type { PrivateReportJsonV1, ReportListItem, ReportPeriod } from './report';
 
 type ReportApiError = {
   readonly error?: { readonly code?: string; readonly message?: string };
@@ -309,45 +304,11 @@ export function ReportDocument({
           </div>
         </dl>
       </header>
-      <PufuReportViewer report={report} />
-      {report.sections.map((section) => (
-        <section
-          className="report-section"
-          data-testid={`report-section-${section.id}`}
-          key={section.id}
-        >
-          <h3>{section.title}</h3>
-          <p className="markdown-text">{section.markdown}</p>
-          {section.sources?.length ? (
-            <div className="source-list">
-              {section.sources.map((source) => (
-                <article
-                  className="source-chip"
-                  data-testid={`report-source-${source.document_id}`}
-                  key={source.document_id}
-                >
-                  <strong>{normalizePrivateReportSourceLabel(source.doc_type)}</strong>
-                  {isPublicHttpUrl(source.canonical_uri) ? (
-                    <a
-                      href={source.canonical_uri}
-                      rel="noreferrer"
-                      target="_blank"
-                      title={source.canonical_uri}
-                    >
-                      {privateReportSourceTitle(source)}
-                    </a>
-                  ) : (
-                    <>
-                      <span>{privateReportSourceTitle(source)}</span>
-                      <small>{source.canonical_uri || source.document_id}</small>
-                    </>
-                  )}
-                </article>
-              ))}
-            </div>
-          ) : null}
-        </section>
-      ))}
+      {report.custom_layout ? (
+        <CustomReportLayoutRenderer report={report} snapshot={report.custom_layout} />
+      ) : (
+        <StandardReportSections report={report} />
+      )}
       <div className="report-delete-actions">
         <button
           className="report-delete-button"
@@ -444,84 +405,15 @@ export function PublicReportDocument({
           </div>
         </dl>
       </header>
-      <PufuReportViewer report={report} />
-      {report.sections.map((section) => (
-        <section
-          className="report-section"
-          data-testid={`public-report-section-${section.id}`}
-          key={section.id}
-        >
-          <h3>{section.title}</h3>
-          <p className="markdown-text">{section.markdown}</p>
-          {section.metrics && Object.keys(section.metrics).length > 0 ? (
-            <div className="metric-strip compact">
-              {Object.entries(section.metrics).map(([name, value]) => (
-                <div className="metric" key={name}>
-                  <span>{name}</span>
-                  <strong>{value}</strong>
-                </div>
-              ))}
-            </div>
-          ) : null}
-          {section.sources?.length ? (
-            <div className="source-list">
-              {section.sources.map((source) => (
-                <article
-                  className="source-chip"
-                  data-testid={`public-report-source-${source.document_id}`}
-                  key={source.document_id}
-                >
-                  <strong>{normalizePrivateReportSourceLabel(source.doc_type)}</strong>
-                  {isPublicHttpUrl(source.canonical_uri) ? (
-                    <a
-                      href={source.canonical_uri}
-                      rel="noreferrer"
-                      target="_blank"
-                      title={source.canonical_uri}
-                    >
-                      {privateReportSourceTitle(source)}
-                    </a>
-                  ) : (
-                    <>
-                      <span>{privateReportSourceTitle(source)}</span>
-                      <small>{source.document_id}</small>
-                    </>
-                  )}
-                </article>
-              ))}
-            </div>
-          ) : null}
-        </section>
-      ))}
+      {report.custom_layout ? (
+        <CustomReportLayoutRenderer report={report} snapshot={report.custom_layout} />
+      ) : (
+        <StandardReportSections publicView report={report} />
+      )}
     </article>
   );
 }
 
 function reportErrorStatus(body: ReportApiError, status: number): string {
   return body.error?.code ?? body.error?.message ?? `http_${status}`;
-}
-
-function normalizePrivateReportSourceLabel(docType: string): string {
-  if (docType === 'web_page') {
-    return 'web';
-  }
-  return docType.replace(/_/g, ' ');
-}
-
-function privateReportSourceTitle(source: PrivateReportSource): string {
-  if (source.title?.trim()) {
-    return source.title.trim();
-  }
-  if (isPublicHttpUrl(source.canonical_uri)) {
-    try {
-      return new URL(source.canonical_uri).hostname;
-    } catch {
-      return source.document_id;
-    }
-  }
-  return source.document_id;
-}
-
-function isPublicHttpUrl(uri: string): boolean {
-  return /^https?:\/\//i.test(uri);
 }

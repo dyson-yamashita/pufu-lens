@@ -515,3 +515,131 @@
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   margin: 0;
 }
+
+.custom-report-layout {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+  padding: 20px;
+}
+
+.custom-report-layout-meta {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 8px 12px;
+}
+
+.custom-report-row,
+.custom-report-column {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.custom-report-columns {
+  display: flex;
+  gap: 16px;
+  min-width: 0;
+}
+
+.custom-report-column {
+  flex: 1 1 0;
+}
+
+.custom-report-title,
+.custom-report-card h3,
+.custom-report-fixed-text,
+.custom-report-copyright,
+.custom-report-card p,
+.custom-report-image {
+  margin: 0;
+}
+
+.custom-report-card,
+.custom-report-image-placeholder {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.custom-report-slider-heading {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+.custom-report-slider-heading span:last-child {
+  text-align: right;
+}
+
+.custom-report-slider-heading strong {
+  color: var(--blue);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.custom-report-slider-track {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  height: 14px;
+  overflow: hidden;
+}
+
+.custom-report-slider-track::-webkit-meter-bar {
+  background: var(--surface);
+}
+
+.custom-report-slider-track::-webkit-meter-optimum-value {
+  background: linear-gradient(90deg, var(--blue), var(--green));
+}
+
+.custom-report-slider-track::-moz-meter-bar {
+  background: linear-gradient(90deg, var(--blue), var(--green));
+}
+
+.custom-report-image {
+  display: grid;
+  gap: 8px;
+}
+
+.custom-report-image figcaption {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.custom-report-image-placeholder {
+  color: var(--muted);
+  justify-items: center;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.custom-report-divider {
+  border: 0;
+  border-top: 1px solid var(--line);
+  width: 100%;
+}
+
+.custom-report-copyright {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+@media (max-width: 720px) {
+  .custom-report-columns {
+    display: grid;
+  }
+}

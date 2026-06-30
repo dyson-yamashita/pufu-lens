@@ -90,7 +90,7 @@ PDF 生成は report detail と同じ renderer を使い、PDF 専用 CSS でペ
 | 1    | `completed` | template / asset / run の data model 設計 | Issue #379。migration、runtime guard、import/export schema、保存先が確定している                          |
 | 2    | `completed` | template 管理 UI                          | project admin が template を作成・編集・export/import できる（Issue 作成は環境に gh/remote がなく未実施） |
 | 3    | `completed` | カスタム report 生成                      | 標準 report と custom report を選択生成でき、判定結果が JSON に残る                                       |
-| 4    | `planned`   | custom layout renderer                    | private/public report detail が custom layout を描画できる                                                |
+| 4    | `completed` | custom layout renderer                    | private/public report detail が custom layout を描画できる                                                |
 | 5    | `planned`   | PDF ダウンロード                          | private/public API で認可どおり PDF を取得できる                                                          |
 | 6    | `planned`   | セキュリティ・公開境界の regression       | import、asset、PDF、public report で private data 混入を防ぐテストがある                                  |
 
