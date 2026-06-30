@@ -7,6 +7,7 @@ import {
   Globe,
   HardDrive,
   Home,
+  LayoutTemplate,
   LogIn,
   LogOut,
   Mail,
@@ -58,6 +59,7 @@ export async function AppShell({
   readonly project?: ProjectSummary;
   readonly active?:
     | 'chat'
+    | 'custom-report-templates'
     | 'projects'
     | 'actors'
     | 'data-sources'
@@ -162,6 +164,15 @@ export async function AppShell({
               >
                 <GitBranch size={18} />
                 Sources
+              </Link>
+              <Link
+                aria-current={active === 'custom-report-templates' ? 'page' : undefined}
+                className={navClass(active === 'custom-report-templates')}
+                href={`/projects/${projectSlug}/admin/custom-report-templates`}
+                data-testid="global-nav-custom-report-templates"
+              >
+                <LayoutTemplate size={18} />
+                Templates
               </Link>
               <Link
                 aria-current={active === 'settings' ? 'page' : undefined}
