@@ -51,9 +51,12 @@ export {
   parseReportDocumentRow,
   parseReportMetadataRow,
   parseReportProjectLookupRow,
+  type ReportCustomTemplate,
+  type ReportCustomTemplateSummary,
   type ReportDocumentRecord,
   type ReportListItem,
   type ReportRepository,
+  type ReportTemplateRunInsert,
 } from './report-repository.ts';
 export {
   type PreparedReportChunk,

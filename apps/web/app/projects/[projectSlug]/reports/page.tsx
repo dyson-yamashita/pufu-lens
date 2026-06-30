@@ -6,11 +6,23 @@ import {
   getProjectMembership,
   getVisiblePublicProject,
 } from '../../../../src/admin-db';
+import { getOptionalAdminSql } from '../../../../src/admin-sql';
 import { AuthRequiredError, requireSessionUserId } from '../../../../src/auth-session';
-import { reportNowFromEnv, resolveReportPeriod } from '../../../../src/report';
+import { lookupProjectAdminAccess } from '../../../../src/authz';
+import {
+  createPostgresReportRepository,
+  reportNowFromEnv,
+  resolveReportPeriod,
+} from '../../../../src/report';
 import { ReportGenerateForm, ReportsList } from '../../../../src/report-client';
 import { AppShell, PageHeader } from '../../../../src/ui';
 
+/**
+ * Renders the reports page for a project, showing public reports to non-members and private report tools to members.
+ *
+ * @param params - A promise that resolves to the project slug route parameters.
+ * @returns The reports page content for the project.
+ */
 export default async function ReportsPage({
   params,
 }: {
@@ -83,6 +95,15 @@ export default async function ReportsPage({
   }
 
   const defaultPeriod = resolveReportPeriod(reportNowFromEnv(process.env) ?? new Date(), 'weekly');
+  const sql = getOptionalAdminSql();
+  const adminAccess =
+    sql && userId ? await lookupProjectAdminAccess(sql, { projectSlug, userId }) : undefined;
+  const customTemplates =
+    sql && adminAccess
+      ? ((await createPostgresReportRepository(sql).listActiveCustomReportTemplates?.({
+          projectId: adminAccess.id,
+        })) ?? [])
+      : [];
 
   return (
     <AppShell active="reports" project={project}>
@@ -98,6 +119,7 @@ export default async function ReportsPage({
           </div>
           <ReportGenerateForm
             action={generatePrivateReport}
+            customTemplates={customTemplates}
             defaultPeriod={defaultPeriod}
             projectSlug={project.slug}
           />

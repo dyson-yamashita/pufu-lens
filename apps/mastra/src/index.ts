@@ -659,6 +659,12 @@ export function createPublicReportChatAgent(input: {
   });
 }
 
+/**
+ * Creates the report generation workflow.
+ *
+ * @param options - Base options passed to report generation.
+ * @returns The configured workflow for generating a report JSON payload.
+ */
 export function createGenerateReportWorkflow(options: RunGenerateReportOptions) {
   const periodSchema = z.object({
     end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -666,6 +672,7 @@ export function createGenerateReportWorkflow(options: RunGenerateReportOptions) 
   });
   const inputSchema = z.object({
     generatedBy: z.string().min(1).optional(),
+    customTemplateId: z.string().min(1).optional(),
     nowIso: z.string().datetime().optional(),
     period: periodSchema.optional(),
     periodKind: z.literal('weekly').optional(),
@@ -686,6 +693,7 @@ export function createGenerateReportWorkflow(options: RunGenerateReportOptions) 
         options: {
           ...options,
           ...(inputData.generatedBy ? { generatedBy: inputData.generatedBy } : {}),
+          ...(inputData.customTemplateId ? { customTemplateId: inputData.customTemplateId } : {}),
           now: inputData.nowIso ? new Date(inputData.nowIso) : options.now,
           ...(inputData.period ? { period: validateReportPeriod(inputData.period) } : {}),
           periodKind: inputData.periodKind ?? options.periodKind,

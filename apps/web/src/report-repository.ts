@@ -1,6 +1,7 @@
 import type postgres from 'postgres';
 import { isProjectVisibility, type ProjectVisibility } from './admin-data.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
+import { type CustomReportLayoutV1, validateCustomReportLayout } from './custom-report-schema.ts';
 import type { PreparedReportChunk, PrivateReportJsonV1, ReportPeriod } from './report-schema.ts';
 
 export interface ReportListItem {
@@ -26,12 +27,20 @@ export interface ReportDocumentRecord {
 
 export interface ReportRepository {
   insertReport(input: {
+    readonly customTemplateRun?: ReportTemplateRunInsert;
     readonly chunks: readonly PreparedReportChunk[];
     readonly generatedBy: string;
     readonly projectId: string;
     readonly report: PrivateReportJsonV1;
     readonly storageUri: string;
   }): Promise<void>;
+  listActiveCustomReportTemplates?(input: {
+    readonly projectId: string;
+  }): Promise<readonly ReportCustomTemplateSummary[]>;
+  readActiveCustomReportTemplate?(input: {
+    readonly projectId: string;
+    readonly templateId: string;
+  }): Promise<ReportCustomTemplate | undefined>;
   listRecentDocuments(input: {
     readonly limit: number;
     readonly period: ReportPeriod;
@@ -53,6 +62,24 @@ export interface ReportRepository {
     readonly projectId: string;
     readonly reportId: string;
   }): Promise<void>;
+}
+
+export interface ReportCustomTemplateSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly templateVersion: number;
+}
+
+export interface ReportCustomTemplate extends ReportCustomTemplateSummary {
+  readonly layout: CustomReportLayoutV1;
+}
+
+export interface ReportTemplateRunInsert {
+  readonly judgementSummary: Record<string, unknown>;
+  readonly layoutSnapshot: CustomReportLayoutV1;
+  readonly templateId: string;
+  readonly templateSnapshotHash: string;
+  readonly templateVersion: number;
 }
 
 export type ProjectLookupResult = {
@@ -172,6 +199,11 @@ export function parseReportMetadataRow(value: unknown): ReportMetadataRow {
   };
 }
 
+/**
+ * Creates a Postgres-backed report repository.
+ *
+ * @returns A report repository implementation that uses the provided SQL client for storage access.
+ */
 export function createPostgresReportRepository(sql: postgres.Sql): ReportRepository {
   return {
     async lookupProjectMember({ projectSlug, userId }) {
@@ -215,7 +247,7 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
       `) as readonly unknown[];
       return rows.map((row) => documentFromRow(parseReportDocumentRow(row)));
     },
-    async insertReport({ chunks, generatedBy, projectId, report, storageUri }) {
+    async insertReport({ chunks, customTemplateRun, generatedBy, projectId, report, storageUri }) {
       await sql.begin(async (transaction) => {
         await transaction`
           INSERT INTO public.reports (
@@ -241,6 +273,20 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
             ${generatedBy}
           )
         `;
+        if (customTemplateRun) {
+          await transaction`
+            INSERT INTO public.report_template_runs (
+              project_id, report_id, template_id, template_version, template_snapshot_hash,
+              layout_snapshot, judgement_summary
+            )
+            VALUES (
+              ${projectId}, ${report.report_id}, ${customTemplateRun.templateId},
+              ${customTemplateRun.templateVersion}, ${customTemplateRun.templateSnapshotHash},
+              ${JSON.stringify(customTemplateRun.layoutSnapshot)}::jsonb,
+              ${JSON.stringify(customTemplateRun.judgementSummary)}::jsonb
+            )
+          `;
+        }
         await Promise.all(
           chunks.map(
             (chunk) => transaction`
@@ -264,6 +310,23 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
           ),
         );
       });
+    },
+    async listActiveCustomReportTemplates({ projectId }) {
+      const rows = (await sql`
+        SELECT id::text AS id, name, template_version
+        FROM public.custom_report_templates
+        WHERE project_id = ${projectId} AND is_active = true
+        ORDER BY updated_at DESC, name ASC
+      `) as readonly unknown[];
+      return rows.map((row) => customTemplateSummaryFromRow(parseCustomTemplateSummaryRow(row)));
+    },
+    async readActiveCustomReportTemplate({ projectId, templateId }) {
+      const rows = (await sql`
+        SELECT id::text AS id, name, template_version, layout
+        FROM public.custom_report_templates
+        WHERE project_id = ${projectId} AND id = ${templateId} AND is_active = true
+      `) as readonly unknown[];
+      return rows[0] ? customTemplateFromRow(parseCustomTemplateRow(rows[0])) : undefined;
     },
     async listReports({ projectId }) {
       const rows = (await sql`
@@ -390,4 +453,64 @@ interface ReportMetadataRow {
   readonly storage_uri: string;
   readonly summary: string;
   readonly title: string;
+}
+
+interface CustomTemplateSummaryRow {
+  readonly id: string;
+  readonly name: string;
+  readonly template_version: number;
+}
+interface CustomTemplateRow extends CustomTemplateSummaryRow {
+  readonly layout: CustomReportLayoutV1;
+}
+
+/**
+ * Parses a custom report template summary row.
+ *
+ * @param value - The database row to parse.
+ * @returns The normalized custom template summary row.
+ */
+function parseCustomTemplateSummaryRow(value: unknown): CustomTemplateSummaryRow {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    typeof value.name !== 'string' ||
+    typeof value.template_version !== 'number'
+  ) {
+    throw new Error('Invalid custom report template summary row.');
+  }
+  return { id: value.id, name: value.name, template_version: value.template_version };
+}
+
+/**
+ * Parses a custom report template row.
+ *
+ * @param value - The row to parse
+ * @returns The parsed template summary and layout
+ */
+function parseCustomTemplateRow(value: unknown): CustomTemplateRow {
+  const summary = parseCustomTemplateSummaryRow(value);
+  if (!isRecord(value) || !isRecord(value.layout)) {
+    throw new Error('Invalid custom report template layout row.');
+  }
+  validateCustomReportLayout(value.layout);
+  return { ...summary, layout: value.layout };
+}
+
+/**
+ * Converts a custom template summary row to a template summary object.
+ *
+ * @returns The template summary with camel-cased property names.
+ */
+function customTemplateSummaryFromRow(row: CustomTemplateSummaryRow): ReportCustomTemplateSummary {
+  return { id: row.id, name: row.name, templateVersion: row.template_version };
+}
+
+/**
+ * Converts a custom template row into a report template object.
+ *
+ * @returns The custom template summary with its layout attached.
+ */
+function customTemplateFromRow(row: CustomTemplateRow): ReportCustomTemplate {
+  return { ...customTemplateSummaryFromRow(row), layout: row.layout };
 }
