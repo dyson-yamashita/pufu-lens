@@ -310,7 +310,14 @@
   font-weight: 600;
   list-style: none;
   text-transform: uppercase;
+  transition: color 120ms ease;
   user-select: none;
+}
+
+.chat-editing-metadata summary:hover,
+.chat-message-sources summary:hover,
+.chat-tool-calls summary:hover {
+  color: var(--text);
 }
 
 .chat-editing-metadata summary::-webkit-details-marker,

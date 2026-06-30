@@ -84,10 +84,8 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
   await expect(firstSources.locator('.source-chip')).toBeVisible();
   await expect(firstSources).toContainText('src_progress_1');
   await expect(firstSources).toContainText('Spec Update');
-  await expect(page.getByTestId('chat-message-sources-1')).not.toContainText(
-    'https://example.com/spec',
-  );
-  await expect(page.getByTestId('chat-message-sources-1')).not.toContainText('doc-spec-001');
+  await expect(firstSources).not.toContainText('https://example.com/spec');
+  await expect(firstSources).not.toContainText('doc-spec-001');
   await expect(page.getByTestId('chat-message-tool-calls-1')).toContainText('public-report-fetch');
   await expect(page.getByTestId('chat-message-editing-1')).toContainText('要約');
   await expect(page.getByTestId('chat-message-editing-1')).toContainText('凝縮');
