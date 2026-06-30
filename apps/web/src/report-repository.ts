@@ -199,6 +199,11 @@ export function parseReportMetadataRow(value: unknown): ReportMetadataRow {
   };
 }
 
+/**
+ * Creates a Postgres-backed report repository.
+ *
+ * @returns A report repository implementation that uses the provided SQL client for storage access.
+ */
 export function createPostgresReportRepository(sql: postgres.Sql): ReportRepository {
   return {
     async lookupProjectMember({ projectSlug, userId }) {
@@ -459,6 +464,12 @@ interface CustomTemplateRow extends CustomTemplateSummaryRow {
   readonly layout: CustomReportLayoutV1;
 }
 
+/**
+ * Parses a custom report template summary row.
+ *
+ * @param value - The database row to parse.
+ * @returns The normalized custom template summary row.
+ */
 function parseCustomTemplateSummaryRow(value: unknown): CustomTemplateSummaryRow {
   if (
     !isRecord(value) ||
@@ -471,6 +482,12 @@ function parseCustomTemplateSummaryRow(value: unknown): CustomTemplateSummaryRow
   return { id: value.id, name: value.name, template_version: value.template_version };
 }
 
+/**
+ * Parses a custom report template row.
+ *
+ * @param value - The row to parse
+ * @returns The parsed template summary and layout
+ */
 function parseCustomTemplateRow(value: unknown): CustomTemplateRow {
   const summary = parseCustomTemplateSummaryRow(value);
   if (!isRecord(value) || !isRecord(value.layout)) {
@@ -480,10 +497,20 @@ function parseCustomTemplateRow(value: unknown): CustomTemplateRow {
   return { ...summary, layout: value.layout };
 }
 
+/**
+ * Converts a custom template summary row to a template summary object.
+ *
+ * @returns The template summary with camel-cased property names.
+ */
 function customTemplateSummaryFromRow(row: CustomTemplateSummaryRow): ReportCustomTemplateSummary {
   return { id: row.id, name: row.name, templateVersion: row.template_version };
 }
 
+/**
+ * Converts a custom template row into a report template object.
+ *
+ * @returns The custom template summary with its layout attached.
+ */
 function customTemplateFromRow(row: CustomTemplateRow): ReportCustomTemplate {
   return { ...customTemplateSummaryFromRow(row), layout: row.layout };
 }

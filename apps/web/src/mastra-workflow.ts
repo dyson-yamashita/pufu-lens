@@ -16,6 +16,12 @@ export function mastraGenerateReportWorkflowStartUrl(env: MastraWorkflowEnv = pr
   return `${base}/api/workflows/${GENERATE_REPORT_WORKFLOW_ID}/start-async`;
 }
 
+/**
+ * Builds the request body for starting the generate report workflow.
+ *
+ * @param input - Workflow input fields to include in the request body.
+ * @returns An object containing `inputData` for the workflow start request.
+ */
 export function createMastraGenerateReportWorkflowBody(input: {
   readonly generatedBy?: string;
   readonly customTemplateId?: string;
@@ -34,6 +40,16 @@ export function createMastraGenerateReportWorkflowBody(input: {
   };
 }
 
+/**
+ * Starts the Mastra generate report workflow.
+ *
+ * @param input.projectSlug - Project slug included in the workflow input.
+ * @param input.generatedBy - Identifier for the user or system that generated the report.
+ * @param input.customTemplateId - Template identifier to include in the workflow input.
+ * @param input.nowIso - ISO timestamp to include in the workflow input.
+ * @param input.period - Report period to include in the workflow input.
+ * @throws If the workflow request fails or the workflow reports a non-success status.
+ */
 export async function runMastraGenerateReportWorkflow(input: {
   readonly env?: MastraWorkflowEnv;
   readonly fetchImpl?: typeof fetch;

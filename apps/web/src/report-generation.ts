@@ -41,6 +41,11 @@ export interface GenerateReportResult {
   readonly storageUri: string;
 }
 
+/**
+ * Generates a report for a project and stores the private report record.
+ *
+ * @returns The generated report, the public report URL, and the storage URI for the private JSON.
+ */
 export async function runGenerateReport(input: {
   readonly options: RunGenerateReportOptions;
   readonly projectSlug: string;
@@ -140,6 +145,15 @@ export async function runGenerateReport(input: {
   };
 }
 
+/**
+ * Loads an active custom report template.
+ *
+ * @param input.projectId - The project identifier
+ * @param input.repository - The report repository
+ * @param input.templateId - The template identifier
+ * @returns The active custom report template
+ * @throws {CustomReportTemplateError} If custom report templates are unsupported or the template is missing or inactive
+ */
 async function readCustomTemplateOrThrow(input: {
   readonly projectId: string;
   readonly repository: ReportRepository;
@@ -167,6 +181,12 @@ export class CustomReportTemplateError extends Error {
   }
 }
 
+/**
+ * Builds a custom report snapshot and compact result summary.
+ *
+ * @param input - The custom layout, report context, and template metadata used to construct the snapshot
+ * @returns The generated judgement summary and snapshot
+ */
 function buildCustomReportSnapshot(input: {
   readonly layout: CustomReportLayoutV1;
   readonly reportContext: Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'>;
@@ -202,6 +222,13 @@ function buildCustomReportSnapshot(input: {
   };
 }
 
+/**
+ * Collects custom report results from a custom report part tree.
+ *
+ * @param part - The custom report part to traverse
+ * @param reportContext - The report content used to derive result values
+ * @param results - The result map to populate
+ */
 function collectCustomResults(
   part: CustomReportPart,
   reportContext: Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'>,
@@ -239,6 +266,14 @@ function collectCustomResults(
   }
 }
 
+/**
+ * Adds a custom report result under a unique key.
+ *
+ * @param results - The result map to update
+ * @param key - The result key to add
+ * @param result - The result value to store
+ * @throws Error if `key` already exists in `results`
+ */
 function setCustomResult(
   results: Record<string, CustomReportResult>,
   key: string,
@@ -250,6 +285,13 @@ function setCustomResult(
   results[key] = result;
 }
 
+/**
+ * Creates a slider judgment result from the report context.
+ *
+ * @param part - The slider judgment definition.
+ * @param reportContext - The report data used to derive the score.
+ * @returns A `slider_judgement` result with labels, score, reason, and part ID.
+ */
 function sliderResult(
   part: SliderJudgementPart,
   reportContext: Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'>,
@@ -268,6 +310,14 @@ function sliderResult(
   };
 }
 
+/**
+ * Builds a classification result for a custom report part.
+ *
+ * @param part - The classification part definition and available categories.
+ * @param reportContext - The report title and summary used to select a category.
+ * @returns The selected classification result, including the chosen category details.
+ * @throws Error if the classification part has no categories.
+ */
 function classificationResult(
   part: ClassificationResultPart,
   reportContext: Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'>,
@@ -289,6 +339,12 @@ function classificationResult(
   };
 }
 
+/**
+ * Measures the sentiment signal in a text string.
+ *
+ * @param value - The text to evaluate
+ * @returns The difference between positive and negative keyword matches
+ */
 function sentimentSignal(value: string): number {
   const lower = value.toLowerCase();
   const positive = (lower.match(/progress|done|success|解決|完了|進捗|成功/g) ?? []).length;
@@ -296,10 +352,22 @@ function sentimentSignal(value: string): number {
   return positive - negative;
 }
 
+/**
+ * Computes a stable 32-bit integer hash for a string.
+ *
+ * @param value - The input string
+ * @returns A signed 32-bit integer derived from the SHA-256 digest of `value`
+ */
 function hashNumber(value: string): number {
   return createHash('sha256').update(value).digest().readInt32BE(0);
 }
 
+/**
+ * Creates a compact summary of a custom report result.
+ *
+ * @param result - The custom report result to summarize
+ * @returns A compact object containing the key fields for the result type
+ */
 function summarizeCustomResult(result: CustomReportResult): Record<string, unknown> {
   if (result.type === 'slider_judgement') {
     return { score: result.score, type: result.type };
@@ -310,6 +378,12 @@ function summarizeCustomResult(result: CustomReportResult): Record<string, unkno
   return { type: result.type };
 }
 
+/**
+ * Builds embedding chunks from the sections of a report.
+ *
+ * @param report - The report to convert into chunks
+ * @returns The prepared chunk data for each report section
+ */
 function prepareReportChunks(report: PrivateReportJsonV1): PreparedReportChunk[] {
   return report.sections.map((section, index) => {
     const content = [`# ${section.title}`, section.markdown, metricsContent(section.metrics)]

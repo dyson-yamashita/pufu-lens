@@ -659,6 +659,12 @@ export function createPublicReportChatAgent(input: {
   });
 }
 
+/**
+ * Creates the report generation workflow.
+ *
+ * @param options - Base options passed to report generation.
+ * @returns The configured workflow for generating a report JSON payload.
+ */
 export function createGenerateReportWorkflow(options: RunGenerateReportOptions) {
   const periodSchema = z.object({
     end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

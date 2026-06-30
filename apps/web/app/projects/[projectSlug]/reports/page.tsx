@@ -17,6 +17,12 @@ import {
 import { ReportGenerateForm, ReportsList } from '../../../../src/report-client';
 import { AppShell, PageHeader } from '../../../../src/ui';
 
+/**
+ * Renders the reports page for a project, showing public reports to non-members and private report tools to members.
+ *
+ * @param params - A promise that resolves to the project slug route parameters.
+ * @returns The reports page content for the project.
+ */
 export default async function ReportsPage({
   params,
 }: {

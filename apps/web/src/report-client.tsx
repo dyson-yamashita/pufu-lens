@@ -20,6 +20,14 @@ type ReportGenerateAction = (formData: FormData) => Promise<void>;
 
 const reportsUpdatedEvent = 'pufu:reports-updated';
 
+/**
+ * Renders the report generation form.
+ *
+ * @param action - The form submission action.
+ * @param customTemplates - Available report templates to include in the format selector.
+ * @param defaultPeriod - The initial report period.
+ * @param projectSlug - The project identifier submitted with the form.
+ */
 export function ReportGenerateForm({
   action,
   customTemplates = [],
