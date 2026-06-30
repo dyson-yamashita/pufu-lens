@@ -1,7 +1,7 @@
 'use client';
 
 import { ArrowUp, Mic, RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   type ChatResponse,
   type PrivateChatHistoryListResponse,
@@ -32,6 +32,8 @@ export function ChatPanel({
   const [pending, setPending] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const pendingRef = useRef(false);
+  pendingRef.current = pending;
   const speechInput = useSpeechInput({
     disabled: disabled || pending,
     setValue: setQuestion,
@@ -64,7 +66,7 @@ export function ChatPanel({
             hasPendingAssistantMessage: current.some(
               (message) => message.role === 'assistant' && message.status === 'pending',
             ),
-            hasPendingRequest: pending,
+            hasPendingRequest: pendingRef.current,
             refresh: options?.refresh ?? false,
           });
           return action === 'apply' ? historyMessages : current;
@@ -75,7 +77,7 @@ export function ChatPanel({
         setHistoryLoading(false);
       }
     },
-    [disabled, pending, projectSlug],
+    [disabled, projectSlug],
   );
 
   useEffect(() => {
@@ -134,31 +136,33 @@ export function ChatPanel({
 
   return (
     <section className="panel chat-panel" data-testid="chat-panel">
-      <div className="chat-history-controls">
-        <button
-          aria-label="Refresh chat history"
-          className="chat-icon-button"
-          data-testid="chat-history-refresh-button"
-          disabled={disabled || pending || historyLoading}
-          onClick={() => {
-            void loadHistory({ refresh: true });
-          }}
-          title="Refresh history"
-          type="button"
-        >
-          <RefreshCw size={16} />
-        </button>
-        {historyLoading ? (
-          <span className="chat-history-status" data-testid="chat-history-loading">
-            Loading
-          </span>
+      <div className="chat-history-header" data-testid="chat-history-header">
+        <div className="chat-history-controls">
+          <button
+            aria-label="Refresh chat history"
+            className="chat-icon-button"
+            data-testid="chat-history-refresh-button"
+            disabled={disabled || pending || historyLoading}
+            onClick={() => {
+              void loadHistory({ refresh: true });
+            }}
+            title="Refresh history"
+            type="button"
+          >
+            <RefreshCw size={16} />
+          </button>
+          {historyLoading ? (
+            <span className="chat-history-status" data-testid="chat-history-loading">
+              Loading
+            </span>
+          ) : null}
+        </div>
+        {historyError ? (
+          <p className="notice error chat-history-error" data-testid="chat-history-error">
+            {historyError}
+          </p>
         ) : null}
       </div>
-      {historyError ? (
-        <p className="notice error" data-testid="chat-history-error">
-          {historyError}
-        </p>
-      ) : null}
       <PrivateChatThread messages={messages} resultTestId="chat-result" />
       <form className="chat-form" onSubmit={submit}>
         <label htmlFor="chat-question">Question</label>

@@ -114,15 +114,19 @@ export async function POST(
       question,
     });
     if (chatResponse.status === 'answered') {
-      await repository.savePrivateChatTurn({
-        answer: chatResponse.answer,
-        editing: chatResponse.editing,
-        projectId: project.id,
-        question,
-        sources: chatResponse.sources,
-        toolCalls: chatResponse.toolCalls,
-        userId,
-      });
+      try {
+        await repository.savePrivateChatTurn({
+          answer: chatResponse.answer,
+          editing: chatResponse.editing,
+          projectId: project.id,
+          question,
+          sources: chatResponse.sources,
+          toolCalls: chatResponse.toolCalls,
+          userId,
+        });
+      } catch (saveError) {
+        console.error('Failed to persist private chat turn:', saveError);
+      }
     }
     return NextResponse.json(chatResponse);
   } catch (error) {

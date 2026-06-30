@@ -33,6 +33,7 @@ export async function GET(
     if (error instanceof ProjectAccessDeniedError) {
       return chatHistoryErrorResponse('project_access_denied', message, 403);
     }
+    console.error('Private chat history API error:', error);
     return chatHistoryErrorResponse('chat_history_internal_error', message, 500);
   }
 }

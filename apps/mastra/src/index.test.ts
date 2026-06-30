@@ -123,6 +123,15 @@ function createChatRepository(): ChatRepository & { projectIds: string[] } {
       projectIds.push(projectId);
       return [{ ...sampleSource, documentId: 'doc-parsed', title: 'Parsed Metadata' }];
     },
+    async listPrivateChatHistoryForContext() {
+      return [];
+    },
+    async listPrivateChatHistoryForUi() {
+      return [];
+    },
+    async savePrivateChatTurn() {
+      throw new Error('savePrivateChatTurn is not expected in Mastra runtime tests.');
+    },
   };
 }
 

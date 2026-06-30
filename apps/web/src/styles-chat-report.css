@@ -76,11 +76,20 @@
   min-height: 0;
 }
 
+.chat-history-header {
+  display: grid;
+  gap: 8px;
+}
+
 .chat-history-controls {
   align-items: center;
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.chat-history-error {
+  margin: 0;
 }
 
 .chat-history-status {
