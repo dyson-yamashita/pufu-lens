@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import type postgres from 'postgres';
 import {
   deriveProjectIdentifiers,
@@ -183,6 +184,44 @@ export async function updateProjectSettings(formData: FormData): Promise<void> {
   });
 
   revalidateProject(projectSlug);
+}
+
+export async function deleteProject(formData: FormData): Promise<void> {
+  const projectSlug = requireFormValue(formData, 'projectSlug');
+  const confirmationProjectName = requireFormValue(formData, 'confirmationProjectName').trim();
+
+  await withSql(async (sql) => {
+    const project = await requireAdminProject(sql, projectSlug);
+    if (confirmationProjectName !== project.name) {
+      throw new Error('Project name confirmation does not match.');
+    }
+
+    await sql.begin(async (tx) => {
+      await tx`LOAD 'age'`;
+      await tx`SET LOCAL search_path = ag_catalog, "$user", public`;
+
+      if (project.graphName) {
+        const graphRows = (await tx`
+          SELECT 1
+          FROM ag_catalog.ag_graph
+          WHERE name = ${project.graphName}
+        `) as readonly unknown[];
+        if (graphRows.length > 0) {
+          await tx`SELECT drop_graph(${project.graphName}, ${true})`;
+        }
+      }
+
+      await tx`
+        DELETE FROM public.projects
+        WHERE id = ${project.id}
+      `;
+    });
+  });
+
+  await writePublicProjectVisibilityManifest(projectSlug, 'private');
+  revalidatePath('/projects');
+  revalidateProject(projectSlug);
+  redirect('/projects');
 }
 
 export async function updateGithubAppConnectionSettings(formData: FormData): Promise<void> {

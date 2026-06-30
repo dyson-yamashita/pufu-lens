@@ -358,6 +358,25 @@
   color: var(--blue);
 }
 
+.danger-zone-panel {
+  border-color: color-mix(in srgb, var(--red) 35%, var(--line));
+  margin-top: 16px;
+}
+
+.danger-zone-copy {
+  color: var(--muted);
+  margin: 0 0 16px;
+}
+
+.danger-zone-modal-card {
+  border-color: color-mix(in srgb, var(--red) 35%, var(--line));
+}
+
+.project-delete-dialog-form strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .segmented-control {
   background: var(--surface);
   border: 1px solid var(--line);

@@ -12,6 +12,16 @@ interface ActionFormState {
 
 const initialActionFormState: ActionFormState = {};
 
+function isNextRedirectError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'digest' in error &&
+    typeof error.digest === 'string' &&
+    error.digest.startsWith('NEXT_REDIRECT;')
+  );
+}
+
 export function ActionForm({
   action,
   children,
@@ -34,6 +44,9 @@ export function ActionForm({
         onSuccess?.();
         return {};
       } catch (error) {
+        if (isNextRedirectError(error)) {
+          throw error;
+        }
         return { error: error instanceof Error ? error.message : 'Action failed.' };
       }
     },
