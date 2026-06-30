@@ -7,13 +7,13 @@ import type { CustomReportPart, CustomReportSnapshotV1 } from './custom-report-s
 import type { PrivateReportJsonV1 } from './report-schema.ts';
 
 const PDF_TEXT_DENYLIST = [
-  /raw[_-]?document[_-]?id/iu,
-  /private[_-]?raw[_-]?locator/iu,
-  /storage[_-]?uri/iu,
-  /secret/iu,
-  /api[_-]?key/iu,
-  /token/iu,
-  /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/iu,
+  /raw[_-]?document[_-]?id/giu,
+  /private[_-]?raw[_-]?locator/giu,
+  /storage[_-]?uri/giu,
+  /secret/giu,
+  /api[_-]?key/giu,
+  /token/giu,
+  /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu,
 ];
 
 const JAPANESE_FONT_PATH = join(
@@ -112,11 +112,11 @@ function partLines(part: CustomReportPart, snapshot: CustomReportSnapshotV1): st
 }
 
 function redactPdfText(value: string): string {
-  let text = stripControlCharacters(stripMarkdown(value)).trim();
+  let text = stripControlCharacters(value);
   for (const pattern of PDF_TEXT_DENYLIST) {
     text = text.replace(pattern, '[redacted]');
   }
-  return text;
+  return stripMarkdown(text).trim();
 }
 
 function stripMarkdown(value: string): string {

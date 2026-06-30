@@ -220,6 +220,8 @@ export function ReportDocument({
   const [status, setStatus] = useState('loading');
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | undefined>();
+  const [pdfDownloading, setPdfDownloading] = useState(false);
+  const [pdfDownloadError, setPdfDownloadError] = useState<string | undefined>();
 
   useEffect(() => {
     let cancelled = false;
@@ -251,6 +253,24 @@ export function ReportDocument({
       cancelled = true;
     };
   }, [projectSlug, reportId]);
+
+  async function handlePdfDownload() {
+    setPdfDownloading(true);
+    setPdfDownloadError(undefined);
+    try {
+      const result = await downloadReportPdf({
+        fallbackFileName: `${projectSlug}-${reportId}.pdf`,
+        url: `/api/projects/${projectSlug}/reports/${reportId}/pdf`,
+      });
+      if (!result.ok) {
+        setPdfDownloadError(result.message);
+      }
+    } catch (error) {
+      setPdfDownloadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPdfDownloading(false);
+    }
+  }
 
   async function handleDelete() {
     if (!window.confirm('レポートが削除されますがよろしいですか')) {
@@ -303,13 +323,22 @@ export function ReportDocument({
             <dd>{report.generated_at}</dd>
           </div>
         </dl>
-        <a
+        <button
           className="secondary-button"
           data-testid="report-pdf-download-link"
-          href={`/api/projects/${projectSlug}/reports/${reportId}/pdf`}
+          disabled={pdfDownloading}
+          onClick={() => {
+            void handlePdfDownload();
+          }}
+          type="button"
         >
-          Download PDF
-        </a>
+          {pdfDownloading ? 'Downloading PDF...' : 'Download PDF'}
+        </button>
+        {pdfDownloadError ? (
+          <p className="notice error" data-testid="report-pdf-download-error">
+            {pdfDownloadError}
+          </p>
+        ) : null}
       </header>
       {report.custom_layout ? (
         <CustomReportLayoutRenderer report={report} snapshot={report.custom_layout} />
@@ -347,6 +376,8 @@ export function PublicReportDocument({
 }) {
   const [report, setReport] = useState<PrivateReportJsonV1 | undefined>();
   const [status, setStatus] = useState('loading');
+  const [pdfDownloading, setPdfDownloading] = useState(false);
+  const [pdfDownloadError, setPdfDownloadError] = useState<string | undefined>();
 
   useEffect(() => {
     let cancelled = false;
@@ -378,6 +409,24 @@ export function PublicReportDocument({
       cancelled = true;
     };
   }, [projectSlug, reportId]);
+
+  async function handlePdfDownload() {
+    setPdfDownloading(true);
+    setPdfDownloadError(undefined);
+    try {
+      const result = await downloadReportPdf({
+        fallbackFileName: `${projectSlug}-${reportId}.pdf`,
+        url: `/api/public/projects/${projectSlug}/reports/${reportId}/pdf`,
+      });
+      if (!result.ok) {
+        setPdfDownloadError(result.message);
+      }
+    } catch (error) {
+      setPdfDownloadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPdfDownloading(false);
+    }
+  }
 
   if (status === 'loading') {
     return <p className="notice">loading</p>;
@@ -411,13 +460,22 @@ export function PublicReportDocument({
             <dd>{report.generated_at}</dd>
           </div>
         </dl>
-        <a
+        <button
           className="secondary-button"
           data-testid="public-report-pdf-download-link"
-          href={`/api/public/projects/${projectSlug}/reports/${reportId}/pdf`}
+          disabled={pdfDownloading}
+          onClick={() => {
+            void handlePdfDownload();
+          }}
+          type="button"
         >
-          Download PDF
-        </a>
+          {pdfDownloading ? 'Downloading PDF...' : 'Download PDF'}
+        </button>
+        {pdfDownloadError ? (
+          <p className="notice error" data-testid="public-report-pdf-download-error">
+            {pdfDownloadError}
+          </p>
+        ) : null}
       </header>
       {report.custom_layout ? (
         <CustomReportLayoutRenderer report={report} snapshot={report.custom_layout} />
@@ -430,4 +488,38 @@ export function PublicReportDocument({
 
 function reportErrorStatus(body: ReportApiError, status: number): string {
   return body.error?.code ?? body.error?.message ?? `http_${status}`;
+}
+
+async function downloadReportPdf(input: {
+  readonly fallbackFileName: string;
+  readonly url: string;
+}): Promise<{ readonly ok: true } | { readonly message: string; readonly ok: false }> {
+  const response = await fetch(input.url);
+  if (!response.ok) {
+    let message = `http_${response.status}`;
+    try {
+      const body = (await response.json()) as ReportApiError;
+      message = reportErrorStatus(body, response.status);
+    } catch {
+      // Keep the HTTP status fallback when the error body is not JSON.
+    }
+    return { message, ok: false };
+  }
+  const blob = await response.blob();
+  const fileName =
+    parseContentDispositionFileName(response.headers.get('Content-Disposition')) ??
+    input.fallbackFileName;
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = objectUrl;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(objectUrl);
+  return { ok: true };
+}
+
+function parseContentDispositionFileName(value: string | null): string | undefined {
+  if (!value) return undefined;
+  const match = /filename="([^"]+)"/u.exec(value);
+  return match?.[1];
 }

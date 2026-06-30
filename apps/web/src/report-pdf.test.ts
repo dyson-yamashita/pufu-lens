@@ -21,10 +21,14 @@ const standardReport: PrivateReportJsonV1 = {
 };
 
 const lines = safeReportPdfLines(standardReport);
+const redactedText = lines.join('\n');
 assert.equal(lines.includes('Weekly Report'), true);
-assert.equal(lines.join('\n').includes('alice@example.com'), false);
-assert.equal(lines.join('\n').includes('raw_document_id'), false);
-assert.equal(lines.join('\n').includes('storage_uri'), false);
+assert.equal(redactedText.includes('[redacted]'), true);
+assert.equal(redactedText.includes('alice@example.com'), false);
+assert.equal(redactedText.includes('raw_document_id'), false);
+assert.equal(redactedText.includes('storage_uri'), false);
+assert.equal(redactedText.toLowerCase().includes('raw document id'), false);
+assert.equal(redactedText.toLowerCase().includes('storage uri'), false);
 
 const pdf = await renderReportPdf({ projectSlug: 'sample/project', report: standardReport });
 assert.equal(pdf.fileName, 'sample-project-report-a.pdf');
