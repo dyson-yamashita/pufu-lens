@@ -149,6 +149,11 @@ export async function updateProjectVisibility(formData: FormData): Promise<void>
   revalidateProject(projectSlug);
 }
 
+/**
+ * Updates a project's name, description, and visibility.
+ *
+ * @param formData - Form data containing `projectSlug`, `name`, `description`, and `visibility`
+ */
 export async function updateProjectSettings(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
   const name = requireFormValue(formData, 'name').trim();
@@ -186,6 +191,11 @@ export async function updateProjectSettings(formData: FormData): Promise<void> {
   revalidateProject(projectSlug);
 }
 
+/**
+ * Deletes a project after the confirmation name matches.
+ *
+ * @param formData - Form data containing `projectSlug` and `confirmationProjectName`
+ */
 export async function deleteProject(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
   const confirmationProjectName = requireFormValue(formData, 'confirmationProjectName').trim();
@@ -234,6 +244,9 @@ export async function deleteProject(formData: FormData): Promise<void> {
   redirect('/projects');
 }
 
+/**
+ * Updates the GitHub App connection settings for a project.
+ */
 export async function updateGithubAppConnectionSettings(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
   const appSlug = requireFormValue(formData, 'githubAppSlug');

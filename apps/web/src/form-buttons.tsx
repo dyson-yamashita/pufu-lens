@@ -13,6 +13,16 @@ interface ActionFormState {
 
 const initialActionFormState: ActionFormState = {};
 
+/**
+ * Renders a form that runs an action and displays submission errors.
+ *
+ * @param action - The form action to execute on submit.
+ * @param children - The form content.
+ * @param className - The class name applied to the form element.
+ * @param confirmMessage - The confirmation message shown before submission.
+ * @param onSuccess - Called after the action completes successfully.
+ * @param testId - The `data-testid` value applied to the form element.
+ */
 export function ActionForm({
   action,
   children,

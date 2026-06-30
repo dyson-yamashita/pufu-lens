@@ -11,6 +11,12 @@ import { ProjectDeleteDialog } from '../../../../../src/project-delete-dialog';
 import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
 import { AppShell, PageHeader, StatusBadge } from '../../../../../src/ui';
 
+/**
+ * Renders the project settings page.
+ *
+ * @param params - Route parameters containing the project slug
+ * @param searchParams - Optional query parameters for connection status notices
+ */
 export default async function ProjectSettingsPage({
   params,
   searchParams,

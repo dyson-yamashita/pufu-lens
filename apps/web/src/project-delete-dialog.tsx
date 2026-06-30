@@ -6,6 +6,13 @@ import { ActionForm, PendingSubmitButton } from './form-buttons';
 
 type FormAction = (formData: FormData) => Promise<void>;
 
+/**
+ * Renders a confirmation dialog for deleting a project.
+ *
+ * @param action - Form action invoked to delete the project.
+ * @param projectName - Project name the user must type to enable deletion.
+ * @param projectSlug - Project identifier submitted with the delete request.
+ */
 export function ProjectDeleteDialog({
   action,
   projectName,
