@@ -119,6 +119,25 @@ assert.throws(
 );
 
 assert.throws(
+  () =>
+    validateCustomReportLayout({
+      root: {
+        columns: [
+          { children: [{ id: 'left-finite', text: 'left', type: 'title' }], width_fraction: NaN },
+          {
+            children: [{ id: 'right-finite', text: 'right', type: 'title' }],
+            width_fraction: 0.5,
+          },
+        ],
+        id: 'finite-columns',
+        type: 'columns',
+      },
+      schema_version: CUSTOM_REPORT_LAYOUT_SCHEMA_VERSION,
+    }),
+  /width_fraction/,
+);
+
+assert.throws(
   () => validateCustomReportLayout(validLayout, { allowedAssetRefs: ['asset-logo'] }),
   /asset reference/,
 );
@@ -229,6 +248,24 @@ const validSnapshot = {
 } as const;
 
 validateCustomReportSnapshot(validSnapshot);
+
+assert.throws(
+  () =>
+    validateCustomReportSnapshot({
+      ...validSnapshot,
+      results: {
+        strategy_logic: {
+          left_label: '堅実的',
+          part_id: 'strategy-slider',
+          reason: 'reason',
+          right_label: '飛躍的',
+          score: NaN,
+          type: 'slider_judgement',
+        },
+      },
+    }),
+  /slider result/,
+);
 
 assert.throws(
   () =>

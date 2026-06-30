@@ -402,6 +402,7 @@ function validateColumnsPart(
     if (
       column.width_fraction !== undefined &&
       (typeof column.width_fraction !== 'number' ||
+        !Number.isFinite(column.width_fraction) ||
         column.width_fraction <= 0 ||
         column.width_fraction > 1)
     ) {
@@ -506,6 +507,7 @@ function validateResult(value: unknown): void {
   if (value.type === 'slider_judgement') {
     if (
       typeof value.score !== 'number' ||
+      !Number.isFinite(value.score) ||
       value.score < 0 ||
       value.score > 100 ||
       !isNonEmptyString(value.left_label, 200) ||
