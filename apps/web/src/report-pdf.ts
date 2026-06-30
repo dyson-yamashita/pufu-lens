@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fontkit from '@pdf-lib/fontkit';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, type PDFFont } from 'pdf-lib';
 import type { CustomReportPart, CustomReportSnapshotV1 } from './custom-report-schema.ts';
 import type { PrivateReportJsonV1 } from './report-schema.ts';
 
@@ -63,7 +63,10 @@ export function safeReportPdfLines(report: PrivateReportJsonV1): readonly string
       }
     }
   }
-  return lines.map(redactPdfText).flatMap(wrapPdfLine).slice(0, 850);
+  return lines
+    .map(redactPdfText)
+    .flatMap((line) => (line ? line.split(/\r?\n/) : ['']))
+    .slice(0, 850);
 }
 
 function customLayoutLines(snapshot: CustomReportSnapshotV1): readonly string[] {
@@ -130,16 +133,28 @@ function stripMarkdown(value: string): string {
     .trim();
 }
 
-function wrapPdfLine(value: string): readonly string[] {
-  if (!value) return [''];
-  return value.split(/\r?\n/).flatMap((line) => {
-    if (!line) return [''];
-    const chunks: string[] = [];
-    for (let index = 0; index < line.length; index += 92) {
-      chunks.push(line.slice(index, index + 92));
+function wrapLineToWidth(
+  line: string,
+  font: PDFFont,
+  fontSize: number,
+  maxWidth: number,
+): readonly string[] {
+  if (!line) return [''];
+  const chunks: string[] = [];
+  let current = '';
+  for (const character of line) {
+    const candidate = `${current}${character}`;
+    if (font.widthOfTextAtSize(candidate, fontSize) > maxWidth && current) {
+      chunks.push(current);
+      current = character;
+    } else {
+      current = candidate;
     }
-    return chunks;
-  });
+  }
+  if (current) {
+    chunks.push(current);
+  }
+  return chunks.length > 0 ? chunks : [''];
 }
 
 function safePdfFileName(value: string): string {
@@ -163,25 +178,27 @@ async function createSimplePdf(lines: readonly string[]): Promise<ArrayBuffer> {
   const margin = 50;
   const fontSize = 11;
   const lineHeight = 14;
+  const maxWidth = pageWidth - margin * 2;
 
   let page = pdfDoc.addPage([pageWidth, pageHeight]);
   let y = pageHeight - margin;
 
   for (const line of lines) {
-    if (y < margin) {
-      page = pdfDoc.addPage([pageWidth, pageHeight]);
-      y = pageHeight - margin;
+    for (const wrappedLine of wrapLineToWidth(line, font, fontSize, maxWidth)) {
+      if (y < margin) {
+        page = pdfDoc.addPage([pageWidth, pageHeight]);
+        y = pageHeight - margin;
+      }
+      if (wrappedLine) {
+        page.drawText(wrappedLine, {
+          font,
+          size: fontSize,
+          x: margin,
+          y: y - fontSize,
+        });
+      }
+      y -= lineHeight;
     }
-    if (line) {
-      page.drawText(line, {
-        font,
-        maxWidth: pageWidth - margin * 2,
-        size: fontSize,
-        x: margin,
-        y: y - fontSize,
-      });
-    }
-    y -= lineHeight;
   }
 
   return pdfDoc.save().then((bytes) => bytes.buffer as ArrayBuffer);
