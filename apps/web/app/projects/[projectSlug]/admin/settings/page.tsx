@@ -1,14 +1,22 @@
 import Link from 'next/link';
 import {
+  deleteProject,
   updateGithubAppConnectionSettings,
   updateProjectSettings,
 } from '../../../../../src/admin-actions';
 import type { ConnectionProvider, ProjectConnectionStatus } from '../../../../../src/admin-data';
 import { listProjectConnections } from '../../../../../src/admin-db';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
+import { ProjectDeleteDialog } from '../../../../../src/project-delete-dialog';
 import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
 import { AppShell, PageHeader, StatusBadge } from '../../../../../src/ui';
 
+/**
+ * Renders the project settings page.
+ *
+ * @param params - Route parameters containing the project slug
+ * @param searchParams - Optional query parameters for connection status notices
+ */
 export default async function ProjectSettingsPage({
   params,
   searchParams,
@@ -284,6 +292,22 @@ export default async function ProjectSettingsPage({
             </article>
           ))}
         </div>
+      </section>
+      <section className="panel danger-zone-panel" data-testid="project-settings-danger-zone">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Danger zone</p>
+            <h2>Delete project</h2>
+          </div>
+        </div>
+        <p className="danger-zone-copy" data-testid="project-settings-danger-zone-copy">
+          プロジェクトを完全に削除します。メンバー、連携、データソース、グラフ、レポートなど関連データも削除され、元に戻せません。
+        </p>
+        <ProjectDeleteDialog
+          action={deleteProject}
+          projectName={project.name}
+          projectSlug={project.slug}
+        />
       </section>
     </AppShell>
   );

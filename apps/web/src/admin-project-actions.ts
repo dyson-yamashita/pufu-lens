@@ -1,16 +1,12 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import type postgres from 'postgres';
 import {
   deriveProjectIdentifiers,
   validateProjectSlug,
 } from '../../../packages/project-tenancy/src/project-tenancy.ts';
-import { createObjectStorageFromEnv } from '../../../packages/storage/src/factory.ts';
-import type {
-  ObjectStorage,
-  ProjectStoragePrefixes,
-} from '../../../packages/storage/src/object-storage.ts';
 import { type AdminActionIdRow, parseAdminActionIdRow } from './admin-actions-guards.ts';
 import {
   parseOptionalAdminActionRow,
@@ -21,8 +17,10 @@ import {
   withSql,
 } from './admin-actions-shared.ts';
 import { isProjectVisibility, type ProjectVisibility } from './admin-data';
+import { deleteProjectUseCase } from './delete-project-use-case.ts';
 import { saveGithubAppConnectionConfig } from './project-connections';
-import { createReportStorageFromEnv, writePublicProjectManifest } from './report';
+import { ensureProjectStoragePrefixes } from './project-storage-cleanup.ts';
+import { writePublicProjectVisibilityManifest } from './project-visibility-manifest.ts';
 
 type SqlExecutor = postgres.Sql | postgres.TransactionSql;
 
@@ -148,6 +146,11 @@ export async function updateProjectVisibility(formData: FormData): Promise<void>
   revalidateProject(projectSlug);
 }
 
+/**
+ * Updates a project's name, description, and visibility.
+ *
+ * @param formData - Form data containing `projectSlug`, `name`, `description`, and `visibility`
+ */
 export async function updateProjectSettings(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
   const name = requireFormValue(formData, 'name').trim();
@@ -185,6 +188,35 @@ export async function updateProjectSettings(formData: FormData): Promise<void> {
   revalidateProject(projectSlug);
 }
 
+/**
+ * Deletes a project after the confirmation name matches.
+ *
+ * @param formData - Form data containing `projectSlug` and `confirmationProjectName`
+ */
+export async function deleteProject(formData: FormData): Promise<void> {
+  const projectSlug = requireFormValue(formData, 'projectSlug');
+  const confirmationProjectName = requireFormValue(formData, 'confirmationProjectName').trim();
+  let storageCleanupWarning: string | undefined;
+
+  await withSql(async (sql) => {
+    const project = await requireAdminProject(sql, projectSlug);
+    if (confirmationProjectName !== project.name.trim()) {
+      throw new Error('Project name confirmation does not match.');
+    }
+
+    ({ storageCleanupWarning } = await deleteProjectUseCase(sql, project));
+  });
+
+  if (storageCleanupWarning) {
+    console.warn(storageCleanupWarning);
+  }
+  revalidateProject(projectSlug);
+  redirect('/projects');
+}
+
+/**
+ * Updates the GitHub App connection settings for a project.
+ */
 export async function updateGithubAppConnectionSettings(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
   const appSlug = requireFormValue(formData, 'githubAppSlug');
@@ -274,41 +306,4 @@ async function updateProjectSettingsRow(
         updated_at = now()
     WHERE id = ${projectId}
   `;
-}
-
-async function ensureProjectStoragePrefixes(projectSlug: string): Promise<void> {
-  const driver = process.env.STORAGE_DRIVER ?? process.env.OBJECT_STORAGE_DRIVER ?? 'local';
-  if (driver === 'local' && !process.env.STORAGE_ROOT && !process.env.LOCAL_STORAGE_ROOT) {
-    return;
-  }
-
-  const storage = createObjectStorageFromEnv(process.env);
-  if (!hasProjectPrefixSupport(storage)) {
-    return;
-  }
-  await storage.ensureProjectPrefixes(projectSlug);
-}
-
-function hasProjectPrefixSupport(storage: ObjectStorage): storage is ObjectStorage & {
-  ensureProjectPrefixes(projectSlug: string): Promise<ProjectStoragePrefixes>;
-} {
-  return 'ensureProjectPrefixes' in storage && typeof storage.ensureProjectPrefixes === 'function';
-}
-
-async function writePublicProjectVisibilityManifest(
-  projectSlug: string,
-  visibility: ProjectVisibility,
-): Promise<void> {
-  try {
-    await writePublicProjectManifest({
-      projectSlug,
-      storage: createReportStorageFromEnv(),
-      visibility,
-    });
-  } catch (error) {
-    if (error instanceof Error && /STORAGE_ROOT|LOCAL_STORAGE_ROOT/.test(error.message)) {
-      return;
-    }
-    throw error;
-  }
 }

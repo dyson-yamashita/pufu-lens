@@ -22,6 +22,7 @@ import {
 } from './admin-parser-actions.ts';
 import {
   createProject as createProjectAction,
+  deleteProject as deleteProjectAction,
   updateGithubAppConnectionSettings as updateGithubAppConnectionSettingsAction,
   updateProjectSettings as updateProjectSettingsAction,
   updateProjectVisibility as updateProjectVisibilityAction,
@@ -36,10 +37,29 @@ export async function updateProjectVisibility(formData: FormData): Promise<void>
   await updateProjectVisibilityAction(formData);
 }
 
+/**
+ * Updates a project's settings.
+ *
+ * @param formData - The submitted project settings data.
+ */
 export async function updateProjectSettings(formData: FormData): Promise<void> {
   await updateProjectSettingsAction(formData);
 }
 
+/**
+ * Deletes a project.
+ *
+ * @param formData - The submitted project deletion form data.
+ */
+export async function deleteProject(formData: FormData): Promise<void> {
+  await deleteProjectAction(formData);
+}
+
+/**
+ * Updates GitHub App connection settings.
+ *
+ * @param formData - The submitted form data.
+ */
 export async function updateGithubAppConnectionSettings(formData: FormData): Promise<void> {
   await updateGithubAppConnectionSettingsAction(formData);
 }
