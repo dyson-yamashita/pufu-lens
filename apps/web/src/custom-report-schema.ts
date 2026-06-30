@@ -39,6 +39,18 @@ export type CustomReportPartType =
   | 'slider_judgement'
   | 'title';
 
+export type CustomReportAssetContentType =
+  | 'image/jpeg'
+  | 'image/png'
+  | 'image/svg+xml'
+  | 'image/webp';
+
+export function isCustomReportAssetContentType(
+  value: unknown,
+): value is CustomReportAssetContentType {
+  return typeof value === 'string' && ALLOWED_IMAGE_CONTENT_TYPES.has(value);
+}
+
 export interface CustomReportLayoutV1 {
   readonly root: CustomReportPart;
   readonly schema_version: typeof CUSTOM_REPORT_LAYOUT_SCHEMA_VERSION;
@@ -459,8 +471,7 @@ function validateAssetManifest(value: unknown): Set<string> {
     if (
       !isSafeIdentifier(asset.export_asset_key) ||
       !isNonEmptyString(asset.display_name, 255) ||
-      typeof asset.content_type !== 'string' ||
-      !ALLOWED_IMAGE_CONTENT_TYPES.has(asset.content_type) ||
+      !isCustomReportAssetContentType(asset.content_type) ||
       typeof asset.byte_size !== 'number' ||
       !Number.isInteger(asset.byte_size) ||
       asset.byte_size <= 0 ||

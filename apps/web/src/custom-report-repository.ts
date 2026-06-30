@@ -1,6 +1,8 @@
 import {
   CUSTOM_REPORT_TEMPLATE_SCHEMA_VERSION,
+  type CustomReportAssetContentType,
   type CustomReportLayoutV1,
+  isCustomReportAssetContentType,
   validateCustomReportLayout,
 } from './custom-report-schema.ts';
 
@@ -8,7 +10,7 @@ export type CustomReportAssetStatus = 'active' | 'disabled';
 
 export interface CustomReportAssetRow {
   readonly byte_size: number;
-  readonly content_type: string;
+  readonly content_type: CustomReportAssetContentType;
   readonly created_at: Date | string;
   readonly created_by_user_id: string | null;
   readonly display_name: string;
@@ -65,12 +67,11 @@ export function parseCustomReportAssetRow(value: unknown): CustomReportAssetRow 
   if (typeof id !== 'string' || typeof project_id !== 'string') {
     throw new Error('Invalid custom report asset identity fields.');
   }
-  if (
-    typeof display_name !== 'string' ||
-    typeof object_storage_uri !== 'string' ||
-    typeof content_type !== 'string'
-  ) {
+  if (typeof display_name !== 'string' || typeof object_storage_uri !== 'string') {
     throw new Error('Invalid custom report asset text fields.');
+  }
+  if (!isCustomReportAssetContentType(content_type)) {
+    throw new Error('Invalid custom report asset content type.');
   }
   const byteSize = toPositiveSafeInteger(byte_size);
   if (byteSize === undefined) {
@@ -200,7 +201,7 @@ export function parseReportTemplateRunRow(value: unknown): ReportTemplateRunRow 
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isDateLike(value: unknown): value is Date | string {

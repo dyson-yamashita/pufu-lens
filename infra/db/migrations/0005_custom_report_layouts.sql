@@ -32,7 +32,7 @@ CREATE TABLE public.custom_report_assets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
   display_name TEXT NOT NULL,
-  object_storage_uri TEXT NOT NULL CHECK (object_storage_uri !~ '(^/|\.\.)'),
+  object_storage_uri TEXT NOT NULL CHECK (object_storage_uri !~ '(^/|[.][.])'),
   content_type TEXT NOT NULL CHECK (content_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/svg+xml')),
   byte_size BIGINT NOT NULL CHECK (byte_size > 0 AND byte_size <= 10485760),
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),

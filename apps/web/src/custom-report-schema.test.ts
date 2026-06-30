@@ -277,6 +277,23 @@ assert.deepEqual(
   'active',
 );
 
+assert.throws(
+  () =>
+    parseCustomReportAssetRow({
+      byte_size: 1024,
+      content_type: 'text/html',
+      created_at: '2026-06-30T09:00:00.000Z',
+      created_by_user_id: null,
+      display_name: 'x.html',
+      id: 'asset-1',
+      object_storage_uri: 'projects/a/assets/x.html',
+      project_id: 'project-a',
+      status: 'active',
+      updated_at: '2026-06-30T09:00:00.000Z',
+    }),
+  /content type/,
+);
+
 assert.equal(
   parseCustomReportTemplateRow({
     created_at: '2026-06-30T09:00:00.000Z',
@@ -308,6 +325,22 @@ assert.equal(
     template_version: 1,
   }).template_snapshot_hash,
   'sha256:abc',
+);
+
+assert.throws(
+  () =>
+    parseReportTemplateRunRow({
+      created_at: '2026-06-30T09:00:00.000Z',
+      id: 'run-1',
+      judgement_summary: [],
+      layout_snapshot: validLayout,
+      project_id: 'project-a',
+      report_id: 'report-a',
+      template_id: 'template-1',
+      template_snapshot_hash: 'sha256:abc',
+      template_version: 1,
+    }),
+  /judgement_summary/,
 );
 
 console.log('web custom report schema tests passed');
