@@ -7,7 +7,7 @@ import {
   createReportFetchContext,
   createReportPdfDownloadResponse,
   isOutsideReportBusinessHours,
-  reportOutsideBusinessHoursResponse,
+  reportOutsideBusinessHoursResponse
 } from '../../../../../../../src/report-pdf-api';
 
 /**
@@ -19,8 +19,8 @@ import {
 export async function GET(
   _request: Request,
   {
-    params,
-  }: { readonly params: Promise<{ readonly projectSlug: string; readonly reportId: string }> },
+    params
+  }: { readonly params: Promise<{ readonly projectSlug: string; readonly reportId: string }> }
 ) {
   const { projectSlug, reportId } = await params;
 
@@ -34,7 +34,7 @@ export async function GET(
       options: context.options,
       projectSlug,
       reportId,
-      userId,
+      userId
     });
     if (response.status === 'db_outside_business_hours') {
       return reportOutsideBusinessHoursResponse();
