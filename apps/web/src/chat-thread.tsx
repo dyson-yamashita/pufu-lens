@@ -5,6 +5,7 @@ import type {
   ChatEditingMetadata,
   ChatResponse,
   ChatSource,
+  PrivateChatHistoryItem,
   PublicChatResponse,
   PublicChatSource,
 } from './chat';
@@ -73,6 +74,34 @@ export function replacePendingAssistant<T>(
   replacement: ChatThreadErrorAssistantMessage | ChatThreadCompleteAssistantMessage<T>,
 ): ChatThreadMessage<T>[] {
   return messages.map((message) => (message.id === pendingId ? replacement : message));
+}
+
+export function mapPrivateChatHistoryToThreadMessages(
+  history: readonly PrivateChatHistoryItem[],
+  projectSlug: string,
+): ChatThreadMessage<ChatResponse>[] {
+  const messages: ChatThreadMessage<ChatResponse>[] = [];
+  for (const turn of history) {
+    messages.push({
+      id: `history-user-${turn.id}`,
+      role: 'user',
+      text: turn.question,
+    });
+    messages.push({
+      id: `history-assistant-${turn.id}`,
+      role: 'assistant',
+      response: {
+        answer: turn.answer,
+        ...(turn.editing ? { editing: turn.editing } : {}),
+        projectSlug,
+        sources: turn.sources,
+        status: 'answered',
+        toolCalls: turn.toolCalls,
+      },
+      status: 'complete',
+    });
+  }
+  return messages;
 }
 
 type ChatThreadProps = {

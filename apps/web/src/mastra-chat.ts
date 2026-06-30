@@ -4,6 +4,7 @@ import type {
   ChatSource,
   ChatToolCall,
   ChatToolName,
+  MastraChatHistoryMessage,
   PublicChatResponse,
   PublicChatSource,
   PublicChatToolCall,
@@ -112,12 +113,14 @@ export async function mastraFetchHeaders(input: {
 
 export function createMastraProjectChatBody(input: {
   readonly graphName?: string | null;
+  readonly history?: readonly MastraChatHistoryMessage[];
   readonly projectId: string;
   readonly question: string;
 }) {
   const editing = inferChatEditingMetadata(input.question);
+  const history = input.history ?? [];
   return {
-    messages: [{ content: input.question, role: 'user' }],
+    messages: [...history, { content: input.question, role: 'user' as const }],
     requestContext: { editing, graphName: input.graphName ?? null, projectId: input.projectId },
   };
 }

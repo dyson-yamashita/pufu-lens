@@ -1,13 +1,19 @@
 'use client';
 
-import { ArrowUp, Mic } from 'lucide-react';
-import { useState } from 'react';
-import type { ChatResponse, PublicChatResponse } from './chat';
+import { ArrowUp, Mic, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  type ChatResponse,
+  type PrivateChatHistoryListResponse,
+  type PublicChatResponse,
+  resolvePrivateChatHistoryApplyAction,
+} from './chat';
 import {
   appendPendingAssistant,
   appendUserMessage,
   type ChatThreadMessage,
   createMessageId,
+  mapPrivateChatHistoryToThreadMessages,
   PrivateChatThread,
   PublicChatThread,
   replacePendingAssistant,
@@ -24,11 +30,57 @@ export function ChatPanel({
   const [question, setQuestion] = useState('');
   const [messages, setMessages] = useState<ChatThreadMessage<ChatResponse>[]>([]);
   const [pending, setPending] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const speechInput = useSpeechInput({
     disabled: disabled || pending,
     setValue: setQuestion,
     value: question,
   });
+
+  const loadHistory = useCallback(
+    async (options?: { readonly refresh?: boolean }) => {
+      if (disabled) {
+        return;
+      }
+      setHistoryLoading(true);
+      setHistoryError(null);
+      try {
+        const result = await fetch(`/api/projects/${projectSlug}/chat/history`);
+        const isJson = result.headers.get('content-type')?.includes('application/json') ?? false;
+        const body = isJson
+          ? ((await result.json()) as PrivateChatHistoryListResponse | ChatErrorResponse)
+          : null;
+        if (!result.ok) {
+          throw new Error(chatErrorMessage(body && 'error' in body ? body : null, result.status));
+        }
+        if (!body || !('items' in body)) {
+          throw new Error('Chat history API returned an invalid response.');
+        }
+        const historyMessages = mapPrivateChatHistoryToThreadMessages(body.items, projectSlug);
+        setMessages((current) => {
+          const action = resolvePrivateChatHistoryApplyAction({
+            currentMessageCount: current.length,
+            hasPendingAssistantMessage: current.some(
+              (message) => message.role === 'assistant' && message.status === 'pending',
+            ),
+            hasPendingRequest: pending,
+            refresh: options?.refresh ?? false,
+          });
+          return action === 'apply' ? historyMessages : current;
+        });
+      } catch (caught) {
+        setHistoryError(caught instanceof Error ? caught.message : String(caught));
+      } finally {
+        setHistoryLoading(false);
+      }
+    },
+    [disabled, pending, projectSlug],
+  );
+
+  useEffect(() => {
+    void loadHistory();
+  }, [loadHistory]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -82,6 +134,31 @@ export function ChatPanel({
 
   return (
     <section className="panel chat-panel" data-testid="chat-panel">
+      <div className="chat-history-controls">
+        <button
+          aria-label="Refresh chat history"
+          className="chat-icon-button"
+          data-testid="chat-history-refresh-button"
+          disabled={disabled || pending || historyLoading}
+          onClick={() => {
+            void loadHistory({ refresh: true });
+          }}
+          title="Refresh history"
+          type="button"
+        >
+          <RefreshCw size={16} />
+        </button>
+        {historyLoading ? (
+          <span className="chat-history-status" data-testid="chat-history-loading">
+            Loading
+          </span>
+        ) : null}
+      </div>
+      {historyError ? (
+        <p className="notice error" data-testid="chat-history-error">
+          {historyError}
+        </p>
+      ) : null}
       <PrivateChatThread messages={messages} resultTestId="chat-result" />
       <form className="chat-form" onSubmit={submit}>
         <label htmlFor="chat-question">Question</label>

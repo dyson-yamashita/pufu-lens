@@ -71,9 +71,21 @@
 .chat-panel {
   display: grid;
   gap: 12px;
-  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   height: 100%;
   min-height: 0;
+}
+
+.chat-history-controls {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.chat-history-status {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .public-chat-panel {
