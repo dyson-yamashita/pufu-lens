@@ -251,10 +251,13 @@ function unavailableChatRepository(envName: string): ChatRepository {
   return {
     documentFetch: unavailableMethod(envName),
     graphQuery: unavailableMethod(envName),
+    listPrivateChatHistoryForContext: unavailableMethod(envName),
+    listPrivateChatHistoryForUi: unavailableMethod(envName),
     lookupProjectMember: unavailableMethod(envName),
     parsedDocFetch: unavailableMethod(envName),
     rawDocumentFetch: unavailableMethod(envName),
     rawReadViewFetch: unavailableMethod(envName),
+    savePrivateChatTurn: unavailableMethod(envName),
     vectorSearch: unavailableMethod(envName),
   };
 }

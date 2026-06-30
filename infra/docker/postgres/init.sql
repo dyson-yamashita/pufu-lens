@@ -535,6 +535,21 @@ WHERE NOT EXISTS (
   SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'graph_local_dev'
 );
 
+CREATE TABLE IF NOT EXISTS public.private_chat_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  question TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  sources JSONB NOT NULL DEFAULT '[]'::jsonb,
+  tool_calls JSONB NOT NULL DEFAULT '[]'::jsonb,
+  editing JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS private_chat_messages_project_user_created_idx
+ON public.private_chat_messages (project_id, user_id, created_at DESC, id DESC);
+
 CREATE TABLE IF NOT EXISTS public.schema_migrations (
   version TEXT PRIMARY KEY,
   applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -546,5 +561,6 @@ VALUES
   ('0002_project_oauth_connections'),
   ('0003_actor_merge_decisions'),
   ('0004_pgroonga_hybrid_search'),
-  ('0005_custom_report_layouts')
+  ('0005_custom_report_layouts'),
+  ('0006_private_chat_history')
 ON CONFLICT (version) DO NOTHING;

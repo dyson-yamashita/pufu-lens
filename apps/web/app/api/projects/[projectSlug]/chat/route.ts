@@ -8,6 +8,7 @@ import {
   createPostgresChatRepository,
   isWithinBusinessHours,
   ProjectAccessDeniedError,
+  privateChatHistoryToMastraMessages,
 } from '../../../../../src/chat';
 import {
   createMastraProjectChatBody,
@@ -82,11 +83,16 @@ export async function POST(
     if (!project) {
       throw new ProjectAccessDeniedError(projectSlug);
     }
+    const history = await repository.listPrivateChatHistoryForContext({
+      projectId: project.id,
+      userId,
+    });
     const mastraUrl = mastraProjectChatGenerateUrl();
     const mastraResponse = await fetch(mastraUrl, {
       body: JSON.stringify(
         createMastraProjectChatBody({
           graphName: project.graphName,
+          history: privateChatHistoryToMastraMessages(history),
           projectId: project.id,
           question,
         }),
@@ -102,9 +108,27 @@ export async function POST(
       );
     }
     const mastraBody = (await mastraResponse.json()) as unknown;
-    return NextResponse.json(
-      mastraGenerateToChatResponse({ mastraResponse: mastraBody, projectSlug, question }),
-    );
+    const chatResponse = mastraGenerateToChatResponse({
+      mastraResponse: mastraBody,
+      projectSlug,
+      question,
+    });
+    if (chatResponse.status === 'answered') {
+      try {
+        await repository.savePrivateChatTurn({
+          answer: chatResponse.answer,
+          editing: chatResponse.editing,
+          projectId: project.id,
+          question,
+          sources: chatResponse.sources,
+          toolCalls: chatResponse.toolCalls,
+          userId,
+        });
+      } catch (saveError) {
+        console.error('Failed to persist private chat turn:', saveError);
+      }
+    }
+    return NextResponse.json(chatResponse);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (error instanceof AuthRequiredError) {

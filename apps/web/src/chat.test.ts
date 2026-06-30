@@ -14,12 +14,20 @@ import {
   inferPublicChatEditingMetadata,
   isWithinBusinessHours,
   normalizeHybridKeywordQuery,
+  PRIVATE_CHAT_CONTEXT_TURN_LIMIT,
+  PRIVATE_CHAT_HISTORY_CONTENT_MAX,
   ProjectAccessDeniedError,
   parseChatSourceRow,
+  parsePrivateChatHistoryRow,
+  privateChatHistoryItemsForUiDisplay,
+  privateChatHistorySourcesForStorage,
+  privateChatHistoryToMastraMessages,
+  resolvePrivateChatHistoryApplyAction,
   runPrivateChat,
   runPublicChat,
   selectGraphRelatedDocumentCandidates,
   shouldUseGraphRelatedSource,
+  trimPrivateChatHistoryContent,
 } from './chat.ts';
 import {
   createMastraProjectChatBody,
@@ -139,6 +147,15 @@ function createRepository(): ChatRepository & {
     async parsedDocFetch({ projectId }) {
       assert.equal(projectId, 'project-a');
       return [{ ...sampleSource, documentId: 'doc-parsed', title: 'Parsed Metadata' }];
+    },
+    async listPrivateChatHistoryForContext() {
+      return [];
+    },
+    async listPrivateChatHistoryForUi() {
+      return [];
+    },
+    async savePrivateChatTurn() {
+      throw new Error('savePrivateChatTurn is not expected in this test.');
     },
   };
 }
@@ -467,6 +484,130 @@ assert.deepEqual(
       graphName: 'graph_sample_a',
       projectId: 'project-a',
     },
+  },
+);
+
+const priorHistory = Array.from({ length: PRIVATE_CHAT_CONTEXT_TURN_LIMIT + 1 }, (_, index) => ({
+  answer: `answer-${index}`,
+  createdAt: `2026-06-01T00:00:0${index % 10}Z`,
+  id: `turn-${index}`,
+  question: `question-${index}`,
+  sources: [sampleSource],
+  toolCalls: [{ name: 'vector-search' as const, resultCount: 1 }],
+}));
+assert.deepEqual(privateChatHistoryToMastraMessages(priorHistory).slice(0, 2), [
+  { role: 'user', content: 'question-1' },
+  { role: 'assistant', content: 'answer-1' },
+]);
+assert.equal(
+  privateChatHistoryToMastraMessages(priorHistory).length,
+  PRIVATE_CHAT_CONTEXT_TURN_LIMIT * 2,
+);
+assert.equal(
+  trimPrivateChatHistoryContent('x'.repeat(PRIVATE_CHAT_HISTORY_CONTENT_MAX + 10)).length,
+  PRIVATE_CHAT_HISTORY_CONTENT_MAX,
+);
+assert.deepEqual(
+  privateChatHistorySourcesForStorage([{ ...sampleSource, snippet: 'secret body' }]),
+  [sampleSource],
+);
+assert.deepEqual(
+  privateChatHistoryItemsForUiDisplay([
+    {
+      answer: 'newest',
+      createdAt: '2026-06-03T00:00:00Z',
+      id: 'turn-3',
+      question: 'q3',
+      sources: [],
+      toolCalls: [],
+    },
+    {
+      answer: 'oldest',
+      createdAt: '2026-06-01T00:00:00Z',
+      id: 'turn-1',
+      question: 'q1',
+      sources: [],
+      toolCalls: [],
+    },
+  ]).map((item) => item.id),
+  ['turn-1', 'turn-3'],
+);
+assert.equal(
+  resolvePrivateChatHistoryApplyAction({
+    currentMessageCount: 0,
+    hasPendingAssistantMessage: false,
+    hasPendingRequest: false,
+    refresh: false,
+  }),
+  'apply',
+);
+assert.equal(
+  resolvePrivateChatHistoryApplyAction({
+    currentMessageCount: 2,
+    hasPendingAssistantMessage: false,
+    hasPendingRequest: false,
+    refresh: false,
+  }),
+  'keep',
+);
+assert.equal(
+  resolvePrivateChatHistoryApplyAction({
+    currentMessageCount: 0,
+    hasPendingAssistantMessage: true,
+    hasPendingRequest: true,
+    refresh: true,
+  }),
+  'keep',
+);
+assert.equal(
+  resolvePrivateChatHistoryApplyAction({
+    currentMessageCount: 4,
+    hasPendingAssistantMessage: false,
+    hasPendingRequest: false,
+    refresh: true,
+  }),
+  'apply',
+);
+assert.deepEqual(
+  createMastraProjectChatBody({
+    graphName: 'graph_sample_a',
+    history: privateChatHistoryToMastraMessages([
+      {
+        answer: '前回の回答',
+        createdAt: '2026-06-01T00:00:00Z',
+        id: 'turn-1',
+        question: '前回の質問',
+        sources: [],
+        toolCalls: [],
+      },
+    ]),
+    projectId: 'project-a',
+    question: '仕様変更を要約して',
+  }).messages,
+  [
+    { role: 'user', content: '前回の質問' },
+    { role: 'assistant', content: '前回の回答' },
+    { role: 'user', content: '仕様変更を要約して' },
+  ],
+);
+assert.deepEqual(
+  parsePrivateChatHistoryRow({
+    answer: '回答',
+    created_at: '2026-06-01T00:00:00.000Z',
+    editing: null,
+    id: 'msg-1',
+    question: '質問',
+    sources: [sampleSource],
+    tool_calls: [{ name: 'vector-search', resultCount: 2 }],
+  }),
+  {
+    answer: '回答',
+    created_at: '2026-06-01T00:00:00.000Z',
+    editing: null,
+    id: 'msg-1',
+    question: '質問',
+    sources: [sampleSource],
+    tool_calls: [{ name: 'vector-search', resultCount: 2 }],
   },
 );
 assert.deepEqual(

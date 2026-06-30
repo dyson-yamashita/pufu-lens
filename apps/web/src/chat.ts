@@ -75,6 +75,29 @@ export interface ChatResponse {
   readonly toolCalls: readonly ChatToolCall[];
 }
 
+export interface PrivateChatHistoryItem {
+  readonly answer: string;
+  readonly createdAt: string;
+  readonly editing?: ChatEditingMetadata;
+  readonly id: string;
+  readonly question: string;
+  readonly sources: readonly ChatSource[];
+  readonly toolCalls: readonly ChatToolCall[];
+}
+
+export interface PrivateChatHistoryListResponse {
+  readonly items: readonly PrivateChatHistoryItem[];
+}
+
+export interface MastraChatHistoryMessage {
+  readonly content: string;
+  readonly role: 'assistant' | 'user';
+}
+
+export const PRIVATE_CHAT_CONTEXT_TURN_LIMIT = 6;
+export const PRIVATE_CHAT_HISTORY_UI_LIMIT = 50;
+export const PRIVATE_CHAT_HISTORY_CONTENT_MAX = 4000;
+
 export interface PublicChatSource {
   readonly label: string;
   readonly publicSourceId: string;
@@ -144,6 +167,25 @@ export interface ChatRepository {
     projectId: string;
     query: string;
   }): Promise<ChatSource[]>;
+  listPrivateChatHistoryForContext(input: {
+    limit?: number;
+    projectId: string;
+    userId: string;
+  }): Promise<readonly PrivateChatHistoryItem[]>;
+  listPrivateChatHistoryForUi(input: {
+    limit?: number;
+    projectId: string;
+    userId: string;
+  }): Promise<readonly PrivateChatHistoryItem[]>;
+  savePrivateChatTurn(input: {
+    answer: string;
+    editing?: ChatEditingMetadata;
+    projectId: string;
+    question: string;
+    sources: readonly ChatSource[];
+    toolCalls: readonly ChatToolCall[];
+    userId: string;
+  }): Promise<PrivateChatHistoryItem>;
 }
 
 export interface ChatProvider {
@@ -841,6 +883,62 @@ export function chatNowFromEnv(env?: NodeJS.ProcessEnv): Date | undefined {
   return date;
 }
 
+export function trimPrivateChatHistoryContent(
+  content: string,
+  maxLength = PRIVATE_CHAT_HISTORY_CONTENT_MAX,
+): string {
+  if (content.length <= maxLength) {
+    return content;
+  }
+  return `${content.slice(0, maxLength - 1)}…`;
+}
+
+export function privateChatHistorySourcesForStorage(sources: readonly ChatSource[]): ChatSource[] {
+  return sources.map((source) => ({
+    canonicalUri: source.canonicalUri,
+    documentId: source.documentId,
+    docType: source.docType,
+    rawDocumentId: source.rawDocumentId,
+    title: source.title,
+  }));
+}
+
+export function privateChatHistoryToMastraMessages(
+  history: readonly PrivateChatHistoryItem[],
+): MastraChatHistoryMessage[] {
+  const turns = history.slice(-PRIVATE_CHAT_CONTEXT_TURN_LIMIT);
+  const messages: MastraChatHistoryMessage[] = [];
+  for (const turn of turns) {
+    messages.push({
+      role: 'user',
+      content: trimPrivateChatHistoryContent(turn.question),
+    });
+    messages.push({
+      role: 'assistant',
+      content: trimPrivateChatHistoryContent(turn.answer),
+    });
+  }
+  return messages;
+}
+
+export function privateChatHistoryItemsForUiDisplay(
+  itemsNewestFirst: readonly PrivateChatHistoryItem[],
+): readonly PrivateChatHistoryItem[] {
+  return [...itemsNewestFirst].reverse();
+}
+
+export function resolvePrivateChatHistoryApplyAction(input: {
+  readonly currentMessageCount: number;
+  readonly hasPendingAssistantMessage: boolean;
+  readonly hasPendingRequest: boolean;
+  readonly refresh: boolean;
+}): 'apply' | 'keep' {
+  if (input.refresh) {
+    return input.hasPendingRequest || input.hasPendingAssistantMessage ? 'keep' : 'apply';
+  }
+  return input.currentMessageCount === 0 ? 'apply' : 'keep';
+}
+
 export function isWithinBusinessHours(date: Date, config: BusinessHoursConfig): boolean {
   if (!config.enabled) {
     return true;
@@ -1144,6 +1242,81 @@ export function createPostgresChatRepository(
       `) as readonly unknown[];
       return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
     },
+    async listPrivateChatHistoryForContext({ limit, projectId, userId }) {
+      const rows = await sql`
+        SELECT
+          id::text AS id,
+          question,
+          answer,
+          sources,
+          tool_calls,
+          editing,
+          created_at
+        FROM public.private_chat_messages
+        WHERE project_id = ${projectId}
+          AND user_id = ${userId}
+        ORDER BY created_at DESC, id DESC
+        LIMIT ${limit ?? PRIVATE_CHAT_CONTEXT_TURN_LIMIT}
+      `;
+      return rows
+        .map((row) => privateChatHistoryItemFromRow(parsePrivateChatHistoryRow(row)))
+        .reverse();
+    },
+    async listPrivateChatHistoryForUi({ limit, projectId, userId }) {
+      const rows = await sql`
+        SELECT
+          id::text AS id,
+          question,
+          answer,
+          sources,
+          tool_calls,
+          editing,
+          created_at
+        FROM public.private_chat_messages
+        WHERE project_id = ${projectId}
+          AND user_id = ${userId}
+        ORDER BY created_at DESC, id DESC
+        LIMIT ${limit ?? PRIVATE_CHAT_HISTORY_UI_LIMIT}
+      `;
+      return privateChatHistoryItemsForUiDisplay(
+        rows.map((row) => privateChatHistoryItemFromRow(parsePrivateChatHistoryRow(row))),
+      );
+    },
+    async savePrivateChatTurn(input) {
+      const rows = await sql`
+        INSERT INTO public.private_chat_messages (
+          project_id,
+          user_id,
+          question,
+          answer,
+          sources,
+          tool_calls,
+          editing
+        )
+        VALUES (
+          ${input.projectId},
+          ${input.userId},
+          ${input.question},
+          ${input.answer},
+          ${JSON.stringify(privateChatHistorySourcesForStorage(input.sources))}::jsonb,
+          ${JSON.stringify(input.toolCalls)}::jsonb,
+          ${input.editing ? JSON.stringify(input.editing) : null}
+        )
+        RETURNING
+          id::text AS id,
+          question,
+          answer,
+          sources,
+          tool_calls,
+          editing,
+          created_at
+      `;
+      const row = rows[0];
+      if (!row) {
+        throw new Error('Private chat turn save failed.');
+      }
+      return privateChatHistoryItemFromRow(parsePrivateChatHistoryRow(row));
+    },
   };
 }
 
@@ -1246,6 +1419,165 @@ export function parseChatSourceRow(value: unknown): ChatSourceRow {
     snippet: parseOptionalNullableString(snippet, 'snippet'),
     title: parseRequiredString(title, 'title'),
   };
+}
+
+export interface PrivateChatHistoryRow {
+  readonly answer: string;
+  readonly created_at: unknown;
+  readonly editing: unknown;
+  readonly id: string;
+  readonly question: string;
+  readonly sources: unknown;
+  readonly tool_calls: unknown;
+}
+
+export function parsePrivateChatHistoryRow(value: unknown): PrivateChatHistoryRow {
+  if (!isRecord(value)) {
+    throw new Error('Invalid private chat history row.');
+  }
+  return {
+    answer: parseRequiredString(value.answer, 'answer'),
+    created_at: value.created_at,
+    editing: value.editing,
+    id: parseRequiredString(value.id, 'id'),
+    question: parseRequiredString(value.question, 'question'),
+    sources: value.sources,
+    tool_calls: value.tool_calls,
+  };
+}
+
+function privateChatHistoryItemFromRow(row: PrivateChatHistoryRow): PrivateChatHistoryItem {
+  return {
+    answer: row.answer,
+    createdAt: parsePrivateChatHistoryCreatedAt(row.created_at),
+    editing: parseOptionalChatEditingMetadata(row.editing),
+    id: row.id,
+    question: row.question,
+    sources: parseStoredChatSources(row.sources),
+    toolCalls: parseStoredChatToolCalls(row.tool_calls),
+  };
+}
+
+function parsePrivateChatHistoryCreatedAt(value: unknown): string {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  throw new Error('Invalid private chat history created_at.');
+}
+
+function parseStoredChatSources(value: unknown): ChatSource[] {
+  if (!Array.isArray(value)) {
+    throw new Error('Invalid private chat history sources.');
+  }
+  return value.map(parseStoredChatSource);
+}
+
+function parseStoredChatSource(value: unknown): ChatSource {
+  if (!isRecord(value)) {
+    throw new Error('Invalid stored chat source.');
+  }
+  return {
+    canonicalUri: parseRequiredString(value.canonicalUri, 'canonicalUri'),
+    documentId: parseRequiredString(value.documentId, 'documentId'),
+    docType: parseRequiredString(value.docType, 'docType'),
+    rawDocumentId: parseRequiredString(value.rawDocumentId, 'rawDocumentId'),
+    snippet: parseOptionalNullableString(value.snippet, 'snippet') ?? undefined,
+    title: parseRequiredString(value.title, 'title'),
+  };
+}
+
+function parseStoredChatToolCalls(value: unknown): ChatToolCall[] {
+  if (!Array.isArray(value)) {
+    throw new Error('Invalid private chat history tool_calls.');
+  }
+  return value.map(parseStoredChatToolCall);
+}
+
+function parseStoredChatToolCall(value: unknown): ChatToolCall {
+  if (!isRecord(value)) {
+    throw new Error('Invalid stored chat tool call.');
+  }
+  return {
+    name: parseChatToolName(value.name),
+    resultCount: parseNonNegativeInteger(value.resultCount, 'resultCount'),
+  };
+}
+
+function parseChatToolName(value: unknown): ChatToolName {
+  if (
+    value === 'document-fetch' ||
+    value === 'graph-query' ||
+    value === 'parsed-doc-fetch' ||
+    value === 'raw-document-fetch' ||
+    value === 'vector-search'
+  ) {
+    return value;
+  }
+  throw new Error(`Invalid chat tool name: ${String(value)}`);
+}
+
+function parseOptionalChatEditingMetadata(value: unknown): ChatEditingMetadata | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    throw new Error('Invalid private chat history editing.');
+  }
+  const caveats = value.caveats;
+  const confidence = value.confidence;
+  const inferredMode = value.inferredMode;
+  const operations = value.operations;
+  const questionType = value.questionType;
+  if (
+    !Array.isArray(caveats) ||
+    !Array.isArray(operations) ||
+    (confidence !== 'high' && confidence !== 'low' && confidence !== 'medium') ||
+    !isChatEditingMode(inferredMode) ||
+    !isChatEditingQuestionType(questionType)
+  ) {
+    throw new Error('Invalid private chat history editing.');
+  }
+  return {
+    caveats: caveats.map((item) => parseRequiredString(item, 'caveats')),
+    confidence,
+    inferredMode,
+    operations: operations.map((item) => parseRequiredString(item, 'operations')),
+    questionType,
+  };
+}
+
+function isChatEditingMode(value: unknown): value is ChatEditingMode {
+  return (
+    value === 'default' ||
+    value === 'issue_mapping' ||
+    value === 'next_actions' ||
+    value === 'risk_scan' ||
+    value === 'structure' ||
+    value === 'summary' ||
+    value === 'timeline'
+  );
+}
+
+function isChatEditingQuestionType(value: unknown): value is ChatEditingQuestionType {
+  return (
+    value === 'fact' ||
+    value === 'planning' ||
+    value === 'public_explanation' ||
+    value === 'risk' ||
+    value === 'status' ||
+    value === 'timeline' ||
+    value === 'unknown'
+  );
+}
+
+function parseNonNegativeInteger(value: unknown, fieldName: string): number {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+  throw new Error(`Invalid private chat history field: ${fieldName}`);
 }
 
 /**
