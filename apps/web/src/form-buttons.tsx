@@ -1,5 +1,6 @@
 'use client';
 
+import { isRedirectError } from 'next/dist/client/components/redirect-error';
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { shouldProceedWithConfirm } from './form-confirm.ts';
@@ -11,16 +12,6 @@ interface ActionFormState {
 }
 
 const initialActionFormState: ActionFormState = {};
-
-function isNextRedirectError(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'digest' in error &&
-    typeof error.digest === 'string' &&
-    error.digest.startsWith('NEXT_REDIRECT;')
-  );
-}
 
 export function ActionForm({
   action,
@@ -44,7 +35,7 @@ export function ActionForm({
         onSuccess?.();
         return {};
       } catch (error) {
-        if (isNextRedirectError(error)) {
+        if (isRedirectError(error)) {
           throw error;
         }
         return { error: error instanceof Error ? error.message : 'Action failed.' };

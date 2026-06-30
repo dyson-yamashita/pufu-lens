@@ -196,29 +196,39 @@ export async function deleteProject(formData: FormData): Promise<void> {
       throw new Error('Project name confirmation does not match.');
     }
 
-    await sql.begin(async (tx) => {
-      await tx`LOAD 'age'`;
-      await tx`SET LOCAL search_path = ag_catalog, "$user", public`;
+    await writePublicProjectVisibilityManifest(projectSlug, 'private');
 
-      if (project.graphName) {
-        const graphRows = (await tx`
-          SELECT 1
-          FROM ag_catalog.ag_graph
-          WHERE name = ${project.graphName}
-        `) as readonly unknown[];
-        if (graphRows.length > 0) {
-          await tx`SELECT drop_graph(${project.graphName}, ${true})`;
+    try {
+      await sql.begin(async (tx) => {
+        await tx`LOAD 'age'`;
+        await tx`SET LOCAL search_path = ag_catalog, "$user", public`;
+
+        if (project.graphName) {
+          const graphRows = (await tx`
+            SELECT 1
+            FROM ag_catalog.ag_graph
+            WHERE name = ${project.graphName}
+          `) as readonly unknown[];
+          if (graphRows.length > 0) {
+            await tx`SELECT drop_graph(${project.graphName}, ${true})`;
+          }
         }
-      }
 
-      await tx`
-        DELETE FROM public.projects
-        WHERE id = ${project.id}
-      `;
-    });
+        await tx`
+          DELETE FROM public.projects
+          WHERE id = ${project.id}
+        `;
+      });
+    } catch (error) {
+      try {
+        await writePublicProjectVisibilityManifest(projectSlug, project.visibility);
+      } catch (rollbackError) {
+        console.error('Failed to rollback public project visibility manifest:', rollbackError);
+      }
+      throw error;
+    }
   });
 
-  await writePublicProjectVisibilityManifest(projectSlug, 'private');
   revalidatePath('/projects');
   revalidateProject(projectSlug);
   redirect('/projects');

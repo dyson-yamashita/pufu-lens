@@ -17,7 +17,7 @@ export function ProjectDeleteDialog({
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [confirmationName, setConfirmationName] = useState('');
-  const nameMatches = confirmationName === projectName;
+  const nameMatches = confirmationName.trim() === projectName;
 
   return (
     <>
