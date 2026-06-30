@@ -374,6 +374,41 @@ CREATE TABLE public.reports (
 );
 CREATE INDEX reports_project_created_idx ON public.reports (project_id, created_at DESC);
 
+CREATE TABLE public.custom_report_assets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  display_name TEXT NOT NULL,
+  object_storage_uri TEXT NOT NULL CHECK (object_storage_uri !~ '(^/|[.][.])'),
+  content_type TEXT NOT NULL CHECK (content_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/svg+xml')),
+  byte_size BIGINT NOT NULL CHECK (byte_size > 0 AND byte_size <= 10485760),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+  created_by_user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (project_id, id)
+);
+CREATE INDEX custom_report_assets_project_status_idx
+  ON public.custom_report_assets (project_id, status, created_at DESC);
+
+CREATE TABLE public.custom_report_templates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT,
+  schema_version TEXT NOT NULL DEFAULT 'custom-report-template-v1',
+  template_version INTEGER NOT NULL DEFAULT 1 CHECK (template_version >= 1),
+  layout JSONB NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_by_user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  updated_by_user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (project_id, id),
+  UNIQUE (project_id, name)
+);
+CREATE INDEX custom_report_templates_project_active_idx
+  ON public.custom_report_templates (project_id, is_active, updated_at DESC);
+
 CREATE TABLE public.report_chunks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL,
@@ -388,6 +423,25 @@ CREATE TABLE public.report_chunks (
 );
 CREATE INDEX report_chunks_embedding_idx ON public.report_chunks USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX report_chunks_project_report_idx ON public.report_chunks (project_id, report_id);
+
+CREATE TABLE public.report_template_runs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL,
+  report_id UUID NOT NULL,
+  template_id UUID,
+  template_version INTEGER NOT NULL CHECK (template_version >= 1),
+  template_snapshot_hash TEXT NOT NULL,
+  layout_snapshot JSONB NOT NULL,
+  judgement_summary JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (project_id, report_id),
+  FOREIGN KEY (project_id, report_id) REFERENCES public.reports(project_id, id) ON DELETE CASCADE,
+  FOREIGN KEY (project_id, template_id)
+    REFERENCES public.custom_report_templates(project_id, id)
+    ON DELETE SET NULL (template_id)
+);
+CREATE INDEX report_template_runs_template_idx
+  ON public.report_template_runs (template_id, created_at DESC);
 
 CREATE OR REPLACE FUNCTION public.set_updated_at()
 RETURNS TRIGGER AS $$
@@ -442,6 +496,16 @@ CREATE TRIGGER actors_set_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION public.set_updated_at();
 
+CREATE TRIGGER custom_report_assets_set_updated_at
+  BEFORE UPDATE ON public.custom_report_assets
+  FOR EACH ROW
+  EXECUTE FUNCTION public.set_updated_at();
+
+CREATE TRIGGER custom_report_templates_set_updated_at
+  BEFORE UPDATE ON public.custom_report_templates
+  FOR EACH ROW
+  EXECUTE FUNCTION public.set_updated_at();
+
 INSERT INTO public.users (id, email, name, role)
 VALUES ('00000000-0000-0000-0000-000000000001', 'system@pufu-lens.local', 'Pufu Lens System', 'member')
 ON CONFLICT (email) DO NOTHING;
@@ -481,5 +545,6 @@ VALUES
   ('0001_auth_login'),
   ('0002_project_oauth_connections'),
   ('0003_actor_merge_decisions'),
-  ('0004_pgroonga_hybrid_search')
+  ('0004_pgroonga_hybrid_search'),
+  ('0005_custom_report_layouts')
 ON CONFLICT (version) DO NOTHING;
