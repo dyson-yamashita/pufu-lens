@@ -893,9 +893,7 @@ export function trimPrivateChatHistoryContent(
   return `${content.slice(0, maxLength - 1)}…`;
 }
 
-export function privateChatHistorySourcesForStorage(
-  sources: readonly ChatSource[],
-): ChatSource[] {
+export function privateChatHistorySourcesForStorage(sources: readonly ChatSource[]): ChatSource[] {
   return sources.map((source) => ({
     canonicalUri: source.canonicalUri,
     documentId: source.documentId,

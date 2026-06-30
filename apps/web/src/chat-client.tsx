@@ -41,6 +41,7 @@ export function ChatPanel({
     setMessages([]);
     setHistoryError(null);
     setHistoryLoading(false);
+    void projectSlug;
   }, [projectSlug]);
   const speechInput = useSpeechInput({
     disabled: disabled || pending,
