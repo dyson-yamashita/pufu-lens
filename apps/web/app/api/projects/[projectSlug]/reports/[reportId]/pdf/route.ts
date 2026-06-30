@@ -1,19 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getRequiredAdminSql } from '../../../../../../../src/admin-sql';
 import { AuthRequiredError, requireSessionUserId } from '../../../../../../../src/auth-session';
-import {
-  businessHoursFromEnv,
-  isWithinBusinessHours,
-  ProjectAccessDeniedError,
-} from '../../../../../../../src/chat';
-import {
-  createPostgresReportRepository,
-  createReportStorageFromEnv,
-  getPrivateReport,
-  ReportNotFoundError,
-  reportNowFromEnv,
-} from '../../../../../../../src/report';
+import { ProjectAccessDeniedError } from '../../../../../../../src/chat';
+import { getPrivateReport, ReportNotFoundError } from '../../../../../../../src/report';
 import { renderReportPdf } from '../../../../../../../src/report-pdf';
+import {
+  createReportFetchContext,
+  createReportPdfDownloadResponse,
+  isOutsideReportBusinessHours,
+  reportOutsideBusinessHoursResponse,
+} from '../../../../../../../src/report-pdf-api';
 
 /**
  * Generates a PDF for a private project report.
@@ -31,37 +26,21 @@ export async function GET(
 
   try {
     const userId = await requireSessionUserId();
-    const businessHours = businessHoursFromEnv(process.env);
-    const now = reportNowFromEnv(process.env) ?? new Date();
-    if (!isWithinBusinessHours(now, businessHours)) {
-      return NextResponse.json(
-        { report: null, status: 'db_outside_business_hours' },
-        { status: 503 },
-      );
+    const context = createReportFetchContext();
+    if (isOutsideReportBusinessHours(context)) {
+      return reportOutsideBusinessHoursResponse();
     }
     const response = await getPrivateReport({
-      options: {
-        businessHours,
-        now,
-        repository: createPostgresReportRepository(getRequiredAdminSql()),
-        storage: createReportStorageFromEnv(),
-      },
+      options: context.options,
       projectSlug,
       reportId,
       userId,
     });
     if (response.status === 'db_outside_business_hours') {
-      return NextResponse.json(response, { status: 503 });
+      return reportOutsideBusinessHoursResponse();
     }
     const pdf = await renderReportPdf({ projectSlug, report: response.report });
-    return new NextResponse(pdf.bytes, {
-      headers: {
-        'Cache-Control': 'no-store',
-        'Content-Disposition': `attachment; filename="${pdf.fileName}"`,
-        'Content-Type': 'application/pdf',
-      },
-      status: 200,
-    });
+    return createReportPdfDownloadResponse(pdf);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (error instanceof AuthRequiredError) {

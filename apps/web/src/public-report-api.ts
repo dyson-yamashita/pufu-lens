@@ -25,10 +25,15 @@ import {
   isSafePublicReportLocator,
   type PrivateReportJsonV1,
   PublicReportNotFoundError,
-  reportNowFromEnv,
   validatePrivateReportJson,
 } from './report';
 import { renderReportPdf } from './report-pdf';
+import {
+  createReportFetchContext,
+  createReportPdfDownloadResponse,
+  isOutsideReportBusinessHours,
+  reportOutsideBusinessHoursResponse,
+} from './report-pdf-api';
 import { parsePositiveEnvInt, trustedClientIp } from './request-client';
 
 const hourlyRateLimiter = createPublicChatMemoryRateLimiter({
@@ -58,21 +63,12 @@ export async function handlePublicReportGet(input: {
   }
 
   try {
-    const businessHours = businessHoursFromEnv(process.env);
-    const now = reportNowFromEnv(process.env) ?? new Date();
-    if (!isWithinBusinessHours(now, businessHours)) {
-      return NextResponse.json(
-        { report: null, status: 'db_outside_business_hours' },
-        { status: 503 },
-      );
+    const context = createReportFetchContext();
+    if (isOutsideReportBusinessHours(context)) {
+      return reportOutsideBusinessHoursResponse();
     }
     const response = await getPublicReport({
-      options: {
-        businessHours,
-        now,
-        repository: createPostgresReportRepository(getRequiredAdminSql()),
-        storage: createReportStorageFromEnv(),
-      },
+      options: context.options,
       projectSlug: input.projectSlug,
       reportId: input.reportId,
     });
@@ -106,36 +102,20 @@ export async function handlePublicReportPdfGet(input: {
   }
 
   try {
-    const businessHours = businessHoursFromEnv(process.env);
-    const now = reportNowFromEnv(process.env) ?? new Date();
-    if (!isWithinBusinessHours(now, businessHours)) {
-      return NextResponse.json(
-        { report: null, status: 'db_outside_business_hours' },
-        { status: 503 },
-      );
+    const context = createReportFetchContext();
+    if (isOutsideReportBusinessHours(context)) {
+      return reportOutsideBusinessHoursResponse();
     }
     const response = await getPublicReport({
-      options: {
-        businessHours,
-        now,
-        repository: createPostgresReportRepository(getRequiredAdminSql()),
-        storage: createReportStorageFromEnv(),
-      },
+      options: context.options,
       projectSlug: input.projectSlug,
       reportId: input.reportId,
     });
     if (response.status === 'db_outside_business_hours') {
-      return NextResponse.json(response, { status: 503 });
+      return reportOutsideBusinessHoursResponse();
     }
     const pdf = await renderReportPdf({ projectSlug: input.projectSlug, report: response.report });
-    return new NextResponse(pdf.bytes, {
-      headers: {
-        'Cache-Control': 'no-store',
-        'Content-Disposition': `attachment; filename="${pdf.fileName}"`,
-        'Content-Type': 'application/pdf',
-      },
-      status: 200,
-    });
+    return createReportPdfDownloadResponse(pdf);
   } catch (error) {
     if (error instanceof PublicReportNotFoundError) {
       return publicReportNotFound();

@@ -21,7 +21,7 @@ const MAX_LINE_CHARS = 2_000;
 const MAX_WRAP_CHUNKS = 50;
 const MAX_PDF_LINES = 850;
 
-const JAPANESE_FONT_PATH = resolveJapaneseFontPath();
+let cachedJapaneseFontPath: string | undefined;
 
 export interface ReportPdfFile {
   readonly bytes: ArrayBuffer;
@@ -235,7 +235,7 @@ function safePdfFileName(value: string): string {
  */
 async function loadJapaneseFontBytes(): Promise<Uint8Array> {
   if (!cachedFontBytes) {
-    cachedFontBytes = new Uint8Array(await readFile(JAPANESE_FONT_PATH));
+    cachedFontBytes = new Uint8Array(await readFile(getJapaneseFontPath()));
   }
   return cachedFontBytes;
 }
@@ -297,6 +297,13 @@ function stripControlCharacters(value: string): string {
       return (code < 32 && code !== 10 && code !== 13) || code === 127 ? ' ' : character;
     })
     .join('');
+}
+
+function getJapaneseFontPath(): string {
+  if (!cachedJapaneseFontPath) {
+    cachedJapaneseFontPath = resolveJapaneseFontPath();
+  }
+  return cachedJapaneseFontPath;
 }
 
 function resolveJapaneseFontPath(): string {

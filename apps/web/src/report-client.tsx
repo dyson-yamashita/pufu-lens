@@ -9,6 +9,7 @@ import type { PrivateReportJsonV1, ReportListItem, ReportPeriod } from './report
 
 type ReportApiError = {
   readonly error?: { readonly code?: string; readonly message?: string };
+  readonly status?: string;
 };
 
 type ReportGenerateAction = (formData: FormData) => Promise<void>;
@@ -509,6 +510,28 @@ function reportErrorStatus(body: ReportApiError, status: number): string {
   return body.error?.code ?? body.error?.message ?? `http_${status}`;
 }
 
+function mapPdfDownloadErrorMessage(code: string): string {
+  switch (code) {
+    case 'auth_required':
+      return 'PDF をダウンロードするにはログインが必要です。';
+    case 'project_access_denied':
+      return 'このレポートの PDF をダウンロードする権限がありません。';
+    case 'report_not_found':
+    case 'public_report_not_found':
+      return 'レポートが見つかりません。';
+    case 'db_outside_business_hours':
+      return '現在は業務時間外のため PDF を取得できません。';
+    case 'report_pdf_internal_error':
+    case 'public_report_pdf_internal_error':
+    case 'public_report_internal_error':
+      return 'PDF の生成中にエラーが発生しました。時間をおいて再度お試しください。';
+    default:
+      return code.startsWith('http_')
+        ? 'PDF のダウンロードに失敗しました。'
+        : 'PDF のダウンロードに失敗しました。';
+  }
+}
+
 /**
  * Downloads a report PDF and starts a browser file download.
  *
@@ -525,7 +548,11 @@ async function downloadReportPdf(input: {
     let message = `http_${response.status}`;
     try {
       const body = (await response.json()) as ReportApiError;
-      message = reportErrorStatus(body, response.status);
+      if (body.status === 'db_outside_business_hours') {
+        message = mapPdfDownloadErrorMessage('db_outside_business_hours');
+      } else {
+        message = mapPdfDownloadErrorMessage(reportErrorStatus(body, response.status));
+      }
     } catch {
       // Keep the HTTP status fallback when the error body is not JSON.
     }
