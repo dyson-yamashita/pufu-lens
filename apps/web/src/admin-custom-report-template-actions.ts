@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import type postgres from 'postgres';
 import { requireAdminProject, requireFormValue, withSql } from './admin-actions-shared.ts';
 import {
   CUSTOM_REPORT_TEMPLATE_SCHEMA_VERSION,
@@ -9,22 +10,17 @@ import {
   validateCustomReportTemplateExport,
 } from './custom-report-schema.ts';
 
+type AdminProject = Awaited<ReturnType<typeof requireAdminProject>>;
+type SqlExecutor = postgres.Sql | postgres.TransactionSql;
+
 export async function createCustomReportTemplate(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
-  const name = requireFormValue(formData, 'name').trim();
+  const name = requireNonEmptyTemplateName(requireFormValue(formData, 'name'));
   const description = optionalFormValue(formData, 'description');
   const layout = parseLayoutJson(requireFormValue(formData, 'layoutJson'));
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
-    await sql`
-      INSERT INTO public.custom_report_templates (
-        project_id, name, description, schema_version, layout, created_by_user_id, updated_by_user_id
-      )
-      VALUES (
-        ${project.id}, ${name}, ${description}, ${CUSTOM_REPORT_TEMPLATE_SCHEMA_VERSION},
-        ${JSON.stringify(layout)}::jsonb, ${project.adminUserId}, ${project.adminUserId}
-      )
-    `;
+    await insertCustomReportTemplate(sql, project, { name, description, layout });
   });
   revalidateCustomReportTemplates(projectSlug);
 }
@@ -32,12 +28,12 @@ export async function createCustomReportTemplate(formData: FormData): Promise<vo
 export async function updateCustomReportTemplate(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
   const templateId = requireFormValue(formData, 'templateId');
-  const name = requireFormValue(formData, 'name').trim();
+  const name = requireNonEmptyTemplateName(requireFormValue(formData, 'name'));
   const description = optionalFormValue(formData, 'description');
   const layout = parseLayoutJson(requireFormValue(formData, 'layoutJson'));
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
-    await sql`
+    const result = await sql`
       UPDATE public.custom_report_templates
       SET name = ${name},
           description = ${description},
@@ -46,6 +42,9 @@ export async function updateCustomReportTemplate(formData: FormData): Promise<vo
           updated_by_user_id = ${project.adminUserId}
       WHERE project_id = ${project.id} AND id = ${templateId}
     `;
+    if (result.count === 0) {
+      throw new Error('Template not found or access denied.');
+    }
   });
   revalidateCustomReportTemplates(projectSlug);
 }
@@ -55,18 +54,21 @@ export async function disableCustomReportTemplate(formData: FormData): Promise<v
   const templateId = requireFormValue(formData, 'templateId');
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
-    await sql`
+    const result = await sql`
       UPDATE public.custom_report_templates
       SET is_active = false, updated_by_user_id = ${project.adminUserId}
       WHERE project_id = ${project.id} AND id = ${templateId}
     `;
+    if (result.count === 0) {
+      throw new Error('Template not found or access denied.');
+    }
   });
   revalidateCustomReportTemplates(projectSlug);
 }
 
 export async function importCustomReportTemplate(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
-  const exportJson = JSON.parse(requireFormValue(formData, 'exportJson')) as unknown;
+  const exportJson = parseJsonField(formData, 'exportJson');
   validateCustomReportTemplateExport(exportJson);
   if (exportJson.assets.length > 0) {
     throw new Error(
@@ -75,22 +77,61 @@ export async function importCustomReportTemplate(formData: FormData): Promise<vo
   }
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
-    await sql`
-      INSERT INTO public.custom_report_templates (
-        project_id, name, description, schema_version, layout, created_by_user_id, updated_by_user_id
-      )
-      VALUES (
-        ${project.id}, ${exportJson.template.name}, ${exportJson.template.description ?? null},
-        ${CUSTOM_REPORT_TEMPLATE_SCHEMA_VERSION}, ${JSON.stringify(exportJson.template.layout)}::jsonb,
-        ${project.adminUserId}, ${project.adminUserId}
-      )
-    `;
+    await insertCustomReportTemplate(sql, project, {
+      name: exportJson.template.name,
+      description: exportJson.template.description ?? null,
+      layout: exportJson.template.layout,
+    });
   });
   revalidateCustomReportTemplates(projectSlug);
 }
 
+async function insertCustomReportTemplate(
+  sql: SqlExecutor,
+  project: AdminProject,
+  params: {
+    readonly name: string;
+    readonly description: string | null;
+    readonly layout: CustomReportLayoutV1;
+  },
+): Promise<void> {
+  await sql`
+    INSERT INTO public.custom_report_templates (
+      project_id, name, description, schema_version, layout, created_by_user_id, updated_by_user_id
+    )
+    VALUES (
+      ${project.id}, ${params.name}, ${params.description}, ${CUSTOM_REPORT_TEMPLATE_SCHEMA_VERSION},
+      ${JSON.stringify(params.layout)}::jsonb, ${project.adminUserId}, ${project.adminUserId}
+    )
+  `;
+}
+
+function requireNonEmptyTemplateName(value: string): string {
+  const name = value.trim();
+  if (!name) {
+    throw new Error('name is required.');
+  }
+  return name;
+}
+
+function parseJsonField(formData: FormData, fieldName: string): unknown {
+  return parseJsonString(requireFormValue(formData, fieldName), fieldName);
+}
+
+function parseJsonString(raw: string, context: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch (error) {
+    const message =
+      error instanceof Error && error.message
+        ? `Invalid JSON in ${context}: ${error.message}`
+        : `Invalid JSON in ${context}`;
+    throw new Error(message);
+  }
+}
+
 function parseLayoutJson(value: string): CustomReportLayoutV1 {
-  const parsed = JSON.parse(value) as unknown;
+  const parsed = parseJsonString(value, 'layoutJson');
   validateCustomReportLayout(parsed);
   return parsed;
 }
