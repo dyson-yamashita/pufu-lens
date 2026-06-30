@@ -303,6 +303,13 @@ export function ReportDocument({
             <dd>{report.generated_at}</dd>
           </div>
         </dl>
+        <a
+          className="secondary-button"
+          data-testid="report-pdf-download-link"
+          href={`/api/projects/${projectSlug}/reports/${reportId}/pdf`}
+        >
+          Download PDF
+        </a>
       </header>
       {report.custom_layout ? (
         <CustomReportLayoutRenderer report={report} snapshot={report.custom_layout} />
@@ -404,6 +411,13 @@ export function PublicReportDocument({
             <dd>{report.generated_at}</dd>
           </div>
         </dl>
+        <a
+          className="secondary-button"
+          data-testid="public-report-pdf-download-link"
+          href={`/api/public/projects/${projectSlug}/reports/${reportId}/pdf`}
+        >
+          Download PDF
+        </a>
       </header>
       {report.custom_layout ? (
         <CustomReportLayoutRenderer report={report} snapshot={report.custom_layout} />

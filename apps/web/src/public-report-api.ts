@@ -28,6 +28,7 @@ import {
   reportNowFromEnv,
   validatePrivateReportJson,
 } from './report';
+import { renderReportPdf } from './report-pdf';
 import { parsePositiveEnvInt, trustedClientIp } from './request-client';
 
 const hourlyRateLimiter = createPublicChatMemoryRateLimiter({
@@ -80,6 +81,62 @@ export async function handlePublicReportGet(input: {
     console.error('Public Report API Error:', error);
     return NextResponse.json(
       { error: { code: 'public_report_internal_error', message: 'An unexpected error occurred' } },
+      { status: 500 },
+    );
+  }
+}
+
+export async function handlePublicReportPdfGet(input: {
+  readonly projectSlug: string;
+  readonly reportId: string;
+}) {
+  if (!isSafePublicReportLocator(input)) {
+    return publicReportNotFound();
+  }
+
+  try {
+    const businessHours = businessHoursFromEnv(process.env);
+    const now = reportNowFromEnv(process.env) ?? new Date();
+    if (!isWithinBusinessHours(now, businessHours)) {
+      return NextResponse.json(
+        { report: null, status: 'db_outside_business_hours' },
+        { status: 503 },
+      );
+    }
+    const response = await getPublicReport({
+      options: {
+        businessHours,
+        now,
+        repository: createPostgresReportRepository(getRequiredAdminSql()),
+        storage: createReportStorageFromEnv(),
+      },
+      projectSlug: input.projectSlug,
+      reportId: input.reportId,
+    });
+    if (response.status === 'db_outside_business_hours') {
+      return NextResponse.json(response, { status: 503 });
+    }
+    const pdf = renderReportPdf({ projectSlug: input.projectSlug, report: response.report });
+    return new NextResponse(pdf.bytes, {
+      headers: {
+        'Cache-Control': 'no-store',
+        'Content-Disposition': `attachment; filename="${pdf.fileName}"`,
+        'Content-Type': 'application/pdf',
+      },
+      status: 200,
+    });
+  } catch (error) {
+    if (error instanceof PublicReportNotFoundError) {
+      return publicReportNotFound();
+    }
+    console.error('Public Report PDF API Error:', error);
+    return NextResponse.json(
+      {
+        error: {
+          code: 'public_report_pdf_internal_error',
+          message: 'An unexpected error occurred',
+        },
+      },
       { status: 500 },
     );
   }
