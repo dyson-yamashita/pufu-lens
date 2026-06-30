@@ -204,11 +204,11 @@ export async function deleteProject(formData: FormData): Promise<void> {
         await tx`SET LOCAL search_path = ag_catalog, "$user", public`;
 
         if (project.graphName) {
-          const graphRows = (await tx`
+          const graphRows = await tx`
             SELECT 1
             FROM ag_catalog.ag_graph
             WHERE name = ${project.graphName}
-          `) as readonly unknown[];
+          `;
           if (graphRows.length > 0) {
             await tx`SELECT drop_graph(${project.graphName}, ${true})`;
           }

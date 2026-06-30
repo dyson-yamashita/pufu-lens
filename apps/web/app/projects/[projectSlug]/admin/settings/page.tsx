@@ -294,7 +294,7 @@ export default async function ProjectSettingsPage({
             <h2>Delete project</h2>
           </div>
         </div>
-        <p className="danger-zone-copy">
+        <p className="danger-zone-copy" data-testid="project-settings-danger-zone-copy">
           プロジェクトを完全に削除します。メンバー、連携、データソース、グラフ、レポートなど関連データも削除され、元に戻せません。
         </p>
         <ProjectDeleteDialog

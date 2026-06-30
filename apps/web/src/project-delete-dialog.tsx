@@ -46,7 +46,7 @@ export function ProjectDeleteDialog({
               <h2>Delete project</h2>
             </div>
           </div>
-          <p className="danger-zone-copy">
+          <p className="danger-zone-copy" data-testid="project-delete-warning-text">
             この操作は取り消せません。プロジェクト、メンバー、データソース、グラフ、レポートなど関連データが削除されます。
           </p>
           <ActionForm
