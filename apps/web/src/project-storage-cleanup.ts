@@ -57,9 +57,9 @@ export async function prepareProjectStorageCleanup(
                 failedObjectDigests.push(objectDigest);
               }
               console.warn(
-                `Project storage object cleanup failed for digest ${objectDigest}: ${
-                  error instanceof Error ? error.message : String(error)
-                }`,
+                `Project storage object cleanup failed for digest ${objectDigest}: ${summarizeCleanupError(
+                  error,
+                )}`,
               );
             }),
         );
@@ -85,6 +85,13 @@ export function formatProjectStorageCleanupFailure(result: ProjectStorageCleanup
 
 function digestStorageObjectUri(uri: string): string {
   return createHash('sha256').update(uri).digest('hex').slice(0, 16);
+}
+
+function summarizeCleanupError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.name;
+  }
+  return typeof error;
 }
 
 export async function ensureProjectStoragePrefixes(projectSlug: string): Promise<void> {

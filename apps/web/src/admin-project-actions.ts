@@ -17,14 +17,10 @@ import {
   withSql,
 } from './admin-actions-shared.ts';
 import { isProjectVisibility, type ProjectVisibility } from './admin-data';
+import { deleteProjectUseCase } from './delete-project-use-case.ts';
 import { saveGithubAppConnectionConfig } from './project-connections';
-import {
-  ensureProjectStoragePrefixes,
-  formatProjectStorageCleanupFailure,
-  type PreparedProjectStorageCleanup,
-  prepareProjectStorageCleanup,
-} from './project-storage-cleanup.ts';
-import { createReportStorageFromEnv, writePublicProjectManifest } from './report';
+import { ensureProjectStoragePrefixes } from './project-storage-cleanup.ts';
+import { writePublicProjectVisibilityManifest } from './project-visibility-manifest.ts';
 
 type SqlExecutor = postgres.Sql | postgres.TransactionSql;
 
@@ -200,11 +196,7 @@ export async function updateProjectSettings(formData: FormData): Promise<void> {
 export async function deleteProject(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
   const confirmationProjectName = requireFormValue(formData, 'confirmationProjectName').trim();
-  let cleanupProjectStorage: PreparedProjectStorageCleanup = async () => ({
-    deletedCount: 0,
-    failedCount: 0,
-    failedObjectDigests: [],
-  });
+  let storageCleanupWarning: string | undefined;
 
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
@@ -212,55 +204,13 @@ export async function deleteProject(formData: FormData): Promise<void> {
       throw new Error('Project name confirmation does not match.');
     }
 
-    cleanupProjectStorage = await prepareProjectStorageCleanup(projectSlug);
-
-    await writePublicProjectVisibilityManifest(projectSlug, 'private');
-
-    try {
-      await sql.begin(async (tx) => {
-        await tx`LOAD 'age'`;
-        await tx`SET LOCAL search_path = ag_catalog, "$user", public`;
-
-        if (project.graphName) {
-          const graphRows = await tx`
-            SELECT 1
-            FROM ag_catalog.ag_graph
-            WHERE name = ${project.graphName}
-          `;
-          if (graphRows.length > 0) {
-            await tx`SELECT drop_graph(${project.graphName}, ${true})`;
-          }
-        }
-
-        await tx`
-          DELETE FROM public.projects
-          WHERE id = ${project.id}
-        `;
-      });
-    } catch (error) {
-      try {
-        await writePublicProjectVisibilityManifest(projectSlug, project.visibility);
-      } catch (rollbackError) {
-        console.error('Failed to rollback public project visibility manifest:', rollbackError);
-      }
-      throw error;
-    }
+    ({ storageCleanupWarning } = await deleteProjectUseCase(sql, project));
   });
 
-  try {
-    const storageCleanupResult = await cleanupProjectStorage();
-    if (storageCleanupResult.failedCount > 0) {
-      console.warn(formatProjectStorageCleanupFailure(storageCleanupResult));
-    }
-  } catch (error) {
-    console.warn(
-      `Project storage cleanup failed for ${projectSlug}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-  } finally {
-    revalidateProject(projectSlug);
+  if (storageCleanupWarning) {
+    console.warn(storageCleanupWarning);
   }
+  revalidateProject(projectSlug);
   redirect('/projects');
 }
 
@@ -356,22 +306,4 @@ async function updateProjectSettingsRow(
         updated_at = now()
     WHERE id = ${projectId}
   `;
-}
-
-async function writePublicProjectVisibilityManifest(
-  projectSlug: string,
-  visibility: ProjectVisibility,
-): Promise<void> {
-  try {
-    await writePublicProjectManifest({
-      projectSlug,
-      storage: createReportStorageFromEnv(),
-      visibility,
-    });
-  } catch (error) {
-    if (error instanceof Error && /STORAGE_ROOT|LOCAL_STORAGE_ROOT/.test(error.message)) {
-      return;
-    }
-    throw error;
-  }
 }
