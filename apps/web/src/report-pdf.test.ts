@@ -116,7 +116,11 @@ const customPdfText = safeReportPdfLines(customReport).join('\n');
 assert.equal(customPdfText.includes('private_raw_locator'), false);
 assert.equal(customPdfText.includes('storage_uri'), false);
 assert.equal(customPdfText.includes('user@example.com'), false);
+assert.equal(customPdfText.includes('gs://private-bucket'), false);
+assert.equal(customPdfText.includes('//reports/report-a'), false);
+assert.equal(customPdfText.includes('abc'), false);
 assert.equal(customPdfText.includes('[redacted]'), true);
+assert.equal(customPdfText.includes('Image:'), true);
 
 const nullMetricsReport: PrivateReportJsonV1 = {
   ...standardReport,

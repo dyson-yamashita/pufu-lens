@@ -223,6 +223,8 @@ assert.throws(
 for (const displayName of [
   '../logo.png',
   'nested/logo.png',
+  '..\\logo.png',
+  'nested\\logo.png',
   'gs://bucket/logo.png',
   'logo\u0000.png',
 ]) {

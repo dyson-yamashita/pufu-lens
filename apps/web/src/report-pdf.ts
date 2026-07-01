@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, type PDFFont } from 'pdf-lib';
 import type { CustomReportPart, CustomReportSnapshotV1 } from './custom-report-schema.ts';
+import { redactText } from './report-public-redaction.ts';
 import type { PrivateReportJsonV1 } from './report-schema.ts';
 
 const PDF_TEXT_DENYLIST = [
@@ -13,9 +14,12 @@ const PDF_TEXT_DENYLIST = [
   /storage[_-]?uri/giu,
   /secret/giu,
   /api[_-]?key/giu,
-  /token/giu,
+  /\btoken\s+\S+/giu,
   /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu,
 ];
+
+const PDF_GENERIC_URI_PATTERN = /[a-z][a-z0-9+.-]*:\/\/[^\s)\]"']+/giu;
+const PDF_REDACTION_PLACEHOLDER = /\[redacted(?:-[a-z]+)?\]/giu;
 
 const MAX_LINE_CHARS = 2_000;
 const MAX_WRAP_CHUNKS = 50;
@@ -162,9 +166,12 @@ function redactPdfText(value: string | null | undefined): string {
     return '';
   }
   let text = stripControlCharacters(value);
+  text = redactText(text);
+  text = text.replace(PDF_GENERIC_URI_PATTERN, '[redacted]');
   for (const pattern of PDF_TEXT_DENYLIST) {
     text = text.replace(pattern, '[redacted]');
   }
+  text = text.replace(PDF_REDACTION_PLACEHOLDER, '[redacted]');
   return stripMarkdown(text).trim();
 }
 

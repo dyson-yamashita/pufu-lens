@@ -509,7 +509,6 @@ function isSafeAssetDisplayName(value: unknown): value is string {
   if (
     normalized.includes('/') ||
     normalized === '.' ||
-    normalized === '..' ||
     normalized.includes('..') ||
     /^[a-z][a-z0-9+.-]*:/iu.test(normalized) ||
     containsControlCharacter(normalized)
@@ -520,13 +519,8 @@ function isSafeAssetDisplayName(value: unknown): value is string {
 }
 
 function containsControlCharacter(value: string): boolean {
-  for (const character of value) {
-    const codePoint = character.codePointAt(0);
-    if (codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f)) {
-      return true;
-    }
-  }
-  return false;
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: intentional detection of ASCII control chars in asset names
+  return /[\u0000-\u001F\u007F]/u.test(value);
 }
 
 function validateResult(value: unknown): void {
