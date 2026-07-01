@@ -156,10 +156,10 @@ function partLines(part: CustomReportPart, snapshot: CustomReportSnapshotV1): st
 }
 
 /**
- * Redacts sensitive text and removes formatting from PDF content.
+ * Sanitizes text for PDF output by removing formatting and redacting sensitive content.
  *
- * @param value - The input text to sanitize
- * @returns The sanitized text with sensitive substrings replaced by `[redacted]`
+ * @param value - The text to sanitize.
+ * @returns The sanitized text with sensitive substrings replaced by `[redacted]`.
  */
 function redactPdfText(value: string | null | undefined): string {
   if (value == null) {
