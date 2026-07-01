@@ -66,12 +66,13 @@ export function ChatPanel({
           ? ((await result.json()) as PrivateChatHistoryListResponse | ChatErrorResponse)
           : null;
         if (!result.ok) {
-          if (isDbOutsideBusinessHoursError(body && 'error' in body ? body : null)) {
+          const errorBody = isChatErrorResponseBody(body) ? body : null;
+          if (isDbOutsideBusinessHoursError(errorBody)) {
             return;
           }
-          throw new Error(chatErrorMessage(body && 'error' in body ? body : null, result.status));
+          throw new Error(chatErrorMessage(errorBody, result.status));
         }
-        if (!body || !('items' in body)) {
+        if (!isPrivateChatHistoryListResponse(body)) {
           throw new Error('Chat history API returned an invalid response.');
         }
         if (requestSeq !== historyRequestSeqRef.current) {
@@ -130,7 +131,7 @@ export function ChatPanel({
       if (!result.ok) {
         throw new Error(chatErrorMessage(body, result.status));
       }
-      if (!body || !('status' in body)) {
+      if (!isChatResponseBody(body)) {
         throw new Error('Chat API returned an invalid response.');
       }
       setMessages((current) =>
@@ -270,12 +271,12 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
             | ChatErrorResponse)
         : null;
       if (!result.ok) {
-        if (body && 'status' in body && body.status === 'db_outside_business_hours') {
+        if (isRecord(body) && 'status' in body && body.status === 'db_outside_business_hours') {
           setUnavailable(true);
         }
         throw new Error(chatErrorMessage(body, result.status));
       }
-      if (!body || !('status' in body)) {
+      if (!isPublicChatResponseBody(body)) {
         throw new Error('Public Chat API returned an invalid response.');
       }
       if (body.status === 'db_outside_business_hours') {
@@ -386,6 +387,24 @@ function publicSafeChatResponse(
   };
 }
 
+function isChatErrorResponseBody(value: unknown): value is ChatErrorResponse {
+  return isRecord(value) && 'error' in value;
+}
+
+function isPrivateChatHistoryListResponse(value: unknown): value is PrivateChatHistoryListResponse {
+  return isRecord(value) && Array.isArray(value.items);
+}
+
+function isChatResponseBody(value: unknown): value is ChatResponse {
+  return isRecord(value) && typeof value.status === 'string';
+}
+
+function isPublicChatResponseBody(
+  value: unknown,
+): value is PublicChatResponse | PublicProjectChatUnavailableResponse {
+  return isRecord(value) && typeof value.status === 'string';
+}
+
 function chatErrorMessage(
   body:
     | ChatResponse
@@ -395,13 +414,17 @@ function chatErrorMessage(
     | null,
   status: number,
 ): string {
-  if (body && 'error' in body && body.error) {
+  if (isChatErrorResponseBody(body) && body.error) {
     return typeof body.error === 'string'
       ? body.error
       : (body.error.message ?? body.error.code ?? `HTTP ${status}`);
   }
-  if (body && 'answer' in body && body.answer) {
+  if (isRecord(body) && 'answer' in body && typeof body.answer === 'string' && body.answer) {
     return body.answer;
   }
   return `HTTP ${status}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
