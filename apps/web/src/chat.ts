@@ -89,6 +89,10 @@ export interface PrivateChatHistoryListResponse {
   readonly items: readonly PrivateChatHistoryItem[];
 }
 
+export type ChatErrorResponse = {
+  readonly error?: string | { readonly code?: string; readonly message?: string };
+};
+
 export interface MastraChatHistoryMessage {
   readonly content: string;
   readonly role: 'assistant' | 'user';
@@ -1324,9 +1328,9 @@ export function createPostgresChatRepository(
   };
 }
 
-async function readPrivateChatHistoryRows(
-  query: () => Promise<readonly unknown[]>,
-): Promise<readonly unknown[]> {
+async function readPrivateChatHistoryRows<Row>(
+  query: () => Promise<readonly Row[]>,
+): Promise<readonly Row[]> {
   try {
     return await query();
   } catch (error) {
@@ -1344,9 +1348,17 @@ export function isMissingPrivateChatHistoryTableError(error: unknown): boolean {
   const code = error.code;
   const message = error.message;
   return (
-    code === '42P01' &&
-    typeof message === 'string' &&
-    message.includes('private_chat_messages')
+    code === '42P01' && typeof message === 'string' && message.includes('private_chat_messages')
+  );
+}
+
+export function isDbOutsideBusinessHoursError(body: ChatErrorResponse | null): boolean {
+  if (!body?.error || typeof body.error === 'string') {
+    return body?.error === 'db_outside_business_hours';
+  }
+  return (
+    body.error.code === 'db_outside_business_hours' ||
+    body.error.message === 'db_outside_business_hours'
   );
 }
 

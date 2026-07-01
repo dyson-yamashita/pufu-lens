@@ -12,6 +12,7 @@ import {
   hybridSearchCandidateLimit,
   inferChatEditingMetadata,
   inferPublicChatEditingMetadata,
+  isDbOutsideBusinessHoursError,
   isMissingPrivateChatHistoryTableError,
   isWithinBusinessHours,
   normalizeHybridKeywordQuery,
@@ -632,6 +633,14 @@ assert.equal(
   }),
   false,
 );
+assert.equal(isDbOutsideBusinessHoursError({ error: 'db_outside_business_hours' }), true);
+assert.equal(
+  isDbOutsideBusinessHoursError({
+    error: { code: 'db_outside_business_hours', message: 'db_outside_business_hours' },
+  }),
+  true,
+);
+assert.equal(isDbOutsideBusinessHoursError({ error: { code: 'chat_internal_error' } }), false);
 assert.deepEqual(
   createMastraGenerateReportWorkflowBody({
     generatedBy: 'admin-ui',

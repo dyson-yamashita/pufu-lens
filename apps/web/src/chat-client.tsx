@@ -3,7 +3,9 @@
 import { ArrowUp, Mic, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  type ChatErrorResponse,
   type ChatResponse,
+  isDbOutsideBusinessHoursError,
   type PrivateChatHistoryListResponse,
   type PublicChatResponse,
   resolvePrivateChatHistoryApplyAction,
@@ -360,10 +362,6 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
   );
 }
 
-type ChatErrorResponse = {
-  readonly error?: string | { readonly code?: string; readonly message?: string };
-};
-
 type PublicProjectChatUnavailableResponse = {
   readonly answer: 'db_outside_business_hours';
   readonly projectSlug: string;
@@ -372,16 +370,6 @@ type PublicProjectChatUnavailableResponse = {
   readonly status: 'db_outside_business_hours';
   readonly toolCalls: readonly [];
 };
-
-function isDbOutsideBusinessHoursError(body: ChatErrorResponse | null): boolean {
-  if (!body?.error || typeof body.error === 'string') {
-    return body?.error === 'db_outside_business_hours';
-  }
-  return (
-    body.error.code === 'db_outside_business_hours' ||
-    body.error.message === 'db_outside_business_hours'
-  );
-}
 
 function publicSafeChatResponse(
   response: PublicChatResponse,
