@@ -14,6 +14,7 @@ import {
   inferChatEditingMetadata,
   inferPublicChatEditingMetadata,
   isDbOutsideBusinessHoursError,
+  isDbOutsideBusinessHoursResponse,
   isMissingPrivateChatHistoryTableError,
   isOutsideBusinessHoursFromEnv,
   isWithinBusinessHours,
@@ -643,6 +644,18 @@ assert.equal(
   true,
 );
 assert.equal(isDbOutsideBusinessHoursError({ error: { code: 'chat_internal_error' } }), false);
+assert.equal(
+  isDbOutsideBusinessHoursResponse({
+    answer: DB_OUTSIDE_BUSINESS_HOURS_CODE,
+    projectSlug: 'sample-a',
+    sources: [],
+    status: DB_OUTSIDE_BUSINESS_HOURS_CODE,
+    toolCalls: [],
+  }),
+  true,
+);
+assert.equal(isDbOutsideBusinessHoursResponse({ error: DB_OUTSIDE_BUSINESS_HOURS_CODE }), true);
+assert.equal(isDbOutsideBusinessHoursResponse('db_outside_business_hours'), false);
 assert.equal(
   isOutsideBusinessHoursFromEnv({
     ...process.env,

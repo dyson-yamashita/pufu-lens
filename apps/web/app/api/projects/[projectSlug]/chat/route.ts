@@ -4,10 +4,10 @@ import { AuthRequiredError, requireSessionUserId } from '../../../../../src/auth
 import {
   createMemoryRateLimiter,
   createPostgresChatRepository,
-  DB_OUTSIDE_BUSINESS_HOURS_CODE,
   isOutsideBusinessHoursFromEnv,
   ProjectAccessDeniedError,
   privateChatHistoryToMastraMessages,
+  privateChatUnavailableResponse,
 } from '../../../../../src/chat';
 import {
   createMastraProjectChatBody,
@@ -49,16 +49,7 @@ export async function POST(
   try {
     const userId = await requireSessionUserId();
     if (isOutsideBusinessHoursFromEnv(process.env)) {
-      return NextResponse.json(
-        {
-          answer: DB_OUTSIDE_BUSINESS_HOURS_CODE,
-          projectSlug,
-          sources: [],
-          status: DB_OUTSIDE_BUSINESS_HOURS_CODE,
-          toolCalls: [],
-        },
-        { status: 503 },
-      );
+      return NextResponse.json(privateChatUnavailableResponse(projectSlug), { status: 503 });
     }
     if (!rateLimiter.check({ projectSlug, userId })) {
       return NextResponse.json(

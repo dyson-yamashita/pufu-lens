@@ -16,6 +16,7 @@ export async function GET(
   const { projectSlug } = await params;
 
   try {
+    const userId = await requireSessionUserId();
     if (isOutsideBusinessHoursFromEnv(process.env)) {
       return chatHistoryErrorResponse(
         DB_OUTSIDE_BUSINESS_HOURS_CODE,
@@ -23,7 +24,6 @@ export async function GET(
         503,
       );
     }
-    const userId = await requireSessionUserId();
     const repository = createPostgresChatRepository(getRequiredAdminSql());
     const project = await repository.lookupProjectMember({ projectSlug, userId });
     if (!project) {
