@@ -246,6 +246,20 @@ for (const displayName of [
   );
 }
 
+validateCustomReportTemplateExport({
+  ...validExport,
+  assets: [
+    {
+      byte_size: 1024,
+      content_type: 'image/png',
+      display_name: 'logo..png',
+      export_asset_key: 'asset-logo',
+      requires_upload: true,
+    },
+    validExport.assets[1],
+  ],
+});
+
 const validSnapshot = {
   layout: validLayout,
   results: {

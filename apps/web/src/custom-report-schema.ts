@@ -528,7 +528,7 @@ function isSafeAssetDisplayName(value: unknown): value is string {
   if (
     normalized.includes('/') ||
     normalized === '.' ||
-    normalized.includes('..') ||
+    /(^|\/)\.\.(?:\/|$)/u.test(normalized) ||
     /^[a-z][a-z0-9+.-]*:/iu.test(normalized) ||
     containsControlCharacter(normalized)
   ) {
