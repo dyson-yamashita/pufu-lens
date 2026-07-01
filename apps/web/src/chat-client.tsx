@@ -3,9 +3,19 @@
 import { ArrowUp, Mic, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  type ChatErrorResponse,
   type ChatResponse,
+  chatErrorMessage,
+  DB_OUTSIDE_BUSINESS_HOURS_CODE,
+  isChatErrorResponseBody,
+  isChatResponseBody,
+  isDbOutsideBusinessHoursError,
+  isDbOutsideBusinessHoursResponse,
+  isPrivateChatHistoryListResponse,
+  isPublicChatResponseBody,
   type PrivateChatHistoryListResponse,
   type PublicChatResponse,
+  type PublicProjectChatUnavailableResponse,
   resolvePrivateChatHistoryApplyAction,
 } from './chat';
 import {
@@ -32,26 +42,29 @@ export function ChatPanel({
   const [pending, setPending] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
   const historyRequestSeqRef = useRef(0);
   const pendingRef = useRef(false);
   pendingRef.current = pending;
+  const chatDisabled = disabled || unavailable;
 
   useEffect(() => {
     historyRequestSeqRef.current += 1;
     setMessages([]);
     setHistoryError(null);
     setHistoryLoading(false);
+    setUnavailable(false);
     void projectSlug;
   }, [projectSlug]);
   const speechInput = useSpeechInput({
-    disabled: disabled || pending,
+    disabled: chatDisabled || pending,
     setValue: setQuestion,
     value: question,
   });
 
   const loadHistory = useCallback(
     async (options?: { readonly refresh?: boolean }) => {
-      if (disabled) {
+      if (chatDisabled) {
         return;
       }
       const requestSeq = ++historyRequestSeqRef.current;
@@ -64,9 +77,14 @@ export function ChatPanel({
           ? ((await result.json()) as PrivateChatHistoryListResponse | ChatErrorResponse)
           : null;
         if (!result.ok) {
-          throw new Error(chatErrorMessage(body && 'error' in body ? body : null, result.status));
+          const errorBody = isChatErrorResponseBody(body) ? body : null;
+          if (isDbOutsideBusinessHoursError(errorBody)) {
+            setUnavailable(true);
+            return;
+          }
+          throw new Error(chatErrorMessage(errorBody, result.status));
         }
-        if (!body || !('items' in body)) {
+        if (!isPrivateChatHistoryListResponse(body)) {
           throw new Error('Chat history API returned an invalid response.');
         }
         if (requestSeq !== historyRequestSeqRef.current) {
@@ -94,7 +112,7 @@ export function ChatPanel({
         }
       }
     },
-    [disabled, projectSlug],
+    [chatDisabled, projectSlug],
   );
 
   useEffect(() => {
@@ -104,7 +122,7 @@ export function ChatPanel({
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedQuestion = question.trim();
-    if (!trimmedQuestion || disabled || pending) {
+    if (!trimmedQuestion || chatDisabled || pending) {
       return;
     }
 
@@ -123,9 +141,13 @@ export function ChatPanel({
       const isJson = result.headers.get('content-type')?.includes('application/json') ?? false;
       const body = isJson ? ((await result.json()) as ChatResponse | ChatErrorResponse) : null;
       if (!result.ok) {
+        if (isDbOutsideBusinessHoursResponse(body)) {
+          setUnavailable(true);
+          throw new Error(DB_OUTSIDE_BUSINESS_HOURS_CODE);
+        }
         throw new Error(chatErrorMessage(body, result.status));
       }
-      if (!body || !('status' in body)) {
+      if (!isChatResponseBody(body)) {
         throw new Error('Chat API returned an invalid response.');
       }
       setMessages((current) =>
@@ -159,7 +181,7 @@ export function ChatPanel({
             aria-label="Refresh chat history"
             className="chat-icon-button"
             data-testid="chat-history-refresh-button"
-            disabled={disabled || pending || historyLoading}
+            disabled={chatDisabled || pending || historyLoading}
             onClick={() => {
               void loadHistory({ refresh: true });
             }}
@@ -186,7 +208,7 @@ export function ChatPanel({
         <div className="chat-input-row">
           <textarea
             data-testid="chat-question-input"
-            disabled={disabled || pending}
+            disabled={chatDisabled || pending}
             id="chat-question"
             onChange={(event) => setQuestion(event.target.value)}
             rows={3}
@@ -198,7 +220,7 @@ export function ChatPanel({
               aria-pressed={speechInput.listening}
               className={`chat-icon-button${speechInput.listening ? ' chat-icon-button-active' : ''}`}
               data-testid="chat-mic-button"
-              disabled={disabled || pending || !speechInput.supported}
+              disabled={chatDisabled || pending || !speechInput.supported}
               onClick={speechInput.toggle}
               title={speechInput.supported ? 'Voice input' : 'Voice input is not supported'}
               type="button"
@@ -209,7 +231,7 @@ export function ChatPanel({
               aria-label="Send"
               className="chat-icon-button chat-send-button"
               data-testid="chat-submit-button"
-              disabled={disabled || pending || !question.trim()}
+              disabled={chatDisabled || pending || !question.trim()}
               title="Send"
               type="submit"
             >
@@ -218,7 +240,7 @@ export function ChatPanel({
           </div>
         </div>
       </form>
-      {disabled ? (
+      {chatDisabled ? (
         <p className="notice" data-testid="chat-disabled-notice">
           db_outside_business_hours
         </p>
@@ -265,17 +287,17 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
             | ChatErrorResponse)
         : null;
       if (!result.ok) {
-        if (body && 'status' in body && body.status === 'db_outside_business_hours') {
+        if (isDbOutsideBusinessHoursResponse(body)) {
           setUnavailable(true);
         }
         throw new Error(chatErrorMessage(body, result.status));
       }
-      if (!body || !('status' in body)) {
+      if (!isPublicChatResponseBody(body)) {
         throw new Error('Public Chat API returned an invalid response.');
       }
-      if (body.status === 'db_outside_business_hours') {
+      if (body.status === DB_OUTSIDE_BUSINESS_HOURS_CODE) {
         setUnavailable(true);
-        throw new Error('db_outside_business_hours');
+        throw new Error(DB_OUTSIDE_BUSINESS_HOURS_CODE);
       }
       setMessages((current) =>
         replacePendingAssistant(current, pendingId, {
@@ -289,9 +311,6 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
       );
     } catch (caught) {
       const errorMessage = caught instanceof Error ? caught.message : String(caught);
-      if (errorMessage === 'db_outside_business_hours') {
-        setUnavailable(true);
-      }
       setMessages((current) =>
         replacePendingAssistant(current, pendingId, {
           error: errorMessage,
@@ -357,19 +376,6 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
   );
 }
 
-type ChatErrorResponse = {
-  readonly error?: string | { readonly code?: string; readonly message?: string };
-};
-
-type PublicProjectChatUnavailableResponse = {
-  readonly answer: 'db_outside_business_hours';
-  readonly projectSlug: string;
-  readonly reportId: string;
-  readonly sources: readonly [];
-  readonly status: 'db_outside_business_hours';
-  readonly toolCalls: readonly [];
-};
-
 function publicSafeChatResponse(
   response: PublicChatResponse,
   options: { readonly projectSlug: string },
@@ -383,24 +389,4 @@ function publicSafeChatResponse(
     status: response.status,
     toolCalls: response.toolCalls,
   };
-}
-
-function chatErrorMessage(
-  body:
-    | ChatResponse
-    | PublicChatResponse
-    | PublicProjectChatUnavailableResponse
-    | ChatErrorResponse
-    | null,
-  status: number,
-): string {
-  if (body && 'error' in body && body.error) {
-    return typeof body.error === 'string'
-      ? body.error
-      : (body.error.message ?? body.error.code ?? `HTTP ${status}`);
-  }
-  if (body && 'answer' in body && body.answer) {
-    return body.answer;
-  }
-  return `HTTP ${status}`;
 }

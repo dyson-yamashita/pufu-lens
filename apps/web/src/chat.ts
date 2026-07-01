@@ -58,6 +58,8 @@ export type ChatEditingQuestionType =
   | 'timeline'
   | 'unknown';
 
+export const DB_OUTSIDE_BUSINESS_HOURS_CODE = 'db_outside_business_hours';
+
 export interface ChatEditingMetadata {
   readonly caveats: readonly string[];
   readonly confidence: 'high' | 'low' | 'medium';
@@ -71,7 +73,7 @@ export interface ChatResponse {
   readonly editing?: ChatEditingMetadata;
   readonly projectSlug: string;
   readonly sources: readonly ChatSource[];
-  readonly status: 'answered' | 'db_outside_business_hours' | 'rate_limited';
+  readonly status: 'answered' | typeof DB_OUTSIDE_BUSINESS_HOURS_CODE | 'rate_limited';
   readonly toolCalls: readonly ChatToolCall[];
 }
 
@@ -88,6 +90,10 @@ export interface PrivateChatHistoryItem {
 export interface PrivateChatHistoryListResponse {
   readonly items: readonly PrivateChatHistoryItem[];
 }
+
+export type ChatErrorResponse = {
+  readonly error?: string | { readonly code?: string; readonly message?: string };
+};
 
 export interface MastraChatHistoryMessage {
   readonly content: string;
@@ -117,6 +123,15 @@ export interface PublicChatResponse {
   readonly sources: readonly PublicChatSource[];
   readonly status: 'answered' | 'no_public_report' | 'rate_limited' | 'refused';
   readonly toolCalls: readonly PublicChatToolCall[];
+}
+
+export interface PublicProjectChatUnavailableResponse {
+  readonly answer: typeof DB_OUTSIDE_BUSINESS_HOURS_CODE;
+  readonly projectSlug: string;
+  readonly reportId: string;
+  readonly sources: readonly [];
+  readonly status: typeof DB_OUTSIDE_BUSINESS_HOURS_CODE;
+  readonly toolCalls: readonly [];
 }
 
 export class ProjectAccessDeniedError extends Error {
@@ -504,7 +519,7 @@ export async function runPrivateChat(
 ): Promise<ChatResponse> {
   const businessHours = options.businessHours ?? DEFAULT_BUSINESS_HOURS;
   if (!isWithinBusinessHours(request.now ?? new Date(), businessHours)) {
-    return unavailableResponse(request.projectSlug);
+    return privateChatUnavailableResponse(request.projectSlug);
   }
   if (options.rateLimiter && !options.rateLimiter.check(request)) {
     return {
@@ -883,6 +898,10 @@ export function chatNowFromEnv(env?: NodeJS.ProcessEnv): Date | undefined {
   return date;
 }
 
+export function isOutsideBusinessHoursFromEnv(env: NodeJS.ProcessEnv): boolean {
+  return !isWithinBusinessHours(chatNowFromEnv(env) ?? new Date(), businessHoursFromEnv(env));
+}
+
 export function trimPrivateChatHistoryContent(
   content: string,
   maxLength = PRIVATE_CHAT_HISTORY_CONTENT_MAX,
@@ -1243,41 +1262,21 @@ export function createPostgresChatRepository(
       return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
     },
     async listPrivateChatHistoryForContext({ limit, projectId, userId }) {
-      const rows = await sql`
-        SELECT
-          id::text AS id,
-          question,
-          answer,
-          sources,
-          tool_calls,
-          editing,
-          created_at
-        FROM public.private_chat_messages
-        WHERE project_id = ${projectId}
-          AND user_id = ${userId}
-        ORDER BY created_at DESC, id DESC
-        LIMIT ${limit ?? PRIVATE_CHAT_CONTEXT_TURN_LIMIT}
-      `;
+      const rows = await listPrivateChatHistoryRows(sql, {
+        limit: limit ?? PRIVATE_CHAT_CONTEXT_TURN_LIMIT,
+        projectId,
+        userId,
+      });
       return rows
         .map((row) => privateChatHistoryItemFromRow(parsePrivateChatHistoryRow(row)))
         .reverse();
     },
     async listPrivateChatHistoryForUi({ limit, projectId, userId }) {
-      const rows = await sql`
-        SELECT
-          id::text AS id,
-          question,
-          answer,
-          sources,
-          tool_calls,
-          editing,
-          created_at
-        FROM public.private_chat_messages
-        WHERE project_id = ${projectId}
-          AND user_id = ${userId}
-        ORDER BY created_at DESC, id DESC
-        LIMIT ${limit ?? PRIVATE_CHAT_HISTORY_UI_LIMIT}
-      `;
+      const rows = await listPrivateChatHistoryRows(sql, {
+        limit: limit ?? PRIVATE_CHAT_HISTORY_UI_LIMIT,
+        projectId,
+        userId,
+      });
       return privateChatHistoryItemsForUiDisplay(
         rows.map((row) => privateChatHistoryItemFromRow(parsePrivateChatHistoryRow(row))),
       );
@@ -1320,12 +1319,120 @@ export function createPostgresChatRepository(
   };
 }
 
-function unavailableResponse(projectSlug: string): ChatResponse {
+function listPrivateChatHistoryRows(
+  sql: postgres.Sql,
+  input: { readonly limit: number; readonly projectId: string; readonly userId: string },
+): Promise<readonly unknown[]> {
+  return readPrivateChatHistoryRows(
+    () => sql`
+      SELECT
+        id::text AS id,
+        question,
+        answer,
+        sources,
+        tool_calls,
+        editing,
+        created_at
+      FROM public.private_chat_messages
+      WHERE project_id = ${input.projectId}
+        AND user_id = ${input.userId}
+      ORDER BY created_at DESC, id DESC
+      LIMIT ${input.limit}
+    `,
+  );
+}
+
+async function readPrivateChatHistoryRows<Row>(
+  query: () => Promise<readonly Row[]>,
+): Promise<readonly Row[]> {
+  try {
+    return await query();
+  } catch (error) {
+    if (isMissingPrivateChatHistoryTableError(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+export function isMissingPrivateChatHistoryTableError(error: unknown): boolean {
+  if (!isRecord(error)) {
+    return false;
+  }
+  const code = error.code;
+  const message = error.message;
+  return (
+    code === '42P01' && typeof message === 'string' && message.includes('private_chat_messages')
+  );
+}
+
+export function isDbOutsideBusinessHoursError(body: ChatErrorResponse | null): boolean {
+  if (!body?.error || typeof body.error === 'string') {
+    return body?.error === DB_OUTSIDE_BUSINESS_HOURS_CODE;
+  }
+  return (
+    body.error.code === DB_OUTSIDE_BUSINESS_HOURS_CODE ||
+    body.error.message === DB_OUTSIDE_BUSINESS_HOURS_CODE
+  );
+}
+
+export function isDbOutsideBusinessHoursResponse(value: unknown): boolean {
+  if (isDbOutsideBusinessHoursError(isChatErrorResponseBody(value) ? value : null)) {
+    return true;
+  }
+  return (
+    isRecord(value) &&
+    (value.status === DB_OUTSIDE_BUSINESS_HOURS_CODE ||
+      value.answer === DB_OUTSIDE_BUSINESS_HOURS_CODE)
+  );
+}
+
+export function isChatErrorResponseBody(value: unknown): value is ChatErrorResponse {
+  return isRecord(value) && 'error' in value;
+}
+
+export function isPrivateChatHistoryListResponse(
+  value: unknown,
+): value is PrivateChatHistoryListResponse {
+  return isRecord(value) && Array.isArray(value.items);
+}
+
+export function isChatResponseBody(value: unknown): value is ChatResponse {
+  return isRecord(value) && typeof value.status === 'string';
+}
+
+export function isPublicChatResponseBody(
+  value: unknown,
+): value is PublicChatResponse | PublicProjectChatUnavailableResponse {
+  return isRecord(value) && typeof value.status === 'string';
+}
+
+export function chatErrorMessage(
+  body:
+    | ChatResponse
+    | PublicChatResponse
+    | PublicProjectChatUnavailableResponse
+    | ChatErrorResponse
+    | null,
+  status: number,
+): string {
+  if (isChatErrorResponseBody(body) && body.error) {
+    return typeof body.error === 'string'
+      ? body.error
+      : (body.error.message ?? body.error.code ?? `HTTP ${status}`);
+  }
+  if (isRecord(body) && 'answer' in body && typeof body.answer === 'string' && body.answer) {
+    return body.answer;
+  }
+  return `HTTP ${status}`;
+}
+
+export function privateChatUnavailableResponse(projectSlug: string): ChatResponse {
   return {
-    answer: 'db_outside_business_hours',
+    answer: DB_OUTSIDE_BUSINESS_HOURS_CODE,
     projectSlug,
     sources: [],
-    status: 'db_outside_business_hours',
+    status: DB_OUTSIDE_BUSINESS_HOURS_CODE,
     toolCalls: [],
   };
 }
@@ -1845,7 +1952,7 @@ function cypherString(value: string): string {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
