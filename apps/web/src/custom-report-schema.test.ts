@@ -390,6 +390,24 @@ assert.equal(
 );
 
 assert.equal(
+  parseCustomReportTemplateRow({
+    created_at: '2026-06-30T09:00:00.000Z',
+    created_by_user_id: null,
+    description: null,
+    id: 'template-1',
+    is_active: true,
+    layout: JSON.stringify(validLayout),
+    name: '転職戦略レポート',
+    project_id: 'project-a',
+    schema_version: CUSTOM_REPORT_TEMPLATE_SCHEMA_VERSION,
+    template_version: 1,
+    updated_at: '2026-06-30T09:00:00.000Z',
+    updated_by_user_id: null,
+  }).layout.schema_version,
+  CUSTOM_REPORT_LAYOUT_SCHEMA_VERSION,
+);
+
+assert.equal(
   parseReportTemplateRunRow({
     created_at: '2026-06-30T09:00:00.000Z',
     id: 'run-1',
@@ -402,6 +420,24 @@ assert.equal(
     template_version: 1,
   }).template_snapshot_hash,
   'sha256:abc',
+);
+
+const parsedRunWithJsonFields = parseReportTemplateRunRow({
+  created_at: '2026-06-30T09:00:00.000Z',
+  id: 'run-1',
+  judgement_summary: JSON.stringify({ strategy_logic: { score: 80 } }),
+  layout_snapshot: JSON.stringify(validLayout),
+  project_id: 'project-a',
+  report_id: 'report-a',
+  template_id: 'template-1',
+  template_snapshot_hash: 'sha256:abc',
+  template_version: 1,
+});
+
+assert.deepEqual(parsedRunWithJsonFields.judgement_summary, { strategy_logic: { score: 80 } });
+assert.equal(
+  parsedRunWithJsonFields.layout_snapshot.schema_version,
+  CUSTOM_REPORT_LAYOUT_SCHEMA_VERSION,
 );
 
 assert.throws(

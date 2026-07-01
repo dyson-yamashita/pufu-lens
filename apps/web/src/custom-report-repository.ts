@@ -3,7 +3,8 @@ import {
   type CustomReportAssetContentType,
   type CustomReportLayoutV1,
   isCustomReportAssetContentType,
-  validateCustomReportLayout,
+  parseCustomReportLayout,
+  parseJsonLikeRecord,
 } from './custom-report-schema.ts';
 
 export type CustomReportAssetStatus = 'active' | 'disabled';
@@ -139,14 +140,14 @@ export function parseCustomReportTemplateRow(value: unknown): CustomReportTempla
   if (!isDateLike(created_at) || !isDateLike(updated_at)) {
     throw new Error('Invalid custom report template timestamp fields.');
   }
-  validateCustomReportLayout(layout);
+  const parsedLayout = parseCustomReportLayout(layout, 'custom_report_templates.layout');
   return {
     created_at,
     created_by_user_id,
     description,
     id,
     is_active,
-    layout,
+    layout: parsedLayout,
     name,
     project_id,
     schema_version,
@@ -180,18 +181,19 @@ export function parseReportTemplateRunRow(value: unknown): ReportTemplateRunRow 
   if (!isPositiveInteger(template_version) || typeof template_snapshot_hash !== 'string') {
     throw new Error('Invalid report template run template snapshot fields.');
   }
-  validateCustomReportLayout(layout_snapshot);
-  if (!isRecord(judgement_summary)) {
-    throw new Error('Invalid report template run judgement_summary.');
-  }
+  const parsedLayoutSnapshot = parseCustomReportLayout(
+    layout_snapshot,
+    'report_template_runs.layout_snapshot',
+  );
+  const parsedJudgementSummary = parseJsonLikeRecord(judgement_summary, 'judgement_summary');
   if (!isDateLike(created_at)) {
     throw new Error('Invalid report template run created_at.');
   }
   return {
     created_at,
     id,
-    judgement_summary,
-    layout_snapshot,
+    judgement_summary: parsedJudgementSummary,
+    layout_snapshot: parsedLayoutSnapshot,
     project_id,
     report_id,
     template_id,
