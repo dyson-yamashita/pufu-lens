@@ -874,7 +874,7 @@
 .custom-report-layout-json-preview textarea {
   margin-top: 8px;
   min-height: 280px;
-  resize: both;
+  resize: vertical;
   width: 100%;
 }
 
