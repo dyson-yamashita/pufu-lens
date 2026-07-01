@@ -14,7 +14,7 @@ const PDF_TEXT_DENYLIST = [
   /storage[_-]?uri/giu,
   /secret/giu,
   /api[_-]?key/giu,
-  /\btoken\s+\S+/giu,
+  /\btoken(?:\s+|=|:)\s*\S+/giu,
   /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu,
 ];
 

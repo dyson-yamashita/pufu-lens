@@ -122,6 +122,21 @@ assert.equal(customPdfText.includes('abc'), false);
 assert.equal(customPdfText.includes('[redacted]'), true);
 assert.equal(customPdfText.includes('Image:'), true);
 
+const tokenVariantReport: PrivateReportJsonV1 = {
+  ...standardReport,
+  sections: [
+    {
+      id: 'activity',
+      markdown: 'token=secret-value token: another-secret',
+      title: 'Activity',
+    },
+  ],
+};
+const tokenVariantText = safeReportPdfLines(tokenVariantReport).join('\n');
+assert.equal(tokenVariantText.includes('secret-value'), false);
+assert.equal(tokenVariantText.includes('another-secret'), false);
+assert.equal(tokenVariantText.includes('[redacted]'), true);
+
 const nullMetricsReport: PrivateReportJsonV1 = {
   ...standardReport,
   sections: [
