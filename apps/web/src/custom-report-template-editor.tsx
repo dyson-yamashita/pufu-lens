@@ -1,5 +1,6 @@
 'use client';
 
+import { Columns2, Eye, ListTree } from 'lucide-react';
 import { type DragEvent, useMemo, useState } from 'react';
 import type {
   ClassificationCategory,
@@ -33,6 +34,12 @@ import {
 } from './custom-report-template-editor-utils.ts';
 
 type EditorViewMode = 'split' | 'layout' | 'preview';
+
+const VIEW_MODE_OPTIONS = [
+  { icon: Columns2, label: '分割表示', mode: 'split' },
+  { icon: ListTree, label: 'レイアウトのみ表示', mode: 'layout' },
+  { icon: Eye, label: 'プレビューのみ表示', mode: 'preview' },
+] as const;
 
 const PART_TYPE_LABELS: Record<CustomReportPartType, string> = {
   title: '見出し',
@@ -84,22 +91,18 @@ export function CustomReportTemplateEditor({
           data-testid={`${testIdPrefix}-view-mode-control`}
         >
           <legend className="custom-report-view-mode-legend">Editor view mode</legend>
-          {(
-            [
-              ['split', 'Split'],
-              ['layout', 'Layout'],
-              ['preview', 'Preview'],
-            ] as const
-          ).map(([mode, label]) => (
+          {VIEW_MODE_OPTIONS.map(({ icon: Icon, label, mode }) => (
             <button
+              aria-label={label}
               aria-pressed={viewMode === mode}
               className={viewMode === mode ? 'selected' : undefined}
               data-testid={`${testIdPrefix}-view-mode-${mode}-button`}
               key={mode}
               onClick={() => setViewMode(mode)}
+              title={label}
               type="button"
             >
-              {label}
+              <Icon aria-hidden="true" size={18} strokeWidth={2} />
             </button>
           ))}
         </fieldset>
@@ -873,7 +876,7 @@ function ContainerChildrenEditor({
               <div className="custom-report-child-wrap">
                 <div className="custom-report-child-actions">
                   <button
-                    aria-label={`Drag to reorder ${PART_TYPE_LABELS[child.type]}`}
+                    aria-label={`${PART_TYPE_LABELS[child.type]}をドラッグして並び替え`}
                     className="secondary-button custom-report-drag-handle"
                     data-testid={`${testIdPrefix}-drag-handle-${childIndex}-button`}
                     draggable
@@ -882,10 +885,10 @@ function ContainerChildrenEditor({
                       event.dataTransfer.effectAllowed = 'move';
                       event.dataTransfer.setData(getDragMimeType(), encodePartRef(partRef));
                     }}
-                    title={`Drag to reorder ${PART_TYPE_LABELS[child.type]}`}
+                    title="ドラッグして並び替え"
                     type="button"
                   >
-                    Drag
+                    <span aria-hidden="true">⋮⋮</span>
                   </button>
                   <button
                     aria-label="Move part up"

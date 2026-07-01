@@ -637,7 +637,7 @@
   border-radius: 8px;
   display: inline-grid;
   gap: 4px;
-  grid-template-columns: repeat(3, minmax(88px, 1fr));
+  grid-template-columns: repeat(3, 42px);
   padding: 4px;
 }
 
@@ -647,9 +647,11 @@
   border-radius: 6px;
   color: var(--muted);
   cursor: pointer;
+  display: inline-flex;
   font: inherit;
+  justify-content: center;
   min-height: 34px;
-  padding: 0 12px;
+  padding: 0;
 }
 
 .custom-report-view-mode-control button.selected {
@@ -826,10 +828,15 @@
 }
 
 .custom-report-drag-handle {
+  align-items: center;
   cursor: grab;
-  font-size: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  justify-content: center;
+  line-height: 1;
   min-height: 28px;
-  padding: 2px 8px;
+  padding: 2px 6px;
+  width: 32px;
 }
 
 .custom-report-drag-handle:active {
