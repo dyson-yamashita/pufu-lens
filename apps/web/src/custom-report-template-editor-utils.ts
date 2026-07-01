@@ -382,12 +382,14 @@ export function addColumn(
     }
     const ids = collectPartIds(layout);
     const resultKeys = collectResultKeys(layout);
+    const nextColumnCount = part.columns.length + 1;
+    const width_fraction = 1 / nextColumnCount;
     return {
       ...part,
       columns: [
-        ...part.columns,
+        ...part.columns.map((column) => ({ ...column, width_fraction })),
         {
-          width_fraction: 1 / (part.columns.length + 1),
+          width_fraction,
           children: [createDefaultPart('fixed_text', ids, resultKeys)],
         },
       ],
@@ -407,7 +409,12 @@ export function removeColumn(
     if (part.columns.length <= 2) {
       return part;
     }
-    return { ...part, columns: part.columns.filter((_, idx) => idx !== columnIndex) };
+    const nextColumns = part.columns.filter((_, idx) => idx !== columnIndex);
+    const width_fraction = 1 / nextColumns.length;
+    return {
+      ...part,
+      columns: nextColumns.map((column) => ({ ...column, width_fraction })),
+    };
   });
 }
 

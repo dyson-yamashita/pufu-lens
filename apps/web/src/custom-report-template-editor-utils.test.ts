@@ -5,6 +5,7 @@ import {
 } from './custom-report-schema.ts';
 import {
   addChildToRow,
+  addColumn,
   collectPartIds,
   collectResultKeys,
   createDefaultPart,
@@ -14,6 +15,7 @@ import {
   moveChildInRow,
   moveLayoutPart,
   removeChildFromRow,
+  removeColumn,
   replacePartAtPath,
   resetEditorIdCounter,
   updateLayoutRoot,
@@ -73,6 +75,18 @@ const columnsPart = createDefaultPart(
 if (columnsPart.type === 'columns') {
   assert.ok(columnsPart.columns.length >= 2);
   assert.ok(columnsPart.columns.length <= 4);
+  const withAddedColumn = addColumn(columnsPart, [], updateLayoutRoot(removed, columnsPart));
+  if (withAddedColumn.type === 'columns') {
+    assert.equal(withAddedColumn.columns.length, 3);
+    assert.ok(withAddedColumn.columns.every((column) => column.width_fraction === 1 / 3));
+    validateCustomReportLayout(updateLayoutRoot(removed, withAddedColumn));
+    const withRemovedColumn = removeColumn(withAddedColumn, [], 2);
+    if (withRemovedColumn.type === 'columns') {
+      assert.equal(withRemovedColumn.columns.length, 2);
+      assert.ok(withRemovedColumn.columns.every((column) => column.width_fraction === 1 / 2));
+      validateCustomReportLayout(updateLayoutRoot(removed, withRemovedColumn));
+    }
+  }
 }
 
 const replaced = replacePartAtPath(removed.root, ['children', 0], columnsPart);
