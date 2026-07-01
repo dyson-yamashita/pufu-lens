@@ -220,6 +220,30 @@ assert.throws(
   /asset manifest/,
 );
 
+for (const displayName of [
+  '../logo.png',
+  'nested/logo.png',
+  'gs://bucket/logo.png',
+  'logo\u0000.png',
+]) {
+  assert.throws(
+    () =>
+      validateCustomReportTemplateExport({
+        ...validExport,
+        assets: [
+          {
+            byte_size: 1,
+            content_type: 'image/png',
+            display_name: displayName,
+            export_asset_key: 'asset-logo',
+            requires_upload: true,
+          },
+        ],
+      }),
+    /asset manifest/,
+  );
+}
+
 const validSnapshot = {
   layout: validLayout,
   results: {

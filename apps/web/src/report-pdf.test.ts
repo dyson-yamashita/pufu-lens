@@ -73,6 +73,13 @@ const customReport: PrivateReportJsonV1 = {
         children: [
           { id: 'title', text: 'Custom Title', type: 'title' },
           {
+            alt_text: 'private_raw_locator://reports/report-a',
+            asset_ref: 'asset-logo',
+            caption: 'storage_uri gs://private-bucket/logo.png token abc user@example.com',
+            id: 'logo',
+            type: 'fixed_image',
+          },
+          {
             id: 'score',
             left_label: 'Low',
             prompt: 'Judge',
@@ -105,6 +112,11 @@ const customReport: PrivateReportJsonV1 = {
 };
 assert.equal(safeReportPdfLines(customReport).join('\n').includes('Custom Title'), true);
 assert.equal(safeReportPdfLines(customReport).join('\n').includes('82'), true);
+const customPdfText = safeReportPdfLines(customReport).join('\n');
+assert.equal(customPdfText.includes('private_raw_locator'), false);
+assert.equal(customPdfText.includes('storage_uri'), false);
+assert.equal(customPdfText.includes('user@example.com'), false);
+assert.equal(customPdfText.includes('[redacted]'), true);
 
 const nullMetricsReport: PrivateReportJsonV1 = {
   ...standardReport,

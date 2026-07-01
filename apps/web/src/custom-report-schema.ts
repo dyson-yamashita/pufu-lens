@@ -472,6 +472,7 @@ function validateAssetManifest(value: unknown): Set<string> {
     if (
       !isSafeIdentifier(asset.export_asset_key) ||
       !isNonEmptyString(asset.display_name, 255) ||
+      !isSafeAssetDisplayName(asset.display_name) ||
       !isCustomReportAssetContentType(asset.content_type) ||
       typeof asset.byte_size !== 'number' ||
       !Number.isInteger(asset.byte_size) ||
@@ -498,6 +499,34 @@ function validateAssetRefs(assetRefs: readonly string[], state: LayoutValidation
       throw new Error('Custom report asset reference is unknown.');
     }
   }
+}
+
+function isSafeAssetDisplayName(value: unknown): value is string {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const normalized = value.replaceAll('\\', '/');
+  if (
+    normalized.includes('/') ||
+    normalized === '.' ||
+    normalized === '..' ||
+    normalized.includes('..') ||
+    /^[a-z][a-z0-9+.-]*:/iu.test(normalized) ||
+    containsControlCharacter(normalized)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function containsControlCharacter(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function validateResult(value: unknown): void {
