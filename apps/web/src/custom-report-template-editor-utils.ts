@@ -566,6 +566,10 @@ export function moveLayoutPart(
   if (!partToMove) {
     return root;
   }
+  const sourcePartPath = partRefPath(from);
+  if (isSameOrDescendantPath(toContainer.containerPath, sourcePartPath)) {
+    return root;
+  }
 
   if (sameContainer) {
     if (from.childIndex === toIndex || from.childIndex + 1 === toIndex) {
@@ -580,6 +584,20 @@ export function moveLayoutPart(
   }
   nextRoot = insertPartIntoContainer(nextRoot, toContainer, insertIndex, partToMove);
   return nextRoot;
+}
+
+function partRefPath(ref: PartRef): PartPath {
+  if (ref.kind === 'row') {
+    return [...ref.containerPath, 'children', ref.childIndex];
+  }
+  return [...ref.containerPath, 'columns', ref.columnIndex, 'children', ref.childIndex];
+}
+
+function isSameOrDescendantPath(path: PartPath, ancestorPath: PartPath): boolean {
+  if (path.length < ancestorPath.length) {
+    return false;
+  }
+  return ancestorPath.every((segment, index) => path[index] === segment);
 }
 
 function getPartRefChild(root: CustomReportPart, ref: PartRef): CustomReportPart | undefined {

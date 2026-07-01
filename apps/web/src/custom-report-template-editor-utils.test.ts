@@ -80,7 +80,7 @@ if (replaced.type === 'row') {
   assert.equal(replaced.children[0]?.type, 'columns');
 }
 
-const json = layoutToJson(removed);
+const json = layoutToJson(updateLayoutRoot(removed, replaced));
 assert.ok(json.includes('schema_version'));
 validateCustomReportLayout(JSON.parse(json) as unknown);
 
@@ -158,6 +158,28 @@ if (movedAcrossColumns.type === 'row' && movedAcrossColumns.children[0]?.type ==
   assert.equal(movedAcrossColumns.children[0].columns[1]?.children[0]?.type, 'title');
   assert.equal(movedAcrossColumns.children[0].columns[0]?.children.length, 1);
 }
+
+const nestedRowRoot = {
+  id: 'root-row',
+  type: 'row' as const,
+  children: [
+    {
+      id: 'outer-row',
+      type: 'row' as const,
+      children: [{ id: 'nested-title', type: 'title' as const, level: 2 as const, text: 'Nested' }],
+    },
+    { id: 'root-divider', type: 'divider' as const },
+  ],
+};
+assert.equal(
+  moveLayoutPart(
+    nestedRowRoot,
+    { containerPath: [], kind: 'row', childIndex: 0 },
+    { containerPath: ['children', 0], kind: 'row' },
+    0,
+  ),
+  nestedRowRoot,
+);
 
 const encoded = encodePartRef({ containerPath: [], kind: 'row', childIndex: 0 });
 assert.deepEqual(decodePartRef(encoded), { containerPath: [], kind: 'row', childIndex: 0 });

@@ -638,6 +638,8 @@
   display: inline-grid;
   gap: 4px;
   grid-template-columns: repeat(3, 42px);
+  margin: 0;
+  min-inline-size: 0;
   padding: 4px;
 }
 
@@ -661,7 +663,7 @@
 
 .custom-report-view-mode-legend {
   border: 0;
-  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
   height: 1px;
   margin: -1px;
   overflow: hidden;
@@ -669,13 +671,6 @@
   position: absolute;
   white-space: nowrap;
   width: 1px;
-}
-
-.custom-report-view-mode-control {
-  border: 0;
-  margin: 0;
-  min-inline-size: 0;
-  padding: 0;
 }
 
 .custom-report-workspace-panes {

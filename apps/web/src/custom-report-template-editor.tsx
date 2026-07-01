@@ -128,7 +128,6 @@ export function CustomReportTemplateEditor({
             <div className="custom-report-layout-editor-body">
               <PartEditor
                 depth={0}
-                isRoot
                 layout={layout}
                 onRootChange={updateRoot}
                 part={layout.root}
@@ -155,7 +154,6 @@ export function CustomReportTemplateEditor({
 
 function PartEditor({
   depth,
-  isRoot = false,
   layout,
   onRootChange,
   part,
@@ -163,7 +161,6 @@ function PartEditor({
   testIdPrefix,
 }: {
   readonly depth: number;
-  readonly isRoot?: boolean;
   readonly layout: CustomReportLayoutV1;
   readonly onRootChange: (root: CustomReportPart) => void;
   readonly part: CustomReportPart;
@@ -196,7 +193,7 @@ function PartEditor({
 
       {part.type === 'row' ? (
         <ContainerChildrenEditor
-          canRemoveChild={(childCount) => !isRoot || childCount > 1}
+          canRemoveChild={(childCount) => childCount > 1}
           childrenParts={part.children}
           containerRef={{ containerPath: path, kind: 'row' }}
           depth={depth}
@@ -1035,8 +1032,8 @@ function PreviewPart({ part }: { readonly part: CustomReportPart }) {
         <div className="custom-report-preview-classification" data-preview-type={part.type}>
           <span className="custom-report-preview-badge">Classification</span>
           <ul>
-            {part.categories.map((category) => (
-              <li key={category.key}>
+            {part.categories.map((category, categoryIndex) => (
+              <li key={positionKey('category', categoryIndex)}>
                 <strong>{category.title}</strong>
                 {category.description ? ` — ${category.description}` : ''}
               </li>
