@@ -86,6 +86,8 @@ if (columnsPart.type === 'columns') {
       assert.ok(withRemovedColumn.columns.every((column) => column.width_fraction === 1 / 2));
       validateCustomReportLayout(updateLayoutRoot(removed, withRemovedColumn));
     }
+    const unchangedColumns = removeColumn(withAddedColumn, [], 99);
+    assert.equal(unchangedColumns, withAddedColumn);
   }
 }
 

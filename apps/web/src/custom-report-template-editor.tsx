@@ -750,7 +750,7 @@ function ColumnsEditor({
                     ),
                   );
                 }}
-                step={0.01}
+                step="any"
                 type="number"
                 value={column.width_fraction ?? ''}
               />
