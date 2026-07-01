@@ -9,6 +9,7 @@ import type { PrivateReportJsonV1, ReportListItem, ReportPeriod } from './report
 
 type ReportApiError = {
   readonly error?: { readonly code?: string; readonly message?: string };
+  readonly status?: string;
 };
 
 type ReportGenerateAction = (formData: FormData) => Promise<void>;
@@ -208,6 +209,12 @@ export function ReportsList({ projectSlug }: { readonly projectSlug: string }) {
   );
 }
 
+/**
+ * Displays a private report and provides PDF download and deletion actions.
+ *
+ * @param projectSlug - The project slug that identifies the report source
+ * @param reportId - The report identifier
+ */
 export function ReportDocument({
   projectSlug,
   reportId,
@@ -220,6 +227,8 @@ export function ReportDocument({
   const [status, setStatus] = useState('loading');
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | undefined>();
+  const [pdfDownloading, setPdfDownloading] = useState(false);
+  const [pdfDownloadError, setPdfDownloadError] = useState<string | undefined>();
 
   useEffect(() => {
     let cancelled = false;
@@ -251,6 +260,24 @@ export function ReportDocument({
       cancelled = true;
     };
   }, [projectSlug, reportId]);
+
+  async function handlePdfDownload() {
+    setPdfDownloading(true);
+    setPdfDownloadError(undefined);
+    try {
+      const result = await downloadReportPdf({
+        fallbackFileName: `${projectSlug}-${reportId}.pdf`,
+        url: `/api/projects/${projectSlug}/reports/${reportId}/pdf`,
+      });
+      if (!result.ok) {
+        setPdfDownloadError(result.message);
+      }
+    } catch (error) {
+      setPdfDownloadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPdfDownloading(false);
+    }
+  }
 
   async function handleDelete() {
     if (!window.confirm('レポートが削除されますがよろしいですか')) {
@@ -303,6 +330,22 @@ export function ReportDocument({
             <dd>{report.generated_at}</dd>
           </div>
         </dl>
+        <button
+          className="secondary-button"
+          data-testid="report-pdf-download-button"
+          disabled={pdfDownloading}
+          onClick={() => {
+            void handlePdfDownload();
+          }}
+          type="button"
+        >
+          {pdfDownloading ? 'Downloading PDF...' : 'Download PDF'}
+        </button>
+        {pdfDownloadError ? (
+          <p className="notice error" data-testid="report-pdf-download-error">
+            {pdfDownloadError}
+          </p>
+        ) : null}
       </header>
       {report.custom_layout ? (
         <CustomReportLayoutRenderer report={report} snapshot={report.custom_layout} />
@@ -331,6 +374,12 @@ export function ReportDocument({
   );
 }
 
+/**
+ * Displays a public report and lets the user download it as a PDF.
+ *
+ * @param projectSlug - The project identifier used to load the report.
+ * @param reportId - The report identifier used to load the report.
+ */
 export function PublicReportDocument({
   projectSlug,
   reportId,
@@ -340,6 +389,8 @@ export function PublicReportDocument({
 }) {
   const [report, setReport] = useState<PrivateReportJsonV1 | undefined>();
   const [status, setStatus] = useState('loading');
+  const [pdfDownloading, setPdfDownloading] = useState(false);
+  const [pdfDownloadError, setPdfDownloadError] = useState<string | undefined>();
 
   useEffect(() => {
     let cancelled = false;
@@ -371,6 +422,24 @@ export function PublicReportDocument({
       cancelled = true;
     };
   }, [projectSlug, reportId]);
+
+  async function handlePdfDownload() {
+    setPdfDownloading(true);
+    setPdfDownloadError(undefined);
+    try {
+      const result = await downloadReportPdf({
+        fallbackFileName: `${projectSlug}-${reportId}.pdf`,
+        url: `/api/public/projects/${projectSlug}/reports/${reportId}/pdf`,
+      });
+      if (!result.ok) {
+        setPdfDownloadError(result.message);
+      }
+    } catch (error) {
+      setPdfDownloadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPdfDownloading(false);
+    }
+  }
 
   if (status === 'loading') {
     return <p className="notice">loading</p>;
@@ -404,6 +473,22 @@ export function PublicReportDocument({
             <dd>{report.generated_at}</dd>
           </div>
         </dl>
+        <button
+          className="secondary-button"
+          data-testid="public-report-pdf-download-button"
+          disabled={pdfDownloading}
+          onClick={() => {
+            void handlePdfDownload();
+          }}
+          type="button"
+        >
+          {pdfDownloading ? 'Downloading PDF...' : 'Download PDF'}
+        </button>
+        {pdfDownloadError ? (
+          <p className="notice error" data-testid="public-report-pdf-download-error">
+            {pdfDownloadError}
+          </p>
+        ) : null}
       </header>
       {report.custom_layout ? (
         <CustomReportLayoutRenderer report={report} snapshot={report.custom_layout} />
@@ -414,6 +499,91 @@ export function PublicReportDocument({
   );
 }
 
+/**
+ * Converts a report API error response into a status string.
+ *
+ * @param body - The parsed error response body.
+ * @param status - The HTTP status code.
+ * @returns The error code, error message, or `http_<status>`.
+ */
 function reportErrorStatus(body: ReportApiError, status: number): string {
   return body.error?.code ?? body.error?.message ?? `http_${status}`;
+}
+
+function mapPdfDownloadErrorMessage(code: string): string {
+  switch (code) {
+    case 'auth_required':
+      return 'PDF をダウンロードするにはログインが必要です。';
+    case 'project_access_denied':
+      return 'このレポートの PDF をダウンロードする権限がありません。';
+    case 'report_not_found':
+    case 'public_report_not_found':
+      return 'レポートが見つかりません。';
+    case 'db_outside_business_hours':
+      return '現在は業務時間外のため PDF を取得できません。';
+    case 'report_pdf_internal_error':
+    case 'public_report_pdf_internal_error':
+    case 'public_report_internal_error':
+      return 'PDF の生成中にエラーが発生しました。時間をおいて再度お試しください。';
+    default:
+      return code.startsWith('http_')
+        ? 'PDF のダウンロードに失敗しました。'
+        : 'PDF のダウンロードに失敗しました。';
+  }
+}
+
+/**
+ * Downloads a report PDF and starts a browser file download.
+ *
+ * @param input.fallbackFileName - File name to use when the response does not provide one.
+ * @param input.url - PDF endpoint to request.
+ * @returns `{ ok: true }` when the download is started, or `{ ok: false, message }` when the request fails.
+ */
+async function downloadReportPdf(input: {
+  readonly fallbackFileName: string;
+  readonly url: string;
+}): Promise<{ readonly ok: true } | { readonly message: string; readonly ok: false }> {
+  const response = await fetch(input.url);
+  if (!response.ok) {
+    let message = `http_${response.status}`;
+    try {
+      const body = (await response.json()) as ReportApiError;
+      if (body.status === 'db_outside_business_hours') {
+        message = mapPdfDownloadErrorMessage('db_outside_business_hours');
+      } else {
+        message = mapPdfDownloadErrorMessage(reportErrorStatus(body, response.status));
+      }
+    } catch {
+      // Keep the HTTP status fallback when the error body is not JSON.
+    }
+    return { message, ok: false };
+  }
+  const blob = await response.blob();
+  const fileName =
+    parseContentDispositionFileName(response.headers.get('Content-Disposition')) ??
+    input.fallbackFileName;
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = objectUrl;
+  anchor.download = fileName;
+  anchor.style.display = 'none';
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => {
+    URL.revokeObjectURL(objectUrl);
+  }, 0);
+  return { ok: true };
+}
+
+/**
+ * Extracts a filename from a Content-Disposition header value.
+ *
+ * @param value - The header value to inspect
+ * @returns The quoted filename if present, otherwise `undefined`
+ */
+function parseContentDispositionFileName(value: string | null): string | undefined {
+  if (!value) return undefined;
+  const match = /filename="([^"]+)"/u.exec(value);
+  return match?.[1];
 }

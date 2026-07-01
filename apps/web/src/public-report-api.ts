@@ -25,9 +25,15 @@ import {
   isSafePublicReportLocator,
   type PrivateReportJsonV1,
   PublicReportNotFoundError,
-  reportNowFromEnv,
   validatePrivateReportJson,
 } from './report';
+import { renderReportPdf } from './report-pdf';
+import {
+  createReportFetchContext,
+  createReportPdfDownloadResponse,
+  isOutsideReportBusinessHours,
+  reportOutsideBusinessHoursResponse,
+} from './report-pdf-api';
 import { parsePositiveEnvInt, trustedClientIp } from './request-client';
 
 const hourlyRateLimiter = createPublicChatMemoryRateLimiter({
@@ -43,6 +49,11 @@ const publicChatQuestionMaxLength = parsePositiveEnvInt(
   2000,
 );
 
+/**
+ * Fetches a public report in JSON format.
+ *
+ * @returns The public report response, or an error response when the report is unavailable or an unexpected error occurs.
+ */
 export async function handlePublicReportGet(input: {
   readonly projectSlug: string;
   readonly reportId: string;
@@ -52,21 +63,12 @@ export async function handlePublicReportGet(input: {
   }
 
   try {
-    const businessHours = businessHoursFromEnv(process.env);
-    const now = reportNowFromEnv(process.env) ?? new Date();
-    if (!isWithinBusinessHours(now, businessHours)) {
-      return NextResponse.json(
-        { report: null, status: 'db_outside_business_hours' },
-        { status: 503 },
-      );
+    const context = createReportFetchContext();
+    if (isOutsideReportBusinessHours(context)) {
+      return reportOutsideBusinessHoursResponse();
     }
     const response = await getPublicReport({
-      options: {
-        businessHours,
-        now,
-        repository: createPostgresReportRepository(getRequiredAdminSql()),
-        storage: createReportStorageFromEnv(),
-      },
+      options: context.options,
       projectSlug: input.projectSlug,
       reportId: input.reportId,
     });
@@ -85,6 +87,58 @@ export async function handlePublicReportGet(input: {
   }
 }
 
+/**
+ * Returns a downloadable PDF for a public report.
+ *
+ * @param input - The public report locator.
+ * @returns A PDF download response, a 404 response when the report is not found, a 503 response when the report is unavailable outside business hours, or a 500 response on unexpected errors.
+ */
+export async function handlePublicReportPdfGet(input: {
+  readonly projectSlug: string;
+  readonly reportId: string;
+}) {
+  if (!isSafePublicReportLocator(input)) {
+    return publicReportNotFound();
+  }
+
+  try {
+    const context = createReportFetchContext();
+    if (isOutsideReportBusinessHours(context)) {
+      return reportOutsideBusinessHoursResponse();
+    }
+    const response = await getPublicReport({
+      options: context.options,
+      projectSlug: input.projectSlug,
+      reportId: input.reportId,
+    });
+    if (response.status === 'db_outside_business_hours') {
+      return reportOutsideBusinessHoursResponse();
+    }
+    const pdf = await renderReportPdf({ projectSlug: input.projectSlug, report: response.report });
+    return createReportPdfDownloadResponse(pdf);
+  } catch (error) {
+    if (error instanceof PublicReportNotFoundError) {
+      return publicReportNotFound();
+    }
+    console.error('Public Report PDF API Error:', error);
+    return NextResponse.json(
+      {
+        error: {
+          code: 'public_report_pdf_internal_error',
+          message: 'An unexpected error occurred',
+        },
+      },
+      { status: 500 },
+    );
+  }
+}
+
+/**
+ * Processes a public chat request for a report.
+ *
+ * @param input - The public project and report locator.
+ * @returns A JSON response containing the chat answer and public sources, or an error response for invalid input, access failures, rate limits, or internal errors.
+ */
 export async function handlePublicChatPost(
   request: NextRequest,
   input: {
