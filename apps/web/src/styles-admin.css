@@ -568,3 +568,255 @@
     padding: 0 8px;
   }
 }
+
+.template-editor-list {
+  display: grid;
+  gap: 16px;
+}
+
+.template-editor-card {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.export-json-panel {
+  margin-top: 8px;
+}
+
+.export-json-panel textarea {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.custom-report-layout-field {
+  min-width: 0;
+}
+
+.custom-report-layout-editor {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.custom-report-layout-editor-label {
+  color: var(--muted);
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.custom-report-layout-editor-body {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.custom-report-layout-json-preview summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.custom-report-layout-json-preview textarea {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.custom-report-part-card {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.custom-report-part-header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.custom-report-part-type {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.custom-report-part-id {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.custom-report-part-fields {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  min-width: 0;
+}
+
+.custom-report-part-fields label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.custom-report-part-fields span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.custom-report-part-fields input,
+.custom-report-part-fields select,
+.custom-report-part-fields textarea {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  min-width: 0;
+  padding: 6px 8px;
+}
+
+.custom-report-field-wide {
+  grid-column: 1 / -1;
+}
+
+.custom-report-checkbox-field {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+}
+
+.custom-report-part-empty-note {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+}
+
+.custom-report-children-editor {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+  min-width: 0;
+  padding-top: 10px;
+}
+
+.custom-report-add-part-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.custom-report-add-part-button {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.custom-report-children-list {
+  display: grid;
+  gap: 10px;
+}
+
+.custom-report-child-wrap {
+  display: grid;
+  gap: 6px;
+}
+
+.custom-report-child-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.custom-report-icon-button {
+  font-size: 12px;
+  min-height: 28px;
+  padding: 2px 8px;
+}
+
+.custom-report-columns-editor {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 10px;
+}
+
+.custom-report-columns-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.custom-report-columns-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.custom-report-column-card {
+  background: var(--surface);
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.custom-report-column-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.custom-report-category-list {
+  display: grid;
+  gap: 8px;
+  grid-column: 1 / -1;
+}
+
+.custom-report-category-list-title {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.custom-report-category-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+}
+
+.custom-report-category-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+@media (max-width: 720px) {
+  .custom-report-columns-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .custom-report-part-fields {
+    grid-template-columns: 1fr;
+  }
+}

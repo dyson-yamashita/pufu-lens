@@ -16,6 +16,7 @@ import {
   CUSTOM_REPORT_TEMPLATE_SCHEMA_VERSION,
   type CustomReportLayoutV1,
 } from '../../../../../src/custom-report-schema';
+import { CustomReportTemplateEditor } from '../../../../../src/custom-report-template-editor';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
 import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
 import { AppShell, PageHeader, StatusBadge } from '../../../../../src/ui';
@@ -216,17 +217,9 @@ function TemplateForm({
           rows={2}
         />
       </label>
-      <label className="project-create-description">
-        <span>Layout JSON</span>
-        <textarea
-          className="mono"
-          data-testid={`${testIdPrefix}-layout-input`}
-          defaultValue={JSON.stringify(layout, null, 2)}
-          name="layoutJson"
-          required
-          rows={16}
-        />
-      </label>
+      <div className="project-create-description custom-report-layout-field">
+        <CustomReportTemplateEditor initialLayout={layout} testIdPrefix={testIdPrefix} />
+      </div>
       <PendingSubmitButton
         className="primary-button"
         testId={`${testIdPrefix}-submit-button`}
