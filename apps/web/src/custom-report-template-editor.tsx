@@ -1,6 +1,6 @@
 'use client';
 
-import { Columns2, Eye, ListTree } from 'lucide-react';
+import { Columns2, Eye, ListTree, Trash2 } from 'lucide-react';
 import { type DragEvent, useMemo, useState } from 'react';
 import type {
   ClassificationCategory,
@@ -112,7 +112,7 @@ export function CustomReportTemplateEditor({
             className="mono"
             data-testid={`${testIdPrefix}-layout-json-preview`}
             readOnly
-            rows={8}
+            rows={12}
             value={layoutJson}
           />
         </details>
@@ -584,13 +584,15 @@ function ClassificationEditor({
             <div className="custom-report-category-header">
               <span>Category {index + 1}</span>
               <button
+                aria-label={`Category ${index + 1} を削除`}
                 className="secondary-button custom-report-icon-button"
                 data-testid={`${testIdPrefix}-remove-category-${index}-button`}
                 disabled={part.categories.length <= 2}
                 onClick={() => removeCategory(index)}
+                title="削除"
                 type="button"
               >
-                Remove
+                <Trash2 aria-hidden="true" size={15} strokeWidth={2} />
               </button>
             </div>
             <label>
@@ -709,13 +711,15 @@ function ColumnsEditor({
             <header className="custom-report-column-header">
               <span>Column {columnIndex + 1}</span>
               <button
+                aria-label={`Column ${columnIndex + 1} を削除`}
                 className="secondary-button custom-report-icon-button"
                 data-testid={`${testIdPrefix}-remove-column-${columnIndex}-button`}
                 disabled={part.columns.length <= 2}
                 onClick={() => onRootChange(removeColumn(layout.root, parentPath, columnIndex))}
+                title="削除"
                 type="button"
               >
-                Remove column
+                <Trash2 aria-hidden="true" size={15} strokeWidth={2} />
               </button>
             </header>
             <label>
@@ -746,7 +750,7 @@ function ColumnsEditor({
                     ),
                   );
                 }}
-                step={0.05}
+                step="any"
                 type="number"
                 value={column.width_fraction ?? ''}
               />
@@ -928,13 +932,15 @@ function ContainerChildrenEditor({
                     ↓
                   </button>
                   <button
+                    aria-label={`${PART_TYPE_LABELS[child.type]}を削除`}
                     className="secondary-button custom-report-icon-button"
                     data-testid={`${testIdPrefix}-remove-${childIndex}-button`}
                     disabled={!canRemoveChild(childrenParts.length)}
                     onClick={() => onRemove(childIndex)}
+                    title="削除"
                     type="button"
                   >
-                    Remove
+                    <Trash2 aria-hidden="true" size={15} strokeWidth={2} />
                   </button>
                 </div>
                 <PartEditor
