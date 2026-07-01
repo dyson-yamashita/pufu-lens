@@ -227,6 +227,23 @@ export function validateCustomReportLayout(
   validatePart(value.root, state, 0);
 }
 
+export function parseCustomReportLayout(
+  value: unknown,
+  context = 'Custom report layout',
+): CustomReportLayoutV1 {
+  const parsed = parseJsonLikeValue(value, context);
+  validateCustomReportLayout(parsed);
+  return parsed;
+}
+
+export function parseJsonLikeRecord(value: unknown, context: string): Record<string, unknown> {
+  const parsed = parseJsonLikeValue(value, context);
+  if (!isRecord(parsed) || Array.isArray(parsed)) {
+    throw new Error(`${context} must be an object.`);
+  }
+  return parsed;
+}
+
 export function validateCustomReportTemplateExport(
   value: unknown,
 ): asserts value is CustomReportTemplateExportV1 {
@@ -597,6 +614,18 @@ function validateResult(value: unknown): void {
     return;
   }
   throw new Error('Custom report result type is invalid.');
+}
+
+function parseJsonLikeValue(value: unknown, context: string): unknown {
+  if (typeof value !== 'string') {
+    return value;
+  }
+  try {
+    return JSON.parse(value) as unknown;
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? `: ${error.message}` : '';
+    throw new Error(`${context} must be valid JSON${detail}`);
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

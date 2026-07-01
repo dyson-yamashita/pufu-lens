@@ -1,7 +1,7 @@
 import type postgres from 'postgres';
 import { isProjectVisibility, type ProjectVisibility } from './admin-data.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
-import { type CustomReportLayoutV1, validateCustomReportLayout } from './custom-report-schema.ts';
+import { type CustomReportLayoutV1, parseCustomReportLayout } from './custom-report-schema.ts';
 import type { PreparedReportChunk, PrivateReportJsonV1, ReportPeriod } from './report-schema.ts';
 
 export interface ReportListItem {
@@ -490,11 +490,11 @@ function parseCustomTemplateSummaryRow(value: unknown): CustomTemplateSummaryRow
  */
 function parseCustomTemplateRow(value: unknown): CustomTemplateRow {
   const summary = parseCustomTemplateSummaryRow(value);
-  if (!isRecord(value) || !isRecord(value.layout)) {
+  if (!isRecord(value)) {
     throw new Error('Invalid custom report template layout row.');
   }
-  validateCustomReportLayout(value.layout);
-  return { ...summary, layout: value.layout };
+  const layout = parseCustomReportLayout(value.layout, 'active custom_report_templates.layout');
+  return { ...summary, layout };
 }
 
 /**
