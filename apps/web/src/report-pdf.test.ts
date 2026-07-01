@@ -73,6 +73,13 @@ const customReport: PrivateReportJsonV1 = {
         children: [
           { id: 'title', text: 'Custom Title', type: 'title' },
           {
+            alt_text: 'private_raw_locator://reports/report-a',
+            asset_ref: 'asset-logo',
+            caption: 'storage_uri gs://private-bucket/logo.png token abc user@example.com',
+            id: 'logo',
+            type: 'fixed_image',
+          },
+          {
             id: 'score',
             left_label: 'Low',
             prompt: 'Judge',
@@ -105,6 +112,45 @@ const customReport: PrivateReportJsonV1 = {
 };
 assert.equal(safeReportPdfLines(customReport).join('\n').includes('Custom Title'), true);
 assert.equal(safeReportPdfLines(customReport).join('\n').includes('82'), true);
+const customPdfText = safeReportPdfLines(customReport).join('\n');
+assert.equal(customPdfText.includes('private_raw_locator'), false);
+assert.equal(customPdfText.includes('storage_uri'), false);
+assert.equal(customPdfText.includes('user@example.com'), false);
+assert.equal(customPdfText.includes('gs://private-bucket'), false);
+assert.equal(customPdfText.includes('//reports/report-a'), false);
+assert.equal(customPdfText.includes('abc'), false);
+assert.equal(customPdfText.includes('[redacted]'), true);
+assert.equal(customPdfText.includes('Image:'), true);
+
+const tokenVariantReport: PrivateReportJsonV1 = {
+  ...standardReport,
+  sections: [
+    {
+      id: 'activity',
+      markdown: 'token=secret-value token: another-secret',
+      title: 'Activity',
+    },
+  ],
+};
+const tokenVariantText = safeReportPdfLines(tokenVariantReport).join('\n');
+assert.equal(tokenVariantText.includes('secret-value'), false);
+assert.equal(tokenVariantText.includes('another-secret'), false);
+assert.equal(tokenVariantText.includes('[redacted]'), true);
+
+const secretVariantReport: PrivateReportJsonV1 = {
+  ...standardReport,
+  sections: [
+    {
+      id: 'activity',
+      markdown: 'secret=hidden-value api_key=another-hidden',
+      title: 'Activity',
+    },
+  ],
+};
+const secretVariantText = safeReportPdfLines(secretVariantReport).join('\n');
+assert.equal(secretVariantText.includes('hidden-value'), false);
+assert.equal(secretVariantText.includes('another-hidden'), false);
+assert.equal(secretVariantText.includes('[redacted]'), true);
 
 const nullMetricsReport: PrivateReportJsonV1 = {
   ...standardReport,

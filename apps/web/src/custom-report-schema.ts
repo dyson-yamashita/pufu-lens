@@ -460,6 +460,11 @@ function validateClassificationPart(value: Record<string, unknown>): void {
   }
 }
 
+/**
+ * Validates a custom report asset manifest.
+ *
+ * @returns The set of unique export asset keys defined in the manifest.
+ */
 function validateAssetManifest(value: unknown): Set<string> {
   if (!Array.isArray(value)) {
     throw new Error('Custom report asset manifest must be an array.');
@@ -472,6 +477,7 @@ function validateAssetManifest(value: unknown): Set<string> {
     if (
       !isSafeIdentifier(asset.export_asset_key) ||
       !isNonEmptyString(asset.display_name, 255) ||
+      !isSafeAssetDisplayName(asset.display_name) ||
       !isCustomReportAssetContentType(asset.content_type) ||
       typeof asset.byte_size !== 'number' ||
       !Number.isInteger(asset.byte_size) ||
@@ -489,6 +495,12 @@ function validateAssetManifest(value: unknown): Set<string> {
   return keys;
 }
 
+/**
+ * Validates asset references against the allowed asset set.
+ *
+ * @param assetRefs - Asset references to check
+ * @param state - The current layout validation state
+ */
 function validateAssetRefs(assetRefs: readonly string[], state: LayoutValidationState): void {
   if (!state.allowedAssetRefs) {
     return;
@@ -500,6 +512,46 @@ function validateAssetRefs(assetRefs: readonly string[], state: LayoutValidation
   }
 }
 
+/**
+ * Determines whether a display name is safe to use as an asset name.
+ *
+ * A safe display name is a string that does not contain path separators, dot segments, URI-like schemes, or ASCII control characters.
+ *
+ * @param value - The value to check.
+ * @returns `true` if the value is a safe asset display name, `false` otherwise.
+ */
+function isSafeAssetDisplayName(value: unknown): value is string {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const normalized = value.replaceAll('\\', '/');
+  if (
+    normalized.includes('/') ||
+    normalized === '.' ||
+    /(^|\/)\.\.(?:\/|$)/u.test(normalized) ||
+    /^[a-z][a-z0-9+.-]*:/iu.test(normalized) ||
+    containsControlCharacter(normalized)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Detects ASCII control characters in a string.
+ *
+ * @returns `true` if the string contains a character in the range `U+0000` to `U+001F` or `U+007F`, `false` otherwise.
+ */
+function containsControlCharacter(value: string): boolean {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: intentional detection of ASCII control chars in asset names
+  return /[\u0000-\u001F\u007F]/u.test(value);
+}
+
+/**
+ * Validates a custom report result entry.
+ *
+ * @param value - The result value to validate
+ */
 function validateResult(value: unknown): void {
   if (!isRecord(value) || !isSafeIdentifier(value.part_id) || typeof value.type !== 'string') {
     throw new Error('Custom report result is invalid.');

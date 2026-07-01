@@ -5,17 +5,8 @@ import { fileURLToPath } from 'node:url';
 import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, type PDFFont } from 'pdf-lib';
 import type { CustomReportPart, CustomReportSnapshotV1 } from './custom-report-schema.ts';
+import { redactSensitivePdfText } from './report-public-redaction.ts';
 import type { PrivateReportJsonV1 } from './report-schema.ts';
-
-const PDF_TEXT_DENYLIST = [
-  /raw[_-]?document[_-]?id/giu,
-  /private[_-]?raw[_-]?locator/giu,
-  /storage[_-]?uri/giu,
-  /secret/giu,
-  /api[_-]?key/giu,
-  /token/giu,
-  /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu,
-];
 
 const MAX_LINE_CHARS = 2_000;
 const MAX_WRAP_CHUNKS = 50;
@@ -152,19 +143,17 @@ function partLines(part: CustomReportPart, snapshot: CustomReportSnapshotV1): st
 }
 
 /**
- * Redacts sensitive text and removes formatting from PDF content.
+ * Sanitizes text for PDF output by removing formatting and redacting sensitive content.
  *
- * @param value - The input text to sanitize
- * @returns The sanitized text with sensitive substrings replaced by `[redacted]`
+ * @param value - The text to sanitize.
+ * @returns The sanitized text with sensitive substrings replaced by `[redacted]`.
  */
 function redactPdfText(value: string | null | undefined): string {
   if (value == null) {
     return '';
   }
   let text = stripControlCharacters(value);
-  for (const pattern of PDF_TEXT_DENYLIST) {
-    text = text.replace(pattern, '[redacted]');
-  }
+  text = redactSensitivePdfText(text);
   return stripMarkdown(text).trim();
 }
 

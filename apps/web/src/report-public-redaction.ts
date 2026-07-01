@@ -7,6 +7,28 @@ export function redactText(value: string): string {
   return replacePrivateTokens(emailRedacted);
 }
 
+const PDF_TEXT_DENYLIST = [
+  /raw[_-]?document[_-]?id/giu,
+  /private[_-]?raw[_-]?locator/giu,
+  /storage[_-]?uri/giu,
+  /\bsecret(?:\s+|=|:)\s*\S+/giu,
+  /\bapi[_-]?key(?:\s+|=|:)\s*\S+/giu,
+  /\btoken(?:\s+|=|:)\s*\S+/giu,
+  /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu,
+] as const;
+
+const PDF_GENERIC_URI_PATTERN = /[a-z][a-z0-9+.-]*:\/\/[^\s)\]"']+/giu;
+const PDF_REDACTION_PLACEHOLDER = /\[redacted(?:-[a-z]+)?\]/giu;
+
+export function redactSensitivePdfText(value: string): string {
+  let text = redactText(value);
+  text = text.replace(PDF_GENERIC_URI_PATTERN, '[redacted]');
+  for (const pattern of PDF_TEXT_DENYLIST) {
+    text = text.replace(pattern, '[redacted]');
+  }
+  return text.replace(PDF_REDACTION_PLACEHOLDER, '[redacted]');
+}
+
 export function containsPrivateText(value: string): boolean {
   return hasEmail(value) || privateTokenRanges(value).length > 0;
 }
