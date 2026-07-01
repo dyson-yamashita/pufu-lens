@@ -12,6 +12,7 @@ import {
   hybridSearchCandidateLimit,
   inferChatEditingMetadata,
   inferPublicChatEditingMetadata,
+  isMissingPrivateChatHistoryTableError,
   isWithinBusinessHours,
   normalizeHybridKeywordQuery,
   PRIVATE_CHAT_CONTEXT_TURN_LIMIT,
@@ -609,6 +610,27 @@ assert.deepEqual(
     sources: [sampleSource],
     tool_calls: [{ name: 'vector-search', resultCount: 2 }],
   },
+);
+assert.equal(
+  isMissingPrivateChatHistoryTableError({
+    code: '42P01',
+    message: 'relation "public.private_chat_messages" does not exist',
+  }),
+  true,
+);
+assert.equal(
+  isMissingPrivateChatHistoryTableError({
+    code: '42P01',
+    message: 'relation "public.documents" does not exist',
+  }),
+  false,
+);
+assert.equal(
+  isMissingPrivateChatHistoryTableError({
+    code: '08006',
+    message: 'connection failure',
+  }),
+  false,
 );
 assert.deepEqual(
   createMastraGenerateReportWorkflowBody({

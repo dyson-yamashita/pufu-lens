@@ -64,6 +64,9 @@ export function ChatPanel({
           ? ((await result.json()) as PrivateChatHistoryListResponse | ChatErrorResponse)
           : null;
         if (!result.ok) {
+          if (isDbOutsideBusinessHoursError(body && 'error' in body ? body : null)) {
+            return;
+          }
           throw new Error(chatErrorMessage(body && 'error' in body ? body : null, result.status));
         }
         if (!body || !('items' in body)) {
@@ -369,6 +372,16 @@ type PublicProjectChatUnavailableResponse = {
   readonly status: 'db_outside_business_hours';
   readonly toolCalls: readonly [];
 };
+
+function isDbOutsideBusinessHoursError(body: ChatErrorResponse | null): boolean {
+  if (!body?.error || typeof body.error === 'string') {
+    return body?.error === 'db_outside_business_hours';
+  }
+  return (
+    body.error.code === 'db_outside_business_hours' ||
+    body.error.message === 'db_outside_business_hours'
+  );
+}
 
 function publicSafeChatResponse(
   response: PublicChatResponse,

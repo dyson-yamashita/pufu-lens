@@ -1243,41 +1243,45 @@ export function createPostgresChatRepository(
       return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
     },
     async listPrivateChatHistoryForContext({ limit, projectId, userId }) {
-      const rows = await sql`
-        SELECT
-          id::text AS id,
-          question,
-          answer,
-          sources,
-          tool_calls,
-          editing,
-          created_at
-        FROM public.private_chat_messages
-        WHERE project_id = ${projectId}
-          AND user_id = ${userId}
-        ORDER BY created_at DESC, id DESC
-        LIMIT ${limit ?? PRIVATE_CHAT_CONTEXT_TURN_LIMIT}
-      `;
+      const rows = await readPrivateChatHistoryRows(
+        () => sql`
+          SELECT
+            id::text AS id,
+            question,
+            answer,
+            sources,
+            tool_calls,
+            editing,
+            created_at
+          FROM public.private_chat_messages
+          WHERE project_id = ${projectId}
+            AND user_id = ${userId}
+          ORDER BY created_at DESC, id DESC
+          LIMIT ${limit ?? PRIVATE_CHAT_CONTEXT_TURN_LIMIT}
+        `,
+      );
       return rows
         .map((row) => privateChatHistoryItemFromRow(parsePrivateChatHistoryRow(row)))
         .reverse();
     },
     async listPrivateChatHistoryForUi({ limit, projectId, userId }) {
-      const rows = await sql`
-        SELECT
-          id::text AS id,
-          question,
-          answer,
-          sources,
-          tool_calls,
-          editing,
-          created_at
-        FROM public.private_chat_messages
-        WHERE project_id = ${projectId}
-          AND user_id = ${userId}
-        ORDER BY created_at DESC, id DESC
-        LIMIT ${limit ?? PRIVATE_CHAT_HISTORY_UI_LIMIT}
-      `;
+      const rows = await readPrivateChatHistoryRows(
+        () => sql`
+          SELECT
+            id::text AS id,
+            question,
+            answer,
+            sources,
+            tool_calls,
+            editing,
+            created_at
+          FROM public.private_chat_messages
+          WHERE project_id = ${projectId}
+            AND user_id = ${userId}
+          ORDER BY created_at DESC, id DESC
+          LIMIT ${limit ?? PRIVATE_CHAT_HISTORY_UI_LIMIT}
+        `,
+      );
       return privateChatHistoryItemsForUiDisplay(
         rows.map((row) => privateChatHistoryItemFromRow(parsePrivateChatHistoryRow(row))),
       );
@@ -1318,6 +1322,32 @@ export function createPostgresChatRepository(
       return privateChatHistoryItemFromRow(parsePrivateChatHistoryRow(row));
     },
   };
+}
+
+async function readPrivateChatHistoryRows(
+  query: () => Promise<readonly unknown[]>,
+): Promise<readonly unknown[]> {
+  try {
+    return await query();
+  } catch (error) {
+    if (isMissingPrivateChatHistoryTableError(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+export function isMissingPrivateChatHistoryTableError(error: unknown): boolean {
+  if (!isRecord(error)) {
+    return false;
+  }
+  const code = error.code;
+  const message = error.message;
+  return (
+    code === '42P01' &&
+    typeof message === 'string' &&
+    message.includes('private_chat_messages')
+  );
 }
 
 function unavailableResponse(projectSlug: string): ChatResponse {

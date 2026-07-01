@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server';
 import { getRequiredAdminSql } from '../../../../../../src/admin-sql';
 import { AuthRequiredError, requireSessionUserId } from '../../../../../../src/auth-session';
 import {
+  businessHoursFromEnv,
+  chatNowFromEnv,
   createPostgresChatRepository,
+  isWithinBusinessHours,
   type PrivateChatHistoryListResponse,
   ProjectAccessDeniedError,
 } from '../../../../../../src/chat';
@@ -14,6 +17,18 @@ export async function GET(
   const { projectSlug } = await params;
 
   try {
+    if (
+      !isWithinBusinessHours(
+        chatNowFromEnv(process.env) ?? new Date(),
+        businessHoursFromEnv(process.env),
+      )
+    ) {
+      return chatHistoryErrorResponse(
+        'db_outside_business_hours',
+        'db_outside_business_hours',
+        503,
+      );
+    }
     const userId = await requireSessionUserId();
     const repository = createPostgresChatRepository(getRequiredAdminSql());
     const project = await repository.lookupProjectMember({ projectSlug, userId });
