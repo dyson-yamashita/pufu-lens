@@ -137,6 +137,21 @@ assert.equal(tokenVariantText.includes('secret-value'), false);
 assert.equal(tokenVariantText.includes('another-secret'), false);
 assert.equal(tokenVariantText.includes('[redacted]'), true);
 
+const secretVariantReport: PrivateReportJsonV1 = {
+  ...standardReport,
+  sections: [
+    {
+      id: 'activity',
+      markdown: 'secret=hidden-value api_key=another-hidden',
+      title: 'Activity',
+    },
+  ],
+};
+const secretVariantText = safeReportPdfLines(secretVariantReport).join('\n');
+assert.equal(secretVariantText.includes('hidden-value'), false);
+assert.equal(secretVariantText.includes('another-hidden'), false);
+assert.equal(secretVariantText.includes('[redacted]'), true);
+
 const nullMetricsReport: PrivateReportJsonV1 = {
   ...standardReport,
   sections: [
