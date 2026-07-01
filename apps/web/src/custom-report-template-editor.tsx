@@ -648,6 +648,7 @@ function ClassificationEditor({
         <button
           className="secondary-button"
           data-testid={`${testIdPrefix}-add-category-button`}
+          disabled={part.categories.length >= 20}
           onClick={addCategory}
           type="button"
         >
@@ -673,8 +674,20 @@ function ColumnsEditor({
   readonly part: Extract<CustomReportPart, { type: 'columns' }>;
   readonly testIdPrefix: string;
 }) {
+  const totalWidthFraction = part.columns.reduce(
+    (sum, column) => sum + (column.width_fraction ?? 0),
+    0,
+  );
+  const hasInvalidWidthFractionTotal = totalWidthFraction > 1.001;
+  const widthFractionWarning = `列の幅（Width fraction）の合計が 1.0 を超えています（現在: ${totalWidthFraction.toFixed(2)}）。`;
+
   return (
     <div className="custom-report-columns-editor">
+      {hasInvalidWidthFractionTotal ? (
+        <p className="custom-report-columns-warning" data-testid={`${testIdPrefix}-width-warning`}>
+          {widthFractionWarning}
+        </p>
+      ) : null}
       <div className="custom-report-columns-toolbar">
         <button
           className="secondary-button"
@@ -836,6 +849,10 @@ function ContainerChildrenEditor({
     setDragOverIndex(toIndex);
   };
 
+  const handleDragLeave = (toIndex: number): void => {
+    setDragOverIndex((currentIndex) => (currentIndex === toIndex ? null : currentIndex));
+  };
+
   return (
     <div className="custom-report-children-editor">
       <div className="custom-report-add-part-toolbar">
@@ -866,6 +883,7 @@ function ContainerChildrenEditor({
               <DropZone
                 dragOverIndex={dragOverIndex}
                 index={childIndex}
+                onDragLeave={handleDragLeave}
                 onDragOver={handleDragOver}
                 onDrop={handleDrop}
                 testId={`${testIdPrefix}-drop-zone-${childIndex}`}
@@ -934,6 +952,7 @@ function ContainerChildrenEditor({
         <DropZone
           dragOverIndex={dragOverIndex}
           index={childrenParts.length}
+          onDragLeave={handleDragLeave}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
           testId={`${testIdPrefix}-drop-zone-${childrenParts.length}`}
@@ -946,12 +965,14 @@ function ContainerChildrenEditor({
 function DropZone({
   dragOverIndex,
   index,
+  onDragLeave,
   onDragOver,
   onDrop,
   testId,
 }: {
   readonly dragOverIndex: number | null;
   readonly index: number;
+  readonly onDragLeave: (index: number) => void;
   readonly onDragOver: (index: number, event: DragEvent<HTMLDivElement>) => void;
   readonly onDrop: (index: number, event: DragEvent<HTMLDivElement>) => void;
   readonly testId: string;
@@ -961,6 +982,7 @@ function DropZone({
       aria-hidden="true"
       className={`custom-report-drop-zone${dragOverIndex === index ? ' is-active' : ''}`}
       data-testid={testId}
+      onDragLeave={() => onDragLeave(index)}
       onDragOver={(event) => onDragOver(index, event)}
       onDrop={(event) => onDrop(index, event)}
     />

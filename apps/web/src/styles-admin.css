@@ -1003,6 +1003,12 @@
   gap: 6px;
 }
 
+.custom-report-columns-warning {
+  color: var(--red);
+  font-size: 12px;
+  margin: 0;
+}
+
 .custom-report-columns-grid {
   display: grid;
   gap: 10px;

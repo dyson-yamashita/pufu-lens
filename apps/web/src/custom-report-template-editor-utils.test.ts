@@ -89,6 +89,16 @@ assert.throws(
   /Invalid column path/,
 );
 
+assert.throws(
+  () => updatePartAtPath(columnsPart, ['columns', 99, 'children', 0], (part) => part),
+  /Missing column at index 99/,
+);
+
+assert.throws(
+  () => replacePartAtPath(columnsPart, ['columns', 99, 'children', 0], titlePart),
+  /Missing column at index 99/,
+);
+
 const textPart = createDefaultPart(
   'fixed_text',
   collectPartIds(removed),

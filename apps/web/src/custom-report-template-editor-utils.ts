@@ -172,7 +172,10 @@ export function updatePartAtPath(
         `Invalid column path: expected columns.<index>.children.<index>, got ${path.join('.')}`,
       );
     }
-    const columnIndex = tail[0] as number;
+    const columnIndex = tail[0];
+    if (typeof columnIndex !== 'number' || columnIndex < 0 || columnIndex >= root.columns.length) {
+      throw new Error(`Missing column at index ${columnIndex}.`);
+    }
     const childIndex = tail[2] as number;
     const rest = tail.slice(3);
     const columns = root.columns.map((column, idx) => {
@@ -213,7 +216,10 @@ export function replacePartAtPath(
     return { ...root, children };
   }
   if (head === 'columns' && root.type === 'columns') {
-    const columnIndex = tail[0] as number;
+    const columnIndex = tail[0];
+    if (typeof columnIndex !== 'number' || columnIndex < 0 || columnIndex >= root.columns.length) {
+      throw new Error(`Missing column at index ${columnIndex}.`);
+    }
     if (tail[1] === 'children') {
       const childIndex = tail[2] as number;
       const rest = tail.slice(3);
