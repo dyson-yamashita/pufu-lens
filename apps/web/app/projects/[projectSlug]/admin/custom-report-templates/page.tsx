@@ -16,6 +16,7 @@ import {
   CUSTOM_REPORT_TEMPLATE_SCHEMA_VERSION,
   type CustomReportLayoutV1,
 } from '../../../../../src/custom-report-schema';
+import { CustomReportTemplateEditor } from '../../../../../src/custom-report-template-editor';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
 import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
 import { AppShell, PageHeader, StatusBadge } from '../../../../../src/ui';
@@ -194,10 +195,10 @@ function TemplateForm({
   readonly testIdPrefix: string;
 }) {
   return (
-    <ActionForm action={action} className="project-create-form">
+    <ActionForm action={action} className="project-create-form custom-report-template-form">
       <input name="projectSlug" type="hidden" value={projectSlug} />
       {templateId ? <input name="templateId" type="hidden" value={templateId} /> : null}
-      <label>
+      <label className="custom-report-template-name-field">
         <span>Name</span>
         <input
           data-testid={`${testIdPrefix}-name-input`}
@@ -207,7 +208,7 @@ function TemplateForm({
           type="text"
         />
       </label>
-      <label className="project-create-description">
+      <label className="custom-report-template-description-field">
         <span>Description</span>
         <textarea
           data-testid={`${testIdPrefix}-description-input`}
@@ -216,19 +217,11 @@ function TemplateForm({
           rows={2}
         />
       </label>
-      <label className="project-create-description">
-        <span>Layout JSON</span>
-        <textarea
-          className="mono"
-          data-testid={`${testIdPrefix}-layout-input`}
-          defaultValue={JSON.stringify(layout, null, 2)}
-          name="layoutJson"
-          required
-          rows={16}
-        />
-      </label>
+      <div className="custom-report-template-workspace-field">
+        <CustomReportTemplateEditor initialLayout={layout} testIdPrefix={testIdPrefix} />
+      </div>
       <PendingSubmitButton
-        className="primary-button"
+        className="custom-report-template-submit primary-button"
         testId={`${testIdPrefix}-submit-button`}
         title={buttonLabel}
       >
