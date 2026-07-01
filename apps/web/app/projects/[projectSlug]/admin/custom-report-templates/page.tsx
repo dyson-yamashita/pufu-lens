@@ -195,10 +195,10 @@ function TemplateForm({
   readonly testIdPrefix: string;
 }) {
   return (
-    <ActionForm action={action} className="project-create-form">
+    <ActionForm action={action} className="project-create-form custom-report-template-form">
       <input name="projectSlug" type="hidden" value={projectSlug} />
       {templateId ? <input name="templateId" type="hidden" value={templateId} /> : null}
-      <label>
+      <label className="custom-report-template-name-field">
         <span>Name</span>
         <input
           data-testid={`${testIdPrefix}-name-input`}
@@ -208,7 +208,7 @@ function TemplateForm({
           type="text"
         />
       </label>
-      <label className="project-create-description">
+      <label className="custom-report-template-description-field">
         <span>Description</span>
         <textarea
           data-testid={`${testIdPrefix}-description-input`}
@@ -217,11 +217,11 @@ function TemplateForm({
           rows={2}
         />
       </label>
-      <div className="project-create-description custom-report-layout-field">
+      <div className="custom-report-template-workspace-field">
         <CustomReportTemplateEditor initialLayout={layout} testIdPrefix={testIdPrefix} />
       </div>
       <PendingSubmitButton
-        className="primary-button"
+        className="custom-report-template-submit primary-button"
         testId={`${testIdPrefix}-submit-button`}
         title={buttonLabel}
       >

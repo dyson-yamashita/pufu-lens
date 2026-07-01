@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { type DragEvent, useMemo, useState } from 'react';
 import type {
   ClassificationCategory,
   CustomReportLayoutV1,
@@ -11,13 +11,19 @@ import {
   addChildToColumn,
   addChildToRow,
   addColumn,
+  type ContainerRef,
   collectPartIds,
   collectResultKeys,
   createDefaultPart,
+  decodePartRef,
+  encodePartRef,
+  getDragMimeType,
   layoutToJson,
   moveChildInColumn,
   moveChildInRow,
+  moveLayoutPart,
   type PartPath,
+  type PartRef,
   removeChildFromColumn,
   removeChildFromRow,
   removeColumn,
@@ -25,6 +31,8 @@ import {
   updateColumnWidthFraction,
   updateLayoutRoot,
 } from './custom-report-template-editor-utils.ts';
+
+type EditorViewMode = 'split' | 'layout' | 'preview';
 
 const PART_TYPE_LABELS: Record<CustomReportPartType, string> = {
   title: '見出し',
@@ -60,6 +68,7 @@ export function CustomReportTemplateEditor({
   readonly testIdPrefix: string;
 }) {
   const [layout, setLayout] = useState(initialLayout);
+  const [viewMode, setViewMode] = useState<EditorViewMode>('split');
   const layoutJson = useMemo(() => layoutToJson(layout), [layout]);
 
   const updateRoot = (nextRoot: CustomReportPart): void => {
@@ -67,30 +76,76 @@ export function CustomReportTemplateEditor({
   };
 
   return (
-    <div className="custom-report-layout-editor" data-testid={`${testIdPrefix}-layout-editor`}>
+    <div className="custom-report-template-workspace" data-testid={`${testIdPrefix}-layout-editor`}>
       <input name="layoutJson" type="hidden" value={layoutJson} />
-      <div className="custom-report-layout-editor-body">
-        <p className="custom-report-layout-editor-label">Layout</p>
-        <PartEditor
-          depth={0}
-          isRoot
-          layout={layout}
-          onRootChange={updateRoot}
-          part={layout.root}
-          path={[]}
-          testIdPrefix={testIdPrefix}
-        />
+      <div className="custom-report-workspace-toolbar">
+        <fieldset
+          className="custom-report-view-mode-control"
+          data-testid={`${testIdPrefix}-view-mode-control`}
+        >
+          <legend className="custom-report-view-mode-legend">Editor view mode</legend>
+          {(
+            [
+              ['split', 'Split'],
+              ['layout', 'Layout'],
+              ['preview', 'Preview'],
+            ] as const
+          ).map(([mode, label]) => (
+            <button
+              aria-pressed={viewMode === mode}
+              className={viewMode === mode ? 'selected' : undefined}
+              data-testid={`${testIdPrefix}-view-mode-${mode}-button`}
+              key={mode}
+              onClick={() => setViewMode(mode)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </fieldset>
+        <details className="custom-report-layout-json-preview">
+          <summary data-testid={`${testIdPrefix}-layout-json-preview-toggle`}>JSON preview</summary>
+          <textarea
+            className="mono"
+            data-testid={`${testIdPrefix}-layout-json-preview`}
+            readOnly
+            rows={8}
+            value={layoutJson}
+          />
+        </details>
       </div>
-      <details className="custom-report-layout-json-preview">
-        <summary data-testid={`${testIdPrefix}-layout-json-preview-toggle`}>JSON preview</summary>
-        <textarea
-          className="mono"
-          data-testid={`${testIdPrefix}-layout-json-preview`}
-          readOnly
-          rows={12}
-          value={layoutJson}
-        />
-      </details>
+      <div className={`custom-report-workspace-panes custom-report-workspace-panes--${viewMode}`}>
+        {viewMode === 'split' || viewMode === 'layout' ? (
+          <section
+            aria-label="Layout editor"
+            className="custom-report-layout-pane"
+            data-testid={`${testIdPrefix}-layout-pane`}
+          >
+            <p className="custom-report-layout-editor-label">Layout</p>
+            <div className="custom-report-layout-editor-body">
+              <PartEditor
+                depth={0}
+                isRoot
+                layout={layout}
+                onRootChange={updateRoot}
+                part={layout.root}
+                path={[]}
+                testIdPrefix={testIdPrefix}
+              />
+            </div>
+          </section>
+        ) : null}
+        {viewMode === 'split' || viewMode === 'preview' ? (
+          <section
+            aria-label="Layout preview"
+            className="custom-report-preview-pane"
+            data-testid={`${testIdPrefix}-preview-pane`}
+          >
+            <p className="custom-report-layout-editor-label">Preview</p>
+            <LayoutPreview layout={layout} testIdPrefix={testIdPrefix} />
+          </section>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -140,6 +195,7 @@ function PartEditor({
         <ContainerChildrenEditor
           canRemoveChild={(childCount) => !isRoot || childCount > 1}
           childrenParts={part.children}
+          containerRef={{ containerPath: path, kind: 'row' }}
           depth={depth}
           layout={layout}
           onAdd={(type) => {
@@ -685,6 +741,11 @@ function ColumnsEditor({
             <ContainerChildrenEditor
               canRemoveChild={() => column.children.length > 1}
               childrenParts={column.children}
+              containerRef={{
+                columnIndex,
+                containerPath: parentPath,
+                kind: 'column',
+              }}
               columnIndex={columnIndex}
               depth={depth + 1}
               layout={layout}
@@ -734,6 +795,7 @@ function ContainerChildrenEditor({
   canRemoveChild,
   childrenParts,
   columnIndex,
+  containerRef,
   depth,
   layout,
   onAdd,
@@ -746,6 +808,7 @@ function ContainerChildrenEditor({
   readonly canRemoveChild: (childCount: number) => boolean;
   readonly childrenParts: readonly CustomReportPart[];
   readonly columnIndex?: number;
+  readonly containerRef: ContainerRef;
   readonly depth: number;
   readonly layout: CustomReportLayoutV1;
   readonly onAdd: (type: CustomReportPartType) => void;
@@ -755,6 +818,24 @@ function ContainerChildrenEditor({
   readonly parentPath: PartPath;
   readonly testIdPrefix: string;
 }) {
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const handleDrop = (toIndex: number, event: DragEvent<HTMLDivElement>): void => {
+    event.preventDefault();
+    setDragOverIndex(null);
+    const payload = decodePartRef(event.dataTransfer.getData(getDragMimeType()));
+    if (!payload) {
+      return;
+    }
+    onRootChange(moveLayoutPart(layout.root, payload, containerRef, toIndex));
+  };
+
+  const handleDragOver = (toIndex: number, event: DragEvent<HTMLDivElement>): void => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setDragOverIndex(toIndex);
+  };
+
   return (
     <div className="custom-report-children-editor">
       <div className="custom-report-add-part-toolbar">
@@ -770,59 +851,229 @@ function ContainerChildrenEditor({
           </button>
         ))}
       </div>
-      <div className="custom-report-children-list">
+      <div
+        className="custom-report-children-list"
+        data-testid={`${testIdPrefix}-children-drop-list`}
+      >
         {childrenParts.map((child, childIndex) => {
           const childPath =
             columnIndex === undefined
               ? ([...parentPath, 'children', childIndex] as PartPath)
               : ([...parentPath, 'columns', columnIndex, 'children', childIndex] as PartPath);
+          const partRef: PartRef = { ...containerRef, childIndex };
           return (
-            <div className="custom-report-child-wrap" key={child.id}>
-              <div className="custom-report-child-actions">
-                <button
-                  aria-label="Move part up"
-                  className="secondary-button custom-report-icon-button"
-                  data-testid={`${testIdPrefix}-move-up-${childIndex}-button`}
-                  disabled={childIndex === 0}
-                  onClick={() => onMove(childIndex, -1)}
-                  title="Move part up"
-                  type="button"
-                >
-                  ↑
-                </button>
-                <button
-                  aria-label="Move part down"
-                  className="secondary-button custom-report-icon-button"
-                  data-testid={`${testIdPrefix}-move-down-${childIndex}-button`}
-                  disabled={childIndex === childrenParts.length - 1}
-                  onClick={() => onMove(childIndex, 1)}
-                  title="Move part down"
-                  type="button"
-                >
-                  ↓
-                </button>
-                <button
-                  className="secondary-button custom-report-icon-button"
-                  data-testid={`${testIdPrefix}-remove-${childIndex}-button`}
-                  disabled={!canRemoveChild(childrenParts.length)}
-                  onClick={() => onRemove(childIndex)}
-                  type="button"
-                >
-                  Remove
-                </button>
-              </div>
-              <PartEditor
-                depth={depth + 1}
-                layout={layout}
-                onRootChange={onRootChange}
-                part={child}
-                path={childPath}
-                testIdPrefix={testIdPrefix}
+            <div className="custom-report-child-stack" key={child.id}>
+              <DropZone
+                dragOverIndex={dragOverIndex}
+                index={childIndex}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                testId={`${testIdPrefix}-drop-zone-${childIndex}`}
               />
+              <div className="custom-report-child-wrap">
+                <div className="custom-report-child-actions">
+                  <button
+                    aria-label={`Drag to reorder ${PART_TYPE_LABELS[child.type]}`}
+                    className="secondary-button custom-report-drag-handle"
+                    data-testid={`${testIdPrefix}-drag-handle-${childIndex}-button`}
+                    draggable
+                    onDragEnd={() => setDragOverIndex(null)}
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = 'move';
+                      event.dataTransfer.setData(getDragMimeType(), encodePartRef(partRef));
+                    }}
+                    title={`Drag to reorder ${PART_TYPE_LABELS[child.type]}`}
+                    type="button"
+                  >
+                    Drag
+                  </button>
+                  <button
+                    aria-label="Move part up"
+                    className="secondary-button custom-report-icon-button"
+                    data-testid={`${testIdPrefix}-move-up-${childIndex}-button`}
+                    disabled={childIndex === 0}
+                    onClick={() => onMove(childIndex, -1)}
+                    title="Move part up"
+                    type="button"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    aria-label="Move part down"
+                    className="secondary-button custom-report-icon-button"
+                    data-testid={`${testIdPrefix}-move-down-${childIndex}-button`}
+                    disabled={childIndex === childrenParts.length - 1}
+                    onClick={() => onMove(childIndex, 1)}
+                    title="Move part down"
+                    type="button"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    className="secondary-button custom-report-icon-button"
+                    data-testid={`${testIdPrefix}-remove-${childIndex}-button`}
+                    disabled={!canRemoveChild(childrenParts.length)}
+                    onClick={() => onRemove(childIndex)}
+                    type="button"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <PartEditor
+                  depth={depth + 1}
+                  layout={layout}
+                  onRootChange={onRootChange}
+                  part={child}
+                  path={childPath}
+                  testIdPrefix={testIdPrefix}
+                />
+              </div>
             </div>
           );
         })}
+        <DropZone
+          dragOverIndex={dragOverIndex}
+          index={childrenParts.length}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          testId={`${testIdPrefix}-drop-zone-${childrenParts.length}`}
+        />
       </div>
     </div>
   );
+}
+
+function DropZone({
+  dragOverIndex,
+  index,
+  onDragOver,
+  onDrop,
+  testId,
+}: {
+  readonly dragOverIndex: number | null;
+  readonly index: number;
+  readonly onDragOver: (index: number, event: DragEvent<HTMLDivElement>) => void;
+  readonly onDrop: (index: number, event: DragEvent<HTMLDivElement>) => void;
+  readonly testId: string;
+}) {
+  return (
+    <div
+      aria-hidden="true"
+      className={`custom-report-drop-zone${dragOverIndex === index ? ' is-active' : ''}`}
+      data-testid={testId}
+      onDragOver={(event) => onDragOver(index, event)}
+      onDrop={(event) => onDrop(index, event)}
+    />
+  );
+}
+
+function LayoutPreview({
+  layout,
+  testIdPrefix,
+}: {
+  readonly layout: CustomReportLayoutV1;
+  readonly testIdPrefix: string;
+}) {
+  return (
+    <div className="custom-report-preview-surface" data-testid={`${testIdPrefix}-preview-surface`}>
+      <PreviewPart part={layout.root} />
+    </div>
+  );
+}
+
+function PreviewPart({ part }: { readonly part: CustomReportPart }) {
+  switch (part.type) {
+    case 'title': {
+      const Heading = part.level === 1 ? 'h2' : part.level === 3 ? 'h4' : 'h3';
+      return (
+        <Heading className="custom-report-preview-title" data-preview-type={part.type}>
+          {part.text || '見出し'}
+        </Heading>
+      );
+    }
+    case 'pufu_board':
+      return (
+        <div className="custom-report-preview-pufu-board" data-preview-type={part.type}>
+          <span className="custom-report-preview-badge">Pufu Board</span>
+          <p>{part.source ?? 'report_pufu_sources'}</p>
+        </div>
+      );
+    case 'fixed_text':
+      return (
+        <p className="custom-report-preview-fixed-text" data-preview-type={part.type}>
+          {part.text || '固定テキスト'}
+          {part.markdown ? <span className="custom-report-preview-meta"> (Markdown)</span> : null}
+        </p>
+      );
+    case 'fixed_image':
+      return (
+        <figure className="custom-report-preview-fixed-image" data-preview-type={part.type}>
+          <div className="custom-report-preview-image-placeholder">{part.alt_text || '画像'}</div>
+          <figcaption>
+            {part.asset_ref}
+            {part.caption ? ` — ${part.caption}` : ''}
+          </figcaption>
+        </figure>
+      );
+    case 'slider_judgement':
+      return (
+        <div className="custom-report-preview-slider" data-preview-type={part.type}>
+          <span className="custom-report-preview-badge">Slider judgement</span>
+          <div className="custom-report-preview-slider-track">
+            <span>{part.left_label}</span>
+            <span className="custom-report-preview-slider-thumb" />
+            <span>{part.right_label}</span>
+          </div>
+          <p className="custom-report-preview-meta">{part.result_key}</p>
+        </div>
+      );
+    case 'classification_result':
+      return (
+        <div className="custom-report-preview-classification" data-preview-type={part.type}>
+          <span className="custom-report-preview-badge">Classification</span>
+          <ul>
+            {part.categories.map((category) => (
+              <li key={category.key}>
+                <strong>{category.title}</strong>
+                {category.description ? ` — ${category.description}` : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
+    case 'row':
+      return (
+        <div className="custom-report-preview-row" data-preview-type={part.type}>
+          {part.children.map((child) => (
+            <PreviewPart key={child.id} part={child} />
+          ))}
+        </div>
+      );
+    case 'columns':
+      return (
+        <div className="custom-report-preview-columns" data-preview-type={part.type}>
+          {part.columns.map((column, columnIndex) => (
+            <div
+              className="custom-report-preview-column"
+              key={positionKey('column', columnIndex)}
+              style={{
+                flex: column.width_fraction ? `${column.width_fraction} 1 0` : '1 1 0',
+              }}
+            >
+              {column.children.map((child) => (
+                <PreviewPart key={child.id} part={child} />
+              ))}
+            </div>
+          ))}
+        </div>
+      );
+    case 'divider':
+      return <hr className="custom-report-preview-divider" data-preview-type={part.type} />;
+    case 'copyright':
+      return (
+        <p className="custom-report-preview-copyright" data-preview-type={part.type}>
+          {part.text}
+        </p>
+      );
+  }
 }

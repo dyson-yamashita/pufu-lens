@@ -8,8 +8,11 @@ import {
   collectPartIds,
   collectResultKeys,
   createDefaultPart,
+  decodePartRef,
+  encodePartRef,
   layoutToJson,
   moveChildInRow,
+  moveLayoutPart,
   removeChildFromRow,
   replacePartAtPath,
   resetEditorIdCounter,
@@ -85,5 +88,78 @@ assert.throws(
   () => updatePartAtPath(columnsPart, ['columns', 0], (part) => part),
   /Invalid column path/,
 );
+
+const textPart = createDefaultPart(
+  'fixed_text',
+  collectPartIds(removed),
+  collectResultKeys(removed),
+);
+const dividerPart = createDefaultPart(
+  'divider',
+  collectPartIds(removed),
+  collectResultKeys(removed),
+);
+const rowWithTwoChildren = updateLayoutRoot(removed, {
+  id: 'root-row',
+  type: 'row',
+  children: [textPart, dividerPart],
+});
+
+if (rowWithTwoChildren.root.type === 'row') {
+  const reordered = moveLayoutPart(
+    rowWithTwoChildren.root,
+    {
+      containerPath: [],
+      kind: 'row',
+      childIndex: 1,
+    },
+    {
+      containerPath: [],
+      kind: 'row',
+    },
+    0,
+  );
+  if (reordered.type === 'row') {
+    assert.equal(reordered.children[0]?.type, 'divider');
+    assert.equal(reordered.children[1]?.type, 'fixed_text');
+  }
+}
+
+resetEditorIdCounter();
+const crossColumnIds = new Set<string>();
+const crossColumnKeys = new Set<string>();
+const col0Text = createDefaultPart('fixed_text', crossColumnIds, crossColumnKeys);
+crossColumnIds.add(col0Text.id);
+const col0Title = createDefaultPart('title', crossColumnIds, crossColumnKeys);
+crossColumnIds.add(col0Title.id);
+const col1Text = createDefaultPart('fixed_text', crossColumnIds, crossColumnKeys);
+const columnsRoot = {
+  id: 'root-row',
+  type: 'row' as const,
+  children: [
+    {
+      id: 'main-columns',
+      type: 'columns' as const,
+      columns: [
+        { width_fraction: 0.5, children: [col0Text, col0Title] },
+        { width_fraction: 0.5, children: [col1Text] },
+      ],
+    },
+  ],
+};
+
+const movedAcrossColumns = moveLayoutPart(
+  columnsRoot,
+  { containerPath: ['children', 0], kind: 'column', columnIndex: 0, childIndex: 1 },
+  { containerPath: ['children', 0], kind: 'column', columnIndex: 1 },
+  0,
+);
+if (movedAcrossColumns.type === 'row' && movedAcrossColumns.children[0]?.type === 'columns') {
+  assert.equal(movedAcrossColumns.children[0].columns[1]?.children[0]?.type, 'title');
+  assert.equal(movedAcrossColumns.children[0].columns[0]?.children.length, 1);
+}
+
+const encoded = encodePartRef({ containerPath: [], kind: 'row', childIndex: 0 });
+assert.deepEqual(decodePartRef(encoded), { containerPath: [], kind: 'row', childIndex: 0 });
 
 console.log('custom-report-template-editor-utils.test.ts passed');
