@@ -101,6 +101,7 @@ export interface MastraChatHistoryMessage {
 export const PRIVATE_CHAT_CONTEXT_TURN_LIMIT = 6;
 export const PRIVATE_CHAT_HISTORY_UI_LIMIT = 50;
 export const PRIVATE_CHAT_HISTORY_CONTENT_MAX = 4000;
+export const DB_OUTSIDE_BUSINESS_HOURS_CODE = 'db_outside_business_hours';
 
 export interface PublicChatSource {
   readonly label: string;
@@ -887,6 +888,10 @@ export function chatNowFromEnv(env?: NodeJS.ProcessEnv): Date | undefined {
   return date;
 }
 
+export function isOutsideBusinessHoursFromEnv(env: NodeJS.ProcessEnv): boolean {
+  return !isWithinBusinessHours(chatNowFromEnv(env) ?? new Date(), businessHoursFromEnv(env));
+}
+
 export function trimPrivateChatHistoryContent(
   content: string,
   maxLength = PRIVATE_CHAT_HISTORY_CONTENT_MAX,
@@ -1354,20 +1359,20 @@ export function isMissingPrivateChatHistoryTableError(error: unknown): boolean {
 
 export function isDbOutsideBusinessHoursError(body: ChatErrorResponse | null): boolean {
   if (!body?.error || typeof body.error === 'string') {
-    return body?.error === 'db_outside_business_hours';
+    return body?.error === DB_OUTSIDE_BUSINESS_HOURS_CODE;
   }
   return (
-    body.error.code === 'db_outside_business_hours' ||
-    body.error.message === 'db_outside_business_hours'
+    body.error.code === DB_OUTSIDE_BUSINESS_HOURS_CODE ||
+    body.error.message === DB_OUTSIDE_BUSINESS_HOURS_CODE
   );
 }
 
 function unavailableResponse(projectSlug: string): ChatResponse {
   return {
-    answer: 'db_outside_business_hours',
+    answer: DB_OUTSIDE_BUSINESS_HOURS_CODE,
     projectSlug,
     sources: [],
-    status: 'db_outside_business_hours',
+    status: DB_OUTSIDE_BUSINESS_HOURS_CODE,
     toolCalls: [],
   };
 }

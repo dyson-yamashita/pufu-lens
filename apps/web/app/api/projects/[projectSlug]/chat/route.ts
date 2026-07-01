@@ -2,11 +2,10 @@ import { NextResponse } from 'next/server';
 import { getRequiredAdminSql } from '../../../../../src/admin-sql';
 import { AuthRequiredError, requireSessionUserId } from '../../../../../src/auth-session';
 import {
-  businessHoursFromEnv,
-  chatNowFromEnv,
   createMemoryRateLimiter,
   createPostgresChatRepository,
-  isWithinBusinessHours,
+  DB_OUTSIDE_BUSINESS_HOURS_CODE,
+  isOutsideBusinessHoursFromEnv,
   ProjectAccessDeniedError,
   privateChatHistoryToMastraMessages,
 } from '../../../../../src/chat';
@@ -49,18 +48,13 @@ export async function POST(
 
   try {
     const userId = await requireSessionUserId();
-    if (
-      !isWithinBusinessHours(
-        chatNowFromEnv(process.env) ?? new Date(),
-        businessHoursFromEnv(process.env),
-      )
-    ) {
+    if (isOutsideBusinessHoursFromEnv(process.env)) {
       return NextResponse.json(
         {
-          answer: 'db_outside_business_hours',
+          answer: DB_OUTSIDE_BUSINESS_HOURS_CODE,
           projectSlug,
           sources: [],
-          status: 'db_outside_business_hours',
+          status: DB_OUTSIDE_BUSINESS_HOURS_CODE,
           toolCalls: [],
         },
         { status: 503 },

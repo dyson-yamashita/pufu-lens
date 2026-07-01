@@ -8,12 +8,14 @@ import {
   createGeminiPublicChatProvider,
   createMemoryRateLimiter,
   createPublicChatMemoryRateLimiter,
+  DB_OUTSIDE_BUSINESS_HOURS_CODE,
   graphQuerySearchPatterns,
   hybridSearchCandidateLimit,
   inferChatEditingMetadata,
   inferPublicChatEditingMetadata,
   isDbOutsideBusinessHoursError,
   isMissingPrivateChatHistoryTableError,
+  isOutsideBusinessHoursFromEnv,
   isWithinBusinessHours,
   normalizeHybridKeywordQuery,
   PRIVATE_CHAT_CONTEXT_TURN_LIMIT,
@@ -633,14 +635,36 @@ assert.equal(
   }),
   false,
 );
-assert.equal(isDbOutsideBusinessHoursError({ error: 'db_outside_business_hours' }), true);
+assert.equal(isDbOutsideBusinessHoursError({ error: DB_OUTSIDE_BUSINESS_HOURS_CODE }), true);
 assert.equal(
   isDbOutsideBusinessHoursError({
-    error: { code: 'db_outside_business_hours', message: 'db_outside_business_hours' },
+    error: { code: DB_OUTSIDE_BUSINESS_HOURS_CODE, message: DB_OUTSIDE_BUSINESS_HOURS_CODE },
   }),
   true,
 );
 assert.equal(isDbOutsideBusinessHoursError({ error: { code: 'chat_internal_error' } }), false);
+assert.equal(
+  isOutsideBusinessHoursFromEnv({
+    ...process.env,
+    PUFU_LENS_BUSINESS_END_HOUR: '18',
+    PUFU_LENS_BUSINESS_START_HOUR: '9',
+    PUFU_LENS_BUSINESS_TIME_ZONE: 'Asia/Tokyo',
+    PUFU_LENS_CHAT_ENFORCE_BUSINESS_HOURS: 'true',
+    PUFU_LENS_CHAT_NOW: '2026-06-01T23:00:00.000Z',
+  }),
+  true,
+);
+assert.equal(
+  isOutsideBusinessHoursFromEnv({
+    ...process.env,
+    PUFU_LENS_BUSINESS_END_HOUR: '18',
+    PUFU_LENS_BUSINESS_START_HOUR: '9',
+    PUFU_LENS_BUSINESS_TIME_ZONE: 'Asia/Tokyo',
+    PUFU_LENS_CHAT_ENFORCE_BUSINESS_HOURS: 'true',
+    PUFU_LENS_CHAT_NOW: '2026-06-01T01:00:00.000Z',
+  }),
+  false,
+);
 assert.deepEqual(
   createMastraGenerateReportWorkflowBody({
     generatedBy: 'admin-ui',

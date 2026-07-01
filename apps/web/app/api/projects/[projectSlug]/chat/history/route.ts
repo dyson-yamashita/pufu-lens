@@ -2,10 +2,9 @@ import { NextResponse } from 'next/server';
 import { getRequiredAdminSql } from '../../../../../../src/admin-sql';
 import { AuthRequiredError, requireSessionUserId } from '../../../../../../src/auth-session';
 import {
-  businessHoursFromEnv,
-  chatNowFromEnv,
   createPostgresChatRepository,
-  isWithinBusinessHours,
+  DB_OUTSIDE_BUSINESS_HOURS_CODE,
+  isOutsideBusinessHoursFromEnv,
   type PrivateChatHistoryListResponse,
   ProjectAccessDeniedError,
 } from '../../../../../../src/chat';
@@ -17,15 +16,10 @@ export async function GET(
   const { projectSlug } = await params;
 
   try {
-    if (
-      !isWithinBusinessHours(
-        chatNowFromEnv(process.env) ?? new Date(),
-        businessHoursFromEnv(process.env),
-      )
-    ) {
+    if (isOutsideBusinessHoursFromEnv(process.env)) {
       return chatHistoryErrorResponse(
-        'db_outside_business_hours',
-        'db_outside_business_hours',
+        DB_OUTSIDE_BUSINESS_HOURS_CODE,
+        DB_OUTSIDE_BUSINESS_HOURS_CODE,
         503,
       );
     }

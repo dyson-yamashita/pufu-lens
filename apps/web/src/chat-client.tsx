@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   type ChatErrorResponse,
   type ChatResponse,
+  DB_OUTSIDE_BUSINESS_HOURS_CODE,
   isDbOutsideBusinessHoursError,
   type PrivateChatHistoryListResponse,
   type PublicChatResponse,
@@ -271,7 +272,7 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
             | ChatErrorResponse)
         : null;
       if (!result.ok) {
-        if (isRecord(body) && 'status' in body && body.status === 'db_outside_business_hours') {
+        if (isRecord(body) && 'status' in body && body.status === DB_OUTSIDE_BUSINESS_HOURS_CODE) {
           setUnavailable(true);
         }
         throw new Error(chatErrorMessage(body, result.status));
@@ -279,9 +280,9 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
       if (!isPublicChatResponseBody(body)) {
         throw new Error('Public Chat API returned an invalid response.');
       }
-      if (body.status === 'db_outside_business_hours') {
+      if (body.status === DB_OUTSIDE_BUSINESS_HOURS_CODE) {
         setUnavailable(true);
-        throw new Error('db_outside_business_hours');
+        throw new Error(DB_OUTSIDE_BUSINESS_HOURS_CODE);
       }
       setMessages((current) =>
         replacePendingAssistant(current, pendingId, {
@@ -295,7 +296,7 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
       );
     } catch (caught) {
       const errorMessage = caught instanceof Error ? caught.message : String(caught);
-      if (errorMessage === 'db_outside_business_hours') {
+      if (errorMessage === DB_OUTSIDE_BUSINESS_HOURS_CODE) {
         setUnavailable(true);
       }
       setMessages((current) =>
@@ -364,11 +365,11 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
 }
 
 type PublicProjectChatUnavailableResponse = {
-  readonly answer: 'db_outside_business_hours';
+  readonly answer: typeof DB_OUTSIDE_BUSINESS_HOURS_CODE;
   readonly projectSlug: string;
   readonly reportId: string;
   readonly sources: readonly [];
-  readonly status: 'db_outside_business_hours';
+  readonly status: typeof DB_OUTSIDE_BUSINESS_HOURS_CODE;
   readonly toolCalls: readonly [];
 };
 
