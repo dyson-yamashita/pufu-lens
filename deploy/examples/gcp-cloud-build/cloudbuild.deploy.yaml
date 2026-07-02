@@ -162,11 +162,22 @@ steps:
           --set-secrets "DATABASE_URL=DATABASE_URL:latest"
         )
 
-        if gcloud run jobs describe "${_DB_MIGRATION_JOB}" --region "${_REGION}" >/dev/null 2>&1; then
+        describe_error="$$(mktemp)"
+        if gcloud run jobs describe "${_DB_MIGRATION_JOB}" --region "${_REGION}" >/dev/null 2>"$${describe_error}"; then
           gcloud run jobs update "${job_args[@]}"
         else
-          gcloud run jobs create "${job_args[@]}"
+          describe_status="$${?}"
+          if grep -Eiq 'NOT_FOUND|not found|could not be found|does not exist' "$${describe_error}"; then
+            echo "Creating DB migration job ${_DB_MIGRATION_JOB} because it does not exist."
+            rm -f "$${describe_error}"
+            gcloud run jobs create "${job_args[@]}"
+          else
+            cat "$${describe_error}" >&2
+            rm -f "$${describe_error}"
+            exit "$${describe_status}"
+          fi
         fi
+        rm -f "$${describe_error}"
 
         gcloud run jobs execute "${_DB_MIGRATION_JOB}" --region "${_REGION}" --wait
 
