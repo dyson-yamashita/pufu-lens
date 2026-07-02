@@ -440,13 +440,10 @@ export async function readProjectConnectionAccessToken(input: {
     return null;
   }
   const refreshed = await refreshGoogleAccessToken(refreshToken);
-  if (!refreshed.access_token) {
+  if (!refreshed.access_token || !isValidGoogleAccessTokenTtl(refreshed.expires_in)) {
     return null;
   }
-  const expiresAt =
-    typeof refreshed.expires_in === 'number'
-      ? new Date(Date.now() + refreshed.expires_in * 1000).toISOString()
-      : null;
+  const expiresAt = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
   const refreshedAccessTokenSecret = encodeConnectionSecret(refreshed.access_token);
   await input.sql`
     UPDATE public.oauth_connections
@@ -459,6 +456,54 @@ export async function readProjectConnectionAccessToken(input: {
       ${connectionFilter}
   `;
   return refreshed.access_token;
+}
+
+export async function refreshExpiredGoogleProjectConnection(input: {
+  readonly projectId?: string;
+  readonly projectSlug?: string;
+  readonly sql: postgres.Sql;
+}): Promise<boolean> {
+  const projectFilter = input.projectId
+    ? input.sql`project_id = ${input.projectId}`
+    : input.projectSlug
+      ? input.sql`project_id = (SELECT id FROM public.projects WHERE slug = ${input.projectSlug})`
+      : null;
+  if (!projectFilter) {
+    throw new Error('projectId or projectSlug is required to refresh a Google connection.');
+  }
+  const rows = await input.sql`
+    SELECT
+      refresh_token_secret,
+      expires_at
+    FROM public.oauth_connections
+    WHERE provider = 'google'
+      AND ${projectFilter}
+    LIMIT 1
+  `;
+  const connection = parseRefreshableGoogleConnectionRow(rows[0]);
+  if (!connection || !isExpired(connection.expires_at) || !connection.refresh_token_secret) {
+    return false;
+  }
+  const refreshToken = await readConnectionSecret(connection.refresh_token_secret);
+  if (!refreshToken) {
+    return false;
+  }
+  const refreshed = await refreshGoogleAccessToken(refreshToken);
+  if (!refreshed.access_token || !isValidGoogleAccessTokenTtl(refreshed.expires_in)) {
+    return false;
+  }
+  const expiresAt = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
+  const refreshedAccessTokenSecret = encodeConnectionSecret(refreshed.access_token);
+  await input.sql`
+    UPDATE public.oauth_connections
+    SET
+      access_token_secret = ${refreshedAccessTokenSecret},
+      expires_at = ${expiresAt},
+      updated_at = now()
+    WHERE provider = 'google'
+      AND ${projectFilter}
+  `;
+  return true;
 }
 
 export async function createGitHubInstallationAccessToken(input: {
@@ -603,6 +648,30 @@ function base64UrlJson(value: Record<string, unknown>): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseRefreshableGoogleConnectionRow(value: unknown): {
+  readonly expires_at: Date | string | null;
+  readonly refresh_token_secret: string | null;
+} | null {
+  if (!value) {
+    return null;
+  }
+  if (!isRecord(value)) {
+    throw new Error('Invalid Google connection refresh row.');
+  }
+  const { expires_at, refresh_token_secret } = value;
+  if (expires_at !== null && !(expires_at instanceof Date) && typeof expires_at !== 'string') {
+    throw new Error('Invalid Google connection refresh row field: expires_at.');
+  }
+  if (refresh_token_secret !== null && typeof refresh_token_secret !== 'string') {
+    throw new Error('Invalid Google connection refresh row field: refresh_token_secret.');
+  }
+  return { expires_at, refresh_token_secret };
+}
+
+function isValidGoogleAccessTokenTtl(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
 async function refreshGoogleAccessToken(refreshToken: string): Promise<GoogleTokenResponse> {
