@@ -562,5 +562,6 @@ VALUES
   ('0003_actor_merge_decisions'),
   ('0004_pgroonga_hybrid_search'),
   ('0005_custom_report_layouts'),
-  ('0006_private_chat_history')
+  ('0006_private_chat_history'),
+  ('0007_normalize_private_chat_editing')
 ON CONFLICT (version) DO NOTHING;
