@@ -12,7 +12,7 @@
 > - **App Hosting backend に custom service account を割り当てた場合**、その SA に App Hosting ソースバケットの閲覧権 + `roles/firebaseapphosting.computeRunner` を付与し、参照する secret に `firebase apphosting:secrets:grantaccess` を実行する。
 > - Cloud Build が Compute default SA を使う構成では `roles/cloudbuild.builds.builder` の付与が必要。
 > - production deploy trigger は runtime / deploy config path だけを included files に設定し、`docs/**` や README だけの変更では本番 deploy を起動しない。必要な場合は manual trigger を明示的に実行する。
-> - Cloud Build deploy は substitution 検証後に Mastra image build と Workflow Job image build を並列実行し、Docker build は `docker buildx` registry cache（各 image の `:buildcache` tag）を使う。Firebase App Hosting deploy は backend deploy 完了後に実行する。smoke は全 deploy 完了後に実行する。`options.machineType` は指定せず、標準 worker のまま不要な直列待ちと再 build を減らす。
+> - Cloud Build deploy は substitution 検証後に Mastra image build と Workflow Job image build を並列実行し、Docker build は `docker buildx` registry cache（各 image の `:buildcache` tag）を使う。Workflow Job image push 後に `_RUN_DB_MIGRATIONS=true` の場合は Cloud Run Job `${_DB_MIGRATION_JOB}` で `pnpm db:migrate` を `--wait` 付きで実行し、Mastra Server / Workflow Jobs / Firebase App Hosting deploy はその完了後に開始する。`_RUN_DB_MIGRATIONS=false` の場合も migration step は即時成功して deploy barrier として残る。Firebase App Hosting deploy は backend deploy 完了後に実行する。smoke は全 deploy 完了後に実行する。`options.machineType` は指定せず、標準 worker のまま不要な直列待ちと再 build を減らす。
 
 ### 1. ローカル開発
 
@@ -129,6 +129,8 @@ gcloud run services add-iam-policy-binding mastra-server \
 gsutil iam ch serviceAccount:mastra-runtime@PROJECT.iam.gserviceaccount.com:objectAdmin gs://pufu-lens-prod
 gsutil iam ch serviceAccount:firebase-app-hosting-compute@PROJECT.iam.gserviceaccount.com:objectViewer gs://pufu-lens-prod
 ```
+
+Cloud Build deploy example（`deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml`）では、Workflow Job image push 後に Cloud Run Job で `pnpm db:migrate` を実行し、Mastra Server / Workflow Jobs / Web deploy の前に schema migration を完了させる。migration target は `infra/db/migrations/*.sql` のファイル名順で、version は `.sql` を除いたファイル名、適用済み version は `public.schema_migrations` に記録される。deploy 前の手動確認として `pnpm db:migrate --check` と `pnpm db:migrate --plan` を使い、Cloud Build 側では `_RUN_DB_MIGRATIONS=true` と `_DB_MIGRATION_JOB=db-migrate` を既定とする。
 
 `apps/web/apphosting.yaml` の最小例：
 

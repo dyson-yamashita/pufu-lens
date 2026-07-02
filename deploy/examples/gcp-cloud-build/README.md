@@ -121,20 +121,22 @@ Production deploy triggers should require approval. After a protected branch mer
 
 Set these trigger substitutions in the user's GCP project:
 
-| substitution                 | example value                                       | note                                                                  |
-| ---------------------------- | --------------------------------------------------- | --------------------------------------------------------------------- |
-| `_ENV`                       | `staging`                                           | Must be `staging` or `production`; passed to `deploy:smoke`.          |
-| `_REGION`                    | `asia-east1`                                        | Cloud Run, Cloud Run Jobs, Artifact Registry, and App Hosting region. |
-| `_ARTIFACT_REPO`             | `pufu-lens`                                         | Existing Artifact Registry Docker repository.                         |
-| `_RUNTIME_SERVICE_ACCOUNT`   | `mastra-runtime@PROJECT_ID.iam.gserviceaccount.com` | Runtime identity for Cloud Run service and jobs.                      |
-| `_SCHEDULER_SERVICE_ACCOUNT` | `scheduler-oidc@PROJECT_ID.iam.gserviceaccount.com` | Used by smoke checks and future scheduler integration.                |
-| `_STORAGE_BUCKET`            | `YOUR_STORAGE_BUCKET`                               | Object storage bucket name; do not commit the real value.             |
-| `_VPC_CONNECTOR`             | `mastra-connector`                                  | VPC connector used to reach private PostgreSQL.                       |
-| `_MASTRA_SERVICE`            | `mastra-server`                                     | Cloud Run service name.                                               |
-| `_MASTRA_IMAGE`              | `mastra-server`                                     | Artifact Registry image name for Mastra Server.                       |
-| `_JOBS_IMAGE`                | `workflow-job`                                      | Artifact Registry image name for workflow jobs.                       |
-| `_FIREBASE_DEPLOY`           | `true`                                              | Set to `false` only when Web deploy is handled outside Cloud Build.   |
-| `_FIREBASE_TOOLS_VERSION`    | `14.4.0`                                            | Firebase CLI version for local-source App Hosting deploy.             |
+| substitution                 | example value                                       | note                                                                    |
+| ---------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------- |
+| `_ENV`                       | `staging`                                           | Must be `staging` or `production`; passed to `deploy:smoke`.            |
+| `_REGION`                    | `asia-east1`                                        | Cloud Run, Cloud Run Jobs, Artifact Registry, and App Hosting region.   |
+| `_ARTIFACT_REPO`             | `pufu-lens`                                         | Existing Artifact Registry Docker repository.                           |
+| `_RUNTIME_SERVICE_ACCOUNT`   | `mastra-runtime@PROJECT_ID.iam.gserviceaccount.com` | Runtime identity for Cloud Run service and jobs.                        |
+| `_SCHEDULER_SERVICE_ACCOUNT` | `scheduler-oidc@PROJECT_ID.iam.gserviceaccount.com` | Used by smoke checks and future scheduler integration.                  |
+| `_STORAGE_BUCKET`            | `YOUR_STORAGE_BUCKET`                               | Object storage bucket name; do not commit the real value.               |
+| `_VPC_CONNECTOR`             | `mastra-connector`                                  | VPC connector used to reach private PostgreSQL.                         |
+| `_MASTRA_SERVICE`            | `mastra-server`                                     | Cloud Run service name.                                                 |
+| `_MASTRA_IMAGE`              | `mastra-server`                                     | Artifact Registry image name for Mastra Server.                         |
+| `_JOBS_IMAGE`                | `workflow-job`                                      | Artifact Registry image name for workflow jobs.                         |
+| `_FIREBASE_DEPLOY`           | `true`                                              | Set to `false` only when Web deploy is handled outside Cloud Build.     |
+| `_FIREBASE_TOOLS_VERSION`    | `14.4.0`                                            | Firebase CLI version for local-source App Hosting deploy.               |
+| `_RUN_DB_MIGRATIONS`         | `true`                                              | Set to `false` to skip deploy-time Cloud Run Job migration.             |
+| `_DB_MIGRATION_JOB`          | `db-migrate`                                        | Cloud Run Job name used to run `pnpm db:migrate` before runtime deploy. |
 
 `PROJECT_ID` and `SHORT_SHA` are Cloud Build built-in substitutions. The example uses `SHORT_SHA` as the immutable image tag and also pushes `latest` as a convenience tag.
 
@@ -145,12 +147,13 @@ Set these trigger substitutions in the user's GCP project:
 1. Validate required substitutions and `_ENV`.
 2. In parallel, build the Mastra Server image and build the Workflow Job image.
 3. Push each image after its build finishes.
-4. Deploy the Mastra Server to Cloud Run after its image is pushed.
-5. Deploy `${_ENV}-curate-workflow`, `${_ENV}-ingest-workflow`, and `${_ENV}-generate-report` as Cloud Run Jobs after the jobs image is pushed, while keeping each runtime `WORKFLOW_ID` unchanged.
-6. Deploy the Web app with Firebase App Hosting after Mastra Server and Workflow Jobs finish when `_FIREBASE_DEPLOY=true`.
-7. Read the deployed Mastra Server URL dynamically and run `deploy:smoke` after Mastra Server, Workflow Jobs, and Web deploy all finish.
+4. Create or update the DB migration Cloud Run Job from the Workflow Job image, then execute `pnpm db:migrate` with `--wait` when `_RUN_DB_MIGRATIONS=true`. When `_RUN_DB_MIGRATIONS=false`, this step exits immediately and still acts as the deploy barrier for later steps.
+5. Deploy the Mastra Server to Cloud Run after its image is pushed and the migration step finishes.
+6. Deploy `${_ENV}-curate-workflow`, `${_ENV}-ingest-workflow`, and `${_ENV}-generate-report` as Cloud Run Jobs after the jobs image is pushed and the migration step finishes, while keeping each runtime `WORKFLOW_ID` unchanged.
+7. Deploy the Web app with Firebase App Hosting after Mastra Server and Workflow Jobs finish when `_FIREBASE_DEPLOY=true`.
+8. Read the deployed Mastra Server URL dynamically and run `deploy:smoke` after Mastra Server, Workflow Jobs, and Web deploy all finish.
 
-The deploy config keeps the default Cloud Build worker and uses `waitFor` only to remove avoidable serial waits. Docker image builds use `docker buildx` registry caches at each image's `:buildcache` tag so unchanged layers, including multi-stage intermediate layers, can be reused without pulling the full previous runtime image first. App Hosting deploy still waits for backend deploy completion so the Web rollout does not expose a newer frontend before the matching backend is live. Cost-sensitive environments should keep this default-worker shape unless they explicitly accept higher per-minute build costs.
+The deploy config keeps the default Cloud Build worker and uses `waitFor` only to remove avoidable serial waits. Docker image builds use `docker buildx` registry caches at each image's `:buildcache` tag so unchanged layers, including multi-stage intermediate layers, can be reused without pulling the full previous runtime image first. App Hosting deploy still waits for backend deploy completion so the Web rollout does not expose a newer frontend before the matching backend is live. Runtime deploy steps wait for the migration barrier so new Cloud Run / App Hosting code is not rolled out before pending schema migrations are applied. Cost-sensitive environments should keep this default-worker shape unless they explicitly accept higher per-minute build costs.
 
 The deploy config does not create the PostgreSQL VM, VPC connector, Artifact Registry repository, GCS bucket, Firebase App Hosting backend, or Secret Manager secrets. Provision those before enabling the trigger.
 
@@ -162,7 +165,7 @@ The deploy service account needs access to these Secret Manager secret names bec
 
 | secret name      | used by                                          |
 | ---------------- | ------------------------------------------------ |
-| `DATABASE_URL`   | Mastra Server, Workflow Jobs                     |
+| `DATABASE_URL`   | Mastra Server, Workflow Jobs, DB migration job   |
 | `AUTH_SECRET`    | Workflow Jobs through connection secret fallback |
 | `GEMINI_API_KEY` | Mastra Server, Workflow Jobs                     |
 
@@ -217,7 +220,11 @@ If Web deployment is handled by Firebase's own GitHub integration or another rel
 
 ## Migration And Operations
 
-Online DB migration may require private network access to PostgreSQL. Do not assume the default Cloud Build pool can reach a private PostgreSQL VM.
+Deploy-time DB migration uses the same Workflow Job image and `scripts/db-migrate.ts` entrypoint as local operations. Migration targets are discovered from `infra/db/migrations/*.sql`, sorted by filename. Each migration version is the filename without the `.sql` suffix, for example `0003_add_example_table`. Applied versions are recorded in `public.schema_migrations`. Pending migrations are those whose version is not yet present in `public.schema_migrations`; they are applied in filename order during `pnpm db:migrate`.
+
+When `_RUN_DB_MIGRATIONS=true`, Cloud Build creates or updates `${_DB_MIGRATION_JOB}` after the Workflow Job image push, overrides the container command to `pnpm db:migrate`, and executes the job with `--wait` before Mastra Server, Workflow Jobs, or Web deploy start. The migration job must reach PostgreSQL through `${_VPC_CONNECTOR}` and read `DATABASE_URL` from Secret Manager through `${_RUNTIME_SERVICE_ACCOUNT}`. Secret values are passed only as Cloud Run secret references; they are not printed in Cloud Build logs.
+
+Set `_RUN_DB_MIGRATIONS=false` only when migration is handled outside this deploy config, for example a manual run from an IAP-tunneled admin host. In that case the `run-db-migration` step exits immediately but still acts as the deploy barrier so later runtime rollout steps keep the same ordering contract.
 
 Use `docs/operations/deploy-checklist.md` for the environment-specific sequence:
 
