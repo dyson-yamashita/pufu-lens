@@ -581,7 +581,11 @@ export async function listProjectConnections(
   projectSlug: string,
 ): Promise<readonly ProjectConnectionSummary[]> {
   return withOptionalSql(async (sql) => {
-    return projectConnectionsFromRows(await listProjectConnectionRowsBySlug(sql, projectSlug));
+    const rows = await listProjectConnectionRowsBySlug(sql, projectSlug);
+    if (await refreshExpiredGoogleConnectionSummary(sql, rows, { projectSlug })) {
+      return projectConnectionsFromRows(await listProjectConnectionRowsBySlug(sql, projectSlug));
+    }
+    return projectConnectionsFromRows(rows);
   }, notConnectedProjectConnections());
 }
 
@@ -589,7 +593,11 @@ export async function listProjectConnectionsForProjectId(
   sql: postgres.Sql,
   projectId: string,
 ): Promise<readonly ProjectConnectionSummary[]> {
-  return projectConnectionsFromRows(await listProjectConnectionRowsByProjectId(sql, projectId));
+  const rows = await listProjectConnectionRowsByProjectId(sql, projectId);
+  if (await refreshExpiredGoogleConnectionSummary(sql, rows, { projectId })) {
+    return projectConnectionsFromRows(await listProjectConnectionRowsByProjectId(sql, projectId));
+  }
+  return projectConnectionsFromRows(rows);
 }
 
 export async function getProjectSourceAvailability(
@@ -1487,6 +1495,42 @@ function projectConnectionsFromRows(
   return (['google', 'github'] as const).map(
     (provider) => byProvider.get(provider) ?? notConnectedConnection(provider),
   );
+}
+
+async function refreshExpiredGoogleConnectionSummary(
+  sql: postgres.Sql,
+  rows: readonly AdminDbOAuthConnectionRow[],
+  project: { readonly projectId: string } | { readonly projectSlug: string },
+): Promise<boolean> {
+  if (!rows.some(shouldRefreshGoogleConnectionSummary)) {
+    return false;
+  }
+  const { refreshExpiredGoogleProjectConnection } = await import('./project-connections');
+  try {
+    return await refreshExpiredGoogleProjectConnection({ sql, ...project });
+  } catch (error) {
+    console.error('Failed to refresh expired Google project connection.', {
+      error: summarizeConnectionRefreshError(error),
+      project,
+    });
+    return false;
+  }
+}
+
+function shouldRefreshGoogleConnectionSummary(row: AdminDbOAuthConnectionRow): boolean {
+  if (row.provider !== 'google') {
+    return false;
+  }
+  const metadata = isRecord(row.metadata) ? row.metadata : {};
+  const status = connectionStatusFromRow(row, row.scopes ?? [], metadata);
+  return status === 'expired';
+}
+
+function summarizeConnectionRefreshError(error: unknown): string {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`;
+  }
+  return String(error);
 }
 
 function connectionFromRow(row: AdminDbOAuthConnectionRow): ProjectConnectionSummary {
