@@ -224,7 +224,7 @@ Deploy-time DB migration uses the same Workflow Job image and `scripts/db-migrat
 
 When `_RUN_DB_MIGRATIONS=true`, Cloud Build creates or updates `${_DB_MIGRATION_JOB}` after the Workflow Job image push, overrides the container command to `pnpm db:migrate`, and executes the job with `--wait` before Mastra Server, Workflow Jobs, or Web deploy start. The migration job must reach PostgreSQL through `${_VPC_CONNECTOR}` and read `DATABASE_URL` from Secret Manager through `${_RUNTIME_SERVICE_ACCOUNT}`. Secret values are passed only as Cloud Run secret references; they are not printed in Cloud Build logs.
 
-Set `_RUN_DB_MIGRATIONS=false` only when migration is handled outside this deploy config, for example a manual run from an IAP-tunneled admin host. In that case the `run-db-migration` step exits immediately but still acts as the deploy barrier so later runtime rollout steps keep the same ordering contract.
+Set `_RUN_DB_MIGRATIONS=false` only when migration is handled outside this deploy config before the Cloud Build deploy starts, for example a manual run from an IAP-tunneled admin host. In that case the `run-db-migration` step exits immediately but still acts as the deploy barrier so later runtime rollout steps keep the same ordering contract.
 
 Use `docs/operations/deploy-checklist.md` for the environment-specific sequence:
 

@@ -230,7 +230,7 @@ pnpm db:migrate --check
 pnpm db:migrate --plan
 ```
 
-`_RUN_DB_MIGRATIONS=false` にする場合は、Cloud Build の `run-db-migration` step は skip されるが runtime rollout 前の barrier として同じ位置に残る。この場合は deploy 前または deploy と別タイミングで、IAP tunnel など DB に到達できる端末から `pnpm db:migrate` を手動実行する。
+`_RUN_DB_MIGRATIONS=false` にする場合は、Cloud Build の `run-db-migration` step は skip されるが runtime rollout 前の barrier として同じ位置に残る。この場合は Cloud Build deploy を開始する前に、IAP tunnel など DB に到達できる端末から `pnpm db:migrate` を手動実行し、schema を runtime rollout 前に必ず揃えておく。
 
 production では事前 backup、適用予定 migration、heavy migration の有無、rollback ではなく forward fix / restore が必要になるケースを記録する。詳細は `docs/operations/deploy-checklist.md` を使う。
 
