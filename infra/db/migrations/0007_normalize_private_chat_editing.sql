@@ -71,6 +71,35 @@ normalized_rows AS (
     messages.editing ->> 'confidence' AS confidence
   FROM public.private_chat_messages AS messages
   WHERE messages.editing IS NOT NULL
+    AND (
+      jsonb_typeof(messages.editing) <> 'object'
+      OR NOT (messages.editing ? 'caveats')
+      OR NOT (messages.editing ? 'confidence')
+      OR NOT (messages.editing ? 'inferredMode')
+      OR NOT (messages.editing ? 'operations')
+      OR NOT (messages.editing ? 'questionType')
+      OR messages.editing ->> 'confidence' NOT IN ('high', 'low', 'medium')
+      OR messages.editing ->> 'inferredMode' NOT IN (
+        'default',
+        'issue_mapping',
+        'next_actions',
+        'risk_scan',
+        'structure',
+        'summary',
+        'timeline'
+      )
+      OR messages.editing ->> 'questionType' NOT IN (
+        'fact',
+        'planning',
+        'public_explanation',
+        'risk',
+        'status',
+        'timeline',
+        'unknown'
+      )
+      OR jsonb_typeof(messages.editing -> 'caveats') <> 'array'
+      OR jsonb_typeof(messages.editing -> 'operations') <> 'array'
+    )
 )
 UPDATE public.private_chat_messages AS messages
 SET editing = CASE
