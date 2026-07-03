@@ -175,6 +175,7 @@ export function ChatPanel({
             onClick={() => {
               setMessages([]);
               setSelectedHistoryId(null);
+              setQuestion('');
             }}
             title="New chat"
             type="button"
