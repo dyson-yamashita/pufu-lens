@@ -130,6 +130,11 @@
   border-color: var(--primary);
 }
 
+.chat-history-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .chat-history-item-selected {
   border-color: var(--primary);
 }
@@ -146,6 +151,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .chat-history-item-question {

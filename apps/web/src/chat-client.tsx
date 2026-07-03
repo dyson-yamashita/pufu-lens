@@ -215,8 +215,12 @@ export function ChatPanel({
           </p>
         ) : null}
         <ChatHistoryList
+          disabled={pending}
           historyItems={historyItems}
           onSelect={(item) => {
+            if (pending) {
+              return;
+            }
             setSelectedHistoryId(item.id);
             setMessages(mapPrivateChatHistoryToThreadMessages([item], projectSlug));
           }}
@@ -271,10 +275,12 @@ export function ChatPanel({
 }
 
 function ChatHistoryList({
+  disabled,
   historyItems,
   onSelect,
   selectedHistoryId,
 }: {
+  readonly disabled: boolean;
   readonly historyItems: readonly PrivateChatHistoryItem[];
   readonly onSelect: (item: PrivateChatHistoryItem) => void;
   readonly selectedHistoryId: string | null;
@@ -290,6 +296,7 @@ function ChatHistoryList({
           aria-pressed={selectedHistoryId === item.id}
           className={`chat-history-item${selectedHistoryId === item.id ? ' chat-history-item-selected' : ''}`}
           data-testid={`chat-history-item-${item.id}`}
+          disabled={disabled}
           key={item.id}
           onClick={() => onSelect(item)}
           type="button"
