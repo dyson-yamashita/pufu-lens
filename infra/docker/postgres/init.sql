@@ -563,5 +563,6 @@ VALUES
   ('0004_pgroonga_hybrid_search'),
   ('0005_custom_report_layouts'),
   ('0006_private_chat_history'),
-  ('0007_normalize_private_chat_editing')
+  ('0007_normalize_private_chat_editing'),
+  ('0008_normalize_private_chat_history_json_arrays')
 ON CONFLICT (version) DO NOTHING;
