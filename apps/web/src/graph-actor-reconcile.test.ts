@@ -81,13 +81,15 @@ assert.ok(
       (query) => query.sql.includes('MERGE (primary)-') || query.sql.includes('MERGE (source)-'),
     )
     .every((query) =>
-      query.sql.includes('SET merged += properties(relation), merged.actorId = $primaryActorId'),
+      query.sql.includes(
+        'ON CREATE SET merged += properties(relation), merged.actorId = $primaryActorId',
+      ),
     ),
 );
 assert.ok(
   successfulMock.unsafeQueries
     .at(-1)
-    ?.sql.includes('DETACH DELETE secondary RETURN 1 AS deletedCount'),
+    ?.sql.includes('WITH secondary, count(secondary) AS deletedCount DETACH DELETE secondary'),
 );
 assert.ok(
   successfulMock.unsafeQueries

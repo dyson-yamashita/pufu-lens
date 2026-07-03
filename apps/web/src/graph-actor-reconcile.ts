@@ -116,7 +116,7 @@ export async function mergeActorGraphElements(
             `MATCH (secondary)-[relation:${edgeType}]->(target)`,
             'WHERE target.graphNodeId IS NULL OR target.graphNodeId <> $primaryGraphNodeId',
             `MERGE (primary)-[merged:${edgeType}]->(target)`,
-            'SET merged += properties(relation), merged.actorId = $primaryActorId',
+            'ON CREATE SET merged += properties(relation), merged.actorId = $primaryActorId',
             'RETURN count(merged) AS mergedCount',
           ].join(' '),
         )}, $1::agtype) AS (value agtype)`,
@@ -131,7 +131,7 @@ export async function mergeActorGraphElements(
             `MATCH (source)-[relation:${edgeType}]->(secondary)`,
             'WHERE source.graphNodeId IS NULL OR source.graphNodeId <> $primaryGraphNodeId',
             `MERGE (source)-[merged:${edgeType}]->(primary)`,
-            'SET merged += properties(relation), merged.actorId = $primaryActorId',
+            'ON CREATE SET merged += properties(relation), merged.actorId = $primaryActorId',
             'RETURN count(merged) AS mergedCount',
           ].join(' '),
         )}, $1::agtype) AS (value agtype)`,
@@ -143,8 +143,9 @@ export async function mergeActorGraphElements(
       `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
         [
           'MATCH (secondary {graphNodeId: $secondaryGraphNodeId})',
+          'WITH secondary, count(secondary) AS deletedCount',
           'DETACH DELETE secondary',
-          'RETURN 1 AS deletedCount',
+          'RETURN deletedCount',
         ].join(' '),
       )}, $1::agtype) AS (value agtype)`,
       [JSON.stringify(actorGraphParameters(input))],
@@ -159,7 +160,14 @@ export async function mergeActorGraphElements(
   });
 }
 
-function actorGraphParameters(input: ActorGraphReconcileInput): Record<string, string> {
+type ActorGraphCypherParameters = {
+  readonly primaryActorId: string;
+  readonly primaryGraphNodeId: string;
+  readonly secondaryGraphNodeId: string;
+};
+
+// graphName is interpolated into the cypher() call separately and must not be passed as agtype.
+function actorGraphParameters(input: ActorGraphReconcileInput): ActorGraphCypherParameters {
   return {
     primaryActorId: input.primaryActorId ?? input.primaryGraphNodeId,
     primaryGraphNodeId: input.primaryGraphNodeId,
