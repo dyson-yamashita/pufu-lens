@@ -75,6 +75,13 @@ assert.ok(successfulMock.unsafeQueries.some((query) => query.sql.includes('MERGE
 assert.ok(successfulMock.unsafeQueries.some((query) => query.sql.includes('MERGE (source)-')));
 assert.ok(successfulMock.unsafeQueries.every((query) => !query.sql.includes('CREATE (primary)-')));
 assert.ok(successfulMock.unsafeQueries.every((query) => !query.sql.includes('CREATE (source)-')));
+assert.ok(
+  successfulMock.unsafeQueries
+    .filter(
+      (query) => query.sql.includes('MERGE (primary)-') || query.sql.includes('MERGE (source)-'),
+    )
+    .every((query) => query.sql.includes('ON CREATE SET merged += properties(relation)')),
+);
 
 await assert.rejects(
   () =>
@@ -106,6 +113,10 @@ try {
     secondaryGraphNodeId: 'actor:secondary',
   });
   assert.match(warnings.at(-1) ?? '', /expected 1 primary actor graph node, found 2/);
+  assert.match(
+    warnings.at(-1) ?? '',
+    /graph=graph_sample, primary=actor:primary, secondary=actor:secondary/,
+  );
 
   warnings.length = 0;
   await reconcileMergedActorGraphElements(createThrowingSqlMock().sql, {
@@ -113,7 +124,10 @@ try {
     primaryGraphNodeId: 'actor:primary',
     secondaryGraphNodeId: 'actor:secondary',
   });
-  assert.match(warnings.at(-1) ?? '', /AGE actor graph reconcile failed: synthetic AGE failure/);
+  assert.match(
+    warnings.at(-1) ?? '',
+    /AGE actor graph reconcile failed \(graph=graph_sample, primary=actor:primary, secondary=actor:secondary\): synthetic AGE failure/,
+  );
 } finally {
   console.warn = originalWarn;
 }

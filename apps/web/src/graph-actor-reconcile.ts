@@ -42,16 +42,25 @@ export async function reconcileMergedActorGraphElements(
   sql: postgres.Sql,
   input: ActorGraphReconcileInput,
 ): Promise<void> {
+  const context = formatActorGraphReconcileContext(input);
   try {
     const result = await mergeActorGraphElements(sql, input);
     if (result.status === 'skipped' && result.reason !== 'secondary actor graph node not found') {
-      console.warn(`AGE actor graph reconcile skipped: ${result.reason}.`);
+      console.warn(`AGE actor graph reconcile skipped (${context}): ${result.reason}.`);
     }
   } catch (error) {
     console.warn(
-      `AGE actor graph reconcile failed: ${error instanceof Error ? error.message : String(error)}`,
+      `AGE actor graph reconcile failed (${context}): ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+}
+
+function formatActorGraphReconcileContext(input: ActorGraphReconcileInput): string {
+  return [
+    `graph=${input.graphName ?? 'none'}`,
+    `primary=${input.primaryGraphNodeId}`,
+    `secondary=${input.secondaryGraphNodeId}`,
+  ].join(', ');
 }
 
 export async function mergeActorGraphElements(
@@ -106,7 +115,7 @@ export async function mergeActorGraphElements(
             `MATCH (secondary)-[relation:${edgeType}]->(target)`,
             'WHERE target.graphNodeId IS NULL OR target.graphNodeId <> $primaryGraphNodeId',
             `MERGE (primary)-[merged:${edgeType}]->(target)`,
-            'SET merged += properties(relation)',
+            'ON CREATE SET merged += properties(relation)',
             'RETURN count(merged) AS mergedCount',
           ].join(' '),
         )}, $1::agtype) AS (value agtype)`,
@@ -121,7 +130,7 @@ export async function mergeActorGraphElements(
             `MATCH (source)-[relation:${edgeType}]->(secondary)`,
             'WHERE source.graphNodeId IS NULL OR source.graphNodeId <> $primaryGraphNodeId',
             `MERGE (source)-[merged:${edgeType}]->(primary)`,
-            'SET merged += properties(relation)',
+            'ON CREATE SET merged += properties(relation)',
             'RETURN count(merged) AS mergedCount',
           ].join(' '),
         )}, $1::agtype) AS (value agtype)`,
