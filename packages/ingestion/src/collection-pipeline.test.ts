@@ -488,6 +488,48 @@ test('scanGitHubDataSource paginates pull requests in pages of 30 up to 500', as
   assert.match(paths[16] ?? '', /page=17/);
 });
 
+test('scanGitHubDataSource stops pull request pagination after the since cutoff', async () => {
+  const paths: string[] = [];
+  const candidates = await scanGitHubDataSource({
+    dataSource: dataSource({
+      config: { repositories: ['example-org/pufu-sample'] },
+      ingestWindow: { since: '2026-05-01T00:00:00.000Z' },
+      sourceType: 'github',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      const page = Number(new URL(`https://example.test${path}`).searchParams.get('page') ?? '1');
+      const updatedAt = page === 1 ? '2026-05-09T00:00:00.000Z' : '2026-04-30T00:00:00.000Z';
+      return Array.from({ length: 30 }, (_, index) =>
+        githubPullRequest({ number: (page - 1) * 30 + index + 1, updatedAt }),
+      );
+    },
+  });
+
+  assert.equal(candidates.length, 30);
+  assert.equal(paths.length, 2);
+});
+
+test('scanGitHubDataSource accepts string maxPullRequests config values', async () => {
+  const paths: string[] = [];
+  const candidates = await scanGitHubDataSource({
+    dataSource: dataSource({
+      config: { maxPullRequests: '31', repositories: ['example-org/pufu-sample'] },
+      sourceType: 'github',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      const page = Number(new URL(`https://example.test${path}`).searchParams.get('page') ?? '1');
+      return Array.from({ length: 30 }, (_, index) =>
+        githubPullRequest({ number: (page - 1) * 30 + index + 1 }),
+      );
+    },
+  });
+
+  assert.equal(candidates.length, 31);
+  assert.equal(paths.length, 2);
+});
+
 test('scanGitHubDataSource collects linked issues referenced by pull request closing keywords', async () => {
   const paths: string[] = [];
   const candidates = await scanGitHubDataSource({
@@ -518,6 +560,44 @@ test('scanGitHubDataSource collects linked issues referenced by pull request clo
     ['pull_request:202', 'pull_request:203', 'issue:101', 'issue:102'],
   );
   assert.equal(paths.filter((path) => path.endsWith('/issues/101')).length, 1);
+});
+
+test('scanGitHubDataSource continues when a linked issue fetch fails', async () => {
+  const originalConsoleError = console.error;
+  const errors: unknown[] = [];
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
+  };
+
+  try {
+    const candidates = await scanGitHubDataSource({
+      dataSource: dataSource({
+        config: { repositories: ['example-org/pufu-sample'] },
+        sourceType: 'github',
+      }),
+      fetcher: async ({ path }): Promise<unknown> => {
+        if (path.includes('/pulls?')) {
+          return [githubPullRequest({ body: 'Fixes #101, #102', number: 202 })];
+        }
+        if (path.endsWith('/issues/101')) {
+          throw new Error('temporary linked issue failure token=secret');
+        }
+        if (path.endsWith('/issues/102')) {
+          return githubIssue({ number: 102 });
+        }
+        throw new Error(`Unexpected GitHub path: ${path}`);
+      },
+    });
+
+    assert.deepEqual(
+      candidates.map((candidate) => githubCandidateLabel(candidate)),
+      ['pull_request:202', 'issue:102'],
+    );
+    assert.match(JSON.stringify(errors), /Failed to fetch linked GitHub issue/);
+    assert.doesNotMatch(JSON.stringify(errors), /token=secret/);
+  } finally {
+    console.error = originalConsoleError;
+  }
 });
 
 test('scanGitHubDataSource can collect standalone issues when explicitly configured', async () => {
@@ -1487,7 +1567,7 @@ function githubIssue(input: { number: number; pullRequest?: boolean }): {
   };
 }
 
-function githubPullRequest(input: { body?: string; number: number }): {
+function githubPullRequest(input: { body?: string; number: number; updatedAt?: string }): {
   body: string;
   created_at: string;
   diff_url: string;
@@ -1506,7 +1586,7 @@ function githubPullRequest(input: { body?: string; number: number }): {
     number: input.number,
     state: 'open',
     title: `GitHub PR ${input.number}`,
-    updated_at: '2026-05-09T00:00:00.000Z',
+    updated_at: input.updatedAt ?? '2026-05-09T00:00:00.000Z',
     user: { login: 'author', name: 'Author' },
   };
 }

@@ -398,6 +398,9 @@ async function listPullRequests(input: {
       token: input.token,
     });
     const pageItems = validatePullRequestList(response);
+    if (isPullRequestPageOlderThanSince(pageItems, input.since)) {
+      break;
+    }
     const filtered = filterPullRequestsSince(pageItems, input.since);
     pullRequests.push(...filtered.slice(0, maxPullRequests - pullRequests.length));
     if (pageItems.length < GITHUB_PAGE_SIZE) {
@@ -405,6 +408,20 @@ async function listPullRequests(input: {
     }
   }
   return pullRequests;
+}
+
+function isPullRequestPageOlderThanSince(
+  pullRequests: GitHubPullRequestResponse[],
+  since: string | undefined,
+): boolean {
+  if (!since || pullRequests.length === 0) {
+    return false;
+  }
+  const sinceTime = Date.parse(since);
+  const firstUpdatedTime = Date.parse(pullRequests[0]?.updated_at ?? '');
+  return (
+    !Number.isNaN(sinceTime) && !Number.isNaN(firstUpdatedTime) && firstUpdatedTime < sinceTime
+  );
 }
 
 function filterPullRequestsSince(
@@ -418,7 +435,15 @@ function filterPullRequestsSince(
   if (Number.isNaN(sinceTime)) {
     return pullRequests;
   }
-  return pullRequests.filter((pullRequest) => Date.parse(pullRequest.updated_at) >= sinceTime);
+  const filtered: GitHubPullRequestResponse[] = [];
+  for (const pullRequest of pullRequests) {
+    const updatedTime = Date.parse(pullRequest.updated_at);
+    if (Number.isNaN(updatedTime) || updatedTime < sinceTime) {
+      break;
+    }
+    filtered.push(pullRequest);
+  }
+  return filtered;
 }
 
 async function listIssues(input: {
@@ -471,12 +496,22 @@ async function listLinkedIssues(input: {
     if (input.seenSourceIds.has(sourceId)) {
       continue;
     }
-    const issue = validateIssue(
-      await input.fetcher({
-        path: `/repos/${ref.repository}/issues/${ref.number}`,
-        token: input.token,
-      }),
-    );
+    let issue: GitHubIssueResponse;
+    try {
+      issue = validateIssue(
+        await input.fetcher({
+          path: `/repos/${ref.repository}/issues/${ref.number}`,
+          token: input.token,
+        }),
+      );
+    } catch (error) {
+      console.error(
+        `Failed to fetch linked GitHub issue ${ref.repository}#${ref.number}: ${sanitizeError(
+          error,
+        )}`,
+      );
+      continue;
+    }
     if (!issue.pull_request) {
       candidates.push({ issue, repository: ref.repository });
     }
@@ -855,7 +890,8 @@ function readStringArray(value: unknown): string[] {
 }
 
 function readPositiveInteger(value: unknown, fallback: number): number {
-  return Number.isInteger(value) && Number(value) > 0 ? Number(value) : fallback;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function uniqueLinkedIssueRefs(
