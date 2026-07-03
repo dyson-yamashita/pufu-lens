@@ -167,7 +167,7 @@ steps:
           gcloud run jobs update "${job_args[@]}"
         else
           describe_status="$${?}"
-          if grep -Eiq 'NOT_FOUND|not found|could not be found|does not exist' "$${describe_error}"; then
+          if grep -Eiq 'NOT_FOUND|not found|Cannot find job|could not be found|does not exist' "$${describe_error}"; then
             echo "Creating DB migration job ${_DB_MIGRATION_JOB} because it does not exist."
             rm -f "$${describe_error}"
             gcloud run jobs create "${job_args[@]}"
