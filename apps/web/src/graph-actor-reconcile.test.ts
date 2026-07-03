@@ -19,8 +19,8 @@ assert.throws(
 );
 
 const sampleReconcileInput = {
-  primaryActorId: 'actor:primary',
-  primaryGraphNodeId: 'actor:primary',
+  primaryActorId: 'actor:primary-db-id',
+  primaryGraphNodeId: 'actor:primary-graph-node',
   secondaryGraphNodeId: 'actor:secondary',
 } as const;
 
@@ -104,9 +104,9 @@ assert.ok(
       }
       const parsed = JSON.parse(params[0]) as Record<string, unknown>;
       return (
-        parsed.primaryActorId === 'actor:primary' &&
-        parsed.primaryGraphNodeId === 'actor:primary' &&
-        parsed.secondaryGraphNodeId === 'actor:secondary' &&
+        parsed.primaryActorId === sampleReconcileInput.primaryActorId &&
+        parsed.primaryGraphNodeId === sampleReconcileInput.primaryGraphNodeId &&
+        parsed.secondaryGraphNodeId === sampleReconcileInput.secondaryGraphNodeId &&
         !('graphName' in parsed)
       );
     }),
@@ -142,7 +142,7 @@ try {
   assert.match(warnings.at(-1) ?? '', /expected 1 primary actor graph node, found 2/);
   assert.match(
     warnings.at(-1) ?? '',
-    /graph=graph_sample, primary=actor:primary, secondary=actor:secondary/,
+    /graph=graph_sample, primary=actor:primary-graph-node, secondary=actor:secondary/,
   );
 
   warnings.length = 0;
@@ -152,7 +152,7 @@ try {
   });
   assert.match(
     warnings.at(-1) ?? '',
-    /AGE actor graph reconcile failed \(graph=graph_sample, primary=actor:primary, secondary=actor:secondary\): synthetic AGE failure/,
+    /AGE actor graph reconcile failed \(graph=graph_sample, primary=actor:primary-graph-node, secondary=actor:secondary\): synthetic AGE failure/,
   );
 } finally {
   console.warn = originalWarn;
