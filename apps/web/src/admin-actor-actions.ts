@@ -35,6 +35,7 @@ export async function mergeActors(formData: FormData): Promise<void> {
       });
       graphReconcileInput = {
         graphName: project.graphName,
+        primaryActorId: primaryActor.id,
         primaryGraphNodeId: primaryActor.graphNodeId,
         secondaryGraphNodeId: secondaryActor.graphNodeId,
       };

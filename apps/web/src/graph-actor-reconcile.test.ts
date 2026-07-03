@@ -18,11 +18,16 @@ assert.throws(
   /Invalid AGE sample count: value is not a safe integer/,
 );
 
+const sampleReconcileInput = {
+  primaryActorId: 'actor:primary-db-id',
+  primaryGraphNodeId: 'actor:primary-graph-node',
+  secondaryGraphNodeId: 'actor:secondary',
+} as const;
+
 assert.deepEqual(
   await mergeActorGraphElements(createSqlMock([]).sql, {
+    ...sampleReconcileInput,
     graphName: null,
-    primaryGraphNodeId: 'actor:primary',
-    secondaryGraphNodeId: 'actor:secondary',
   }),
   { reason: 'project graph is not configured', status: 'skipped' },
 );
@@ -30,6 +35,7 @@ assert.deepEqual(
 assert.deepEqual(
   await mergeActorGraphElements(createSqlMock([]).sql, {
     graphName: 'graph_sample',
+    primaryActorId: 'actor:same',
     primaryGraphNodeId: 'actor:same',
     secondaryGraphNodeId: 'actor:same',
   }),
@@ -38,18 +44,16 @@ assert.deepEqual(
 
 assert.deepEqual(
   await mergeActorGraphElements(createSqlMock([[{ value: 0 }]]).sql, {
+    ...sampleReconcileInput,
     graphName: 'graph_sample',
-    primaryGraphNodeId: 'actor:primary',
-    secondaryGraphNodeId: 'actor:secondary',
   }),
   { reason: 'expected 1 primary actor graph node, found 0', status: 'skipped' },
 );
 
 assert.deepEqual(
   await mergeActorGraphElements(createSqlMock([[{ value: 1 }], [{ value: 0 }]]).sql, {
+    ...sampleReconcileInput,
     graphName: 'graph_sample',
-    primaryGraphNodeId: 'actor:primary',
-    secondaryGraphNodeId: 'actor:secondary',
   }),
   { reason: 'secondary actor graph node not found', status: 'skipped' },
 );
@@ -62,9 +66,8 @@ const successfulMock = createSqlMock([
 ]);
 assert.deepEqual(
   await mergeActorGraphElements(successfulMock.sql, {
+    ...sampleReconcileInput,
     graphName: 'graph_sample',
-    primaryGraphNodeId: 'actor:primary',
-    secondaryGraphNodeId: 'actor:secondary',
   }),
   { deletedCount: 1, status: 'merged' },
 );
@@ -80,7 +83,33 @@ assert.ok(
     .filter(
       (query) => query.sql.includes('MERGE (primary)-') || query.sql.includes('MERGE (source)-'),
     )
-    .every((query) => query.sql.includes('ON CREATE SET merged += properties(relation)')),
+    .every((query) =>
+      query.sql.includes(
+        'ON CREATE SET merged += properties(relation), merged.actorId = $primaryActorId',
+      ),
+    ),
+);
+assert.ok(
+  successfulMock.unsafeQueries
+    .at(-1)
+    ?.sql.includes('WITH secondary, count(secondary) AS deletedCount DETACH DELETE secondary'),
+);
+assert.ok(
+  successfulMock.unsafeQueries
+    .filter((query) => query.params && query.sql.includes('$secondaryGraphNodeId'))
+    .every((query) => {
+      const params = query.params;
+      if (!params?.[0] || typeof params[0] !== 'string') {
+        return false;
+      }
+      const parsed = JSON.parse(params[0]) as Record<string, unknown>;
+      return (
+        parsed.primaryActorId === sampleReconcileInput.primaryActorId &&
+        parsed.primaryGraphNodeId === sampleReconcileInput.primaryGraphNodeId &&
+        parsed.secondaryGraphNodeId === sampleReconcileInput.secondaryGraphNodeId &&
+        !('graphName' in parsed)
+      );
+    }),
 );
 
 await assert.rejects(
@@ -93,9 +122,8 @@ await assert.rejects(
         [{ value: 0 }],
       ]).sql,
       {
+        ...sampleReconcileInput,
         graphName: 'graph_sample',
-        primaryGraphNodeId: 'actor:primary',
-        secondaryGraphNodeId: 'actor:secondary',
       },
     ),
   /Actor graph reconcile failed: expected to delete 1 secondary node, deleted 0/,
@@ -108,25 +136,23 @@ console.warn = (message?: unknown): void => {
 };
 try {
   await reconcileMergedActorGraphElements(createSqlMock([[{ value: 2 }]]).sql, {
+    ...sampleReconcileInput,
     graphName: 'graph_sample',
-    primaryGraphNodeId: 'actor:primary',
-    secondaryGraphNodeId: 'actor:secondary',
   });
   assert.match(warnings.at(-1) ?? '', /expected 1 primary actor graph node, found 2/);
   assert.match(
     warnings.at(-1) ?? '',
-    /graph=graph_sample, primary=actor:primary, secondary=actor:secondary/,
+    /graph=graph_sample, primary=actor:primary-graph-node, secondary=actor:secondary/,
   );
 
   warnings.length = 0;
   await reconcileMergedActorGraphElements(createThrowingSqlMock().sql, {
+    ...sampleReconcileInput,
     graphName: 'graph_sample',
-    primaryGraphNodeId: 'actor:primary',
-    secondaryGraphNodeId: 'actor:secondary',
   });
   assert.match(
     warnings.at(-1) ?? '',
-    /AGE actor graph reconcile failed \(graph=graph_sample, primary=actor:primary, secondary=actor:secondary\): synthetic AGE failure/,
+    /AGE actor graph reconcile failed \(graph=graph_sample, primary=actor:primary-graph-node, secondary=actor:secondary\): synthetic AGE failure/,
   );
 } finally {
   console.warn = originalWarn;
