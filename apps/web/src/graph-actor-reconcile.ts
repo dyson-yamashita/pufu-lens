@@ -18,9 +18,9 @@ export type ActorGraphReconcileResult =
 
 export interface ActorGraphReconcileInput {
   readonly graphName: string | null;
+  readonly primaryActorId: string;
   readonly primaryGraphNodeId: string;
   readonly secondaryGraphNodeId: string;
-  readonly primaryActorId?: string;
 }
 
 function validateGraphName(graphName: string): string {
@@ -169,7 +169,7 @@ type ActorGraphCypherParameters = {
 // graphName is interpolated into the cypher() call separately and must not be passed as agtype.
 function actorGraphParameters(input: ActorGraphReconcileInput): ActorGraphCypherParameters {
   return {
-    primaryActorId: input.primaryActorId ?? input.primaryGraphNodeId,
+    primaryActorId: input.primaryActorId,
     primaryGraphNodeId: input.primaryGraphNodeId,
     secondaryGraphNodeId: input.secondaryGraphNodeId,
   };

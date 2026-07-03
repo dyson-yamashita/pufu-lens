@@ -18,11 +18,16 @@ assert.throws(
   /Invalid AGE sample count: value is not a safe integer/,
 );
 
+const sampleReconcileInput = {
+  primaryActorId: 'actor:primary',
+  primaryGraphNodeId: 'actor:primary',
+  secondaryGraphNodeId: 'actor:secondary',
+} as const;
+
 assert.deepEqual(
   await mergeActorGraphElements(createSqlMock([]).sql, {
+    ...sampleReconcileInput,
     graphName: null,
-    primaryGraphNodeId: 'actor:primary',
-    secondaryGraphNodeId: 'actor:secondary',
   }),
   { reason: 'project graph is not configured', status: 'skipped' },
 );
@@ -30,6 +35,7 @@ assert.deepEqual(
 assert.deepEqual(
   await mergeActorGraphElements(createSqlMock([]).sql, {
     graphName: 'graph_sample',
+    primaryActorId: 'actor:same',
     primaryGraphNodeId: 'actor:same',
     secondaryGraphNodeId: 'actor:same',
   }),
@@ -38,18 +44,16 @@ assert.deepEqual(
 
 assert.deepEqual(
   await mergeActorGraphElements(createSqlMock([[{ value: 0 }]]).sql, {
+    ...sampleReconcileInput,
     graphName: 'graph_sample',
-    primaryGraphNodeId: 'actor:primary',
-    secondaryGraphNodeId: 'actor:secondary',
   }),
   { reason: 'expected 1 primary actor graph node, found 0', status: 'skipped' },
 );
 
 assert.deepEqual(
   await mergeActorGraphElements(createSqlMock([[{ value: 1 }], [{ value: 0 }]]).sql, {
+    ...sampleReconcileInput,
     graphName: 'graph_sample',
-    primaryGraphNodeId: 'actor:primary',
-    secondaryGraphNodeId: 'actor:secondary',
   }),
   { reason: 'secondary actor graph node not found', status: 'skipped' },
 );
@@ -62,9 +66,8 @@ const successfulMock = createSqlMock([
 ]);
 assert.deepEqual(
   await mergeActorGraphElements(successfulMock.sql, {
+    ...sampleReconcileInput,
     graphName: 'graph_sample',
-    primaryGraphNodeId: 'actor:primary',
-    secondaryGraphNodeId: 'actor:secondary',
   }),
   { deletedCount: 1, status: 'merged' },
 );
@@ -119,9 +122,8 @@ await assert.rejects(
         [{ value: 0 }],
       ]).sql,
       {
+        ...sampleReconcileInput,
         graphName: 'graph_sample',
-        primaryGraphNodeId: 'actor:primary',
-        secondaryGraphNodeId: 'actor:secondary',
       },
     ),
   /Actor graph reconcile failed: expected to delete 1 secondary node, deleted 0/,
@@ -134,9 +136,8 @@ console.warn = (message?: unknown): void => {
 };
 try {
   await reconcileMergedActorGraphElements(createSqlMock([[{ value: 2 }]]).sql, {
+    ...sampleReconcileInput,
     graphName: 'graph_sample',
-    primaryGraphNodeId: 'actor:primary',
-    secondaryGraphNodeId: 'actor:secondary',
   });
   assert.match(warnings.at(-1) ?? '', /expected 1 primary actor graph node, found 2/);
   assert.match(
@@ -146,9 +147,8 @@ try {
 
   warnings.length = 0;
   await reconcileMergedActorGraphElements(createThrowingSqlMock().sql, {
+    ...sampleReconcileInput,
     graphName: 'graph_sample',
-    primaryGraphNodeId: 'actor:primary',
-    secondaryGraphNodeId: 'actor:secondary',
   });
   assert.match(
     warnings.at(-1) ?? '',
