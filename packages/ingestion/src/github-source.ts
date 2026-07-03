@@ -311,10 +311,11 @@ export async function scanGitHubDataSource(input: {
     }
 
     if (includePullRequests) {
+      const remainingLimit = remainingCandidateLimit(limit, candidates.length);
       const pullRequests = await listPullRequests({
         config: dataSource.config,
         fetcher,
-        limit,
+        limit: remainingLimit,
         repository,
         since,
         state: pullRequestState,
@@ -332,10 +333,11 @@ export async function scanGitHubDataSource(input: {
         );
       }
       if (includeLinkedIssues && (limit === undefined || candidates.length < limit)) {
+        const remainingLimit = remainingCandidateLimit(limit, candidates.length);
         const linkedIssues = await listLinkedIssues({
           config: dataSource.config,
           fetcher,
-          limit,
+          limit: remainingLimit,
           pullRequests,
           repository,
           seenSourceIds,
@@ -351,9 +353,10 @@ export async function scanGitHubDataSource(input: {
     }
 
     if (includeStandaloneIssues && (limit === undefined || candidates.length < limit)) {
+      const remainingLimit = remainingCandidateLimit(limit, candidates.length);
       const issueList = await listIssues({
         fetcher,
-        limit,
+        limit: remainingLimit,
         repository,
         since,
         state: issueState,
@@ -403,7 +406,7 @@ async function listPullRequests(input: {
     }
     const filtered = filterPullRequestsSince(pageItems, input.since);
     pullRequests.push(...filtered.slice(0, maxPullRequests - pullRequests.length));
-    if (pageItems.length < GITHUB_PAGE_SIZE) {
+    if (filtered.length < pageItems.length || pageItems.length < GITHUB_PAGE_SIZE) {
       break;
     }
   }
@@ -480,7 +483,7 @@ async function listLinkedIssues(input: {
   token?: string;
 }): Promise<GitHubCandidate[]> {
   const maxLinkedIssues = Math.min(
-    input.limit ?? readPositiveInteger(input.config.maxLinkedIssues, DEFAULT_MAX_LINKED_ISSUES),
+    readPositiveInteger(input.config.maxLinkedIssues, DEFAULT_MAX_LINKED_ISSUES),
     DEFAULT_MAX_LINKED_ISSUES,
   );
   const refs = uniqueLinkedIssueRefs(input.repository, input.pullRequests).slice(
@@ -489,10 +492,13 @@ async function listLinkedIssues(input: {
   );
   const candidates: GitHubCandidate[] = [];
   for (const ref of refs) {
-    if (input.limit !== undefined && input.seenSourceIds.size + candidates.length >= input.limit) {
+    if (input.limit !== undefined && candidates.length >= input.limit) {
       break;
     }
-    const sourceId = normalizeSourceId('github', `${ref.repository}/issues/${ref.number}`);
+    const sourceId = normalizeSourceId(
+      'github',
+      `${ref.repository.toLowerCase()}/issues/${ref.number}`,
+    );
     if (input.seenSourceIds.has(sourceId)) {
       continue;
     }
@@ -517,6 +523,13 @@ async function listLinkedIssues(input: {
     }
   }
   return candidates;
+}
+
+function remainingCandidateLimit(
+  limit: number | undefined,
+  collectedCount: number,
+): number | undefined {
+  return limit === undefined ? undefined : Math.max(limit - collectedCount, 0);
 }
 
 function addCandidate(
@@ -630,7 +643,9 @@ function githubCandidateSourceId(candidate: GitHubCandidate): string {
   const kind = candidate.issue.pull_request ? 'pull_request' : 'issue';
   return normalizeSourceId(
     'github',
-    `${candidate.repository}/${kind === 'pull_request' ? 'pulls' : 'issues'}/${candidate.issue.number}`,
+    `${candidate.repository.toLowerCase()}/${kind === 'pull_request' ? 'pulls' : 'issues'}/${
+      candidate.issue.number
+    }`,
   );
 }
 
@@ -904,7 +919,7 @@ function uniqueLinkedIssueRefs(
       `${pullRequest.title}\n${pullRequest.body ?? ''}`,
       defaultRepository,
     )) {
-      refs.set(`${ref.repository}#${ref.number}`, ref);
+      refs.set(`${ref.repository.toLowerCase()}#${ref.number}`, ref);
     }
   }
   return [...refs.values()];

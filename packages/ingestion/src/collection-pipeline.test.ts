@@ -510,6 +510,54 @@ test('scanGitHubDataSource stops pull request pagination after the since cutoff'
   assert.equal(paths.length, 2);
 });
 
+test('scanGitHubDataSource stops pull request pagination within a page at the since cutoff', async () => {
+  const paths: string[] = [];
+  const candidates = await scanGitHubDataSource({
+    dataSource: dataSource({
+      config: { repositories: ['example-org/pufu-sample'] },
+      ingestWindow: { since: '2026-05-01T00:00:00.000Z' },
+      sourceType: 'github',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      return Array.from({ length: 30 }, (_, index) =>
+        githubPullRequest({
+          number: index + 1,
+          updatedAt: index < 20 ? '2026-05-09T00:00:00.000Z' : '2026-04-30T00:00:00.000Z',
+        }),
+      );
+    },
+  });
+
+  assert.equal(candidates.length, 20);
+  assert.equal(paths.length, 1);
+});
+
+test('scanGitHubDataSource passes remaining limits to later repositories', async () => {
+  const paths: string[] = [];
+  const candidates = await scanGitHubDataSource({
+    dataSource: dataSource({
+      config: {
+        repositories: ['example-org/pufu-sample', 'example-org/pufu-other'],
+      },
+      sourceType: 'github',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      const page = Number(new URL(`https://example.test${path}`).searchParams.get('page') ?? '1');
+      const base = path.includes('/pufu-other/') ? 1000 : 0;
+      const length = path.includes('/pufu-other/') ? 30 : 29;
+      return Array.from({ length }, (_, index) =>
+        githubPullRequest({ number: base + (page - 1) * 30 + index + 1 }),
+      );
+    },
+    limit: 31,
+  });
+
+  assert.equal(candidates.length, 31);
+  assert.equal(paths.filter((path) => path.includes('/pufu-other/pulls?')).length, 1);
+});
+
 test('scanGitHubDataSource accepts string maxPullRequests config values', async () => {
   const paths: string[] = [];
   const candidates = await scanGitHubDataSource({
@@ -558,6 +606,64 @@ test('scanGitHubDataSource collects linked issues referenced by pull request clo
   assert.deepEqual(
     candidates.map((candidate) => githubCandidateLabel(candidate)),
     ['pull_request:202', 'pull_request:203', 'issue:101', 'issue:102'],
+  );
+  assert.equal(paths.filter((path) => path.endsWith('/issues/101')).length, 1);
+});
+
+test('scanGitHubDataSource keeps scanning linked issue refs until the remaining limit is filled', async () => {
+  const candidates = await scanGitHubDataSource({
+    dataSource: dataSource({
+      config: { repositories: ['example-org/pufu-sample'] },
+      sourceType: 'github',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      if (path.includes('/pulls?')) {
+        return [githubPullRequest({ body: 'Fixes #101, #102', number: 202 })];
+      }
+      if (path.endsWith('/issues/101')) {
+        return githubIssue({ number: 101, pullRequest: true });
+      }
+      if (path.endsWith('/issues/102')) {
+        return githubIssue({ number: 102 });
+      }
+      throw new Error(`Unexpected GitHub path: ${path}`);
+    },
+    limit: 2,
+  });
+
+  assert.deepEqual(
+    candidates.map((candidate) => githubCandidateLabel(candidate)),
+    ['pull_request:202', 'issue:102'],
+  );
+});
+
+test('scanGitHubDataSource deduplicates linked issue refs across repository casing', async () => {
+  const paths: string[] = [];
+  const candidates = await scanGitHubDataSource({
+    dataSource: dataSource({
+      config: { repositories: ['Example-Org/Pufu-Sample'] },
+      sourceType: 'github',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      if (path.includes('/pulls?')) {
+        return [
+          githubPullRequest({
+            body: 'Fixes Example-Org/Pufu-Sample#101, example-org/pufu-sample#101',
+            number: 202,
+          }),
+        ];
+      }
+      if (path.endsWith('/issues/101')) {
+        return githubIssue({ number: 101 });
+      }
+      throw new Error(`Unexpected GitHub path: ${path}`);
+    },
+  });
+
+  assert.deepEqual(
+    candidates.map((candidate) => githubCandidateLabel(candidate)),
+    ['pull_request:202', 'issue:101'],
   );
   assert.equal(paths.filter((path) => path.endsWith('/issues/101')).length, 1);
 });
