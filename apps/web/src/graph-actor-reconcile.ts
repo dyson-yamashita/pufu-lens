@@ -20,6 +20,7 @@ export interface ActorGraphReconcileInput {
   readonly graphName: string | null;
   readonly primaryGraphNodeId: string;
   readonly secondaryGraphNodeId: string;
+  readonly primaryActorId?: string;
 }
 
 function validateGraphName(graphName: string): string {
@@ -115,11 +116,11 @@ export async function mergeActorGraphElements(
             `MATCH (secondary)-[relation:${edgeType}]->(target)`,
             'WHERE target.graphNodeId IS NULL OR target.graphNodeId <> $primaryGraphNodeId',
             `MERGE (primary)-[merged:${edgeType}]->(target)`,
-            'ON CREATE SET merged += properties(relation)',
+            'SET merged += properties(relation), merged.actorId = $primaryActorId',
             'RETURN count(merged) AS mergedCount',
           ].join(' '),
         )}, $1::agtype) AS (value agtype)`,
-        [JSON.stringify(input)],
+        [JSON.stringify(actorGraphParameters(input))],
       )) as readonly unknown[];
       parseActorGraphCountRows(outgoingRows, `${edgeType} outgoing merge count`);
       const incomingRows = (await transaction.unsafe(
@@ -130,11 +131,11 @@ export async function mergeActorGraphElements(
             `MATCH (source)-[relation:${edgeType}]->(secondary)`,
             'WHERE source.graphNodeId IS NULL OR source.graphNodeId <> $primaryGraphNodeId',
             `MERGE (source)-[merged:${edgeType}]->(primary)`,
-            'ON CREATE SET merged += properties(relation)',
+            'SET merged += properties(relation), merged.actorId = $primaryActorId',
             'RETURN count(merged) AS mergedCount',
           ].join(' '),
         )}, $1::agtype) AS (value agtype)`,
-        [JSON.stringify(input)],
+        [JSON.stringify(actorGraphParameters(input))],
       )) as readonly unknown[];
       parseActorGraphCountRows(incomingRows, `${edgeType} incoming merge count`);
     }
@@ -143,10 +144,10 @@ export async function mergeActorGraphElements(
         [
           'MATCH (secondary {graphNodeId: $secondaryGraphNodeId})',
           'DETACH DELETE secondary',
-          'RETURN count(secondary) AS deletedCount',
+          'RETURN 1 AS deletedCount',
         ].join(' '),
       )}, $1::agtype) AS (value agtype)`,
-      [JSON.stringify(input)],
+      [JSON.stringify(actorGraphParameters(input))],
     )) as readonly unknown[];
     const deletedCount = parseActorGraphCountRows(deleteRows, 'secondary actor delete count');
     if (deletedCount !== 1) {
@@ -156,6 +157,14 @@ export async function mergeActorGraphElements(
     }
     return { deletedCount, status: 'merged' };
   });
+}
+
+function actorGraphParameters(input: ActorGraphReconcileInput): Record<string, string> {
+  return {
+    primaryActorId: input.primaryActorId ?? input.primaryGraphNodeId,
+    primaryGraphNodeId: input.primaryGraphNodeId,
+    secondaryGraphNodeId: input.secondaryGraphNodeId,
+  };
 }
 
 async function countActorGraphNode(

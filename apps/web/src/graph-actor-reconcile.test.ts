@@ -80,7 +80,31 @@ assert.ok(
     .filter(
       (query) => query.sql.includes('MERGE (primary)-') || query.sql.includes('MERGE (source)-'),
     )
-    .every((query) => query.sql.includes('ON CREATE SET merged += properties(relation)')),
+    .every((query) =>
+      query.sql.includes('SET merged += properties(relation), merged.actorId = $primaryActorId'),
+    ),
+);
+assert.ok(
+  successfulMock.unsafeQueries
+    .at(-1)
+    ?.sql.includes('DETACH DELETE secondary RETURN 1 AS deletedCount'),
+);
+assert.ok(
+  successfulMock.unsafeQueries
+    .filter((query) => query.params && query.sql.includes('$secondaryGraphNodeId'))
+    .every((query) => {
+      const params = query.params;
+      if (!params?.[0] || typeof params[0] !== 'string') {
+        return false;
+      }
+      const parsed = JSON.parse(params[0]) as Record<string, unknown>;
+      return (
+        parsed.primaryActorId === 'actor:primary' &&
+        parsed.primaryGraphNodeId === 'actor:primary' &&
+        parsed.secondaryGraphNodeId === 'actor:secondary' &&
+        !('graphName' in parsed)
+      );
+    }),
 );
 
 await assert.rejects(
