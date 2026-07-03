@@ -18,6 +18,19 @@ export interface GitHubIssueResponse {
   number: number;
   pull_request?: { diff_url?: string; html_url?: string; url?: string };
   repository_url?: string;
+  state?: 'closed' | 'open';
+  title: string;
+  updated_at: string;
+  user: GitHubUserResponse | null;
+}
+
+export interface GitHubPullRequestResponse {
+  body?: string | null;
+  created_at: string;
+  diff_url?: string;
+  html_url: string;
+  number: number;
+  state?: 'closed' | 'open';
   title: string;
   updated_at: string;
   user: GitHubUserResponse | null;
@@ -94,8 +107,9 @@ export interface CollectGitHubSourceResult {
   projectSlug: string;
 }
 
-const DEFAULT_PER_PAGE = 30;
-const MAX_PER_PAGE = 100;
+const GITHUB_PAGE_SIZE = 30;
+const DEFAULT_MAX_PULL_REQUESTS = 500;
+const DEFAULT_MAX_LINKED_ISSUES = 500;
 const DEFAULT_USER_AGENT = 'pufu-lens-github-collector/0.1';
 
 export async function collectGitHubSource(
@@ -282,42 +296,209 @@ export async function scanGitHubDataSource(input: {
   }
 
   const repositories = readRepositories(dataSource.config);
-  const state = readState(dataSource.config.state);
+  const includePullRequests = readBoolean(dataSource.config.includePullRequests, true);
+  const includeLinkedIssues = readBoolean(dataSource.config.includeLinkedIssues, true);
+  const includeStandaloneIssues = readBoolean(dataSource.config.includeIssues, false);
+  const pullRequestState = readState(dataSource.config.pullRequestState ?? dataSource.config.state);
+  const issueState = readIssueListState(dataSource.config.issueState ?? dataSource.config.state);
   const since = readString(dataSource.ingestWindow.since);
   const candidates: GitHubCandidate[] = [];
+  const seenSourceIds = new Set<string>();
 
   for (const repository of repositories) {
     if (limit !== undefined && candidates.length >= limit) {
       break;
     }
 
-    const searchParams = new URLSearchParams({
-      direction: 'desc',
-      per_page: String(Math.min(limit ?? DEFAULT_PER_PAGE, MAX_PER_PAGE)),
-      sort: 'updated',
-      state,
-    });
-    if (since) {
-      searchParams.set('since', since);
+    if (includePullRequests) {
+      const pullRequests = await listPullRequests({
+        config: dataSource.config,
+        fetcher,
+        limit,
+        repository,
+        since,
+        state: pullRequestState,
+        token,
+      });
+      for (const pullRequest of pullRequests) {
+        if (limit !== undefined && candidates.length >= limit) {
+          break;
+        }
+        addCandidate(
+          candidates,
+          seenSourceIds,
+          { issue: pullRequestToIssue(pullRequest, repository), repository },
+          dataSource.config,
+        );
+      }
+      if (includeLinkedIssues && (limit === undefined || candidates.length < limit)) {
+        const linkedIssues = await listLinkedIssues({
+          config: dataSource.config,
+          fetcher,
+          limit,
+          pullRequests,
+          repository,
+          seenSourceIds,
+          token,
+        });
+        for (const linkedIssue of linkedIssues) {
+          if (limit !== undefined && candidates.length >= limit) {
+            break;
+          }
+          addCandidate(candidates, seenSourceIds, linkedIssue, dataSource.config);
+        }
+      }
     }
-    const issues = await fetcher({
-      path: `/repos/${repository}/issues?${searchParams.toString()}`,
-      token,
-    });
-    const issueList = validateIssueList(issues);
 
-    for (const issue of issueList) {
-      if (limit !== undefined && candidates.length >= limit) {
-        break;
+    if (includeStandaloneIssues && (limit === undefined || candidates.length < limit)) {
+      const issueList = await listIssues({
+        fetcher,
+        limit,
+        repository,
+        since,
+        state: issueState,
+        token,
+      });
+      for (const issue of issueList) {
+        if (limit !== undefined && candidates.length >= limit) {
+          break;
+        }
+        addCandidate(candidates, seenSourceIds, { issue, repository }, dataSource.config);
       }
-      if (!shouldIncludeIssue(issue, dataSource.config)) {
-        continue;
-      }
-      candidates.push({ issue, repository });
     }
   }
 
   return candidates;
+}
+
+async function listPullRequests(input: {
+  config: Record<string, unknown>;
+  fetcher: GitHubFetcher;
+  limit?: number;
+  repository: string;
+  since?: string;
+  state: 'all' | 'closed' | 'open';
+  token?: string;
+}): Promise<GitHubPullRequestResponse[]> {
+  const maxPullRequests = Math.min(
+    input.limit ?? readPositiveInteger(input.config.maxPullRequests, DEFAULT_MAX_PULL_REQUESTS),
+    DEFAULT_MAX_PULL_REQUESTS,
+  );
+  const pullRequests: GitHubPullRequestResponse[] = [];
+  for (let page = 1; pullRequests.length < maxPullRequests; page += 1) {
+    const searchParams = new URLSearchParams({
+      direction: 'desc',
+      page: String(page),
+      per_page: String(GITHUB_PAGE_SIZE),
+      sort: 'updated',
+      state: input.state,
+    });
+    const response = await input.fetcher({
+      path: `/repos/${input.repository}/pulls?${searchParams.toString()}`,
+      token: input.token,
+    });
+    const pageItems = validatePullRequestList(response);
+    const filtered = filterPullRequestsSince(pageItems, input.since);
+    pullRequests.push(...filtered.slice(0, maxPullRequests - pullRequests.length));
+    if (pageItems.length < GITHUB_PAGE_SIZE) {
+      break;
+    }
+  }
+  return pullRequests;
+}
+
+function filterPullRequestsSince(
+  pullRequests: GitHubPullRequestResponse[],
+  since: string | undefined,
+): GitHubPullRequestResponse[] {
+  if (!since) {
+    return pullRequests;
+  }
+  const sinceTime = Date.parse(since);
+  if (Number.isNaN(sinceTime)) {
+    return pullRequests;
+  }
+  return pullRequests.filter((pullRequest) => Date.parse(pullRequest.updated_at) >= sinceTime);
+}
+
+async function listIssues(input: {
+  fetcher: GitHubFetcher;
+  limit?: number;
+  repository: string;
+  since?: string;
+  state: 'all' | 'closed' | 'open';
+  token?: string;
+}): Promise<GitHubIssueResponse[]> {
+  const searchParams = new URLSearchParams({
+    direction: 'desc',
+    per_page: String(GITHUB_PAGE_SIZE),
+    sort: 'updated',
+    state: input.state,
+  });
+  if (input.since) {
+    searchParams.set('since', input.since);
+  }
+  const issues = await input.fetcher({
+    path: `/repos/${input.repository}/issues?${searchParams.toString()}`,
+    token: input.token,
+  });
+  return validateIssueList(issues).slice(0, input.limit ?? GITHUB_PAGE_SIZE);
+}
+
+async function listLinkedIssues(input: {
+  config: Record<string, unknown>;
+  fetcher: GitHubFetcher;
+  limit?: number;
+  pullRequests: GitHubPullRequestResponse[];
+  repository: string;
+  seenSourceIds: Set<string>;
+  token?: string;
+}): Promise<GitHubCandidate[]> {
+  const maxLinkedIssues = Math.min(
+    input.limit ?? readPositiveInteger(input.config.maxLinkedIssues, DEFAULT_MAX_LINKED_ISSUES),
+    DEFAULT_MAX_LINKED_ISSUES,
+  );
+  const refs = uniqueLinkedIssueRefs(input.repository, input.pullRequests).slice(
+    0,
+    maxLinkedIssues,
+  );
+  const candidates: GitHubCandidate[] = [];
+  for (const ref of refs) {
+    if (input.limit !== undefined && input.seenSourceIds.size + candidates.length >= input.limit) {
+      break;
+    }
+    const sourceId = normalizeSourceId('github', `${ref.repository}/issues/${ref.number}`);
+    if (input.seenSourceIds.has(sourceId)) {
+      continue;
+    }
+    const issue = validateIssue(
+      await input.fetcher({
+        path: `/repos/${ref.repository}/issues/${ref.number}`,
+        token: input.token,
+      }),
+    );
+    if (!issue.pull_request) {
+      candidates.push({ issue, repository: ref.repository });
+    }
+  }
+  return candidates;
+}
+
+function addCandidate(
+  candidates: GitHubCandidate[],
+  seenSourceIds: Set<string>,
+  candidate: GitHubCandidate,
+  config: Record<string, unknown>,
+): void {
+  if (!shouldIncludeIssue(candidate.issue, config)) {
+    return;
+  }
+  const sourceId = githubCandidateSourceId(candidate);
+  if (seenSourceIds.has(sourceId)) {
+    return;
+  }
+  seenSourceIds.add(sourceId);
+  candidates.push(candidate);
 }
 
 export async function buildGitHubRawCandidate(input: {
@@ -477,17 +658,22 @@ function readRepositories(config: Record<string, unknown>): string[] {
 }
 
 function readState(value: unknown): 'all' | 'closed' | 'open' {
+  return value === 'all' || value === 'closed' || value === 'open' ? value : 'all';
+}
+
+function readIssueListState(value: unknown): 'all' | 'closed' | 'open' {
   return value === 'all' || value === 'closed' || value === 'open' ? value : 'open';
 }
 
 function shouldIncludeIssue(issue: GitHubIssueResponse, config: Record<string, unknown>): boolean {
   const isPullRequest = Boolean(issue.pull_request);
   const includePullRequests = readBoolean(config.includePullRequests, true);
-  const includeIssues = readBoolean(config.includeIssues, true);
+  const includeIssues = readBoolean(config.includeIssues, false);
+  const includeLinkedIssues = readBoolean(config.includeLinkedIssues, true);
   if (isPullRequest && !includePullRequests) {
     return false;
   }
-  if (!isPullRequest && !includeIssues) {
+  if (!isPullRequest && !includeIssues && !includeLinkedIssues) {
     return false;
   }
 
@@ -519,9 +705,57 @@ function validateIssue(value: unknown): GitHubIssueResponse {
         ? (item.pull_request as GitHubIssueResponse['pull_request'])
         : undefined,
     repository_url: readString(item.repository_url),
+    state: readIssueState(item.state),
     title: requiredString(item.title, 'title'),
     updated_at: requiredString(item.updated_at, 'updated_at'),
     user: validateUser(item.user),
+  };
+}
+
+function validatePullRequestList(value: unknown): GitHubPullRequestResponse[] {
+  if (!Array.isArray(value)) {
+    throw new Error('GitHub pull requests response must be an array.');
+  }
+  return value.map((item) => validatePullRequest(item));
+}
+
+function validatePullRequest(value: unknown): GitHubPullRequestResponse {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error('GitHub pull request response item must be an object.');
+  }
+  const item = value as Record<string, unknown>;
+  return {
+    body: readNullableString(item.body),
+    created_at: requiredString(item.created_at, 'created_at'),
+    diff_url: readString(item.diff_url),
+    html_url: requiredString(item.html_url, 'html_url'),
+    number: requiredNumber(item.number, 'number'),
+    state: readIssueState(item.state),
+    title: requiredString(item.title, 'title'),
+    updated_at: requiredString(item.updated_at, 'updated_at'),
+    user: validateUser(item.user),
+  };
+}
+
+function pullRequestToIssue(
+  pullRequest: GitHubPullRequestResponse,
+  repository: string,
+): GitHubIssueResponse {
+  return {
+    body: pullRequest.body,
+    created_at: pullRequest.created_at,
+    diff_url: pullRequest.diff_url,
+    html_url: pullRequest.html_url,
+    number: pullRequest.number,
+    pull_request: {
+      diff_url: pullRequest.diff_url,
+      html_url: pullRequest.html_url,
+    },
+    repository_url: `https://api.github.com/repos/${repository}`,
+    state: pullRequest.state,
+    title: pullRequest.title,
+    updated_at: pullRequest.updated_at,
+    user: pullRequest.user,
   };
 }
 
@@ -609,11 +843,69 @@ function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
+function readIssueState(value: unknown): 'closed' | 'open' | undefined {
+  return value === 'closed' || value === 'open' ? value : undefined;
+}
+
 function readStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
   return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
+}
+
+function readPositiveInteger(value: unknown, fallback: number): number {
+  return Number.isInteger(value) && Number(value) > 0 ? Number(value) : fallback;
+}
+
+function uniqueLinkedIssueRefs(
+  defaultRepository: string,
+  pullRequests: GitHubPullRequestResponse[],
+): Array<{ repository: string; number: number }> {
+  const refs = new Map<string, { repository: string; number: number }>();
+  for (const pullRequest of pullRequests) {
+    for (const ref of extractLinkedIssueRefs(
+      `${pullRequest.title}\n${pullRequest.body ?? ''}`,
+      defaultRepository,
+    )) {
+      refs.set(`${ref.repository}#${ref.number}`, ref);
+    }
+  }
+  return [...refs.values()];
+}
+
+function extractLinkedIssueRefs(
+  text: string,
+  defaultRepository: string,
+): Array<{ repository: string; number: number }> {
+  const refs: Array<{ repository: string; number: number }> = [];
+  const keywordPattern =
+    /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+((?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?#\d+(?:\s*,\s*(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?#\d+)*)/gi;
+  for (const match of text.matchAll(keywordPattern)) {
+    for (const refText of (match[1] ?? '').split(/\s*,\s*/)) {
+      const ref = parseIssueRef(refText, defaultRepository);
+      if (ref) {
+        refs.push(ref);
+      }
+    }
+  }
+  return refs;
+}
+
+function parseIssueRef(
+  value: string,
+  defaultRepository: string,
+): { repository: string; number: number } | undefined {
+  const match = value.match(
+    /^(?:(?<repository>[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+))?#(?<number>[1-9]\d*)$/,
+  );
+  if (!match?.groups) {
+    return undefined;
+  }
+  return {
+    number: Number(match.groups.number),
+    repository: match.groups.repository ?? defaultRepository,
+  };
 }
 
 function requiredNumber(value: unknown, field: string): number {
