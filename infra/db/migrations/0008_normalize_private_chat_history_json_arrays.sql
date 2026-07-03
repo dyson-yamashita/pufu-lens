@@ -24,7 +24,7 @@ BEGIN
 
   BEGIN
     parsed := value::jsonb;
-  EXCEPTION WHEN others THEN
+  EXCEPTION WHEN invalid_text_representation THEN
     RETURN NULL;
   END;
 
