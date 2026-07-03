@@ -1251,6 +1251,12 @@ function buildDataSourceConfig(sourceType: SourceType, scope: string): Record<st
   }
   if (sourceType === 'github') {
     return {
+      includeIssues: false,
+      includeLinkedIssues: true,
+      includePullRequests: true,
+      maxLinkedIssues: 500,
+      maxPullRequests: 500,
+      pullRequestState: 'all',
       repositories: splitScopeList(scope),
       source: 'admin-ui',
     };

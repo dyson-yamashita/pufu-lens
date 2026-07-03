@@ -438,20 +438,18 @@ test('collectWebUrlSource continues after a candidate fetch failure', async () =
   }
 });
 
-test('scanGitHubDataSource reads configured repositories and filters issues by kind', async () => {
+test('scanGitHubDataSource reads configured repositories and collects pull requests by default', async () => {
   const paths: string[] = [];
   const candidates = await scanGitHubDataSource({
     dataSource: dataSource({
       config: {
-        includeIssues: false,
         repositories: ['Example-Org/pufu-sample', 'invalid repo'],
-        state: 'all',
       },
       sourceType: 'github',
     }),
     fetcher: async ({ path }): Promise<unknown> => {
       paths.push(path);
-      return [githubIssue({ number: 101 }), githubIssue({ number: 202, pullRequest: true })];
+      return [githubPullRequest({ number: 202 })];
     },
     limit: 5,
   });
@@ -459,24 +457,279 @@ test('scanGitHubDataSource reads configured repositories and filters issues by k
   assert.equal(candidates.length, 1);
   assert.equal(candidates[0]?.repository, 'Example-Org/pufu-sample');
   assert.equal(candidates[0]?.issue.number, 202);
+  assert.equal(
+    candidates[0]?.issue.pull_request?.html_url,
+    'https://github.com/example-org/pufu-sample/pull/202',
+  );
+  assert.match(paths[0] ?? '', /\/pulls\?/);
   assert.match(paths[0] ?? '', /state=all/);
 });
 
-test('scanGitHubDataSource uses GitHub max per_page when the limit allows it', async () => {
+test('scanGitHubDataSource paginates pull requests in pages of 30 up to 500', async () => {
   const paths: string[] = [];
-  await scanGitHubDataSource({
+  const candidates = await scanGitHubDataSource({
     dataSource: dataSource({
       config: { repositories: ['example-org/pufu-sample'] },
       sourceType: 'github',
     }),
     fetcher: async ({ path }): Promise<unknown> => {
       paths.push(path);
-      return [];
+      const page = Number(new URL(`https://example.test${path}`).searchParams.get('page') ?? '1');
+      return Array.from({ length: 30 }, (_, index) =>
+        githubPullRequest({ number: (page - 1) * 30 + index + 1 }),
+      );
     },
-    limit: 100,
   });
 
-  assert.match(paths[0] ?? '', /per_page=100/);
+  assert.equal(candidates.length, 500);
+  assert.equal(paths.length, 17);
+  assert.match(paths[0] ?? '', /per_page=30/);
+  assert.match(paths[0] ?? '', /page=1/);
+  assert.match(paths[16] ?? '', /page=17/);
+});
+
+test('scanGitHubDataSource stops pull request pagination after the since cutoff', async () => {
+  const paths: string[] = [];
+  const candidates = await scanGitHubDataSource({
+    dataSource: dataSource({
+      config: { repositories: ['example-org/pufu-sample'] },
+      ingestWindow: { since: '2026-05-01T00:00:00.000Z' },
+      sourceType: 'github',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      const page = Number(new URL(`https://example.test${path}`).searchParams.get('page') ?? '1');
+      const updatedAt = page === 1 ? '2026-05-09T00:00:00.000Z' : '2026-04-30T00:00:00.000Z';
+      return Array.from({ length: 30 }, (_, index) =>
+        githubPullRequest({ number: (page - 1) * 30 + index + 1, updatedAt }),
+      );
+    },
+  });
+
+  assert.equal(candidates.length, 30);
+  assert.equal(paths.length, 2);
+});
+
+test('scanGitHubDataSource stops pull request pagination within a page at the since cutoff', async () => {
+  const paths: string[] = [];
+  const candidates = await scanGitHubDataSource({
+    dataSource: dataSource({
+      config: { repositories: ['example-org/pufu-sample'] },
+      ingestWindow: { since: '2026-05-01T00:00:00.000Z' },
+      sourceType: 'github',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      return Array.from({ length: 30 }, (_, index) =>
+        githubPullRequest({
+          number: index + 1,
+          updatedAt: index < 20 ? '2026-05-09T00:00:00.000Z' : '2026-04-30T00:00:00.000Z',
+        }),
+      );
+    },
+  });
+
+  assert.equal(candidates.length, 20);
+  assert.equal(paths.length, 1);
+});
+
+test('scanGitHubDataSource passes remaining limits to later repositories', async () => {
+  const paths: string[] = [];
+  const candidates = await scanGitHubDataSource({
+    dataSource: dataSource({
+      config: {
+        repositories: ['example-org/pufu-sample', 'example-org/pufu-other'],
+      },
+      sourceType: 'github',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      const page = Number(new URL(`https://example.test${path}`).searchParams.get('page') ?? '1');
+      const base = path.includes('/pufu-other/') ? 1000 : 0;
+      const length = path.includes('/pufu-other/') ? 30 : 29;
+      return Array.from({ length }, (_, index) =>
+        githubPullRequest({ number: base + (page - 1) * 30 + index + 1 }),
+      );
+    },
+    limit: 31,
+  });
+
+  assert.equal(candidates.length, 31);
+  assert.equal(paths.filter((path) => path.includes('/pufu-other/pulls?')).length, 1);
+});
+
+test('scanGitHubDataSource accepts string maxPullRequests config values', async () => {
+  const paths: string[] = [];
+  const candidates = await scanGitHubDataSource({
+    dataSource: dataSource({
+      config: { maxPullRequests: '31', repositories: ['example-org/pufu-sample'] },
+      sourceType: 'github',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      const page = Number(new URL(`https://example.test${path}`).searchParams.get('page') ?? '1');
+      return Array.from({ length: 30 }, (_, index) =>
+        githubPullRequest({ number: (page - 1) * 30 + index + 1 }),
+      );
+    },
+  });
+
+  assert.equal(candidates.length, 31);
+  assert.equal(paths.length, 2);
+});
+
+test('scanGitHubDataSource collects linked issues referenced by pull request closing keywords', async () => {
+  const paths: string[] = [];
+  const candidates = await scanGitHubDataSource({
+    dataSource: dataSource({
+      config: { repositories: ['example-org/pufu-sample'] },
+      sourceType: 'github',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      if (path.includes('/pulls?')) {
+        return [
+          githubPullRequest({ body: 'Fixes #101, example-org/pufu-sample#102', number: 202 }),
+          githubPullRequest({ body: 'Closes #101', number: 203 }),
+        ];
+      }
+      if (path.endsWith('/issues/101')) {
+        return githubIssue({ number: 101 });
+      }
+      if (path.endsWith('/issues/102')) {
+        return githubIssue({ number: 102 });
+      }
+      throw new Error(`Unexpected GitHub path: ${path}`);
+    },
+  });
+
+  assert.deepEqual(
+    candidates.map((candidate) => githubCandidateLabel(candidate)),
+    ['pull_request:202', 'pull_request:203', 'issue:101', 'issue:102'],
+  );
+  assert.equal(paths.filter((path) => path.endsWith('/issues/101')).length, 1);
+});
+
+test('scanGitHubDataSource keeps scanning linked issue refs until the remaining limit is filled', async () => {
+  const candidates = await scanGitHubDataSource({
+    dataSource: dataSource({
+      config: { repositories: ['example-org/pufu-sample'] },
+      sourceType: 'github',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      if (path.includes('/pulls?')) {
+        return [githubPullRequest({ body: 'Fixes #101, #102', number: 202 })];
+      }
+      if (path.endsWith('/issues/101')) {
+        return githubIssue({ number: 101, pullRequest: true });
+      }
+      if (path.endsWith('/issues/102')) {
+        return githubIssue({ number: 102 });
+      }
+      throw new Error(`Unexpected GitHub path: ${path}`);
+    },
+    limit: 2,
+  });
+
+  assert.deepEqual(
+    candidates.map((candidate) => githubCandidateLabel(candidate)),
+    ['pull_request:202', 'issue:102'],
+  );
+});
+
+test('scanGitHubDataSource deduplicates linked issue refs across repository casing', async () => {
+  const paths: string[] = [];
+  const candidates = await scanGitHubDataSource({
+    dataSource: dataSource({
+      config: { repositories: ['Example-Org/Pufu-Sample'] },
+      sourceType: 'github',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      if (path.includes('/pulls?')) {
+        return [
+          githubPullRequest({
+            body: 'Fixes Example-Org/Pufu-Sample#101, example-org/pufu-sample#101',
+            number: 202,
+          }),
+        ];
+      }
+      if (path.endsWith('/issues/101')) {
+        return githubIssue({ number: 101 });
+      }
+      throw new Error(`Unexpected GitHub path: ${path}`);
+    },
+  });
+
+  assert.deepEqual(
+    candidates.map((candidate) => githubCandidateLabel(candidate)),
+    ['pull_request:202', 'issue:101'],
+  );
+  assert.equal(paths.filter((path) => path.endsWith('/issues/101')).length, 1);
+});
+
+test('scanGitHubDataSource continues when a linked issue fetch fails', async () => {
+  const originalConsoleError = console.error;
+  const errors: unknown[] = [];
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
+  };
+
+  try {
+    const candidates = await scanGitHubDataSource({
+      dataSource: dataSource({
+        config: { repositories: ['example-org/pufu-sample'] },
+        sourceType: 'github',
+      }),
+      fetcher: async ({ path }): Promise<unknown> => {
+        if (path.includes('/pulls?')) {
+          return [githubPullRequest({ body: 'Fixes #101, #102', number: 202 })];
+        }
+        if (path.endsWith('/issues/101')) {
+          throw new Error('temporary linked issue failure token=secret');
+        }
+        if (path.endsWith('/issues/102')) {
+          return githubIssue({ number: 102 });
+        }
+        throw new Error(`Unexpected GitHub path: ${path}`);
+      },
+    });
+
+    assert.deepEqual(
+      candidates.map((candidate) => githubCandidateLabel(candidate)),
+      ['pull_request:202', 'issue:102'],
+    );
+    assert.match(JSON.stringify(errors), /Failed to fetch linked GitHub issue/);
+    assert.doesNotMatch(JSON.stringify(errors), /token=secret/);
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
+test('scanGitHubDataSource can collect standalone issues when explicitly configured', async () => {
+  const paths: string[] = [];
+  const candidates = await scanGitHubDataSource({
+    dataSource: dataSource({
+      config: { includeIssues: true, repositories: ['example-org/pufu-sample'] },
+      sourceType: 'github',
+    }),
+    fetcher: async ({ path }): Promise<unknown> => {
+      paths.push(path);
+      if (path.includes('/pulls?')) {
+        return [];
+      }
+      if (path.includes('/issues?')) {
+        return [githubIssue({ number: 101 })];
+      }
+      throw new Error(`Unexpected GitHub path: ${path}`);
+    },
+  });
+
+  assert.deepEqual(
+    candidates.map((candidate) => candidate.issue.number),
+    [101],
+  );
+  assert.match(paths[1] ?? '', /\/issues\?/);
 });
 
 test('buildGitHubRawCandidate converts issue comments, PR reviews, and diff metadata', async () => {
@@ -646,22 +899,33 @@ test('collectGitHubSource continues after a candidate fetch failure with sanitiz
   try {
     const result = await collectGitHubSource({
       fetcher: async ({ path }): Promise<unknown> => {
-        if (path.includes('/issues?')) {
-          return [githubIssue({ number: 101 })];
+        if (path.includes('/pulls?')) {
+          return [githubPullRequest({ number: 101 }), githubPullRequest({ number: 202 })];
         }
-        throw new Error('temporary GitHub failure token=secret');
+        if (path.endsWith('/issues/101/comments')) {
+          throw new Error('temporary GitHub failure token=secret');
+        }
+        if (path.endsWith('/issues/202/comments')) {
+          return [{ body: 'Comment body', id: 1, user: { login: 'commenter', name: 'Commenter' } }];
+        }
+        if (path.endsWith('/pulls/101/reviews') || path.endsWith('/pulls/202/reviews')) {
+          return [];
+        }
+        throw new Error(`Unexpected GitHub path: ${path}`);
       },
+      diffFetcher: async () => 'diff --git a/file b/file\n',
       projectSlug: 'sample-a',
       repository,
       storage,
     });
 
     assert.equal(result.failureCount, 1);
-    assert.equal(result.decisions.length, 1);
+    assert.equal(result.decisions.length, 2);
     assert.equal(result.decisions[0]?.decision, 'failed');
+    assert.equal(result.decisions[1]?.decision, 'collected');
     assert.match(String(result.decisions[0]?.error), /temporary GitHub failure/);
     assert.doesNotMatch(String(result.decisions[0]?.error), /token=secret/);
-    assert.equal(repository.rawDocuments.size, 0);
+    assert.equal(repository.rawDocuments.size, 1);
     assert.match(String(errors[0]), /Failed to build raw GitHub candidate/);
     assert.doesNotMatch(JSON.stringify(errors), /token=secret/);
   } finally {
@@ -1409,11 +1673,41 @@ function githubIssue(input: { number: number; pullRequest?: boolean }): {
   };
 }
 
+function githubPullRequest(input: { body?: string; number: number; updatedAt?: string }): {
+  body: string;
+  created_at: string;
+  diff_url: string;
+  html_url: string;
+  number: number;
+  state: 'closed' | 'open';
+  title: string;
+  updated_at: string;
+  user: { login: string; name: string } | null;
+} {
+  return {
+    body: input.body ?? `Body ${input.number}`,
+    created_at: '2026-05-08T00:00:00.000Z',
+    diff_url: `https://github.com/example-org/pufu-sample/pull/${input.number}.diff`,
+    html_url: `https://github.com/example-org/pufu-sample/pull/${input.number}`,
+    number: input.number,
+    state: 'open',
+    title: `GitHub PR ${input.number}`,
+    updated_at: input.updatedAt ?? '2026-05-09T00:00:00.000Z',
+    user: { login: 'author', name: 'Author' },
+  };
+}
+
+function githubCandidateLabel(candidate: {
+  issue: { number: number; pull_request?: unknown };
+}): string {
+  return `${candidate.issue.pull_request ? 'pull_request' : 'issue'}:${candidate.issue.number}`;
+}
+
 function githubDetailFetcher(paths: string[] = []): GitHubFetcher {
   return async ({ path }): Promise<unknown> => {
     paths.push(path);
-    if (path.includes('/issues?')) {
-      return [githubIssue({ number: 202, pullRequest: true })];
+    if (path.includes('/pulls?')) {
+      return [githubPullRequest({ number: 202 })];
     }
     if (path.endsWith('/issues/202/comments')) {
       return [{ body: 'Comment body', id: 1, user: { login: 'commenter', name: 'Commenter' } }];
