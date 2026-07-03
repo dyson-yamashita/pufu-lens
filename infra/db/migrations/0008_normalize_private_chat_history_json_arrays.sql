@@ -71,8 +71,8 @@ BEGIN
   SELECT count(*)
   INTO invalid_count
   FROM public.private_chat_messages
-  WHERE jsonb_typeof(sources) <> 'array'
-    OR jsonb_typeof(tool_calls) <> 'array';
+  WHERE jsonb_typeof(sources) IS DISTINCT FROM 'array'
+    OR jsonb_typeof(tool_calls) IS DISTINCT FROM 'array';
 
   IF invalid_count > 0 THEN
     RAISE EXCEPTION 'private_chat_messages sources/tool_calls normalization left % invalid rows',
