@@ -29,7 +29,7 @@ pnpm ingest:resolve-actors --project sample-a --limit 10
 - merge 時は `actor_aliases.actor_id` と `email_quotes.sender_actor_id` を代表 Actor に寄せ、判断内容を `actor_merge_decisions` に `decision_type = 'merge'` として保存する。
 - reject した候補は `actor_merge_decisions` に `decision_type = 'reject'` として保存し、同じ Actor ペアを候補として再表示しない。
 - Actor 詳細画面では、その Actor が代表・吸収元・reject 対象として関係した判断履歴を表示する。
-- AGE graph の Actor node / edge は手動 merge 時に破壊的更新せず、後続の graph materialize / reconcile で代表 Actor に寄せる。
+- AGE graph の Actor node / edge は relational merge の commit 後に best-effort で reconcile し、Primary / Secondary の graph node が安全に 1 件ずつ確認できる場合は Secondary の edge を Primary に寄せて Secondary node を削除する。graph 側の欠損・重複・未 materialize などで reconcile できない場合も DB merge は巻き戻さず、後続の graph materialize / reconcile で代表 Actor に寄せる。
 
 ## 確認 SQL
 

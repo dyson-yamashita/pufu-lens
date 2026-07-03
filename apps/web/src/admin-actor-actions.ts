@@ -9,7 +9,10 @@ import {
   revalidateProject,
   withSql,
 } from './admin-actions-shared.ts';
-import { mergeActorGraphElements } from './graph-actor-merge.ts';
+import {
+  type ActorGraphReconcileInput,
+  reconcileMergedActorGraphElements,
+} from './graph-actor-reconcile.ts';
 
 export async function mergeActors(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
@@ -23,12 +26,18 @@ export async function mergeActors(formData: FormData): Promise<void> {
 
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
+    let graphReconcileInput: ActorGraphReconcileInput | undefined;
     await sql.begin(async (tx) => {
       const { primaryActor, secondaryActor } = await lookupProjectActorPairForUpdate(tx, {
         primaryActorId,
         projectId: project.id,
         secondaryActorId,
       });
+      graphReconcileInput = {
+        graphName: project.graphName,
+        primaryGraphNodeId: primaryActor.graphNodeId,
+        secondaryGraphNodeId: secondaryActor.graphNodeId,
+      };
       requireActiveActors(primaryActor, secondaryActor, 'merged');
 
       await tx`
@@ -76,12 +85,10 @@ export async function mergeActors(formData: FormData): Promise<void> {
         reason,
         secondaryActorId: secondaryActor.id,
       });
-      await mergeActorGraphElements(tx, {
-        graphName: project.graphName,
-        primaryGraphNodeId: primaryActor.graphNodeId,
-        secondaryGraphNodeId: secondaryActor.graphNodeId,
-      });
     });
+    if (graphReconcileInput) {
+      await reconcileMergedActorGraphElements(sql, graphReconcileInput);
+    }
   });
 
   revalidateActorPaths(projectSlug, primaryActorId, secondaryActorId);
