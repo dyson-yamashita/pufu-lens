@@ -30,6 +30,13 @@ import {
 } from './chat-thread';
 import { useSpeechInput } from './speech-input';
 
+const CHAT_HISTORY_TIME_FORMATTER = new Intl.DateTimeFormat('ja-JP', {
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  month: '2-digit',
+});
+
 export function ChatPanel({
   disabled,
   projectSlug,
@@ -114,7 +121,8 @@ export function ChatPanel({
       return;
     }
 
-    const nextMessages = appendUserMessage(messages, trimmedQuestion);
+    const baseMessages = selectedHistoryId ? [] : messages;
+    const nextMessages = appendUserMessage(baseMessages, trimmedQuestion);
     const { messages: messagesWithPending, pendingId } = appendPendingAssistant(nextMessages);
     setMessages(messagesWithPending);
     setSelectedHistoryId(null);
@@ -208,7 +216,6 @@ export function ChatPanel({
         ) : null}
         <ChatHistoryList
           historyItems={historyItems}
-          historyLoading={historyLoading}
           onSelect={(item) => {
             setSelectedHistoryId(item.id);
             setMessages(mapPrivateChatHistoryToThreadMessages([item], projectSlug));
@@ -265,16 +272,14 @@ export function ChatPanel({
 
 function ChatHistoryList({
   historyItems,
-  historyLoading,
   onSelect,
   selectedHistoryId,
 }: {
   readonly historyItems: readonly PrivateChatHistoryItem[];
-  readonly historyLoading: boolean;
   readonly onSelect: (item: PrivateChatHistoryItem) => void;
   readonly selectedHistoryId: string | null;
 }) {
-  if (historyItems.length === 0 && !historyLoading) {
+  if (historyItems.length === 0) {
     return null;
   }
 
@@ -303,12 +308,7 @@ function formatChatHistoryTime(createdAt: string): string {
   if (Number.isNaN(date.getTime())) {
     return createdAt;
   }
-  return new Intl.DateTimeFormat('ja-JP', {
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    month: '2-digit',
-  }).format(date);
+  return CHAT_HISTORY_TIME_FORMATTER.format(date);
 }
 
 function chatHistoryAnswerPreview(answer: string): string {

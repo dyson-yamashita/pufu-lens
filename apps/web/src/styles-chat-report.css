@@ -113,6 +113,7 @@
   cursor: pointer;
   display: grid;
   flex: 0 0 min(280px, 82vw);
+  font: inherit;
   gap: 3px;
   min-height: 72px;
   min-width: 0;
