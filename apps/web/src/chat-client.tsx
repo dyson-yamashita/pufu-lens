@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowUp, Mic, RefreshCw } from 'lucide-react';
+import { ArrowUp, MessageSquarePlus, Mic, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   type ChatErrorResponse,
@@ -13,10 +13,10 @@ import {
   isDbOutsideBusinessHoursResponse,
   isPrivateChatHistoryListResponse,
   isPublicChatResponseBody,
+  type PrivateChatHistoryItem,
   type PrivateChatHistoryListResponse,
   type PublicChatResponse,
   type PublicProjectChatUnavailableResponse,
-  resolvePrivateChatHistoryApplyAction,
 } from './chat';
 import {
   appendPendingAssistant,
@@ -30,6 +30,13 @@ import {
 } from './chat-thread';
 import { useSpeechInput } from './speech-input';
 
+const CHAT_HISTORY_TIME_FORMATTER = new Intl.DateTimeFormat('ja-JP', {
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  month: '2-digit',
+});
+
 export function ChatPanel({
   disabled,
   projectSlug,
@@ -39,18 +46,20 @@ export function ChatPanel({
 }) {
   const [question, setQuestion] = useState('');
   const [messages, setMessages] = useState<ChatThreadMessage<ChatResponse>[]>([]);
+  const [historyItems, setHistoryItems] = useState<readonly PrivateChatHistoryItem[]>([]);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const historyRequestSeqRef = useRef(0);
-  const pendingRef = useRef(false);
-  pendingRef.current = pending;
   const chatDisabled = disabled || unavailable;
 
   useEffect(() => {
     historyRequestSeqRef.current += 1;
     setMessages([]);
+    setHistoryItems([]);
+    setSelectedHistoryId(null);
     setHistoryError(null);
     setHistoryLoading(false);
     setUnavailable(false);
@@ -62,58 +71,44 @@ export function ChatPanel({
     value: question,
   });
 
-  const loadHistory = useCallback(
-    async (options?: { readonly refresh?: boolean }) => {
-      if (chatDisabled) {
-        return;
-      }
-      const requestSeq = ++historyRequestSeqRef.current;
-      setHistoryLoading(true);
-      setHistoryError(null);
-      try {
-        const result = await fetch(`/api/projects/${projectSlug}/chat/history`);
-        const isJson = result.headers.get('content-type')?.includes('application/json') ?? false;
-        const body = isJson
-          ? ((await result.json()) as PrivateChatHistoryListResponse | ChatErrorResponse)
-          : null;
-        if (!result.ok) {
-          const errorBody = isChatErrorResponseBody(body) ? body : null;
-          if (isDbOutsideBusinessHoursError(errorBody)) {
-            setUnavailable(true);
-            return;
-          }
-          throw new Error(chatErrorMessage(errorBody, result.status));
-        }
-        if (!isPrivateChatHistoryListResponse(body)) {
-          throw new Error('Chat history API returned an invalid response.');
-        }
-        if (requestSeq !== historyRequestSeqRef.current) {
+  const loadHistory = useCallback(async () => {
+    if (chatDisabled) {
+      return;
+    }
+    const requestSeq = ++historyRequestSeqRef.current;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const result = await fetch(`/api/projects/${projectSlug}/chat/history`);
+      const isJson = result.headers.get('content-type')?.includes('application/json') ?? false;
+      const body = isJson
+        ? ((await result.json()) as PrivateChatHistoryListResponse | ChatErrorResponse)
+        : null;
+      if (!result.ok) {
+        const errorBody = isChatErrorResponseBody(body) ? body : null;
+        if (isDbOutsideBusinessHoursError(errorBody)) {
+          setUnavailable(true);
           return;
         }
-        const historyMessages = mapPrivateChatHistoryToThreadMessages(body.items, projectSlug);
-        setMessages((current) => {
-          const action = resolvePrivateChatHistoryApplyAction({
-            currentMessageCount: current.length,
-            hasPendingAssistantMessage: current.some(
-              (message) => message.role === 'assistant' && message.status === 'pending',
-            ),
-            hasPendingRequest: pendingRef.current,
-            refresh: options?.refresh ?? false,
-          });
-          return action === 'apply' ? historyMessages : current;
-        });
-      } catch (caught) {
-        if (requestSeq === historyRequestSeqRef.current) {
-          setHistoryError(caught instanceof Error ? caught.message : String(caught));
-        }
-      } finally {
-        if (requestSeq === historyRequestSeqRef.current) {
-          setHistoryLoading(false);
-        }
+        throw new Error(chatErrorMessage(errorBody, result.status));
       }
-    },
-    [chatDisabled, projectSlug],
-  );
+      if (!isPrivateChatHistoryListResponse(body)) {
+        throw new Error('Chat history API returned an invalid response.');
+      }
+      if (requestSeq !== historyRequestSeqRef.current) {
+        return;
+      }
+      setHistoryItems(body.items);
+    } catch (caught) {
+      if (requestSeq === historyRequestSeqRef.current) {
+        setHistoryError(caught instanceof Error ? caught.message : String(caught));
+      }
+    } finally {
+      if (requestSeq === historyRequestSeqRef.current) {
+        setHistoryLoading(false);
+      }
+    }
+  }, [chatDisabled, projectSlug]);
 
   useEffect(() => {
     void loadHistory();
@@ -126,9 +121,11 @@ export function ChatPanel({
       return;
     }
 
-    const nextMessages = appendUserMessage(messages, trimmedQuestion);
+    const baseMessages = selectedHistoryId ? [] : messages;
+    const nextMessages = appendUserMessage(baseMessages, trimmedQuestion);
     const { messages: messagesWithPending, pendingId } = appendPendingAssistant(nextMessages);
     setMessages(messagesWithPending);
+    setSelectedHistoryId(null);
     setQuestion('');
     setPending(true);
 
@@ -170,6 +167,7 @@ export function ChatPanel({
       );
     } finally {
       setPending(false);
+      void loadHistory();
     }
   }
 
@@ -178,12 +176,27 @@ export function ChatPanel({
       <div className="chat-history-header" data-testid="chat-history-header">
         <div className="chat-history-controls">
           <button
+            aria-label="New chat"
+            className="chat-icon-button"
+            data-testid="chat-new-button"
+            disabled={pending}
+            onClick={() => {
+              setMessages([]);
+              setSelectedHistoryId(null);
+              setQuestion('');
+            }}
+            title="New chat"
+            type="button"
+          >
+            <MessageSquarePlus size={16} />
+          </button>
+          <button
             aria-label="Refresh chat history"
             className="chat-icon-button"
             data-testid="chat-history-refresh-button"
             disabled={chatDisabled || pending || historyLoading}
             onClick={() => {
-              void loadHistory({ refresh: true });
+              void loadHistory();
             }}
             title="Refresh history"
             type="button"
@@ -201,6 +214,18 @@ export function ChatPanel({
             {historyError}
           </p>
         ) : null}
+        <ChatHistoryList
+          disabled={pending}
+          historyItems={historyItems}
+          onSelect={(item) => {
+            if (pending) {
+              return;
+            }
+            setSelectedHistoryId(item.id);
+            setMessages(mapPrivateChatHistoryToThreadMessages([item], projectSlug));
+          }}
+          selectedHistoryId={selectedHistoryId}
+        />
       </div>
       <PrivateChatThread messages={messages} resultTestId="chat-result" />
       <form className="chat-form" onSubmit={submit}>
@@ -247,6 +272,55 @@ export function ChatPanel({
       ) : null}
     </section>
   );
+}
+
+function ChatHistoryList({
+  disabled,
+  historyItems,
+  onSelect,
+  selectedHistoryId,
+}: {
+  readonly disabled: boolean;
+  readonly historyItems: readonly PrivateChatHistoryItem[];
+  readonly onSelect: (item: PrivateChatHistoryItem) => void;
+  readonly selectedHistoryId: string | null;
+}) {
+  if (historyItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="chat-history-list" data-testid="chat-history-list">
+      {historyItems.map((item) => (
+        <button
+          aria-pressed={selectedHistoryId === item.id}
+          className={`chat-history-item${selectedHistoryId === item.id ? ' chat-history-item-selected' : ''}`}
+          data-testid={`chat-history-item-${item.id}`}
+          disabled={disabled}
+          key={item.id}
+          onClick={() => onSelect(item)}
+          type="button"
+        >
+          <span className="chat-history-item-time">{formatChatHistoryTime(item.createdAt)}</span>
+          <span className="chat-history-item-question">{item.question}</span>
+          <span className="chat-history-item-answer">{chatHistoryAnswerPreview(item.answer)}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function formatChatHistoryTime(createdAt: string): string {
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) {
+    return createdAt;
+  }
+  return CHAT_HISTORY_TIME_FORMATTER.format(date);
+}
+
+function chatHistoryAnswerPreview(answer: string): string {
+  const normalized = answer.replace(/\s+/g, ' ').trim();
+  return normalized.length > 80 ? `${normalized.slice(0, 79)}...` : normalized;
 }
 
 export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: string }) {

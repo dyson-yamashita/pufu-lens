@@ -946,18 +946,6 @@ export function privateChatHistoryItemsForUiDisplay(
   return [...itemsNewestFirst].reverse();
 }
 
-export function resolvePrivateChatHistoryApplyAction(input: {
-  readonly currentMessageCount: number;
-  readonly hasPendingAssistantMessage: boolean;
-  readonly hasPendingRequest: boolean;
-  readonly refresh: boolean;
-}): 'apply' | 'keep' {
-  if (input.refresh) {
-    return input.hasPendingRequest || input.hasPendingAssistantMessage ? 'keep' : 'apply';
-  }
-  return input.currentMessageCount === 0 ? 'apply' : 'keep';
-}
-
 export function isWithinBusinessHours(date: Date, config: BusinessHoursConfig): boolean {
   if (!config.enabled) {
     return true;

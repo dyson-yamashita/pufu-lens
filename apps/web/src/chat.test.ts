@@ -27,7 +27,6 @@ import {
   privateChatHistoryItemsForUiDisplay,
   privateChatHistorySourcesForStorage,
   privateChatHistoryToMastraMessages,
-  resolvePrivateChatHistoryApplyAction,
   runPrivateChat,
   runPublicChat,
   selectGraphRelatedDocumentCandidates,
@@ -536,42 +535,6 @@ assert.deepEqual(
     },
   ]).map((item) => item.id),
   ['turn-1', 'turn-3'],
-);
-assert.equal(
-  resolvePrivateChatHistoryApplyAction({
-    currentMessageCount: 0,
-    hasPendingAssistantMessage: false,
-    hasPendingRequest: false,
-    refresh: false,
-  }),
-  'apply',
-);
-assert.equal(
-  resolvePrivateChatHistoryApplyAction({
-    currentMessageCount: 2,
-    hasPendingAssistantMessage: false,
-    hasPendingRequest: false,
-    refresh: false,
-  }),
-  'keep',
-);
-assert.equal(
-  resolvePrivateChatHistoryApplyAction({
-    currentMessageCount: 0,
-    hasPendingAssistantMessage: true,
-    hasPendingRequest: true,
-    refresh: true,
-  }),
-  'keep',
-);
-assert.equal(
-  resolvePrivateChatHistoryApplyAction({
-    currentMessageCount: 4,
-    hasPendingAssistantMessage: false,
-    hasPendingRequest: false,
-    refresh: true,
-  }),
-  'apply',
 );
 assert.deepEqual(
   createMastraProjectChatBody({
