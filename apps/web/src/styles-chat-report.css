@@ -97,6 +97,62 @@
   font-size: 12px;
 }
 
+.chat-history-list {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 2px 0 4px;
+}
+
+.chat-history-item {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  flex: 0 0 min(280px, 82vw);
+  gap: 3px;
+  min-height: 72px;
+  min-width: 0;
+  padding: 8px 10px;
+  text-align: left;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.chat-history-item:hover {
+  background: var(--chat-icon-hover-bg);
+  border-color: var(--primary);
+}
+
+.chat-history-item-selected {
+  border-color: var(--primary);
+}
+
+.chat-history-item-time,
+.chat-history-item-answer {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.chat-history-item-question,
+.chat-history-item-answer {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-history-item-question {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
 .public-chat-panel {
   display: grid;
   gap: 12px;
