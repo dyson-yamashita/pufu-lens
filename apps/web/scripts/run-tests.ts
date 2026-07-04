@@ -4,12 +4,21 @@ import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const testRoot = fileURLToPath(new URL('../src', import.meta.url));
+// postgres-roundtrip.test.ts requires DATABASE_URL and runs via `pnpm test:db`.
 const excludedTestFiles = new Set(['postgres-roundtrip.test.ts']);
+
+function shouldSkipDirectory(name: string): boolean {
+  return name === 'node_modules' || name.startsWith('.');
+}
 
 async function collectTestFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = await Promise.all(
     entries.map(async (entry) => {
+      if (entry.isDirectory() && shouldSkipDirectory(entry.name)) {
+        return [];
+      }
+
       const fullPath = resolve(directory, entry.name);
 
       if (entry.isDirectory()) {
