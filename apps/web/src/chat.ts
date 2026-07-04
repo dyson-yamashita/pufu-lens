@@ -17,7 +17,7 @@ export type ChatToolName =
   | 'raw-document-fetch'
   | 'vector-search';
 
-export type PublicChatToolName = 'public-context-fetch' | 'public-report-fetch';
+export type PublicChatToolName = ChatToolName | 'public-context-fetch' | 'public-report-fetch';
 
 export interface ChatSource {
   readonly canonicalUri: string;
@@ -114,6 +114,15 @@ export interface PublicChatSource {
 export interface PublicChatToolCall {
   readonly name: PublicChatToolName;
   readonly resultCount: number;
+}
+
+export function publicChatToolCallsFromPrivate(
+  toolCalls: readonly ChatToolCall[],
+): PublicChatToolCall[] {
+  return toolCalls.map((toolCall) => ({
+    name: toolCall.name,
+    resultCount: toolCall.resultCount,
+  }));
 }
 
 export interface PublicChatResponse {

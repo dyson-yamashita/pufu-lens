@@ -9,7 +9,7 @@ import {
   isWithinBusinessHours,
   type PublicChatResponse,
   type PublicChatSource,
-  type PublicChatToolCall,
+  publicChatToolCallsFromPrivate,
 } from './chat';
 import {
   createPublicProjectChatMastraBody,
@@ -239,7 +239,7 @@ export async function handlePublicChatPost(
       reportId: input.reportId,
       sources: publicChatSourcesFromReport(chatResponse.sources, privateReport),
       status: 'answered',
-      toolCalls: publicChatToolCalls(chatResponse.toolCalls),
+      toolCalls: publicChatToolCallsFromPrivate(chatResponse.toolCalls),
     } satisfies PublicChatResponse);
   } catch (error) {
     if (error instanceof PublicReportNotFoundError) {
@@ -332,11 +332,4 @@ function publicChatSourcesFromReport(
     }
   }
   return result;
-}
-
-function publicChatToolCalls(
-  toolCalls: readonly { readonly resultCount: number }[],
-): PublicChatToolCall[] {
-  const resultCount = toolCalls.reduce((total, toolCall) => total + toolCall.resultCount, 0);
-  return resultCount > 0 ? [{ name: 'public-report-fetch', resultCount }] : [];
 }

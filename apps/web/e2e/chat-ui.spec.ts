@@ -24,7 +24,7 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
             },
           ],
           status: 'answered',
-          toolCalls: [{ name: 'public-report-fetch', resultCount: 2 }],
+          toolCalls: [{ name: 'graph-query', resultCount: 2 }],
         }),
         contentType: 'application/json',
         status: 200,
@@ -52,7 +52,7 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
           },
         ],
         status: 'answered',
-        toolCalls: [{ name: 'public-report-fetch', resultCount: 2 }],
+        toolCalls: [{ name: 'vector-search', resultCount: 2 }],
       }),
       contentType: 'application/json',
       status: 200,
@@ -87,7 +87,7 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
   await expect(firstSources).toContainText('Spec Update');
   await expect(firstSources).not.toContainText('https://example.com/spec');
   await expect(firstSources).not.toContainText('doc-spec-001');
-  await expect(page.getByTestId('chat-message-tool-calls-1')).toContainText('public-report-fetch');
+  await expect(page.getByTestId('chat-message-tool-calls-1')).toContainText('vector-search');
   await expect(page.getByTestId('chat-message-editing-1')).toContainText('要約');
   await expect(page.getByTestId('chat-message-editing-1')).toContainText('凝縮');
 
