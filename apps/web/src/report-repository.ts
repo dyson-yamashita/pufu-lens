@@ -84,6 +84,7 @@ export interface ReportTemplateRunInsert {
 }
 
 export type ProjectLookupResult = {
+  readonly graphName: string | null;
   readonly id: string;
   readonly slug: string;
   readonly visibility: ProjectVisibility;
@@ -93,9 +94,13 @@ export function parseReportProjectLookupRow(value: unknown): ProjectLookupResult
   if (!isRecord(value)) {
     throw new Error('Invalid project lookup row.');
   }
+  const graphName = value.graphName ?? null;
   const { id, slug, visibility } = value;
   if (typeof id !== 'string') {
     throw new Error('Invalid project lookup field: id');
+  }
+  if (graphName !== null && typeof graphName !== 'string') {
+    throw new Error('Invalid project lookup field: graphName');
   }
   if (typeof slug !== 'string') {
     throw new Error('Invalid project lookup field: slug');
@@ -104,6 +109,7 @@ export function parseReportProjectLookupRow(value: unknown): ProjectLookupResult
     throw new Error('Invalid project lookup field: visibility');
   }
   return {
+    graphName,
     id,
     slug,
     visibility,
@@ -210,12 +216,21 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
     async lookupProjectMember({ projectSlug, userId }) {
       const access = await lookupProjectMemberAccess(sql, { projectSlug, userId });
       return access
-        ? { id: access.id, slug: access.slug, visibility: access.visibility }
+        ? {
+            graphName: access.graphName ?? null,
+            id: access.id,
+            slug: access.slug,
+            visibility: access.visibility,
+          }
         : undefined;
     },
     async lookupProject({ projectSlug }) {
       const rows = (await sql`
-        SELECT p.id::text AS id, p.slug, COALESCE(p.visibility, 'private') AS visibility
+        SELECT
+          p.id::text AS id,
+          p.graph_name AS "graphName",
+          p.slug,
+          COALESCE(p.visibility, 'private') AS visibility
         FROM public.projects p
         WHERE p.slug = ${projectSlug}
       `) as readonly unknown[];

@@ -12,7 +12,7 @@ import {
   type PublicChatToolCall,
 } from './chat';
 import {
-  createMastraProjectChatBody,
+  createPublicProjectChatMastraBody,
   mastraFetchHeaders,
   mastraGenerateToChatResponse,
   mastraProjectChatGenerateUrl,
@@ -218,12 +218,7 @@ export async function handlePublicChatPost(
     }
     const mastraUrl = mastraProjectChatGenerateUrl();
     const mastraResponse = await fetch(mastraUrl, {
-      body: JSON.stringify(
-        createMastraProjectChatBody({
-          projectId: project.id,
-          question,
-        }),
-      ),
+      body: JSON.stringify(createPublicProjectChatMastraBody({ project, question })),
       headers: await mastraFetchHeaders({ url: mastraUrl }),
       method: 'POST',
       signal: request.signal,

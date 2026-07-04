@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { createPublicChatMemoryRateLimiter } from './chat.ts';
+import { createPublicChatMemoryRateLimiter, inferChatEditingMetadata } from './chat.ts';
+import { createPublicProjectChatMastraBody } from './mastra-chat.ts';
 import { trustedClientIp } from './request-client.ts';
 
 function requestHeaders(headers: Record<string, string>) {
@@ -29,5 +30,20 @@ const limiter = createPublicChatMemoryRateLimiter({
 assert.equal(limiter.check({ clientIp: '203.0.113.10', reportId: 'report-a' }), true);
 assert.equal(limiter.check({ clientIp: '203.0.113.10', reportId: 'report-a' }), false);
 assert.equal(limiter.check({ clientIp: '203.0.113.11', reportId: 'report-a' }), true);
+
+assert.deepEqual(
+  createPublicProjectChatMastraBody({
+    project: { graphName: 'graph_sample_a', id: 'project-a' },
+    question: '公開 project の進捗は?',
+  }),
+  {
+    messages: [{ content: '公開 project の進捗は?', role: 'user' }],
+    requestContext: {
+      editing: inferChatEditingMetadata('公開 project の進捗は?'),
+      graphName: 'graph_sample_a',
+      projectId: 'project-a',
+    },
+  },
+);
 
 console.log('web public report api tests passed');

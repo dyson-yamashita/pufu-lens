@@ -98,19 +98,39 @@ function createRepository(): ReportRepository & {
     insertedChunks: 0,
     async lookupProjectMember({ projectSlug, userId }) {
       if (projectSlug === 'sample-a' && userId === 'user-a') {
-        return { id: 'project-a', slug: 'sample-a', visibility: 'public' };
+        return {
+          graphName: 'graph_sample_a',
+          id: 'project-a',
+          slug: 'sample-a',
+          visibility: 'public',
+        };
       }
       if (projectSlug === 'sample-b' && userId === 'user-b') {
-        return { id: 'project-b', slug: 'sample-b', visibility: 'private' };
+        return {
+          graphName: 'graph_sample_b',
+          id: 'project-b',
+          slug: 'sample-b',
+          visibility: 'private',
+        };
       }
       return undefined;
     },
     async lookupProject({ projectSlug }) {
       if (projectSlug === 'sample-a') {
-        return { id: 'project-a', slug: 'sample-a', visibility: 'public' };
+        return {
+          graphName: 'graph_sample_a',
+          id: 'project-a',
+          slug: 'sample-a',
+          visibility: 'public',
+        };
       }
       if (projectSlug === 'sample-b') {
-        return { id: 'project-b', slug: 'sample-b', visibility: 'private' };
+        return {
+          graphName: 'graph_sample_b',
+          id: 'project-b',
+          slug: 'sample-b',
+          visibility: 'private',
+        };
       }
       return undefined;
     },
@@ -1143,25 +1163,74 @@ validatePrivateReportJson({
 });
 
 assert.deepEqual(
-  parseReportProjectLookupRow({ id: 'proj-1', slug: 'sample-a', visibility: 'public' }),
+  parseReportProjectLookupRow({
+    graphName: 'graph_sample_a',
+    id: 'proj-1',
+    slug: 'sample-a',
+    visibility: 'public',
+  }),
   {
+    graphName: 'graph_sample_a',
     id: 'proj-1',
     slug: 'sample-a',
     visibility: 'public',
   },
 );
+assert.deepEqual(
+  parseReportProjectLookupRow({
+    graphName: null,
+    id: 'proj-1',
+    slug: 'sample-a',
+    visibility: 'public',
+  }).graphName,
+  null,
+);
+assert.deepEqual(
+  parseReportProjectLookupRow({
+    id: 'proj-1',
+    slug: 'sample-a',
+    visibility: 'public',
+  }).graphName,
+  null,
+);
 
 assert.throws(
-  () => parseReportProjectLookupRow({ id: 'proj-1', slug: 'sample-a', visibility: 'internal' }),
+  () =>
+    parseReportProjectLookupRow({
+      graphName: 'graph_sample_a',
+      id: 'proj-1',
+      slug: 'sample-a',
+      visibility: 'internal',
+    }),
   /Invalid project lookup field: visibility/,
 );
 assert.throws(
-  () => parseReportProjectLookupRow({ slug: 'sample-a', visibility: 'public' }),
+  () =>
+    parseReportProjectLookupRow({
+      graphName: 'graph_sample_a',
+      slug: 'sample-a',
+      visibility: 'public',
+    }),
   /Invalid project lookup field: id/,
 );
 assert.throws(
-  () => parseReportProjectLookupRow({ id: 'proj-1', visibility: 'public' }),
+  () =>
+    parseReportProjectLookupRow({
+      graphName: 'graph_sample_a',
+      id: 'proj-1',
+      visibility: 'public',
+    }),
   /Invalid project lookup field: slug/,
+);
+assert.throws(
+  () =>
+    parseReportProjectLookupRow({
+      graphName: 123,
+      id: 'proj-1',
+      slug: 'sample-a',
+      visibility: 'public',
+    }),
+  /Invalid project lookup field: graphName/,
 );
 
 const validReportDocumentRow = {
