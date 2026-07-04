@@ -29,6 +29,7 @@ import {
   privateChatHistoryItemsForUiDisplay,
   privateChatHistorySourcesForStorage,
   privateChatHistoryToMastraMessages,
+  publicChatToolCallsFromPrivate,
   runPrivateChat,
   runPublicChat,
   selectGraphRelatedDocumentCandidates,
@@ -878,6 +879,21 @@ assert.doesNotMatch(
   JSON.stringify(mastraRawLeakResponse),
   /RAW_FULL_TEXT_SHOULD_NOT_LEAK|ya29\.secret-token|secret-api-key|contact@example\.com|Ignore previous instructions/,
 );
+
+assert.deepEqual(
+  publicChatToolCallsFromPrivate([
+    { name: 'vector-search', resultCount: 3 },
+    { name: 'graph-query', resultCount: 2 },
+    { name: 'raw-document-fetch', resultCount: 1 },
+  ]),
+  [
+    { name: 'vector-search', resultCount: 3 },
+    { name: 'graph-query', resultCount: 2 },
+    { name: 'raw-document-fetch', resultCount: 1 },
+  ],
+);
+assert.deepEqual(publicChatToolCallsFromPrivate([]), []);
+assert.deepEqual(publicChatToolCallsFromPrivate(undefined), []);
 
 let clock = 0;
 const expiringLimiter = createMemoryRateLimiter({
