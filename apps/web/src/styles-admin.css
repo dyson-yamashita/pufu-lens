@@ -377,6 +377,11 @@
   font-weight: 600;
 }
 
+.project-delete-confirmation-name {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  text-transform: none;
+}
+
 .segmented-control {
   background: var(--surface);
   border: 1px solid var(--line);
