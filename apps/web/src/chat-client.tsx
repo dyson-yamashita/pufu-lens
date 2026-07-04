@@ -55,6 +55,9 @@ export function ChatPanel({
   const historyDialogRef = useRef<HTMLDialogElement>(null);
   const historyRequestSeqRef = useRef(0);
   const chatDisabled = disabled || unavailable;
+  const closeHistoryDialog = useCallback(() => {
+    historyDialogRef.current?.close();
+  }, []);
 
   useEffect(() => {
     historyRequestSeqRef.current += 1;
@@ -64,9 +67,9 @@ export function ChatPanel({
     setHistoryError(null);
     setHistoryLoading(false);
     setUnavailable(false);
-    historyDialogRef.current?.close();
+    closeHistoryDialog();
     void projectSlug;
-  }, [projectSlug]);
+  }, [closeHistoryDialog, projectSlug]);
   const speechInput = useSpeechInput({
     disabled: chatDisabled || pending,
     setValue: setQuestion,
@@ -121,7 +124,9 @@ export function ChatPanel({
       return;
     }
     void loadHistory();
-    historyDialogRef.current?.showModal();
+    if (!historyDialogRef.current?.open) {
+      historyDialogRef.current?.showModal();
+    }
   }, [chatDisabled, loadHistory]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -217,6 +222,16 @@ export function ChatPanel({
         aria-labelledby="chat-history-dialog-title"
         className="modal-dialog chat-history-dialog"
         data-testid="chat-history-dialog"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) {
+            closeHistoryDialog();
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            closeHistoryDialog();
+          }
+        }}
         ref={historyDialogRef}
       >
         <div className="modal-card chat-history-modal-card">
@@ -224,7 +239,7 @@ export function ChatPanel({
             aria-label="Close chat history"
             className="modal-close-button"
             data-testid="chat-history-close-button"
-            onClick={() => historyDialogRef.current?.close()}
+            onClick={closeHistoryDialog}
             title="Close"
             type="button"
           >
@@ -258,7 +273,7 @@ export function ChatPanel({
           ) : null}
           {!historyLoading && !historyError && historyItems.length === 0 ? (
             <p className="notice chat-history-empty" data-testid="chat-history-empty">
-              履歴はまだありません。
+              No history yet.
             </p>
           ) : null}
           <ChatHistoryList
@@ -271,7 +286,7 @@ export function ChatPanel({
               }
               setSelectedHistoryId(item.id);
               setMessages(mapPrivateChatHistoryToThreadMessages([item], projectSlug));
-              historyDialogRef.current?.close();
+              closeHistoryDialog();
             }}
             selectedHistoryId={selectedHistoryId}
           />
@@ -342,10 +357,7 @@ function ChatHistoryList({
   }
 
   return (
-    <div
-      className={`chat-history-list${className ? ` ${className}` : ''}`}
-      data-testid="chat-history-list"
-    >
+    <div className={classNames('chat-history-list', className)} data-testid="chat-history-list">
       {historyItems.map((item) => (
         <button
           aria-pressed={selectedHistoryId === item.id}
@@ -363,6 +375,10 @@ function ChatHistoryList({
       ))}
     </div>
   );
+}
+
+function classNames(...names: Array<string | undefined>): string {
+  return names.filter(Boolean).join(' ');
 }
 
 function formatChatHistoryTime(createdAt: string): string {
