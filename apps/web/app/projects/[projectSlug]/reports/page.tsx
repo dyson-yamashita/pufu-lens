@@ -15,6 +15,7 @@ import {
   resolveReportPeriod,
 } from '../../../../src/report';
 import { ReportGenerateForm, ReportsList } from '../../../../src/report-client';
+import { formatReportSummaryPreview } from '../../../../src/report-summary';
 import { AppShell, PageHeader } from '../../../../src/ui';
 
 /**
@@ -79,7 +80,7 @@ export default async function ReportsPage({
                   key={report.id}
                 >
                   <strong>{report.title}</strong>
-                  <span>{report.summary}</span>
+                  <span>{formatReportSummaryPreview(report.summary)}</span>
                   <small>{report.publishedAt}</small>
                 </Link>
               ))}
