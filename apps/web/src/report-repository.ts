@@ -282,8 +282,8 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
             VALUES (
               ${projectId}, ${report.report_id}, ${customTemplateRun.templateId},
               ${customTemplateRun.templateVersion}, ${customTemplateRun.templateSnapshotHash},
-              ${JSON.stringify(customTemplateRun.layoutSnapshot)}::jsonb,
-              ${JSON.stringify(customTemplateRun.judgementSummary)}::jsonb
+              ${jsonParameter(transaction, customTemplateRun.layoutSnapshot)}::jsonb,
+              ${jsonParameter(transaction, customTemplateRun.judgementSummary)}::jsonb
             )
           `;
         }
@@ -304,7 +304,7 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
                 ${chunk.chunkIndex},
                 ${chunk.content},
                 ${vectorLiteral(chunk.embedding)}::vector,
-                ${JSON.stringify(chunk.metadata)}::jsonb
+                ${jsonParameter(transaction, chunk.metadata)}::jsonb
               )
             `,
           ),
@@ -419,6 +419,10 @@ function formatNullableDate(value: Date | string | null): string | null {
     return null;
   }
   return value instanceof Date ? value.toISOString() : value;
+}
+
+function jsonParameter(sql: Pick<postgres.Sql, 'json'>, value: unknown) {
+  return sql.json(value as Parameters<postgres.Sql['json']>[0]);
 }
 
 function vectorLiteral(vector: readonly number[]): string {

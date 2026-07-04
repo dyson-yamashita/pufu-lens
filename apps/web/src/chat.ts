@@ -1285,9 +1285,9 @@ export function createPostgresChatRepository(
           ${input.userId},
           ${input.question},
           ${input.answer},
-          ${JSON.stringify(privateChatHistorySourcesForStorage(input.sources))}::jsonb,
-          ${JSON.stringify(input.toolCalls)}::jsonb,
-          ${input.editing ? JSON.stringify(input.editing) : null}
+          ${jsonParameter(sql, privateChatHistorySourcesForStorage(input.sources))}::jsonb,
+          ${jsonParameter(sql, input.toolCalls)}::jsonb,
+          ${input.editing ? jsonParameter(sql, input.editing) : null}::jsonb
         )
         RETURNING
           id::text AS id,
@@ -1305,6 +1305,10 @@ export function createPostgresChatRepository(
       return privateChatHistoryItemFromRow(parsePrivateChatHistoryRow(row));
     },
   };
+}
+
+function jsonParameter(sql: Pick<postgres.Sql, 'json'>, value: unknown) {
+  return sql.json(value as Parameters<postgres.Sql['json']>[0]);
 }
 
 function listPrivateChatHistoryRows(
@@ -1541,16 +1545,39 @@ export function parsePrivateChatHistoryRow(value: unknown): PrivateChatHistoryRo
   };
 }
 
-function privateChatHistoryItemFromRow(row: PrivateChatHistoryRow): PrivateChatHistoryItem {
+export function privateChatHistoryItemFromRow(row: PrivateChatHistoryRow): PrivateChatHistoryItem {
   return {
     answer: row.answer,
     createdAt: parsePrivateChatHistoryCreatedAt(row.created_at),
-    editing: parseOptionalChatEditingMetadata(row.editing),
+    editing: parseOptionalPrivateChatHistoryJson(
+      row,
+      'editing',
+      parseOptionalChatEditingMetadata,
+      undefined,
+    ),
     id: row.id,
     question: row.question,
-    sources: parseStoredChatSources(row.sources),
-    toolCalls: parseStoredChatToolCalls(row.tool_calls),
+    sources: parseOptionalPrivateChatHistoryJson(row, 'sources', parseStoredChatSources, []),
+    toolCalls: parseOptionalPrivateChatHistoryJson(row, 'tool_calls', parseStoredChatToolCalls, []),
   };
+}
+
+function parseOptionalPrivateChatHistoryJson<T>(
+  row: PrivateChatHistoryRow,
+  fieldName: 'editing' | 'sources' | 'tool_calls',
+  parse: (value: unknown) => T,
+  fallback: T,
+): T {
+  try {
+    return parse(row[fieldName]);
+  } catch (error) {
+    console.warn('Invalid private chat history JSON field; falling back.', {
+      error,
+      fieldName,
+      messageId: row.id,
+    });
+    return fallback;
+  }
 }
 
 function parsePrivateChatHistoryCreatedAt(value: unknown): string {

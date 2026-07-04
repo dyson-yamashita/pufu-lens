@@ -1,3 +1,4 @@
+import type postgres from 'postgres';
 import {
   CUSTOM_REPORT_TEMPLATE_SCHEMA_VERSION,
   type CustomReportAssetContentType,
@@ -237,7 +238,8 @@ export async function insertCustomReportTemplate(
     )
     VALUES (
       ${input.projectId}, ${input.name}, ${input.description}, ${CUSTOM_REPORT_TEMPLATE_SCHEMA_VERSION},
-      ${JSON.stringify(input.layout)}::jsonb, ${input.createdByUserId}, ${input.createdByUserId}
+      ${jsonParameter(sql, input.layout)}::jsonb,
+      ${input.createdByUserId}, ${input.createdByUserId}
     )
   `;
 }
@@ -250,7 +252,7 @@ export async function updateCustomReportTemplate(
     UPDATE public.custom_report_templates
     SET name = ${input.name},
         description = ${input.description},
-        layout = ${JSON.stringify(input.layout)}::jsonb,
+        layout = ${jsonParameter(sql, input.layout)}::jsonb,
         template_version = template_version + 1,
         updated_by_user_id = ${input.updatedByUserId}
     WHERE project_id = ${input.projectId} AND id = ${input.templateId}
@@ -320,6 +322,10 @@ export async function listCustomReportAssets(
     ORDER BY status ASC, created_at DESC, display_name ASC
   `) as readonly unknown[];
   return rawRows.map((row) => parseCustomReportAssetRow(row));
+}
+
+function jsonParameter(sql: Pick<postgres.Sql, 'json'>, value: unknown) {
+  return sql.json(value as Parameters<postgres.Sql['json']>[0]);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

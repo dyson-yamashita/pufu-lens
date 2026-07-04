@@ -7,6 +7,7 @@ import {
   createGeminiChatProvider,
   createGeminiPublicChatProvider,
   createMemoryRateLimiter,
+  createPostgresChatRepository,
   createPublicChatMemoryRateLimiter,
   DB_OUTSIDE_BUSINESS_HOURS_CODE,
   graphQuerySearchPatterns,
@@ -24,6 +25,7 @@ import {
   ProjectAccessDeniedError,
   parseChatSourceRow,
   parsePrivateChatHistoryRow,
+  privateChatHistoryItemFromRow,
   privateChatHistoryItemsForUiDisplay,
   privateChatHistorySourcesForStorage,
   privateChatHistoryToMastraMessages,
@@ -578,6 +580,80 @@ assert.deepEqual(
     tool_calls: [{ name: 'vector-search', resultCount: 2 }],
   },
 );
+{
+  const warnings: unknown[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args);
+  };
+  try {
+    assert.deepEqual(
+      privateChatHistoryItemFromRow(
+        parsePrivateChatHistoryRow({
+          answer: '回答',
+          created_at: '2026-06-01T00:00:00.000Z',
+          editing: '{"confidence":"low"}',
+          id: 'msg-invalid-json',
+          question: '質問',
+          sources: '"not-an-array"',
+          tool_calls: [{ name: 'invalid-tool', resultCount: 1 }],
+        }),
+      ),
+      {
+        answer: '回答',
+        createdAt: '2026-06-01T00:00:00.000Z',
+        editing: undefined,
+        id: 'msg-invalid-json',
+        question: '質問',
+        sources: [],
+        toolCalls: [],
+      },
+    );
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.equal(warnings.length, 3);
+}
+{
+  const boundValues: unknown[][] = [];
+  const sql = Object.assign(
+    (_strings: TemplateStringsArray, ...values: unknown[]) => {
+      boundValues.push(values);
+      return Promise.resolve([
+        {
+          answer: values[3],
+          created_at: '2026-06-01T00:00:00.000Z',
+          editing: values[6],
+          id: 'msg-save',
+          question: values[2],
+          sources: values[4],
+          tool_calls: values[5],
+        },
+      ]);
+    },
+    { json: (value: unknown) => value },
+  ) as never;
+  const repository = createPostgresChatRepository(sql);
+  const editing = inferChatEditingMetadata('要約して');
+  await repository.savePrivateChatTurn({
+    answer: '回答',
+    editing,
+    projectId: 'project-a',
+    question: '質問',
+    sources: [sampleSource],
+    toolCalls: [{ name: 'vector-search', resultCount: 1 }],
+    userId: 'user-a',
+  });
+
+  const insertValues = boundValues[0];
+  assert.ok(insertValues);
+  assert.equal(typeof insertValues[4], 'object');
+  assert.equal(typeof insertValues[5], 'object');
+  assert.equal(typeof insertValues[6], 'object');
+  assert.equal(Array.isArray(insertValues[4]), true);
+  assert.equal(Array.isArray(insertValues[5]), true);
+  assert.equal(insertValues[6], editing);
+}
 assert.equal(
   isMissingPrivateChatHistoryTableError({
     code: '42P01',
