@@ -937,6 +937,8 @@ const privatePublicParityDetail = await getPrivateReport({
   userId: 'user-a',
 });
 assert.equal(privatePublicParityDetail.status, 'ok');
+assert.ok(publicDetail.report);
+assert.ok(privatePublicParityDetail.report);
 assert.deepEqual(publicDetail.report, privatePublicParityDetail.report);
 assert.deepEqual(
   safeReportPdfLines(publicDetail.report),
