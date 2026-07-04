@@ -6,10 +6,10 @@
 
 ```bash
 pnpm --filter @pufu-lens/web test:e2e
-pnpm --filter @pufu-lens/web test:e2e -- --project desktop
-pnpm --filter @pufu-lens/web test:e2e -- --project mobile
-pnpm --filter @pufu-lens/web test:e2e -- --project api
-pnpm --filter @pufu-lens/web test:e2e -- --grep "scenario:"
+pnpm --filter @pufu-lens/web test:e2e --project desktop
+pnpm --filter @pufu-lens/web test:e2e --project mobile
+pnpm --filter @pufu-lens/web test:e2e --project api
+pnpm --filter @pufu-lens/web test:e2e --grep "scenario:"
 ```
 
 `apps/web/playwright.config.ts` は `desktop` / `mobile` / `api` の 3 project を定義し、`http://localhost:3000` の Next.js dev server を起動または再利用する。
@@ -23,6 +23,23 @@ pnpm --filter @pufu-lens/web test:e2e -- --grep "scenario:"
 admin user シナリオは credentials login を使うため、実行環境に
 `PUFU_LENS_E2E_ADMIN_EMAIL` と `PUFU_LENS_E2E_ADMIN_PASSWORD` がない場合は skip される。
 
+private chat の write-to-read シナリオは実 DB に chat 履歴を書き込むため、通常の fixture fallback 実行とは分けて DB 接続モードで実行する。ローカルでは PostgreSQL 起動後に E2E user を seed し、`DATABASE_URL` と credentials env を付けて対象シナリオだけを実行する。
+
+```bash
+DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
+  PUFU_LENS_E2E_CHAT_EMAIL=e2e-chat-member@example.test \
+  PUFU_LENS_E2E_CHAT_PASSWORD=pufu-lens-e2e-chat-password \
+  pnpm test:e2e:seed-chat
+
+DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
+  PUFU_LENS_E2E_CHAT_EMAIL=e2e-chat-member@example.test \
+  PUFU_LENS_E2E_CHAT_PASSWORD=pufu-lens-e2e-chat-password \
+  MASTRA_SERVER_URL=http://127.0.0.1:4111 \
+  pnpm --filter @pufu-lens/web test:e2e --project desktop --grep "member sends private chat"
+```
+
+このシナリオは spec 内で localhost の Mastra stub を起動し、`/api/projects/local-dev/chat` の write と `/api/projects/local-dev/chat/history` の read は実 DB に接続して確認する。
+
 ## シナリオ一覧
 
 | シナリオ                          | spec                | ロール                  | 対象                                                          | project            | データ境界            | 期待結果                                                                             |
@@ -32,6 +49,7 @@ admin user シナリオは credentials login を使うため、実行環境に
 | Admin operation controls          | `admin-ui.spec.ts`  | admin user              | data sources / settings                                       | desktop            | real DB + credentials | 運用画面の主要 control が安定した `data-testid` で操作・確認できる                   |
 | Removed parser profiles route     | `admin-ui.spec.ts`  | admin user              | `/admin/parser-profiles`                                      | desktop            | real DB + credentials | Parser Profiles は通常 admin nav から削除済み。直接 URL は 404                       |
 | Private chat answer rendering     | `chat-ui.spec.ts`   | member user             | private chat UI                                               | desktop            | API mock              | 質問送信後に answer、source、tool call が表示される                                  |
+| Private chat write-to-read        | `chat-ui.spec.ts`   | member user             | private chat API / history                                    | desktop            | real DB + Mastra stub | 質問送信後に DB 保存され、再読込後の history から同じ turn を表示できる              |
 | Private report list to detail     | `report-ui.spec.ts` | member user             | private report list / detail                                  | desktop            | API mock              | 一覧から詳細へ遷移し、summary、section、pufu score が表示される                      |
 | Private report mobile readability | `report-ui.spec.ts` | member user             | private report detail                                         | mobile (`@mobile`) | API mock              | 主要 section が mobile viewport で表示される                                         |
 | Private report error visibility   | `report-ui.spec.ts` | member user             | private report list / detail                                  | desktop            | API mock              | API error code が UI に表示される                                                    |
@@ -40,7 +58,7 @@ admin user シナリオは credentials login を使うため、実行環境に
 
 ## 不足観点
 
-- ログイン済み admin の E2E は credentials 環境変数がある場合に実行する。member / 非 admin の project 境界は追加の fixture user 整備後に拡張する。
+- ログイン済み admin の E2E は credentials 環境変数がある場合に実行する。member の private chat write-to-read は `local-dev` project の E2E user seed 後に実 DB 接続モードで実行する。非 admin の project 境界は追加の fixture user 整備後に拡張する。
 - `/projects` のログイン状態別 matrix は `docs/plans/002-account-login-public-projects/overview.md` の Step 4 / Step 5 と同期して追加する。
 - private route / private API への非 member、非 admin アクセス拒否は、認証境界の実装と合わせて E2E または route test に追加する。
 - report 生成、公開、public report 閲覧、public chat までを実 API / fixture DB でつなぐ統合シナリオは未整備。現在は UI シナリオを API mock で安定化し、API 安全性は route handler で確認している。
@@ -51,4 +69,4 @@ admin user シナリオは credentials login を使うため、実行環境に
 - test 名は `scenario: <role> <action> <expected outcome>` の形を基本にする。
 - mobile 固有の可読性や重なりは `@mobile` タグを付け、`mobile` project で実行する。
 - storage key、path traversal、過長入力、不正 JSON などの安全性は `@api` タグを付け、`api` project で route handler に到達する API test として追加する。
-- UI の正常系は API mock を使い、表示・操作・redaction の期待値を安定して確認する。通常 UI シナリオには `@mobile` / `@api` を付けない。
+- UI の正常系は API mock を使い、表示・操作・redaction の期待値を安定して確認する。DB write/read など永続化が主対象のシナリオは DB 接続モードと明記し、外部 agent は localhost stub で固定する。通常 UI シナリオには `@mobile` / `@api` を付けない。
