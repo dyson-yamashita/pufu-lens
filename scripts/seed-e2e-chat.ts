@@ -37,6 +37,8 @@ async function main() {
 }
 
 async function ensureLocalDevProject(sql: postgres.Sql): Promise<string> {
+  // Upsert by slug and always use RETURNING id so members/chat cleanup stay aligned
+  // with the actual local-dev row even when the project already existed.
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO public.projects (slug, name, description, graph_name, storage_prefix, visibility)
     VALUES (
