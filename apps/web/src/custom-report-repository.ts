@@ -6,6 +6,7 @@ import {
   parseCustomReportLayout,
   parseJsonLikeRecord,
 } from './custom-report-schema.ts';
+import { jsonParameter } from './postgres-json.ts';
 
 export type CustomReportAssetStatus = 'active' | 'disabled';
 
@@ -237,7 +238,8 @@ export async function insertCustomReportTemplate(
     )
     VALUES (
       ${input.projectId}, ${input.name}, ${input.description}, ${CUSTOM_REPORT_TEMPLATE_SCHEMA_VERSION},
-      ${JSON.stringify(input.layout)}::jsonb, ${input.createdByUserId}, ${input.createdByUserId}
+      ${jsonParameter(sql, input.layout)}::jsonb,
+      ${input.createdByUserId}, ${input.createdByUserId}
     )
   `;
 }
@@ -250,7 +252,7 @@ export async function updateCustomReportTemplate(
     UPDATE public.custom_report_templates
     SET name = ${input.name},
         description = ${input.description},
-        layout = ${JSON.stringify(input.layout)}::jsonb,
+        layout = ${jsonParameter(sql, input.layout)}::jsonb,
         template_version = template_version + 1,
         updated_by_user_id = ${input.updatedByUserId}
     WHERE project_id = ${input.projectId} AND id = ${input.templateId}

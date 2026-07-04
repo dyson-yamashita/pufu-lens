@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import {
+  insertCustomReportTemplate,
   parseCustomReportAssetRow,
   parseCustomReportTemplateRow,
   parseReportTemplateRunRow,
+  updateCustomReportTemplate,
 } from './custom-report-repository.ts';
 import {
   CUSTOM_REPORT_LAYOUT_SCHEMA_VERSION,
@@ -13,6 +15,7 @@ import {
   validateCustomReportSnapshot,
   validateCustomReportTemplateExport,
 } from './custom-report-schema.ts';
+import { createPostgresReportRepository } from './report.ts';
 import { validatePrivateReportJson } from './report-schema.ts';
 
 const validLayout = {
@@ -455,5 +458,93 @@ assert.throws(
     }),
   /judgement_summary/,
 );
+
+{
+  const calls: unknown[][] = [];
+  const sql = Object.assign(
+    async (_strings: TemplateStringsArray, ...values: unknown[]) => {
+      calls.push(values);
+      return { count: 1 };
+    },
+    { json: (value: unknown) => value },
+  ) as never;
+
+  await insertCustomReportTemplate(sql, {
+    createdByUserId: 'user-a',
+    description: null,
+    layout: validLayout,
+    name: '転職戦略レポート',
+    projectId: 'project-a',
+  });
+  await updateCustomReportTemplate(sql, {
+    description: null,
+    layout: validLayout,
+    name: '転職戦略レポート v2',
+    projectId: 'project-a',
+    templateId: 'template-a',
+    updatedByUserId: 'user-a',
+  });
+
+  assert.equal(calls[0]?.[4], validLayout);
+  assert.equal(typeof calls[0]?.[4], 'object');
+  assert.equal(calls[1]?.[2], validLayout);
+  assert.equal(typeof calls[1]?.[2], 'object');
+}
+
+{
+  const transactionCalls: unknown[][] = [];
+  const transaction = Object.assign(
+    async (_strings: TemplateStringsArray, ...values: unknown[]) => {
+      transactionCalls.push(values);
+      return [];
+    },
+    { json: (value: unknown) => value },
+  ) as never;
+  const sql = Object.assign(async (_strings: TemplateStringsArray, ..._values: unknown[]) => [], {
+    begin: async (callback: (transactionSql: typeof transaction) => Promise<void>) =>
+      callback(transaction),
+  }) as never;
+  const repository = createPostgresReportRepository(sql);
+  const judgementSummary = { strategy_logic: { score: 80 } };
+  const chunkMetadata = { sectionId: 'activity' };
+
+  await repository.insertReport({
+    chunks: [
+      {
+        chunkIndex: 0,
+        content: '本文',
+        embedding: [0.1, 0.2, 0.3],
+        metadata: chunkMetadata,
+      },
+    ],
+    customTemplateRun: {
+      judgementSummary,
+      layoutSnapshot: validLayout,
+      templateId: 'template-a',
+      templateSnapshotHash: 'sha256:abc',
+      templateVersion: 1,
+    },
+    generatedBy: 'user-a',
+    projectId: 'project-a',
+    report: {
+      generated_at: '2026-06-30T09:00:00.000Z',
+      period: { end: '2026-06-30', start: '2026-06-01' },
+      project_id: 'project-a',
+      report_id: 'report-a',
+      schema_version: 'v1',
+      sections: [],
+      summary: '概要',
+      title: '月次レポート',
+    },
+    storageUri: 'gs://bucket/report.json',
+  });
+
+  assert.equal(transactionCalls[1]?.[5], validLayout);
+  assert.equal(transactionCalls[1]?.[6], judgementSummary);
+  assert.equal(transactionCalls[2]?.[5], chunkMetadata);
+  assert.equal(typeof transactionCalls[1]?.[5], 'object');
+  assert.equal(typeof transactionCalls[1]?.[6], 'object');
+  assert.equal(typeof transactionCalls[2]?.[5], 'object');
+}
 
 console.log('web custom report schema tests passed');

@@ -2,6 +2,7 @@ import type postgres from 'postgres';
 import { isProjectVisibility, type ProjectVisibility } from './admin-data.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
 import { type CustomReportLayoutV1, parseCustomReportLayout } from './custom-report-schema.ts';
+import { jsonParameter } from './postgres-json.ts';
 import type { PreparedReportChunk, PrivateReportJsonV1, ReportPeriod } from './report-schema.ts';
 
 export interface ReportListItem {
@@ -282,8 +283,8 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
             VALUES (
               ${projectId}, ${report.report_id}, ${customTemplateRun.templateId},
               ${customTemplateRun.templateVersion}, ${customTemplateRun.templateSnapshotHash},
-              ${JSON.stringify(customTemplateRun.layoutSnapshot)}::jsonb,
-              ${JSON.stringify(customTemplateRun.judgementSummary)}::jsonb
+              ${jsonParameter(transaction, customTemplateRun.layoutSnapshot)}::jsonb,
+              ${jsonParameter(transaction, customTemplateRun.judgementSummary)}::jsonb
             )
           `;
         }
@@ -304,7 +305,7 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
                 ${chunk.chunkIndex},
                 ${chunk.content},
                 ${vectorLiteral(chunk.embedding)}::vector,
-                ${JSON.stringify(chunk.metadata)}::jsonb
+                ${jsonParameter(transaction, chunk.metadata)}::jsonb
               )
             `,
           ),

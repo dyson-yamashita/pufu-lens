@@ -564,5 +564,6 @@ VALUES
   ('0005_custom_report_layouts'),
   ('0006_private_chat_history'),
   ('0007_normalize_private_chat_editing'),
-  ('0008_normalize_private_chat_history_json_arrays')
+  ('0008_normalize_private_chat_history_json_arrays'),
+  ('0009_normalize_jsonb_string_storage')
 ON CONFLICT (version) DO NOTHING;
