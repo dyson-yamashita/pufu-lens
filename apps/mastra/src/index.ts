@@ -135,6 +135,11 @@ export interface PufuLensMastraRuntime {
   readonly mastra: Mastra;
   readonly projectChatTools: ReturnType<typeof createProjectChatTools>;
   readonly projectChatAgent: Agent;
+  /**
+   * Compatibility-only agent for direct public-report-chat-agent regressions.
+   * The canonical public project/report chat route uses projectChatAgent after Next.js
+   * validates public project/report access and redacts the response.
+   */
   readonly publicReportChatTools: ReturnType<typeof createPublicReportChatTools>;
   readonly publicReportChatAgent: Agent;
   readonly generateReportWorkflow: ReturnType<typeof createGenerateReportWorkflow>;
@@ -637,6 +642,8 @@ export function createPublicReportChatAgent(input: {
   readonly model?: string;
   readonly tools: ReturnType<typeof createPublicReportChatTools>;
 }): Agent {
+  // Legacy compatibility path. Do not route current public project/report chat here; Next.js
+  // proxies public chat to project-chat-agent and keeps public gate/redaction at the boundary.
   return new Agent({
     id: mastraAgentIds.publicReportChat,
     name: 'Public Report Chat Agent',

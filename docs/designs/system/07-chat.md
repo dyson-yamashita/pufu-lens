@@ -390,7 +390,7 @@ server: {
       keyGenerator: (c) => `${c.req.header("x-user-id") ?? "_"}:${c.req.header("x-project-id") ?? "_"}`,
     }),
   }, {
-    path: "/api/agents/public-report-chat-agent/*",
+    path: "/api/agents/public-report-chat-agent/*", // legacy compatibility / direct regression only
     handler: rateLimiter({
       windowMs: 60 * 60_000,
       limit: 10,
@@ -401,5 +401,7 @@ server: {
 ```
 
 Mastra Server は private Cloud Run とし、rate limit 用の `x-user-id`、`x-project-id`、`x-report-id`、`x-client-ip` は OIDC 検証済みの Next.js から来た内部 header だけを信頼する。ブラウザから直接送られた同名 header や `x-forwarded-for` / `x-real-ip` は rate limit key として信用しない。
+
+現行の public project/report chat は、Next.js が `projects.visibility = 'public'` と `reports.is_public = true` を確認した後、private chat と同じ `project-chat-agent` に `projectId` / `graphName` を渡して実行する。`public-report-chat-agent`、`public-report-fetch`、`public-context-fetch` は redaction 済み public report JSON / public context bundle だけを扱う互換・直接回帰検証用の経路として残し、正規の public chat 実行経路とは混同しない。
 
 ---
