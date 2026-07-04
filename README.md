@@ -72,10 +72,14 @@ pnpm --filter @pufu-lens/mastra dev
 主要な検証コマンドです。
 
 ```sh
+pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm build
 ```
+
+E2E を確認する場合は `pnpm test:e2e` を実行します。詳細な品質ゲートと完了報告ルールは `docs/operations/ci-quality-gates.md` を参照してください。
 
 ## ドキュメント
 
