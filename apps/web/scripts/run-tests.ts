@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process';
 import { readdir } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const testRoot = resolve('src');
+const testRoot = fileURLToPath(new URL('../src', import.meta.url));
 
 async function collectTestFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
