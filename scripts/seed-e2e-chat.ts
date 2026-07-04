@@ -1,5 +1,5 @@
 import postgres from 'postgres';
-import { createPostgresPasswordCredentialRepository } from '../apps/web/src/password-auth.ts';
+import { createPostgresPasswordCredentialRepository } from './lib/password-credentials.ts';
 
 const defaultDatabaseUrl = 'postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens';
 const defaultEmail = 'e2e-chat-member@example.test';
@@ -30,7 +30,7 @@ async function main() {
       WHERE project_id = ${projectId}
         AND user_id = ${userId}
     `;
-    console.log(`e2e chat member ready: ${email} (${userId})`);
+    console.log(`e2e chat member ready (${userId})`);
   } finally {
     await sql.end();
   }

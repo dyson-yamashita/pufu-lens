@@ -26,6 +26,12 @@ admin user シナリオは credentials login を使うため、実行環境に
 private chat の write-to-read シナリオは実 DB に chat 履歴を書き込むため、通常の fixture fallback 実行とは分けて DB 接続モードで実行する。ローカルでは PostgreSQL 起動後に E2E user を seed し、`DATABASE_URL` と credentials env を付けて対象シナリオだけを実行する。
 
 ```bash
+docker cp infra/docker/postgres/init.sql pufu-lens-postgres-e2e:/tmp/init.sql
+docker exec \
+  --env PGPASSWORD=pufu_lens \
+  pufu-lens-postgres-e2e \
+  psql -v ON_ERROR_STOP=1 -U pufu_lens -d pufu_lens -f /tmp/init.sql
+
 DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
   PUFU_LENS_E2E_CHAT_EMAIL=e2e-chat-member@example.test \
   PUFU_LENS_E2E_CHAT_PASSWORD=pufu-lens-e2e-chat-password \

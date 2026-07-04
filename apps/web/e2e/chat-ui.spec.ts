@@ -240,13 +240,9 @@ async function startMastraChatStub(): Promise<Server> {
         }),
       );
     } catch (error) {
+      console.error('Mastra stub error:', error);
       response.writeHead(500, { 'content-type': 'application/json' });
-      response.end(
-        JSON.stringify({
-          error: 'internal_server_error',
-          message: error instanceof Error ? error.message : String(error),
-        }),
-      );
+      response.end(JSON.stringify({ error: 'internal_server_error' }));
     }
   });
 
