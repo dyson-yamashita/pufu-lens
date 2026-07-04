@@ -182,7 +182,11 @@ test('scenario: member sends private chat and reads persisted history from fixtu
     await expect(page.getByTestId('chat-history-list')).toContainText(question);
     await expect(page.getByTestId('chat-history-list')).toContainText(answer);
 
-    await page.getByTestId('chat-history-list').getByText(question).click();
+    await page
+      .getByTestId('chat-history-list')
+      .locator('button')
+      .filter({ hasText: question })
+      .click();
     await expect(page.getByTestId('chat-user-message-0')).toContainText(question);
     await expect(page.getByTestId('chat-assistant-message-1')).toContainText(answer);
   } finally {
