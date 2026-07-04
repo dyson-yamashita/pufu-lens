@@ -29,6 +29,7 @@ import {
   validatePublicContextBundle,
   validatePublicReportJson,
 } from './report.ts';
+import { safeReportPdfLines } from './report-pdf.ts';
 
 function pufuScoreTexts(score: ReturnType<typeof createPufuScoreFromReport>): readonly string[] {
   return [
@@ -929,6 +930,20 @@ assert.equal(publicDetail.status, 'ok');
 assert.equal(publicDetail.report.report_id, generated.report.report_id);
 assert.equal(publicDetail.report.schema_version, 'v1');
 assert.match(publicDetail.report.summary, /contact@example\.com/);
+const privatePublicParityDetail = await getPrivateReport({
+  options: { repository, storage },
+  projectSlug: 'sample-a',
+  reportId: generated.report.report_id,
+  userId: 'user-a',
+});
+assert.equal(privatePublicParityDetail.status, 'ok');
+assert.ok(publicDetail.report);
+assert.ok(privatePublicParityDetail.report);
+assert.deepEqual(publicDetail.report, privatePublicParityDetail.report);
+assert.deepEqual(
+  safeReportPdfLines(publicDetail.report),
+  safeReportPdfLines(privatePublicParityDetail.report),
+);
 await storage.put(
   generated.storageUri,
   `${JSON.stringify({ ...privateReport, report_id: 'other-report' }, null, 2)}\n`,
