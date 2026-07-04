@@ -1,6 +1,6 @@
 # CI 品質ゲート
 
-この文書は、Pufu Lens の現行 CI とローカル確認コマンドの対応関係を定義する。Vitest / Oxlint は導入しておらず、unit / integration test は Node.js の test runner と `node --experimental-strip-types`、lint / format は Biome、Markdown lint は `markdownlint-cli2` を使う。
+この文書は、Pufu Lens の現行 CI とローカル確認コマンドの対応関係を定義する。Vitest / Oxlint は導入しておらず、unit / integration test は Node.js の test runner と `node --experimental-strip-types` による実行、lint / format は Biome、Markdown lint は `markdownlint-cli2` を使う。
 
 ## 必須コマンド
 
@@ -42,6 +42,6 @@ pnpm test:e2e
 
 ## Hook 方針
 
-Stop Hook / PostToolUse hook は現時点では repository に導入しない。現行の強制点は GitHub Actions であり、hook は tool ごとのローカル設定に依存して CI の代替にならない。さらに、DB / Docker / Playwright / 外部 API key を必要とする検証を stop 時に一律実行すると誤検知や開発待ち時間が大きくなる。
+Stop Hook / PostToolUse hook は現時点では repository に導入しない。現行の強制点は GitHub Actions であり、hook は tool ごとのローカル設定に依存して CI の代替にならない。さらに、DB / Docker / Playwright / 外部 API key を必要とする検証を Stop Hook 実行時に一律実行すると誤検知や開発待ち時間が大きくなる。
 
 hook を導入する場合は、別 Issue で対象 tool、実行タイミング、skip 条件、失敗時の扱い、CI との責務分担、ローカル動作確認結果を明記してから実装する。
