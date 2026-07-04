@@ -377,6 +377,10 @@
   font-weight: 600;
 }
 
+.project-delete-confirmation-name {
+  text-transform: none;
+}
+
 .segmented-control {
   background: var(--surface);
   border: 1px solid var(--line);

@@ -65,7 +65,9 @@ export function ProjectDeleteDialog({
             <input name="projectSlug" type="hidden" value={projectSlug} />
             <label>
               <span>
-                確認のため、プロジェクト名 <strong>{expectedProjectName}</strong> を入力してください
+                確認のため、プロジェクト名{' '}
+                <strong className="project-delete-confirmation-name">{expectedProjectName}</strong>{' '}
+                を入力してください
               </span>
               <input
                 autoComplete="off"
