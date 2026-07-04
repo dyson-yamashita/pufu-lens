@@ -7,6 +7,7 @@ import {
   getVisiblePublicProject,
   ProjectNotFoundError,
 } from '../../../src/admin-db';
+import { formatReportSummaryPreview } from '../../../src/report-summary';
 import { AppShell, MetricStrip, PageHeader } from '../../../src/ui';
 
 export default async function ProjectOverviewPage({
@@ -86,7 +87,7 @@ export default async function ProjectOverviewPage({
                 key={report.id}
               >
                 <strong>{report.title}</strong>
-                <span>{report.summary}</span>
+                <span>{formatReportSummaryPreview(report.summary)}</span>
                 <small>{report.publishedAt}</small>
               </Link>
             ))}
