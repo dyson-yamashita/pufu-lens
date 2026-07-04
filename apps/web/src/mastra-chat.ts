@@ -13,8 +13,14 @@ import type {
 import { inferChatEditingMetadata, inferPublicChatEditingMetadata } from './chat.ts';
 import type { ProjectLookupResult, PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 
-const PROJECT_CHAT_AGENT_ID = 'project-chat-agent';
-const PUBLIC_REPORT_CHAT_AGENT_ID = 'public-report-chat-agent';
+/**
+ * The canonical public project/report chat path proxies to the private Project Chat Agent
+ * after the public access gate passes. The legacy public report agent remains available only
+ * for compatibility fixtures and direct Mastra regression tests that exercise redacted public
+ * report/context-bundle tools.
+ */
+export const PUBLIC_PROJECT_CHAT_AGENT_ID = 'project-chat-agent';
+export const LEGACY_PUBLIC_REPORT_CHAT_AGENT_ID = 'public-report-chat-agent';
 
 type MastraChatEnv = Record<string, string | undefined>;
 type MastraIdTokenClient = {
@@ -79,15 +85,17 @@ interface MastraGenerateResponse {
 }
 
 export function mastraProjectChatGenerateUrl(env: MastraChatEnv = process.env): string {
-  const rawBase = env.MASTRA_SERVER_URL ?? env.MASTRA_API_URL ?? 'http://localhost:4111';
-  const base = rawBase.replace(/\/+$/, '').replace(/\/api$/, '');
-  return `${base}/api/agents/${PROJECT_CHAT_AGENT_ID}/generate`;
+  return mastraAgentGenerateUrl(PUBLIC_PROJECT_CHAT_AGENT_ID, env);
 }
 
 export function mastraPublicReportChatGenerateUrl(env: MastraChatEnv = process.env): string {
+  return mastraAgentGenerateUrl(LEGACY_PUBLIC_REPORT_CHAT_AGENT_ID, env);
+}
+
+function mastraAgentGenerateUrl(agentId: string, env: MastraChatEnv): string {
   const rawBase = env.MASTRA_SERVER_URL ?? env.MASTRA_API_URL ?? 'http://localhost:4111';
   const base = rawBase.replace(/\/+$/, '').replace(/\/api$/, '');
-  return `${base}/api/agents/${PUBLIC_REPORT_CHAT_AGENT_ID}/generate`;
+  return `${base}/api/agents/${agentId}/generate`;
 }
 
 export async function mastraFetchHeaders(input: {
@@ -143,6 +151,8 @@ export function createMastraPublicReportChatBody(input: {
   readonly report: PublicReportJsonV1;
   readonly reportId: string;
 }) {
+  // Compatibility-only body for the legacy public-report-chat-agent.
+  // Current public project/report chat should use createPublicProjectChatMastraBody instead.
   const editing = inferPublicChatEditingMetadata(input.question);
   return {
     messages: [{ content: input.question, role: 'user' }],

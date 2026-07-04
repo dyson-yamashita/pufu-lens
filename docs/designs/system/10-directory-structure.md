@@ -11,7 +11,7 @@ project-root/
 │   │   │   └── mastra/
 │   │   │       ├── agents/
 │   │   │       │   ├── chat-agent.ts
-│   │   │       │   ├── public-report-chat-agent.ts
+│   │   │       │   ├── public-report-chat-agent.ts # 互換・直接回帰検証用。正規 public chat は project chat agent を使う
 │   │   │       │   ├── exception-agent.ts
 │   │   │       │   └── report-agent.ts
 │   │   │       ├── workflows/

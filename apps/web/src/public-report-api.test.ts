@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { createPublicChatMemoryRateLimiter, inferChatEditingMetadata } from './chat.ts';
-import { createPublicProjectChatMastraBody } from './mastra-chat.ts';
+import {
+  createPublicProjectChatMastraBody,
+  LEGACY_PUBLIC_REPORT_CHAT_AGENT_ID,
+  mastraProjectChatGenerateUrl,
+  PUBLIC_PROJECT_CHAT_AGENT_ID,
+} from './mastra-chat.ts';
 import { trustedClientIp } from './request-client.ts';
 
 function requestHeaders(headers: Record<string, string>) {
@@ -45,5 +50,10 @@ assert.deepEqual(
     },
   },
 );
+assert.equal(
+  new URL(mastraProjectChatGenerateUrl({ MASTRA_SERVER_URL: 'http://localhost:4111/' })).pathname,
+  `/api/agents/${PUBLIC_PROJECT_CHAT_AGENT_ID}/generate`,
+);
+assert.notEqual(PUBLIC_PROJECT_CHAT_AGENT_ID, LEGACY_PUBLIC_REPORT_CHAT_AGENT_ID);
 
 console.log('web public report api tests passed');
