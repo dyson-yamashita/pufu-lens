@@ -85,15 +85,17 @@ interface MastraGenerateResponse {
 }
 
 export function mastraProjectChatGenerateUrl(env: MastraChatEnv = process.env): string {
-  const rawBase = env.MASTRA_SERVER_URL ?? env.MASTRA_API_URL ?? 'http://localhost:4111';
-  const base = rawBase.replace(/\/+$/, '').replace(/\/api$/, '');
-  return `${base}/api/agents/${PUBLIC_PROJECT_CHAT_AGENT_ID}/generate`;
+  return mastraAgentGenerateUrl(PUBLIC_PROJECT_CHAT_AGENT_ID, env);
 }
 
 export function mastraPublicReportChatGenerateUrl(env: MastraChatEnv = process.env): string {
+  return mastraAgentGenerateUrl(LEGACY_PUBLIC_REPORT_CHAT_AGENT_ID, env);
+}
+
+function mastraAgentGenerateUrl(agentId: string, env: MastraChatEnv): string {
   const rawBase = env.MASTRA_SERVER_URL ?? env.MASTRA_API_URL ?? 'http://localhost:4111';
   const base = rawBase.replace(/\/+$/, '').replace(/\/api$/, '');
-  return `${base}/api/agents/${LEGACY_PUBLIC_REPORT_CHAT_AGENT_ID}/generate`;
+  return `${base}/api/agents/${agentId}/generate`;
 }
 
 export async function mastraFetchHeaders(input: {
