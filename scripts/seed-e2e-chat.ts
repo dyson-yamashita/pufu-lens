@@ -5,7 +5,7 @@ const defaultDatabaseUrl = 'postgresql://pufu_lens:pufu_lens@localhost:5432/pufu
 const defaultEmail = 'e2e-chat-member@example.test';
 const defaultName = 'E2E Chat Member';
 const defaultPassword = 'pufu-lens-e2e-chat-password';
-const localDevProjectId = '00000000-0000-0000-0000-000000000101';
+const localDevProjectSlug = 'local-dev';
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL?.trim() || defaultDatabaseUrl;
@@ -15,19 +15,19 @@ async function main() {
 
   const sql = postgres(databaseUrl, { max: 1 });
   try {
-    await ensureLocalDevProject(sql);
+    const projectId = await ensureLocalDevProject(sql);
     const userId = await createPostgresPasswordCredentialRepository(
       sql,
     ).createOrUpdatePasswordCredential({ email, name, password });
     await sql`
       INSERT INTO public.project_members (project_id, user_id, role)
-      VALUES (${localDevProjectId}, ${userId}, 'member')
+      VALUES (${projectId}, ${userId}, 'member')
       ON CONFLICT (project_id, user_id)
       DO UPDATE SET role = EXCLUDED.role
     `;
     await sql`
       DELETE FROM public.private_chat_messages
-      WHERE project_id = ${localDevProjectId}
+      WHERE project_id = ${projectId}
         AND user_id = ${userId}
     `;
     console.log(`e2e chat member ready: ${email} (${userId})`);
@@ -36,16 +36,15 @@ async function main() {
   }
 }
 
-async function ensureLocalDevProject(sql: postgres.Sql): Promise<void> {
-  await sql`
-    INSERT INTO public.projects (id, slug, name, description, graph_name, storage_prefix, visibility)
+async function ensureLocalDevProject(sql: postgres.Sql): Promise<string> {
+  const [project] = await sql<{ id: string }[]>`
+    INSERT INTO public.projects (slug, name, description, graph_name, storage_prefix, visibility)
     VALUES (
-      ${localDevProjectId},
-      'local-dev',
+      ${localDevProjectSlug},
       'Local Development',
       'Fixture and CLI smoke test project',
       'graph_local_dev',
-      'local-dev',
+      ${localDevProjectSlug},
       'private'
     )
     ON CONFLICT (slug) DO UPDATE
@@ -55,7 +54,12 @@ async function ensureLocalDevProject(sql: postgres.Sql): Promise<void> {
       graph_name = EXCLUDED.graph_name,
       storage_prefix = EXCLUDED.storage_prefix,
       visibility = EXCLUDED.visibility
+    RETURNING id::text
   `;
+  if (!project) {
+    throw new Error(`Failed to ensure ${localDevProjectSlug} project.`);
+  }
+  return project.id;
 }
 
 await main();

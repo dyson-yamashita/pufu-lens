@@ -177,7 +177,9 @@ jobs:
           set -euo pipefail
 
           mkdir -p /tmp/.buildx-cache/postgres-ci
-          docker buildx create --use --name pufu-lens-ci-builder
+          docker buildx inspect pufu-lens-ci-builder >/dev/null 2>&1 \
+            || docker buildx create --name pufu-lens-ci-builder
+          docker buildx use pufu-lens-ci-builder
           docker buildx build \
             --cache-from type=local,src=/tmp/.buildx-cache/postgres-ci \
             --cache-to type=local,dest=/tmp/.buildx-cache/postgres-ci-new,mode=min \
@@ -364,7 +366,9 @@ jobs:
           set -euo pipefail
 
           mkdir -p /tmp/.buildx-cache/postgres-ci
-          docker buildx create --use --name pufu-lens-e2e-builder
+          docker buildx inspect pufu-lens-e2e-builder >/dev/null 2>&1 \
+            || docker buildx create --name pufu-lens-e2e-builder
+          docker buildx use pufu-lens-e2e-builder
           docker buildx build \
             --cache-from type=local,src=/tmp/.buildx-cache/postgres-ci \
             --cache-to type=local,dest=/tmp/.buildx-cache/postgres-ci-new,mode=min \

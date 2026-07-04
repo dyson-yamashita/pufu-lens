@@ -196,48 +196,58 @@ test('scenario: member sends private chat and reads persisted history from fixtu
 
 async function startMastraChatStub(): Promise<Server> {
   const server = createServer(async (request, response) => {
-    if (request.method !== 'POST' || request.url !== '/api/agents/project-chat-agent/generate') {
-      response.writeHead(404, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({ error: 'not_found' }));
-      return;
-    }
+    try {
+      if (request.method !== 'POST' || request.url !== '/api/agents/project-chat-agent/generate') {
+        response.writeHead(404, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ error: 'not_found' }));
+        return;
+      }
 
-    const body = await readJsonBody(request);
-    const messages = Array.isArray(body.messages) ? body.messages : [];
-    const latest = messages.findLast(isUserMessage);
-    const question = typeof latest?.content === 'string' ? latest.content : '';
+      const body = await readJsonBody(request);
+      const messages = Array.isArray(body.messages) ? body.messages : [];
+      const latest = messages.findLast(isUserMessage);
+      const question = typeof latest?.content === 'string' ? latest.content : '';
 
-    response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(
-      JSON.stringify({
-        steps: [
-          {
-            content: [
-              {
-                output: {
-                  value: {
-                    resultCount: 1,
-                    sources: [
-                      {
-                        canonicalUri: 'https://example.test/e2e/private-chat',
-                        docType: 'web',
-                        documentId: 'e2e-private-chat-doc',
-                        rawDocumentId: 'e2e-private-chat-raw',
-                        snippet: 'E2E private chat source snippet',
-                        title: 'E2E private chat source',
-                      },
-                    ],
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          steps: [
+            {
+              content: [
+                {
+                  output: {
+                    value: {
+                      resultCount: 1,
+                      sources: [
+                        {
+                          canonicalUri: 'https://example.test/e2e/private-chat',
+                          docType: 'web',
+                          documentId: 'e2e-private-chat-doc',
+                          rawDocumentId: 'e2e-private-chat-raw',
+                          snippet: 'E2E private chat source snippet',
+                          title: 'E2E private chat source',
+                        },
+                      ],
+                    },
                   },
+                  toolName: 'vectorSearch',
+                  type: 'tool-result',
                 },
-                toolName: 'vectorSearch',
-                type: 'tool-result',
-              },
-            ],
-          },
-        ],
-        text: `E2E private chat persisted answer for: ${question}`,
-      }),
-    );
+              ],
+            },
+          ],
+          text: `E2E private chat persisted answer for: ${question}`,
+        }),
+      );
+    } catch (error) {
+      response.writeHead(500, { 'content-type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          error: 'internal_server_error',
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
   });
 
   return new Promise((resolve, reject) => {
