@@ -6,7 +6,9 @@
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
     },
     "test": {
+      "cache": false,
       "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "src/**/*.test.ts", "src/**/*.test.js", "fixtures/**"],
       "outputs": []
     },
     "typecheck": {
