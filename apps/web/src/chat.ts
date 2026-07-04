@@ -1568,11 +1568,11 @@ function parseOptionalPrivateChatHistoryJson<T>(
   try {
     return parse(row[fieldName]);
   } catch (error) {
-    console.warn('Invalid private chat history JSON field; falling back.', {
+    console.warn(
+      'Invalid private chat history JSON field; falling back.',
+      { fieldName, messageId: row.id },
       error,
-      fieldName,
-      messageId: row.id,
-    });
+    );
     return fallback;
   }
 }
