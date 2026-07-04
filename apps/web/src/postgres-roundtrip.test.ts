@@ -18,20 +18,33 @@ const reportId = '10000000-0000-0000-0000-000000000435';
 const templateId = '10000000-0000-0000-0000-000000000436';
 const chatUserId = '10000000-0000-0000-0000-000000000437';
 
-try {
-  await resetFixtureRows();
-  await seedProjectFixture();
-  await assertPrivateChatJsonbRoundTrip();
-  await assertReportJsonbRoundTrip();
-  console.log('web postgres round-trip tests passed');
-} finally {
-  await resetFixtureRows();
-  await sql.end();
+await main();
+
+async function main() {
+  try {
+    await resetFixtureRows();
+    await seedProjectFixture();
+    await assertPrivateChatJsonbRoundTrip();
+    await assertReportJsonbRoundTrip();
+    console.log('web postgres round-trip tests passed');
+  } finally {
+    try {
+      await resetFixtureRows();
+    } finally {
+      await sql.end();
+    }
+  }
 }
 
 async function resetFixtureRows() {
-  await sql`DELETE FROM public.users WHERE id IN (${userId}, ${chatUserId})`;
+  await sql`DELETE FROM public.private_chat_messages WHERE project_id = ${projectId} OR user_id IN (${userId}, ${chatUserId})`;
+  await sql`DELETE FROM public.report_template_runs WHERE project_id = ${projectId} OR report_id = ${reportId}`;
+  await sql`DELETE FROM public.report_chunks WHERE project_id = ${projectId} OR report_id = ${reportId}`;
+  await sql`DELETE FROM public.reports WHERE project_id = ${projectId} OR id = ${reportId}`;
+  await sql`DELETE FROM public.project_members WHERE project_id = ${projectId} OR user_id IN (${userId}, ${chatUserId})`;
+  await sql`DELETE FROM public.custom_report_templates WHERE project_id = ${projectId} OR id = ${templateId}`;
   await sql`DELETE FROM public.projects WHERE id = ${projectId}`;
+  await sql`DELETE FROM public.users WHERE id IN (${userId}, ${chatUserId})`;
 }
 
 async function seedProjectFixture() {
@@ -100,12 +113,12 @@ async function assertPrivateChatJsonbRoundTrip() {
   `) as readonly unknown[];
   const row = singleRow(rows);
 
-  assert.equal(row.sources_type, 'array');
-  assert.equal(row.tool_calls_type, 'array');
-  assert.equal(row.editing_type, 'object');
-  assert.equal(row.first_document_id, 'document-433');
-  assert.equal(row.first_tool_name, 'vector-search');
-  assert.equal(row.editing_confidence, 'medium');
+  assert.equal(stringField(row, 'sources_type'), 'array');
+  assert.equal(stringField(row, 'tool_calls_type'), 'array');
+  assert.equal(stringField(row, 'editing_type'), 'object');
+  assert.equal(stringField(row, 'first_document_id'), 'document-433');
+  assert.equal(stringField(row, 'first_tool_name'), 'vector-search');
+  assert.equal(stringField(row, 'editing_confidence'), 'medium');
 }
 
 async function assertReportJsonbRoundTrip() {
@@ -189,12 +202,12 @@ async function assertReportJsonbRoundTrip() {
   `) as readonly unknown[];
   const row = singleRow(rows);
 
-  assert.equal(row.chunk_metadata_type, 'object');
-  assert.equal(row.chunk_nested_ok, 'true');
-  assert.equal(row.layout_snapshot_type, 'object');
-  assert.equal(row.layout_root_type, 'title');
-  assert.equal(row.judgement_summary_type, 'object');
-  assert.equal(row.judgement_first_tag, 'round-trip');
+  assert.equal(stringField(row, 'chunk_metadata_type'), 'object');
+  assert.equal(stringField(row, 'chunk_nested_ok'), 'true');
+  assert.equal(stringField(row, 'layout_snapshot_type'), 'object');
+  assert.equal(stringField(row, 'layout_root_type'), 'title');
+  assert.equal(stringField(row, 'judgement_summary_type'), 'object');
+  assert.equal(stringField(row, 'judgement_first_tag'), 'round-trip');
 }
 
 function singleRow(rows: readonly unknown[]): Record<string, unknown> {
@@ -202,4 +215,12 @@ function singleRow(rows: readonly unknown[]): Record<string, unknown> {
   const row = rows[0];
   assert.ok(row && typeof row === 'object' && !Array.isArray(row));
   return row as Record<string, unknown>;
+}
+
+function stringField(row: Record<string, unknown>, key: string): string {
+  const value = row[key];
+  if (typeof value !== 'string') {
+    throw new Error(`Expected ${key} to be a string.`);
+  }
+  return value;
 }
