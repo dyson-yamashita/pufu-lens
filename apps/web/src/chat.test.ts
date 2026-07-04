@@ -49,6 +49,7 @@ import {
   mastraGenerateReportWorkflowStartUrl,
   runMastraGenerateReportWorkflow,
 } from './mastra-workflow.ts';
+import { jsonParameter } from './postgres-json.ts';
 import type { PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 import { appendSpeechTranscript } from './speech-input.ts';
 
@@ -613,6 +614,13 @@ assert.deepEqual(
     console.warn = originalWarn;
   }
   assert.equal(warnings.length, 3);
+}
+{
+  const sqlJson = { json: (value: unknown) => value } as never;
+  assert.throws(
+    () => jsonParameter(sqlJson, JSON.stringify({ sources: [sampleSource] })),
+    /raw JSON value/,
+  );
 }
 {
   const boundValues: unknown[][] = [];
