@@ -1107,7 +1107,11 @@ assert.equal(refusedPublicChat.status, 'refused');
 assert.equal(refusedPublicChat.sources.length, 0);
 assert.equal(refusedPublicChat.editing?.questionType, 'public_explanation');
 
-const publicLimiter = createPublicChatMemoryRateLimiter({ limit: 1, windowMs: 60_000 });
+const publicLimiter = createPublicChatMemoryRateLimiter({
+  limit: 1,
+  now: () => 1_000,
+  windowMs: 60_000,
+});
 assert.equal(publicLimiter.check({ clientIp: '203.0.113.12', reportId: 'report-a' }), true);
 assert.equal(publicLimiter.check({ clientIp: '203.0.113.12', reportId: 'report-a' }), false);
 assert.equal(publicLimiter.check({ clientIp: '203.0.113.13', reportId: 'report-a' }), true);

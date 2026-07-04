@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { MemoryObjectStorage } from '../../../packages/storage/src/testing.ts';
+import { MemoryObjectStorage } from '@pufu-lens/storage/testing';
 import {
   buildAgentRawReadView,
   createPostgresRawReadViewRepository,

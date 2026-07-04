@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { MemoryObjectStorage } from '../../../packages/storage/src/testing.ts';
+import { MemoryObjectStorage } from '@pufu-lens/storage/testing';
 import { ProjectAccessDeniedError } from './chat.ts';
 import { CUSTOM_REPORT_LAYOUT_SCHEMA_VERSION } from './custom-report-schema.ts';
 import { createPufuScoreFromReport } from './pufu-score.ts';

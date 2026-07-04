@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { RequestContext } from '@mastra/core/request-context';
+import { MemoryObjectStorage } from '@pufu-lens/storage/testing';
 import type { ChatRepository } from '@pufu-lens/web/chat';
 import type { ReportRepository } from '@pufu-lens/web/report';
 import { sampleChatSource as sampleSource } from '@pufu-lens/web/test-fixtures';
-import { MemoryObjectStorage } from '../../../packages/storage/src/testing.ts';
 import {
   type CrossProjectInvestigationRepository,
   createPufuLensMastraRuntime,

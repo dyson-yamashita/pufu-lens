@@ -141,6 +141,7 @@ test('scenario: member reads private report sections on mobile @mobile', async (
   await expect(page.getByTestId('report-section-risks')).toBeVisible();
   await expect(page.getByTestId('pufu-report-score')).toContainText('プ譜エディターを試す人');
   await expect(page.getByTestId('pufu-report-viewer')).toBeVisible();
+  await expect(page.locator('.pufu-score-frame')).toHaveCSS('overflow-x', 'auto');
 });
 
 test('scenario: member sees private report API error codes', async ({ page }) => {
