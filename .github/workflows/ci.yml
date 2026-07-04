@@ -225,6 +225,11 @@ jobs:
         env:
           DATABASE_URL: postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens
 
+      - name: PostgreSQL repository round-trip tests
+        run: pnpm --filter @pufu-lens/web test:db
+        env:
+          DATABASE_URL: postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens
+
   build:
     runs-on: ubuntu-latest
     steps:

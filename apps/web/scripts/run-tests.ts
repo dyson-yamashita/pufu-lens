@@ -4,6 +4,7 @@ import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const testRoot = fileURLToPath(new URL('../src', import.meta.url));
+const excludedTestFiles = new Set(['postgres-roundtrip.test.ts']);
 
 async function collectTestFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -15,7 +16,9 @@ async function collectTestFiles(directory: string): Promise<string[]> {
         return collectTestFiles(fullPath);
       }
 
-      return entry.isFile() && entry.name.endsWith('.test.ts') ? [fullPath] : [];
+      return entry.isFile() && entry.name.endsWith('.test.ts') && !excludedTestFiles.has(entry.name)
+        ? [fullPath]
+        : [];
     }),
   );
 
