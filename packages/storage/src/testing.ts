@@ -1,3 +1,4 @@
+import { Readable } from 'node:stream';
 import type { ObjectInfo, ObjectStorage } from './object-storage.ts';
 
 async function bodyToText(body: Buffer | NodeJS.ReadableStream | string): Promise<string> {
@@ -38,7 +39,6 @@ export class MemoryObjectStorage implements ObjectStorage {
   }
 
   async get(uri: string): Promise<NodeJS.ReadableStream> {
-    const { Readable } = await import('node:stream');
     return Readable.from([await this.getText(uri)]);
   }
 
