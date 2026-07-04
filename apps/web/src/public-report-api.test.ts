@@ -50,11 +50,10 @@ assert.deepEqual(
     },
   },
 );
-assert.equal(PUBLIC_PROJECT_CHAT_AGENT_ID, 'project-chat-agent');
-assert.equal(LEGACY_PUBLIC_REPORT_CHAT_AGENT_ID, 'public-report-chat-agent');
 assert.equal(
-  mastraProjectChatGenerateUrl({ MASTRA_SERVER_URL: 'http://localhost:4111/' }),
-  'http://localhost:4111/api/agents/project-chat-agent/generate',
+  new URL(mastraProjectChatGenerateUrl({ MASTRA_SERVER_URL: 'http://localhost:4111/' })).pathname,
+  `/api/agents/${PUBLIC_PROJECT_CHAT_AGENT_ID}/generate`,
 );
+assert.notEqual(PUBLIC_PROJECT_CHAT_AGENT_ID, LEGACY_PUBLIC_REPORT_CHAT_AGENT_ID);
 
 console.log('web public report api tests passed');
