@@ -51,16 +51,12 @@ import {
   runMastraGenerateReportWorkflow,
 } from './mastra-workflow.ts';
 import { jsonParameter } from './postgres-json.ts';
-import type { PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 import { appendSpeechTranscript } from './speech-input.ts';
-
-const sampleSource = {
-  canonicalUri: 'https://example.com/spec',
-  documentId: 'doc-a',
-  docType: 'web_page',
-  rawDocumentId: 'raw-a',
-  title: 'Spec Update',
-};
+import {
+  publicContextBundleFixture,
+  publicReportFixture,
+  sampleChatSource as sampleSource,
+} from './test-fixtures.ts';
 
 function ageDocumentVertex(documentId: string): string {
   return `${JSON.stringify({ properties: { documentId } })}::vertex`;
@@ -990,46 +986,8 @@ await assert.rejects(
   /Gemini chat request failed: HTTP 429: quota exceeded/,
 );
 
-const publicReport: PublicReportJsonV1 = {
-  period: { end: '2026-06-07', start: '2026-06-01' },
-  published_at: '2026-06-04T10:00:00.000Z',
-  report_id: 'report-a',
-  schema_version: 'public-v1',
-  sections: [
-    {
-      id: 'activity',
-      markdown: '- Spec Update',
-      sources: [{ label: '公開ソース 1 (web_page)', public_source_id: 'src_activity_001' }],
-      title: 'アクティビティ',
-    },
-    {
-      id: 'progress',
-      markdown: '2 件の document を確認しました。',
-      metrics: { documents: 2 },
-      title: '進捗',
-    },
-  ],
-  summary: '公開可能な概要です。',
-  title: '週次レポート',
-};
-const publicContextBundle: PublicContextBundleV1 = {
-  report_id: 'report-a',
-  schema_version: 'public-context-v1',
-  sections: [
-    {
-      id: 'activity',
-      markdown: '- Spec Update',
-      public_source_ids: ['src_activity_001'],
-      title: 'アクティビティ',
-    },
-    {
-      id: 'progress',
-      markdown: '2 件の document を確認しました。',
-      public_source_ids: [],
-      title: '進捗',
-    },
-  ],
-};
+const publicReport = publicReportFixture;
+const publicContextBundle = publicContextBundleFixture;
 
 const publicChat = await runPublicChat(
   {
@@ -1150,6 +1108,9 @@ assert.equal(refusedPublicChat.sources.length, 0);
 assert.equal(refusedPublicChat.editing?.questionType, 'public_explanation');
 
 const publicLimiter = createPublicChatMemoryRateLimiter({ limit: 1, windowMs: 60_000 });
+assert.equal(publicLimiter.check({ clientIp: '203.0.113.12', reportId: 'report-a' }), true);
+assert.equal(publicLimiter.check({ clientIp: '203.0.113.12', reportId: 'report-a' }), false);
+assert.equal(publicLimiter.check({ clientIp: '203.0.113.13', reportId: 'report-a' }), true);
 await runPublicChat(
   {
     clientIp: '203.0.113.11',

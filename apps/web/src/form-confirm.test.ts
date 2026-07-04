@@ -16,4 +16,4 @@ assert.equal(
   false,
 );
 
-console.log('form-buttons.test.ts passed');
+console.log('form-confirm.test.ts passed');

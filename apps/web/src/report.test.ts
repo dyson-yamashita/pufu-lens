@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import type { ObjectInfo, ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
+import { MemoryObjectStorage } from '../../../packages/storage/src/testing.ts';
 import { ProjectAccessDeniedError } from './chat.ts';
 import { CUSTOM_REPORT_LAYOUT_SCHEMA_VERSION } from './custom-report-schema.ts';
 import { createPufuScoreFromReport } from './pufu-score.ts';
@@ -41,37 +41,6 @@ function pufuScoreTexts(score: ReturnType<typeof createPufuScoreFromReport>): re
       ...purpose.measures.map((measure) => measure.text),
     ]),
   ];
-}
-
-class MemoryStorage implements ObjectStorage {
-  readonly objects = new Map<string, string>();
-
-  async put(uri: string, body: Buffer | NodeJS.ReadableStream | string): Promise<{ uri: string }> {
-    const text =
-      typeof body === 'string' ? body : Buffer.isBuffer(body) ? body.toString('utf8') : '';
-    const storedUri = `file:///tmp/pufu-lens/${uri}`;
-    this.objects.set(storedUri, text);
-    this.objects.set(uri, text);
-    return { uri: storedUri };
-  }
-
-  async get(): Promise<NodeJS.ReadableStream> {
-    throw new Error('not implemented');
-  }
-
-  async getText(uri: string): Promise<string> {
-    const value = this.objects.get(uri);
-    if (!value) {
-      throw new Error(`missing object: ${uri}`);
-    }
-    return value;
-  }
-
-  async exists(uri: string): Promise<boolean> {
-    return this.objects.has(uri) || this.objects.has(`file:///tmp/pufu-lens/${uri}`);
-  }
-
-  async *list(): AsyncIterable<ObjectInfo> {}
 }
 
 function createRepository(): ReportRepository & {
@@ -260,7 +229,7 @@ const period = resolveReportPeriod(new Date('2026-06-04T12:00:00.000Z'), 'weekly
 assert.deepEqual(period, { end: '2026-06-07', start: '2026-06-01' });
 
 const repository = createRepository();
-const storage = new MemoryStorage();
+const storage = new MemoryObjectStorage();
 const generated = await runGenerateReport({
   options: {
     now: new Date('2026-06-04T12:00:00.000Z'),
@@ -297,7 +266,7 @@ assert.match(risksSection.markdown, /Login failure risk.*対応として/);
 assert.doesNotMatch(risksSection.markdown, /。 対応として/);
 
 const customRepository = createRepository();
-const customStorage = new MemoryStorage();
+const customStorage = new MemoryObjectStorage();
 const customGenerated = await runGenerateReport({
   options: {
     customTemplateId: 'template-a',
@@ -551,7 +520,7 @@ assert.ok(
 assert.ok(await storage.exists('sample-a/project-public-state.json'));
 
 const rawSupplementRepository = createRepository();
-const rawSupplementStorage = new MemoryStorage();
+const rawSupplementStorage = new MemoryObjectStorage();
 let rawSupplementProviderSummaries: readonly string[] = [];
 const rawSupplemented = await runGenerateReport({
   options: {
@@ -621,7 +590,7 @@ assert.doesNotMatch(
 assert.match(rawSupplementPublicText, /public_source_id/);
 
 const rawSupplementFailureRepository = createRepository();
-const rawSupplementFailureStorage = new MemoryStorage();
+const rawSupplementFailureStorage = new MemoryObjectStorage();
 let rawSupplementFailureSummaries: readonly string[] = [];
 const rawSupplementFailureReport = await runGenerateReport({
   options: {
@@ -648,7 +617,7 @@ assert.ok(
 );
 
 const malformedRawViewRepository = createRepository();
-const malformedRawViewStorage = new MemoryStorage();
+const malformedRawViewStorage = new MemoryObjectStorage();
 let malformedRawViewSummaries: readonly string[] = [];
 const malformedRawViewReport = await runGenerateReport({
   options: {
@@ -724,7 +693,7 @@ const explicitPeriodReport = await runGenerateReport({
         ];
       },
     },
-    storage: new MemoryStorage(),
+    storage: new MemoryObjectStorage(),
   },
   projectSlug: 'sample-a',
 });
@@ -987,7 +956,7 @@ assert.equal(
 
 const gsReportUri = `gs://pufu-lens-public/sample-a/reports/public/${generated.report.report_id}/${published.manifest.artifact_version}/report.json`;
 const gsContextUri = `gs://pufu-lens-public/sample-a/reports/public/${generated.report.report_id}/${published.manifest.artifact_version}/context-bundle.json`;
-const gsStorage = new MemoryStorage();
+const gsStorage = new MemoryObjectStorage();
 gsStorage.objects.set(gsReportUri, JSON.stringify(published.publicReport));
 gsStorage.objects.set(
   gsContextUri,

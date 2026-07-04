@@ -79,10 +79,11 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
   );
   const firstSources = page.getByTestId('chat-message-sources-1');
   const firstSourcesToggle = page.getByTestId('chat-message-sources-toggle-1');
+  const firstSource = page.getByTestId('chat-message-source-1-src_progress_1');
   await expect(firstSources).toContainText('Sources (1)');
-  await expect(firstSources.locator('.source-chip')).toBeHidden();
+  await expect(firstSource).toBeHidden();
   await firstSourcesToggle.click();
-  await expect(firstSources.locator('.source-chip')).toBeVisible();
+  await expect(firstSource).toBeVisible();
   await expect(firstSources).toContainText('src_progress_1');
   await expect(firstSources).toContainText('Spec Update');
   await expect(firstSources).not.toContainText('https://example.com/spec');
@@ -97,10 +98,11 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
   await expect(page.getByTestId('chat-assistant-message-3')).toContainText('2件目の回答');
   const secondSources = page.getByTestId('chat-message-sources-3');
   const secondSourcesToggle = page.getByTestId('chat-message-sources-toggle-3');
+  const secondSource = page.getByTestId('chat-message-source-3-src_issues_1');
   await expect(secondSources).toContainText('Sources (1)');
-  await expect(secondSources.locator('.source-chip')).toBeHidden();
+  await expect(secondSource).toBeHidden();
   await secondSourcesToggle.click();
-  await expect(secondSources.locator('.source-chip')).toBeVisible();
+  await expect(secondSource).toBeVisible();
   await expect(secondSources).toContainText('src_issues_1');
   await expect(secondSources).toContainText('Issue Summary');
   await expect(secondSources).not.toContainText('raw-issue-001');

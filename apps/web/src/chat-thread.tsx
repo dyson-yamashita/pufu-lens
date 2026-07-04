@@ -364,7 +364,11 @@ function PrivateSourceStrip({
       </summary>
       <div className="source-list source-list-compact">
         {sources.map((source) => (
-          <article className="source-chip source-chip-compact" key={source.documentId}>
+          <article
+            className="source-chip source-chip-compact"
+            data-testid={`chat-message-source-${index}-${source.documentId}`}
+            key={source.documentId}
+          >
             <strong>{source.title}</strong>
             <span>{source.docType}</span>
             <small>{source.canonicalUri || source.documentId}</small>
@@ -395,6 +399,7 @@ function PublicSourceStrip({
         {sources.map((source) => (
           <article
             className="source-chip source-chip-compact"
+            data-testid={`chat-message-source-${index}-${source.publicSourceId}`}
             key={`${source.sectionId}-${source.publicSourceId}`}
           >
             <strong>{source.publicSourceId}</strong>

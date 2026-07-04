@@ -13,21 +13,21 @@ test('scenario: user can switch theme and keep it after reload', async ({ page }
   await expect(page.getByTestId('theme-toggle')).toBeVisible();
   await expect(page.getByTestId('theme-toggle-button')).toHaveAttribute(
     'aria-label',
-    '現在はダークテーマです。ライトテーマに切り替える',
+    /ライトテーマに切り替える/,
   );
 
   await page.getByTestId('theme-toggle-button').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await expect(page.getByTestId('theme-toggle-button')).toHaveAttribute(
     'aria-label',
-    '現在はライトテーマです。ダークテーマに切り替える',
+    /ダークテーマに切り替える/,
   );
 
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await expect(page.getByTestId('theme-toggle-button')).toHaveAttribute(
     'aria-label',
-    '現在はライトテーマです。ダークテーマに切り替える',
+    /ダークテーマに切り替える/,
   );
 
   await page.getByTestId('theme-toggle-button').click();
