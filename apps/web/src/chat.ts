@@ -117,9 +117,9 @@ export interface PublicChatToolCall {
 }
 
 export function publicChatToolCallsFromPrivate(
-  toolCalls: readonly ChatToolCall[],
+  toolCalls?: readonly ChatToolCall[],
 ): PublicChatToolCall[] {
-  return toolCalls.map((toolCall) => ({
+  return (toolCalls ?? []).map((toolCall) => ({
     name: toolCall.name,
     resultCount: toolCall.resultCount,
   }));

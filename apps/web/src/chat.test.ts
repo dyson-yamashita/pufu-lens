@@ -893,6 +893,7 @@ assert.deepEqual(
   ],
 );
 assert.deepEqual(publicChatToolCallsFromPrivate([]), []);
+assert.deepEqual(publicChatToolCallsFromPrivate(undefined), []);
 
 let clock = 0;
 const expiringLimiter = createMemoryRateLimiter({
