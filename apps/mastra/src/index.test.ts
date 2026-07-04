@@ -146,12 +146,12 @@ function createReportRepository(): ReportRepository & {
     recentDocumentPeriods: [],
     async lookupProject({ projectSlug }) {
       return projectSlug === 'sample-a'
-        ? { id: 'project-a', slug: 'sample-a', visibility: 'public' }
+        ? { graphName: 'graph_sample_a', id: 'project-a', slug: 'sample-a', visibility: 'public' }
         : undefined;
     },
     async lookupProjectMember({ projectSlug, userId }) {
       return projectSlug === 'sample-a' && userId === 'user-a'
-        ? { id: 'project-a', slug: 'sample-a', visibility: 'public' }
+        ? { graphName: 'graph_sample_a', id: 'project-a', slug: 'sample-a', visibility: 'public' }
         : undefined;
     },
     async listRecentDocuments({ period, projectId }) {

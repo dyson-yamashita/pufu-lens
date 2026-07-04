@@ -11,7 +11,7 @@ import type {
   PublicChatToolName,
 } from './chat.ts';
 import { inferChatEditingMetadata, inferPublicChatEditingMetadata } from './chat.ts';
-import type { PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
+import type { ProjectLookupResult, PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 
 const PROJECT_CHAT_AGENT_ID = 'project-chat-agent';
 const PUBLIC_REPORT_CHAT_AGENT_ID = 'public-report-chat-agent';
@@ -123,6 +123,17 @@ export function createMastraProjectChatBody(input: {
     messages: [...history, { content: input.question, role: 'user' as const }],
     requestContext: { editing, graphName: input.graphName ?? null, projectId: input.projectId },
   };
+}
+
+export function createPublicProjectChatMastraBody(input: {
+  readonly project: Pick<ProjectLookupResult, 'graphName' | 'id'>;
+  readonly question: string;
+}) {
+  return createMastraProjectChatBody({
+    graphName: input.project.graphName,
+    projectId: input.project.id,
+    question: input.question,
+  });
 }
 
 export function createMastraPublicReportChatBody(input: {
