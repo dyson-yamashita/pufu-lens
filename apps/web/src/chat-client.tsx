@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowUp, MessageSquarePlus, Mic, RefreshCw } from 'lucide-react';
+import { ArrowUp, History, MessageSquarePlus, Mic, RefreshCw, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   type ChatErrorResponse,
@@ -52,6 +52,7 @@ export function ChatPanel({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState(false);
+  const historyDialogRef = useRef<HTMLDialogElement>(null);
   const historyRequestSeqRef = useRef(0);
   const chatDisabled = disabled || unavailable;
 
@@ -63,6 +64,7 @@ export function ChatPanel({
     setHistoryError(null);
     setHistoryLoading(false);
     setUnavailable(false);
+    historyDialogRef.current?.close();
     void projectSlug;
   }, [projectSlug]);
   const speechInput = useSpeechInput({
@@ -113,6 +115,14 @@ export function ChatPanel({
   useEffect(() => {
     void loadHistory();
   }, [loadHistory]);
+
+  const openHistoryDialog = useCallback(() => {
+    if (chatDisabled) {
+      return;
+    }
+    void loadHistory();
+    historyDialogRef.current?.showModal();
+  }, [chatDisabled, loadHistory]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -191,42 +201,82 @@ export function ChatPanel({
             <MessageSquarePlus size={16} />
           </button>
           <button
-            aria-label="Refresh chat history"
+            aria-label="Open chat history"
             className="chat-icon-button"
-            data-testid="chat-history-refresh-button"
-            disabled={chatDisabled || pending || historyLoading}
-            onClick={() => {
-              void loadHistory();
-            }}
-            title="Refresh history"
+            data-testid="chat-history-open-button"
+            disabled={chatDisabled || pending}
+            onClick={openHistoryDialog}
+            title="Open chat history"
             type="button"
           >
-            <RefreshCw size={16} />
+            <History size={16} />
           </button>
+        </div>
+      </div>
+      <dialog
+        aria-labelledby="chat-history-dialog-title"
+        className="modal-dialog chat-history-dialog"
+        data-testid="chat-history-dialog"
+        ref={historyDialogRef}
+      >
+        <div className="modal-card chat-history-modal-card">
+          <button
+            aria-label="Close chat history"
+            className="modal-close-button"
+            data-testid="chat-history-close-button"
+            onClick={() => historyDialogRef.current?.close()}
+            title="Close"
+            type="button"
+          >
+            <X size={18} />
+          </button>
+          <div className="chat-history-modal-header">
+            <h2 id="chat-history-dialog-title">Chat history</h2>
+            <button
+              aria-label="Refresh chat history"
+              className="chat-icon-button"
+              data-testid="chat-history-refresh-button"
+              disabled={chatDisabled || pending || historyLoading}
+              onClick={() => {
+                void loadHistory();
+              }}
+              title="Refresh history"
+              type="button"
+            >
+              <RefreshCw size={16} />
+            </button>
+          </div>
           {historyLoading ? (
             <span className="chat-history-status" data-testid="chat-history-loading">
               Loading
             </span>
           ) : null}
+          {historyError ? (
+            <p className="notice error chat-history-error" data-testid="chat-history-error">
+              {historyError}
+            </p>
+          ) : null}
+          {!historyLoading && !historyError && historyItems.length === 0 ? (
+            <p className="notice chat-history-empty" data-testid="chat-history-empty">
+              履歴はまだありません。
+            </p>
+          ) : null}
+          <ChatHistoryList
+            className="chat-history-list-modal"
+            disabled={pending}
+            historyItems={historyItems}
+            onSelect={(item) => {
+              if (pending) {
+                return;
+              }
+              setSelectedHistoryId(item.id);
+              setMessages(mapPrivateChatHistoryToThreadMessages([item], projectSlug));
+              historyDialogRef.current?.close();
+            }}
+            selectedHistoryId={selectedHistoryId}
+          />
         </div>
-        {historyError ? (
-          <p className="notice error chat-history-error" data-testid="chat-history-error">
-            {historyError}
-          </p>
-        ) : null}
-        <ChatHistoryList
-          disabled={pending}
-          historyItems={historyItems}
-          onSelect={(item) => {
-            if (pending) {
-              return;
-            }
-            setSelectedHistoryId(item.id);
-            setMessages(mapPrivateChatHistoryToThreadMessages([item], projectSlug));
-          }}
-          selectedHistoryId={selectedHistoryId}
-        />
-      </div>
+      </dialog>
       <PrivateChatThread messages={messages} resultTestId="chat-result" />
       <form className="chat-form" onSubmit={submit}>
         <label htmlFor="chat-question">Question</label>
@@ -275,11 +325,13 @@ export function ChatPanel({
 }
 
 function ChatHistoryList({
+  className,
   disabled,
   historyItems,
   onSelect,
   selectedHistoryId,
 }: {
+  readonly className?: string;
   readonly disabled: boolean;
   readonly historyItems: readonly PrivateChatHistoryItem[];
   readonly onSelect: (item: PrivateChatHistoryItem) => void;
@@ -290,7 +342,10 @@ function ChatHistoryList({
   }
 
   return (
-    <div className="chat-history-list" data-testid="chat-history-list">
+    <div
+      className={`chat-history-list${className ? ` ${className}` : ''}`}
+      data-testid="chat-history-list"
+    >
       {historyItems.map((item) => (
         <button
           aria-pressed={selectedHistoryId === item.id}
