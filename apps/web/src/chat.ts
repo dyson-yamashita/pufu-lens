@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type postgres from 'postgres';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
+import { jsonParameter } from './postgres-json.ts';
 import {
   type AgentRawReadViewEnvelope,
   createPostgresRawReadViewRepository,
@@ -1305,10 +1306,6 @@ export function createPostgresChatRepository(
       return privateChatHistoryItemFromRow(parsePrivateChatHistoryRow(row));
     },
   };
-}
-
-function jsonParameter(sql: Pick<postgres.Sql, 'json'>, value: unknown) {
-  return sql.json(value as Parameters<postgres.Sql['json']>[0]);
 }
 
 function listPrivateChatHistoryRows(

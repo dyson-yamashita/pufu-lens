@@ -26,7 +26,7 @@ BEGIN
   BEGIN
     parsed := (value #>> '{}')::jsonb;
     RETURN parsed;
-  EXCEPTION WHEN invalid_text_representation THEN
+  EXCEPTION WHEN others THEN
     RETURN NULL;
   END;
 END;

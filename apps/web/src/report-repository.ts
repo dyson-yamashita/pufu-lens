@@ -2,6 +2,7 @@ import type postgres from 'postgres';
 import { isProjectVisibility, type ProjectVisibility } from './admin-data.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
 import { type CustomReportLayoutV1, parseCustomReportLayout } from './custom-report-schema.ts';
+import { jsonParameter } from './postgres-json.ts';
 import type { PreparedReportChunk, PrivateReportJsonV1, ReportPeriod } from './report-schema.ts';
 
 export interface ReportListItem {
@@ -419,10 +420,6 @@ function formatNullableDate(value: Date | string | null): string | null {
     return null;
   }
   return value instanceof Date ? value.toISOString() : value;
-}
-
-function jsonParameter(sql: Pick<postgres.Sql, 'json'>, value: unknown) {
-  return sql.json(value as Parameters<postgres.Sql['json']>[0]);
 }
 
 function vectorLiteral(vector: readonly number[]): string {
