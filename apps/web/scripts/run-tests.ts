@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const testRoot = fileURLToPath(new URL('../src', import.meta.url));
 // postgres-roundtrip.test.ts requires DATABASE_URL and runs via `pnpm test:db`.
-const excludedTestFiles = new Set(['postgres-roundtrip.test.ts']);
+const excludedTestPaths = new Set(['postgres-roundtrip.test.ts']);
 
 function shouldSkipDirectory(name: string): boolean {
   return name === 'node_modules' || name.startsWith('.');
@@ -25,7 +25,10 @@ async function collectTestFiles(directory: string): Promise<string[]> {
         return collectTestFiles(fullPath);
       }
 
-      return entry.isFile() && entry.name.endsWith('.test.ts') && !excludedTestFiles.has(entry.name)
+      const relativePath = relative(testRoot, fullPath);
+      return entry.isFile() &&
+        entry.name.endsWith('.test.ts') &&
+        !excludedTestPaths.has(relativePath)
         ? [fullPath]
         : [];
     }),
