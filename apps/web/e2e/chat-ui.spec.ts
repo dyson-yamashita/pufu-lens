@@ -1,4 +1,10 @@
+import { createServer, type IncomingMessage, type Server } from 'node:http';
 import { expect, test } from '@playwright/test';
+
+const privateChatCredentials = {
+  email: process.env.PUFU_LENS_E2E_CHAT_EMAIL,
+  password: process.env.PUFU_LENS_E2E_CHAT_PASSWORD,
+};
 
 test('scenario: public project chat keeps multiple turns with sources and tool calls', async ({
   page,
@@ -140,3 +146,140 @@ test('scenario: public project chat locks input outside database business hours'
   await expect(page.getByTestId('public-project-chat-submit-button')).toBeDisabled();
   await expect(page.getByTestId('public-project-chat-mic-button')).toBeDisabled();
 });
+
+test('scenario: member sends private chat and reads persisted history from fixture DB', async ({
+  page,
+}) => {
+  test.skip(
+    !process.env.DATABASE_URL || !privateChatCredentials.email || !privateChatCredentials.password,
+    'DATABASE_URL, PUFU_LENS_E2E_CHAT_EMAIL, and PUFU_LENS_E2E_CHAT_PASSWORD are required.',
+  );
+
+  const mastraServer = await startMastraChatStub();
+  const question = `E2E private chat write ${Date.now()}`;
+  const answer = `E2E private chat persisted answer for: ${question}`;
+
+  try {
+    await page.goto('/login');
+    await page.getByTestId('credentials-email-input').fill(privateChatCredentials.email ?? '');
+    await page
+      .getByTestId('credentials-password-input')
+      .fill(privateChatCredentials.password ?? '');
+    await page.getByTestId('credentials-login-button').click();
+    await expect(page).toHaveURL(/\/projects$/);
+
+    await page.goto('/projects/local-dev/chat');
+    await expect(page.getByTestId('chat-panel')).toBeVisible();
+    await expect(page.getByTestId('public-project-chat-panel')).toHaveCount(0);
+
+    await page.getByTestId('chat-question-input').fill(question);
+    await page.getByTestId('chat-submit-button').click();
+    await expect(page.getByTestId('chat-assistant-message-1')).toContainText(answer);
+    await expect(page.getByTestId('chat-message-tool-calls-1')).toContainText('vector-search');
+
+    await page.reload();
+    await expect(page.getByTestId('chat-panel')).toBeVisible();
+    await page.getByTestId('chat-history-open-button').click();
+    await expect(page.getByTestId('chat-history-dialog')).toBeVisible();
+    await expect(page.getByTestId('chat-history-list')).toContainText(question);
+    await expect(page.getByTestId('chat-history-list')).toContainText(answer);
+
+    await page
+      .getByTestId('chat-history-list')
+      .locator('button')
+      .filter({ hasText: question })
+      .click();
+    await expect(page.getByTestId('chat-user-message-0')).toContainText(question);
+    await expect(page.getByTestId('chat-assistant-message-1')).toContainText(answer);
+  } finally {
+    await closeServer(mastraServer);
+  }
+});
+
+async function startMastraChatStub(): Promise<Server> {
+  const server = createServer(async (request, response) => {
+    try {
+      if (request.method !== 'POST' || request.url !== '/api/agents/project-chat-agent/generate') {
+        response.writeHead(404, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ error: 'not_found' }));
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      const messages = Array.isArray(body.messages) ? body.messages : [];
+      const latest = messages.findLast(isUserMessage);
+      const question = typeof latest?.content === 'string' ? latest.content : '';
+
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          steps: [
+            {
+              content: [
+                {
+                  output: {
+                    value: {
+                      resultCount: 1,
+                      sources: [
+                        {
+                          canonicalUri: 'https://example.test/e2e/private-chat',
+                          docType: 'web',
+                          documentId: 'e2e-private-chat-doc',
+                          rawDocumentId: 'e2e-private-chat-raw',
+                          snippet: 'E2E private chat source snippet',
+                          title: 'E2E private chat source',
+                        },
+                      ],
+                    },
+                  },
+                  toolName: 'vectorSearch',
+                  type: 'tool-result',
+                },
+              ],
+            },
+          ],
+          text: `E2E private chat persisted answer for: ${question}`,
+        }),
+      );
+    } catch (error) {
+      console.error('Mastra stub error:', error);
+      response.writeHead(500, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ error: 'internal_server_error' }));
+    }
+  });
+
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(4111, '127.0.0.1', () => {
+      server.off('error', reject);
+      resolve(server);
+    });
+  });
+}
+
+function isUserMessage(
+  value: unknown,
+): value is { readonly content?: unknown; readonly role: string } {
+  return typeof value === 'object' && value !== null && 'role' in value && value.role === 'user';
+}
+
+async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  const rawBody = Buffer.concat(chunks).toString('utf8');
+  return rawBody ? (JSON.parse(rawBody) as Record<string, unknown>) : {};
+}
+
+function closeServer(server: Server): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}
