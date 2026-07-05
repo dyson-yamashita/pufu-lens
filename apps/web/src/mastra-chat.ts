@@ -49,6 +49,7 @@ interface MastraToolResultContent {
       readonly trace?: {
         readonly resultCount?: number;
       };
+      readonly view?: unknown;
     };
   };
   readonly toolName?: string;
@@ -176,9 +177,10 @@ export function mastraGenerateToChatResponse(input: {
   const toolResults = (mastraResponse.steps ?? [])
     .flatMap((step) => step.content ?? [])
     .filter((content) => content.type === 'tool-result');
-  const sources = uniqueSources(
-    toolResults.flatMap((result) => result.output?.value?.sources ?? []),
-  ).slice(0, 5);
+  const sources = uniqueSources(toolResults.flatMap((result) => toolResultSources(result))).slice(
+    0,
+    5,
+  );
   return {
     answer: mastraResponse.text ?? '',
     ...(input.editing || input.question
@@ -284,6 +286,46 @@ function parseMastraPublicSteps(value: unknown): MastraPublicGenerateStep[] | un
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function toolResultSources(result: MastraToolResultContent): ChatSource[] {
+  const explicitSources = result.output?.value?.sources ?? [];
+  const rawReadSource =
+    result.toolName === 'rawDocumentFetch'
+      ? chatSourceFromRawReadView(result.output?.value?.view)
+      : undefined;
+  return rawReadSource ? [...explicitSources, rawReadSource] : [...explicitSources];
+}
+
+function chatSourceFromRawReadView(value: unknown): ChatSource | undefined {
+  if (
+    !isRecord(value) ||
+    value.kind !== 'agent_raw_read_view' ||
+    value.trust !== 'untrusted_external_content' ||
+    !isRecord(value.data)
+  ) {
+    return undefined;
+  }
+  const data = value.data;
+  const rawDocumentId = optionalString(data.rawDocumentId);
+  const sourceType = optionalString(data.sourceType);
+  if (!rawDocumentId || !sourceType) {
+    return undefined;
+  }
+  const documentId = optionalString(data.documentId) ?? rawDocumentId;
+  const canonicalUri = optionalString(data.canonicalUri) ?? '';
+  const title = optionalString(data.title) ?? optionalString(data.sourceId) ?? documentId;
+  return {
+    canonicalUri,
+    documentId,
+    docType: sourceType,
+    rawDocumentId,
+    title,
+  };
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
 function shouldAttachMastraIdToken(url: string, env: MastraChatEnv): boolean {

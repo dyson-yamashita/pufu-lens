@@ -3,12 +3,10 @@ import { getVisiblePublicProject } from './admin-db';
 import { getRequiredAdminSql } from './admin-sql';
 import {
   businessHoursFromEnv,
-  type ChatSource,
   chatNowFromEnv,
   createPublicChatMemoryRateLimiter,
   isWithinBusinessHours,
   type PublicChatResponse,
-  type PublicChatSource,
   publicChatToolCallsFromPrivate,
 } from './chat';
 import {
@@ -17,13 +15,13 @@ import {
   mastraGenerateToChatResponse,
   mastraProjectChatGenerateUrl,
 } from './mastra-chat';
+import { isPublicWebChatSource, publicChatSourcesFromReport } from './public-chat-sources';
 import {
   assertPublicReportAccess,
   createPostgresReportRepository,
   createReportStorageFromEnv,
   getPublicReport,
   isSafePublicReportLocator,
-  type PrivateReportJsonV1,
   PublicReportNotFoundError,
   validatePrivateReportJson,
 } from './report';
@@ -237,7 +235,10 @@ export async function handlePublicChatPost(
       ...(chatResponse.editing ? { editing: chatResponse.editing } : {}),
       projectSlug: input.projectSlug,
       reportId: input.reportId,
-      sources: publicChatSourcesFromReport(chatResponse.sources, privateReport),
+      sources: publicChatSourcesFromReport(
+        chatResponse.sources.filter(isPublicWebChatSource),
+        privateReport,
+      ),
       status: 'answered',
       toolCalls: publicChatToolCallsFromPrivate(chatResponse.toolCalls),
     } satisfies PublicChatResponse);
@@ -294,42 +295,4 @@ function publicChatNotFound() {
 
 function publicChatErrorResponse(code: string, message: string, status: number) {
   return NextResponse.json({ error: { code, message } }, { status });
-}
-
-function publicChatSourcesFromReport(
-  chatSources: readonly ChatSource[],
-  report: PrivateReportJsonV1,
-): PublicChatSource[] {
-  const references = new Map<string, PublicChatSource>();
-  for (const section of report.sections) {
-    section.sources?.forEach((source, index) => {
-      if (!references.has(source.document_id)) {
-        references.set(source.document_id, {
-          label: source.title?.trim() || source.doc_type,
-          publicSourceId: `src_${section.id}_${index + 1}`,
-          sectionId: section.id,
-        });
-      }
-    });
-  }
-  report.pufu_sources?.forEach((source, index) => {
-    if (!references.has(source.document_id)) {
-      references.set(source.document_id, {
-        label: source.title,
-        publicSourceId: `src_pufu_${index + 1}`,
-        sectionId: 'pufu_sources',
-      });
-    }
-  });
-
-  const result: PublicChatSource[] = [];
-  const seen = new Set<string>();
-  for (const source of chatSources) {
-    const publicSource = references.get(source.documentId);
-    if (publicSource && !seen.has(publicSource.publicSourceId)) {
-      result.push(publicSource);
-      seen.add(publicSource.publicSourceId);
-    }
-  }
-  return result;
 }

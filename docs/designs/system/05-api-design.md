@@ -12,7 +12,7 @@
 - OAuth token、refresh token、cookie、DB password、Gemini API key は response / log / trace に出さない。
 - DB 依存の private chat / private report は業務時間外に DB 接続を試みず、`db_outside_business_hours` を返す。
 - public report / public chat は private report / private chat と同じ処理を使う。public 入口は `projects.visibility = 'public'` と `reports.is_public = true` を DB で確認し、private project では public report / public chat を許可しない。
-- Chat / Report 生成で使う `raw-document-fetch` は [Agent Raw Read View](07-chat.md#agent-raw-read-view--raw-document-fetch-契約) を返す。raw 本文全文・private locator は response / log / trace に出さない。Public Chat は private chat と同じ処理を使うため、入口の public project / public report 判定を必ず先に通す。
+- Chat / Report 生成で使う `raw-document-fetch` は [Agent Raw Read View](07-chat.md#agent-raw-read-view--raw-document-fetch-契約) を返す。raw 本文全文・private locator は response / log / trace に出さない。Public Chat は private chat と同じ処理を使うため、入口の public project / public report 判定を必ず先に通す。Public Chat の response sources は web 由来だけに制限する。
 
 ### 2. 実装済み Next.js API Route
 
