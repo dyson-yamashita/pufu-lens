@@ -177,7 +177,9 @@ jobs:
           set -euo pipefail
 
           mkdir -p /tmp/.buildx-cache/postgres-ci
-          docker buildx create --use --name pufu-lens-ci-builder
+          docker buildx inspect pufu-lens-ci-builder >/dev/null 2>&1 \
+            || docker buildx create --name pufu-lens-ci-builder
+          docker buildx use pufu-lens-ci-builder
           docker buildx build \
             --cache-from type=local,src=/tmp/.buildx-cache/postgres-ci \
             --cache-to type=local,dest=/tmp/.buildx-cache/postgres-ci-new,mode=min \
@@ -351,5 +353,81 @@ jobs:
           PUFU_LENS_ALLOW_FIXED_USER_FALLBACK: 'true'
           PUFU_LENS_ENABLE_FIXTURE_FALLBACK: 'true'
           PUFU_LENS_REPORT_USER_ID: user-a
+          STORAGE_DRIVER: local
+          STORAGE_ROOT: ../../infra/volumes/pufu-lens-data
+
+      - name: Restore PostgreSQL image build cache for E2E
+        if: steps.e2e-changes.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache/postgres-ci
+          key: ${{ runner.os }}-postgres-ci-${{ hashFiles('infra/docker/postgres/Dockerfile') }}
+          restore-keys: |
+            ${{ runner.os }}-postgres-ci-
+
+      - name: Build PostgreSQL test image for E2E
+        if: steps.e2e-changes.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+
+          mkdir -p /tmp/.buildx-cache/postgres-ci
+          docker buildx inspect pufu-lens-e2e-builder >/dev/null 2>&1 \
+            || docker buildx create --name pufu-lens-e2e-builder
+          docker buildx use pufu-lens-e2e-builder
+          docker buildx build \
+            --cache-from type=local,src=/tmp/.buildx-cache/postgres-ci \
+            --cache-to type=local,dest=/tmp/.buildx-cache/postgres-ci-new,mode=min \
+            --load \
+            --tag pufu-lens-postgres-ci:latest \
+            infra/docker/postgres
+          rm -rf /tmp/.buildx-cache/postgres-ci
+          mv /tmp/.buildx-cache/postgres-ci-new /tmp/.buildx-cache/postgres-ci
+
+      - name: Start PostgreSQL for private chat E2E
+        if: steps.e2e-changes.outputs.run == 'true'
+        run: |
+          docker run \
+            --detach \
+            --name pufu-lens-postgres-e2e \
+            --publish 5432:5432 \
+            --env POSTGRES_DB=pufu_lens \
+            --env POSTGRES_USER=pufu_lens \
+            --env POSTGRES_PASSWORD=pufu_lens \
+            pufu-lens-postgres-ci:latest
+          for attempt in {1..30}; do
+            if docker exec pufu-lens-postgres-e2e pg_isready -U pufu_lens -d pufu_lens; then
+              exit 0
+            fi
+            echo "Waiting for PostgreSQL (${attempt}/30)"
+            sleep 2
+          done
+          docker logs pufu-lens-postgres-e2e
+          exit 1
+
+      - name: Initialize PostgreSQL for private chat E2E
+        if: steps.e2e-changes.outputs.run == 'true'
+        run: |
+          docker cp infra/docker/postgres/init.sql pufu-lens-postgres-e2e:/tmp/init.sql
+          docker exec \
+            --env PGPASSWORD=pufu_lens \
+            pufu-lens-postgres-e2e \
+            psql -v ON_ERROR_STOP=1 -U pufu_lens -d pufu_lens -f /tmp/init.sql
+
+      - name: Seed private chat E2E user
+        if: steps.e2e-changes.outputs.run == 'true'
+        run: pnpm test:e2e:seed-chat
+        env:
+          DATABASE_URL: postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens
+          PUFU_LENS_E2E_CHAT_EMAIL: e2e-chat-member@example.test
+          PUFU_LENS_E2E_CHAT_PASSWORD: pufu-lens-e2e-chat-password
+
+      - name: Private chat write-to-read E2E test
+        if: steps.e2e-changes.outputs.run == 'true'
+        run: pnpm --filter @pufu-lens/web test:e2e --project desktop --grep "member sends private chat"
+        env:
+          DATABASE_URL: postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens
+          MASTRA_SERVER_URL: http://127.0.0.1:4111
+          PUFU_LENS_E2E_CHAT_EMAIL: e2e-chat-member@example.test
+          PUFU_LENS_E2E_CHAT_PASSWORD: pufu-lens-e2e-chat-password
           STORAGE_DRIVER: local
           STORAGE_ROOT: ../../infra/volumes/pufu-lens-data
