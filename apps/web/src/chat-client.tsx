@@ -18,6 +18,7 @@ import {
   type PublicChatResponse,
   type PublicProjectChatUnavailableResponse,
 } from './chat';
+import { ChatQuestionTextarea } from './chat-question-input';
 import {
   appendPendingAssistant,
   appendUserMessage,
@@ -296,12 +297,11 @@ export function ChatPanel({
       <form className="chat-form" onSubmit={submit}>
         <label htmlFor="chat-question">Question</label>
         <div className="chat-input-row">
-          <textarea
-            data-testid="chat-question-input"
+          <ChatQuestionTextarea
             disabled={chatDisabled || pending}
             id="chat-question"
-            onChange={(event) => setQuestion(event.target.value)}
-            rows={3}
+            onChange={setQuestion}
+            testId="chat-question-input"
             value={question}
           />
           <div className="chat-composer-actions">
@@ -478,12 +478,11 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
       <form className="chat-form" onSubmit={submit}>
         <label htmlFor="public-project-chat-question">Question</label>
         <div className="chat-input-row">
-          <textarea
-            data-testid="public-project-chat-question-input"
+          <ChatQuestionTextarea
             disabled={pending || unavailable}
             id="public-project-chat-question"
-            onChange={(event) => setQuestion(event.target.value)}
-            rows={3}
+            onChange={setQuestion}
+            testId="public-project-chat-question-input"
             value={question}
           />
           <div className="chat-composer-actions">

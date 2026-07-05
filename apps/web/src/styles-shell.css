@@ -485,6 +485,16 @@
     --main-surface-padding-top: 80px;
   }
 
+  .main-surface:has(> .chat-panel),
+  .main-surface:has(> .public-project-chat-panel) {
+    padding: var(--main-surface-padding-top, 80px) 8px 12px;
+  }
+
+  .main-surface:has(> .chat-panel) > .page-header,
+  .main-surface:has(> .public-project-chat-panel) > .page-header {
+    margin-bottom: 12px;
+  }
+
   .account-panel:not(.guest-account-panel) {
     margin-top: 24px;
   }

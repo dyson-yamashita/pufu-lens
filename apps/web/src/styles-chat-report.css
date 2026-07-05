@@ -501,6 +501,32 @@
   overflow-wrap: anywhere;
 }
 
+@media (max-width: 720px) {
+  .chat-panel,
+  .public-project-chat-panel {
+    padding: 12px;
+  }
+
+  .chat-form {
+    margin: 0 -4px -4px;
+    padding: 8px 4px 4px;
+  }
+
+  .chat-input-row textarea.chat-question-input-collapsed {
+    min-height: 44px;
+    padding: 10px 88px 10px 12px;
+  }
+
+  .chat-input-row textarea.chat-question-input-expanded {
+    min-height: 92px;
+    padding: 12px 88px 44px 12px;
+  }
+
+  .chat-input-row textarea.chat-question-input-collapsed + .chat-composer-actions {
+    bottom: 6px;
+  }
+}
+
 @media (max-width: 640px) {
   .source-chip {
     max-width: 100%;
