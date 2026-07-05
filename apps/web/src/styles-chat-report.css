@@ -504,25 +504,35 @@
 @media (max-width: 720px) {
   .chat-panel,
   .public-project-chat-panel {
-    padding: 12px;
+    padding: 12px 8px 8px;
   }
 
   .chat-form {
-    margin: 0 -4px -4px;
-    padding: 8px 4px 4px;
+    margin: 0;
+    padding: 8px 0 0;
   }
 
-  .chat-input-row textarea.chat-question-input-collapsed {
+  .chat-input-row textarea {
+    height: 44px;
+    max-height: 44px;
     min-height: 44px;
+    overflow-y: auto;
     padding: 10px 88px 10px 12px;
+    resize: none;
   }
 
+  .chat-input-row:focus-within textarea,
   .chat-input-row textarea.chat-question-input-expanded {
+    height: auto;
+    max-height: none;
     min-height: 92px;
     padding: 12px 88px 44px 12px;
   }
 
-  .chat-input-row textarea.chat-question-input-collapsed + .chat-composer-actions {
+  .chat-input-row textarea.chat-question-input-collapsed + .chat-composer-actions,
+  .chat-input-row:not(:focus-within)
+    textarea.chat-question-input-collapsed
+    + .chat-composer-actions {
     bottom: 6px;
   }
 }

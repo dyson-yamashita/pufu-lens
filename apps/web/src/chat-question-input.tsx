@@ -1,29 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 
 const mobileChatQuery = '(max-width: 720px)';
 
+function subscribeMobileChat(onStoreChange: () => void): () => void {
+  const mediaQuery = window.matchMedia(mobileChatQuery);
+  mediaQuery.addEventListener('change', onStoreChange);
+  return () => mediaQuery.removeEventListener('change', onStoreChange);
+}
+
+function getMobileChatSnapshot(): boolean {
+  return window.matchMedia(mobileChatQuery).matches;
+}
+
+function getMobileChatServerSnapshot(): boolean {
+  return true;
+}
+
 function useIsMobileChat(): boolean {
-  const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window === 'undefined') {
-      return false;
-    }
-
-    return window.matchMedia(mobileChatQuery).matches;
-  });
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia(mobileChatQuery);
-    const sync = () => setIsMobile(mediaQuery.matches);
-
-    sync();
-    mediaQuery.addEventListener('change', sync);
-
-    return () => mediaQuery.removeEventListener('change', sync);
-  }, []);
-
-  return isMobile;
+  return useSyncExternalStore(
+    subscribeMobileChat,
+    getMobileChatSnapshot,
+    getMobileChatServerSnapshot,
+  );
 }
 
 export function ChatQuestionTextarea({
