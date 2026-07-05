@@ -245,6 +245,7 @@
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--text);
+  display: block;
   font: inherit;
   min-height: 92px;
   padding: 12px 88px 44px 12px;
@@ -523,7 +524,9 @@
   }
 
   .chat-input-row textarea.chat-question-input-collapsed + .chat-composer-actions {
-    bottom: 6px;
+    bottom: auto;
+    top: 50%;
+    transform: translateY(-50%);
   }
 }
 
