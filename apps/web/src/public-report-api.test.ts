@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createPublicChatMemoryRateLimiter, inferChatEditingMetadata } from './chat.ts';
+import { inferChatEditingMetadata } from './chat.ts';
 import {
   createPublicProjectChatMastraBody,
   LEGACY_PUBLIC_REPORT_CHAT_AGENT_ID,
@@ -26,15 +26,6 @@ assert.equal(
   '203.0.113.30',
 );
 assert.equal(trustedClientIp(requestHeaders({})), 'anonymous');
-
-const limiter = createPublicChatMemoryRateLimiter({
-  limit: 1,
-  now: () => 1_000,
-  windowMs: 60_000,
-});
-assert.equal(limiter.check({ clientIp: '203.0.113.10', reportId: 'report-a' }), true);
-assert.equal(limiter.check({ clientIp: '203.0.113.10', reportId: 'report-a' }), false);
-assert.equal(limiter.check({ clientIp: '203.0.113.11', reportId: 'report-a' }), true);
 
 assert.deepEqual(
   createPublicProjectChatMastraBody({

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
+import { MemoryObjectStorage } from '@pufu-lens/storage/testing';
 import {
   buildAgentRawReadView,
   createPostgresRawReadViewRepository,
@@ -11,22 +11,6 @@ import {
 } from './raw-read-view.ts';
 
 const fixtureRoot = new URL('../../../fixtures/ingestion/', import.meta.url);
-
-class MemoryStorage implements Pick<ObjectStorage, 'getText'> {
-  private readonly objects: ReadonlyMap<string, string>;
-
-  constructor(objects: ReadonlyMap<string, string>) {
-    this.objects = objects;
-  }
-
-  async getText(uri: string): Promise<string> {
-    const text = this.objects.get(uri);
-    if (text === undefined) {
-      throw new Error(`Missing object: ${uri}`);
-    }
-    return text;
-  }
-}
 
 class RawReadViewLookupStub implements RawReadViewLookup {
   private readonly records: readonly RawReadViewRawDocument[];
@@ -212,7 +196,7 @@ const webText = await fixtureText('web/release-notes.html');
     lookup: new RawReadViewLookupStub([
       { ...baseRawDocument, projectSlug: 'project-a', sourceType: 'github' },
     ]),
-    storage: new MemoryStorage(new Map([[baseRawDocument.storageUri, githubText]])),
+    storage: new MemoryObjectStorage(new Map([[baseRawDocument.storageUri, githubText]])),
   });
   const allowed = await repository.fetchRawReadView({
     projectId: baseRawDocument.projectId,
@@ -233,7 +217,7 @@ const webText = await fixtureText('web/release-notes.html');
       queried = true;
       return [];
     }) as never,
-    storage: new MemoryStorage(new Map()),
+    storage: new MemoryObjectStorage(new Map()),
   });
   const denied = await repository.fetchRawReadView({
     projectId: 'not-a-uuid',

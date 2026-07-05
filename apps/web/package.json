@@ -6,7 +6,8 @@
   "exports": {
     "./chat": "./src/chat.ts",
     "./pufu-score": "./src/pufu-score.ts",
-    "./report": "./src/report.ts"
+    "./report": "./src/report.ts",
+    "./test-fixtures": "./src/test-fixtures.ts"
   },
   "scripts": {
     "build": "next build",

@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { RequestContext } from '@mastra/core/request-context';
+import { MemoryObjectStorage } from '@pufu-lens/storage/testing';
 import type { ChatRepository } from '@pufu-lens/web/chat';
 import type { ReportRepository } from '@pufu-lens/web/report';
-import type { ObjectInfo, ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
+import { sampleChatSource as sampleSource } from '@pufu-lens/web/test-fixtures';
 import {
   type CrossProjectInvestigationRepository,
   createPufuLensMastraRuntime,
@@ -13,45 +14,6 @@ import {
   mastraWorkflowIds,
   rawReadViewTrace,
 } from './index.ts';
-
-class MemoryStorage implements ObjectStorage {
-  readonly objects = new Map<string, string>();
-
-  async put(uri: string, body: Buffer | NodeJS.ReadableStream | string): Promise<{ uri: string }> {
-    const text =
-      typeof body === 'string' ? body : Buffer.isBuffer(body) ? body.toString('utf8') : '';
-    const storedUri = `file:///tmp/pufu-lens/${uri}`;
-    this.objects.set(storedUri, text);
-    this.objects.set(uri, text);
-    return { uri: storedUri };
-  }
-
-  async get(): Promise<NodeJS.ReadableStream> {
-    throw new Error('not implemented');
-  }
-
-  async getText(uri: string): Promise<string> {
-    const value = this.objects.get(uri);
-    if (!value) {
-      throw new Error(`missing object: ${uri}`);
-    }
-    return value;
-  }
-
-  async exists(uri: string): Promise<boolean> {
-    return this.objects.has(uri) || this.objects.has(`file:///tmp/pufu-lens/${uri}`);
-  }
-
-  async *list(): AsyncIterable<ObjectInfo> {}
-}
-
-const sampleSource = {
-  canonicalUri: 'https://example.com/spec',
-  documentId: 'doc-a',
-  docType: 'web_page',
-  rawDocumentId: 'raw-a',
-  title: 'Spec Update',
-};
 
 function createChatRepository(): ChatRepository & { projectIds: string[] } {
   const projectIds: string[] = [];
@@ -262,7 +224,7 @@ function createCrossProjectInvestigationRepository(): CrossProjectInvestigationR
 const chatRepository = createChatRepository();
 const crossProjectInvestigationRepository = createCrossProjectInvestigationRepository();
 const reportRepository = createReportRepository();
-const storage = new MemoryStorage();
+const storage = new MemoryObjectStorage();
 const publicReport = {
   period: { end: '2026-06-07', start: '2026-06-01' },
   published_at: '2026-06-04T10:00:00.000Z',
