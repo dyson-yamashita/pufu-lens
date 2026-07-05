@@ -6,6 +6,7 @@ import {
   mastraProjectChatGenerateUrl,
   PUBLIC_PROJECT_CHAT_AGENT_ID,
 } from './mastra-chat.ts';
+import { isPublicWebChatSource, publicChatSourcesFromReport } from './public-chat-sources.ts';
 import { trustedClientIp } from './request-client.ts';
 
 function requestHeaders(headers: Record<string, string>) {
@@ -46,5 +47,89 @@ assert.equal(
   `/api/agents/${PUBLIC_PROJECT_CHAT_AGENT_ID}/generate`,
 );
 assert.notEqual(PUBLIC_PROJECT_CHAT_AGENT_ID, LEGACY_PUBLIC_REPORT_CHAT_AGENT_ID);
+
+assert.equal(
+  isPublicWebChatSource({
+    canonicalUri: 'https://example.com/release',
+    documentId: 'doc-web',
+    docType: 'web_page',
+    rawDocumentId: 'raw-web',
+    title: 'Web release',
+  }),
+  true,
+);
+assert.equal(
+  isPublicWebChatSource({
+    canonicalUri: 'https://github.com/example/repo/issues/42',
+    documentId: 'doc-github',
+    docType: 'issue',
+    rawDocumentId: 'raw-github',
+    title: 'GitHub issue',
+  }),
+  false,
+);
+
+const publicReportSources = publicChatSourcesFromReport(
+  [
+    {
+      canonicalUri: 'https://example.com/release',
+      documentId: 'doc-web',
+      docType: 'web_page',
+      rawDocumentId: 'raw-web',
+      title: 'Web release',
+    },
+  ],
+  {
+    pufu_sources: [
+      {
+        canonical_uri: 'https://github.com/example/repo/issues/42',
+        doc_type: 'issue',
+        document_id: 'doc-github',
+        occurred_at: null,
+        snippet: 'GitHub source',
+        title: 'GitHub issue',
+      },
+    ],
+    sections: [
+      {
+        id: 'activity',
+        markdown: 'Web release',
+        sources: [
+          {
+            canonical_uri: 'https://example.com/release',
+            doc_type: 'web_page',
+            document_id: 'doc-web',
+            occurred_at: null,
+            snippet: 'Web source',
+            title: 'Web release',
+          },
+        ],
+        title: 'Activity',
+      },
+      {
+        id: 'issues',
+        markdown: 'GitHub issue',
+        sources: [
+          {
+            canonical_uri: 'https://github.com/example/repo/issues/42',
+            doc_type: 'issue',
+            document_id: 'doc-github',
+            occurred_at: null,
+            snippet: 'GitHub source',
+            title: 'GitHub issue',
+          },
+        ],
+        title: 'Issues',
+      },
+    ],
+  } as never,
+);
+assert.deepEqual(publicReportSources, [
+  {
+    label: 'Web release',
+    publicSourceId: 'src_activity_1',
+    sectionId: 'activity',
+  },
+]);
 
 console.log('web public report api tests passed');

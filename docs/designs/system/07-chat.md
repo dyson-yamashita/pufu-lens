@@ -262,7 +262,7 @@ Public Chat は未ログインユーザー向けに提供するが、対象を *
 
 公開用 context bundle は互換・検証用途として保持できるが、現行の public chat 実行経路では private chat と同じ project context を使う。
 
-Public Chat でも `editing` metadata は返す。metadata 推定、tool calls、sources は private chat と同じ形式に揃える。
+Public Chat でも `editing` metadata は返す。metadata 推定、tool calls は private chat と同じ形式に揃える。sources は公開表示用に web 由来（`web` / `web_page`）だけを返し、Gmail / Drive / GitHub などの private source metadata は public response に含めない。
 
 ```typescript
 export const projectChatAgent = new Agent({
@@ -353,7 +353,7 @@ Public report page では、必要に応じて report 本文の横に public cha
 
 UI は private chat、public project chat、public report chat のいずれも、ブラウザ内の会話履歴をスレッドとして保持する。ユーザーの質問と assistant の回答を時系列で残し、追加質問を送っても直前の回答を置き換えない。初期実装では API へ送る入力は従来どおり現在の `question` を主入力とし、履歴を server-side context として永続化・再投入する場合は Mastra stream proxy への切り替え時に扱う。
 
-各 assistant 回答は Markdown として表示する。回答の直下には、その回答で参照した document / public source を 1 カラムの compact source list として表示する。Private Chat では `title`、`docType`、`canonicalUri` または `documentId` を表示し、Public Chat では `publicSourceId`、`sectionId`、`label` のみを表示する。tool call は通常表示の主情報にはせず、必要時に確認できる compact な詳細表示へ寄せる。
+各 assistant 回答は Markdown として表示する。回答の直下には、その回答で参照した document / public source を 1 カラムの compact source list として表示する。Private Chat では全 source type の `title`、`docType`、`canonicalUri` または `documentId` を表示し、Public Chat では web 由来 source に対応する `publicSourceId`、`sectionId`、`label` のみを表示する。tool call は通常表示の主情報にはせず、必要時に確認できる compact な詳細表示へ寄せる。
 
 ### 5. Mastra Studio 内部調査 Agent
 

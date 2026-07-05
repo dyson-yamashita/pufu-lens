@@ -845,6 +845,9 @@ const mastraRawLeakResponse = mastraGenerateToChatResponse({
                 },
                 view: {
                   data: {
+                    canonicalUri: 'https://github.com/example/repo/issues/42',
+                    documentId: 'doc-raw-view',
+                    rawDocumentId: 'raw-doc-raw-view',
                     sections: [
                       {
                         text: [
@@ -856,7 +859,12 @@ const mastraRawLeakResponse = mastraGenerateToChatResponse({
                         ].join('\n'),
                       },
                     ],
+                    sourceId: 'example/repo#42',
+                    sourceType: 'github',
+                    title: 'Raw view issue',
                   },
+                  kind: 'agent_raw_read_view',
+                  trust: 'untrusted_external_content',
                 },
               },
             },
@@ -871,6 +879,15 @@ const mastraRawLeakResponse = mastraGenerateToChatResponse({
   projectSlug: 'sample-a',
 });
 assert.deepEqual(mastraRawLeakResponse.toolCalls, [{ name: 'raw-document-fetch', resultCount: 1 }]);
+assert.deepEqual(mastraRawLeakResponse.sources, [
+  {
+    canonicalUri: 'https://github.com/example/repo/issues/42',
+    documentId: 'doc-raw-view',
+    docType: 'github',
+    rawDocumentId: 'raw-doc-raw-view',
+    title: 'Raw view issue',
+  },
+]);
 assert.doesNotMatch(
   JSON.stringify(mastraRawLeakResponse),
   /RAW_FULL_TEXT_SHOULD_NOT_LEAK|ya29\.secret-token|secret-api-key|contact@example\.com|Ignore previous instructions/,
