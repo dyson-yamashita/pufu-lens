@@ -18,6 +18,7 @@ import {
   type PublicChatResponse,
   type PublicProjectChatUnavailableResponse,
 } from './chat';
+import { ChatQuestionTextarea } from './chat-question-input';
 import {
   appendPendingAssistant,
   appendUserMessage,
@@ -28,7 +29,6 @@ import {
   PublicChatThread,
   replacePendingAssistant,
 } from './chat-thread';
-import { ChatQuestionTextarea } from './chat-question-input';
 import { useSpeechInput } from './speech-input';
 
 const CHAT_HISTORY_TIME_FORMATTER = new Intl.DateTimeFormat('ja-JP', {
