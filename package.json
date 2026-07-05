@@ -43,6 +43,7 @@
     "scripts:test:coverage": "node --experimental-strip-types --experimental-test-coverage --test \"scripts/**/*.test.ts\"",
     "scripts:typecheck": "tsc --noEmit -p tsconfig.scripts.json",
     "test": "pnpm scripts:test && turbo run test",
+    "test:e2e:seed-chat": "node --experimental-strip-types scripts/seed-e2e-chat.ts",
     "test:e2e": "pnpm --filter @pufu-lens/web test:e2e",
     "typecheck": "turbo run typecheck && pnpm scripts:typecheck"
   },

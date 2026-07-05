@@ -40,6 +40,8 @@ export default defineConfig({
     command: 'pnpm exec next dev -p 3000',
     env: {
       ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
+      MASTRA_API_URL: process.env.MASTRA_API_URL || '',
+      MASTRA_SERVER_URL: process.env.MASTRA_SERVER_URL || '',
       PUFU_LENS_ALLOW_FIXED_USER_FALLBACK: process.env.PUFU_LENS_ALLOW_FIXED_USER_FALLBACK || '',
       PUFU_LENS_ENABLE_FIXTURE_FALLBACK: process.env.PUFU_LENS_ENABLE_FIXTURE_FALLBACK || '',
       PUFU_LENS_REPORT_USER_ID: process.env.PUFU_LENS_REPORT_USER_ID || '',
