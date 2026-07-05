@@ -488,7 +488,6 @@
   .main-surface:has(> .chat-panel),
   .main-surface:has(> .public-project-chat-panel) {
     padding: var(--main-surface-padding-top, 80px) 8px 12px;
-    padding-left: 8px;
   }
 
   .main-surface:has(> .chat-panel) > .page-header,

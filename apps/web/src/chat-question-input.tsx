@@ -5,7 +5,13 @@ import { useEffect, useState } from 'react';
 const mobileChatQuery = '(max-width: 720px)';
 
 function useIsMobileChat(): boolean {
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+
+    return window.matchMedia(mobileChatQuery).matches;
+  });
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(mobileChatQuery);
