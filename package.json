@@ -42,6 +42,7 @@
     "seed:projects": "node --experimental-strip-types scripts/create-project.ts --seed-samples",
     "scripts:typecheck": "tsc --noEmit -p tsconfig.scripts.json",
     "test": "pnpm db:migrate:test && turbo run test",
+    "test:e2e:seed-chat": "node --experimental-strip-types scripts/seed-e2e-chat.ts",
     "test:e2e": "pnpm --filter @pufu-lens/web test:e2e",
     "typecheck": "turbo run typecheck && pnpm scripts:typecheck"
   },

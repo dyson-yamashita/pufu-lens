@@ -79,6 +79,8 @@ pnpm test
 pnpm build
 ```
 
+Web の unit test は `apps/web/src/**/*.test.ts` に追加すると `pnpm --filter @pufu-lens/web test` で自動検出されます。
+
 E2E を確認する場合は `pnpm test:e2e` を実行します。詳細な品質ゲートと完了報告ルールは `docs/operations/ci-quality-gates.md` を参照してください。
 
 ## ドキュメント
