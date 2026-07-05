@@ -23,7 +23,8 @@
 - `pnpm lint`: `biome ci .` と `markdownlint-cli2` を実行する。
 - `pnpm typecheck`: Turborepo の workspace typecheck と `pnpm scripts:typecheck` を実行する。
 - `pnpm scripts:typecheck`: `tsconfig.scripts.json` で `scripts/**/*.ts` を検査する。
-- `pnpm test`: `pnpm db:migrate:test` の後に Turborepo の workspace test を実行する。
+- `pnpm scripts:test`: `scripts/**/*.test.ts` の unit test を実行する。
+- `pnpm test`: `pnpm scripts:test` の後に Turborepo の workspace test を実行する。
 - `pnpm test:e2e`: `@pufu-lens/web` の Playwright E2E を実行する。
 - `pnpm build`: Turborepo の workspace build を実行する。
 
@@ -34,7 +35,7 @@
 - TypeScript、script、package 境界、runtime guard に触れた場合は `pnpm typecheck` または対象 workspace の typecheck を実行する。
 - unit / integration test の対象実装に触れた場合は、対象 workspace test と必要に応じて root `pnpm test` を実行する。
 - UI、route handler、認証導線、private / public chat、report 表示に触れた場合は、関連する Playwright E2E または route test を実行する。
-- DB migration、`init.sql`、schema drift に触れた場合は `pnpm db:migrate:test`、`pnpm db:migrate --check`、`pnpm db:schema-drift` の要否を判断する。
+- DB migration、`init.sql`、schema drift に触れた場合は `pnpm scripts:test`、`pnpm db:migrate --check`、`pnpm db:schema-drift` の要否を判断する。
 - `pnpm lint` は未追跡 Markdown も `markdownlint-cli2` の glob 対象に入る。ユーザー由来の未追跡ファイルで失敗する場合は、そのファイルを勝手に修正せず、最終報告に失敗理由を明記する。
 
 ## 5. 完了報告ルール
