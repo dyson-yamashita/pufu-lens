@@ -190,8 +190,8 @@ export default async function DataSourcesPage({
                       data-testid="data-source-selected-connection-notice"
                     >
                       {sourceTypeLabel(selectedSource.sourceType)} の connection
-                      を利用できません。Settings で接続状態を確認するまで Save / Test / Collect
-                      は実行できません。{' '}
+                      を利用できません。Name / Scope の保存は可能ですが、Test / Collect は Settings
+                      で接続状態を確認するまで実行できません。{' '}
                       <Link href={connectionStartHref(project.slug, selectedSource.sourceType)}>
                         接続を確認
                       </Link>
@@ -241,7 +241,6 @@ export default async function DataSourcesPage({
                     <div className="action-row">
                       <PendingSubmitButton
                         className="icon-button"
-                        disabled={!selectedSourceAvailable}
                         testId="data-source-save-button"
                         title="Save data source"
                       >

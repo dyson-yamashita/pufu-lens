@@ -88,14 +88,34 @@ async function assertDataSourceConnectionReady(
   sourceType: SourceType,
   connectionId?: string | null,
 ): Promise<AdminActionConnectionOwnerRow | undefined> {
+  const connection = await lookupReadyDataSourceConnection(
+    sql,
+    projectId,
+    sourceType,
+    connectionId,
+  );
+  if (!connection && requiredProviderForSourceType(sourceType)) {
+    throw new Error(dataSourceConnectionRequiredMessage(sourceType));
+  }
+  return connection;
+}
+
+function dataSourceConnectionRequiredMessage(sourceType: SourceType): string {
+  return `Project connection is required before using a ${sourceType} data source. Connect or reconnect the provider in Settings.`;
+}
+
+async function lookupReadyDataSourceConnection(
+  sql: SqlExecutor,
+  projectId: string,
+  sourceType: SourceType,
+  connectionId?: string | null,
+): Promise<AdminActionConnectionOwnerRow | undefined> {
   const provider = requiredProviderForSourceType(sourceType);
   if (!provider) {
     return undefined;
   }
   if (connectionId === null) {
-    throw new Error(
-      `Project connection is required before using a ${sourceType} data source. Connect or reconnect the provider in Settings.`,
-    );
+    return undefined;
   }
   const sourceScope = requiredScopeForSourceType(sourceType);
   const scopeFilter = sourceScope ? sql`${sourceScope} = ANY(oc.scopes)` : sql`true`;
@@ -116,13 +136,7 @@ async function assertDataSourceConnectionReady(
     ORDER BY oc.updated_at DESC
     LIMIT 1
   `) as readonly unknown[];
-  const connection = parseOptionalAdminActionRow(rows, parseAdminActionConnectionOwnerRow);
-  if (!connection) {
-    throw new Error(
-      `Project connection is required before using a ${sourceType} data source. Connect or reconnect the provider in Settings.`,
-    );
-  }
-  return connection;
+  return parseOptionalAdminActionRow(rows, parseAdminActionConnectionOwnerRow);
 }
 
 function requiredScopeForSourceType(sourceType: SourceType): string | null {
@@ -246,19 +260,27 @@ export async function updateDataSource(formData: FormData): Promise<void> {
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
     const dataSource = await lookupProjectDataSource(sql, project.id, dataSourceId);
-    const connection = await assertDataSourceConnectionReady(
+    const connection = await lookupReadyDataSourceConnection(
       sql,
       project.id,
       dataSource.source_type,
     );
+    const connectionAssignment = connection
+      ? sql`,
+          owner_user_id = ${connection.userId},
+          connection_id = ${connection.id}`
+      : requiredProviderForSourceType(dataSource.source_type)
+        ? sql``
+        : sql`,
+          owner_user_id = ${project.adminUserId},
+          connection_id = ${null}`;
     const config = buildDataSourceConfig(dataSource.source_type, scope);
     await sql`
       UPDATE public.data_sources
       SET name = ${name},
-          owner_user_id = ${connection?.userId ?? project.adminUserId},
-          connection_id = ${connection?.id ?? null},
           config = ${sql.json(config as postgres.JSONValue)},
           updated_at = now()
+          ${connectionAssignment}
       WHERE id = ${dataSource.id}
         AND project_id = ${project.id}
     `;
