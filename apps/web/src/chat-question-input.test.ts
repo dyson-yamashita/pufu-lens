@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { ChatQuestionTextarea } from './chat-question-input.ts';
+import { ChatQuestionTextarea, chatQuestionTextareaPresentation } from './chat-question-input.ts';
 
 function renderChatQuestionTextarea(value: string): string {
   return renderToStaticMarkup(
@@ -30,6 +30,19 @@ function assertClassIncludes(markup: string, className: string): void {
 
 const hadWindow = Object.hasOwn(globalThis, 'window');
 const originalWindow = globalThis.window;
+
+assert.deepEqual(chatQuestionTextareaPresentation({ focused: false, value: '' }), {
+  className: 'chat-question-input-collapsed',
+  rows: 1,
+});
+assert.deepEqual(chatQuestionTextareaPresentation({ focused: true, value: '' }), {
+  className: 'chat-question-input-expanded',
+  rows: 3,
+});
+assert.deepEqual(chatQuestionTextareaPresentation({ focused: false, value: '質問があります' }), {
+  className: 'chat-question-input-expanded',
+  rows: 3,
+});
 
 try {
   Object.defineProperty(globalThis, 'window', {
