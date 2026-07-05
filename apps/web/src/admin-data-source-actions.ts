@@ -88,11 +88,6 @@ async function assertDataSourceConnectionReady(
   sourceType: SourceType,
   connectionId?: string | null,
 ): Promise<AdminActionConnectionOwnerRow | undefined> {
-  if (connectionId === null && requiredProviderForSourceType(sourceType)) {
-    throw new Error(
-      `Project connection is required before using a ${sourceType} data source. Connect or reconnect the provider in Settings.`,
-    );
-  }
   const connection = await lookupReadyDataSourceConnection(
     sql,
     projectId,
@@ -100,11 +95,13 @@ async function assertDataSourceConnectionReady(
     connectionId,
   );
   if (!connection && requiredProviderForSourceType(sourceType)) {
-    throw new Error(
-      `Project connection is required before using a ${sourceType} data source. Connect or reconnect the provider in Settings.`,
-    );
+    throw new Error(dataSourceConnectionRequiredMessage(sourceType));
   }
   return connection;
+}
+
+function dataSourceConnectionRequiredMessage(sourceType: SourceType): string {
+  return `Project connection is required before using a ${sourceType} data source. Connect or reconnect the provider in Settings.`;
 }
 
 async function lookupReadyDataSourceConnection(
@@ -272,7 +269,11 @@ export async function updateDataSource(formData: FormData): Promise<void> {
       ? sql`,
           owner_user_id = ${connection.userId},
           connection_id = ${connection.id}`
-      : sql``;
+      : requiredProviderForSourceType(dataSource.source_type)
+        ? sql``
+        : sql`,
+          owner_user_id = ${project.adminUserId},
+          connection_id = ${null}`;
     const config = buildDataSourceConfig(dataSource.source_type, scope);
     await sql`
       UPDATE public.data_sources
