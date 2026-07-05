@@ -77,6 +77,8 @@ pnpm typecheck
 pnpm test
 ```
 
+Web の unit test は `apps/web/src/**/*.test.ts` に追加すると `pnpm --filter @pufu-lens/web test` で自動検出されます。
+
 ## ドキュメント
 
 詳細な設計は `docs/designs/` を参照してください。作業計画は `docs/plans/`、現在の plan 状態は `docs/plans/plan-status.md` で管理します。
