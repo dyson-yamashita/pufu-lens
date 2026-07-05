@@ -15,6 +15,20 @@ function renderChatQuestionTextarea(value: string): string {
   );
 }
 
+function markupAttribute(markup: string, name: string): string {
+  const match = markup.match(new RegExp(`${name}="([^"]*)"`));
+  assert.ok(match, `Expected ${name} attribute in markup.`);
+  return match[1] ?? '';
+}
+
+function assertClassIncludes(markup: string, className: string): void {
+  assert.ok(
+    markupAttribute(markup, 'class').split(/\s+/).includes(className),
+    `Expected class ${className} in markup.`,
+  );
+}
+
+const hadWindow = Object.hasOwn(globalThis, 'window');
 const originalWindow = globalThis.window;
 
 try {
@@ -28,17 +42,21 @@ try {
   });
 
   const collapsedMarkup = renderChatQuestionTextarea('');
-  assert.match(collapsedMarkup, /class="chat-question-input-collapsed"/);
-  assert.match(collapsedMarkup, /rows="1"/);
+  assertClassIncludes(collapsedMarkup, 'chat-question-input-collapsed');
+  assert.equal(markupAttribute(collapsedMarkup, 'rows'), '1');
 
   const expandedMarkup = renderChatQuestionTextarea('質問があります');
-  assert.match(expandedMarkup, /class="chat-question-input-expanded"/);
-  assert.match(expandedMarkup, /rows="3"/);
+  assertClassIncludes(expandedMarkup, 'chat-question-input-expanded');
+  assert.equal(markupAttribute(expandedMarkup, 'rows'), '3');
 } finally {
-  Object.defineProperty(globalThis, 'window', {
-    configurable: true,
-    value: originalWindow,
-  });
+  if (hadWindow) {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: originalWindow,
+    });
+  } else {
+    Reflect.deleteProperty(globalThis, 'window');
+  }
 }
 
 console.log('chat-question-input.test.ts passed');
