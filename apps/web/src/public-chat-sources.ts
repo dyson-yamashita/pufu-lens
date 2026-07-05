@@ -20,7 +20,7 @@ export function publicChatSourcesFromReport(
   report.pufu_sources?.forEach((source, index) => {
     if (!references.has(source.document_id)) {
       references.set(source.document_id, {
-        label: source.title,
+        label: source.title?.trim() || source.doc_type,
         publicSourceId: `src_pufu_${index + 1}`,
         sectionId: 'pufu_sources',
       });

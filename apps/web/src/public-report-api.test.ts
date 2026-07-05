@@ -7,6 +7,7 @@ import {
   PUBLIC_PROJECT_CHAT_AGENT_ID,
 } from './mastra-chat.ts';
 import { isPublicWebChatSource, publicChatSourcesFromReport } from './public-chat-sources.ts';
+import type { PrivateReportJsonV1 } from './report-schema.ts';
 import { trustedClientIp } from './request-client.ts';
 
 function requestHeaders(headers: Record<string, string>) {
@@ -69,6 +70,56 @@ assert.equal(
   false,
 );
 
+const privateReport: PrivateReportJsonV1 = {
+  generated_at: '2026-07-05T00:00:00.000Z',
+  period: { end: '2026-07-05', start: '2026-06-29' },
+  project_id: 'project-a',
+  pufu_sources: [
+    {
+      canonical_uri: 'https://github.com/example/repo/issues/42',
+      doc_type: 'issue',
+      document_id: 'doc-github',
+      occurred_at: null,
+      snippet: 'GitHub source',
+      title: 'GitHub issue',
+    },
+  ],
+  report_id: 'report-a',
+  schema_version: 'v1',
+  sections: [
+    {
+      id: 'activity',
+      markdown: 'Web release',
+      sources: [
+        {
+          canonical_uri: 'https://example.com/release',
+          doc_type: 'web_page',
+          document_id: 'doc-web',
+          snippet: 'Web source',
+          title: 'Web release',
+        },
+      ],
+      title: 'Activity',
+    },
+    {
+      id: 'issues',
+      markdown: 'GitHub issue',
+      sources: [
+        {
+          canonical_uri: 'https://github.com/example/repo/issues/42',
+          doc_type: 'issue',
+          document_id: 'doc-github',
+          snippet: 'GitHub source',
+          title: 'GitHub issue',
+        },
+      ],
+      title: 'Issues',
+    },
+  ],
+  summary: 'Summary',
+  title: 'Report',
+};
+
 const publicReportSources = publicChatSourcesFromReport(
   [
     {
@@ -79,50 +130,7 @@ const publicReportSources = publicChatSourcesFromReport(
       title: 'Web release',
     },
   ],
-  {
-    pufu_sources: [
-      {
-        canonical_uri: 'https://github.com/example/repo/issues/42',
-        doc_type: 'issue',
-        document_id: 'doc-github',
-        occurred_at: null,
-        snippet: 'GitHub source',
-        title: 'GitHub issue',
-      },
-    ],
-    sections: [
-      {
-        id: 'activity',
-        markdown: 'Web release',
-        sources: [
-          {
-            canonical_uri: 'https://example.com/release',
-            doc_type: 'web_page',
-            document_id: 'doc-web',
-            occurred_at: null,
-            snippet: 'Web source',
-            title: 'Web release',
-          },
-        ],
-        title: 'Activity',
-      },
-      {
-        id: 'issues',
-        markdown: 'GitHub issue',
-        sources: [
-          {
-            canonical_uri: 'https://github.com/example/repo/issues/42',
-            doc_type: 'issue',
-            document_id: 'doc-github',
-            occurred_at: null,
-            snippet: 'GitHub source',
-            title: 'GitHub issue',
-          },
-        ],
-        title: 'Issues',
-      },
-    ],
-  } as never,
+  privateReport,
 );
 assert.deepEqual(publicReportSources, [
   {

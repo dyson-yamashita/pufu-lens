@@ -298,7 +298,12 @@ function toolResultSources(result: MastraToolResultContent): ChatSource[] {
 }
 
 function chatSourceFromRawReadView(value: unknown): ChatSource | undefined {
-  if (!isRecord(value) || value.kind !== 'agent_raw_read_view' || !isRecord(value.data)) {
+  if (
+    !isRecord(value) ||
+    value.kind !== 'agent_raw_read_view' ||
+    value.trust !== 'untrusted_external_content' ||
+    !isRecord(value.data)
+  ) {
     return undefined;
   }
   const data = value.data;
