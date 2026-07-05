@@ -129,6 +129,13 @@ const publicReportSources = publicChatSourcesFromReport(
       rawDocumentId: 'raw-web',
       title: 'Web release',
     },
+    {
+      canonicalUri: 'https://github.com/example/repo/issues/42',
+      documentId: 'doc-github',
+      docType: 'issue',
+      rawDocumentId: 'raw-github',
+      title: 'GitHub issue',
+    },
   ],
   privateReport,
 );

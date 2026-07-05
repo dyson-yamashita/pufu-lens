@@ -8,7 +8,7 @@ export function publicChatSourcesFromReport(
   const references = new Map<string, PublicChatSource>();
   for (const section of report.sections) {
     section.sources?.forEach((source, index) => {
-      if (!references.has(source.document_id)) {
+      if (isPublicWebDocType(source.doc_type) && !references.has(source.document_id)) {
         references.set(source.document_id, {
           label: source.title?.trim() || source.doc_type,
           publicSourceId: `src_${section.id}_${index + 1}`,
@@ -18,7 +18,7 @@ export function publicChatSourcesFromReport(
     });
   }
   report.pufu_sources?.forEach((source, index) => {
-    if (!references.has(source.document_id)) {
+    if (isPublicWebDocType(source.doc_type) && !references.has(source.document_id)) {
       references.set(source.document_id, {
         label: source.title?.trim() || source.doc_type,
         publicSourceId: `src_pufu_${index + 1}`,
@@ -30,6 +30,9 @@ export function publicChatSourcesFromReport(
   const result: PublicChatSource[] = [];
   const seen = new Set<string>();
   for (const source of chatSources) {
+    if (!isPublicWebChatSource(source)) {
+      continue;
+    }
     const publicSource = references.get(source.documentId);
     if (publicSource && !seen.has(publicSource.publicSourceId)) {
       result.push(publicSource);
@@ -40,5 +43,9 @@ export function publicChatSourcesFromReport(
 }
 
 export function isPublicWebChatSource(source: ChatSource): boolean {
-  return source.docType === 'web' || source.docType === 'web_page';
+  return isPublicWebDocType(source.docType);
+}
+
+function isPublicWebDocType(docType: string): boolean {
+  return docType === 'web' || docType === 'web_page';
 }
