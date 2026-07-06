@@ -67,7 +67,16 @@ export default async function ProjectOverviewPage({
           <p data-testid="project-overview-description">{project.description}</p>
         ) : null}
         <p className="notice" data-testid="project-overview-tab-notice">
-          Reports と Chat は左のタブから開けます。
+          <Link
+            data-testid="project-overview-reports-link"
+            href={`/projects/${project.slug}/reports`}
+          >
+            Reportsを開く
+          </Link>
+          {' / '}
+          <Link data-testid="project-overview-chat-link" href={`/projects/${project.slug}/chat`}>
+            Chatを開く
+          </Link>
         </p>
       </section>
       {publicProject?.reports.length ? (
