@@ -358,23 +358,19 @@ async function runDrainWorkflow(input: {
     }
 
     let completedBatches = 0;
+    let remaining = await readDrainRemainingState(sql, project.id, input.steps, scope);
     for (let batchNumber = 1; batchNumber <= maxBatches; batchNumber += 1) {
       const elapsedSeconds = (Date.now() - startedAt) / 1000;
       if (elapsedSeconds >= maxRuntimeSeconds) {
         logDrainCompleted(input.run, {
           batchCount: completedBatches,
-          remaining: summarizeDrainRemaining(
-            await readDrainRemainingState(sql, project.id, input.steps, scope),
-          ),
+          remaining,
           scope,
           stopReason: 'max_runtime',
         });
         return;
       }
 
-      const remaining = summarizeDrainRemaining(
-        await readDrainRemainingState(sql, project.id, input.steps, scope),
-      );
       if (!hasDrainRemainingWork(input.steps, remaining)) {
         logDrainCompleted(input.run, {
           batchCount: completedBatches,
@@ -403,15 +399,13 @@ async function runDrainWorkflow(input: {
         steps: input.steps,
       });
       completedBatches = batchNumber;
-      const remainingAfterBatch = summarizeDrainRemaining(
-        await readDrainRemainingState(sql, project.id, input.steps, scope),
-      );
+      remaining = await readDrainRemainingState(sql, project.id, input.steps, scope);
       logEvent(input.run, {
         batchNumber,
         batchProgress,
         event: 'drain_batch_completed',
         llm: noLlmUsage(),
-        remaining: remainingAfterBatch,
+        remaining,
         scope: summarizeDrainScope(scope),
         steps: input.steps,
       });
@@ -419,7 +413,7 @@ async function runDrainWorkflow(input: {
       if (batchProgress === 0) {
         logDrainCompleted(input.run, {
           batchCount: completedBatches,
-          remaining: remainingAfterBatch,
+          remaining,
           scope,
           stopReason: 'no_progress',
         });
@@ -427,9 +421,6 @@ async function runDrainWorkflow(input: {
       }
     }
 
-    const remaining = summarizeDrainRemaining(
-      await readDrainRemainingState(sql, project.id, input.steps, scope),
-    );
     logDrainCompleted(input.run, {
       batchCount: completedBatches,
       remaining,

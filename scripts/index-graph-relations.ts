@@ -123,7 +123,7 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
           )
         )
       ORDER BY
-        CASE rd.ingest_status WHEN 'parsed' THEN 0 WHEN 'indexed' THEN 1 ELSE 2 END,
+        rd.ingest_status DESC,
         rd.parsed_at NULLS LAST,
         rd.fetched_at,
         rd.id
