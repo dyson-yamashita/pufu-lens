@@ -79,10 +79,10 @@
     border-radius: 0;
     height: 72px;
     left: var(--side-nav-width);
-    padding: 0 32px;
+    padding: 0;
     position: fixed;
     top: 0;
-    width: max-content;
+    width: 64px;
     z-index: 25;
   }
 
@@ -249,7 +249,9 @@
   cursor: pointer;
   display: inline-flex;
   font: inherit;
-  gap: 12px;
+  flex: 0 0 auto;
+  height: 44px;
+  justify-content: center;
   min-height: 44px;
   padding: 0;
   text-align: left;
@@ -258,6 +260,7 @@
     color 180ms ease,
     left 180ms ease,
     padding 180ms ease;
+  width: 44px;
 }
 
 .guest-menu-toggle svg {
@@ -283,7 +286,21 @@
   white-space: nowrap;
 }
 
-.guest-menu[data-open="false"] .guest-brand-name {
+.guest-menu-header {
+  align-items: center;
+  display: inline-flex;
+  gap: 12px;
+  min-height: 44px;
+}
+
+.guest-menu-brand {
+  align-items: center;
+  display: inline-flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.guest-menu[data-open="false"] .guest-menu-brand {
   display: none;
 }
 

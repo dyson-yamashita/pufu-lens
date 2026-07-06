@@ -40,25 +40,29 @@ export function SideMenu({
       data-open={isOpen === null ? undefined : isOpen ? 'true' : 'false'}
       data-testid={menuTestId}
     >
-      <button
-        aria-controls={contentId}
-        aria-expanded={isOpen ?? true}
-        className="guest-menu-toggle"
-        data-testid={toggleTestId}
-        type="button"
-        onClick={() => setIsOpen((current) => !current)}
-      >
-        <Menu className="guest-menu-open-icon" size={22} />
-        <X className="guest-menu-close-icon" size={22} />
-        <Image
-          alt="Pufu Lens"
-          className="brand-logo"
-          height={40}
-          src="/pufu-lens-logo.png"
-          width={40}
-        />
-        <strong className="guest-brand-name">Pufu Lens</strong>
-      </button>
+      <div className="guest-menu-header">
+        <button
+          aria-controls={contentId}
+          aria-expanded={isOpen ?? true}
+          className="guest-menu-toggle"
+          data-testid={toggleTestId}
+          type="button"
+          onClick={() => setIsOpen((current) => !current)}
+        >
+          <Menu className="guest-menu-open-icon" size={22} />
+          <X className="guest-menu-close-icon" size={22} />
+        </button>
+        <span className="guest-menu-brand">
+          <Image
+            alt="Pufu Lens"
+            className="brand-logo"
+            height={40}
+            src="/pufu-lens-logo.png"
+            width={40}
+          />
+          <strong className="guest-brand-name">Pufu Lens</strong>
+        </span>
+      </div>
       <div className="guest-menu-content" id={contentId}>
         <div className="guest-menu-content-inner">
           <ThemeToggle initialTheme={initialTheme} />
