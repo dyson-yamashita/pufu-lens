@@ -16,6 +16,7 @@ import {
   getProjectSourceAvailability,
   getSourceTypeCounts,
 } from '../../../../../src/admin-db';
+import { DataSourceDetailDialog } from '../../../../../src/data-source-detail-dialog';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
 import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
 import {
@@ -47,8 +48,9 @@ export default async function DataSourcesPage({
   const visibleSources = activeSourceType
     ? project.dataSources.filter((source) => source.sourceType === activeSourceType)
     : project.dataSources;
-  const selectedSource =
-    visibleSources.find((source) => source.id === dataSourceId) ?? visibleSources[0];
+  const selectedSource = dataSourceId
+    ? visibleSources.find((source) => source.id === dataSourceId)
+    : undefined;
   const selectedSourceAvailable = selectedSource ? availability[selectedSource.sourceType] : true;
   const counts = getSourceTypeCounts(project);
   let contentPreview = null;
@@ -67,24 +69,13 @@ export default async function DataSourcesPage({
         subtitle="収集対象、設定、queue の状態を source type ごとに確認します。"
       />
       <MetricStrip project={project} />
-      <SourceTypeTabs
-        activeType={activeSourceType}
-        availability={availability}
-        projectSlug={project.slug}
-      />
-      <details className="panel create-project-panel" data-testid="data-source-create-panel">
-        <summary className="primary-button" data-testid="data-source-add-button">
-          Add Source
-        </summary>
-        {requestedSourceType && !availability[requestedSourceType] ? (
-          <p
-            className="connection-required-notice"
-            data-testid={`data-source-connection-notice-${requestedSourceType}`}
-          >
-            {sourceTypeLabel(requestedSourceType)} の作成には Settings での接続が必要です。{' '}
-            <Link href={connectionStartHref(project.slug, requestedSourceType)}>接続を開始</Link>
-          </p>
-        ) : null}
+      <section className="panel create-project-panel" data-testid="data-source-create-panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Source</p>
+            <h2>Add Source</h2>
+          </div>
+        </div>
         <ActionForm action={createDataSource} className="project-create-form">
           <input name="projectSlug" type="hidden" value={project.slug} />
           <label>
@@ -109,8 +100,37 @@ export default async function DataSourcesPage({
               <DataSourceTypeOption availability={availability} label="Gmail" sourceType="gmail" />
             </select>
           </label>
+          <label className="project-create-description">
+            <span>Scope</span>
+            <textarea
+              data-testid="data-source-scope-input"
+              name="scope"
+              placeholder="URL, owner/repo, Drive folder id, or Gmail query"
+              required
+              rows={2}
+            />
+          </label>
+          <PendingSubmitButton
+            className="primary-button"
+            testId="data-source-submit-button"
+            title="Create data source and run collect"
+          >
+            Create & Collect
+          </PendingSubmitButton>
+          {requestedSourceType && !availability[requestedSourceType] ? (
+            <p
+              className="connection-required-notice project-create-notice"
+              data-testid={`data-source-connection-notice-${requestedSourceType}`}
+            >
+              {sourceTypeLabel(requestedSourceType)} の作成には Settings での接続が必要です。{' '}
+              <Link href={connectionStartHref(project.slug, requestedSourceType)}>接続を開始</Link>
+            </p>
+          ) : null}
           {!availability.github || !availability.gmail || !availability.drive ? (
-            <p className="connection-required-notice" data-testid="data-source-connection-notice">
+            <p
+              className="connection-required-notice project-create-notice"
+              data-testid="data-source-connection-notice"
+            >
               未接続または scope 不足の provider があるため、一部の source type は選択できません。{' '}
               {!availability.drive ? (
                 <>
@@ -127,26 +147,14 @@ export default async function DataSourcesPage({
               ) : null}
             </p>
           ) : null}
-          <label className="project-create-description">
-            <span>Scope</span>
-            <textarea
-              data-testid="data-source-scope-input"
-              name="scope"
-              placeholder="URL, owner/repo, Drive folder id, or Gmail query"
-              required
-              rows={2}
-            />
-          </label>
-          <PendingSubmitButton
-            className="primary-button"
-            testId="data-source-submit-button"
-            title="Create data source and run collect and ingest"
-          >
-            Create, Collect & Ingest
-          </PendingSubmitButton>
         </ActionForm>
-      </details>
-      <section className="split-layout">
+      </section>
+      <SourceTypeTabs
+        activeType={activeSourceType}
+        availability={availability}
+        projectSlug={project.slug}
+      />
+      <section>
         <div className="panel">
           <div className="panel-heading">
             <h2>Source List</h2>
@@ -168,151 +176,141 @@ export default async function DataSourcesPage({
             sources={visibleSources}
           />
         </div>
-        <aside className="panel" data-testid="data-source-detail-panel">
-          {selectedSource ? (
-            <>
-              <div className="panel-heading">
-                <div>
-                  <p className="eyebrow">{selectedSource.sourceType}</p>
-                  <h2>{selectedSource.name}</h2>
-                </div>
-                <StatusBadge status={selectedSource.status} />
+        {selectedSource ? (
+          <DataSourceDetailDialog closeHref={dataSourceListHref(project.slug, activeSourceType)}>
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">{selectedSource.sourceType}</p>
+                <h2>{selectedSource.name}</h2>
               </div>
-              <div className="data-source-detail-sections">
-                <section
-                  className="data-source-detail-section"
-                  data-testid="data-source-settings-section"
-                >
-                  <h3 className="data-source-section-title">Settings</h3>
-                  {!selectedSourceAvailable ? (
-                    <p
-                      className="connection-required-notice"
-                      data-testid="data-source-selected-connection-notice"
-                    >
-                      {sourceTypeLabel(selectedSource.sourceType)} の connection
-                      を利用できません。Name / Scope の保存は可能ですが、Test / Collect は Settings
-                      で接続状態を確認するまで実行できません。{' '}
-                      <Link href={connectionStartHref(project.slug, selectedSource.sourceType)}>
-                        接続を確認
-                      </Link>
-                    </p>
-                  ) : null}
-                  <ActionForm action={updateDataSource} className="detail-edit-form">
-                    <input name="projectSlug" type="hidden" value={project.slug} />
-                    <input name="dataSourceId" type="hidden" value={selectedSource.id} />
-                    <label>
-                      <span>Name</span>
-                      <input
-                        data-testid="data-source-edit-name-input"
-                        defaultValue={selectedSource.name}
-                        name="name"
-                        required
-                        type="text"
-                      />
-                    </label>
-                    <label>
-                      <span>Scope</span>
-                      <textarea
-                        data-testid="data-source-edit-scope-input"
-                        defaultValue={selectedSource.editableScope}
-                        name="scope"
-                        required
-                        rows={3}
-                      />
-                    </label>
-                    <dl className="detail-list stacked">
-                      <div>
-                        <dt>Current scope</dt>
-                        <dd>{selectedSource.scope}</dd>
-                      </div>
-                      <div>
-                        <dt>Config</dt>
-                        <dd>{selectedSource.configSummary}</dd>
-                      </div>
-                      <div>
-                        <dt>Last run</dt>
-                        <dd>{selectedSource.lastChecked}</dd>
-                      </div>
-                      <div>
-                        <dt>Last indexed</dt>
-                        <dd>{selectedSource.lastIndexed}</dd>
-                      </div>
-                    </dl>
-                    <div className="action-row">
-                      <PendingSubmitButton
-                        className="icon-button"
-                        testId="data-source-save-button"
-                        title="Save data source"
-                      >
-                        Save
-                      </PendingSubmitButton>
-                    </div>
-                  </ActionForm>
-                  <div className="action-row">
-                    <button
-                      className="icon-button muted"
-                      data-testid="data-source-test-button"
-                      disabled={!selectedSourceAvailable}
-                      type="button"
-                    >
-                      Test
-                    </button>
-                    <ActionForm action={collectAndIngestDataSource} className="inline-action-form">
-                      <input name="projectSlug" type="hidden" value={project.slug} />
-                      <input name="dataSourceId" type="hidden" value={selectedSource.id} />
-                      <PendingSubmitButton
-                        className="icon-button muted"
-                        disabled={
-                          !selectedSourceAvailable ||
-                          !isAdminUiCollectionSupported(selectedSource.sourceType) ||
-                          !isAdminUiIngestSupported(selectedSource.sourceType)
-                        }
-                        pendingLabel="Running"
-                        testId="data-source-run-button"
-                        title="Collect and ingest data source"
-                      >
-                        Collect & Ingest
-                      </PendingSubmitButton>
-                    </ActionForm>
-                  </div>
-                  <ActionForm
-                    action={deleteDataSource}
-                    className="inline-action-form data-source-delete-form"
-                    confirmMessage={`Delete "${selectedSource.name}"? Exclusive ingest data for this data source will be removed. Documents shared with other data sources will keep their content.`}
-                    testId="data-source-delete-form"
+              <StatusBadge status={selectedSource.status} />
+            </div>
+            <div className="data-source-detail-sections">
+              <section
+                className="data-source-detail-section"
+                data-testid="data-source-settings-section"
+              >
+                <h3 className="data-source-section-title">Settings</h3>
+                {!selectedSourceAvailable ? (
+                  <p
+                    className="connection-required-notice"
+                    data-testid="data-source-selected-connection-notice"
                   >
+                    {sourceTypeLabel(selectedSource.sourceType)} の connection
+                    を利用できません。Name / Scope の保存は可能ですが、Collect は Settings
+                    で接続状態を確認するまで実行できません。{' '}
+                    <Link href={connectionStartHref(project.slug, selectedSource.sourceType)}>
+                      接続を確認
+                    </Link>
+                  </p>
+                ) : null}
+                <ActionForm action={updateDataSource} className="detail-edit-form">
+                  <input name="projectSlug" type="hidden" value={project.slug} />
+                  <input name="dataSourceId" type="hidden" value={selectedSource.id} />
+                  <label>
+                    <span>Name</span>
+                    <input
+                      data-testid="data-source-edit-name-input"
+                      defaultValue={selectedSource.name}
+                      name="name"
+                      required
+                      type="text"
+                    />
+                  </label>
+                  <label>
+                    <span>Scope</span>
+                    <textarea
+                      data-testid="data-source-edit-scope-input"
+                      defaultValue={selectedSource.editableScope}
+                      name="scope"
+                      required
+                      rows={3}
+                    />
+                  </label>
+                  <dl className="detail-list stacked">
+                    <div>
+                      <dt>Current scope</dt>
+                      <dd>{selectedSource.scope}</dd>
+                    </div>
+                    <div>
+                      <dt>Config</dt>
+                      <dd>{selectedSource.configSummary}</dd>
+                    </div>
+                    <div>
+                      <dt>Last run</dt>
+                      <dd>{selectedSource.lastChecked}</dd>
+                    </div>
+                    <div>
+                      <dt>Last indexed</dt>
+                      <dd>{selectedSource.lastIndexed}</dd>
+                    </div>
+                  </dl>
+                  <div className="action-row">
+                    <PendingSubmitButton
+                      className="icon-button"
+                      testId="data-source-save-button"
+                      title="Save data source"
+                    >
+                      Save
+                    </PendingSubmitButton>
+                  </div>
+                </ActionForm>
+                <div className="action-row">
+                  <ActionForm action={collectAndIngestDataSource} className="inline-action-form">
                     <input name="projectSlug" type="hidden" value={project.slug} />
                     <input name="dataSourceId" type="hidden" value={selectedSource.id} />
                     <PendingSubmitButton
-                      className="icon-button danger-button"
-                      pendingLabel="Deleting"
-                      testId="data-source-delete-button"
-                      title="Delete data source"
+                      className="icon-button muted"
+                      disabled={
+                        !selectedSourceAvailable ||
+                        !isAdminUiCollectionSupported(selectedSource.sourceType) ||
+                        !isAdminUiIngestSupported(selectedSource.sourceType)
+                      }
+                      pendingLabel="Running"
+                      testId="data-source-run-button"
+                      title="Collect and ingest data source"
                     >
-                      Delete
+                      Collect & Ingest
                     </PendingSubmitButton>
                   </ActionForm>
-                </section>
-                {contentPreview ? (
-                  <>
-                    <DataSourceContentPreviewPanel preview={contentPreview} />
-                    <DataSourceQueuePreviewPanel preview={contentPreview} />
-                  </>
-                ) : (
-                  <section
-                    className="data-source-detail-section"
-                    data-testid="data-source-content-panel"
+                </div>
+                <ActionForm
+                  action={deleteDataSource}
+                  className="inline-action-form data-source-delete-form"
+                  confirmMessage={`Delete "${selectedSource.name}"? Exclusive ingest data for this data source will be removed. Documents shared with other data sources will keep their content.`}
+                  testId="data-source-delete-form"
+                >
+                  <input name="projectSlug" type="hidden" value={project.slug} />
+                  <input name="dataSourceId" type="hidden" value={selectedSource.id} />
+                  <PendingSubmitButton
+                    className="icon-button danger-button"
+                    pendingLabel="Deleting"
+                    testId="data-source-delete-button"
+                    title="Delete data source"
                   >
-                    <h3 className="data-source-section-title">Content</h3>
-                    <p className="content-preview-empty" data-testid="data-source-content-empty">
-                      プレビューを読み込めませんでした。
-                    </p>
-                  </section>
-                )}
-              </div>
-            </>
-          ) : null}
-        </aside>
+                    Delete
+                  </PendingSubmitButton>
+                </ActionForm>
+              </section>
+              {contentPreview ? (
+                <>
+                  <DataSourceContentPreviewPanel preview={contentPreview} />
+                  <DataSourceQueuePreviewPanel preview={contentPreview} />
+                </>
+              ) : (
+                <section
+                  className="data-source-detail-section"
+                  data-testid="data-source-content-panel"
+                >
+                  <h3 className="data-source-section-title">Content</h3>
+                  <p className="content-preview-empty" data-testid="data-source-content-empty">
+                    プレビューを読み込めませんでした。
+                  </p>
+                </section>
+              )}
+            </div>
+          </DataSourceDetailDialog>
+        ) : null}
       </section>
     </AppShell>
   );
@@ -355,6 +353,15 @@ function connectionStartHref(projectSlug: string, sourceType: SourceType): strin
     params.set('sourceType', sourceType);
   }
   return `/api/connections/${provider}/start?${params.toString()}`;
+}
+
+function dataSourceListHref(projectSlug: string, activeType: SourceType | undefined): string {
+  const params = new URLSearchParams();
+  if (activeType) {
+    params.set('sourceType', activeType);
+  }
+  const query = params.toString();
+  return `/projects/${projectSlug}/admin/data-sources${query ? `?${query}` : ''}`;
 }
 
 function DataSourceTypeOption({

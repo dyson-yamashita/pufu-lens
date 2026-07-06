@@ -114,7 +114,10 @@ test.describe('authenticated admin operation controls', () => {
   test('scenario: admin user can inspect stable operation controls', async ({ page }) => {
     await page.goto('/projects/sample-a/admin/data-sources');
     await expect(page.getByTestId('data-source-table')).toBeVisible();
-    await expect(page.getByTestId('data-source-detail-panel')).toBeVisible();
+    await expect(page.getByTestId('data-source-create-panel')).toBeVisible();
+    await expect(page.getByTestId('data-source-submit-button')).toHaveText('Create & Collect');
+    await expect(page.getByTestId('data-source-add-button')).toHaveCount(0);
+    await expect(page.getByTestId('data-source-detail-panel')).toHaveCount(0);
     await expect(page.getByTestId('source-type-web-tab')).toBeVisible();
     await expect(page.getByTestId('global-nav-overview')).toBeVisible();
     await expect(page.getByTestId('global-nav-overview')).toHaveAttribute(
@@ -130,9 +133,6 @@ test.describe('authenticated admin operation controls', () => {
     await expect(
       page.getByTestId('data-source-table').getByText(/Fixture web|公開ドキュメント/),
     ).toBeVisible();
-    await expect(page.getByTestId('data-source-edit-name-input')).toBeVisible();
-    await expect(page.getByTestId('data-source-edit-scope-input')).toBeVisible();
-    await expect(page.getByTestId('data-source-save-button')).toBeEnabled();
     await expect(page.getByTestId('data-source-collect-ingest-sample-a-web-docs')).toBeVisible();
     await expect(page.getByTestId('data-source-history-sample-a-web-docs')).toBeVisible();
     await expect(page.getByTestId('data-source-retry-sample-a-web-docs')).toBeDisabled();
@@ -144,6 +144,7 @@ test.describe('authenticated admin operation controls', () => {
     await page.goto(
       '/projects/sample-a/admin/data-sources?dataSourceId=sample-a-web-docs&sourceType=web',
     );
+    await expect(page.getByTestId('data-source-detail-panel')).toBeVisible();
     await expect(page.getByTestId('data-source-content-panel')).toBeVisible();
     await expect(page.getByTestId('data-source-content-document-row').first()).toBeVisible();
     await expect(page.getByTestId('data-source-content-snippet').first()).toBeVisible();
@@ -155,7 +156,7 @@ test.describe('authenticated admin operation controls', () => {
     await page.goto('/projects/sample-a/admin/data-sources?dataSourceId=sample-a-github-main');
     await expect(page.getByTestId('data-source-selected-connection-notice')).toBeVisible();
     await expect(page.getByTestId('data-source-save-button')).toBeEnabled();
-    await expect(page.getByTestId('data-source-test-button')).toBeDisabled();
+    await expect(page.getByTestId('data-source-test-button')).toHaveCount(0);
     await expect(page.getByTestId('data-source-run-button')).toBeDisabled();
     await expect(
       page.getByTestId('data-source-collect-ingest-sample-a-github-main'),
