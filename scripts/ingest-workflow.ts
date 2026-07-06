@@ -338,7 +338,6 @@ async function runDrainWorkflow(input: {
       batchNumber: 1,
       options: input.options,
       projectSlug: input.projectSlug,
-      remaining: null,
       run: input.run,
       steps: input.steps,
     });
@@ -400,7 +399,6 @@ async function runDrainWorkflow(input: {
         batchNumber,
         options: input.options,
         projectSlug: input.projectSlug,
-        remaining,
         run: input.run,
         steps: input.steps,
       });
@@ -445,7 +443,6 @@ async function runDrainBatch(input: {
   batchNumber: number;
   options: WorkflowOptions;
   projectSlug: string;
-  remaining: DrainRemainingState | null;
   run: RunLogger;
   steps: WorkflowStep[];
 }): Promise<number> {
