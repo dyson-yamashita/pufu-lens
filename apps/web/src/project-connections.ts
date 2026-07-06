@@ -170,12 +170,24 @@ export async function saveGithubAppConnectionConfig(input: {
   const appId = input.appId.trim();
   const existingMetadata = await readProjectProviderMetadata(input.projectSlug, 'github');
   const privateKey = normalizePrivateKeyPem(input.privateKey);
+  const existingPrivateKey = metadataPrivateKey(existingMetadata);
+  const resolvedPrivateKey = privateKey || existingPrivateKey;
   if (!appSlug) {
     throw new ConnectionConfigError('GitHub App slug is required.');
   }
   if (!/^[1-9]\d*$/.test(appId)) {
     throw new ConnectionConfigError('GitHub App ID must be a positive integer.');
   }
+  if (!resolvedPrivateKey) {
+    throw new ConnectionConfigError('GitHub App private key is required.');
+  }
+  const existingPrivateKeyFingerprint = metadataPrivateKeyFingerprint(existingMetadata);
+  const resolvedPrivateKeyFingerprint = githubAppPrivateKeyFingerprint(resolvedPrivateKey);
+  const existingInstallationMatchesConfig =
+    githubInstallationId(existingMetadata) !== null &&
+    existingMetadata.githubAppId === appId &&
+    existingMetadata.githubAppSlug === appSlug &&
+    existingPrivateKeyFingerprint === resolvedPrivateKeyFingerprint;
   const metadata: Record<string, unknown> = {
     githubAppId: appId,
     githubAppSlug: appSlug,
@@ -184,10 +196,23 @@ export async function saveGithubAppConnectionConfig(input: {
     validatePrivateKey(privateKey);
     metadata.githubAppPrivateKeyEncrypted = encryptConnectionSecret(privateKey);
     metadata.githubPrivateKeyConfigured = true;
-  } else if (isEncryptedConnectionSecret(existingMetadata.githubAppPrivateKeyEncrypted)) {
+  } else if (existingPrivateKey) {
     metadata.githubPrivateKeyConfigured = true;
-  } else {
-    throw new ConnectionConfigError('GitHub App private key is required.');
+  }
+  const reusableInstallation = await findReusableGithubAppInstallation({
+    appId,
+    appSlug,
+    projectSlug: input.projectSlug,
+    privateKeyFingerprint: resolvedPrivateKeyFingerprint,
+  });
+  if (!existingInstallationMatchesConfig) {
+    if (reusableInstallation) {
+      metadata.installationId = reusableInstallation.installationId;
+      metadata.setupAction = reusableInstallation.setupAction;
+    } else {
+      metadata.installationId = null;
+      metadata.setupAction = null;
+    }
   }
   const sql = getRequiredAdminSql();
   await sql`
@@ -577,6 +602,10 @@ function githubAppPrivateKey(metadata: Record<string, unknown>): string | null {
   return null;
 }
 
+function githubAppPrivateKeyFingerprint(privateKey: string): string {
+  return createHash('sha256').update(normalizePrivateKeyPem(privateKey)).digest('hex');
+}
+
 function normalizePrivateKeyPem(value: string): string {
   return value.trim().replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\\n/g, '\n');
 }
@@ -749,6 +778,76 @@ async function readProjectProviderMetadata(
     LIMIT 1
   `) as Array<{ metadata: unknown }>;
   return rows[0] && isRecord(rows[0].metadata) ? rows[0].metadata : {};
+}
+
+async function findReusableGithubAppInstallation(input: {
+  readonly appId: string;
+  readonly appSlug: string;
+  readonly projectSlug: string;
+  readonly privateKeyFingerprint: string;
+}): Promise<{ readonly installationId: string | number; readonly setupAction: string } | null> {
+  const sql = getRequiredAdminSql();
+  // Cross-project lookup is intentionally limited to server-side proof that the
+  // admin supplied the same GitHub App credentials; secrets and fingerprints are
+  // never written to the current project or returned to the UI.
+  const rows = (await sql`
+    SELECT oc.metadata
+    FROM public.oauth_connections oc
+    JOIN public.projects p ON p.id = oc.project_id
+    WHERE oc.provider = 'github'
+      AND p.slug <> ${input.projectSlug}
+      AND oc.metadata->>'githubAppId' = ${input.appId}
+      AND oc.metadata->>'githubAppSlug' = ${input.appSlug}
+      AND oc.metadata ? 'installationId'
+  `) as readonly unknown[];
+  for (const row of rows) {
+    const metadata = reusableGithubInstallationRowMetadata(row);
+    if (!metadata) {
+      continue;
+    }
+    const installationId = metadata.installationId;
+    if (typeof installationId !== 'string' && typeof installationId !== 'number') {
+      continue;
+    }
+    const fingerprint = metadataPrivateKeyFingerprint(metadata);
+    if (fingerprint === input.privateKeyFingerprint) {
+      return {
+        installationId,
+        setupAction: 'linked_existing_installation',
+      };
+    }
+  }
+  return null;
+}
+
+function reusableGithubInstallationRowMetadata(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  if (isRecord(value.metadata)) {
+    return value.metadata;
+  }
+  return value;
+}
+
+function metadataPrivateKeyFingerprint(metadata: Record<string, unknown>): string | null {
+  const privateKey = metadataPrivateKey(metadata);
+  return privateKey ? githubAppPrivateKeyFingerprint(privateKey) : null;
+}
+
+function metadataPrivateKey(metadata: Record<string, unknown>): string | null {
+  try {
+    return githubAppPrivateKey(metadata);
+  } catch {
+    return null;
+  }
+}
+
+function githubInstallationId(metadata: Record<string, unknown>): string | number | null {
+  const installationId = metadata.installationId;
+  return typeof installationId === 'string' || typeof installationId === 'number'
+    ? installationId
+    : null;
 }
 
 function localConnectionSecretPath(secretRef: string): string {
