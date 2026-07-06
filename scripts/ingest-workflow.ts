@@ -6,9 +6,17 @@ import postgres from 'postgres';
 import type { SourceType } from '../packages/ingestion/dist/index.js';
 import { ensureIngestionQueueLeaseColumn } from './ingestion-queue-lease.ts';
 import { requiredEnv } from './lib/cli.ts';
+import {
+  type DrainRemainingState,
+  hasDrainRemainingWork,
+  shouldCountParsedRaw,
+  summarizeDrainRemaining,
+} from './lib/ingest-workflow-drain.ts';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
 const STEP_ORDER = ['collect', 'parse', 'resolve', 'chunk', 'graph'] as const;
+const DEFAULT_DRAIN_MAX_BATCHES = 100;
+const DEFAULT_DRAIN_MAX_RUNTIME_SECONDS = 540;
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 type WorkflowStep = (typeof STEP_ORDER)[number];
@@ -16,6 +24,7 @@ type WorkflowCommand = 'run' | 'retry';
 
 type WorkflowOptions = {
   dataSourceId?: string;
+  drain?: boolean;
   dryRun?: boolean;
   embeddingProvider?: string;
   failedOnly?: boolean;
@@ -24,6 +33,8 @@ type WorkflowOptions = {
   folderUrls?: string[];
   labelIds?: string[];
   limit?: number;
+  maxBatches?: number;
+  maxRuntimeSeconds?: number;
   project?: string;
   query?: string;
   repositories?: string[];
@@ -32,6 +43,18 @@ type WorkflowOptions = {
   state?: 'all' | 'closed' | 'open';
   step?: WorkflowStep;
   urls?: string[];
+};
+
+type DrainScope = {
+  dataSourceId?: string;
+  sourceType?: SourceType;
+};
+
+type DrainStopReason = 'dry_run' | 'max_batches' | 'max_runtime' | 'no_progress' | 'queue_empty';
+
+type StepExecutionResult = {
+  progressCount: number;
+  result: ScriptResult;
 };
 
 type CountRow = {
@@ -125,16 +148,28 @@ async function runCommand(options: WorkflowOptions): Promise<void> {
 
   const run = createRunLogger({ command: 'run', projectSlug, sourceType: options.source });
   const steps = selectSteps(options);
+  validateDrainOptions(options, steps);
   logEvent(run, {
+    drain: options.drain ?? false,
     dryRun: options.dryRun ?? false,
     embeddingProvider: options.embeddingProvider ?? 'deterministic',
     event: 'workflow_started',
     llm: noLlmUsage(),
+    ...(options.drain
+      ? {
+          maxBatches: options.maxBatches ?? DEFAULT_DRAIN_MAX_BATCHES,
+          maxRuntimeSeconds: options.maxRuntimeSeconds ?? DEFAULT_DRAIN_MAX_RUNTIME_SECONDS,
+        }
+      : {}),
     steps,
   });
 
-  for (const step of steps) {
-    await executeWorkflowStep({ options, projectSlug, run, step });
+  if (options.drain) {
+    await runDrainWorkflow({ options, projectSlug, run, steps });
+  } else {
+    for (const step of steps) {
+      await executeWorkflowStep({ options, projectSlug, run, step });
+    }
   }
 
   logEvent(run, { event: 'workflow_completed', llm: noLlmUsage() });
@@ -160,16 +195,28 @@ async function retryCommand(options: WorkflowOptions): Promise<void> {
   });
 
   const steps = selectSteps({ ...options, resumeFrom: options.resumeFrom ?? 'parse' });
+  validateDrainOptions(options, steps);
   logEvent(run, {
+    drain: options.drain ?? false,
     dryRun: options.dryRun ?? false,
     embeddingProvider: options.embeddingProvider ?? 'deterministic',
     event: 'workflow_started',
     llm: noLlmUsage(),
+    ...(options.drain
+      ? {
+          maxBatches: options.maxBatches ?? DEFAULT_DRAIN_MAX_BATCHES,
+          maxRuntimeSeconds: options.maxRuntimeSeconds ?? DEFAULT_DRAIN_MAX_RUNTIME_SECONDS,
+        }
+      : {}),
     steps,
   });
 
-  for (const step of steps) {
-    await executeWorkflowStep({ options, projectSlug, run, step });
+  if (options.drain) {
+    await runDrainWorkflow({ options, projectSlug, run, steps });
+  } else {
+    for (const step of steps) {
+      await executeWorkflowStep({ options, projectSlug, run, step });
+    }
   }
 
   logEvent(run, { event: 'workflow_completed', llm: noLlmUsage() });
@@ -209,7 +256,7 @@ async function executeWorkflowStep(input: {
   projectSlug: string;
   run: RunLogger;
   step: WorkflowStep;
-}): Promise<void> {
+}): Promise<StepExecutionResult> {
   const startedAt = new Date();
   const command = buildStepCommand(input.step, input.projectSlug, input.options);
   logEvent(input.run, {
@@ -220,35 +267,40 @@ async function executeWorkflowStep(input: {
   });
 
   if (input.options.dryRun) {
+    const result = { planned: true };
     logEvent(input.run, {
       durationMs: Date.now() - startedAt.getTime(),
       event: 'step_completed',
       llm: noLlmUsage(),
-      result: { planned: true },
+      progressCount: 0,
+      result,
       step: input.step,
     });
-    return;
+    return { progressCount: 0, result };
   }
 
   try {
     const childResult = await runNodeScript(command.args);
     const failureCount = childResult.failureCount ?? 0;
+    const progressCount = measureStepProgress(input.step, childResult);
     logEvent(input.run, {
       durationMs: Date.now() - startedAt.getTime(),
       event: 'step_completed',
       llm: childResult.llm ?? noLlmUsage(),
+      progressCount,
       result: childResult,
       step: input.step,
     });
     if (input.step === 'collect' && failureCount > 0) {
       const failureThreshold = collectionFailureThreshold();
       if (failureCount <= failureThreshold) {
-        return;
+        return { progressCount, result: childResult };
       }
       throw new Error(
         `Collection step reported ${failureCount} failed candidate(s), threshold is ${failureThreshold}.`,
       );
     }
+    return { progressCount, result: childResult };
   } catch (error) {
     logEvent(input.run, {
       durationMs: Date.now() - startedAt.getTime(),
@@ -259,6 +311,285 @@ async function executeWorkflowStep(input: {
     });
     throw error;
   }
+}
+
+async function runDrainWorkflow(input: {
+  options: WorkflowOptions;
+  projectSlug: string;
+  run: RunLogger;
+  steps: WorkflowStep[];
+}): Promise<void> {
+  const maxBatches = input.options.maxBatches ?? DEFAULT_DRAIN_MAX_BATCHES;
+  const maxRuntimeSeconds = input.options.maxRuntimeSeconds ?? DEFAULT_DRAIN_MAX_RUNTIME_SECONDS;
+  const scope = drainScopeFromOptions(input.options);
+  const startedAt = Date.now();
+
+  logEvent(input.run, {
+    event: 'drain_started',
+    llm: noLlmUsage(),
+    maxBatches,
+    maxRuntimeSeconds,
+    scope: summarizeDrainScope(scope),
+    steps: input.steps,
+  });
+
+  if (input.options.dryRun) {
+    await runDrainBatch({
+      batchNumber: 1,
+      options: input.options,
+      projectSlug: input.projectSlug,
+      run: input.run,
+      steps: input.steps,
+    });
+    logEvent(input.run, {
+      batchCount: 1,
+      event: 'drain_completed',
+      llm: noLlmUsage(),
+      scope: summarizeDrainScope(scope),
+      stopReason: 'dry_run',
+    });
+    return;
+  }
+
+  await withSql(async (sql: postgres.Sql): Promise<void> => {
+    const project = await lookupProject(sql, input.projectSlug);
+    if (!project) {
+      throw new Error(`Project not found: ${input.projectSlug}`);
+    }
+
+    let completedBatches = 0;
+    let remaining = await readDrainRemainingState(sql, project.id, input.steps, scope);
+    for (let batchNumber = 1; batchNumber <= maxBatches; batchNumber += 1) {
+      const elapsedSeconds = (Date.now() - startedAt) / 1000;
+      if (elapsedSeconds >= maxRuntimeSeconds) {
+        logDrainCompleted(input.run, {
+          batchCount: completedBatches,
+          remaining,
+          scope,
+          stopReason: 'max_runtime',
+        });
+        return;
+      }
+
+      if (!hasDrainRemainingWork(input.steps, remaining)) {
+        logDrainCompleted(input.run, {
+          batchCount: completedBatches,
+          remaining,
+          scope,
+          stopReason: 'queue_empty',
+        });
+        return;
+      }
+
+      logEvent(input.run, {
+        batchNumber,
+        elapsedSeconds: Math.floor(elapsedSeconds),
+        event: 'drain_batch_started',
+        llm: noLlmUsage(),
+        remaining,
+        scope: summarizeDrainScope(scope),
+        steps: input.steps,
+      });
+
+      const batchProgress = await runDrainBatch({
+        batchNumber,
+        options: input.options,
+        projectSlug: input.projectSlug,
+        run: input.run,
+        steps: input.steps,
+      });
+      completedBatches = batchNumber;
+      remaining = await readDrainRemainingState(sql, project.id, input.steps, scope);
+      logEvent(input.run, {
+        batchNumber,
+        batchProgress,
+        event: 'drain_batch_completed',
+        llm: noLlmUsage(),
+        remaining,
+        scope: summarizeDrainScope(scope),
+        steps: input.steps,
+      });
+
+      if (batchProgress === 0) {
+        logDrainCompleted(input.run, {
+          batchCount: completedBatches,
+          remaining,
+          scope,
+          stopReason: 'no_progress',
+        });
+        return;
+      }
+    }
+
+    logDrainCompleted(input.run, {
+      batchCount: completedBatches,
+      remaining,
+      scope,
+      stopReason: 'max_batches',
+    });
+  });
+}
+
+async function runDrainBatch(input: {
+  batchNumber: number;
+  options: WorkflowOptions;
+  projectSlug: string;
+  run: RunLogger;
+  steps: WorkflowStep[];
+}): Promise<number> {
+  let batchProgress = 0;
+  for (const step of input.steps) {
+    const stepResult = await executeWorkflowStep({
+      options: input.options,
+      projectSlug: input.projectSlug,
+      run: input.run,
+      step,
+    });
+    batchProgress += stepResult.progressCount;
+  }
+  return batchProgress;
+}
+
+function logDrainCompleted(
+  run: RunLogger,
+  input: {
+    batchCount: number;
+    remaining: DrainRemainingState;
+    scope: DrainScope;
+    stopReason: DrainStopReason;
+  },
+): void {
+  logEvent(run, {
+    batchCount: input.batchCount,
+    event: 'drain_completed',
+    llm: noLlmUsage(),
+    remaining: summarizeDrainRemaining(input.remaining),
+    scope: summarizeDrainScope(input.scope),
+    stopReason: input.stopReason,
+  });
+}
+
+function validateDrainOptions(options: WorkflowOptions, steps: WorkflowStep[]): void {
+  if (!options.drain) {
+    return;
+  }
+  if (steps.includes('collect')) {
+    throw new Error(
+      '--drain cannot be used when collect is included. Use --resume-from parse or --step parse|chunk|graph.',
+    );
+  }
+  if (steps.length === 1 && steps[0] === 'resolve') {
+    throw new Error(
+      '--drain cannot be used with --step resolve alone. Use --resume-from resolve or include chunk/graph in the selected steps.',
+    );
+  }
+}
+
+function drainScopeFromOptions(options: WorkflowOptions): DrainScope {
+  return {
+    dataSourceId: options.dataSourceId,
+    sourceType: options.source,
+  };
+}
+
+function summarizeDrainScope(scope: DrainScope): Record<string, string | null> {
+  return {
+    dataSourceId: scope.dataSourceId ?? null,
+    source: scope.sourceType ?? null,
+  };
+}
+
+async function readDrainRemainingState(
+  sql: postgres.Sql,
+  projectId: string,
+  steps: WorkflowStep[],
+  scope: DrainScope,
+): Promise<DrainRemainingState> {
+  const [parseQueue, parsedRaw] = await Promise.all([
+    steps.includes('parse') ? countParseQueueRemaining(sql, projectId, scope) : Promise.resolve(0),
+    shouldCountParsedRaw(steps)
+      ? countParsedRawRemaining(sql, projectId, scope)
+      : Promise.resolve(0),
+  ]);
+  return summarizeDrainRemaining({ parseQueue, parsedRaw });
+}
+
+async function countParseQueueRemaining(
+  sql: postgres.Sql,
+  projectId: string,
+  scope: DrainScope,
+): Promise<number> {
+  const rows = (await sql`
+    SELECT count(*)::int AS count
+    FROM public.ingestion_queue q
+    JOIN public.raw_documents rd ON rd.id = q.raw_document_id
+    WHERE q.project_id = ${projectId}
+      AND (
+        q.status = 'pending'
+        OR (q.status = 'parsing' AND (q.lease_expires_at IS NULL OR q.lease_expires_at <= now()))
+      )
+      AND rd.ingest_status = 'fetched'
+      AND (${scope.sourceType ?? null}::text IS NULL OR rd.source_type = ${scope.sourceType ?? null})
+      AND (${scope.dataSourceId ?? null}::uuid IS NULL OR q.data_source_id = ${scope.dataSourceId ?? null}::uuid)
+  `) as Array<{ count: number }>;
+  return rows[0]?.count ?? 0;
+}
+
+async function countParsedRawRemaining(
+  sql: postgres.Sql,
+  projectId: string,
+  scope: DrainScope,
+): Promise<number> {
+  const rows = (await sql`
+    SELECT count(*)::int AS count
+    FROM public.raw_documents rd
+    WHERE rd.project_id = ${projectId}
+      AND rd.ingest_status = 'parsed'
+      AND rd.parsed_uri IS NOT NULL
+      AND (${scope.sourceType ?? null}::text IS NULL OR rd.source_type = ${scope.sourceType ?? null})
+      AND (
+        ${scope.dataSourceId ?? null}::uuid IS NULL
+        OR EXISTS (
+          SELECT 1
+          FROM public.raw_document_data_sources rdds
+          WHERE rdds.raw_document_id = rd.id
+            AND rdds.data_source_id = ${scope.dataSourceId ?? null}::uuid
+        )
+      )
+  `) as Array<{ count: number }>;
+  return rows[0]?.count ?? 0;
+}
+
+function measureStepProgress(step: WorkflowStep, result: ScriptResult): number {
+  const decisions = Array.isArray(result.decisions) ? result.decisions : [];
+  if (decisions.length > 0) {
+    if (step === 'resolve') {
+      return decisions.length;
+    }
+    return decisions.filter((decision) => countsAsDrainProgress(step, decision)).length;
+  }
+  if (typeof result.decisionCount === 'number') {
+    return result.decisionCount;
+  }
+  return 0;
+}
+
+function countsAsDrainProgress(step: WorkflowStep, decision: unknown): boolean {
+  if (!decision || typeof decision !== 'object') {
+    return false;
+  }
+  const record = decision as Record<string, unknown>;
+  const value = record.decision;
+  if (step === 'parse') {
+    return value === 'parsed' || value === 'held' || value === 'failed';
+  }
+  if (step === 'chunk') {
+    return value === 'indexed' || value === 'unchanged' || value === 'failed';
+  }
+  if (step === 'graph') {
+    return value === 'indexed' || value === 'failed';
+  }
+  return true;
 }
 
 function buildStepCommand(
@@ -720,6 +1051,12 @@ function parseArgs(argv: string[]): WorkflowOptions {
       options.failedOnly = true;
     } else if (arg === '--dry-run') {
       options.dryRun = true;
+    } else if (arg === '--drain') {
+      options.drain = true;
+    } else if (arg === '--max-batches') {
+      options.maxBatches = readPositiveInteger(readOptionValue(argv, ++index, arg), arg);
+    } else if (arg === '--max-runtime-seconds') {
+      options.maxRuntimeSeconds = readPositiveInteger(readOptionValue(argv, ++index, arg), arg);
     } else if (arg === '--limit') {
       options.limit = readPositiveInteger(readOptionValue(argv, ++index, arg), arg);
     } else if (arg === '--embedding-provider') {

@@ -11,10 +11,13 @@ type SourceType = (typeof SOURCE_TYPES)[number];
 
 type WorkflowInput = {
   dataSourceId?: string;
+  drain?: boolean;
   dryRun?: boolean;
   embeddingProvider?: string;
   fixture?: boolean;
   limit?: number;
+  maxBatches?: number;
+  maxRuntimeSeconds?: number;
   period?: 'weekly';
   project?: string;
   projectSlug?: string;
@@ -92,11 +95,20 @@ function appendCommonOptions(args: string[], input: WorkflowInput): void {
   if (input.dryRun) {
     args.push('--dry-run');
   }
+  if (input.drain) {
+    args.push('--drain');
+  }
   if (input.embeddingProvider !== undefined) {
     args.push('--embedding-provider', input.embeddingProvider);
   }
   if (input.limit !== undefined) {
     args.push('--limit', String(input.limit));
+  }
+  if (input.maxBatches !== undefined) {
+    args.push('--max-batches', String(input.maxBatches));
+  }
+  if (input.maxRuntimeSeconds !== undefined) {
+    args.push('--max-runtime-seconds', String(input.maxRuntimeSeconds));
   }
   if (input.resumeFrom !== undefined) {
     args.push('--resume-from', input.resumeFrom);
@@ -133,10 +145,13 @@ function parseWorkflowInput(value: string | undefined): WorkflowInput {
   const input = parsed as Record<string, unknown>;
   return {
     dataSourceId: optionalString(input.dataSourceId, 'dataSourceId'),
+    drain: optionalBoolean(input.drain, 'drain'),
     dryRun: optionalBoolean(input.dryRun, 'dryRun'),
     embeddingProvider: optionalString(input.embeddingProvider, 'embeddingProvider'),
     fixture: optionalBoolean(input.fixture, 'fixture'),
     limit: optionalPositiveInteger(input.limit, 'limit'),
+    maxBatches: optionalPositiveInteger(input.maxBatches, 'maxBatches'),
+    maxRuntimeSeconds: optionalPositiveInteger(input.maxRuntimeSeconds, 'maxRuntimeSeconds'),
     period: optionalPeriod(input.period),
     project: optionalString(input.project, 'project'),
     projectSlug: optionalString(input.projectSlug, 'projectSlug'),
@@ -236,10 +251,13 @@ function isDryRun(input: WorkflowInput): boolean {
 function summarizeInput(input: WorkflowInput): Record<string, unknown> {
   return {
     dataSourceId: input.dataSourceId,
+    drain: input.drain ?? false,
     dryRun: isDryRun(input),
     embeddingProvider: input.embeddingProvider,
     fixture: input.fixture ?? false,
     limit: input.limit,
+    maxBatches: input.maxBatches,
+    maxRuntimeSeconds: input.maxRuntimeSeconds,
     period: input.period,
     projectSlug: input.projectSlug ?? input.project,
     resumeFrom: input.resumeFrom,

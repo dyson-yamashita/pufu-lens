@@ -122,7 +122,11 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
               AND rdds.data_source_id = ${this.dataSourceId ?? null}::uuid
           )
         )
-      ORDER BY rd.parsed_at NULLS LAST, rd.fetched_at, rd.id
+      ORDER BY
+        rd.ingest_status DESC,
+        rd.parsed_at NULLS LAST,
+        rd.fetched_at,
+        rd.id
       LIMIT ${input.limit}
     `) as GraphTargetRow[];
 
