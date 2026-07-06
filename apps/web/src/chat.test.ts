@@ -10,6 +10,7 @@ import {
   createPostgresChatRepository,
   createPublicChatMemoryRateLimiter,
   DB_OUTSIDE_BUSINESS_HOURS_CODE,
+  deterministicVector,
   graphQuerySearchPatterns,
   hybridSearchCandidateLimit,
   inferChatEditingMetadata,
@@ -25,11 +26,13 @@ import {
   ProjectAccessDeniedError,
   parseChatSourceRow,
   parsePrivateChatHistoryRow,
+  parsePrivateChatRequestBody,
   privateChatHistoryItemFromRow,
   privateChatHistoryItemsForUiDisplay,
   privateChatHistorySourcesForStorage,
   privateChatHistoryToMastraMessages,
   publicChatToolCallsFromPrivate,
+  resolvePrivateChatIncludeHistory,
   runPrivateChat,
   runPublicChat,
   selectGraphRelatedDocumentCandidates,
@@ -72,6 +75,32 @@ assert.equal(inferChatEditingMetadata('次年度の仕様変更は?').inferredMo
 assert.equal(inferChatEditingMetadata('Nextcloud 連携の仕様変更は?').inferredMode, 'default');
 assert.equal(inferPublicChatEditingMetadata('公開レポートのリスクは?').inferredMode, 'default');
 assert.equal(inferPublicChatEditingMetadata('公開レポートを要約して').questionType, 'fact');
+
+assert.deepEqual(parsePrivateChatRequestBody({ question: 'hello' }), {
+  includeHistory: true,
+  ok: true,
+  question: 'hello',
+});
+assert.deepEqual(parsePrivateChatRequestBody({ includeHistory: false, question: 'hello' }), {
+  includeHistory: false,
+  ok: true,
+  question: 'hello',
+});
+assert.equal(parsePrivateChatRequestBody({ question: '' }).ok, false);
+assert.equal(parsePrivateChatRequestBody({ includeHistory: 'no', question: 'hello' }).ok, false);
+assert.equal(
+  resolvePrivateChatIncludeHistory({ messagesLength: 0, selectedHistoryId: null }),
+  false,
+);
+assert.equal(
+  resolvePrivateChatIncludeHistory({ messagesLength: 2, selectedHistoryId: null }),
+  true,
+);
+assert.equal(
+  resolvePrivateChatIncludeHistory({ messagesLength: 0, selectedHistoryId: 'turn-1' }),
+  true,
+);
+assert.equal(deterministicVector('sample query', 8).length, 8);
 
 assert.deepEqual(
   parseChatSourceRow({
@@ -557,6 +586,15 @@ assert.deepEqual(
     { role: 'assistant', content: '前回の回答' },
     { role: 'user', content: '仕様変更を要約して' },
   ],
+);
+assert.deepEqual(
+  createMastraProjectChatBody({
+    graphName: 'graph_sample_a',
+    history: [],
+    projectId: 'project-a',
+    question: '新しい質問',
+  }).messages,
+  [{ role: 'user', content: '新しい質問' }],
 );
 assert.deepEqual(
   parsePrivateChatHistoryRow({

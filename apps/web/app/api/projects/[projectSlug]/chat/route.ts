@@ -6,6 +6,7 @@ import {
   createPostgresChatRepository,
   isOutsideBusinessHoursFromEnv,
   ProjectAccessDeniedError,
+  parsePrivateChatRequestBody,
   privateChatHistoryToMastraMessages,
   privateChatUnavailableResponse,
 } from '../../../../../src/chat';
@@ -29,14 +30,16 @@ export async function POST(
 ) {
   const { projectSlug } = await params;
   let question = '';
+  let includeHistory = true;
   try {
-    const body = (await request.json()) as { question?: unknown };
-    question = typeof body.question === 'string' ? body.question.trim() : '';
+    const parsedBody = parsePrivateChatRequestBody(await request.json());
+    if (!parsedBody.ok) {
+      return chatErrorResponse('invalid_request', parsedBody.error, 400);
+    }
+    question = parsedBody.question;
+    includeHistory = parsedBody.includeHistory;
   } catch {
     return chatErrorResponse('invalid_json', 'Invalid JSON body', 400);
-  }
-  if (!question) {
-    return chatErrorResponse('invalid_request', 'question is required', 400);
   }
   if (question.length > privateChatQuestionMaxLength) {
     return chatErrorResponse(
@@ -68,16 +71,18 @@ export async function POST(
     if (!project) {
       throw new ProjectAccessDeniedError(projectSlug);
     }
-    const history = await repository.listPrivateChatHistoryForContext({
-      projectId: project.id,
-      userId,
-    });
+    const history = includeHistory
+      ? await repository.listPrivateChatHistoryForContext({
+          projectId: project.id,
+          userId,
+        })
+      : [];
     const mastraUrl = mastraProjectChatGenerateUrl();
     const mastraResponse = await fetch(mastraUrl, {
       body: JSON.stringify(
         createMastraProjectChatBody({
           graphName: project.graphName,
-          history: privateChatHistoryToMastraMessages(history),
+          history: includeHistory ? privateChatHistoryToMastraMessages(history) : [],
           projectId: project.id,
           question,
         }),

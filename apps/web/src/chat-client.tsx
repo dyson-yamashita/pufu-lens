@@ -17,6 +17,7 @@ import {
   type PrivateChatHistoryListResponse,
   type PublicChatResponse,
   type PublicProjectChatUnavailableResponse,
+  resolvePrivateChatIncludeHistory,
 } from './chat';
 import { ChatQuestionTextarea } from './chat-question-input';
 import {
@@ -137,6 +138,10 @@ export function ChatPanel({
       return;
     }
 
+    const includeHistory = resolvePrivateChatIncludeHistory({
+      messagesLength: messages.length,
+      selectedHistoryId,
+    });
     const baseMessages = selectedHistoryId ? [] : messages;
     const nextMessages = appendUserMessage(baseMessages, trimmedQuestion);
     const { messages: messagesWithPending, pendingId } = appendPendingAssistant(nextMessages);
@@ -147,7 +152,7 @@ export function ChatPanel({
 
     try {
       const result = await fetch(`/api/projects/${projectSlug}/chat`, {
-        body: JSON.stringify({ question: trimmedQuestion }),
+        body: JSON.stringify({ includeHistory, question: trimmedQuestion }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
       });

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { RequestContext } from '@mastra/core/request-context';
 import { MemoryObjectStorage } from '@pufu-lens/storage/testing';
 import type { ChatRepository } from '@pufu-lens/web/chat';
+import { deterministicVector, PRIVATE_CHAT_VECTOR_DIMENSIONS } from '@pufu-lens/web/chat';
 import type { ReportRepository } from '@pufu-lens/web/report';
 import { sampleChatSource as sampleSource } from '@pufu-lens/web/test-fixtures';
 import {
@@ -12,20 +13,27 @@ import {
   mastraAgentIds,
   mastraToolIds,
   mastraWorkflowIds,
+  PROJECT_CHAT_AGENT_INSTRUCTIONS,
   rawReadViewTrace,
 } from './index.ts';
 
-function createChatRepository(): ChatRepository & { projectIds: string[] } {
+function createChatRepository(): ChatRepository & {
+  projectIds: string[];
+  vectorSearchInputs: Array<{ embedding: readonly number[]; query: string }>;
+} {
   const projectIds: string[] = [];
+  const vectorSearchInputs: Array<{ embedding: readonly number[]; query: string }> = [];
   return {
     projectIds,
+    vectorSearchInputs,
     async lookupProjectMember({ projectSlug, userId }) {
       return projectSlug === 'sample-a' && userId === 'user-a'
         ? { graphName: 'graph_sample_a', id: 'project-a', slug: 'sample-a' }
         : undefined;
     },
-    async vectorSearch({ projectId }) {
+    async vectorSearch({ embedding, projectId, query }) {
       projectIds.push(projectId);
+      vectorSearchInputs.push({ embedding, query });
       return [sampleSource];
     },
     async graphQuery({ projectId }) {
@@ -333,10 +341,22 @@ assert.equal(dataSourceStatus?.dataSources[0]?.sourceType, 'github');
 
 const requestContext = new RequestContext<MastraProjectContext>([['projectId', 'project-a']]);
 const vectorSearch = await runtime.projectChatTools.vectorSearch.execute?.(
-  { embedding: [0.1], limit: 3, query: '仕様変更' },
+  { limit: 3, query: '仕様変更' },
   { requestContext } as never,
 );
 assert.deepEqual(vectorSearch, { sources: [sampleSource] });
+assert.deepEqual(chatRepository.vectorSearchInputs.at(-1)?.query, '仕様変更');
+assert.deepEqual(
+  chatRepository.vectorSearchInputs.at(-1)?.embedding,
+  deterministicVector('仕様変更', PRIVATE_CHAT_VECTOR_DIMENSIONS),
+);
+
+const projectChatInstructions = PROJECT_CHAT_AGENT_INSTRUCTIONS;
+assert.match(projectChatInstructions, /まず vector-search を実行する/);
+assert.match(projectChatInstructions, /graph-query と parsed-doc-fetch を補助検索/);
+assert.match(projectChatInstructions, /seedDocumentIds/);
+assert.match(projectChatInstructions, /raw-document-fetch は、参照する source を選んだ後/);
+assert.match(projectChatInstructions, /確定的な事実主張をしてはいけない/);
 
 const graphQuery = (await runtime.projectChatTools.graphQuery.execute?.(
   { limit: 3, query: '関連 issue' },
