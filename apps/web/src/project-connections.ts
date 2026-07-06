@@ -170,7 +170,7 @@ export async function saveGithubAppConnectionConfig(input: {
   const appId = input.appId.trim();
   const existingMetadata = await readProjectProviderMetadata(input.projectSlug, 'github');
   const privateKey = normalizePrivateKeyPem(input.privateKey);
-  const existingPrivateKey = githubAppPrivateKey(existingMetadata);
+  const existingPrivateKey = metadataPrivateKey(existingMetadata);
   const resolvedPrivateKey = privateKey || existingPrivateKey;
   if (!appSlug) {
     throw new ConnectionConfigError('GitHub App slug is required.');
@@ -204,16 +204,14 @@ export async function saveGithubAppConnectionConfig(input: {
     privateKey: resolvedPrivateKey,
     projectSlug: input.projectSlug,
   });
-  if (
-    reusableInstallation &&
-    typeof existingMetadata.installationId !== 'string' &&
-    typeof existingMetadata.installationId !== 'number'
-  ) {
-    metadata.installationId = reusableInstallation.installationId;
-    metadata.setupAction = reusableInstallation.setupAction;
-  } else if (!existingInstallationMatchesConfig) {
-    metadata.installationId = null;
-    metadata.setupAction = null;
+  if (!existingInstallationMatchesConfig) {
+    if (reusableInstallation) {
+      metadata.installationId = reusableInstallation.installationId;
+      metadata.setupAction = reusableInstallation.setupAction;
+    } else {
+      metadata.installationId = null;
+      metadata.setupAction = null;
+    }
   }
   const sql = getRequiredAdminSql();
   await sql`
@@ -827,8 +825,16 @@ function reusableGithubInstallationRowMetadata(value: unknown): Record<string, u
 }
 
 function metadataPrivateKeyFingerprint(metadata: Record<string, unknown>): string | null {
-  const privateKey = githubAppPrivateKey(metadata);
+  const privateKey = metadataPrivateKey(metadata);
   return privateKey ? githubAppPrivateKeyFingerprint(privateKey) : null;
+}
+
+function metadataPrivateKey(metadata: Record<string, unknown>): string | null {
+  try {
+    return githubAppPrivateKey(metadata);
+  } catch {
+    return null;
+  }
 }
 
 function githubInstallationId(metadata: Record<string, unknown>): string | number | null {
