@@ -137,6 +137,7 @@ export function ChatPanel({
       return;
     }
 
+    const includeHistory = messages.length > 0 || selectedHistoryId !== null;
     const baseMessages = selectedHistoryId ? [] : messages;
     const nextMessages = appendUserMessage(baseMessages, trimmedQuestion);
     const { messages: messagesWithPending, pendingId } = appendPendingAssistant(nextMessages);
@@ -147,7 +148,7 @@ export function ChatPanel({
 
     try {
       const result = await fetch(`/api/projects/${projectSlug}/chat`, {
-        body: JSON.stringify({ question: trimmedQuestion }),
+        body: JSON.stringify({ includeHistory, question: trimmedQuestion }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
       });

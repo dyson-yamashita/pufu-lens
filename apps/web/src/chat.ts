@@ -104,6 +104,29 @@ export interface MastraChatHistoryMessage {
 export const PRIVATE_CHAT_CONTEXT_TURN_LIMIT = 6;
 export const PRIVATE_CHAT_HISTORY_UI_LIMIT = 50;
 export const PRIVATE_CHAT_HISTORY_CONTENT_MAX = 4000;
+export const PRIVATE_CHAT_VECTOR_DIMENSIONS = 1536;
+
+export type PrivateChatRequestBodyParseResult =
+  | { readonly includeHistory: boolean; readonly ok: true; readonly question: string }
+  | { readonly error: string; readonly ok: false };
+
+export function parsePrivateChatRequestBody(body: unknown): PrivateChatRequestBodyParseResult {
+  if (!isRecord(body)) {
+    return { error: 'request body must be an object', ok: false };
+  }
+  const question = typeof body.question === 'string' ? body.question.trim() : '';
+  if (!question) {
+    return { error: 'question is required', ok: false };
+  }
+  if ('includeHistory' in body && typeof body.includeHistory !== 'boolean') {
+    return { error: 'includeHistory must be a boolean', ok: false };
+  }
+  return {
+    includeHistory: typeof body.includeHistory === 'boolean' ? body.includeHistory : true,
+    ok: true,
+    question,
+  };
+}
 
 export interface PublicChatSource {
   readonly label: string;
@@ -550,7 +573,7 @@ export async function runPrivateChat(
   }
 
   const editing = inferChatEditingMetadata(request.question);
-  const embedding = deterministicVector(request.question, 1536);
+  const embedding = deterministicVector(request.question, PRIVATE_CHAT_VECTOR_DIMENSIONS);
   const vectorSources = await options.repository.vectorSearch({
     embedding,
     limit: 5,
@@ -1991,7 +2014,7 @@ function parseOptionalNullableString(value: unknown, fieldName: string): string 
   throw new Error(`Invalid chat source row field: ${fieldName}`);
 }
 
-function deterministicVector(text: string, dimensions: number): number[] {
+export function deterministicVector(text: string, dimensions: number): number[] {
   const hash = createHash('sha256').update(text).digest();
   let seed = hash.readUInt32BE(0);
   const vector: number[] = [];

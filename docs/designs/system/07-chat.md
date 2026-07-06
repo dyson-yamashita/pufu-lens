@@ -8,14 +8,14 @@ API 入口、認可、stream proxy の共通契約は [API デザイン](05-api-
 
 Private Chat Agent は **プロジェクトをコンテキストとして固定** して動作する。Browser URL は `/projects/[projectSlug]/chat` を使い、Next.js API が `projectSlug` を UUID の `projectId` に解決して Mastra に渡す。project member だけが利用でき、次のツールを提供する。
 
-| ツール                 | 役割                                                                                                                                              |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vector-search`        | `document_chunks` から pgvector の意味的類似度候補と PGroonga の本文キーワード候補を取得し、hybrid score で関連チャンクを返す（document_id 付き） |
-| `graph-query`          | プロジェクト専用 AGE グラフに対する Cypher 探索                                                                                                   |
-| `document-fetch`       | 特定の `documents.id` の全文 / メタデータを取得                                                                                                   |
-| `raw-document-fetch`   | 認可済み document / 検索候補に限定して **Agent Raw Read View**（上限付き section 配列）を取得する。raw contract / 本文全文は返さない              |
-| `parsed-doc-fetch`     | parse 済み JSON（引用分解後のメール、抽出済みエンティティ等）を取得                                                                               |
-| `cross-source-summary` | 複数 Document を横断したサマリ                                                                                                                    |
+| ツール                 | 役割                                                                                                                                                                                                                                                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `vector-search`        | `document_chunks` から pgvector の意味的類似度候補と PGroonga の本文キーワード候補を取得し、hybrid score で関連チャンクを返す（document_id 付き）。Agent 入力は `{ query, limit }` のみで、embedding は server-side の deterministic helper で生成する |
+| `graph-query`          | プロジェクト専用 AGE グラフに対する Cypher 探索。`vector-search` で得た `documentId` を `seedDocumentIds` として渡し、関連 document を補助的に広げる                                                                                                   |
+| `document-fetch`       | 特定の `documents.id` の全文 / メタデータを取得                                                                                                                                                                                                        |
+| `raw-document-fetch`   | 認可済み document / 検索候補に限定して **Agent Raw Read View**（上限付き section 配列）を取得する。raw contract / 本文全文は返さない                                                                                                                   |
+| `parsed-doc-fetch`     | parse 済み JSON（引用分解後のメール、抽出済みエンティティ等）を取得                                                                                                                                                                                    |
+| `cross-source-summary` | 複数 Document を横断したサマリ                                                                                                                                                                                                                         |
 
 Chat API はユーザー発話から編集方針を deterministic に推定し、`editing` metadata として `inferredMode`、`operations`、`questionType`、`confidence`、`caveats` を返す。UI に mode selector は置かず、通常の自然言語入力から `summary` / `issue_mapping` / `risk_scan` / `timeline` / `next_actions` / `structure` / `default` を推定する。metadata は回答構成の補助であり、source 制約や raw read view の未信頼データ扱いを弱めない。
 
@@ -234,6 +234,7 @@ Public project でも Private Chat / Private Report 生成は project member 認
 Step 12 の最小実装では Mastra stream proxy へ進む前に、Next.js 内に同期 JSON API と UI を置く。
 
 - API: `POST /api/projects/[projectSlug]/chat`
+- request body: `{ "question": string, "includeHistory"?: boolean }`。`includeHistory` を省略した場合は `true`（後方互換）。UI の New chat 後や空スレッドからの初回送信では `includeHistory: false` を送り、server-side の private chat 履歴を Mastra messages に含めない。表示中の会話継続や履歴スレッド選択後の追質問では `includeHistory: true` を送る。
 - UI: `/projects/[projectSlug]/chat`
 - server-side provider: Next.js API が project member 判定後に `projectId` を `requestContext` として Mastra `project-chat-agent` へ渡す。ローカル既定は `http://localhost:4111`、本番は `MASTRA_SERVER_URL` または `MASTRA_API_URL` を使う。
 - project member 判定: `PUFU_LENS_CHAT_USER_ID` または `PUFU_LENS_ADMIN_USER_ID` を使って `project_members` を確認
@@ -351,7 +352,7 @@ export async function POST(req: Request, { params }: { params: { projectSlug: st
 
 Public report page では、必要に応じて report 本文の横に public chat composer を表示する。private chat と誤認しないよう、公開情報だけに基づく回答であることを短く表示し、入力 placeholder も report 内容への質問に限定する。
 
-UI は private chat、public project chat、public report chat のいずれも、ブラウザ内の会話履歴をスレッドとして保持する。ユーザーの質問と assistant の回答を時系列で残し、追加質問を送っても直前の回答を置き換えない。初期実装では API へ送る入力は従来どおり現在の `question` を主入力とし、履歴を server-side context として永続化・再投入する場合は Mastra stream proxy への切り替え時に扱う。
+UI は private chat、public project chat、public report chat のいずれも、ブラウザ内の会話履歴をスレッドとして保持する。ユーザーの質問と assistant の回答を時系列で残し、追加質問を送っても直前の回答を置き換えない。private chat API は `{ question, includeHistory? }` を受け取り、`includeHistory: false` の場合は DB 上の private chat 履歴を Mastra messages に含めない。表示中スレッドの継続や履歴選択後の追質問では `includeHistory: true` を送る。
 
 各 assistant 回答は Markdown として表示する。回答の直下には、その回答で参照した document / public source を 1 カラムの compact source list として表示する。Private Chat では全 source type の `title`、`docType`、`canonicalUri` または `documentId` を表示し、Public Chat では web 由来 source に対応する `publicSourceId`、`sectionId`、`label` のみを表示する。tool call は通常表示の主情報にはせず、必要時に確認できる compact な詳細表示へ寄せる。
 
