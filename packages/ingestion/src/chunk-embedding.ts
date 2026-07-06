@@ -310,7 +310,7 @@ export function prepareDocumentChunks(input: {
   return textChunks.map((content, index) => ({
     chunkIndex: index,
     content,
-    contentHash: sha256Hex(content),
+    contentHash: chunkContentHash(content, index),
     embedding: input.embeddings[index] ?? [],
     embeddingModel: input.embeddingModel,
     metadata: {
@@ -552,9 +552,13 @@ function chunkSignatures(
 ): DocumentChunkSignature[] {
   return contents.map((content, index) => ({
     chunkIndex: index,
-    contentHash: sha256Hex(content),
+    contentHash: chunkContentHash(content, index),
     embeddingModel,
   }));
+}
+
+function chunkContentHash(content: string, chunkIndex: number): string {
+  return sha256Hex(`${chunkIndex}\0${content}`);
 }
 
 function summarizeText(text: string): string | undefined {

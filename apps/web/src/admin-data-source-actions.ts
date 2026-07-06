@@ -64,6 +64,9 @@ type CloudRunJobRunResponse = {
   readonly name?: string;
 };
 
+const DEFAULT_ADMIN_INGEST_DRAIN_MAX_BATCHES = 100;
+const DEFAULT_ADMIN_INGEST_DRAIN_MAX_RUNTIME_SECONDS = 540;
+
 function parseOptionalAdminActionIdRow(
   rows: readonly unknown[],
   context: string,
@@ -1071,8 +1074,9 @@ async function runIngestWorkflow(input: {
   readonly sourceType: SourceType;
   readonly storageRoot?: string;
 }): Promise<void> {
+  const drainOptions = adminIngestDrainOptions();
   if (process.env.NODE_ENV === 'production') {
-    await runCloudRunIngestWorkflowJob(input);
+    await runCloudRunIngestWorkflowJob({ ...input, ...drainOptions });
     return;
   }
   const repoRoot = resolveRepoRoot();
@@ -1094,6 +1098,11 @@ async function runIngestWorkflow(input: {
       input.dataSourceId,
       '--resume-from',
       'parse',
+      '--drain',
+      '--max-batches',
+      String(drainOptions.maxBatches),
+      '--max-runtime-seconds',
+      String(drainOptions.maxRuntimeSeconds),
       '--embedding-provider',
       process.env.PUFU_LENS_ADMIN_INGEST_EMBEDDING_PROVIDER ?? 'deterministic',
     ],
@@ -1132,6 +1141,8 @@ async function runIngestWorkflow(input: {
 
 async function runCloudRunIngestWorkflowJob(input: {
   readonly dataSourceId: string;
+  readonly maxBatches: number;
+  readonly maxRuntimeSeconds: number;
   readonly projectSlug: string;
   readonly sourceType: SourceType;
 }): Promise<void> {
@@ -1140,7 +1151,10 @@ async function runCloudRunIngestWorkflowJob(input: {
   const jobName = process.env.PUFU_LENS_INGEST_WORKFLOW_JOB_NAME ?? 'ingest-workflow';
   const workflowInput = {
     dataSourceId: input.dataSourceId,
+    drain: true,
     embeddingProvider: process.env.PUFU_LENS_ADMIN_INGEST_EMBEDDING_PROVIDER ?? 'deterministic',
+    maxBatches: input.maxBatches,
+    maxRuntimeSeconds: input.maxRuntimeSeconds,
     projectSlug: input.projectSlug,
     resumeFrom: 'parse',
     source: input.sourceType,
@@ -1198,6 +1212,19 @@ async function cloudRunAccessToken(): Promise<string> {
   return token;
 }
 
+function adminIngestDrainOptions(): { maxBatches: number; maxRuntimeSeconds: number } {
+  return {
+    maxBatches: readPositiveIntegerEnv(
+      'PUFU_LENS_ADMIN_INGEST_DRAIN_MAX_BATCHES',
+      DEFAULT_ADMIN_INGEST_DRAIN_MAX_BATCHES,
+    ),
+    maxRuntimeSeconds: readPositiveIntegerEnv(
+      'PUFU_LENS_ADMIN_INGEST_DRAIN_MAX_RUNTIME_SECONDS',
+      DEFAULT_ADMIN_INGEST_DRAIN_MAX_RUNTIME_SECONDS,
+    ),
+  };
+}
+
 async function runtimeProjectId(): Promise<string> {
   const envProjectId =
     process.env.PUFU_LENS_GCP_PROJECT_ID ??
@@ -1226,6 +1253,18 @@ function requiredRuntimeEnv(name: string): string {
     throw new Error(`${name} is required.`);
   }
   return value;
+}
+
+function readPositiveIntegerEnv(name: string, fallback: number): number {
+  const value = process.env[name];
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+  return parsed;
 }
 
 function storageRootFromObjectUri(uri: string | null, projectSlug: string): string | undefined {

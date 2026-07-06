@@ -56,26 +56,52 @@ test('prepareDocumentChunks creates stable chunk order and hashes', async () => 
     [
       {
         content: 'Fixture title\n\nAlpha beta gamma.',
-        contentHash: sha256Hex('Fixture title\n\nAlpha beta gamma.'),
+        contentHash: sha256Hex('0\0Fixture title\n\nAlpha beta gamma.'),
         index: 0,
       },
       {
         content: 'gamma. Delta epsilon zeta.',
-        contentHash: sha256Hex('gamma. Delta epsilon zeta.'),
+        contentHash: sha256Hex('1\0gamma. Delta epsilon zeta.'),
         index: 1,
       },
       {
         content: 'zeta. Eta theta iota.',
-        contentHash: sha256Hex('zeta. Eta theta iota.'),
+        contentHash: sha256Hex('2\0zeta. Eta theta iota.'),
         index: 2,
       },
       {
         content: 'iota. Kappa lambda mu.',
-        contentHash: sha256Hex('iota. Kappa lambda mu.'),
+        contentHash: sha256Hex('3\0iota. Kappa lambda mu.'),
         index: 3,
       },
     ],
   );
+});
+
+test('prepareDocumentChunks gives repeated chunk content distinct hashes by position', async () => {
+  const parsed = parsedDocument({
+    bodyText: 'Same repeated sentence.\n\nSame repeated sentence.',
+    title: '',
+  });
+  const provider = createDeterministicEmbeddingProvider({ dimensions: 4 });
+  const embeddings = await provider.embedTexts([
+    'Same repeated sentence.',
+    'Same repeated sentence.',
+  ]);
+
+  const chunks = prepareDocumentChunks({
+    chunkConfig: { maxCharacters: 24, overlapCharacters: 0, version: 'test-chunk-v1' },
+    embeddingModel: provider.model,
+    embeddings,
+    parsed,
+    rawContentHash: 'raw-hash-1',
+  });
+
+  assert.deepEqual(
+    chunks.map((chunk) => chunk.content),
+    ['Same repeated sentence.', 'Same repeated sentence.'],
+  );
+  assert.equal(new Set(chunks.map((chunk) => chunk.contentHash)).size, chunks.length);
 });
 
 test('prepareDocumentChunks skips empty normalized document text', () => {
