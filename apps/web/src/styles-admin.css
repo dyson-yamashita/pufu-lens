@@ -39,6 +39,21 @@
   margin-top: 12px;
 }
 
+.data-source-detail-dialog {
+  max-width: min(960px, calc(100vw - 32px));
+}
+
+.data-source-detail-modal-card {
+  max-height: calc(100vh - 48px);
+  padding-top: 44px;
+  position: relative;
+}
+
+.data-source-detail-modal-scroll {
+  max-height: calc(100vh - 112px);
+  overflow: auto;
+}
+
 .content-preview-metrics {
   gap: 8px;
 }
@@ -356,6 +371,11 @@
 
 .connection-required-notice a {
   color: var(--blue);
+}
+
+.project-create-notice {
+  grid-column: 1 / -1;
+  margin: -4px 0 0;
 }
 
 .danger-zone-panel {
