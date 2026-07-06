@@ -786,6 +786,9 @@ async function findReusableGithubAppInstallation(input: {
   readonly projectSlug: string;
 }): Promise<{ readonly installationId: string | number; readonly setupAction: string } | null> {
   const sql = getRequiredAdminSql();
+  // Cross-project lookup is intentionally limited to server-side proof that the
+  // admin supplied the same GitHub App credentials; secrets and fingerprints are
+  // never written to the current project or returned to the UI.
   const rows = (await sql`
     SELECT oc.metadata
     FROM public.oauth_connections oc
