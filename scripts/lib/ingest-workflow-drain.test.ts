@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   hasDrainRemainingWork,
+  hasGraphStep,
+  shouldContinueDrainAfterBatch,
   shouldCountParsedRaw,
   summarizeDrainRemaining,
 } from './ingest-workflow-drain.ts';
@@ -28,6 +30,34 @@ test('shouldCountParsedRaw is true only when downstream steps are selected', () 
   assert.equal(shouldCountParsedRaw(['parse']), false);
   assert.equal(shouldCountParsedRaw(['chunk']), true);
   assert.equal(shouldCountParsedRaw(['resolve', 'graph']), true);
+});
+
+test('shouldContinueDrainAfterBatch keeps graph drains alive while graph is making progress', () => {
+  assert.equal(hasGraphStep(['parse', 'graph']), true);
+  assert.equal(
+    shouldContinueDrainAfterBatch({
+      batchProgress: 10,
+      remaining: { parseQueue: 0, parsedRaw: 0 },
+      steps: ['graph'],
+    }),
+    true,
+  );
+  assert.equal(
+    shouldContinueDrainAfterBatch({
+      batchProgress: 0,
+      remaining: { parseQueue: 0, parsedRaw: 0 },
+      steps: ['graph'],
+    }),
+    false,
+  );
+  assert.equal(
+    shouldContinueDrainAfterBatch({
+      batchProgress: 10,
+      remaining: { parseQueue: 0, parsedRaw: 0 },
+      steps: ['chunk'],
+    }),
+    false,
+  );
 });
 
 test('summarizeDrainRemaining exposes queue-oriented counts only', () => {

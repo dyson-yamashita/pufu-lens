@@ -15,6 +15,7 @@ import { storeGraphRelations } from '../packages/ingestion/dist/index.js';
 import { createObjectStorageFromEnv } from '../packages/storage/dist/factory.js';
 import type { ObjectStorage } from '../packages/storage/dist/object-storage.js';
 import { requiredEnv, validateGraphName } from './lib/cli.ts';
+import { parseAgtypeString, selectMissingGraphTargets } from './lib/graph-target-selection.ts';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 
@@ -127,11 +128,17 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
         rd.parsed_at NULLS LAST,
         rd.fetched_at,
         rd.id
-      LIMIT ${input.limit}
     `) as GraphTargetRow[];
+    const graphName = requiredGraphName(this.graphName);
+    const existingGraphNodeIds = await listExistingDocumentGraphNodeIds(
+      this.sql,
+      graphName,
+      rows.map((row) => row.graphNodeId),
+    );
+    const selectedRows = selectMissingGraphTargets(rows, existingGraphNodeIds, input.limit);
 
     return Promise.all(
-      rows.map(
+      selectedRows.map(
         async (row): Promise<GraphRelationTarget> => ({
           document: {
             docType: row.docType,
@@ -353,6 +360,27 @@ async function executeCypher(
   await sql.unsafe(
     `SELECT * FROM cypher(${sqlString(graphName)}, ${dollarQuote(cypher)}, $1::agtype) AS (value agtype)`,
     [JSON.stringify(params)],
+  );
+}
+
+async function listExistingDocumentGraphNodeIds(
+  sql: postgres.Sql,
+  graphName: string,
+  graphNodeIds: readonly string[],
+): Promise<Set<string>> {
+  if (graphNodeIds.length === 0) {
+    return new Set();
+  }
+  const rows = (await sql.unsafe(
+    `SELECT * FROM cypher(${sqlString(graphName)}, ${dollarQuote(
+      'MATCH (n:Document) WHERE n.graphNodeId IN $graphNodeIds RETURN n.graphNodeId',
+    )}, $1::agtype) AS (graph_node_id agtype)`,
+    [JSON.stringify({ graphNodeIds })],
+  )) as Array<{ graph_node_id: unknown }>;
+  return new Set(
+    rows
+      .map((row) => parseAgtypeString(row.graph_node_id))
+      .filter((graphNodeId): graphNodeId is string => graphNodeId !== undefined),
   );
 }
 
