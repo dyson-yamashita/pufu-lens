@@ -181,12 +181,13 @@ export async function saveGithubAppConnectionConfig(input: {
   if (!resolvedPrivateKey) {
     throw new ConnectionConfigError('GitHub App private key is required.');
   }
+  const existingPrivateKeyFingerprint = metadataPrivateKeyFingerprint(existingMetadata);
+  const resolvedPrivateKeyFingerprint = githubAppPrivateKeyFingerprint(resolvedPrivateKey);
   const existingInstallationMatchesConfig =
     githubInstallationId(existingMetadata) !== null &&
     existingMetadata.githubAppId === appId &&
     existingMetadata.githubAppSlug === appSlug &&
-    metadataPrivateKeyFingerprint(existingMetadata) ===
-      githubAppPrivateKeyFingerprint(resolvedPrivateKey);
+    existingPrivateKeyFingerprint === resolvedPrivateKeyFingerprint;
   const metadata: Record<string, unknown> = {
     githubAppId: appId,
     githubAppSlug: appSlug,
@@ -201,8 +202,8 @@ export async function saveGithubAppConnectionConfig(input: {
   const reusableInstallation = await findReusableGithubAppInstallation({
     appId,
     appSlug,
-    privateKey: resolvedPrivateKey,
     projectSlug: input.projectSlug,
+    privateKeyFingerprint: resolvedPrivateKeyFingerprint,
   });
   if (!existingInstallationMatchesConfig) {
     if (reusableInstallation) {
@@ -782,8 +783,8 @@ async function readProjectProviderMetadata(
 async function findReusableGithubAppInstallation(input: {
   readonly appId: string;
   readonly appSlug: string;
-  readonly privateKey: string;
   readonly projectSlug: string;
+  readonly privateKeyFingerprint: string;
 }): Promise<{ readonly installationId: string | number; readonly setupAction: string } | null> {
   const sql = getRequiredAdminSql();
   // Cross-project lookup is intentionally limited to server-side proof that the
@@ -799,7 +800,6 @@ async function findReusableGithubAppInstallation(input: {
       AND oc.metadata->>'githubAppSlug' = ${input.appSlug}
       AND oc.metadata ? 'installationId'
   `) as readonly unknown[];
-  const targetFingerprint = githubAppPrivateKeyFingerprint(input.privateKey);
   for (const row of rows) {
     const metadata = reusableGithubInstallationRowMetadata(row);
     if (!metadata) {
@@ -810,7 +810,7 @@ async function findReusableGithubAppInstallation(input: {
       continue;
     }
     const fingerprint = metadataPrivateKeyFingerprint(metadata);
-    if (fingerprint === targetFingerprint) {
+    if (fingerprint === input.privateKeyFingerprint) {
       return {
         installationId,
         setupAction: 'linked_existing_installation',
@@ -821,10 +821,13 @@ async function findReusableGithubAppInstallation(input: {
 }
 
 function reusableGithubInstallationRowMetadata(value: unknown): Record<string, unknown> | null {
-  if (!isRecord(value) || !isRecord(value.metadata)) {
+  if (!isRecord(value)) {
     return null;
   }
-  return value.metadata;
+  if (isRecord(value.metadata)) {
+    return value.metadata;
+  }
+  return value;
 }
 
 function metadataPrivateKeyFingerprint(metadata: Record<string, unknown>): string | null {
