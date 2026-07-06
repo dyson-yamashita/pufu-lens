@@ -20,6 +20,21 @@ export function hasDrainRemainingWork(
   return false;
 }
 
+export function hasGraphStep(steps: readonly DrainWorkflowStep[]): boolean {
+  return steps.includes('graph');
+}
+
+export function shouldContinueDrainAfterBatch(input: {
+  batchProgress: number;
+  remaining: DrainRemainingState;
+  steps: readonly DrainWorkflowStep[];
+}): boolean {
+  if (hasDrainRemainingWork(input.steps, input.remaining)) {
+    return true;
+  }
+  return hasGraphStep(input.steps) && input.batchProgress > 0;
+}
+
 export function shouldCountParsedRaw(steps: readonly DrainWorkflowStep[]): boolean {
   return steps.some((step) => step === 'resolve' || step === 'chunk' || step === 'graph');
 }

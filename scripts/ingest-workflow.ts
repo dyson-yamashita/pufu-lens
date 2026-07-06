@@ -9,6 +9,8 @@ import { requiredEnv } from './lib/cli.ts';
 import {
   type DrainRemainingState,
   hasDrainRemainingWork,
+  hasGraphStep,
+  shouldContinueDrainAfterBatch,
   shouldCountParsedRaw,
   summarizeDrainRemaining,
 } from './lib/ingest-workflow-drain.ts';
@@ -358,6 +360,7 @@ async function runDrainWorkflow(input: {
     }
 
     let completedBatches = 0;
+    let lastBatchProgress: number | undefined;
     let remaining = await readDrainRemainingState(sql, project.id, input.steps, scope);
     for (let batchNumber = 1; batchNumber <= maxBatches; batchNumber += 1) {
       const elapsedSeconds = (Date.now() - startedAt) / 1000;
@@ -371,7 +374,9 @@ async function runDrainWorkflow(input: {
         return;
       }
 
-      if (!hasDrainRemainingWork(input.steps, remaining)) {
+      const canProbeGraphBacklog =
+        hasGraphStep(input.steps) && (completedBatches === 0 || (lastBatchProgress ?? 0) > 0);
+      if (!hasDrainRemainingWork(input.steps, remaining) && !canProbeGraphBacklog) {
         logDrainCompleted(input.run, {
           batchCount: completedBatches,
           remaining,
@@ -399,6 +404,7 @@ async function runDrainWorkflow(input: {
         steps: input.steps,
       });
       completedBatches = batchNumber;
+      lastBatchProgress = batchProgress;
       remaining = await readDrainRemainingState(sql, project.id, input.steps, scope);
       logEvent(input.run, {
         batchNumber,
@@ -416,6 +422,15 @@ async function runDrainWorkflow(input: {
           remaining,
           scope,
           stopReason: 'no_progress',
+        });
+        return;
+      }
+      if (!shouldContinueDrainAfterBatch({ batchProgress, remaining, steps: input.steps })) {
+        logDrainCompleted(input.run, {
+          batchCount: completedBatches,
+          remaining,
+          scope,
+          stopReason: 'queue_empty',
         });
         return;
       }

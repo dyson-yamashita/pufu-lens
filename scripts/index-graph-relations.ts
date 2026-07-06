@@ -15,8 +15,11 @@ import { storeGraphRelations } from '../packages/ingestion/dist/index.js';
 import { createObjectStorageFromEnv } from '../packages/storage/dist/factory.js';
 import type { ObjectStorage } from '../packages/storage/dist/object-storage.js';
 import { requiredEnv, validateGraphName } from './lib/cli.ts';
+import { parseAgtypeString, selectMissingGraphTargets } from './lib/graph-target-selection.ts';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
+const GRAPH_TARGET_SCAN_PAGE_MIN_SIZE = 100;
+const GRAPH_TARGET_SCAN_PAGE_MULTIPLIER = 10;
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
@@ -97,7 +100,56 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
     limit: number;
     projectId: string;
   }): Promise<GraphRelationTarget[]> {
-    const rows = (await this.sql`
+    const graphName = requiredGraphName(this.graphName);
+    const selectedRows: GraphTargetRow[] = [];
+    const pageSize = Math.max(
+      input.limit * GRAPH_TARGET_SCAN_PAGE_MULTIPLIER,
+      GRAPH_TARGET_SCAN_PAGE_MIN_SIZE,
+    );
+    let offset = 0;
+
+    while (selectedRows.length < input.limit) {
+      const rows = await this.readGraphTargetRows({ ...input, limit: pageSize, offset });
+      if (rows.length === 0) {
+        break;
+      }
+      const existingGraphNodeIds = await listExistingDocumentGraphNodeIds(
+        this.sql,
+        graphName,
+        rows.map((row) => row.graphNodeId),
+      );
+      selectedRows.push(
+        ...selectMissingGraphTargets(rows, existingGraphNodeIds, input.limit - selectedRows.length),
+      );
+      if (rows.length < pageSize) {
+        break;
+      }
+      offset += rows.length;
+    }
+
+    return Promise.all(
+      selectedRows.map(
+        async (row): Promise<GraphRelationTarget> => ({
+          document: {
+            docType: row.docType,
+            graphNodeId: row.graphNodeId,
+            id: row.documentId,
+            rawDocumentId: row.documentRawDocumentId,
+          },
+          parsed: await this.storage.getText(row.parsedUri),
+          rawContentHash: row.rawContentHash,
+          rawDocumentId: row.rawDocumentId,
+        }),
+      ),
+    );
+  }
+
+  private async readGraphTargetRows(input: {
+    limit: number;
+    offset: number;
+    projectId: string;
+  }): Promise<GraphTargetRow[]> {
+    return (await this.sql`
       SELECT
         d.doc_type AS "docType",
         d.graph_node_id AS "graphNodeId",
@@ -128,23 +180,8 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
         rd.fetched_at,
         rd.id
       LIMIT ${input.limit}
+      OFFSET ${input.offset}
     `) as GraphTargetRow[];
-
-    return Promise.all(
-      rows.map(
-        async (row): Promise<GraphRelationTarget> => ({
-          document: {
-            docType: row.docType,
-            graphNodeId: row.graphNodeId,
-            id: row.documentId,
-            rawDocumentId: row.documentRawDocumentId,
-          },
-          parsed: await this.storage.getText(row.parsedUri),
-          rawContentHash: row.rawContentHash,
-          rawDocumentId: row.rawDocumentId,
-        }),
-      ),
-    );
   }
 
   async findActorByAlias(input: {
@@ -353,6 +390,27 @@ async function executeCypher(
   await sql.unsafe(
     `SELECT * FROM cypher(${sqlString(graphName)}, ${dollarQuote(cypher)}, $1::agtype) AS (value agtype)`,
     [JSON.stringify(params)],
+  );
+}
+
+async function listExistingDocumentGraphNodeIds(
+  sql: postgres.Sql,
+  graphName: string,
+  graphNodeIds: readonly string[],
+): Promise<Set<string>> {
+  if (graphNodeIds.length === 0) {
+    return new Set();
+  }
+  const rows = (await sql.unsafe(
+    `SELECT graph_node_id FROM cypher(${sqlString(graphName)}, ${dollarQuote(
+      'MATCH (n:Document) WHERE n.graphNodeId IN $graphNodeIds RETURN n.graphNodeId',
+    )}, $1::agtype) AS (graph_node_id agtype)`,
+    [JSON.stringify({ graphNodeIds })],
+  )) as Array<{ graph_node_id: unknown }>;
+  return new Set(
+    rows
+      .map((row) => parseAgtypeString(row.graph_node_id))
+      .filter((graphNodeId): graphNodeId is string => graphNodeId !== undefined),
   );
 }
 
