@@ -253,11 +253,6 @@
   width: 100%;
 }
 
-.chat-input-row textarea:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
 .chat-composer-actions {
   align-items: center;
   bottom: 16px;
@@ -265,6 +260,27 @@
   gap: 6px;
   position: absolute;
   right: 10px;
+}
+
+.chat-input-row textarea.chat-question-input-collapsed {
+  min-height: 44px;
+  padding: 10px 88px 10px 12px;
+}
+
+.chat-input-row textarea.chat-question-input-expanded {
+  min-height: 92px;
+  padding: 12px 88px 44px 12px;
+}
+
+.chat-input-row textarea.chat-question-input-collapsed + .chat-composer-actions {
+  bottom: auto;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.chat-input-row textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .chat-icon-button {
@@ -284,6 +300,18 @@
     color 120ms ease,
     opacity 120ms ease;
   width: 32px;
+}
+
+.chat-action-button {
+  gap: 6px;
+  padding: 0 12px;
+  width: auto;
+}
+
+.chat-action-button-label {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
 }
 
 .chat-icon-button:hover:not(:disabled) {
@@ -406,6 +434,42 @@
   font-style: italic;
 }
 
+.chat-thinking {
+  align-items: baseline;
+  display: inline-flex;
+  gap: 1px;
+}
+
+.chat-thinking-dots {
+  display: inline-flex;
+  min-width: 18px;
+}
+
+.chat-thinking-dots span {
+  animation: chat-thinking-dot 1.2s infinite ease-in-out;
+  opacity: 0.2;
+}
+
+.chat-thinking-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.chat-thinking-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes chat-thinking-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.2;
+  }
+
+  40% {
+    opacity: 1;
+  }
+}
+
 .chat-message-error .chat-message-text {
   margin: 0;
 }
@@ -511,22 +575,6 @@
   .chat-form {
     margin: 0 -4px -4px;
     padding: 8px 4px 4px;
-  }
-
-  .chat-input-row textarea.chat-question-input-collapsed {
-    min-height: 44px;
-    padding: 10px 88px 10px 12px;
-  }
-
-  .chat-input-row textarea.chat-question-input-expanded {
-    min-height: 92px;
-    padding: 12px 88px 44px 12px;
-  }
-
-  .chat-input-row textarea.chat-question-input-collapsed + .chat-composer-actions {
-    bottom: auto;
-    top: 50%;
-    transform: translateY(-50%);
   }
 }
 

@@ -105,15 +105,24 @@ export function mapPrivateChatHistoryToThreadMessages(
 }
 
 type ChatThreadProps = {
+  readonly introMessage?: string;
   readonly messages: readonly ChatThreadMessage<ChatResponse>[];
   readonly resultTestId: string;
 };
 
-export function PrivateChatThread({ messages, resultTestId }: ChatThreadProps) {
+export function PrivateChatThread({ introMessage, messages, resultTestId }: ChatThreadProps) {
   const containerRef = useChatThreadScroll(chatThreadScrollKey(messages));
 
   return (
     <div className="chat-thread" data-testid={resultTestId} ref={containerRef}>
+      {messages.length === 0 && introMessage ? (
+        <article
+          className="chat-message chat-message-assistant chat-message-intro"
+          data-testid="chat-intro-message"
+        >
+          <ChatMarkdownText testId="chat-assistant-intro-message" text={introMessage} />
+        </article>
+      ) : null}
       {messages.map((message, index) => (
         <ChatThreadMessageItem index={index} key={message.id} message={message} variant="private" />
       ))}
@@ -178,7 +187,7 @@ function ChatThreadMessageItem({
         className="chat-message chat-message-assistant chat-message-pending"
         data-testid={`chat-message-${index}`}
       >
-        <ChatMarkdownText testId={`chat-assistant-message-${index}`} text="Thinking..." />
+        <PendingThinking testId={`chat-assistant-message-${index}`} />
       </article>
     );
   }
@@ -203,14 +212,32 @@ function ChatThreadMessageItem({
   return (
     <article className="chat-message chat-message-assistant" data-testid={`chat-message-${index}`}>
       <ChatMarkdownText testId={`chat-assistant-message-${index}`} text={response.answer} />
+      <EditingDetails editing={response.editing} index={index} />
       {variant === 'private' ? (
         <PrivateSourceStrip index={index} sources={(response as ChatResponse).sources} />
       ) : (
         <PublicSourceStrip index={index} sources={(response as PublicChatResponse).sources} />
       )}
-      <EditingDetails editing={response.editing} index={index} />
       <ToolCallsDetails index={index} toolCalls={response.toolCalls} />
     </article>
+  );
+}
+
+function PendingThinking({ testId }: { readonly testId: string }) {
+  return (
+    <div
+      aria-label="Thinking"
+      className="chat-message-text chat-thinking"
+      data-testid={testId}
+      role="status"
+    >
+      <span>Thinking</span>
+      <span aria-hidden="true" className="chat-thinking-dots">
+        <span>.</span>
+        <span>.</span>
+        <span>.</span>
+      </span>
+    </div>
   );
 }
 

@@ -256,14 +256,14 @@ export function PageHeader({
   action,
 }: {
   readonly title: string;
-  readonly subtitle: string;
+  readonly subtitle?: string;
   readonly action?: React.ReactNode;
 }) {
   return (
     <header className="page-header">
       <div>
         <h1>{title}</h1>
-        <p>{subtitle}</p>
+        {subtitle ? <p>{subtitle}</p> : null}
       </div>
       {action}
     </header>
