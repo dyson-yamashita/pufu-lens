@@ -177,7 +177,10 @@ export default async function DataSourcesPage({
           />
         </div>
         {selectedSource ? (
-          <DataSourceDetailDialog closeHref={dataSourceListHref(project.slug, activeSourceType)}>
+          <DataSourceDetailDialog
+            closeHref={dataSourceListHref(project.slug, activeSourceType)}
+            key={selectedSource.id}
+          >
             <div className="panel-heading">
               <div>
                 <p className="eyebrow">{selectedSource.sourceType}</p>

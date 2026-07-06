@@ -37,7 +37,7 @@ export function DataSourceDetailDialog({
         >
           <X size={18} />
         </button>
-        {children}
+        <div className="data-source-detail-modal-scroll">{children}</div>
       </div>
     </dialog>
   );
