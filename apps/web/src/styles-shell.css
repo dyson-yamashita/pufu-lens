@@ -2,6 +2,7 @@
   display: grid;
   grid-template-columns: 256px minmax(0, 1fr);
   min-height: 100vh;
+  --side-nav-width: 256px;
 }
 
 .guest-app-shell {
@@ -55,6 +56,23 @@
 }
 
 @media (min-width: 721px) {
+  .guest-app-shell:has(.guest-menu:not([data-open="false"])),
+  .app-shell:not(.guest-app-shell):has(.guest-menu:not([data-open="false"])) {
+    --main-surface-padding-top: 88px;
+  }
+
+  .guest-menu:not([data-open="false"]) .guest-menu-toggle {
+    background: var(--bg);
+    border-radius: 0;
+    height: 72px;
+    left: var(--side-nav-width);
+    padding: 0 32px;
+    position: fixed;
+    right: 0;
+    top: 0;
+    z-index: 25;
+  }
+
   .guest-app-shell:has(.guest-menu[data-open="false"]) .guest-global-nav {
     background: transparent;
     border-right: 0;
@@ -222,6 +240,11 @@
   min-height: 44px;
   padding: 0;
   text-align: left;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease,
+    left 180ms ease,
+    padding 180ms ease;
 }
 
 .guest-menu-toggle svg {
@@ -342,7 +365,7 @@
 
 .main-surface {
   min-width: 0;
-  padding: 32px;
+  padding: var(--main-surface-padding-top, 32px) 32px 32px;
   padding-left: var(--main-surface-padding-left, 32px);
 }
 
@@ -364,10 +387,12 @@
 @media (max-width: 1023px) {
   .app-shell {
     grid-template-columns: 224px minmax(0, 1fr);
+    --side-nav-width: 224px;
   }
 
   .guest-app-shell {
     grid-template-columns: 224px minmax(0, 1fr);
+    --side-nav-width: 224px;
   }
 
   .guest-app-shell:has(.guest-menu[data-open="false"]) {
@@ -412,6 +437,7 @@
     grid-template-columns: minmax(0, 1fr);
     --main-surface-padding-left: 16px;
     --main-surface-padding-top: 80px;
+    --side-nav-width: 0px;
   }
 
   .main-surface {
@@ -421,8 +447,8 @@
 
   .global-nav,
   .guest-global-nav {
-    background: var(--nav-bg);
-    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+    border-bottom: 0;
     border-right: 0;
     box-shadow: var(--shadow);
     height: auto;
@@ -437,10 +463,20 @@
     z-index: 30;
   }
 
+  .guest-app-shell:has(.guest-menu[data-open="true"]),
+  .app-shell:not(.guest-app-shell):has(.guest-menu[data-open="true"]) {
+    --main-surface-padding-top: 20px;
+  }
+
+  .global-nav:has(.guest-menu[data-open="true"]),
+  .guest-global-nav:has(.guest-menu[data-open="true"]) {
+    position: sticky;
+  }
+
   .global-nav:has(.guest-menu:not([data-open="true"])),
   .guest-global-nav:has(.guest-menu:not([data-open="true"])) {
-    background: var(--surface);
-    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+    border-bottom: 0;
     box-shadow: var(--shadow);
     pointer-events: auto;
     right: 0;
