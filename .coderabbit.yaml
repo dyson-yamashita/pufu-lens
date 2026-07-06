@@ -2,11 +2,46 @@ language: 'ja-JP'
 
 reviews:
   profile: 'chill'
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  high_level_summary_instructions: |
+    PR を開いた直後にレビューの重要度が分かるように、summary の先頭に「重要度サマリ」を置いてください。
+    重要度サマリには Critical / Major / Minor / Trivial / Info の件数、最優先で見るべきファイル、マージ前対応が必要な指摘の有無を簡潔に含めてください。
+    件数が 0 の重要度も省略せず、表形式で表示してください。
+    表は「重要度」「件数」「対応目安」の 3 列にし、対応目安は Critical/Major が「マージ前対応」、Minor が「可能なら対応」、Trivial/Info が「任意対応」にしてください。
+    Critical または Major が 1 件以上ある場合は、summary の冒頭で「マージ前対応推奨」と明示してください。
+    Minor / Trivial / Info のみの場合は、「任意対応または改善提案中心」と分かる表現にしてください。
   review_details: true
+  collapse_walkthrough: false
+  suggested_labels: true
+  auto_apply_labels: false
+  labeling_instructions:
+    - label: 'risk:critical'
+      instructions: 'セキュリティ侵害、データ損失、本番障害、認証認可の重大欠陥など、Critical 相当の指摘がある場合。'
+    - label: 'risk:major'
+      instructions: '機能不具合、性能劣化、互換性破壊、外部連携障害など、Major 相当でマージ前対応が推奨される指摘がある場合。'
+    - label: 'risk:minor'
+      instructions: '軽微な不具合や改善提案が中心で、Minor 相当の指摘はあるが致命的ではない場合。'
+    - label: 'risk:low'
+      instructions: 'Trivial または Info 相当の可読性、命名、コメント、軽微なリファクタ提案が中心の場合。'
+  mutually_exclusive_groups:
+    risk:
+      - 'risk:critical'
+      - 'risk:major'
+      - 'risk:minor'
+      - 'risk:low'
   auto_review:
     enabled: true
     drafts: true
   path_instructions:
+    - path: '**/*'
+      instructions: |
+        この全体指示は重要度表示の共通形式だけを定め、後続のパス別レビュー観点を置き換えず、追加の共通ルールとして扱ってください。
+        レビューコメントでは、対応優先度がすぐ分かるようにしてください。
+        各指摘の冒頭に「対応優先度: Critical/Major/Minor/Trivial/Info」を明示してください。
+        Critical/Major はマージ前対応、Minor は可能なら対応、Trivial/Info は任意対応または情報提供として扱ってください。
+        セキュリティ、認証認可、個人情報、データ破壊、課金、外部連携障害、本番障害につながる問題は Critical または Major として優先して指摘してください。
+        命名、軽微な可読性、好みの問題は Trivial または Info に寄せ、重要度が低い指摘は必要最小限にしてください。
     - path: 'apps/web/src/**'
       instructions: |
         Pufu Lens の Web 実装として、認可、server action、UI 表示崩れ、data-testid、責務分離を重点確認してください。
