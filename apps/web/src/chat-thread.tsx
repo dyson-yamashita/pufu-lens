@@ -225,12 +225,7 @@ function ChatThreadMessageItem({
 
 function PendingThinking({ testId }: { readonly testId: string }) {
   return (
-    <div
-      aria-label="Thinking"
-      className="chat-message-text chat-thinking"
-      data-testid={testId}
-      role="status"
-    >
+    <div className="chat-message-text chat-thinking" data-testid={testId} role="status">
       <span>Thinking</span>
       <span aria-hidden="true" className="chat-thinking-dots">
         <span>.</span>
