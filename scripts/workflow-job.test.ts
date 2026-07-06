@@ -1,0 +1,106 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const workflowJobScript = join(repoRoot, 'scripts/workflow-job.ts');
+
+type ScriptRunResult = {
+  exitCode: number | null;
+  events: Array<Record<string, unknown>>;
+  stderr: string;
+};
+
+async function runWorkflowJob(env: Record<string, string>): Promise<ScriptRunResult> {
+  const child = spawn(process.execPath, ['--experimental-strip-types', workflowJobScript], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      ...env,
+      DATABASE_URL: undefined,
+    },
+  });
+
+  let stdout = '';
+  let stderr = '';
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (chunk: string) => {
+    stdout += chunk;
+  });
+  child.stderr.on('data', (chunk: string) => {
+    stderr += chunk;
+  });
+
+  const exitCode = await new Promise<number | null>((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', resolve);
+  });
+
+  return {
+    exitCode,
+    events: stdout
+      .trim()
+      .split('\n')
+      .filter((line) => line.length > 0)
+      .map((line) => JSON.parse(line) as Record<string, unknown>),
+    stderr,
+  };
+}
+
+test('ingest-workflow job plan passes drain options through argv', async () => {
+  const result = await runWorkflowJob({
+    DRY_RUN: 'true',
+    WORKFLOW_ID: 'ingest-workflow',
+    WORKFLOW_INPUT_JSON: JSON.stringify({
+      dataSourceId: 'ds-123',
+      drain: true,
+      limit: 25,
+      maxBatches: 12,
+      maxRuntimeSeconds: 300,
+      projectSlug: 'sample-a',
+      resumeFrom: 'parse',
+      source: 'github',
+    }),
+  });
+
+  assert.equal(result.exitCode, 0);
+  const planned = result.events.find((event) => event.event === 'job_planned') as
+    | { argv?: string[]; input?: Record<string, unknown> }
+    | undefined;
+  assert.ok(planned);
+  assert.equal(planned?.input?.dataSourceId, 'ds-123');
+  assert.equal(planned?.input?.drain, true);
+  assert.equal(planned?.input?.dryRun, true);
+  assert.equal(planned?.input?.fixture, false);
+  assert.equal(planned?.input?.limit, 25);
+  assert.equal(planned?.input?.maxBatches, 12);
+  assert.equal(planned?.input?.maxRuntimeSeconds, 300);
+  assert.equal(planned?.input?.projectSlug, 'sample-a');
+  assert.equal(planned?.input?.resumeFrom, 'parse');
+  assert.equal(planned?.input?.source, 'github');
+  assert.ok(planned?.argv?.includes('--drain'));
+  assert.ok(planned?.argv?.includes('--max-batches'));
+  assert.ok(planned?.argv?.includes('12'));
+  assert.ok(planned?.argv?.includes('--max-runtime-seconds'));
+  assert.ok(planned?.argv?.includes('300'));
+  assert.ok(planned?.argv?.includes('--data-source-id'));
+  assert.ok(planned?.argv?.includes('ds-123'));
+});
+
+test('rejects invalid drain boolean in WORKFLOW_INPUT_JSON', async () => {
+  const result = await runWorkflowJob({
+    DRY_RUN: 'true',
+    WORKFLOW_ID: 'ingest-workflow',
+    WORKFLOW_INPUT_JSON: JSON.stringify({
+      drain: 'yes',
+      projectSlug: 'sample-a',
+      source: 'github',
+    }),
+  });
+
+  assert.notEqual(result.exitCode, 0);
+  assert.match(result.stderr, /drain must be a boolean/);
+});
