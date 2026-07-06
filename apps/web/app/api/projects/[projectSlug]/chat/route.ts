@@ -30,7 +30,7 @@ export async function POST(
 ) {
   const { projectSlug } = await params;
   let question = '';
-  let includeHistory = true;
+  let includeHistory: boolean;
   try {
     const parsedBody = parsePrivateChatRequestBody(await request.json());
     if (!parsedBody.ok) {
@@ -82,7 +82,7 @@ export async function POST(
       body: JSON.stringify(
         createMastraProjectChatBody({
           graphName: project.graphName,
-          history: includeHistory ? privateChatHistoryToMastraMessages(history) : [],
+          history: privateChatHistoryToMastraMessages(history),
           projectId: project.id,
           question,
         }),
