@@ -1,64 +1,22 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { runJsonLineScript } from './lib/script-test-runner.ts';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ingestWorkflowScript = join(repoRoot, 'scripts/ingest-workflow.ts');
 
-type ScriptRunResult = {
-  exitCode: number | null;
-  events: Array<Record<string, unknown>>;
-  stderr: string;
-};
-
 async function runIngestWorkflow(
   args: readonly string[],
   env: Record<string, string | undefined> = {},
-): Promise<ScriptRunResult> {
-  const child = spawn(
-    process.execPath,
-    ['--experimental-strip-types', ingestWorkflowScript, ...args],
-    {
-      cwd: repoRoot,
-      env: {
-        ...process.env,
-        ...env,
-        DATABASE_URL: undefined,
-      },
-    },
-  );
-
-  let stdout = '';
-  let stderr = '';
-  child.stdout.setEncoding('utf8');
-  child.stderr.setEncoding('utf8');
-  child.stdout.on('data', (chunk: string) => {
-    stdout += chunk;
+) {
+  return runJsonLineScript({
+    args,
+    cwd: repoRoot,
+    env: { ...env, DATABASE_URL: undefined },
+    scriptPath: ingestWorkflowScript,
   });
-  child.stderr.on('data', (chunk: string) => {
-    stderr += chunk;
-  });
-
-  const exitCode = await new Promise<number | null>((resolve, reject) => {
-    child.on('error', reject);
-    child.on('close', resolve);
-  });
-
-  return {
-    exitCode,
-    events: parseJsonLines(stdout),
-    stderr,
-  };
-}
-
-function parseJsonLines(stdout: string): Array<Record<string, unknown>> {
-  return stdout
-    .trim()
-    .split('\n')
-    .filter((line) => line.length > 0)
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
 function eventNames(events: readonly Record<string, unknown>[]): string[] {
