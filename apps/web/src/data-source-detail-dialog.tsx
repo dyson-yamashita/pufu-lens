@@ -32,6 +32,7 @@ export function DataSourceDetailDialog({
         <button
           aria-label="Close source detail"
           className="modal-close-button"
+          data-testid="data-source-detail-dialog-close-button"
           onClick={() => dialogRef.current?.close()}
           type="button"
         >

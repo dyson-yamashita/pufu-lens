@@ -152,6 +152,9 @@ test.describe('authenticated admin operation controls', () => {
     await expect(page.getByTestId('data-source-settings-section')).toBeVisible();
     await expect(page.getByTestId('data-source-edit-name-input')).toBeVisible();
     await expect(page.getByTestId('data-source-save-button')).toBeEnabled();
+    await page.getByTestId('data-source-detail-dialog-close-button').click();
+    await expect(page.getByTestId('data-source-detail-panel')).toHaveCount(0);
+    await expect(page).toHaveURL(/\/projects\/sample-a\/admin\/data-sources\?sourceType=web$/);
 
     await page.goto('/projects/sample-a/admin/data-sources?dataSourceId=sample-a-github-main');
     await expect(page.getByTestId('data-source-selected-connection-notice')).toBeVisible();
