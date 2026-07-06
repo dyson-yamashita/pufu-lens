@@ -18,6 +18,8 @@ import { requiredEnv, validateGraphName } from './lib/cli.ts';
 import { parseAgtypeString, selectMissingGraphTargets } from './lib/graph-target-selection.ts';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
+const GRAPH_TARGET_SCAN_PAGE_MIN_SIZE = 100;
+const GRAPH_TARGET_SCAN_PAGE_MULTIPLIER = 10;
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
@@ -98,7 +100,56 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
     limit: number;
     projectId: string;
   }): Promise<GraphRelationTarget[]> {
-    const rows = (await this.sql`
+    const graphName = requiredGraphName(this.graphName);
+    const selectedRows: GraphTargetRow[] = [];
+    const pageSize = Math.max(
+      input.limit * GRAPH_TARGET_SCAN_PAGE_MULTIPLIER,
+      GRAPH_TARGET_SCAN_PAGE_MIN_SIZE,
+    );
+    let offset = 0;
+
+    while (selectedRows.length < input.limit) {
+      const rows = await this.readGraphTargetRows({ ...input, limit: pageSize, offset });
+      if (rows.length === 0) {
+        break;
+      }
+      const existingGraphNodeIds = await listExistingDocumentGraphNodeIds(
+        this.sql,
+        graphName,
+        rows.map((row) => row.graphNodeId),
+      );
+      selectedRows.push(
+        ...selectMissingGraphTargets(rows, existingGraphNodeIds, input.limit - selectedRows.length),
+      );
+      if (rows.length < pageSize) {
+        break;
+      }
+      offset += rows.length;
+    }
+
+    return Promise.all(
+      selectedRows.map(
+        async (row): Promise<GraphRelationTarget> => ({
+          document: {
+            docType: row.docType,
+            graphNodeId: row.graphNodeId,
+            id: row.documentId,
+            rawDocumentId: row.documentRawDocumentId,
+          },
+          parsed: await this.storage.getText(row.parsedUri),
+          rawContentHash: row.rawContentHash,
+          rawDocumentId: row.rawDocumentId,
+        }),
+      ),
+    );
+  }
+
+  private async readGraphTargetRows(input: {
+    limit: number;
+    offset: number;
+    projectId: string;
+  }): Promise<GraphTargetRow[]> {
+    return (await this.sql`
       SELECT
         d.doc_type AS "docType",
         d.graph_node_id AS "graphNodeId",
@@ -128,30 +179,9 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
         rd.parsed_at NULLS LAST,
         rd.fetched_at,
         rd.id
+      LIMIT ${input.limit}
+      OFFSET ${input.offset}
     `) as GraphTargetRow[];
-    const graphName = requiredGraphName(this.graphName);
-    const existingGraphNodeIds = await listExistingDocumentGraphNodeIds(
-      this.sql,
-      graphName,
-      rows.map((row) => row.graphNodeId),
-    );
-    const selectedRows = selectMissingGraphTargets(rows, existingGraphNodeIds, input.limit);
-
-    return Promise.all(
-      selectedRows.map(
-        async (row): Promise<GraphRelationTarget> => ({
-          document: {
-            docType: row.docType,
-            graphNodeId: row.graphNodeId,
-            id: row.documentId,
-            rawDocumentId: row.documentRawDocumentId,
-          },
-          parsed: await this.storage.getText(row.parsedUri),
-          rawContentHash: row.rawContentHash,
-          rawDocumentId: row.rawDocumentId,
-        }),
-      ),
-    );
   }
 
   async findActorByAlias(input: {
@@ -372,7 +402,7 @@ async function listExistingDocumentGraphNodeIds(
     return new Set();
   }
   const rows = (await sql.unsafe(
-    `SELECT * FROM cypher(${sqlString(graphName)}, ${dollarQuote(
+    `SELECT graph_node_id FROM cypher(${sqlString(graphName)}, ${dollarQuote(
       'MATCH (n:Document) WHERE n.graphNodeId IN $graphNodeIds RETURN n.graphNodeId',
     )}, $1::agtype) AS (graph_node_id agtype)`,
     [JSON.stringify({ graphNodeIds })],
