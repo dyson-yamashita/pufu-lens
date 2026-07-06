@@ -38,7 +38,15 @@ env:
     availability:
       - RUNTIME
   - variable: PUFU_LENS_INGEST_WORKFLOW_JOB_NAME
-    value: ingest-workflow
+    value: production-ingest-workflow
+    availability:
+      - RUNTIME
+  - variable: PUFU_LENS_ADMIN_INGEST_DRAIN_MAX_BATCHES
+    value: '100'
+    availability:
+      - RUNTIME
+  - variable: PUFU_LENS_ADMIN_INGEST_DRAIN_MAX_RUNTIME_SECONDS
+    value: '540'
     availability:
       - RUNTIME
   - variable: GEMINI_CHAT_MODEL
