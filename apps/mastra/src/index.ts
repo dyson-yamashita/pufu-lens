@@ -259,6 +259,11 @@ const rawReadViewFetchOutputSchema = z.object({
   view: z.unknown().nullable(),
 });
 
+export const vectorSearchInputSchema = z.object({
+  limit: z.number().int().min(1).max(10),
+  query: z.string().trim().min(1),
+});
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -525,10 +530,7 @@ export function createProjectChatTools(repository: ChatRepository) {
       id: mastraToolIds.vectorSearch,
       description:
         'Search vector-indexed document metadata and relevant short snippets for the active project. Pass query text only; embedding is generated server-side.',
-      inputSchema: z.object({
-        limit: z.number().int().min(1).max(10),
-        query: z.string(),
-      }),
+      inputSchema: vectorSearchInputSchema,
       outputSchema: chatSourceListSchema,
       requestContextSchema: mastraProjectContextSchema,
       execute: async ({ limit, query }, context) => ({

@@ -128,13 +128,6 @@ export function parsePrivateChatRequestBody(body: unknown): PrivateChatRequestBo
   };
 }
 
-export function resolvePrivateChatIncludeHistory(input: {
-  readonly messagesLength: number;
-  readonly selectedHistoryId: string | null;
-}): boolean {
-  return input.messagesLength > 0 || input.selectedHistoryId !== null;
-}
-
 export interface PublicChatSource {
   readonly label: string;
   readonly publicSourceId: string;

@@ -32,7 +32,6 @@ import {
   privateChatHistorySourcesForStorage,
   privateChatHistoryToMastraMessages,
   publicChatToolCallsFromPrivate,
-  resolvePrivateChatIncludeHistory,
   runPrivateChat,
   runPublicChat,
   selectGraphRelatedDocumentCandidates,
@@ -88,18 +87,6 @@ assert.deepEqual(parsePrivateChatRequestBody({ includeHistory: false, question: 
 });
 assert.equal(parsePrivateChatRequestBody({ question: '' }).ok, false);
 assert.equal(parsePrivateChatRequestBody({ includeHistory: 'no', question: 'hello' }).ok, false);
-assert.equal(
-  resolvePrivateChatIncludeHistory({ messagesLength: 0, selectedHistoryId: null }),
-  false,
-);
-assert.equal(
-  resolvePrivateChatIncludeHistory({ messagesLength: 2, selectedHistoryId: null }),
-  true,
-);
-assert.equal(
-  resolvePrivateChatIncludeHistory({ messagesLength: 0, selectedHistoryId: 'turn-1' }),
-  true,
-);
 assert.equal(deterministicVector('sample query', 8).length, 8);
 
 assert.deepEqual(

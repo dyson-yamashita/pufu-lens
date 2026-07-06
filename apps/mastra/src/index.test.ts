@@ -15,6 +15,7 @@ import {
   mastraWorkflowIds,
   PROJECT_CHAT_AGENT_INSTRUCTIONS,
   rawReadViewTrace,
+  vectorSearchInputSchema,
 } from './index.ts';
 
 function createChatRepository(): ChatRepository & {
@@ -340,8 +341,14 @@ assert.equal(dataSourceStatus?.dataSources.length, 1);
 assert.equal(dataSourceStatus?.dataSources[0]?.sourceType, 'github');
 
 const requestContext = new RequestContext<MastraProjectContext>([['projectId', 'project-a']]);
+const parsedVectorSearchInput = vectorSearchInputSchema.parse({
+  limit: 3,
+  query: '  仕様変更  ',
+});
+assert.deepEqual(parsedVectorSearchInput, { limit: 3, query: '仕様変更' });
+assert.throws(() => vectorSearchInputSchema.parse({ limit: 3, query: '   ' }));
 const vectorSearch = await runtime.projectChatTools.vectorSearch.execute?.(
-  { limit: 3, query: '仕様変更' },
+  parsedVectorSearchInput,
   { requestContext } as never,
 );
 assert.deepEqual(vectorSearch, { sources: [sampleSource] });
