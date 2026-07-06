@@ -37,6 +37,7 @@ const CHAT_HISTORY_TIME_FORMATTER = new Intl.DateTimeFormat('ja-JP', {
   minute: '2-digit',
   month: '2-digit',
 });
+const PRIVATE_CHAT_INTRO_MESSAGE = 'このプロジェクトについての質問にお答えします。';
 
 export function ChatPanel({
   disabled,
@@ -194,7 +195,7 @@ export function ChatPanel({
         <div className="chat-history-controls">
           <button
             aria-label="New chat"
-            className="chat-icon-button"
+            className="chat-icon-button chat-action-button"
             data-testid="chat-new-button"
             disabled={pending}
             onClick={() => {
@@ -206,10 +207,11 @@ export function ChatPanel({
             type="button"
           >
             <MessageSquarePlus size={16} />
+            <span className="chat-action-button-label">New</span>
           </button>
           <button
             aria-label="Open chat history"
-            className="chat-icon-button"
+            className="chat-icon-button chat-action-button"
             data-testid="chat-history-open-button"
             disabled={chatDisabled || pending}
             onClick={openHistoryDialog}
@@ -217,6 +219,7 @@ export function ChatPanel({
             type="button"
           >
             <History size={16} />
+            <span className="chat-action-button-label">History</span>
           </button>
         </div>
       </div>
@@ -294,7 +297,11 @@ export function ChatPanel({
           />
         </div>
       </dialog>
-      <PrivateChatThread messages={messages} resultTestId="chat-result" />
+      <PrivateChatThread
+        introMessage={selectedHistoryId === null ? PRIVATE_CHAT_INTRO_MESSAGE : undefined}
+        messages={messages}
+        resultTestId="chat-result"
+      />
       <form className="chat-form" onSubmit={submit}>
         <label htmlFor="chat-question">Question</label>
         <div className="chat-input-row">

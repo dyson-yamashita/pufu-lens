@@ -48,10 +48,7 @@ export default async function ProjectChatPage({
 
   return (
     <AppShell active="chat" project={project}>
-      <PageHeader
-        title={`${project.name} Chat`}
-        subtitle="Indexed document、graph relation、raw / parsed metadata を source 付きで確認します。"
-      />
+      <PageHeader title={`${project.name} Chat`} />
       <ChatPanel disabled={!available} projectSlug={project.slug} />
     </AppShell>
   );
