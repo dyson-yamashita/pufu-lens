@@ -219,10 +219,16 @@ async function assertChatInputAutosizes(input: Locator): Promise<void> {
 
   await input.fill('1行目\n2行目');
   await expect.poll(() => textareaClientHeight(input)).toBeGreaterThan(initialHeight + 10);
+  const twoRowHeight = await textareaClientHeight(input);
 
   await input.fill('1行目\n2行目\n3行目\n4行目');
-  await expect.poll(() => textareaClientHeight(input)).toBeGreaterThan(initialHeight + 30);
-  const fourRowHeight = await textareaClientHeight(input);
+  let fourRowHeight = 0;
+  await expect
+    .poll(async () => {
+      fourRowHeight = await textareaClientHeight(input);
+      return fourRowHeight;
+    })
+    .toBeGreaterThan(twoRowHeight + 10);
 
   await input.fill('1行目\n2行目\n3行目\n4行目\n5行目\n6行目');
   await expect.poll(() => textareaClientHeight(input)).toBeLessThanOrEqual(fourRowHeight + 4);
