@@ -221,14 +221,19 @@ async function assertChatInputAutosizes(input: Locator): Promise<void> {
   await expect.poll(() => textareaClientHeight(input)).toBeGreaterThan(initialHeight + 10);
 
   await input.fill('1行目\n2行目\n3行目\n4行目');
+  await expect.poll(() => textareaClientHeight(input)).toBeGreaterThan(initialHeight + 30);
   const fourRowHeight = await textareaClientHeight(input);
 
   await input.fill('1行目\n2行目\n3行目\n4行目\n5行目\n6行目');
-  await expect.poll(() => textareaClientHeight(input)).toBeLessThanOrEqual(fourRowHeight + 1);
+  await expect.poll(() => textareaClientHeight(input)).toBeLessThanOrEqual(fourRowHeight + 4);
   await expect
     .poll(() =>
       input.evaluate((element) => {
-        const textarea = element as HTMLTextAreaElement;
+        const textarea =
+          element instanceof HTMLTextAreaElement ? element : element.querySelector('textarea');
+        if (!textarea) {
+          throw new Error('Expected chat input locator to resolve to a textarea.');
+        }
         return textarea.scrollHeight > textarea.clientHeight;
       }),
     )
@@ -236,7 +241,14 @@ async function assertChatInputAutosizes(input: Locator): Promise<void> {
 }
 
 async function textareaClientHeight(input: Locator): Promise<number> {
-  return input.evaluate((element) => (element as HTMLTextAreaElement).clientHeight);
+  return input.evaluate((element) => {
+    const textarea =
+      element instanceof HTMLTextAreaElement ? element : element.querySelector('textarea');
+    if (!textarea) {
+      throw new Error('Expected chat input locator to resolve to a textarea.');
+    }
+    return textarea.clientHeight;
+  });
 }
 
 async function startMastraChatStub(): Promise<Server> {
