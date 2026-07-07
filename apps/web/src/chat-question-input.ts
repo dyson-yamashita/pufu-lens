@@ -1,21 +1,17 @@
 'use client';
 
-import { type ChangeEvent, createElement, useState } from 'react';
+import { type ChangeEvent, type ComponentProps, createElement } from 'react';
+import TextareaAutosize from 'react-textarea-autosize';
 
-export function chatQuestionTextareaPresentation({
-  focused,
-  value,
-}: {
-  readonly focused: boolean;
-  readonly value: string;
-}): {
+export function chatQuestionTextareaPresentation(): {
   readonly className: string;
-  readonly rows: 1 | 3;
+  readonly maxRows: 4;
+  readonly minRows: 1;
 } {
-  const expanded = focused || value.length > 0;
   return {
-    className: expanded ? 'chat-question-input-expanded' : 'chat-question-input-collapsed',
-    rows: expanded ? 3 : 1,
+    className: 'chat-question-input',
+    maxRows: 4,
+    minRows: 1,
   };
 }
 
@@ -32,18 +28,17 @@ export function ChatQuestionTextarea({
   readonly testId: string;
   readonly value: string;
 }) {
-  const [focused, setFocused] = useState(false);
-  const presentation = chatQuestionTextareaPresentation({ focused, value });
-
-  return createElement('textarea', {
+  const presentation = chatQuestionTextareaPresentation();
+  const props: ComponentProps<typeof TextareaAutosize> & { readonly 'data-testid': string } = {
     className: presentation.className,
     'data-testid': testId,
     disabled,
     id,
-    onBlur: () => setFocused(false),
+    maxRows: presentation.maxRows,
+    minRows: presentation.minRows,
     onChange: (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value),
-    onFocus: () => setFocused(true),
-    rows: presentation.rows,
     value,
-  });
+  };
+
+  return createElement(TextareaAutosize, props);
 }

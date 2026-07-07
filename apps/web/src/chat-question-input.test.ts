@@ -31,17 +31,10 @@ function assertClassIncludes(markup: string, className: string): void {
 const hadWindow = Object.hasOwn(globalThis, 'window');
 const originalWindow = globalThis.window;
 
-assert.deepEqual(chatQuestionTextareaPresentation({ focused: false, value: '' }), {
-  className: 'chat-question-input-collapsed',
-  rows: 1,
-});
-assert.deepEqual(chatQuestionTextareaPresentation({ focused: true, value: '' }), {
-  className: 'chat-question-input-expanded',
-  rows: 3,
-});
-assert.deepEqual(chatQuestionTextareaPresentation({ focused: false, value: '質問があります' }), {
-  className: 'chat-question-input-expanded',
-  rows: 3,
+assert.deepEqual(chatQuestionTextareaPresentation(), {
+  className: 'chat-question-input',
+  maxRows: 4,
+  minRows: 1,
 });
 
 try {
@@ -55,12 +48,12 @@ try {
   });
 
   const collapsedMarkup = renderChatQuestionTextarea('');
-  assertClassIncludes(collapsedMarkup, 'chat-question-input-collapsed');
-  assert.equal(markupAttribute(collapsedMarkup, 'rows'), '1');
+  assertClassIncludes(collapsedMarkup, 'chat-question-input');
+  assert.equal(markupAttribute(collapsedMarkup, 'data-testid'), 'chat-question-input');
 
-  const expandedMarkup = renderChatQuestionTextarea('質問があります');
-  assertClassIncludes(expandedMarkup, 'chat-question-input-expanded');
-  assert.equal(markupAttribute(expandedMarkup, 'rows'), '3');
+  const multilineMarkup = renderChatQuestionTextarea('1行目\n2行目\n3行目\n4行目\n5行目');
+  assertClassIncludes(multilineMarkup, 'chat-question-input');
+  assert.match(multilineMarkup, /1行目\s*2行目\s*3行目\s*4行目\s*5行目/);
 } finally {
   if (hadWindow) {
     Object.defineProperty(globalThis, 'window', {

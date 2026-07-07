@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server } from 'node:http';
-import { expect, test } from '@playwright/test';
+import { expect, type Locator, test } from '@playwright/test';
 
 const privateChatCredentials = {
   email: process.env.PUFU_LENS_E2E_CHAT_EMAIL,
@@ -116,6 +116,20 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
   await expect(page.getByTestId('chat-message-editing-3')).toContainText('状態確認');
 });
 
+test('scenario: public project chat input grows with content up to four rows', async ({ page }) => {
+  await page.goto('/projects/sample-a/chat');
+
+  await assertChatInputAutosizes(page.getByTestId('public-project-chat-question-input'));
+});
+
+test('scenario: public project chat input grows with content up to four rows @mobile', async ({
+  page,
+}) => {
+  await page.goto('/projects/sample-a/chat');
+
+  await assertChatInputAutosizes(page.getByTestId('public-project-chat-question-input'));
+});
+
 test('scenario: public project chat locks input outside database business hours', async ({
   page,
 }) => {
@@ -195,6 +209,35 @@ test('scenario: member sends private chat and reads persisted history from fixtu
     await closeServer(mastraServer);
   }
 });
+
+async function assertChatInputAutosizes(input: Locator): Promise<void> {
+  await expect(input).toBeVisible();
+  const initialHeight = await textareaClientHeight(input);
+
+  await input.click();
+  await expect.poll(() => textareaClientHeight(input)).toBeLessThanOrEqual(initialHeight + 1);
+
+  await input.fill('1行目\n2行目');
+  await expect.poll(() => textareaClientHeight(input)).toBeGreaterThan(initialHeight + 10);
+
+  await input.fill('1行目\n2行目\n3行目\n4行目');
+  const fourRowHeight = await textareaClientHeight(input);
+
+  await input.fill('1行目\n2行目\n3行目\n4行目\n5行目\n6行目');
+  await expect.poll(() => textareaClientHeight(input)).toBeLessThanOrEqual(fourRowHeight + 1);
+  await expect
+    .poll(() =>
+      input.evaluate((element) => {
+        const textarea = element as HTMLTextAreaElement;
+        return textarea.scrollHeight > textarea.clientHeight;
+      }),
+    )
+    .toBe(true);
+}
+
+async function textareaClientHeight(input: Locator): Promise<number> {
+  return input.evaluate((element) => (element as HTMLTextAreaElement).clientHeight);
+}
 
 async function startMastraChatStub(): Promise<Server> {
   const server = createServer(async (request, response) => {
