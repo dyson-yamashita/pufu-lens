@@ -37,13 +37,18 @@ const CHAT_HISTORY_TIME_FORMATTER = new Intl.DateTimeFormat('ja-JP', {
   minute: '2-digit',
   month: '2-digit',
 });
-const PRIVATE_CHAT_INTRO_MESSAGE = 'このプロジェクトについての質問にお答えします。';
+
+function projectChatIntroMessage(projectName: string): string {
+  return `プロジェクト ${projectName}  についてご質問ください。\n\n例： ${projectName}  について教えてください。`;
+}
 
 export function ChatPanel({
   disabled,
+  projectName,
   projectSlug,
 }: {
   readonly disabled: boolean;
+  readonly projectName: string;
   readonly projectSlug: string;
 }) {
   const [question, setQuestion] = useState('');
@@ -298,7 +303,7 @@ export function ChatPanel({
         </div>
       </dialog>
       <PrivateChatThread
-        introMessage={selectedHistoryId === null ? PRIVATE_CHAT_INTRO_MESSAGE : undefined}
+        introMessage={selectedHistoryId === null ? projectChatIntroMessage(projectName) : undefined}
         messages={messages}
         resultTestId="chat-result"
       />
@@ -402,7 +407,13 @@ function chatHistoryAnswerPreview(answer: string): string {
   return normalized.length > 80 ? `${normalized.slice(0, 79)}...` : normalized;
 }
 
-export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: string }) {
+export function PublicProjectChatPanel({
+  projectName,
+  projectSlug,
+}: {
+  readonly projectName: string;
+  readonly projectSlug: string;
+}) {
   const [question, setQuestion] = useState('');
   const [messages, setMessages] = useState<ChatThreadMessage<PublicChatResponse>[]>([]);
   const [pending, setPending] = useState(false);
@@ -482,7 +493,11 @@ export function PublicProjectChatPanel({ projectSlug }: { readonly projectSlug: 
       className="panel public-chat-panel public-project-chat-panel"
       data-testid="public-project-chat-panel"
     >
-      <PublicChatThread messages={messages} resultTestId="public-project-chat-result" />
+      <PublicChatThread
+        introMessage={projectChatIntroMessage(projectName)}
+        messages={messages}
+        resultTestId="public-project-chat-result"
+      />
       <form className="chat-form" onSubmit={submit}>
         <label htmlFor="public-project-chat-question">Question</label>
         <div className="chat-input-row">

@@ -69,13 +69,20 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
 
   await expect(page.getByTestId('global-nav-chat')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('public-project-chat-panel')).toBeVisible();
+  await expect(page.getByTestId('public-chat-assistant-intro-message')).toContainText(
+    'プロジェクト Sample A  についてご質問ください。',
+  );
+  await expect(page.getByTestId('public-chat-assistant-intro-message')).toContainText(
+    '例： Sample A  について教えてください。',
+  );
   await expect(page.getByTestId('chat-mode-selector')).toHaveCount(0);
   await page
     .getByTestId('public-project-chat-question-input')
     .fill('直近の未解決 Issue を要約して');
-  await page.getByTestId('public-project-chat-submit-button').click();
+  await page.getByTestId('public-project-chat-question-input').press('Control+Enter');
 
   await expect(page.getByTestId('public-project-chat-result')).toBeVisible();
+  await expect(page.getByTestId('public-chat-intro-message')).toHaveCount(0);
   await expect(page.getByTestId('chat-assistant-message-1')).toContainText('Spec Update');
   await expect(page.locator('[data-testid="chat-assistant-message-1"] strong')).toContainText(
     'Spec Update',

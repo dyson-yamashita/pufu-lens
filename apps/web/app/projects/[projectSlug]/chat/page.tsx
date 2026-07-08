@@ -33,7 +33,7 @@ export default async function ProjectChatPage({
           title={`${project.name} Chat`}
           subtitle="公開 project の chat を public API で確認します。"
         />
-        <PublicProjectChatPanel projectSlug={project.slug} />
+        <PublicProjectChatPanel projectName={project.name} projectSlug={project.slug} />
       </AppShell>
     );
   }
@@ -49,7 +49,7 @@ export default async function ProjectChatPage({
   return (
     <AppShell active="chat" project={project}>
       <PageHeader title={`${project.name} Chat`} />
-      <ChatPanel disabled={!available} projectSlug={project.slug} />
+      <ChatPanel disabled={!available} projectName={project.name} projectSlug={project.slug} />
     </AppShell>
   );
 }

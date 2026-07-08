@@ -1,6 +1,6 @@
 'use client';
 
-import { type ChangeEvent, type ComponentProps, createElement } from 'react';
+import { type ChangeEvent, type ComponentProps, createElement, type KeyboardEvent } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
 
 export function chatQuestionTextareaPresentation(): {
@@ -37,6 +37,16 @@ export function ChatQuestionTextarea({
     maxRows: presentation.maxRows,
     minRows: presentation.minRows,
     onChange: (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value),
+    onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (
+        event.key === 'Enter' &&
+        (event.ctrlKey || event.metaKey) &&
+        !event.nativeEvent.isComposing
+      ) {
+        event.preventDefault();
+        event.currentTarget.form?.requestSubmit();
+      }
+    },
     value,
   };
 
