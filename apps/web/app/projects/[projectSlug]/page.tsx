@@ -66,7 +66,7 @@ export default async function ProjectOverviewPage({
         {project.description ? (
           <p data-testid="project-overview-description">{project.description}</p>
         ) : null}
-        <nav aria-label="Project sections" className="project-overview-nav">
+        <nav aria-label="プロジェクトセクション" className="project-overview-nav">
           <ul className="project-overview-link-list" data-testid="project-overview-link-list">
             <li>
               <Link
