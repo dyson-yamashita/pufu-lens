@@ -181,11 +181,13 @@
 }
 
 .project-overview-link-list {
-  display: grid;
-  gap: 8px;
   list-style: disc;
   margin: 0;
   padding-left: 20px;
+}
+
+.project-overview-link-list li + li {
+  margin-top: 8px;
 }
 
 .project-overview-link-list a {
