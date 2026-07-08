@@ -66,18 +66,26 @@ export default async function ProjectOverviewPage({
         {project.description ? (
           <p data-testid="project-overview-description">{project.description}</p>
         ) : null}
-        <p className="notice" data-testid="project-overview-tab-notice">
-          <Link
-            data-testid="project-overview-reports-link"
-            href={`/projects/${project.slug}/reports`}
-          >
-            Reportsを開く
-          </Link>
-          {' / '}
-          <Link data-testid="project-overview-chat-link" href={`/projects/${project.slug}/chat`}>
-            Chatを開く
-          </Link>
-        </p>
+        <nav aria-label="プロジェクトセクション" className="project-overview-nav">
+          <ul className="project-overview-link-list" data-testid="project-overview-link-list">
+            <li>
+              <Link
+                data-testid="project-overview-reports-link"
+                href={`/projects/${project.slug}/reports`}
+              >
+                Reportsを開く
+              </Link>
+            </li>
+            <li>
+              <Link
+                data-testid="project-overview-chat-link"
+                href={`/projects/${project.slug}/chat`}
+              >
+                Chatを開く
+              </Link>
+            </li>
+          </ul>
+        </nav>
       </section>
       {publicProject?.reports.length ? (
         <section className="panel" data-testid="project-overview-public-reports">
