@@ -1,6 +1,6 @@
 'use client';
 
-import { type ChangeEvent, createElement, useState } from 'react';
+import { type ChangeEvent, createElement, type KeyboardEvent, useState } from 'react';
 
 export function chatQuestionTextareaPresentation({
   focused,
@@ -43,6 +43,12 @@ export function ChatQuestionTextarea({
     onBlur: () => setFocused(false),
     onChange: (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value),
     onFocus: () => setFocused(true),
+    onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.key === 'Enter' && event.ctrlKey && !event.nativeEvent.isComposing) {
+        event.preventDefault();
+        event.currentTarget.form?.requestSubmit();
+      }
+    },
     rows: presentation.rows,
     value,
   });

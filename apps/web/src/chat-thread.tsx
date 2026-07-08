@@ -131,15 +131,24 @@ export function PrivateChatThread({ introMessage, messages, resultTestId }: Chat
 }
 
 type PublicChatThreadProps = {
+  readonly introMessage?: string;
   readonly messages: readonly ChatThreadMessage<PublicChatResponse>[];
   readonly resultTestId: string;
 };
 
-export function PublicChatThread({ messages, resultTestId }: PublicChatThreadProps) {
+export function PublicChatThread({ introMessage, messages, resultTestId }: PublicChatThreadProps) {
   const containerRef = useChatThreadScroll(chatThreadScrollKey(messages));
 
   return (
     <div className="chat-thread" data-testid={resultTestId} ref={containerRef}>
+      {messages.length === 0 && introMessage ? (
+        <article
+          className="chat-message chat-message-assistant chat-message-intro"
+          data-testid="public-chat-intro-message"
+        >
+          <ChatMarkdownText testId="public-chat-assistant-intro-message" text={introMessage} />
+        </article>
+      ) : null}
       {messages.map((message, index) => (
         <ChatThreadMessageItem index={index} key={message.id} message={message} variant="public" />
       ))}
