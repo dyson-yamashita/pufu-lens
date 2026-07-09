@@ -254,6 +254,7 @@ function GraphCanvas({
   const cytoscapeRef = useRef<Core | null>(null);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
   const [isFallbackFullscreen, setIsFallbackFullscreen] = useState(false);
+  const [containerWidth, setContainerWidth] = useState(0);
   const isMaximized = isNativeFullscreen || isFallbackFullscreen;
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const edgesById = useMemo(() => new Map(edges.map((edge) => [edge.id, edge])), [edges]);
@@ -377,6 +378,19 @@ function GraphCanvas({
     if (!container) {
       return;
     }
+    const observer = new ResizeObserver(([entry]) => {
+      setContainerWidth(Math.round(entry?.contentRect.width ?? container.clientWidth));
+    });
+    observer.observe(container);
+    setContainerWidth(container.clientWidth);
+    return () => observer.disconnect();
+  }, [containerElement]);
+
+  useEffect(() => {
+    const container = containerElement;
+    if (!container) {
+      return;
+    }
     const graphTheme = readGraphTheme(container);
     const cy = cytoscape({
       container,
@@ -426,8 +440,10 @@ function GraphCanvas({
     if (!container || !cy) {
       return;
     }
-    cy.layout(buildGraphLayoutOptions(layoutId, nodes, edges, container.clientWidth, false)).run();
-  }, [containerElement, edges, layoutId, nodes]);
+    cy.layout(
+      buildGraphLayoutOptions(layoutId, nodes, edges, containerWidth || container.clientWidth),
+    ).run();
+  }, [containerElement, containerWidth, edges, layoutId, nodes]);
 
   return (
     <div
