@@ -188,6 +188,7 @@ test('storeGraphRelations creates SAME_AS only for another source type in the sa
     graphNodeId: 'document:web_page:https%3A%2F%2Fexample.test%2Fspec',
     id: 'document-web-1',
     rawDocumentId: 'raw-web-1',
+    sourceId: 'https://example.test/spec',
   });
 
   const result = await storeGraphRelations({
@@ -289,6 +290,7 @@ test('storeGraphRelations materializes GitHub related document edges', async () 
     graphNodeId: 'document:issue:example-org%2Fpufu-sample%2Fissues%2F101',
     id: 'document-github-issue-101',
     rawDocumentId: 'raw-github-issue-101',
+    sourceId: 'example-org/pufu-sample/issues/101',
   });
   const repository = new InMemoryGraphRelationsRepository([
     {
@@ -514,9 +516,11 @@ class InMemoryGraphRelationsRepository implements GraphRelationsRepository {
     );
   }
 
-  async findDocumentBySourceId(input: { projectId: string; sourceId: string }) {
+  async findDocumentsBySourceIds(input: { projectId: string; sourceIds: readonly string[] }) {
     assert.equal(input.projectId, this.project.id);
-    return this.documents.get(input.sourceId);
+    return input.sourceIds
+      .map((sourceId) => this.documents.get(sourceId))
+      .filter((document): document is GraphRelationDocumentRecord => document !== undefined);
   }
 
   async upsertGraphNode(input: GraphNodeInput) {
@@ -557,6 +561,7 @@ function documentRecord(
     graphNodeId: 'document:email:thread-alpha%3Amsg-alpha-003',
     id: 'document-email-1',
     rawDocumentId: 'raw-email-1',
+    sourceId: 'thread-alpha:msg-alpha-003',
     ...input,
   };
 }

@@ -266,33 +266,110 @@ function uniqueGitHubLinkedIssueRefs(
   defaultRepository: string,
 ): Array<{ repository: string; number: number }> {
   const refs = new Map<string, { repository: string; number: number }>();
-  const keywordPattern =
-    /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+((?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?#\d+(?:\s*,\s*(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?#\d+)*)/gi;
-  for (const match of text.matchAll(keywordPattern)) {
-    for (const refText of (match[1] ?? '').split(/\s*,\s*/)) {
-      const ref = parseGitHubIssueRef(refText, defaultRepository);
-      if (ref) {
-        refs.set(`${ref.repository.toLowerCase()}#${ref.number}`, ref);
+  for (const line of text.split(/\r?\n/)) {
+    for (const keywordEnd of githubClosingKeywordEndIndexes(line)) {
+      for (const refText of line.slice(keywordEnd).split(',')) {
+        const candidate = firstWhitespaceSeparatedToken(refText);
+        if (!candidate) {
+          continue;
+        }
+        const ref = parseGitHubIssueRef(candidate, defaultRepository);
+        if (ref) {
+          refs.set(`${ref.repository.toLowerCase()}#${ref.number}`, ref);
+        }
       }
     }
   }
   return [...refs.values()];
 }
 
+function githubClosingKeywordEndIndexes(line: string): number[] {
+  const lowerLine = line.toLowerCase();
+  const keywords = [
+    'close',
+    'closed',
+    'closes',
+    'fix',
+    'fixed',
+    'fixes',
+    'resolve',
+    'resolved',
+    'resolves',
+  ];
+  const indexes: number[] = [];
+  for (let index = 0; index < lowerLine.length; index += 1) {
+    for (const keyword of keywords) {
+      if (
+        lowerLine.startsWith(keyword, index) &&
+        !isGitHubIssueRefWordChar(lowerLine[index - 1]) &&
+        !isGitHubIssueRefWordChar(lowerLine[index + keyword.length])
+      ) {
+        indexes.push(index + keyword.length);
+        break;
+      }
+    }
+  }
+  return indexes;
+}
+
+function firstWhitespaceSeparatedToken(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const whitespaceIndex = trimmed.search(/\s/);
+  return whitespaceIndex === -1 ? trimmed : trimmed.slice(0, whitespaceIndex);
+}
+
+function isGitHubIssueRefWordChar(value: string | undefined): boolean {
+  return (
+    value !== undefined &&
+    ((value >= 'a' && value <= 'z') || (value >= '0' && value <= '9') || value === '_')
+  );
+}
+
 function parseGitHubIssueRef(
   value: string,
   defaultRepository: string,
 ): { repository: string; number: number } | undefined {
-  const match = value.match(
-    /^(?:(?<repository>[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+))?#(?<number>[1-9]\d*)$/,
-  );
-  if (!match?.groups) {
+  const hashIndex = value.lastIndexOf('#');
+  if (hashIndex < 0) {
     return undefined;
   }
-  return {
-    number: Number(match.groups.number),
-    repository: match.groups.repository ?? defaultRepository,
-  };
+
+  const repository = hashIndex === 0 ? defaultRepository : value.slice(0, hashIndex);
+  const numberText = value.slice(hashIndex + 1);
+  if (!isPositiveIntegerText(numberText) || !isValidGitHubRepository(repository)) {
+    return undefined;
+  }
+  return { number: Number(numberText), repository };
+}
+
+function isPositiveIntegerText(value: string): boolean {
+  return (
+    value.length > 0 && value[0] !== '0' && [...value].every((char) => char >= '0' && char <= '9')
+  );
+}
+
+function isValidGitHubRepository(value: string): boolean {
+  const parts = value.split('/');
+  return (
+    parts.length === 2 &&
+    parts.every(
+      (part) => part.length > 0 && [...part].every((char) => isGitHubRepositoryChar(char)),
+    )
+  );
+}
+
+function isGitHubRepositoryChar(char: string): boolean {
+  return (
+    (char >= 'A' && char <= 'Z') ||
+    (char >= 'a' && char <= 'z') ||
+    (char >= '0' && char <= '9') ||
+    char === '_' ||
+    char === '.' ||
+    char === '-'
+  );
 }
 
 async function parseWeb(

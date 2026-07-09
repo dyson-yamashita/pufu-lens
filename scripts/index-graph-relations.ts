@@ -54,6 +54,7 @@ type GraphTargetRow = {
   parsedUri: string;
   rawContentHash: string;
   rawDocumentId: string;
+  sourceId: string;
 };
 
 type InsertedEmailQuoteRow = {
@@ -135,6 +136,7 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
             graphNodeId: row.graphNodeId,
             id: row.documentId,
             rawDocumentId: row.documentRawDocumentId,
+            sourceId: row.sourceId,
           },
           parsed: await this.storage.getText(row.parsedUri),
           rawContentHash: row.rawContentHash,
@@ -157,7 +159,8 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
         d.raw_document_id::text AS "documentRawDocumentId",
         rd.content_hash AS "rawContentHash",
         rd.id::text AS "rawDocumentId",
-        rd.parsed_uri AS "parsedUri"
+        rd.parsed_uri AS "parsedUri",
+        rd.source_id AS "sourceId"
       FROM public.documents d
       JOIN public.raw_documents rd ON rd.id = d.raw_document_id
       WHERE d.project_id = ${input.projectId}
@@ -234,7 +237,8 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
         d.doc_type AS "docType",
         d.graph_node_id AS "graphNodeId",
         d.id::text AS id,
-        d.raw_document_id::text AS "rawDocumentId"
+        d.raw_document_id::text AS "rawDocumentId",
+        rd.source_id AS "sourceId"
       FROM public.documents d
       JOIN public.raw_documents rd ON rd.id = d.raw_document_id
       WHERE d.project_id = ${input.projectId}
@@ -245,25 +249,26 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
     `) as GraphRelationDocumentRecord[];
   }
 
-  async findDocumentBySourceId(input: {
+  async findDocumentsBySourceIds(input: {
     projectId: string;
-    sourceId: string;
-  }): Promise<GraphRelationDocumentRecord | undefined> {
-    return singleJson(
-      (await this.sql`
+    sourceIds: readonly string[];
+  }): Promise<GraphRelationDocumentRecord[]> {
+    if (input.sourceIds.length === 0) {
+      return [];
+    }
+    return (await this.sql`
         SELECT
           d.doc_type AS "docType",
           d.graph_node_id AS "graphNodeId",
           d.id::text AS id,
-          d.raw_document_id::text AS "rawDocumentId"
+          d.raw_document_id::text AS "rawDocumentId",
+          rd.source_id AS "sourceId"
         FROM public.documents d
         JOIN public.raw_documents rd ON rd.id = d.raw_document_id
         WHERE d.project_id = ${input.projectId}
           AND rd.project_id = ${input.projectId}
-          AND rd.source_id = ${input.sourceId}
-        LIMIT 1
-      `) as GraphRelationDocumentRecord[],
-    );
+          AND rd.source_id IN ${this.sql(input.sourceIds)}
+      `) as GraphRelationDocumentRecord[];
   }
 
   async upsertGraphNode(input: GraphNodeInput): Promise<void> {
