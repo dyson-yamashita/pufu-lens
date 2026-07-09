@@ -107,7 +107,7 @@ export default async function DataSourcesPage({
               name="scope"
               placeholder="URL, owner/repo, Drive folder id, or Gmail query"
               required
-              rows={2}
+              rows={1}
             />
           </label>
           <PendingSubmitButton
@@ -227,7 +227,7 @@ export default async function DataSourcesPage({
                       defaultValue={selectedSource.editableScope}
                       name="scope"
                       required
-                      rows={3}
+                      rows={1}
                     />
                   </label>
                   <dl className="detail-list stacked">

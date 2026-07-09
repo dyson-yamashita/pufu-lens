@@ -459,7 +459,12 @@
 }
 
 .data-source-table {
-  min-width: 1240px;
+  min-width: 1320px;
+}
+
+.data-source-scope-cell {
+  max-width: 360px;
+  width: 360px;
 }
 
 .data-source-row-actions {

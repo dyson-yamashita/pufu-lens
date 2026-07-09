@@ -404,6 +404,7 @@ export function DataSourceTable({
           <tr>
             <th>Source</th>
             <th>Status</th>
+            <th>Raw</th>
             <th>Ingested</th>
             <th>Queue</th>
             <th>Last checked</th>
@@ -438,9 +439,10 @@ export function DataSourceTable({
                   <StatusBadge status={source.status} />
                 </td>
                 <td>
-                  <span className="mono">
-                    {source.ingestedCount} / raw {source.rawCount}
-                  </span>
+                  <span className="mono">{source.rawCount}</span>
+                </td>
+                <td>
+                  <span className="mono">{source.ingestedCount}</span>
                 </td>
                 <td>
                   <span className="mono">
@@ -448,7 +450,7 @@ export function DataSourceTable({
                   </span>
                 </td>
                 <td>{source.lastChecked}</td>
-                <td className="truncate">{source.scope}</td>
+                <td className="truncate data-source-scope-cell">{source.scope}</td>
                 {collectAndIngestAction || retryAction ? (
                   <td>
                     <div className="table-actions data-source-row-actions">
