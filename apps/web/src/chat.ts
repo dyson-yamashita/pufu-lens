@@ -616,6 +616,7 @@ export async function runPrivateChat(
   }
 
   const editing = inferChatEditingMetadata(request.question);
+  const shouldPrioritizeTimeline = editing.inferredMode === 'timeline';
   const embedding = deterministicVector(request.question, PRIVATE_CHAT_VECTOR_DIMENSIONS);
   const vectorSources = await options.repository.vectorSearch({
     embedding,
@@ -623,6 +624,13 @@ export async function runPrivateChat(
     projectId: project.id,
     query: request.question,
   });
+  const timelineSourcesPromise = shouldPrioritizeTimeline
+    ? options.repository.timelineSearch({
+        limit: 5,
+        projectId: project.id,
+        query: request.question,
+      })
+    : Promise.resolve([] satisfies ChatSource[]);
   const [graphSources, timelineSources, rawSources, parsedSources] = await Promise.all([
     options.repository.graphQuery({
       graphName: project.graphName,
@@ -631,11 +639,7 @@ export async function runPrivateChat(
       query: request.question,
       seedDocumentIds: vectorSources.map((source) => source.documentId),
     }),
-    options.repository.timelineSearch({
-      limit: 5,
-      projectId: project.id,
-      query: request.question,
-    }),
+    timelineSourcesPromise,
     options.repository.rawDocumentFetch({
       limit: 5,
       maxBytes: 64 * 1024,
@@ -650,16 +654,23 @@ export async function runPrivateChat(
     documentIds: vectorSources.map((source) => source.documentId),
     projectId: project.id,
   });
-  const shouldPrioritizeTimeline = editing.inferredMode === 'timeline';
   const timelineSourceBudget = shouldPrioritizeTimeline ? Math.min(timelineSources.length, 2) : 0;
   const graphSourceBudget = Math.min(graphSources.length, shouldPrioritizeTimeline ? 1 : 2);
   const vectorSourceBudget = Math.max(0, 5 - graphSourceBudget - timelineSourceBudget);
   const sources = uniqueSources([
-    ...vectorSources.slice(0, vectorSourceBudget),
-    ...timelineSources.slice(0, timelineSourceBudget),
-    ...graphSources.slice(0, graphSourceBudget),
-    ...vectorSources.slice(vectorSourceBudget),
-    ...(shouldPrioritizeTimeline ? timelineSources.slice(timelineSourceBudget) : []),
+    ...(shouldPrioritizeTimeline
+      ? [
+          ...timelineSources.slice(0, timelineSourceBudget),
+          ...graphSources.slice(0, graphSourceBudget),
+          ...vectorSources.slice(0, vectorSourceBudget),
+          ...timelineSources.slice(timelineSourceBudget),
+          ...vectorSources.slice(vectorSourceBudget),
+        ]
+      : [
+          ...vectorSources.slice(0, vectorSourceBudget),
+          ...graphSources.slice(0, graphSourceBudget),
+          ...vectorSources.slice(vectorSourceBudget),
+        ]),
     ...documentSources,
     ...rawSources,
     ...parsedSources,
@@ -674,7 +685,9 @@ export async function runPrivateChat(
     toolCalls: [
       { name: 'vector-search', resultCount: vectorSources.length },
       { name: 'graph-query', resultCount: graphSources.length },
-      { name: 'timeline-search', resultCount: timelineSources.length },
+      ...(shouldPrioritizeTimeline
+        ? [{ name: 'timeline-search' as const, resultCount: timelineSources.length }]
+        : []),
       { name: 'document-fetch', resultCount: documentSources.length },
       { name: 'raw-document-fetch', resultCount: rawSources.length },
       { name: 'parsed-doc-fetch', resultCount: parsedSources.length },

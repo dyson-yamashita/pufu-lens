@@ -198,14 +198,7 @@ assert.equal(response.editing?.questionType, 'risk');
 assert.equal(response.sources.length, 4);
 assert.deepEqual(
   response.toolCalls.map((toolCall) => toolCall.name),
-  [
-    'vector-search',
-    'graph-query',
-    'timeline-search',
-    'document-fetch',
-    'raw-document-fetch',
-    'parsed-doc-fetch',
-  ],
+  ['vector-search', 'graph-query', 'document-fetch', 'raw-document-fetch', 'parsed-doc-fetch'],
 );
 assert.equal(repository.rawFetchInputs[0]?.maxBytes, 64 * 1024);
 
@@ -482,11 +475,22 @@ const timelineBudgetResponse = await runPrivateChat(
 assert.deepEqual(
   timelineBudgetResponse.sources.map((source) => source.documentId),
   [
-    'doc-vector-timeline-1',
-    'doc-vector-timeline-2',
     'doc-time-1',
     'doc-time-2',
     'doc-graph-timeline',
+    'doc-vector-timeline-1',
+    'doc-vector-timeline-2',
+  ],
+);
+assert.deepEqual(
+  timelineBudgetResponse.toolCalls.map((toolCall) => toolCall.name),
+  [
+    'vector-search',
+    'graph-query',
+    'timeline-search',
+    'document-fetch',
+    'raw-document-fetch',
+    'parsed-doc-fetch',
   ],
 );
 
@@ -897,7 +901,6 @@ const mastraChatResponse = mastraGenerateToChatResponse({
           {
             output: {
               value: {
-                resultCount: 1,
                 sources: [{ ...sampleSource, documentId: 'doc-timeline' }],
               },
             },
