@@ -1,5 +1,3 @@
-import { Config, DictionaryFactory, type Morpheme, SplitMode } from 'sudachi-ts';
-
 import type { ParsedTopic } from './ingestion-fixtures.js';
 
 export interface TopicExtractionInput {
@@ -43,6 +41,31 @@ interface TopicCandidateLexicon {
   readonly normalizedToDisplayTarget: ReadonlyMap<string, string>;
 }
 
+interface SudachiMorpheme {
+  dictionaryForm(): string;
+  normalizedForm(): string;
+  partOfSpeech(): string[];
+  surface(): string;
+}
+
+interface SudachiDictionary {
+  create(): {
+    tokenize(mode: unknown, text: string): Iterable<SudachiMorpheme>;
+  };
+}
+
+interface SudachiModule {
+  Config: {
+    parse(json: string): unknown;
+  };
+  DictionaryFactory: new () => {
+    create(configPath?: string, customConfig?: unknown): Promise<SudachiDictionary>;
+  };
+  SplitMode: {
+    C: unknown;
+  };
+}
+
 type WordSegment = {
   readonly isWordLike?: boolean;
   readonly segment: string;
@@ -51,6 +74,9 @@ type WordSegment = {
 let cachedWordSegmenter: { segment(value: string): Iterable<WordSegment> } | undefined | null =
   null;
 const sudachiTokenizerCache = new Map<string, Promise<TopicMorphologicalTokenizer | undefined>>();
+const importRuntimeModule = new Function('specifier', 'return import(specifier)') as (
+  specifier: string,
+) => Promise<unknown>;
 
 const GENERIC_TOPIC_WORDS = new Set([
   'about',
@@ -389,20 +415,23 @@ function createSudachiTopicTokenizer(
   if (cached) {
     return cached;
   }
-  const tokenizer = new DictionaryFactory()
-    .create(undefined, Config.parse(JSON.stringify({ systemDict: normalizedPath })))
-    .then((dictionary) => {
+  const tokenizer = importRuntimeModule('sudachi-ts')
+    .then((sudachiModule) => {
+      const { Config, DictionaryFactory, SplitMode } = sudachiModule as SudachiModule;
+      return new DictionaryFactory()
+        .create(undefined, Config.parse(JSON.stringify({ systemDict: normalizedPath })))
+        .then((dictionary) => ({ dictionary, SplitMode }));
+    })
+    .then(({ dictionary, SplitMode }) => {
       const sudachiTokenizer = dictionary.create();
       return {
         tokenize(text: string): readonly TopicMorphologicalToken[] {
-          return Array.from(sudachiTokenizer.tokenize(SplitMode.C, text)).map(
-            (morpheme: Morpheme) => ({
-              dictionaryForm: morpheme.dictionaryForm(),
-              normalizedForm: morpheme.normalizedForm(),
-              partOfSpeech: morpheme.partOfSpeech(),
-              surface: morpheme.surface(),
-            }),
-          );
+          return Array.from(sudachiTokenizer.tokenize(SplitMode.C, text)).map((morpheme) => ({
+            dictionaryForm: morpheme.dictionaryForm(),
+            normalizedForm: morpheme.normalizedForm(),
+            partOfSpeech: morpheme.partOfSpeech(),
+            surface: morpheme.surface(),
+          }));
         },
       };
     })
