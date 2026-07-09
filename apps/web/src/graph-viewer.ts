@@ -47,7 +47,7 @@ export type GraphProjectAccess = {
   readonly slug: string;
 };
 
-type GraphPreset = GraphPresetSummary & {
+type GraphPreset = Omit<GraphPresetSummary, 'preview'> & {
   readonly cypher: (limit: number) => string;
   readonly maxEdges: number;
   readonly maxNodes: number;
@@ -85,12 +85,8 @@ export class GraphPresetNotFoundError extends Error {
 }
 
 export class GraphLimitError extends Error {
-  constructor(limit: unknown) {
-    super(
-      `Graph limit must be an integer between ${GRAPH_MIN_LIMIT} and ${GRAPH_MAX_LIMIT}: ${String(
-        limit,
-      )}`,
-    );
+  constructor(limit: unknown, min: number = GRAPH_MIN_LIMIT, max: number = GRAPH_MAX_LIMIT) {
+    super(`Graph limit must be an integer between ${min} and ${max}: ${String(limit)}`);
     this.name = 'GraphLimitError';
   }
 }
@@ -107,9 +103,6 @@ LIMIT ${limit}`,
     maxEdges: GRAPH_MAX_LIMIT,
     maxLimit: GRAPH_MAX_LIMIT,
     maxNodes: 600,
-    preview: `MATCH (source)-[relation]->(target)
-RETURN source, relation, target
-LIMIT 100`,
     recordDefinition: 'source agtype, relation agtype, target agtype',
   },
   {
@@ -123,21 +116,18 @@ LIMIT ${limit}`,
     maxEdges: GRAPH_MAX_LIMIT,
     maxLimit: GRAPH_MAX_LIMIT,
     maxNodes: 600,
-    preview: `MATCH (source:Actor)-[relation]->(target:Document)
-RETURN source, relation, target
-LIMIT 100`,
     recordDefinition: 'source agtype, relation agtype, target agtype',
   },
 ];
 
 export function listGraphPresets(): readonly GraphPresetSummary[] {
-  return GRAPH_PRESETS.map(({ defaultLimit, description, id, label, maxLimit, preview }) => ({
+  return GRAPH_PRESETS.map(({ cypher, defaultLimit, description, id, label, maxLimit }) => ({
     defaultLimit,
     description,
     id,
     label,
     maxLimit,
-    preview,
+    preview: cypher(defaultLimit),
   }));
 }
 
@@ -192,12 +182,12 @@ export async function runGraphPresetQuery(
 }
 
 export function normalizeGraphLimit(limit: unknown, maxLimit: number = GRAPH_MAX_LIMIT): number {
-  if (typeof limit !== 'number' || !Number.isInteger(limit)) {
-    throw new GraphLimitError(limit);
-  }
   const normalizedMax = Math.min(Math.max(maxLimit, GRAPH_MIN_LIMIT), GRAPH_MAX_LIMIT);
+  if (typeof limit !== 'number' || !Number.isInteger(limit)) {
+    throw new GraphLimitError(limit, GRAPH_MIN_LIMIT, normalizedMax);
+  }
   if (limit < GRAPH_MIN_LIMIT || limit > normalizedMax) {
-    throw new GraphLimitError(limit);
+    throw new GraphLimitError(limit, GRAPH_MIN_LIMIT, normalizedMax);
   }
   return limit;
 }

@@ -380,7 +380,7 @@ function GraphCanvas({
             data: { id: edge.id, label: edge.label, source: edge.source, target: edge.target },
           })),
       ],
-      layout: buildGraphLayoutOptions(layoutId, nodes, edges, container.clientWidth),
+      layout: buildGraphLayoutOptions('force', nodes, edges, container.clientWidth),
       maxZoom: 4,
       minZoom: 0.08,
       style: buildGraphStyles(graphTheme),
@@ -403,7 +403,16 @@ function GraphCanvas({
       cytoscapeRef.current = null;
       cy.destroy();
     };
-  }, [containerElement, edges, edgesById, layoutId, nodes, nodesById, onSelect]);
+  }, [containerElement, edges, edgesById, nodes, nodesById, onSelect]);
+
+  useEffect(() => {
+    const container = containerElement;
+    const cy = cytoscapeRef.current;
+    if (!container || !cy) {
+      return;
+    }
+    cy.layout(buildGraphLayoutOptions(layoutId, nodes, edges, container.clientWidth, false)).run();
+  }, [containerElement, edges, layoutId, nodes]);
 
   return (
     <div
@@ -483,12 +492,13 @@ function buildGraphLayoutOptions(
   nodes: readonly GraphViewerNode[],
   edges: readonly GraphViewerEdge[],
   containerWidth: number,
+  fit = true,
 ) {
   if (layoutId === 'grid') {
     return {
       name: 'grid',
       animate: false,
-      fit: true,
+      fit,
       nodeDimensionsIncludeLabels: true,
       padding: 56,
     };
@@ -497,7 +507,7 @@ function buildGraphLayoutOptions(
     const positions = buildTimelinePositions(nodes, edges, containerWidth);
     return {
       name: 'preset',
-      fit: true,
+      fit,
       padding: 56,
       positions: (node: NodeSingular) => positions.get(node.id()) ?? { x: 0, y: 0 },
     };
@@ -506,7 +516,7 @@ function buildGraphLayoutOptions(
     name: 'cose',
     animate: false,
     componentSpacing: 260,
-    fit: true,
+    fit,
     gravity: 30,
     idealEdgeLength: 300,
     nodeDimensionsIncludeLabels: true,

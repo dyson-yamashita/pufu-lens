@@ -4,6 +4,7 @@ import {
   GraphLimitError,
   GraphPresetNotFoundError,
   type GraphViewerRepository,
+  listGraphPresets,
   normalizeGraphLimit,
   normalizeGraphRows,
   runGraphPresetQuery,
@@ -159,6 +160,9 @@ assert.equal(result.nodes.length, 2);
 assert.equal(result.edges.length, 1);
 assert.equal(result.rawRows.length, 1);
 
+const presetSummary = listGraphPresets().find((preset) => preset.id === 'recent-relations');
+assert.match(presetSummary?.preview ?? '', /LIMIT 100$/);
+
 await assert.rejects(
   () =>
     runGraphPresetQuery(
@@ -179,8 +183,10 @@ await assert.rejects(
 
 assert.equal(normalizeGraphLimit(1), 1);
 assert.equal(normalizeGraphLimit(500), 500);
+assert.equal(normalizeGraphLimit(50, 50), 50);
 assert.throws(() => normalizeGraphLimit(0), GraphLimitError);
 assert.throws(() => normalizeGraphLimit(501), GraphLimitError);
 assert.throws(() => normalizeGraphLimit(10.5), GraphLimitError);
+assert.throws(() => normalizeGraphLimit(51, 50), /between 1 and 50/);
 
 console.log('web graph viewer tests passed');
