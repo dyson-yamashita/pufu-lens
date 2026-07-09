@@ -29,6 +29,12 @@ const GRAPH_LAYOUT_OPTIONS: readonly { readonly id: GraphLayoutId; readonly labe
   { id: 'timeline', label: 'Timeline' },
   { id: 'grid', label: 'Grid' },
 ];
+const TIMELINE_COLUMN_WIDTH = 180;
+const TIMELINE_MIN_COLUMNS = 4;
+const TIMELINE_MAX_COLUMNS = 24;
+const TIMELINE_ROW_HEIGHT = 170;
+const TIMELINE_ALTERNATE_OFFSET = 48;
+const TIMELINE_HORIZONTAL_PADDING = 112;
 
 export function GraphViewerPanel({
   initialPresetId,
@@ -43,10 +49,14 @@ export function GraphViewerPanel({
   const [result, setResult] = useState<GraphQueryResult | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [selection, setSelection] = useState<GraphSelection | undefined>();
-  const [limit, setLimit] = useState(GRAPH_DEFAULT_LIMIT);
+  const [limit, setLimit] = useState(
+    () =>
+      presets.find((preset) => preset.id === initialPresetId)?.defaultLimit ?? GRAPH_DEFAULT_LIMIT,
+  );
   const [layoutId, setLayoutId] = useState<GraphLayoutId>('force');
   const [isLoading, setIsLoading] = useState(false);
   const selectedPreset = presets.find((preset) => preset.id === queryId) ?? presets[0];
+  const limitOptions = useMemo(() => buildLimitOptions(selectedPreset), [selectedPreset]);
 
   const runQuery = useCallback(async () => {
     if (!selectedPreset) {
@@ -99,7 +109,12 @@ export function GraphViewerPanel({
             data-testid="graph-preset-select"
             disabled={isLoading}
             id="graph-preset-select"
-            onChange={(event) => setQueryId(event.target.value as GraphPresetId)}
+            onChange={(event) => {
+              const nextQueryId = event.target.value as GraphPresetId;
+              const nextPreset = presets.find((preset) => preset.id === nextQueryId);
+              setQueryId(nextQueryId);
+              setLimit(nextPreset?.defaultLimit ?? GRAPH_DEFAULT_LIMIT);
+            }}
             value={queryId}
           >
             {presets.map((preset) => (
@@ -119,7 +134,7 @@ export function GraphViewerPanel({
               onChange={(event) => setLimit(Number(event.target.value))}
               value={limit}
             >
-              {GRAPH_LIMIT_OPTIONS.map((option) => (
+              {limitOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
@@ -364,7 +379,7 @@ function GraphCanvas({
             data: { id: edge.id, label: edge.label, source: edge.source, target: edge.target },
           })),
       ],
-      layout: buildGraphLayoutOptions(layoutId, nodes, edges),
+      layout: buildGraphLayoutOptions(layoutId, nodes, edges, container.clientWidth),
       maxZoom: 4,
       minZoom: 0.08,
       style: buildGraphStyles(graphTheme),
@@ -466,6 +481,7 @@ function buildGraphLayoutOptions(
   layoutId: GraphLayoutId,
   nodes: readonly GraphViewerNode[],
   edges: readonly GraphViewerEdge[],
+  containerWidth: number,
 ) {
   if (layoutId === 'grid') {
     return {
@@ -477,7 +493,7 @@ function buildGraphLayoutOptions(
     };
   }
   if (layoutId === 'timeline') {
-    const positions = buildTimelinePositions(nodes, edges);
+    const positions = buildTimelinePositions(nodes, edges, containerWidth);
     return {
       name: 'preset',
       fit: true,
@@ -503,6 +519,7 @@ function buildGraphLayoutOptions(
 function buildTimelinePositions(
   nodes: readonly GraphViewerNode[],
   edges: readonly GraphViewerEdge[],
+  containerWidth: number,
 ): Map<string, { readonly x: number; readonly y: number }> {
   const connectedCounts = new Map<string, number>();
   for (const edge of edges) {
@@ -520,16 +537,44 @@ function buildTimelinePositions(
       return left.node.label.localeCompare(right.node.label) || left.index - right.index;
     });
   const positions = new Map<string, { readonly x: number; readonly y: number }>();
+  const columnCount = timelineColumnCount(containerWidth);
   orderedNodes.forEach(({ node }, index) => {
-    const row = Math.floor(index / 24);
-    const column = index % 24;
+    const row = Math.floor(index / columnCount);
+    const column = index % columnCount;
     const degreeOffset = Math.min(connectedCounts.get(node.id) ?? 0, 6) * 10;
     positions.set(node.id, {
-      x: column * 180,
-      y: row * 170 + (index % 2 === 0 ? 0 : 48) - degreeOffset,
+      x: column * TIMELINE_COLUMN_WIDTH,
+      y:
+        row * TIMELINE_ROW_HEIGHT +
+        (index % 2 === 0 ? 0 : TIMELINE_ALTERNATE_OFFSET) -
+        degreeOffset,
     });
   });
   return positions;
+}
+
+function timelineColumnCount(containerWidth: number): number {
+  const usableWidth = Math.max(containerWidth - TIMELINE_HORIZONTAL_PADDING, TIMELINE_COLUMN_WIDTH);
+  return Math.max(
+    TIMELINE_MIN_COLUMNS,
+    Math.min(TIMELINE_MAX_COLUMNS, Math.floor(usableWidth / TIMELINE_COLUMN_WIDTH)),
+  );
+}
+
+function buildLimitOptions(preset: GraphPresetSummary | undefined): readonly number[] {
+  const maxLimit = preset?.maxLimit ?? GRAPH_DEFAULT_LIMIT;
+  const defaultLimit = preset?.defaultLimit ?? GRAPH_DEFAULT_LIMIT;
+  const options = new Set<number>();
+  for (const option of GRAPH_LIMIT_OPTIONS) {
+    if (option <= maxLimit) {
+      options.add(option);
+    }
+  }
+  if (defaultLimit <= maxLimit) {
+    options.add(defaultLimit);
+  }
+  options.add(maxLimit);
+  return [...options].sort((left, right) => left - right);
 }
 
 function graphNodeSortValue(node: GraphViewerNode): number | undefined {
