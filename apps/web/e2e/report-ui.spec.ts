@@ -101,6 +101,45 @@ test('scenario: member opens private report detail from list and sees sections',
   );
 });
 
+test('scenario: member scrolls private reports table on mobile with summary preview @mobile', async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 900, width: 390 });
+  const expectedSummaryPreview = `${'あ'.repeat(100)}...`;
+  const longSummary = `${'あ'.repeat(101)}続きの説明文`;
+
+  await page.route('**/api/projects/sample-a/reports', async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        reports: [
+          {
+            createdAt: '2026-06-04T09:00:00.000Z',
+            id: 'report-a',
+            isPublic: false,
+            period: report.period,
+            schemaVersion: 'v1',
+            storageUri: 'file:///tmp/sample-a/reports/private/report-a.json',
+            summary: longSummary,
+            title: report.title,
+          },
+        ],
+        status: 'ok',
+      }),
+      contentType: 'application/json',
+      status: 200,
+    });
+  });
+
+  await page.goto('/projects/sample-a/reports');
+
+  const tableFrame = page.locator('.table-frame');
+  await expect(tableFrame).toHaveCSS('overflow-x', 'auto');
+  await expect(page.getByTestId('reports-table')).toContainText(expectedSummaryPreview);
+  await expect(page.getByTestId('reports-table')).not.toContainText(longSummary);
+  await expect(page.getByTestId('reports-generate-button')).toBeInViewport();
+  await expect(tableFrame).toBeInViewport();
+});
+
 test('scenario: private report pufu score stays inside viewport when side menu is open', async ({
   page,
 }) => {
