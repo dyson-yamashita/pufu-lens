@@ -9,6 +9,7 @@ export type GraphEdgeType =
   | 'MENTIONS'
   | 'OWNS'
   | 'REPLY_TO'
+  | 'RELATED_TO'
   | 'REVIEWED'
   | 'SAME_AS'
   | 'SENT';
@@ -84,6 +85,10 @@ export interface GraphRelationsRepository {
     rawDocumentId: string;
     sourceType: ParsedDocument['sourceType'];
   }): Promise<GraphRelationDocumentRecord[]>;
+  findDocumentBySourceId(input: {
+    projectId: string;
+    sourceId: string;
+  }): Promise<GraphRelationDocumentRecord | undefined>;
   lookupProjectBySlug(slug: string): Promise<GraphRelationProjectRecord | undefined>;
   markFailed(input: {
     errorMessage: string;
@@ -209,6 +214,13 @@ async function storeGraphTarget(
     graphEdgeCount += 1;
   }
 
+  for (const documentEdge of await relatedDocumentEdges(context, parsed, target)) {
+    await context.repository.upsertGraphNode(documentEdge.node);
+    await context.repository.upsertGraphEdge(documentEdge.edge);
+    graphNodeCount += 1;
+    graphEdgeCount += 1;
+  }
+
   const emailQuotes = await resolvedEmailQuotes(context, parsed);
   await context.repository.replaceEmailQuotes({
     documentId: target.document.id,
@@ -321,6 +333,73 @@ function topicNodesAndEdges(
     ...parsedTopicNodesAndEdges(project, parsed, target),
     ...replyTopicNodesAndEdges(project, parsed, target),
   ];
+}
+
+async function relatedDocumentEdges(
+  context: GraphRelationContext,
+  parsed: ParsedDocument,
+  target: GraphRelationTarget,
+): Promise<Array<{ edge: GraphEdgeInput; node: GraphNodeInput }>> {
+  const edges: Array<{ edge: GraphEdgeInput; node: GraphNodeInput }> = [];
+  const seenTargets = new Set<string>();
+
+  for (const relation of parsed.relations) {
+    if (relation.type !== 'RELATED_TO') {
+      continue;
+    }
+    const targetSourceId = relation.target.trim();
+    if (
+      targetSourceId === '' ||
+      targetSourceId === parsed.sourceId ||
+      seenTargets.has(targetSourceId)
+    ) {
+      continue;
+    }
+    seenTargets.add(targetSourceId);
+
+    const relatedDocument = await context.repository.findDocumentBySourceId({
+      projectId: context.project.id,
+      sourceId: targetSourceId,
+    });
+    if (!relatedDocument) {
+      continue;
+    }
+
+    edges.push({
+      edge: {
+        fromGraphNodeId: target.document.graphNodeId,
+        properties: {
+          ...relation.metadata,
+          projectId: context.project.id,
+          relationTarget: targetSourceId,
+          relationType: relation.type,
+        },
+        toGraphNodeId: relatedDocument.graphNodeId,
+        type: 'RELATED_TO',
+      },
+      node: documentPlaceholderGraphNode(context.project, relatedDocument, targetSourceId),
+    });
+  }
+
+  return edges;
+}
+
+function documentPlaceholderGraphNode(
+  project: GraphRelationProjectRecord,
+  document: GraphRelationDocumentRecord,
+  sourceId: string,
+): GraphNodeInput {
+  return {
+    graphNodeId: document.graphNodeId,
+    labels: ['Document', documentLabel(document.docType)],
+    properties: {
+      docType: document.docType,
+      documentId: document.id,
+      projectId: project.id,
+      rawDocumentId: document.rawDocumentId,
+      sourceId,
+    },
+  };
 }
 
 function parsedTopicNodesAndEdges(

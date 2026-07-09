@@ -245,6 +245,27 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
     `) as GraphRelationDocumentRecord[];
   }
 
+  async findDocumentBySourceId(input: {
+    projectId: string;
+    sourceId: string;
+  }): Promise<GraphRelationDocumentRecord | undefined> {
+    return singleJson(
+      (await this.sql`
+        SELECT
+          d.doc_type AS "docType",
+          d.graph_node_id AS "graphNodeId",
+          d.id::text AS id,
+          d.raw_document_id::text AS "rawDocumentId"
+        FROM public.documents d
+        JOIN public.raw_documents rd ON rd.id = d.raw_document_id
+        WHERE d.project_id = ${input.projectId}
+          AND rd.project_id = ${input.projectId}
+          AND rd.source_id = ${input.sourceId}
+        LIMIT 1
+      `) as GraphRelationDocumentRecord[],
+    );
+  }
+
   async upsertGraphNode(input: GraphNodeInput): Promise<void> {
     const graphName = requiredGraphName(this.graphName);
     const label = validateLabel(input.labels[0] ?? 'Document');

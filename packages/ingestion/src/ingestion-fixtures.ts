@@ -30,7 +30,7 @@ export interface ActorMention {
 }
 
 export interface ParsedRelation {
-  type: 'COMMENTED_ON' | 'REVIEWED' | 'LINKS_TO' | 'REPLY_TO' | 'SAME_AS_CANDIDATE';
+  type: 'COMMENTED_ON' | 'REVIEWED' | 'LINKS_TO' | 'REPLY_TO' | 'RELATED_TO' | 'SAME_AS_CANDIDATE';
   target: string;
   metadata?: Record<string, unknown>;
 }
@@ -226,6 +226,7 @@ function parseGitHub(
       type: 'REVIEWED',
     });
   }
+  relations.push(...githubLinkedIssueRelations(raw));
 
   return validateParsedDocument({
     actors,
@@ -243,6 +244,55 @@ function parseGitHub(
     sourceType: 'github',
     title: raw.title,
   });
+}
+
+function githubLinkedIssueRelations(raw: GitHubRaw): ParsedRelation[] {
+  if (raw.kind !== 'pull_request') {
+    return [];
+  }
+  return uniqueGitHubLinkedIssueRefs(`${raw.title}\n${raw.body}`, raw.repository).map((ref) => ({
+    metadata: {
+      number: ref.number,
+      reason: 'github_closing_keyword',
+      repository: ref.repository,
+    },
+    target: `${ref.repository.toLowerCase()}/issues/${ref.number}`,
+    type: 'RELATED_TO',
+  }));
+}
+
+function uniqueGitHubLinkedIssueRefs(
+  text: string,
+  defaultRepository: string,
+): Array<{ repository: string; number: number }> {
+  const refs = new Map<string, { repository: string; number: number }>();
+  const keywordPattern =
+    /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+((?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?#\d+(?:\s*,\s*(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?#\d+)*)/gi;
+  for (const match of text.matchAll(keywordPattern)) {
+    for (const refText of (match[1] ?? '').split(/\s*,\s*/)) {
+      const ref = parseGitHubIssueRef(refText, defaultRepository);
+      if (ref) {
+        refs.set(`${ref.repository.toLowerCase()}#${ref.number}`, ref);
+      }
+    }
+  }
+  return [...refs.values()];
+}
+
+function parseGitHubIssueRef(
+  value: string,
+  defaultRepository: string,
+): { repository: string; number: number } | undefined {
+  const match = value.match(
+    /^(?:(?<repository>[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+))?#(?<number>[1-9]\d*)$/,
+  );
+  if (!match?.groups) {
+    return undefined;
+  }
+  return {
+    number: Number(match.groups.number),
+    repository: match.groups.repository ?? defaultRepository,
+  };
 }
 
 async function parseWeb(
