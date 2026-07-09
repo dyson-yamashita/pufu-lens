@@ -367,13 +367,13 @@ export function graphQuerySearchPatterns(query: string): string[] {
 }
 
 export function timelineSearchPatterns(query: string): string[] {
-  const queryText = timelineSearchQueryText(query);
+  const normalized = normalizeSpaces(query);
   const candidates = [
-    queryText,
-    stripAfterAny(queryText, ['について', 'に関する']),
-    stripAfterAny(queryText, ['の経緯', 'の履歴', 'の流れ']),
+    normalized,
+    stripAfterAny(normalized, ['について', 'に関する']),
+    stripAfterAny(normalized, ['の経緯', 'の履歴', 'の流れ']),
   ]
-    .map((candidate) => candidate.trim())
+    .map((candidate) => timelineSearchQueryText(candidate).trim())
     .filter((candidate) => candidate.length > 0);
   return [...new Set(candidates)].slice(0, 5).map((candidate) => `%${candidate}%`);
 }
@@ -543,6 +543,8 @@ function timelineSearchQueryText(query: string): string {
     /流れ/g,
     /いつ決ま/g,
     /なぜ判断/g,
+    /について/g,
+    /に関する/g,
     /教えて/g,
     /ください/g,
     /知りたい/g,
@@ -1295,6 +1297,34 @@ export function createPostgresChatRepository(
             LIMIT 1
           ) dc ON true
           WHERE d.project_id = ${projectId}
+          ORDER BY d.occurred_at ASC NULLS LAST, d.updated_at ASC, d.id ASC
+          LIMIT ${limit}
+        `) as readonly unknown[];
+        return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
+      }
+      if (keywordQuery.length === 0) {
+        const rows = (await sql`
+          SELECT
+            d.id::text AS document_id,
+            d.raw_document_id::text AS raw_document_id,
+            d.doc_type,
+            coalesce(d.title, 'Untitled') AS title,
+            coalesce(d.canonical_uri, '') AS canonical_uri,
+            left(coalesce(d.summary, dc.content, ''), 700) AS snippet
+          FROM public.documents d
+          LEFT JOIN LATERAL (
+            SELECT content
+            FROM public.document_chunks
+            WHERE project_id = d.project_id
+              AND document_id = d.id
+            ORDER BY chunk_index ASC
+            LIMIT 1
+          ) dc ON true
+          WHERE d.project_id = ${projectId}
+            AND (
+              d.title ILIKE ANY (${searchPatterns})
+              OR d.summary ILIKE ANY (${searchPatterns})
+            )
           ORDER BY d.occurred_at ASC NULLS LAST, d.updated_at ASC, d.id ASC
           LIMIT ${limit}
         `) as readonly unknown[];

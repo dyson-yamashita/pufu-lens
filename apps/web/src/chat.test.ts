@@ -1069,6 +1069,7 @@ assert.ok(
   ),
 );
 assert.deepEqual(timelineSearchPatterns('意思決定の経緯を時系列で教えて'), ['%意思決定%']);
+assert.deepEqual(timelineSearchPatterns('仕様変更について時系列で教えて'), ['%仕様変更%']);
 
 assert.equal(hybridSearchCandidateLimit(1), 50);
 assert.equal(hybridSearchCandidateLimit(5), 100);
