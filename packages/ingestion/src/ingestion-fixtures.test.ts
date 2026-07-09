@@ -639,6 +639,66 @@ test('parser accepts empty document bodies from real-world sources', async () =>
   }
 });
 
+test('github parser emits related document relations for linked issues', async () => {
+  const rawPath = await writeTempRawFixture(
+    'github-pr-linked-issues.json',
+    JSON.stringify({
+      body: 'Fixes #101. Resolves (#102), closes Example-Org/Pufu-Sample#103;',
+      comments: [],
+      created_at: '2026-05-08T12:00:00.000Z',
+      html_url: 'https://github.com/example-org/pufu-sample/pull/202',
+      kind: 'pull_request',
+      number: 202,
+      repository: 'example-org/pufu-sample',
+      reviews: [],
+      title: 'Close linked issues',
+      updated_at: '2026-05-08T12:30:00.000Z',
+      user: { login: 'sample-author', name: 'Sample Author' },
+    }),
+  );
+
+  try {
+    const parsed = await parseRawFixture(
+      buildFixtureCase('github-pr-linked-issues', 'github', rawPath),
+    );
+
+    assert.deepEqual(
+      parsed.relations.filter((relation) => relation.type === 'RELATED_TO'),
+      [
+        {
+          metadata: {
+            number: 101,
+            reason: 'github_closing_keyword',
+            repository: 'example-org/pufu-sample',
+          },
+          target: 'example-org/pufu-sample/issues/101',
+          type: 'RELATED_TO',
+        },
+        {
+          metadata: {
+            number: 102,
+            reason: 'github_closing_keyword',
+            repository: 'example-org/pufu-sample',
+          },
+          target: 'example-org/pufu-sample/issues/102',
+          type: 'RELATED_TO',
+        },
+        {
+          metadata: {
+            number: 103,
+            reason: 'github_closing_keyword',
+            repository: 'Example-Org/Pufu-Sample',
+          },
+          target: 'example-org/pufu-sample/issues/103',
+          type: 'RELATED_TO',
+        },
+      ],
+    );
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
 async function writeTempRawFixture(fileName: string, content: string): Promise<string> {
   const relativePath = `tmp/ingestion-fixtures-test/${fileName}`;
   const absolutePath = join(repoRoot, relativePath);

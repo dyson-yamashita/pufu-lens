@@ -188,6 +188,7 @@ test('storeGraphRelations creates SAME_AS only for another source type in the sa
     graphNodeId: 'document:web_page:https%3A%2F%2Fexample.test%2Fspec',
     id: 'document-web-1',
     rawDocumentId: 'raw-web-1',
+    sourceId: 'https://example.test/spec',
   });
 
   const result = await storeGraphRelations({
@@ -281,6 +282,63 @@ test('storeGraphRelations materializes parsed Drive keyword topics as mentions',
     repository.hasEdge(driveDocument.graphNodeId, 'MENTIONS', 'topic:keyword:spec%20draft'),
   );
   assert.equal(repository.nodes.get('topic:keyword:spec%20draft')?.properties.target, 'Spec draft');
+});
+
+test('storeGraphRelations materializes GitHub related document edges', async () => {
+  const issueDocument = documentRecord({
+    docType: 'issue',
+    graphNodeId: 'document:issue:example-org%2Fpufu-sample%2Fissues%2F101',
+    id: 'document-github-issue-101',
+    rawDocumentId: 'raw-github-issue-101',
+    sourceId: 'example-org/pufu-sample/issues/101',
+  });
+  const repository = new InMemoryGraphRelationsRepository([
+    {
+      document: documentRecord({
+        docType: 'pull_request',
+        graphNodeId: 'document:pull_request:example-org%2Fpufu-sample%2Fpulls%2F202',
+        id: 'document-github-pr-202',
+        rawDocumentId: 'raw-github-pr-202',
+      }),
+      parsed: githubParsed({
+        canonicalUri: 'https://github.com/example-org/pufu-sample/pull/202',
+        docType: 'pull_request',
+        relations: [
+          {
+            metadata: { number: 101, reason: 'github_closing_keyword' },
+            target: 'example-org/pufu-sample/issues/101',
+            type: 'RELATED_TO',
+          },
+        ],
+        sourceId: 'example-org/pufu-sample/pulls/202',
+      }),
+      rawContentHash: 'hash-pr-202',
+      rawDocumentId: 'raw-github-pr-202',
+    },
+  ]);
+  repository.documents.set('example-org/pufu-sample/issues/101', issueDocument);
+
+  const result = await storeGraphRelations({
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  });
+
+  const edgeKey =
+    'document:pull_request:example-org%2Fpufu-sample%2Fpulls%2F202:RELATED_TO:document:issue:example-org%2Fpufu-sample%2Fissues%2F101';
+  assert.equal(result.decisions[0]?.graphEdgeCount, 1);
+  assert.ok(
+    repository.hasEdge(
+      'document:pull_request:example-org%2Fpufu-sample%2Fpulls%2F202',
+      'RELATED_TO',
+      'document:issue:example-org%2Fpufu-sample%2Fissues%2F101',
+    ),
+  );
+  assert.equal(
+    repository.edges.get(edgeKey)?.properties.relationTarget,
+    'example-org/pufu-sample/issues/101',
+  );
+  assert.ok(repository.nodes.has('document:issue:example-org%2Fpufu-sample%2Fissues%2F101'));
 });
 
 test('storeGraphRelations skips blank reply relation targets', async () => {
@@ -405,6 +463,7 @@ test('storeGraphRelations keeps project slug isolation at repository boundary', 
 class InMemoryGraphRelationsRepository implements GraphRelationsRepository {
   readonly aliases = new Map<string, GraphRelationActorRecord>();
   readonly actors: GraphRelationActorRecord[] = [];
+  readonly documents = new Map<string, GraphRelationDocumentRecord>();
   readonly edges = new Map<string, GraphEdgeInput>();
   readonly emailQuotes = new Map<string, GraphEmailQuoteInput[]>();
   readonly nodes = new Map<string, GraphNodeInput>();
@@ -457,6 +516,13 @@ class InMemoryGraphRelationsRepository implements GraphRelationsRepository {
     );
   }
 
+  async findDocumentsBySourceIds(input: { projectId: string; sourceIds: readonly string[] }) {
+    assert.equal(input.projectId, this.project.id);
+    return input.sourceIds
+      .map((sourceId) => this.documents.get(sourceId))
+      .filter((document): document is GraphRelationDocumentRecord => document !== undefined);
+  }
+
   async upsertGraphNode(input: GraphNodeInput) {
     this.nodes.set(input.graphNodeId, input);
   }
@@ -495,6 +561,7 @@ function documentRecord(
     graphNodeId: 'document:email:thread-alpha%3Amsg-alpha-003',
     id: 'document-email-1',
     rawDocumentId: 'raw-email-1',
+    sourceId: 'thread-alpha:msg-alpha-003',
     ...input,
   };
 }
@@ -529,7 +596,7 @@ function gmailParsed(
   };
 }
 
-function githubParsed(): ParsedDocument {
+function githubParsed(input: Partial<ParsedDocument> = {}): ParsedDocument {
   return {
     actors: [{ displayName: 'Sample Author', githubLogin: 'sample-author', role: 'author' }],
     bodyText: 'Issue body',
@@ -542,6 +609,7 @@ function githubParsed(): ParsedDocument {
     sourceId: 'example-org/pufu-sample/issues/101',
     sourceType: 'github',
     title: 'Indexer should skip archived notes',
+    ...input,
   };
 }
 

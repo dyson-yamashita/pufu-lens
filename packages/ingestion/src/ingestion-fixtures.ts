@@ -30,7 +30,7 @@ export interface ActorMention {
 }
 
 export interface ParsedRelation {
-  type: 'COMMENTED_ON' | 'REVIEWED' | 'LINKS_TO' | 'REPLY_TO' | 'SAME_AS_CANDIDATE';
+  type: 'COMMENTED_ON' | 'REVIEWED' | 'LINKS_TO' | 'REPLY_TO' | 'RELATED_TO' | 'SAME_AS_CANDIDATE';
   target: string;
   metadata?: Record<string, unknown>;
 }
@@ -226,6 +226,7 @@ function parseGitHub(
       type: 'REVIEWED',
     });
   }
+  relations.push(...githubLinkedIssueRelations(raw));
 
   return validateParsedDocument({
     actors,
@@ -243,6 +244,157 @@ function parseGitHub(
     sourceType: 'github',
     title: raw.title,
   });
+}
+
+function githubLinkedIssueRelations(raw: GitHubRaw): ParsedRelation[] {
+  if (raw.kind !== 'pull_request') {
+    return [];
+  }
+  return uniqueGitHubLinkedIssueRefs(`${raw.title}\n${raw.body}`, raw.repository).map((ref) => ({
+    metadata: {
+      number: ref.number,
+      reason: 'github_closing_keyword',
+      repository: ref.repository,
+    },
+    target: `${ref.repository.toLowerCase()}/issues/${ref.number}`,
+    type: 'RELATED_TO',
+  }));
+}
+
+function uniqueGitHubLinkedIssueRefs(
+  text: string,
+  defaultRepository: string,
+): Array<{ repository: string; number: number }> {
+  const refs = new Map<string, { repository: string; number: number }>();
+  for (const line of text.split(/\r?\n/)) {
+    for (const keywordEnd of githubClosingKeywordEndIndexes(line)) {
+      for (const refText of line.slice(keywordEnd).split(',')) {
+        const candidate = normalizeGitHubIssueRefToken(firstWhitespaceSeparatedToken(refText));
+        if (!candidate) {
+          continue;
+        }
+        const ref = parseGitHubIssueRef(candidate, defaultRepository);
+        if (ref) {
+          refs.set(`${ref.repository.toLowerCase()}#${ref.number}`, ref);
+        }
+      }
+    }
+  }
+  return [...refs.values()];
+}
+
+function githubClosingKeywordEndIndexes(line: string): number[] {
+  const lowerLine = line.toLowerCase();
+  const keywords = [
+    'close',
+    'closed',
+    'closes',
+    'fix',
+    'fixed',
+    'fixes',
+    'resolve',
+    'resolved',
+    'resolves',
+  ];
+  const indexes: number[] = [];
+  for (let index = 0; index < lowerLine.length; index += 1) {
+    for (const keyword of keywords) {
+      if (
+        lowerLine.startsWith(keyword, index) &&
+        !isGitHubIssueRefWordChar(lowerLine[index - 1]) &&
+        !isGitHubIssueRefWordChar(lowerLine[index + keyword.length])
+      ) {
+        indexes.push(index + keyword.length);
+        break;
+      }
+    }
+  }
+  return indexes;
+}
+
+function firstWhitespaceSeparatedToken(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const whitespaceIndex = trimmed.search(/\s/);
+  return whitespaceIndex === -1 ? trimmed : trimmed.slice(0, whitespaceIndex);
+}
+
+function normalizeGitHubIssueRefToken(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  let start = 0;
+  let end = value.length;
+  while (start < end && isGitHubIssueRefWrapperPrefix(value[start])) {
+    start += 1;
+  }
+  while (end > start && isGitHubIssueRefWrapperSuffix(value[end - 1])) {
+    end -= 1;
+  }
+  return start === end ? undefined : value.slice(start, end);
+}
+
+function isGitHubIssueRefWrapperPrefix(char: string | undefined): boolean {
+  return char !== undefined && ['(', '[', '{', '<', '"', "'"].includes(char);
+}
+
+function isGitHubIssueRefWrapperSuffix(char: string | undefined): boolean {
+  return (
+    char !== undefined && [')', ']', '}', '>', '"', "'", '.', ',', ';', ':', '!'].includes(char)
+  );
+}
+
+function isGitHubIssueRefWordChar(value: string | undefined): boolean {
+  return (
+    value !== undefined &&
+    ((value >= 'a' && value <= 'z') || (value >= '0' && value <= '9') || value === '_')
+  );
+}
+
+function parseGitHubIssueRef(
+  value: string,
+  defaultRepository: string,
+): { repository: string; number: number } | undefined {
+  const hashIndex = value.lastIndexOf('#');
+  if (hashIndex < 0) {
+    return undefined;
+  }
+
+  const repository = hashIndex === 0 ? defaultRepository : value.slice(0, hashIndex);
+  const numberText = value.slice(hashIndex + 1);
+  if (!isPositiveIntegerText(numberText) || !isValidGitHubRepository(repository)) {
+    return undefined;
+  }
+  return { number: Number(numberText), repository };
+}
+
+function isPositiveIntegerText(value: string): boolean {
+  return (
+    value.length > 0 && value[0] !== '0' && [...value].every((char) => char >= '0' && char <= '9')
+  );
+}
+
+function isValidGitHubRepository(value: string): boolean {
+  const parts = value.split('/');
+  return (
+    parts.length === 2 &&
+    parts.every(
+      (part) => part.length > 0 && [...part].every((char) => isGitHubRepositoryChar(char)),
+    )
+  );
+}
+
+function isGitHubRepositoryChar(char: string): boolean {
+  return (
+    (char >= 'A' && char <= 'Z') ||
+    (char >= 'a' && char <= 'z') ||
+    (char >= '0' && char <= '9') ||
+    char === '_' ||
+    char === '.' ||
+    char === '-'
+  );
 }
 
 async function parseWeb(

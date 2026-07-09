@@ -9,6 +9,7 @@ export type GraphEdgeType =
   | 'MENTIONS'
   | 'OWNS'
   | 'REPLY_TO'
+  | 'RELATED_TO'
   | 'REVIEWED'
   | 'SAME_AS'
   | 'SENT';
@@ -24,6 +25,7 @@ export interface GraphRelationDocumentRecord {
   graphNodeId: string;
   id: string;
   rawDocumentId: string;
+  sourceId: string;
 }
 
 export interface GraphRelationActorRecord {
@@ -83,6 +85,10 @@ export interface GraphRelationsRepository {
     rawContentHash: string;
     rawDocumentId: string;
     sourceType: ParsedDocument['sourceType'];
+  }): Promise<GraphRelationDocumentRecord[]>;
+  findDocumentsBySourceIds(input: {
+    projectId: string;
+    sourceIds: readonly string[];
   }): Promise<GraphRelationDocumentRecord[]>;
   lookupProjectBySlug(slug: string): Promise<GraphRelationProjectRecord | undefined>;
   markFailed(input: {
@@ -209,6 +215,13 @@ async function storeGraphTarget(
     graphEdgeCount += 1;
   }
 
+  for (const documentEdge of await relatedDocumentEdges(context, parsed, target)) {
+    await context.repository.upsertGraphNode(documentEdge.node);
+    await context.repository.upsertGraphEdge(documentEdge.edge);
+    graphNodeCount += 1;
+    graphEdgeCount += 1;
+  }
+
   const emailQuotes = await resolvedEmailQuotes(context, parsed);
   await context.repository.replaceEmailQuotes({
     documentId: target.document.id,
@@ -321,6 +334,88 @@ function topicNodesAndEdges(
     ...parsedTopicNodesAndEdges(project, parsed, target),
     ...replyTopicNodesAndEdges(project, parsed, target),
   ];
+}
+
+async function relatedDocumentEdges(
+  context: GraphRelationContext,
+  parsed: ParsedDocument,
+  target: GraphRelationTarget,
+): Promise<Array<{ edge: GraphEdgeInput; node: GraphNodeInput }>> {
+  const edges: Array<{ edge: GraphEdgeInput; node: GraphNodeInput }> = [];
+  const targetSourceIds = relatedDocumentSourceIds(parsed);
+  const documentsBySourceId = new Map(
+    (
+      await context.repository.findDocumentsBySourceIds({
+        projectId: context.project.id,
+        sourceIds: targetSourceIds,
+      })
+    ).map((document) => [document.sourceId, document]),
+  );
+
+  for (const targetSourceId of targetSourceIds) {
+    const relation = parsed.relations.find(
+      (candidate) => candidate.type === 'RELATED_TO' && candidate.target.trim() === targetSourceId,
+    );
+    const relatedDocument = documentsBySourceId.get(targetSourceId);
+    if (!relation || !relatedDocument) {
+      continue;
+    }
+
+    edges.push({
+      edge: {
+        fromGraphNodeId: target.document.graphNodeId,
+        properties: {
+          ...relation.metadata,
+          projectId: context.project.id,
+          relationTarget: targetSourceId,
+          relationType: relation.type,
+        },
+        toGraphNodeId: relatedDocument.graphNodeId,
+        type: 'RELATED_TO',
+      },
+      node: documentPlaceholderGraphNode(context.project, relatedDocument),
+    });
+  }
+
+  return edges;
+}
+
+function relatedDocumentSourceIds(parsed: ParsedDocument): string[] {
+  const sourceIds: string[] = [];
+  const seenTargets = new Set<string>();
+  for (const relation of parsed.relations) {
+    if (relation.type !== 'RELATED_TO') {
+      continue;
+    }
+    const targetSourceId = relation.target.trim();
+    if (
+      targetSourceId === '' ||
+      targetSourceId === parsed.sourceId ||
+      seenTargets.has(targetSourceId)
+    ) {
+      continue;
+    }
+    seenTargets.add(targetSourceId);
+    sourceIds.push(targetSourceId);
+  }
+  return sourceIds;
+}
+
+function documentPlaceholderGraphNode(
+  project: GraphRelationProjectRecord,
+  document: GraphRelationDocumentRecord,
+): GraphNodeInput {
+  return {
+    graphNodeId: document.graphNodeId,
+    labels: ['Document', documentLabel(document.docType)],
+    properties: {
+      docType: document.docType,
+      documentId: document.id,
+      projectId: project.id,
+      rawDocumentId: document.rawDocumentId,
+      sourceId: document.sourceId,
+    },
+  };
 }
 
 function parsedTopicNodesAndEdges(

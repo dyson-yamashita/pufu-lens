@@ -15,7 +15,12 @@ import { storeGraphRelations } from '../packages/ingestion/dist/index.js';
 import { createObjectStorageFromEnv } from '../packages/storage/dist/factory.js';
 import type { ObjectStorage } from '../packages/storage/dist/object-storage.js';
 import { requiredEnv, validateGraphName } from './lib/cli.ts';
-import { parseAgtypeString, selectMissingGraphTargets } from './lib/graph-target-selection.ts';
+import {
+  extractRelatedDocumentSourceIds,
+  parseAgtypeString,
+  selectMissingGraphTargets,
+  selectRelatedDocumentBackfillTargets,
+} from './lib/graph-target-selection.ts';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
 const GRAPH_TARGET_SCAN_PAGE_MIN_SIZE = 100;
@@ -54,6 +59,7 @@ type GraphTargetRow = {
   parsedUri: string;
   rawContentHash: string;
   rawDocumentId: string;
+  sourceId: string;
 };
 
 type InsertedEmailQuoteRow = {
@@ -102,6 +108,7 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
   }): Promise<GraphRelationTarget[]> {
     const graphName = requiredGraphName(this.graphName);
     const selectedRows: GraphTargetRow[] = [];
+    const parsedTextByRawDocumentId = new Map<string, string>();
     const pageSize = Math.max(
       input.limit * GRAPH_TARGET_SCAN_PAGE_MULTIPLIER,
       GRAPH_TARGET_SCAN_PAGE_MIN_SIZE,
@@ -121,6 +128,18 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
       selectedRows.push(
         ...selectMissingGraphTargets(rows, existingGraphNodeIds, input.limit - selectedRows.length),
       );
+      if (selectedRows.length < input.limit) {
+        selectedRows.push(
+          ...(await this.selectRelatedDocumentBackfillRows({
+            existingGraphNodeIds,
+            graphName,
+            limit: input.limit - selectedRows.length,
+            parsedTextByRawDocumentId,
+            projectId: input.projectId,
+            rows,
+          })),
+        );
+      }
       if (rows.length < pageSize) {
         break;
       }
@@ -135,13 +154,106 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
             graphNodeId: row.graphNodeId,
             id: row.documentId,
             rawDocumentId: row.documentRawDocumentId,
+            sourceId: row.sourceId,
           },
-          parsed: await this.storage.getText(row.parsedUri),
+          parsed: await this.readParsedText(row, parsedTextByRawDocumentId),
           rawContentHash: row.rawContentHash,
           rawDocumentId: row.rawDocumentId,
         }),
       ),
     );
+  }
+
+  private async selectRelatedDocumentBackfillRows(input: {
+    existingGraphNodeIds: ReadonlySet<string>;
+    graphName: string;
+    limit: number;
+    parsedTextByRawDocumentId: Map<string, string>;
+    projectId: string;
+    rows: readonly GraphTargetRow[];
+  }): Promise<GraphTargetRow[]> {
+    const rowsWithParsed = (
+      await Promise.all(
+        input.rows
+          .filter((row) => input.existingGraphNodeIds.has(row.graphNodeId))
+          .map(async (row) => ({
+            ...row,
+            parsedText: await this.readParsedText(row, input.parsedTextByRawDocumentId),
+          })),
+      )
+    ).filter((row) => extractRelatedDocumentSourceIds(row.parsedText).length > 0);
+    if (rowsWithParsed.length === 0) {
+      return [];
+    }
+
+    const targetSourceIdsByGraphNodeId = new Map<string, string[]>();
+    const targetSourceIds = new Set<string>();
+    for (const row of rowsWithParsed) {
+      const sourceIds = extractRelatedDocumentSourceIds(row.parsedText).filter(
+        (sourceId) => sourceId !== row.sourceId,
+      );
+      targetSourceIdsByGraphNodeId.set(row.graphNodeId, sourceIds);
+      for (const sourceId of sourceIds) {
+        targetSourceIds.add(sourceId);
+      }
+    }
+    if (targetSourceIds.size === 0) {
+      return [];
+    }
+
+    const documentsBySourceId = new Map(
+      (
+        await this.findDocumentsBySourceIds({
+          projectId: input.projectId,
+          sourceIds: [...targetSourceIds],
+        })
+      ).map((document) => [document.sourceId, document]),
+    );
+    const pairs = rowsWithParsed.flatMap((row) =>
+      (targetSourceIdsByGraphNodeId.get(row.graphNodeId) ?? [])
+        .map((sourceId) => documentsBySourceId.get(sourceId))
+        .filter(
+          (document): document is GraphRelationDocumentRecord =>
+            document !== undefined && document.graphNodeId !== row.graphNodeId,
+        )
+        .map((document) => ({
+          fromGraphNodeId: row.graphNodeId,
+          toGraphNodeId: document.graphNodeId,
+        })),
+    );
+    const existingEdgeKeys = await listExistingRelatedDocumentEdgeKeys(
+      this.sql,
+      input.graphName,
+      pairs,
+    );
+    const missingRelatedEdgeGraphNodeIds = new Set(
+      pairs
+        .filter(
+          (pair) =>
+            !existingEdgeKeys.has(relatedDocumentEdgeKey(pair.fromGraphNodeId, pair.toGraphNodeId)),
+        )
+        .map((pair) => pair.fromGraphNodeId),
+    );
+
+    return selectRelatedDocumentBackfillTargets(
+      rowsWithParsed,
+      input.existingGraphNodeIds,
+      missingRelatedEdgeGraphNodeIds,
+      input.limit,
+    ).map(stripParsedText);
+  }
+
+  private async readParsedText(
+    row: GraphTargetRow,
+    parsedTextByRawDocumentId: Map<string, string>,
+  ): Promise<string> {
+    const cached = parsedTextByRawDocumentId.get(row.rawDocumentId);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const parsedText = await this.storage.getText(row.parsedUri);
+    parsedTextByRawDocumentId.set(row.rawDocumentId, parsedText);
+    return parsedText;
   }
 
   private async readGraphTargetRows(input: {
@@ -157,7 +269,8 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
         d.raw_document_id::text AS "documentRawDocumentId",
         rd.content_hash AS "rawContentHash",
         rd.id::text AS "rawDocumentId",
-        rd.parsed_uri AS "parsedUri"
+        rd.parsed_uri AS "parsedUri",
+        rd.source_id AS "sourceId"
       FROM public.documents d
       JOIN public.raw_documents rd ON rd.id = d.raw_document_id
       WHERE d.project_id = ${input.projectId}
@@ -234,7 +347,8 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
         d.doc_type AS "docType",
         d.graph_node_id AS "graphNodeId",
         d.id::text AS id,
-        d.raw_document_id::text AS "rawDocumentId"
+        d.raw_document_id::text AS "rawDocumentId",
+        rd.source_id AS "sourceId"
       FROM public.documents d
       JOIN public.raw_documents rd ON rd.id = d.raw_document_id
       WHERE d.project_id = ${input.projectId}
@@ -243,6 +357,28 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
         AND rd.source_type <> ${input.sourceType}
         AND rd.content_hash = ${input.rawContentHash}
     `) as GraphRelationDocumentRecord[];
+  }
+
+  async findDocumentsBySourceIds(input: {
+    projectId: string;
+    sourceIds: readonly string[];
+  }): Promise<GraphRelationDocumentRecord[]> {
+    if (input.sourceIds.length === 0) {
+      return [];
+    }
+    return (await this.sql`
+        SELECT
+          d.doc_type AS "docType",
+          d.graph_node_id AS "graphNodeId",
+          d.id::text AS id,
+          d.raw_document_id::text AS "rawDocumentId",
+          rd.source_id AS "sourceId"
+        FROM public.documents d
+        JOIN public.raw_documents rd ON rd.id = d.raw_document_id
+        WHERE d.project_id = ${input.projectId}
+          AND rd.project_id = ${input.projectId}
+          AND rd.source_id IN ${this.sql(input.sourceIds)}
+      `) as GraphRelationDocumentRecord[];
   }
 
   async upsertGraphNode(input: GraphNodeInput): Promise<void> {
@@ -412,6 +548,49 @@ async function listExistingDocumentGraphNodeIds(
       .map((row) => parseAgtypeString(row.graph_node_id))
       .filter((graphNodeId): graphNodeId is string => graphNodeId !== undefined),
   );
+}
+
+async function listExistingRelatedDocumentEdgeKeys(
+  sql: postgres.Sql,
+  graphName: string,
+  pairs: ReadonlyArray<{ fromGraphNodeId: string; toGraphNodeId: string }>,
+): Promise<Set<string>> {
+  if (pairs.length === 0) {
+    return new Set();
+  }
+  const fromGraphNodeIds = [...new Set(pairs.map((pair) => pair.fromGraphNodeId))];
+  const toGraphNodeIds = [...new Set(pairs.map((pair) => pair.toGraphNodeId))];
+  const rows = (await sql.unsafe(
+    `SELECT from_graph_node_id, to_graph_node_id FROM cypher(${sqlString(graphName)}, ${dollarQuote(
+      [
+        'MATCH (from:Document)-[:RELATED_TO]->(to:Document)',
+        'WHERE from.graphNodeId IN $fromGraphNodeIds',
+        'AND to.graphNodeId IN $toGraphNodeIds',
+        'RETURN from.graphNodeId, to.graphNodeId',
+      ].join(' '),
+    )}, $1::agtype) AS (from_graph_node_id agtype, to_graph_node_id agtype)`,
+    [JSON.stringify({ fromGraphNodeIds, toGraphNodeIds })],
+  )) as Array<{ from_graph_node_id: unknown; to_graph_node_id: unknown }>;
+  return new Set(
+    rows
+      .map((row) => {
+        const fromGraphNodeId = parseAgtypeString(row.from_graph_node_id);
+        const toGraphNodeId = parseAgtypeString(row.to_graph_node_id);
+        return fromGraphNodeId && toGraphNodeId
+          ? relatedDocumentEdgeKey(fromGraphNodeId, toGraphNodeId)
+          : undefined;
+      })
+      .filter((key): key is string => key !== undefined),
+  );
+}
+
+function relatedDocumentEdgeKey(fromGraphNodeId: string, toGraphNodeId: string): string {
+  return `${fromGraphNodeId}\u001f${toGraphNodeId}`;
+}
+
+function stripParsedText<T extends { parsedText: string }>(row: T): Omit<T, 'parsedText'> {
+  const { parsedText: _parsedText, ...rest } = row;
+  return rest;
 }
 
 function parseArgs(argv: string[]): {
