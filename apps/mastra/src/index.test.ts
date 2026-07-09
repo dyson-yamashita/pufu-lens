@@ -20,12 +20,15 @@ import {
 
 function createChatRepository(): ChatRepository & {
   projectIds: string[];
+  timelineSearchInputs: Array<{ query: string }>;
   vectorSearchInputs: Array<{ embedding: readonly number[]; query: string }>;
 } {
   const projectIds: string[] = [];
+  const timelineSearchInputs: Array<{ query: string }> = [];
   const vectorSearchInputs: Array<{ embedding: readonly number[]; query: string }> = [];
   return {
     projectIds,
+    timelineSearchInputs,
     vectorSearchInputs,
     async lookupProjectMember({ projectSlug, userId }) {
       return projectSlug === 'sample-a' && userId === 'user-a'
@@ -93,6 +96,11 @@ function createChatRepository(): ChatRepository & {
     async parsedDocFetch({ projectId }) {
       projectIds.push(projectId);
       return [{ ...sampleSource, documentId: 'doc-parsed', title: 'Parsed Metadata' }];
+    },
+    async timelineSearch({ projectId, query }) {
+      projectIds.push(projectId);
+      timelineSearchInputs.push({ query });
+      return [{ ...sampleSource, documentId: 'doc-timeline', title: 'Timeline Event' }];
     },
     async listPrivateChatHistoryForContext() {
       return [];
@@ -288,6 +296,7 @@ assert.deepEqual(
     mastraToolIds.parsedDocFetch,
     mastraToolIds.pufuScoreGenerate,
     mastraToolIds.rawDocumentFetch,
+    mastraToolIds.timelineSearch,
     mastraToolIds.vectorSearch,
   ].sort(),
 );
@@ -358,10 +367,20 @@ assert.deepEqual(
   deterministicVector('仕様変更', PRIVATE_CHAT_VECTOR_DIMENSIONS),
 );
 
+const timelineSearch = await runtime.projectChatTools.timelineSearch.execute?.(
+  { limit: 3, query: '意思決定の経緯' },
+  { requestContext } as never,
+);
+assert.deepEqual(timelineSearch, {
+  sources: [{ ...sampleSource, documentId: 'doc-timeline', title: 'Timeline Event' }],
+});
+assert.deepEqual(chatRepository.timelineSearchInputs.at(-1), { query: '意思決定の経緯' });
+
 const projectChatInstructions = PROJECT_CHAT_AGENT_INSTRUCTIONS;
 assert.match(projectChatInstructions, /まず vector-search を実行する/);
 assert.match(projectChatInstructions, /graph-query と parsed-doc-fetch を補助検索/);
 assert.match(projectChatInstructions, /seedDocumentIds/);
+assert.match(projectChatInstructions, /timeline-search/);
 assert.match(projectChatInstructions, /raw-document-fetch は、参照する source を選んだ後/);
 assert.match(projectChatInstructions, /確定的な事実主張をしてはいけない/);
 

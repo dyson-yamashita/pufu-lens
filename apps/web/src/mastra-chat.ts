@@ -33,6 +33,7 @@ const TOOL_NAME_MAP: Record<string, ChatToolName> = {
   graphQuery: 'graph-query',
   parsedDocFetch: 'parsed-doc-fetch',
   rawDocumentFetch: 'raw-document-fetch',
+  timelineSearch: 'timeline-search',
   vectorSearch: 'vector-search',
 };
 

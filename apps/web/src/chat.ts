@@ -15,6 +15,7 @@ export type ChatToolName =
   | 'graph-query'
   | 'parsed-doc-fetch'
   | 'raw-document-fetch'
+  | 'timeline-search'
   | 'vector-search';
 
 export type PublicChatToolName = ChatToolName | 'public-context-fetch' | 'public-report-fetch';
@@ -209,6 +210,7 @@ export interface ChatRepository {
     projectId: string;
   }): Promise<ChatSource[]>;
   rawReadViewFetch(input: RawReadViewRequest): Promise<AgentRawReadViewEnvelope | undefined>;
+  timelineSearch(input: { limit: number; projectId: string; query: string }): Promise<ChatSource[]>;
   vectorSearch(input: {
     embedding: readonly number[];
     limit: number;
@@ -360,6 +362,18 @@ export function graphQuerySearchPatterns(query: string): string[] {
     stripAfterAny(withoutRequestSuffix, ['について', 'に関する']),
   ]
     .map((candidate) => stripGraphQueryPrefix(candidate).trim())
+    .filter((candidate) => candidate.length > 0);
+  return [...new Set(candidates)].slice(0, 5).map((candidate) => `%${candidate}%`);
+}
+
+export function timelineSearchPatterns(query: string): string[] {
+  const normalized = normalizeSpaces(query);
+  const candidates = [
+    normalized,
+    stripAfterAny(normalized, ['について', 'に関する']),
+    stripAfterAny(normalized, ['の経緯', 'の履歴', 'の流れ']),
+  ]
+    .map((candidate) => timelineSearchQueryText(candidate).trim())
     .filter((candidate) => candidate.length > 0);
   return [...new Set(candidates)].slice(0, 5).map((candidate) => `%${candidate}%`);
 }
@@ -518,6 +532,35 @@ function stripGraphQueryPrefix(value: string): string {
   return output;
 }
 
+function timelineSearchQueryText(query: string): string {
+  let output = normalizeSpaces(query);
+  const noisePatterns = [
+    /timeline/gi,
+    /history/gi,
+    /時系列/g,
+    /履歴/g,
+    /経緯/g,
+    /流れ/g,
+    /いつ決ま/g,
+    /なぜ判断/g,
+    /について/g,
+    /に関する/g,
+    /教えて/g,
+    /ください/g,
+    /知りたい/g,
+    /まとめて/g,
+    /説明して/g,
+  ];
+  for (const pattern of noisePatterns) {
+    output = output.replace(pattern, ' ');
+  }
+  output = normalizeSpaces(output)
+    .replace(/^(現在の|最新の|現在|最新)/, '')
+    .replace(/[、。?？!！]/g, ' ')
+    .replace(/[のをではがに]+/g, ' ');
+  return normalizeSpaces(output);
+}
+
 export interface RunPublicChatOptions {
   readonly contextBundle: PublicContextBundleV1;
   readonly provider: PublicChatProvider;
@@ -573,6 +616,7 @@ export async function runPrivateChat(
   }
 
   const editing = inferChatEditingMetadata(request.question);
+  const shouldPrioritizeTimeline = editing.inferredMode === 'timeline';
   const embedding = deterministicVector(request.question, PRIVATE_CHAT_VECTOR_DIMENSIONS);
   const vectorSources = await options.repository.vectorSearch({
     embedding,
@@ -580,7 +624,14 @@ export async function runPrivateChat(
     projectId: project.id,
     query: request.question,
   });
-  const [graphSources, rawSources, parsedSources] = await Promise.all([
+  const timelineSourcesPromise = shouldPrioritizeTimeline
+    ? options.repository.timelineSearch({
+        limit: 5,
+        projectId: project.id,
+        query: request.question,
+      })
+    : Promise.resolve([] satisfies ChatSource[]);
+  const [graphSources, timelineSources, rawSources, parsedSources] = await Promise.all([
     options.repository.graphQuery({
       graphName: project.graphName,
       limit: 5,
@@ -588,6 +639,7 @@ export async function runPrivateChat(
       query: request.question,
       seedDocumentIds: vectorSources.map((source) => source.documentId),
     }),
+    timelineSourcesPromise,
     options.repository.rawDocumentFetch({
       limit: 5,
       maxBytes: 64 * 1024,
@@ -602,12 +654,23 @@ export async function runPrivateChat(
     documentIds: vectorSources.map((source) => source.documentId),
     projectId: project.id,
   });
-  const graphSourceBudget = Math.min(graphSources.length, 2);
-  const vectorSourceBudget = 5 - graphSourceBudget;
+  const timelineSourceBudget = shouldPrioritizeTimeline ? Math.min(timelineSources.length, 2) : 0;
+  const graphSourceBudget = Math.min(graphSources.length, shouldPrioritizeTimeline ? 1 : 2);
+  const vectorSourceBudget = Math.max(0, 5 - graphSourceBudget - timelineSourceBudget);
   const sources = uniqueSources([
-    ...vectorSources.slice(0, vectorSourceBudget),
-    ...graphSources.slice(0, graphSourceBudget),
-    ...vectorSources.slice(vectorSourceBudget),
+    ...(shouldPrioritizeTimeline
+      ? [
+          ...timelineSources.slice(0, timelineSourceBudget),
+          ...graphSources.slice(0, graphSourceBudget),
+          ...vectorSources.slice(0, vectorSourceBudget),
+          ...timelineSources.slice(timelineSourceBudget),
+          ...vectorSources.slice(vectorSourceBudget),
+        ]
+      : [
+          ...vectorSources.slice(0, vectorSourceBudget),
+          ...graphSources.slice(0, graphSourceBudget),
+          ...vectorSources.slice(vectorSourceBudget),
+        ]),
     ...documentSources,
     ...rawSources,
     ...parsedSources,
@@ -622,6 +685,9 @@ export async function runPrivateChat(
     toolCalls: [
       { name: 'vector-search', resultCount: vectorSources.length },
       { name: 'graph-query', resultCount: graphSources.length },
+      ...(shouldPrioritizeTimeline
+        ? [{ name: 'timeline-search' as const, resultCount: timelineSources.length }]
+        : []),
       { name: 'document-fetch', resultCount: documentSources.length },
       { name: 'raw-document-fetch', resultCount: rawSources.length },
       { name: 'parsed-doc-fetch', resultCount: parsedSources.length },
@@ -1221,6 +1287,96 @@ export function createPostgresChatRepository(
       `) as readonly unknown[];
       return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
     },
+    async timelineSearch({ limit, projectId, query }) {
+      const queryText = timelineSearchQueryText(query);
+      const keywordQuery = normalizeHybridKeywordQuery(queryText);
+      const searchPatterns = timelineSearchPatterns(query);
+      if (keywordQuery.length === 0 && searchPatterns.length === 0) {
+        const rows = (await sql`
+          SELECT
+            d.id::text AS document_id,
+            d.raw_document_id::text AS raw_document_id,
+            d.doc_type,
+            coalesce(d.title, 'Untitled') AS title,
+            coalesce(d.canonical_uri, '') AS canonical_uri,
+            left(coalesce(d.summary, dc.content, ''), 700) AS snippet
+          FROM public.documents d
+          LEFT JOIN LATERAL (
+            SELECT content
+            FROM public.document_chunks
+            WHERE project_id = d.project_id
+              AND document_id = d.id
+            ORDER BY chunk_index ASC
+            LIMIT 1
+          ) dc ON true
+          WHERE d.project_id = ${projectId}
+          ORDER BY d.occurred_at ASC NULLS LAST, d.updated_at ASC, d.id ASC
+          LIMIT ${limit}
+        `) as readonly unknown[];
+        return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
+      }
+      if (keywordQuery.length === 0) {
+        const rows = (await sql`
+          SELECT
+            d.id::text AS document_id,
+            d.raw_document_id::text AS raw_document_id,
+            d.doc_type,
+            coalesce(d.title, 'Untitled') AS title,
+            coalesce(d.canonical_uri, '') AS canonical_uri,
+            left(coalesce(d.summary, dc.content, ''), 700) AS snippet
+          FROM public.documents d
+          LEFT JOIN LATERAL (
+            SELECT content
+            FROM public.document_chunks
+            WHERE project_id = d.project_id
+              AND document_id = d.id
+            ORDER BY chunk_index ASC
+            LIMIT 1
+          ) dc ON true
+          WHERE d.project_id = ${projectId}
+            AND (
+              d.title ILIKE ANY (${searchPatterns})
+              OR d.summary ILIKE ANY (${searchPatterns})
+            )
+          ORDER BY d.occurred_at ASC NULLS LAST, d.updated_at ASC, d.id ASC
+          LIMIT ${limit}
+        `) as readonly unknown[];
+        return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
+      }
+      const rows = (await sql`
+        SELECT
+          d.id::text AS document_id,
+          d.raw_document_id::text AS raw_document_id,
+          d.doc_type,
+          coalesce(d.title, 'Untitled') AS title,
+          coalesce(d.canonical_uri, '') AS canonical_uri,
+          left(coalesce(d.summary, dc.content, ''), 700) AS snippet
+        FROM public.documents d
+        LEFT JOIN LATERAL (
+          SELECT content
+          FROM public.document_chunks
+          WHERE project_id = d.project_id
+            AND document_id = d.id
+          ORDER BY chunk_index ASC
+          LIMIT 1
+        ) dc ON true
+        WHERE d.project_id = ${projectId}
+          AND (
+            d.title ILIKE ANY (${searchPatterns})
+            OR d.summary ILIKE ANY (${searchPatterns})
+            OR EXISTS (
+              SELECT 1
+              FROM public.document_chunks dc_search
+              WHERE dc_search.project_id = d.project_id
+                AND dc_search.document_id = d.id
+                AND dc_search.content &@~ pgroonga_query_escape(${keywordQuery})
+            )
+          )
+        ORDER BY d.occurred_at ASC NULLS LAST, d.updated_at ASC, d.id ASC
+        LIMIT ${limit}
+      `) as readonly unknown[];
+      return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
+    },
     async documentFetch({ documentIds, projectId }) {
       if (documentIds.length === 0) {
         return [];
@@ -1663,6 +1819,7 @@ function parseChatToolName(value: unknown): ChatToolName {
     value === 'graph-query' ||
     value === 'parsed-doc-fetch' ||
     value === 'raw-document-fetch' ||
+    value === 'timeline-search' ||
     value === 'vector-search'
   ) {
     return value;

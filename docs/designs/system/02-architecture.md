@@ -57,6 +57,7 @@
             │   tools:                    │
             │    - vector-search          │
             │    - graph-query            │
+            │    - timeline-search        │
             │    - raw-document-fetch     │  ← Object Storage
             │    - parsed-doc-fetch       │
             └──────────────┬──────────────┘
