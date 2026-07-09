@@ -115,7 +115,7 @@ export function createGeminiTopicExtractionAgent(
   return {
     async extractTopics(input) {
       const candidateLexicon = await buildTopicCandidateLexicon(
-        input,
+        { ...input, bodyText: input.bodyText.slice(0, maxBodyCharacters) },
         maxCandidateTopics,
         topicMorphologicalTokenizer,
       );
@@ -316,12 +316,6 @@ function topicTargetFromCandidateLexicon(value: string, lexicon: TopicCandidateL
   const exact = lexicon.normalizedToDisplayTarget.get(normalized.toLowerCase());
   if (exact) {
     return exact;
-  }
-  for (const displayTarget of lexicon.displayTargets) {
-    const normalizedDisplayTarget = displayTarget.toLowerCase();
-    if (normalized.toLowerCase().includes(normalizedDisplayTarget)) {
-      return displayTarget;
-    }
   }
   return '';
 }

@@ -64,7 +64,7 @@ test('Gemini TopicExtractionAgent constrains LLM output to lexical candidates', 
               content: {
                 parts: [
                   {
-                    text: '{"topics":["プロジェクトリスクを早めに共有することが重要です","プロジェクトリスク","共有"]}',
+                    text: '{"topics":["プロジェクトリスク","共有"]}',
                   },
                 ],
               },
@@ -74,40 +74,7 @@ test('Gemini TopicExtractionAgent constrains LLM output to lexical candidates', 
         { headers: { 'content-type': 'application/json' }, status: 200 },
       ),
     model: 'gemini-test',
-    topicMorphologicalTokenizer: {
-      tokenize(text) {
-        if (text.includes('プロジェクトリスク')) {
-          return [
-            {
-              normalizedForm: 'プロジェクトリスク',
-              partOfSpeech: ['名詞', '普通名詞', '一般', '*', '*', '*'],
-              surface: 'プロジェクトリスク',
-            },
-            {
-              dictionaryForm: '共有',
-              partOfSpeech: ['動詞', '一般', '*', '*', '*', '*'],
-              surface: '共有する',
-            },
-            {
-              normalizedForm: '早い',
-              partOfSpeech: ['形容詞', '一般', '*', '*', '*', '*'],
-              surface: '早め',
-            },
-            {
-              normalizedForm: 'こと',
-              partOfSpeech: ['名詞', '普通名詞', '一般', '*', '*', '*'],
-              surface: 'こと',
-            },
-            {
-              normalizedForm: 'を',
-              partOfSpeech: ['助詞', '格助詞', '*', '*', '*', '*'],
-              surface: 'を',
-            },
-          ];
-        }
-        return [];
-      },
-    },
+    topicMorphologicalTokenizer: projectRiskTokenizer,
   });
 
   const topics = await agent.extractTopics({
@@ -121,6 +88,41 @@ test('Gemini TopicExtractionAgent constrains LLM output to lexical candidates', 
     { metadata: { source: 'llm' }, target: 'プロジェクトリスク', topicType: 'keyword' },
     { metadata: { source: 'llm' }, target: '共有', topicType: 'keyword' },
   ]);
+});
+
+test('Gemini TopicExtractionAgent rejects sentence-like LLM topics without exact candidate matches', async () => {
+  const agent = createGeminiTopicExtractionAgent({
+    apiKey: 'test-key',
+    endpoint: 'https://gemini.example.test/model:generateContent',
+    fetchImpl: async () =>
+      new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: '{"topics":["プロジェクトリスクを早めに共有することが重要です"]}',
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        { headers: { 'content-type': 'application/json' }, status: 200 },
+      ),
+    model: 'gemini-test',
+    topicMorphologicalTokenizer: projectRiskTokenizer,
+  });
+
+  const topics = await agent.extractTopics({
+    bodyText: 'プロジェクトリスクを早めに共有することが重要です。',
+    canonicalUri: 'https://docs.example.test/project-risk',
+    html: '<html></html>',
+    title: 'プロジェクトリスク共有',
+  });
+
+  assert.deepEqual(topics, []);
 });
 
 test('Gemini TopicExtractionAgent rejects non-object JSON responses safely', async () => {
@@ -143,3 +145,38 @@ test('Gemini TopicExtractionAgent rejects non-object JSON responses safely', asy
     /Gemini topic extraction response is not a valid JSON object/,
   );
 });
+
+const projectRiskTokenizer = {
+  tokenize(text: string) {
+    if (text.includes('プロジェクトリスク')) {
+      return [
+        {
+          normalizedForm: 'プロジェクトリスク',
+          partOfSpeech: ['名詞', '普通名詞', '一般', '*', '*', '*'],
+          surface: 'プロジェクトリスク',
+        },
+        {
+          dictionaryForm: '共有',
+          partOfSpeech: ['動詞', '一般', '*', '*', '*', '*'],
+          surface: '共有する',
+        },
+        {
+          normalizedForm: '早い',
+          partOfSpeech: ['形容詞', '一般', '*', '*', '*', '*'],
+          surface: '早め',
+        },
+        {
+          normalizedForm: 'こと',
+          partOfSpeech: ['名詞', '普通名詞', '一般', '*', '*', '*'],
+          surface: 'こと',
+        },
+        {
+          normalizedForm: 'を',
+          partOfSpeech: ['助詞', '格助詞', '*', '*', '*', '*'],
+          surface: 'を',
+        },
+      ];
+    }
+    return [];
+  },
+};
