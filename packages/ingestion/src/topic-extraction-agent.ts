@@ -31,6 +31,9 @@ type WordSegment = {
   readonly segment: string;
 };
 
+let cachedWordSegmenter: { segment(value: string): Iterable<WordSegment> } | undefined | null =
+  null;
+
 const GENERIC_TOPIC_WORDS = new Set([
   'about',
   'and',
@@ -247,6 +250,9 @@ function buildTopicCandidateLexicon(
   const normalizedToDisplayTarget = new Map<string, string>();
 
   const addCandidates = (candidates: Iterable<string>) => {
+    if (displayTargets.length >= maxCandidates) {
+      return;
+    }
     for (const candidate of candidates) {
       if (displayTargets.length >= maxCandidates) {
         break;
@@ -324,6 +330,9 @@ function segmentWords(text: string): string[] {
 }
 
 function createWordSegmenter(): { segment(value: string): Iterable<WordSegment> } | undefined {
+  if (cachedWordSegmenter !== null) {
+    return cachedWordSegmenter;
+  }
   const segmenterConstructor = (
     Intl as typeof Intl & {
       Segmenter?: new (
@@ -332,9 +341,10 @@ function createWordSegmenter(): { segment(value: string): Iterable<WordSegment> 
       ) => { segment(value: string): Iterable<WordSegment> };
     }
   ).Segmenter;
-  return segmenterConstructor
+  cachedWordSegmenter = segmenterConstructor
     ? new segmenterConstructor(undefined, { granularity: 'word' })
     : undefined;
+  return cachedWordSegmenter;
 }
 
 function fallbackWords(text: string): string[] {
@@ -360,10 +370,11 @@ function isValidCandidateTerm(value: string): boolean {
   if (!value || looksLikeUrl(value) || value.length > 60) {
     return false;
   }
-  if (sentenceLikeTopic(value)) {
+  if (/[。.!?！？]/u.test(value)) {
     return false;
   }
-  return value.length >= 2 && lexicalWords(value).length <= 4;
+  const wordCount = lexicalWords(value).length;
+  return value.length >= 2 && wordCount > 0 && wordCount <= 4;
 }
 
 function isValidLexicalWord(value: string): boolean {
@@ -377,21 +388,7 @@ function isValidLexicalWord(value: string): boolean {
 }
 
 function canJoinLexicalWords(first: string, second: string): boolean {
-  if (
-    GENERIC_TOPIC_WORDS.has(first.toLowerCase()) ||
-    GENERIC_TOPIC_WORDS.has(second.toLowerCase())
-  ) {
-    return false;
-  }
   return containsCjk(first) === containsCjk(second) || isAsciiWord(first) === isAsciiWord(second);
-}
-
-function sentenceLikeTopic(value: string): boolean {
-  const words = lexicalWords(value);
-  if (words.length >= 5) {
-    return true;
-  }
-  return /[。.!?！？]/u.test(value);
 }
 
 function containsCjk(value: string): boolean {
