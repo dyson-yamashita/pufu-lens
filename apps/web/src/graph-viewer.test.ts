@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import {
   GraphAccessDeniedError,
+  GraphLimitError,
   GraphPresetNotFoundError,
   type GraphViewerRepository,
+  listGraphPresets,
+  normalizeGraphLimit,
   normalizeGraphRows,
   runGraphPresetQuery,
 } from './graph-viewer.ts';
@@ -126,9 +129,10 @@ assert.equal(limited.truncated, true);
 
 function createRepository(): GraphViewerRepository {
   return {
-    async executePreset({ graphName, preset }) {
+    async executePreset({ cypher, graphName, preset }) {
       assert.equal(graphName, 'graph_sample_a');
       assert.equal(preset.id, 'recent-relations');
+      assert.match(cypher, /LIMIT 200$/);
       return [
         {
           relation: `${JSON.stringify(edge)}::edge`,
@@ -146,13 +150,18 @@ function createRepository(): GraphViewerRepository {
 }
 
 const result = await runGraphPresetQuery(
-  { projectSlug: 'sample-a', queryId: 'recent-relations', userId: 'user-a' },
+  { limit: 200, projectSlug: 'sample-a', queryId: 'recent-relations', userId: 'user-a' },
   { repository: createRepository() },
 );
 assert.equal(result.graphName, 'graph_sample_a');
+assert.equal(result.limit, 200);
+assert.match(result.preset.preview, /LIMIT 200$/);
 assert.equal(result.nodes.length, 2);
 assert.equal(result.edges.length, 1);
 assert.equal(result.rawRows.length, 1);
+
+const presetSummary = listGraphPresets().find((preset) => preset.id === 'recent-relations');
+assert.match(presetSummary?.preview ?? '', /LIMIT 100$/);
 
 await assert.rejects(
   () =>
@@ -171,5 +180,13 @@ await assert.rejects(
     ),
   GraphAccessDeniedError,
 );
+
+assert.equal(normalizeGraphLimit(1), 1);
+assert.equal(normalizeGraphLimit(500), 500);
+assert.equal(normalizeGraphLimit(50, 50), 50);
+assert.throws(() => normalizeGraphLimit(0), GraphLimitError);
+assert.throws(() => normalizeGraphLimit(501), GraphLimitError);
+assert.throws(() => normalizeGraphLimit(10.5), GraphLimitError);
+assert.throws(() => normalizeGraphLimit(51, 50), /between 1 and 50/);
 
 console.log('web graph viewer tests passed');

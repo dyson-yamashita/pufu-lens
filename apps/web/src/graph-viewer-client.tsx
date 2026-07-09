@@ -20,6 +20,29 @@ type GraphSelection =
   | { readonly item: GraphViewerEdge; readonly type: 'edge' }
   | { readonly item: GraphViewerNode; readonly type: 'node' };
 
+type GraphLayoutId = 'force' | 'grid' | 'timeline';
+
+const GRAPH_VIEWER_DEFAULT_LIMIT = 100;
+const GRAPH_LIMIT_OPTIONS = [50, 100, 200, 500] as const;
+const GRAPH_LAYOUT_OPTIONS: readonly { readonly id: GraphLayoutId; readonly label: string }[] = [
+  { id: 'force', label: 'Force' },
+  { id: 'timeline', label: 'Timeline' },
+  { id: 'grid', label: 'Grid' },
+];
+const TIMELINE_COLUMN_WIDTH = 180;
+const TIMELINE_MIN_COLUMNS = 4;
+const TIMELINE_MAX_COLUMNS = 24;
+const TIMELINE_ROW_HEIGHT = 170;
+const TIMELINE_ALTERNATE_OFFSET = 48;
+const TIMELINE_HORIZONTAL_PADDING = 112;
+
+/**
+ * Renders the graph query workspace.
+ *
+ * @param initialPresetId - The preset selected on first render.
+ * @param presets - The available graph presets.
+ * @param projectSlug - The project identifier used to load graph data.
+ */
 export function GraphViewerPanel({
   initialPresetId,
   presets,
@@ -33,8 +56,15 @@ export function GraphViewerPanel({
   const [result, setResult] = useState<GraphQueryResult | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [selection, setSelection] = useState<GraphSelection | undefined>();
+  const [limit, setLimit] = useState(
+    () =>
+      presets.find((preset) => preset.id === initialPresetId)?.defaultLimit ??
+      GRAPH_VIEWER_DEFAULT_LIMIT,
+  );
+  const [layoutId, setLayoutId] = useState<GraphLayoutId>('force');
   const [isLoading, setIsLoading] = useState(false);
   const selectedPreset = presets.find((preset) => preset.id === queryId) ?? presets[0];
+  const limitOptions = useMemo(() => buildLimitOptions(selectedPreset), [selectedPreset]);
 
   const runQuery = useCallback(async () => {
     if (!selectedPreset) {
@@ -45,7 +75,7 @@ export function GraphViewerPanel({
     setIsLoading(true);
     try {
       const response = await fetch(`/api/projects/${projectSlug}/graph`, {
-        body: JSON.stringify({ queryId: selectedPreset.id }),
+        body: JSON.stringify({ limit, queryId: selectedPreset.id }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
       });
@@ -60,7 +90,7 @@ export function GraphViewerPanel({
     } finally {
       setIsLoading(false);
     }
-  }, [projectSlug, selectedPreset]);
+  }, [limit, projectSlug, selectedPreset]);
 
   useEffect(() => {
     void runQuery();
@@ -87,7 +117,12 @@ export function GraphViewerPanel({
             data-testid="graph-preset-select"
             disabled={isLoading}
             id="graph-preset-select"
-            onChange={(event) => setQueryId(event.target.value as GraphPresetId)}
+            onChange={(event) => {
+              const nextQueryId = event.target.value as GraphPresetId;
+              const nextPreset = presets.find((preset) => preset.id === nextQueryId);
+              setQueryId(nextQueryId);
+              setLimit(nextPreset?.defaultLimit ?? GRAPH_VIEWER_DEFAULT_LIMIT);
+            }}
             value={queryId}
           >
             {presets.map((preset) => (
@@ -97,6 +132,39 @@ export function GraphViewerPanel({
             ))}
           </select>
         </label>
+        <div className="graph-control-grid">
+          <label className="form-field" htmlFor="graph-limit-select">
+            <span>Rows</span>
+            <select
+              data-testid="graph-limit-select"
+              disabled={isLoading}
+              id="graph-limit-select"
+              onChange={(event) => setLimit(Number(event.target.value))}
+              value={limit}
+            >
+              {limitOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="form-field" htmlFor="graph-layout-select">
+            <span>Layout</span>
+            <select
+              data-testid="graph-layout-select"
+              id="graph-layout-select"
+              onChange={(event) => setLayoutId(event.target.value as GraphLayoutId)}
+              value={layoutId}
+            >
+              {GRAPH_LAYOUT_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         {selectedPreset ? (
           <div className="graph-preset-detail" data-testid="graph-preset-detail">
             <p>{selectedPreset.description}</p>
@@ -119,6 +187,7 @@ export function GraphViewerPanel({
         </div>
         <GraphCanvas
           edges={result?.edges ?? []}
+          layoutId={layoutId}
           nodes={result?.nodes ?? []}
           onSelect={setSelection}
         />
@@ -161,12 +230,22 @@ export function GraphViewerPanel({
   );
 }
 
+/**
+ * Renders an interactive graph canvas with selection, zoom, and fullscreen controls.
+ *
+ * @param edges - Graph edges to display.
+ * @param layoutId - Layout used to arrange the graph.
+ * @param nodes - Graph nodes to display.
+ * @param onSelect - Called when a node, edge, or empty space is selected.
+ */
 function GraphCanvas({
   edges,
+  layoutId,
   nodes,
   onSelect,
 }: {
   readonly edges: readonly GraphViewerEdge[];
+  readonly layoutId: GraphLayoutId;
   readonly nodes: readonly GraphViewerNode[];
   readonly onSelect: (selection: GraphSelection | undefined) => void;
 }) {
@@ -175,6 +254,7 @@ function GraphCanvas({
   const cytoscapeRef = useRef<Core | null>(null);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
   const [isFallbackFullscreen, setIsFallbackFullscreen] = useState(false);
+  const [containerWidth, setContainerWidth] = useState(0);
   const isMaximized = isNativeFullscreen || isFallbackFullscreen;
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const edgesById = useMemo(() => new Map(edges.map((edge) => [edge.id, edge])), [edges]);
@@ -298,6 +378,19 @@ function GraphCanvas({
     if (!container) {
       return;
     }
+    const observer = new ResizeObserver(([entry]) => {
+      setContainerWidth(Math.round(entry?.contentRect.width ?? container.clientWidth));
+    });
+    observer.observe(container);
+    setContainerWidth(container.clientWidth);
+    return () => observer.disconnect();
+  }, [containerElement]);
+
+  useEffect(() => {
+    const container = containerElement;
+    if (!container) {
+      return;
+    }
     const graphTheme = readGraphTheme(container);
     const cy = cytoscape({
       container,
@@ -316,19 +409,7 @@ function GraphCanvas({
             data: { id: edge.id, label: edge.label, source: edge.source, target: edge.target },
           })),
       ],
-      layout: {
-        name: 'cose',
-        animate: false,
-        componentSpacing: 260,
-        fit: true,
-        gravity: 30,
-        idealEdgeLength: 300,
-        nodeDimensionsIncludeLabels: true,
-        nodeOverlap: 64,
-        nodeRepulsion: 220000,
-        numIter: 2000,
-        padding: 56,
-      },
+      layout: buildGraphLayoutOptions('force', nodes, edges, container.clientWidth),
       maxZoom: 4,
       minZoom: 0.08,
       style: buildGraphStyles(graphTheme),
@@ -352,6 +433,17 @@ function GraphCanvas({
       cy.destroy();
     };
   }, [containerElement, edges, edgesById, nodes, nodesById, onSelect]);
+
+  useEffect(() => {
+    const container = containerElement;
+    const cy = cytoscapeRef.current;
+    if (!container || !cy) {
+      return;
+    }
+    cy.layout(
+      buildGraphLayoutOptions(layoutId, nodes, edges, containerWidth || container.clientWidth),
+    ).run();
+  }, [containerElement, containerWidth, edges, layoutId, nodes]);
 
   return (
     <div
@@ -426,6 +518,175 @@ function GraphCanvas({
   );
 }
 
+/**
+ * Builds Cytoscape layout options for the selected graph layout.
+ *
+ * @param layoutId - The layout to apply.
+ * @param nodes - The graph nodes used to compute layout positions.
+ * @param edges - The graph edges used to compute layout positions.
+ * @param containerWidth - The available width for layout calculations.
+ * @param fit - Whether Cytoscape should fit the graph to the viewport.
+ * @returns The Cytoscape layout configuration.
+ */
+function buildGraphLayoutOptions(
+  layoutId: GraphLayoutId,
+  nodes: readonly GraphViewerNode[],
+  edges: readonly GraphViewerEdge[],
+  containerWidth: number,
+  fit = true,
+) {
+  if (layoutId === 'grid') {
+    return {
+      name: 'grid',
+      animate: false,
+      fit,
+      nodeDimensionsIncludeLabels: true,
+      padding: 56,
+    };
+  }
+  if (layoutId === 'timeline') {
+    const positions = buildTimelinePositions(nodes, edges, containerWidth);
+    return {
+      name: 'preset',
+      fit,
+      padding: 56,
+      positions: (node: NodeSingular) => positions.get(node.id()) ?? { x: 0, y: 0 },
+    };
+  }
+  return {
+    name: 'cose',
+    animate: false,
+    componentSpacing: 260,
+    fit,
+    gravity: 30,
+    idealEdgeLength: 300,
+    nodeDimensionsIncludeLabels: true,
+    nodeOverlap: 64,
+    nodeRepulsion: 220000,
+    numIter: 2000,
+    padding: 56,
+  };
+}
+
+/**
+ * Assigns timeline layout positions to graph nodes.
+ *
+ * @param nodes - The nodes to position
+ * @param edges - The edges used to adjust spacing for connected nodes
+ * @param containerWidth - The available width for determining the column count
+ * @returns A map from node ID to its timeline position
+ */
+function buildTimelinePositions(
+  nodes: readonly GraphViewerNode[],
+  edges: readonly GraphViewerEdge[],
+  containerWidth: number,
+): Map<string, { readonly x: number; readonly y: number }> {
+  const connectedCounts = new Map<string, number>();
+  for (const edge of edges) {
+    connectedCounts.set(edge.source, (connectedCounts.get(edge.source) ?? 0) + 1);
+    connectedCounts.set(edge.target, (connectedCounts.get(edge.target) ?? 0) + 1);
+  }
+  const orderedNodes = nodes
+    .map((node, index) => ({ index, node, sortValue: graphNodeSortValue(node) }))
+    .sort((left, right) => {
+      const leftSort = left.sortValue ?? Number.POSITIVE_INFINITY;
+      const rightSort = right.sortValue ?? Number.POSITIVE_INFINITY;
+      if (leftSort !== rightSort) {
+        return leftSort - rightSort;
+      }
+      return left.node.label.localeCompare(right.node.label) || left.index - right.index;
+    });
+  const positions = new Map<string, { readonly x: number; readonly y: number }>();
+  const columnCount = timelineColumnCount(containerWidth);
+  orderedNodes.forEach(({ node }, index) => {
+    const row = Math.floor(index / columnCount);
+    const column = index % columnCount;
+    const degreeOffset = Math.min(connectedCounts.get(node.id) ?? 0, 6) * 10;
+    positions.set(node.id, {
+      x: column * TIMELINE_COLUMN_WIDTH,
+      y:
+        row * TIMELINE_ROW_HEIGHT +
+        (index % 2 === 0 ? 0 : TIMELINE_ALTERNATE_OFFSET) -
+        degreeOffset,
+    });
+  });
+  return positions;
+}
+
+/**
+ * Determines the number of columns used for the timeline layout.
+ *
+ * @param containerWidth - The available container width in pixels
+ * @returns The clamped column count for the timeline layout
+ */
+function timelineColumnCount(containerWidth: number): number {
+  const usableWidth = Math.max(containerWidth - TIMELINE_HORIZONTAL_PADDING, TIMELINE_COLUMN_WIDTH);
+  return Math.max(
+    TIMELINE_MIN_COLUMNS,
+    Math.min(TIMELINE_MAX_COLUMNS, Math.floor(usableWidth / TIMELINE_COLUMN_WIDTH)),
+  );
+}
+
+/**
+ * Builds the available row limit options for a graph preset.
+ *
+ * @param preset - The preset used to derive the maximum and default limits
+ * @returns The sorted unique limit values available for selection
+ */
+function buildLimitOptions(preset: GraphPresetSummary | undefined): readonly number[] {
+  const maxLimit = preset?.maxLimit ?? GRAPH_VIEWER_DEFAULT_LIMIT;
+  const defaultLimit = preset?.defaultLimit ?? GRAPH_VIEWER_DEFAULT_LIMIT;
+  const options = new Set<number>();
+  for (const option of GRAPH_LIMIT_OPTIONS) {
+    if (option <= maxLimit) {
+      options.add(option);
+    }
+  }
+  if (defaultLimit <= maxLimit) {
+    options.add(defaultLimit);
+  }
+  options.add(maxLimit);
+  return [...options].sort((left, right) => left - right);
+}
+
+/**
+ * Produces a sort value from a node's date-related properties.
+ *
+ * @returns A numeric timestamp when a supported property contains a finite number or a parseable date string, or `undefined` when no suitable value is found.
+ */
+function graphNodeSortValue(node: GraphViewerNode): number | undefined {
+  for (const key of [
+    'createdAt',
+    'created_at',
+    'updatedAt',
+    'updated_at',
+    'publishedAt',
+    'published_at',
+    'collectedAt',
+    'collected_at',
+    'timestamp',
+    'date',
+  ]) {
+    const value = node.properties[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const timestamp = Date.parse(value);
+      if (Number.isFinite(timestamp)) {
+        return timestamp;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Truncates a graph label for display.
+ *
+ * @param value - The label text to truncate
+ * @returns The original label when it is 16 characters or fewer, otherwise the first 8 characters, an ellipsis, and the last 8 characters
+ */
 function truncateGraphLabel(value: string): string {
   const characters = Array.from(value);
   if (characters.length <= 16) {

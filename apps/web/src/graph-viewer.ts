@@ -6,9 +6,11 @@ import { lookupProjectMemberAccess } from './authz.ts';
 export type GraphPresetId = 'actor-documents' | 'recent-relations';
 
 export type GraphPresetSummary = {
+  readonly defaultLimit: number;
   readonly description: string;
   readonly id: GraphPresetId;
   readonly label: string;
+  readonly maxLimit: number;
   readonly preview: string;
 };
 
@@ -30,6 +32,7 @@ export type GraphViewerEdge = {
 export type GraphQueryResult = {
   readonly edges: readonly GraphViewerEdge[];
   readonly graphName: string;
+  readonly limit: number;
   readonly nodes: readonly GraphViewerNode[];
   readonly preset: GraphPresetSummary;
   readonly rawRows: readonly Record<string, unknown>[];
@@ -44,16 +47,16 @@ export type GraphProjectAccess = {
   readonly slug: string;
 };
 
-type GraphPreset = GraphPresetSummary & {
-  readonly cypher: string;
+type GraphPreset = Omit<GraphPresetSummary, 'preview'> & {
+  readonly cypher: (limit: number) => string;
   readonly maxEdges: number;
   readonly maxNodes: number;
   readonly recordDefinition: string;
-  readonly rowLimit: number;
 };
 
 export interface GraphViewerRepository {
   executePreset(input: {
+    cypher: string;
     graphName: string;
     preset: GraphPreset;
   }): Promise<readonly Record<string, unknown>[]>;
@@ -62,6 +65,10 @@ export interface GraphViewerRepository {
     userId: string;
   }): Promise<GraphProjectAccess | undefined>;
 }
+
+export const GRAPH_DEFAULT_LIMIT = 100;
+export const GRAPH_MAX_LIMIT = 500;
+export const GRAPH_MIN_LIMIT = 1;
 
 export class GraphAccessDeniedError extends Error {
   constructor(projectSlug: string) {
@@ -77,48 +84,65 @@ export class GraphPresetNotFoundError extends Error {
   }
 }
 
+export class GraphLimitError extends Error {
+  constructor(limit: unknown, min: number = GRAPH_MIN_LIMIT, max: number = GRAPH_MAX_LIMIT) {
+    super(`Graph limit must be an integer between ${min} and ${max}: ${String(limit)}`);
+    this.name = 'GraphLimitError';
+  }
+}
+
 export const GRAPH_PRESETS: readonly GraphPreset[] = [
   {
-    cypher: `MATCH (source)-[relation]->(target)
+    cypher: (limit) => `MATCH (source)-[relation]->(target)
 RETURN source, relation, target
-LIMIT 100`,
+LIMIT ${limit}`,
+    defaultLimit: GRAPH_DEFAULT_LIMIT,
     description: 'Document、Actor、Topic など、直近の関係を横断して確認します。',
     id: 'recent-relations',
     label: 'Recent Relations',
-    maxEdges: 100,
-    maxNodes: 120,
-    preview: `MATCH (source)-[relation]->(target)
-RETURN source, relation, target
-LIMIT 100`,
+    maxEdges: GRAPH_MAX_LIMIT,
+    maxLimit: GRAPH_MAX_LIMIT,
+    maxNodes: 600,
     recordDefinition: 'source agtype, relation agtype, target agtype',
-    rowLimit: 100,
   },
   {
-    cypher: `MATCH (source:Actor)-[relation]->(target:Document)
+    cypher: (limit) => `MATCH (source:Actor)-[relation]->(target:Document)
 RETURN source, relation, target
-LIMIT 100`,
+LIMIT ${limit}`,
+    defaultLimit: GRAPH_DEFAULT_LIMIT,
     description: 'Actor から Document への関係を確認します。',
     id: 'actor-documents',
     label: 'Actors to Documents',
-    maxEdges: 100,
-    maxNodes: 120,
-    preview: `MATCH (source:Actor)-[relation]->(target:Document)
-RETURN source, relation, target
-LIMIT 100`,
+    maxEdges: GRAPH_MAX_LIMIT,
+    maxLimit: GRAPH_MAX_LIMIT,
+    maxNodes: 600,
     recordDefinition: 'source agtype, relation agtype, target agtype',
-    rowLimit: 100,
   },
 ];
 
+/**
+ * Lists the available graph presets.
+ *
+ * @returns The available preset summaries with preview queries generated from each preset's default limit.
+ */
 export function listGraphPresets(): readonly GraphPresetSummary[] {
-  return GRAPH_PRESETS.map(({ description, id, label, preview }) => ({
+  return GRAPH_PRESETS.map(({ cypher, defaultLimit, description, id, label, maxLimit }) => ({
+    defaultLimit,
     description,
     id,
     label,
-    preview,
+    maxLimit,
+    preview: cypher(defaultLimit),
   }));
 }
 
+/**
+ * Finds a graph preset by ID.
+ *
+ * @param queryId - The preset ID to look up
+ * @returns The matching graph preset
+ * @throws {GraphPresetNotFoundError} Thrown when no preset matches `queryId`
+ */
 export function getGraphPreset(queryId: string): GraphPreset {
   const preset = GRAPH_PRESETS.find((candidate) => candidate.id === queryId);
   if (!preset) {
@@ -127,11 +151,19 @@ export function getGraphPreset(queryId: string): GraphPreset {
   return preset;
 }
 
+/**
+ * Runs a graph preset query for an accessible project.
+ *
+ * @param input - Query parameters including the project, preset ID, and optional limit.
+ * @param options - Repository used to resolve project access and execute the preset.
+ * @returns The normalized graph result, including preset metadata, raw rows, and the applied limit.
+ */
 export async function runGraphPresetQuery(
-  input: { projectSlug: string; queryId: string; userId: string },
+  input: { limit?: number; projectSlug: string; queryId: string; userId: string },
   options: { repository: GraphViewerRepository },
 ): Promise<GraphQueryResult> {
   const preset = getGraphPreset(input.queryId);
+  const limit = normalizeGraphLimit(input.limit ?? preset.defaultLimit, preset.maxLimit);
   const project = await options.repository.lookupProjectMember({
     projectSlug: input.projectSlug,
     userId: input.userId,
@@ -140,34 +172,62 @@ export async function runGraphPresetQuery(
     throw new GraphAccessDeniedError(input.projectSlug);
   }
 
+  const cypher = preset.cypher(limit);
   const rows = await options.repository.executePreset({
+    cypher,
     graphName: project.graphName,
     preset,
   });
   const normalized = normalizeGraphRows(rows, {
-    maxEdges: preset.maxEdges,
-    maxNodes: preset.maxNodes,
+    maxEdges: Math.min(preset.maxEdges, limit),
+    maxNodes: Math.min(preset.maxNodes, Math.max(limit * 2, 1)),
   });
 
   return {
     ...normalized,
     graphName: project.graphName,
+    limit,
     preset: {
+      defaultLimit: preset.defaultLimit,
       description: preset.description,
       id: preset.id,
       label: preset.label,
-      preview: preset.preview,
+      maxLimit: preset.maxLimit,
+      preview: cypher,
     },
     rawRows: rows.map(safeRawRow),
     rowCount: rows.length,
   };
 }
 
+/**
+ * Validates a graph query limit.
+ *
+ * @param limit - The requested limit value
+ * @param maxLimit - The upper bound to allow for the limit
+ * @returns The validated limit value
+ */
+export function normalizeGraphLimit(limit: unknown, maxLimit: number = GRAPH_MAX_LIMIT): number {
+  const normalizedMax = Math.min(Math.max(maxLimit, GRAPH_MIN_LIMIT), GRAPH_MAX_LIMIT);
+  if (typeof limit !== 'number' || !Number.isInteger(limit)) {
+    throw new GraphLimitError(limit, GRAPH_MIN_LIMIT, normalizedMax);
+  }
+  if (limit < GRAPH_MIN_LIMIT || limit > normalizedMax) {
+    throw new GraphLimitError(limit, GRAPH_MIN_LIMIT, normalizedMax);
+  }
+  return limit;
+}
+
+/**
+ * Creates a PostgreSQL-backed graph viewer repository.
+ *
+ * @returns A repository that executes preset graph queries and looks up project graph access.
+ */
 export function createPostgresGraphViewerRepository(
   sql: postgres.Sql = getRequiredAdminSql(),
 ): GraphViewerRepository {
   return {
-    async executePreset({ graphName, preset }) {
+    async executePreset({ cypher, graphName, preset }) {
       const safeGraphName = validateGraphName(graphName);
       const safeRecordDefinition = validateRecordDefinition(preset.recordDefinition);
       return sql.begin(async (transaction) => {
@@ -177,7 +237,7 @@ export function createPostgresGraphViewerRepository(
         await transaction`SET LOCAL statement_timeout = '5000ms'`;
         return transaction.unsafe(
           `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
-            preset.cypher,
+            cypher,
           )}) AS (${safeRecordDefinition})`,
         ) as Promise<readonly Record<string, unknown>[]>;
       });

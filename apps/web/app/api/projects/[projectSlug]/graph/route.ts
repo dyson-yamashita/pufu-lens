@@ -3,15 +3,25 @@ import { AuthRequiredError, requireSessionUserId } from '../../../../../src/auth
 import {
   createPostgresGraphViewerRepository,
   GraphAccessDeniedError,
+  GraphLimitError,
   GraphPresetNotFoundError,
+  normalizeGraphLimit,
   runGraphPresetQuery,
 } from '../../../../../src/graph-viewer';
 
+/**
+ * Runs a graph preset query for the requested project.
+ *
+ * @param request - The incoming request containing the query body
+ * @param params - The route parameters containing `projectSlug`
+ * @returns A JSON response with the query result or an error code
+ */
 export async function POST(
   request: Request,
   { params }: { readonly params: Promise<{ readonly projectSlug: string }> },
 ) {
   const { projectSlug } = await params;
+  let limit: number | undefined;
   let queryId = '';
   let userId: string;
   try {
@@ -27,12 +37,18 @@ export async function POST(
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return graphErrorResponse('invalid_json', 'Invalid JSON body.', 400);
     }
-    const typedBody = body as { queryId?: unknown };
+    const typedBody = body as { limit?: unknown; queryId?: unknown };
     queryId = typeof typedBody.queryId === 'string' ? typedBody.queryId.trim() : '';
+    if ('limit' in typedBody) {
+      limit = normalizeGraphLimit(typedBody.limit);
+    }
     if ('cypher' in typedBody) {
       return graphErrorResponse('cypher_not_allowed', 'Cypher body field is not allowed.', 400);
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof GraphLimitError) {
+      return graphErrorResponse('invalid_limit', error.message, 400);
+    }
     return graphErrorResponse('invalid_json', 'Invalid JSON body.', 400);
   }
   if (!queryId) {
@@ -41,7 +57,7 @@ export async function POST(
 
   try {
     const response = await runGraphPresetQuery(
-      { projectSlug, queryId, userId },
+      { limit, projectSlug, queryId, userId },
       { repository: createPostgresGraphViewerRepository() },
     );
     return NextResponse.json(response);
@@ -54,6 +70,9 @@ export async function POST(
     }
     if (error instanceof GraphPresetNotFoundError) {
       return graphErrorResponse('unknown_query_id', error.message, 400);
+    }
+    if (error instanceof GraphLimitError) {
+      return graphErrorResponse('invalid_limit', error.message, 400);
     }
     console.error('Graph API Error:', error);
     return graphErrorResponse('graph_internal_error', 'An unexpected error occurred.', 500);
