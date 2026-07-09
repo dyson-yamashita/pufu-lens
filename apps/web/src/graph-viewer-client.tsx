@@ -36,6 +36,13 @@ const TIMELINE_ROW_HEIGHT = 170;
 const TIMELINE_ALTERNATE_OFFSET = 48;
 const TIMELINE_HORIZONTAL_PADDING = 112;
 
+/**
+ * Renders the graph query workspace.
+ *
+ * @param initialPresetId - The preset selected on first render.
+ * @param presets - The available graph presets.
+ * @param projectSlug - The project identifier used to load graph data.
+ */
 export function GraphViewerPanel({
   initialPresetId,
   presets,
@@ -223,6 +230,14 @@ export function GraphViewerPanel({
   );
 }
 
+/**
+ * Renders an interactive graph canvas with selection, zoom, and fullscreen controls.
+ *
+ * @param edges - Graph edges to display.
+ * @param layoutId - Layout used to arrange the graph.
+ * @param nodes - Graph nodes to display.
+ * @param onSelect - Called when a node, edge, or empty space is selected.
+ */
 function GraphCanvas({
   edges,
   layoutId,
@@ -487,6 +502,16 @@ function GraphCanvas({
   );
 }
 
+/**
+ * Builds Cytoscape layout options for the selected graph layout.
+ *
+ * @param layoutId - The layout to apply.
+ * @param nodes - The graph nodes used to compute layout positions.
+ * @param edges - The graph edges used to compute layout positions.
+ * @param containerWidth - The available width for layout calculations.
+ * @param fit - Whether Cytoscape should fit the graph to the viewport.
+ * @returns The Cytoscape layout configuration.
+ */
 function buildGraphLayoutOptions(
   layoutId: GraphLayoutId,
   nodes: readonly GraphViewerNode[],
@@ -527,6 +552,14 @@ function buildGraphLayoutOptions(
   };
 }
 
+/**
+ * Assigns timeline layout positions to graph nodes.
+ *
+ * @param nodes - The nodes to position
+ * @param edges - The edges used to adjust spacing for connected nodes
+ * @param containerWidth - The available width for determining the column count
+ * @returns A map from node ID to its timeline position
+ */
 function buildTimelinePositions(
   nodes: readonly GraphViewerNode[],
   edges: readonly GraphViewerEdge[],
@@ -564,6 +597,12 @@ function buildTimelinePositions(
   return positions;
 }
 
+/**
+ * Determines the number of columns used for the timeline layout.
+ *
+ * @param containerWidth - The available container width in pixels
+ * @returns The clamped column count for the timeline layout
+ */
 function timelineColumnCount(containerWidth: number): number {
   const usableWidth = Math.max(containerWidth - TIMELINE_HORIZONTAL_PADDING, TIMELINE_COLUMN_WIDTH);
   return Math.max(
@@ -572,6 +611,12 @@ function timelineColumnCount(containerWidth: number): number {
   );
 }
 
+/**
+ * Builds the available row limit options for a graph preset.
+ *
+ * @param preset - The preset used to derive the maximum and default limits
+ * @returns The sorted unique limit values available for selection
+ */
 function buildLimitOptions(preset: GraphPresetSummary | undefined): readonly number[] {
   const maxLimit = preset?.maxLimit ?? GRAPH_VIEWER_DEFAULT_LIMIT;
   const defaultLimit = preset?.defaultLimit ?? GRAPH_VIEWER_DEFAULT_LIMIT;
@@ -588,6 +633,11 @@ function buildLimitOptions(preset: GraphPresetSummary | undefined): readonly num
   return [...options].sort((left, right) => left - right);
 }
 
+/**
+ * Produces a sort value from a node's date-related properties.
+ *
+ * @returns A numeric timestamp when a supported property contains a finite number or a parseable date string, or `undefined` when no suitable value is found.
+ */
 function graphNodeSortValue(node: GraphViewerNode): number | undefined {
   for (const key of [
     'createdAt',
@@ -615,6 +665,12 @@ function graphNodeSortValue(node: GraphViewerNode): number | undefined {
   return undefined;
 }
 
+/**
+ * Truncates a graph label for display.
+ *
+ * @param value - The label text to truncate
+ * @returns The original label when it is 16 characters or fewer, otherwise the first 8 characters, an ellipsis, and the last 8 characters
+ */
 function truncateGraphLabel(value: string): string {
   const characters = Array.from(value);
   if (characters.length <= 16) {

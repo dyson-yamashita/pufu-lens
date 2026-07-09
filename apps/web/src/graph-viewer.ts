@@ -120,6 +120,11 @@ LIMIT ${limit}`,
   },
 ];
 
+/**
+ * Lists the available graph presets.
+ *
+ * @returns The available preset summaries with preview queries generated from each preset's default limit.
+ */
 export function listGraphPresets(): readonly GraphPresetSummary[] {
   return GRAPH_PRESETS.map(({ cypher, defaultLimit, description, id, label, maxLimit }) => ({
     defaultLimit,
@@ -131,6 +136,13 @@ export function listGraphPresets(): readonly GraphPresetSummary[] {
   }));
 }
 
+/**
+ * Finds a graph preset by ID.
+ *
+ * @param queryId - The preset ID to look up
+ * @returns The matching graph preset
+ * @throws {GraphPresetNotFoundError} Thrown when no preset matches `queryId`
+ */
 export function getGraphPreset(queryId: string): GraphPreset {
   const preset = GRAPH_PRESETS.find((candidate) => candidate.id === queryId);
   if (!preset) {
@@ -139,6 +151,13 @@ export function getGraphPreset(queryId: string): GraphPreset {
   return preset;
 }
 
+/**
+ * Runs a graph preset query for an accessible project.
+ *
+ * @param input - Query parameters including the project, preset ID, and optional limit.
+ * @param options - Repository used to resolve project access and execute the preset.
+ * @returns The normalized graph result, including preset metadata, raw rows, and the applied limit.
+ */
 export async function runGraphPresetQuery(
   input: { limit?: number; projectSlug: string; queryId: string; userId: string },
   options: { repository: GraphViewerRepository },
@@ -181,6 +200,13 @@ export async function runGraphPresetQuery(
   };
 }
 
+/**
+ * Validates a graph query limit.
+ *
+ * @param limit - The requested limit value
+ * @param maxLimit - The upper bound to allow for the limit
+ * @returns The validated limit value
+ */
 export function normalizeGraphLimit(limit: unknown, maxLimit: number = GRAPH_MAX_LIMIT): number {
   const normalizedMax = Math.min(Math.max(maxLimit, GRAPH_MIN_LIMIT), GRAPH_MAX_LIMIT);
   if (typeof limit !== 'number' || !Number.isInteger(limit)) {
@@ -192,6 +218,11 @@ export function normalizeGraphLimit(limit: unknown, maxLimit: number = GRAPH_MAX
   return limit;
 }
 
+/**
+ * Creates a PostgreSQL-backed graph viewer repository.
+ *
+ * @returns A repository that executes preset graph queries and looks up project graph access.
+ */
 export function createPostgresGraphViewerRepository(
   sql: postgres.Sql = getRequiredAdminSql(),
 ): GraphViewerRepository {

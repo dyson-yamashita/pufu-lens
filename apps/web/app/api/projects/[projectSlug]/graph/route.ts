@@ -9,6 +9,13 @@ import {
   runGraphPresetQuery,
 } from '../../../../../src/graph-viewer';
 
+/**
+ * Runs a graph preset query for the requested project.
+ *
+ * @param request - The incoming request containing the query body
+ * @param params - The route parameters containing `projectSlug`
+ * @returns A JSON response with the query result or an error code
+ */
 export async function POST(
   request: Request,
   { params }: { readonly params: Promise<{ readonly projectSlug: string }> },
