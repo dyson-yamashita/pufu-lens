@@ -149,7 +149,12 @@ async function listAdminProjectRows(sql: postgres.Sql): Promise<readonly AdminDb
         FROM public.raw_documents rd
         WHERE rd.project_id = p.id AND rd.ingest_status = 'indexed'
       ) AS ingested_count,
-      (SELECT count(*)::int FROM public.ingestion_queue iq WHERE iq.project_id = p.id) AS queue_count,
+      (
+        SELECT count(*)::int
+        FROM public.ingestion_queue iq
+        WHERE iq.project_id = p.id
+          AND iq.status IN ('pending', 'parsing')
+      ) AS queue_count,
       (
         SELECT count(*)::int
         FROM public.raw_documents rd
@@ -185,7 +190,12 @@ async function listMemberProjectRows(
         FROM public.raw_documents rd
         WHERE rd.project_id = p.id AND rd.ingest_status = 'indexed'
       ) AS ingested_count,
-      (SELECT count(*)::int FROM public.ingestion_queue iq WHERE iq.project_id = p.id) AS queue_count,
+      (
+        SELECT count(*)::int
+        FROM public.ingestion_queue iq
+        WHERE iq.project_id = p.id
+          AND iq.status IN ('pending', 'parsing')
+      ) AS queue_count,
       (
         SELECT count(*)::int
         FROM public.raw_documents rd
@@ -224,7 +234,12 @@ async function lookupProjectRowBySlug(
         FROM public.raw_documents rd
         WHERE rd.project_id = p.id AND rd.ingest_status = 'indexed'
       ) AS ingested_count,
-      (SELECT count(*)::int FROM public.ingestion_queue iq WHERE iq.project_id = p.id) AS queue_count,
+      (
+        SELECT count(*)::int
+        FROM public.ingestion_queue iq
+        WHERE iq.project_id = p.id
+          AND iq.status IN ('pending', 'parsing')
+      ) AS queue_count,
       (
         SELECT count(*)::int
         FROM public.raw_documents rd
@@ -1022,6 +1037,7 @@ async function listDataSourceRowsByProjectIds(
         SELECT count(*)::int
         FROM public.ingestion_queue iq
         WHERE iq.data_source_id = ds.id
+          AND iq.status IN ('pending', 'parsing')
       ) AS queue_count,
       (
         SELECT count(*)::int
@@ -1075,6 +1091,7 @@ async function listDataSourceRowsByProjectId(
         SELECT count(*)::int
         FROM public.ingestion_queue iq
         WHERE iq.data_source_id = ds.id
+          AND iq.status IN ('pending', 'parsing')
       ) AS queue_count,
       (
         SELECT count(*)::int
@@ -1707,6 +1724,7 @@ async function lookupDataSourcePreviewSummaryRow(
         FROM public.ingestion_queue iq
         WHERE iq.data_source_id = ${dataSourceId}
           AND iq.project_id = ${projectId}
+          AND iq.status IN ('pending', 'parsing')
       ) AS queue_count,
       (
         SELECT count(*)::int
@@ -1787,6 +1805,7 @@ async function listDataSourcePreviewQueueRows(
     FROM public.ingestion_queue iq
     WHERE iq.data_source_id = ${dataSourceId}
       AND iq.project_id = ${projectId}
+      AND iq.status IN ('pending', 'parsing', 'failed', 'held')
     ORDER BY iq.updated_at DESC
     LIMIT ${DATA_SOURCE_PREVIEW_QUEUE_LIMIT}
   `) as readonly unknown[];
