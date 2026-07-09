@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { CustomReportLayoutRenderer, StandardReportSections } from './custom-report-renderer';
 import { ActionForm, PendingSubmitButton } from './form-buttons';
 import type { PrivateReportJsonV1, ReportListItem, ReportPeriod } from './report';
+import { formatReportSummaryPreview } from './report-summary';
 
 type ReportApiError = {
   readonly error?: { readonly code?: string; readonly message?: string };
@@ -194,7 +195,9 @@ export function ReportsList({ projectSlug }: { readonly projectSlug: string }) {
             <tr data-testid={`report-row-${report.id}`} key={report.id}>
               <td>
                 <Link href={`/projects/${projectSlug}/reports/${report.id}`}>{report.title}</Link>
-                <small className="block-muted">{report.summary}</small>
+                <small className="block-muted">
+                  {formatReportSummaryPreview(report.summary ?? '')}
+                </small>
               </td>
               <td className="mono">
                 {report.period.start} / {report.period.end}
