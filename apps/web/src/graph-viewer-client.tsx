@@ -15,10 +15,20 @@ import type {
   GraphViewerEdge,
   GraphViewerNode,
 } from './graph-viewer';
+import { GRAPH_DEFAULT_LIMIT } from './graph-viewer';
 
 type GraphSelection =
   | { readonly item: GraphViewerEdge; readonly type: 'edge' }
   | { readonly item: GraphViewerNode; readonly type: 'node' };
+
+type GraphLayoutId = 'force' | 'grid' | 'timeline';
+
+const GRAPH_LIMIT_OPTIONS = [50, 100, 200, 500] as const;
+const GRAPH_LAYOUT_OPTIONS: readonly { readonly id: GraphLayoutId; readonly label: string }[] = [
+  { id: 'force', label: 'Force' },
+  { id: 'timeline', label: 'Timeline' },
+  { id: 'grid', label: 'Grid' },
+];
 
 export function GraphViewerPanel({
   initialPresetId,
@@ -33,6 +43,8 @@ export function GraphViewerPanel({
   const [result, setResult] = useState<GraphQueryResult | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [selection, setSelection] = useState<GraphSelection | undefined>();
+  const [limit, setLimit] = useState(GRAPH_DEFAULT_LIMIT);
+  const [layoutId, setLayoutId] = useState<GraphLayoutId>('force');
   const [isLoading, setIsLoading] = useState(false);
   const selectedPreset = presets.find((preset) => preset.id === queryId) ?? presets[0];
 
@@ -45,7 +57,7 @@ export function GraphViewerPanel({
     setIsLoading(true);
     try {
       const response = await fetch(`/api/projects/${projectSlug}/graph`, {
-        body: JSON.stringify({ queryId: selectedPreset.id }),
+        body: JSON.stringify({ limit, queryId: selectedPreset.id }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
       });
@@ -60,7 +72,7 @@ export function GraphViewerPanel({
     } finally {
       setIsLoading(false);
     }
-  }, [projectSlug, selectedPreset]);
+  }, [limit, projectSlug, selectedPreset]);
 
   useEffect(() => {
     void runQuery();
@@ -97,6 +109,39 @@ export function GraphViewerPanel({
             ))}
           </select>
         </label>
+        <div className="graph-control-grid">
+          <label className="form-field" htmlFor="graph-limit-select">
+            <span>Rows</span>
+            <select
+              data-testid="graph-limit-select"
+              disabled={isLoading}
+              id="graph-limit-select"
+              onChange={(event) => setLimit(Number(event.target.value))}
+              value={limit}
+            >
+              {GRAPH_LIMIT_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="form-field" htmlFor="graph-layout-select">
+            <span>Layout</span>
+            <select
+              data-testid="graph-layout-select"
+              id="graph-layout-select"
+              onChange={(event) => setLayoutId(event.target.value as GraphLayoutId)}
+              value={layoutId}
+            >
+              {GRAPH_LAYOUT_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         {selectedPreset ? (
           <div className="graph-preset-detail" data-testid="graph-preset-detail">
             <p>{selectedPreset.description}</p>
@@ -119,6 +164,7 @@ export function GraphViewerPanel({
         </div>
         <GraphCanvas
           edges={result?.edges ?? []}
+          layoutId={layoutId}
           nodes={result?.nodes ?? []}
           onSelect={setSelection}
         />
@@ -163,10 +209,12 @@ export function GraphViewerPanel({
 
 function GraphCanvas({
   edges,
+  layoutId,
   nodes,
   onSelect,
 }: {
   readonly edges: readonly GraphViewerEdge[];
+  readonly layoutId: GraphLayoutId;
   readonly nodes: readonly GraphViewerNode[];
   readonly onSelect: (selection: GraphSelection | undefined) => void;
 }) {
@@ -316,19 +364,7 @@ function GraphCanvas({
             data: { id: edge.id, label: edge.label, source: edge.source, target: edge.target },
           })),
       ],
-      layout: {
-        name: 'cose',
-        animate: false,
-        componentSpacing: 260,
-        fit: true,
-        gravity: 30,
-        idealEdgeLength: 300,
-        nodeDimensionsIncludeLabels: true,
-        nodeOverlap: 64,
-        nodeRepulsion: 220000,
-        numIter: 2000,
-        padding: 56,
-      },
+      layout: buildGraphLayoutOptions(layoutId, nodes, edges),
       maxZoom: 4,
       minZoom: 0.08,
       style: buildGraphStyles(graphTheme),
@@ -351,7 +387,7 @@ function GraphCanvas({
       cytoscapeRef.current = null;
       cy.destroy();
     };
-  }, [containerElement, edges, edgesById, nodes, nodesById, onSelect]);
+  }, [containerElement, edges, edgesById, layoutId, nodes, nodesById, onSelect]);
 
   return (
     <div
@@ -424,6 +460,103 @@ function GraphCanvas({
       )}
     </div>
   );
+}
+
+function buildGraphLayoutOptions(
+  layoutId: GraphLayoutId,
+  nodes: readonly GraphViewerNode[],
+  edges: readonly GraphViewerEdge[],
+) {
+  if (layoutId === 'grid') {
+    return {
+      name: 'grid',
+      animate: false,
+      fit: true,
+      nodeDimensionsIncludeLabels: true,
+      padding: 56,
+    };
+  }
+  if (layoutId === 'timeline') {
+    const positions = buildTimelinePositions(nodes, edges);
+    return {
+      name: 'preset',
+      fit: true,
+      padding: 56,
+      positions: (node: NodeSingular) => positions.get(node.id()) ?? { x: 0, y: 0 },
+    };
+  }
+  return {
+    name: 'cose',
+    animate: false,
+    componentSpacing: 260,
+    fit: true,
+    gravity: 30,
+    idealEdgeLength: 300,
+    nodeDimensionsIncludeLabels: true,
+    nodeOverlap: 64,
+    nodeRepulsion: 220000,
+    numIter: 2000,
+    padding: 56,
+  };
+}
+
+function buildTimelinePositions(
+  nodes: readonly GraphViewerNode[],
+  edges: readonly GraphViewerEdge[],
+): Map<string, { readonly x: number; readonly y: number }> {
+  const connectedCounts = new Map<string, number>();
+  for (const edge of edges) {
+    connectedCounts.set(edge.source, (connectedCounts.get(edge.source) ?? 0) + 1);
+    connectedCounts.set(edge.target, (connectedCounts.get(edge.target) ?? 0) + 1);
+  }
+  const orderedNodes = nodes
+    .map((node, index) => ({ index, node, sortValue: graphNodeSortValue(node) }))
+    .sort((left, right) => {
+      const leftSort = left.sortValue ?? Number.POSITIVE_INFINITY;
+      const rightSort = right.sortValue ?? Number.POSITIVE_INFINITY;
+      if (leftSort !== rightSort) {
+        return leftSort - rightSort;
+      }
+      return left.node.label.localeCompare(right.node.label) || left.index - right.index;
+    });
+  const positions = new Map<string, { readonly x: number; readonly y: number }>();
+  orderedNodes.forEach(({ node }, index) => {
+    const row = Math.floor(index / 24);
+    const column = index % 24;
+    const degreeOffset = Math.min(connectedCounts.get(node.id) ?? 0, 6) * 10;
+    positions.set(node.id, {
+      x: column * 180,
+      y: row * 170 + (index % 2 === 0 ? 0 : 48) - degreeOffset,
+    });
+  });
+  return positions;
+}
+
+function graphNodeSortValue(node: GraphViewerNode): number | undefined {
+  for (const key of [
+    'createdAt',
+    'created_at',
+    'updatedAt',
+    'updated_at',
+    'publishedAt',
+    'published_at',
+    'collectedAt',
+    'collected_at',
+    'timestamp',
+    'date',
+  ]) {
+    const value = node.properties[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const timestamp = Date.parse(value);
+      if (Number.isFinite(timestamp)) {
+        return timestamp;
+      }
+    }
+  }
+  return undefined;
 }
 
 function truncateGraphLabel(value: string): string {

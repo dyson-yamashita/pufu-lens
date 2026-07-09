@@ -6,9 +6,11 @@ import { lookupProjectMemberAccess } from './authz.ts';
 export type GraphPresetId = 'actor-documents' | 'recent-relations';
 
 export type GraphPresetSummary = {
+  readonly defaultLimit: number;
   readonly description: string;
   readonly id: GraphPresetId;
   readonly label: string;
+  readonly maxLimit: number;
   readonly preview: string;
 };
 
@@ -30,6 +32,7 @@ export type GraphViewerEdge = {
 export type GraphQueryResult = {
   readonly edges: readonly GraphViewerEdge[];
   readonly graphName: string;
+  readonly limit: number;
   readonly nodes: readonly GraphViewerNode[];
   readonly preset: GraphPresetSummary;
   readonly rawRows: readonly Record<string, unknown>[];
@@ -45,15 +48,15 @@ export type GraphProjectAccess = {
 };
 
 type GraphPreset = GraphPresetSummary & {
-  readonly cypher: string;
+  readonly cypher: (limit: number) => string;
   readonly maxEdges: number;
   readonly maxNodes: number;
   readonly recordDefinition: string;
-  readonly rowLimit: number;
 };
 
 export interface GraphViewerRepository {
   executePreset(input: {
+    cypher: string;
     graphName: string;
     preset: GraphPreset;
   }): Promise<readonly Record<string, unknown>[]>;
@@ -62,6 +65,10 @@ export interface GraphViewerRepository {
     userId: string;
   }): Promise<GraphProjectAccess | undefined>;
 }
+
+export const GRAPH_DEFAULT_LIMIT = 100;
+export const GRAPH_MAX_LIMIT = 500;
+export const GRAPH_MIN_LIMIT = 1;
 
 export class GraphAccessDeniedError extends Error {
   constructor(projectSlug: string) {
@@ -77,44 +84,59 @@ export class GraphPresetNotFoundError extends Error {
   }
 }
 
+export class GraphLimitError extends Error {
+  constructor(limit: unknown) {
+    super(
+      `Graph limit must be an integer between ${GRAPH_MIN_LIMIT} and ${GRAPH_MAX_LIMIT}: ${String(
+        limit,
+      )}`,
+    );
+    this.name = 'GraphLimitError';
+  }
+}
+
 export const GRAPH_PRESETS: readonly GraphPreset[] = [
   {
-    cypher: `MATCH (source)-[relation]->(target)
+    cypher: (limit) => `MATCH (source)-[relation]->(target)
 RETURN source, relation, target
-LIMIT 100`,
+LIMIT ${limit}`,
+    defaultLimit: GRAPH_DEFAULT_LIMIT,
     description: 'Document、Actor、Topic など、直近の関係を横断して確認します。',
     id: 'recent-relations',
     label: 'Recent Relations',
-    maxEdges: 100,
-    maxNodes: 120,
+    maxEdges: GRAPH_MAX_LIMIT,
+    maxLimit: GRAPH_MAX_LIMIT,
+    maxNodes: 600,
     preview: `MATCH (source)-[relation]->(target)
 RETURN source, relation, target
 LIMIT 100`,
     recordDefinition: 'source agtype, relation agtype, target agtype',
-    rowLimit: 100,
   },
   {
-    cypher: `MATCH (source:Actor)-[relation]->(target:Document)
+    cypher: (limit) => `MATCH (source:Actor)-[relation]->(target:Document)
 RETURN source, relation, target
-LIMIT 100`,
+LIMIT ${limit}`,
+    defaultLimit: GRAPH_DEFAULT_LIMIT,
     description: 'Actor から Document への関係を確認します。',
     id: 'actor-documents',
     label: 'Actors to Documents',
-    maxEdges: 100,
-    maxNodes: 120,
+    maxEdges: GRAPH_MAX_LIMIT,
+    maxLimit: GRAPH_MAX_LIMIT,
+    maxNodes: 600,
     preview: `MATCH (source:Actor)-[relation]->(target:Document)
 RETURN source, relation, target
 LIMIT 100`,
     recordDefinition: 'source agtype, relation agtype, target agtype',
-    rowLimit: 100,
   },
 ];
 
 export function listGraphPresets(): readonly GraphPresetSummary[] {
-  return GRAPH_PRESETS.map(({ description, id, label, preview }) => ({
+  return GRAPH_PRESETS.map(({ defaultLimit, description, id, label, maxLimit, preview }) => ({
+    defaultLimit,
     description,
     id,
     label,
+    maxLimit,
     preview,
   }));
 }
@@ -128,10 +150,11 @@ export function getGraphPreset(queryId: string): GraphPreset {
 }
 
 export async function runGraphPresetQuery(
-  input: { projectSlug: string; queryId: string; userId: string },
+  input: { limit?: number; projectSlug: string; queryId: string; userId: string },
   options: { repository: GraphViewerRepository },
 ): Promise<GraphQueryResult> {
   const preset = getGraphPreset(input.queryId);
+  const limit = normalizeGraphLimit(input.limit ?? preset.defaultLimit, preset.maxLimit);
   const project = await options.repository.lookupProjectMember({
     projectSlug: input.projectSlug,
     userId: input.userId,
@@ -140,34 +163,50 @@ export async function runGraphPresetQuery(
     throw new GraphAccessDeniedError(input.projectSlug);
   }
 
+  const cypher = preset.cypher(limit);
   const rows = await options.repository.executePreset({
+    cypher,
     graphName: project.graphName,
     preset,
   });
   const normalized = normalizeGraphRows(rows, {
-    maxEdges: preset.maxEdges,
-    maxNodes: preset.maxNodes,
+    maxEdges: Math.min(preset.maxEdges, limit),
+    maxNodes: Math.min(preset.maxNodes, Math.max(limit * 2, 1)),
   });
 
   return {
     ...normalized,
     graphName: project.graphName,
+    limit,
     preset: {
+      defaultLimit: preset.defaultLimit,
       description: preset.description,
       id: preset.id,
       label: preset.label,
-      preview: preset.preview,
+      maxLimit: preset.maxLimit,
+      preview: cypher,
     },
     rawRows: rows.map(safeRawRow),
     rowCount: rows.length,
   };
 }
 
+export function normalizeGraphLimit(limit: unknown, maxLimit: number = GRAPH_MAX_LIMIT): number {
+  if (typeof limit !== 'number' || !Number.isInteger(limit)) {
+    throw new GraphLimitError(limit);
+  }
+  const normalizedMax = Math.min(Math.max(maxLimit, GRAPH_MIN_LIMIT), GRAPH_MAX_LIMIT);
+  if (limit < GRAPH_MIN_LIMIT || limit > normalizedMax) {
+    throw new GraphLimitError(limit);
+  }
+  return limit;
+}
+
 export function createPostgresGraphViewerRepository(
   sql: postgres.Sql = getRequiredAdminSql(),
 ): GraphViewerRepository {
   return {
-    async executePreset({ graphName, preset }) {
+    async executePreset({ cypher, graphName, preset }) {
       const safeGraphName = validateGraphName(graphName);
       const safeRecordDefinition = validateRecordDefinition(preset.recordDefinition);
       return sql.begin(async (transaction) => {
@@ -177,7 +216,7 @@ export function createPostgresGraphViewerRepository(
         await transaction`SET LOCAL statement_timeout = '5000ms'`;
         return transaction.unsafe(
           `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
-            preset.cypher,
+            cypher,
           )}) AS (${safeRecordDefinition})`,
         ) as Promise<readonly Record<string, unknown>[]>;
       });

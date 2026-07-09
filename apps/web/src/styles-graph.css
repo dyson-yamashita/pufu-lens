@@ -84,6 +84,12 @@ body.graph-fallback-fullscreen-active {
   margin: 0;
 }
 
+.graph-control-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .graph-preset-detail pre,
 .json-preview {
   background: var(--surface-2);
@@ -220,6 +226,10 @@ body.graph-fallback-fullscreen-active {
 }
 
 @media (max-width: 1023px) {
+  .graph-control-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .graph-canvas-panel,
   .graph-canvas-wrap,
   .graph-canvas,
