@@ -164,7 +164,11 @@ importers:
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.15)
 
-  packages/ingestion: {}
+  packages/ingestion:
+    dependencies:
+      sudachi-ts:
+        specifier: ^0.1.22
+        version: 0.1.22(typescript@5.9.3)
 
   packages/project-tenancy: {}
 
@@ -3163,6 +3167,13 @@ packages:
         optional: true
       babel-plugin-macros:
         optional: true
+
+  sudachi-ts@0.1.22:
+    resolution: {integrity: sha512-1jayrSyYWi6GzLRtYbPNuQkt9FUBWiD3FdcoCcwBH1ZGOCZOt4gVK8ze8IrIx4q5Ean+1W1PReD2EZTIRxAFHw==}
+    engines: {node: '>=18.0.0'}
+    hasBin: true
+    peerDependencies:
+      typescript: ^5.0.0
 
   supports-color@7.2.0:
     resolution: {integrity: sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==}
@@ -6608,6 +6619,10 @@ snapshots:
     dependencies:
       client-only: 0.0.1
       react: 19.2.6
+
+  sudachi-ts@0.1.22(typescript@5.9.3):
+    dependencies:
+      typescript: 5.9.3
 
   supports-color@7.2.0:
     dependencies:
