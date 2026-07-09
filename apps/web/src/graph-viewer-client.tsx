@@ -15,7 +15,6 @@ import type {
   GraphViewerEdge,
   GraphViewerNode,
 } from './graph-viewer';
-import { GRAPH_DEFAULT_LIMIT } from './graph-viewer';
 
 type GraphSelection =
   | { readonly item: GraphViewerEdge; readonly type: 'edge' }
@@ -23,6 +22,7 @@ type GraphSelection =
 
 type GraphLayoutId = 'force' | 'grid' | 'timeline';
 
+const GRAPH_VIEWER_DEFAULT_LIMIT = 100;
 const GRAPH_LIMIT_OPTIONS = [50, 100, 200, 500] as const;
 const GRAPH_LAYOUT_OPTIONS: readonly { readonly id: GraphLayoutId; readonly label: string }[] = [
   { id: 'force', label: 'Force' },
@@ -51,7 +51,8 @@ export function GraphViewerPanel({
   const [selection, setSelection] = useState<GraphSelection | undefined>();
   const [limit, setLimit] = useState(
     () =>
-      presets.find((preset) => preset.id === initialPresetId)?.defaultLimit ?? GRAPH_DEFAULT_LIMIT,
+      presets.find((preset) => preset.id === initialPresetId)?.defaultLimit ??
+      GRAPH_VIEWER_DEFAULT_LIMIT,
   );
   const [layoutId, setLayoutId] = useState<GraphLayoutId>('force');
   const [isLoading, setIsLoading] = useState(false);
@@ -113,7 +114,7 @@ export function GraphViewerPanel({
               const nextQueryId = event.target.value as GraphPresetId;
               const nextPreset = presets.find((preset) => preset.id === nextQueryId);
               setQueryId(nextQueryId);
-              setLimit(nextPreset?.defaultLimit ?? GRAPH_DEFAULT_LIMIT);
+              setLimit(nextPreset?.defaultLimit ?? GRAPH_VIEWER_DEFAULT_LIMIT);
             }}
             value={queryId}
           >
@@ -562,8 +563,8 @@ function timelineColumnCount(containerWidth: number): number {
 }
 
 function buildLimitOptions(preset: GraphPresetSummary | undefined): readonly number[] {
-  const maxLimit = preset?.maxLimit ?? GRAPH_DEFAULT_LIMIT;
-  const defaultLimit = preset?.defaultLimit ?? GRAPH_DEFAULT_LIMIT;
+  const maxLimit = preset?.maxLimit ?? GRAPH_VIEWER_DEFAULT_LIMIT;
+  const defaultLimit = preset?.defaultLimit ?? GRAPH_VIEWER_DEFAULT_LIMIT;
   const options = new Set<number>();
   for (const option of GRAPH_LIMIT_OPTIONS) {
     if (option <= maxLimit) {
