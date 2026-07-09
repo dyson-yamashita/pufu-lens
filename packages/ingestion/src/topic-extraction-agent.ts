@@ -15,10 +15,47 @@ export interface GeminiTopicExtractionAgentOptions {
   apiKey: string;
   endpoint?: string;
   fetchImpl?: typeof fetch;
+  maxCandidateTopics?: number;
   maxBodyCharacters?: number;
   maxTopics?: number;
   model: string;
 }
+
+interface TopicCandidateLexicon {
+  readonly displayTargets: readonly string[];
+  readonly normalizedToDisplayTarget: ReadonlyMap<string, string>;
+}
+
+type WordSegment = {
+  readonly isWordLike?: boolean;
+  readonly segment: string;
+};
+
+const GENERIC_TOPIC_WORDS = new Set([
+  'about',
+  'and',
+  'article',
+  'body',
+  'content',
+  'document',
+  'explains',
+  'for',
+  'from',
+  'login',
+  'page',
+  'signup',
+  'source',
+  'the',
+  'this',
+  'with',
+  'こと',
+  'これ',
+  'ため',
+  '本文',
+  'もの',
+  'よう',
+  'ログイン',
+]);
 
 export function createDeterministicTopicExtractionAgent(): TopicExtractionAgent {
   return {
@@ -39,6 +76,7 @@ export function createGeminiTopicExtractionAgent(
   }
   const fetchImpl = options.fetchImpl ?? fetch;
   const maxTopics = options.maxTopics ?? 10;
+  const maxCandidateTopics = options.maxCandidateTopics ?? Math.max(maxTopics * 4, 20);
   const maxBodyCharacters = options.maxBodyCharacters ?? 12000;
   const endpoint =
     options.endpoint ??
@@ -48,6 +86,7 @@ export function createGeminiTopicExtractionAgent(
 
   return {
     async extractTopics(input) {
+      const candidateLexicon = buildTopicCandidateLexicon(input, maxCandidateTopics);
       const response = await fetchImpl(`${endpoint}?key=${encodeURIComponent(options.apiKey)}`, {
         body: JSON.stringify({
           contents: [
@@ -59,11 +98,14 @@ export function createGeminiTopicExtractionAgent(
                     'Extract semantic topics for a document or web page.',
                     'Return only JSON: {"topics":["topic1","topic2"]}.',
                     `Return 1 to ${maxTopics} concise topics.`,
+                    'Use only the candidate terms below, or a normalized form of one candidate term.',
+                    'Do not invent sentence-like topics, clauses, summaries, or explanations.',
                     'Prefer explicit content tags or hashtags when HTML metadata is present.',
                     'Prefer project/product names, technical concepts, and domain keywords.',
                     'Do not return generic UI words, navigation labels, login/signup links, or quoted phrases unless they are actual content topics.',
                     'Do not return URLs.',
                     'Keep Japanese topics in Japanese.',
+                    `Candidate terms: ${JSON.stringify(candidateLexicon.displayTargets)}`,
                     `Title: ${input.title}`,
                     `Canonical URI: ${input.canonicalUri}`,
                     `HTML excerpt: ${input.html.slice(0, maxBodyCharacters)}`,
@@ -89,12 +131,16 @@ export function createGeminiTopicExtractionAgent(
       if (!text) {
         throw new Error('Gemini topic extraction response did not include JSON text.');
       }
-      return topicsFromGeminiJson(text, maxTopics);
+      return topicsFromGeminiJson(text, maxTopics, candidateLexicon);
     },
   };
 }
 
-export function topicsFromGeminiJson(text: string, maxTopics = 10): ParsedTopic[] {
+export function topicsFromGeminiJson(
+  text: string,
+  maxTopics = 10,
+  candidateLexicon?: TopicCandidateLexicon,
+): ParsedTopic[] {
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -111,7 +157,7 @@ export function topicsFromGeminiJson(text: string, maxTopics = 10): ParsedTopic[
   if (!Array.isArray(topicsValue)) {
     throw new Error('Gemini topic extraction response must include topics array.');
   }
-  return normalizeTopicTargets(topicsValue, 'llm', maxTopics);
+  return normalizeTopicTargets(topicsValue, 'llm', maxTopics, candidateLexicon);
 }
 
 function deterministicDocumentTopics(input: TopicExtractionInput): ParsedTopic[] {
@@ -155,6 +201,7 @@ function normalizeTopicTargets(
   values: unknown[],
   source: string,
   maxTopics: number,
+  candidateLexicon?: TopicCandidateLexicon,
 ): ParsedTopic[] {
   const topics: ParsedTopic[] = [];
   const seen = new Set<string>();
@@ -165,7 +212,9 @@ function normalizeTopicTargets(
     if (typeof value !== 'string') {
       continue;
     }
-    const target = normalizeTopicTarget(stripHashPrefix(value));
+    const target = candidateLexicon
+      ? topicTargetFromCandidateLexicon(value, candidateLexicon)
+      : normalizeTopicTarget(stripHashPrefix(value));
     const key = target.toLowerCase();
     if (!target || seen.has(key) || looksLikeUrl(target)) {
       continue;
@@ -183,8 +232,174 @@ function titleTopicCandidates(title: string): string[] {
   }
   const parts = splitTitleTopicParts(normalized)
     .map((part) => normalizeTopicTarget(part))
-    .filter((part) => part.length >= 2);
-  return [normalized, ...parts];
+    .filter(isValidCandidateTerm);
+  if (parts.length > 1) {
+    return parts;
+  }
+  return isValidCandidateTerm(normalized) ? [normalized, ...parts] : parts;
+}
+
+function buildTopicCandidateLexicon(
+  input: TopicExtractionInput,
+  maxCandidates: number,
+): TopicCandidateLexicon {
+  const displayTargets: string[] = [];
+  const normalizedToDisplayTarget = new Map<string, string>();
+
+  const addCandidates = (candidates: Iterable<string>) => {
+    for (const candidate of candidates) {
+      if (displayTargets.length >= maxCandidates) {
+        break;
+      }
+      const target = normalizeTopicTarget(stripHashPrefix(candidate));
+      const key = target.toLowerCase();
+      if (!isValidCandidateTerm(target) || normalizedToDisplayTarget.has(key)) {
+        continue;
+      }
+      normalizedToDisplayTarget.set(key, target);
+      displayTargets.push(target);
+    }
+  };
+
+  addCandidates(extractHashtagTopics(input.html));
+  addCandidates(splitTitleTopicParts(normalizeTopicTarget(input.title)));
+  addCandidates(extractMetaKeywords(input.html));
+  addCandidates(topicCandidateTerms(input.title));
+  addCandidates(topicCandidateTerms(input.bodyText));
+
+  return { displayTargets, normalizedToDisplayTarget };
+}
+
+function topicTargetFromCandidateLexicon(value: string, lexicon: TopicCandidateLexicon): string {
+  const normalized = normalizeTopicTarget(stripHashPrefix(value));
+  const exact = lexicon.normalizedToDisplayTarget.get(normalized.toLowerCase());
+  if (exact) {
+    return exact;
+  }
+  for (const candidate of topicCandidateTerms(normalized)) {
+    const displayTarget = lexicon.normalizedToDisplayTarget.get(candidate.toLowerCase());
+    if (displayTarget) {
+      return displayTarget;
+    }
+  }
+  return '';
+}
+
+function* topicCandidateTerms(text: string): Generator<string> {
+  const normalized = normalizeTopicTarget(text);
+  if (!normalized) {
+    return;
+  }
+
+  const words = lexicalWords(normalized);
+  yield* compoundTerms(words);
+  for (const word of words) {
+    yield word;
+  }
+}
+
+function lexicalWords(text: string): string[] {
+  const segmentedWords = segmentWords(text)
+    .map((word) => normalizeTopicTarget(word))
+    .filter(isValidLexicalWord);
+  if (segmentedWords.length > 0) {
+    return segmentedWords;
+  }
+  return fallbackWords(text).filter(isValidLexicalWord);
+}
+
+function segmentWords(text: string): string[] {
+  const segmenter = createWordSegmenter();
+  if (!segmenter) {
+    return [];
+  }
+  const words: string[] = [];
+  for (const segment of segmenter.segment(text)) {
+    if (segment.isWordLike === false) {
+      continue;
+    }
+    words.push(segment.segment);
+  }
+  return words;
+}
+
+function createWordSegmenter(): { segment(value: string): Iterable<WordSegment> } | undefined {
+  const segmenterConstructor = (
+    Intl as typeof Intl & {
+      Segmenter?: new (
+        locale: string | undefined,
+        options: { granularity: 'word' },
+      ) => { segment(value: string): Iterable<WordSegment> };
+    }
+  ).Segmenter;
+  return segmenterConstructor
+    ? new segmenterConstructor(undefined, { granularity: 'word' })
+    : undefined;
+}
+
+function fallbackWords(text: string): string[] {
+  return Array.from(
+    text.matchAll(
+      /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}A-Za-z0-9][\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}A-Za-z0-9._+-]*/gu,
+    ),
+  ).map((match) => match[0]);
+}
+
+function* compoundTerms(words: readonly string[]): Generator<string> {
+  for (let index = 0; index < words.length - 1; index += 1) {
+    const first = words[index];
+    const second = words[index + 1];
+    if (!first || !second || !canJoinLexicalWords(first, second)) {
+      continue;
+    }
+    yield containsCjk(first) || containsCjk(second) ? `${first}${second}` : `${first} ${second}`;
+  }
+}
+
+function isValidCandidateTerm(value: string): boolean {
+  if (!value || looksLikeUrl(value) || value.length > 60) {
+    return false;
+  }
+  if (sentenceLikeTopic(value)) {
+    return false;
+  }
+  return value.length >= 2 && lexicalWords(value).length <= 4;
+}
+
+function isValidLexicalWord(value: string): boolean {
+  if (value.length < 2 || looksLikeUrl(value)) {
+    return false;
+  }
+  if (!/[\p{L}\p{N}]/u.test(value)) {
+    return false;
+  }
+  return !GENERIC_TOPIC_WORDS.has(value.toLowerCase());
+}
+
+function canJoinLexicalWords(first: string, second: string): boolean {
+  if (
+    GENERIC_TOPIC_WORDS.has(first.toLowerCase()) ||
+    GENERIC_TOPIC_WORDS.has(second.toLowerCase())
+  ) {
+    return false;
+  }
+  return containsCjk(first) === containsCjk(second) || isAsciiWord(first) === isAsciiWord(second);
+}
+
+function sentenceLikeTopic(value: string): boolean {
+  const words = lexicalWords(value);
+  if (words.length >= 5) {
+    return true;
+  }
+  return /[。.!?！？]/u.test(value);
+}
+
+function containsCjk(value: string): boolean {
+  return /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(value);
+}
+
+function isAsciiWord(value: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(value);
 }
 
 function* extractMetaKeywords(html: string): Generator<string> {
