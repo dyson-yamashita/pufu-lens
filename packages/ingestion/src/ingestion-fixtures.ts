@@ -269,7 +269,7 @@ function uniqueGitHubLinkedIssueRefs(
   for (const line of text.split(/\r?\n/)) {
     for (const keywordEnd of githubClosingKeywordEndIndexes(line)) {
       for (const refText of line.slice(keywordEnd).split(',')) {
-        const candidate = firstWhitespaceSeparatedToken(refText);
+        const candidate = normalizeGitHubIssueRefToken(firstWhitespaceSeparatedToken(refText));
         if (!candidate) {
           continue;
         }
@@ -319,6 +319,31 @@ function firstWhitespaceSeparatedToken(value: string): string | undefined {
   }
   const whitespaceIndex = trimmed.search(/\s/);
   return whitespaceIndex === -1 ? trimmed : trimmed.slice(0, whitespaceIndex);
+}
+
+function normalizeGitHubIssueRefToken(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  let start = 0;
+  let end = value.length;
+  while (start < end && isGitHubIssueRefWrapperPrefix(value[start])) {
+    start += 1;
+  }
+  while (end > start && isGitHubIssueRefWrapperSuffix(value[end - 1])) {
+    end -= 1;
+  }
+  return start === end ? undefined : value.slice(start, end);
+}
+
+function isGitHubIssueRefWrapperPrefix(char: string | undefined): boolean {
+  return char !== undefined && ['(', '[', '{', '<', '"', "'"].includes(char);
+}
+
+function isGitHubIssueRefWrapperSuffix(char: string | undefined): boolean {
+  return (
+    char !== undefined && [')', ']', '}', '>', '"', "'", '.', ',', ';', ':', '!'].includes(char)
+  );
 }
 
 function isGitHubIssueRefWordChar(value: string | undefined): boolean {

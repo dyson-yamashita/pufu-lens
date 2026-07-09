@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseAgtypeString, selectMissingGraphTargets } from './graph-target-selection.ts';
+import {
+  extractRelatedDocumentSourceIds,
+  parseAgtypeString,
+  selectMissingGraphTargets,
+  selectRelatedDocumentBackfillTargets,
+} from './graph-target-selection.ts';
 
 test('selectMissingGraphTargets keeps the original order and returns only unregistered rows', () => {
   const rows = [
@@ -28,6 +33,41 @@ test('selectMissingGraphTargets applies the limit after filtering registered row
   assert.deepEqual(selectMissingGraphTargets(rows, new Set(['document:a']), 1), [
     { graphNodeId: 'document:b' },
   ]);
+});
+
+test('selectRelatedDocumentBackfillTargets selects existing rows with missing related edges', () => {
+  const rows = [
+    { graphNodeId: 'document:a', parsedText: '{}' },
+    { graphNodeId: 'document:b', parsedText: '{}' },
+    { graphNodeId: 'document:c', parsedText: '{}' },
+  ];
+
+  assert.deepEqual(
+    selectRelatedDocumentBackfillTargets(
+      rows,
+      new Set(['document:a', 'document:b']),
+      new Set(['document:b', 'document:c']),
+      2,
+    ),
+    [{ graphNodeId: 'document:b', parsedText: '{}' }],
+  );
+});
+
+test('extractRelatedDocumentSourceIds reads unique parsed RELATED_TO targets', () => {
+  assert.deepEqual(
+    extractRelatedDocumentSourceIds(
+      JSON.stringify({
+        relations: [
+          { target: ' example-org/pufu-sample/issues/101 ', type: 'RELATED_TO' },
+          { target: 'example-org/pufu-sample/issues/101', type: 'RELATED_TO' },
+          { target: 'https://example.test', type: 'LINKS_TO' },
+          { target: '', type: 'RELATED_TO' },
+        ],
+      }),
+    ),
+    ['example-org/pufu-sample/issues/101'],
+  );
+  assert.deepEqual(extractRelatedDocumentSourceIds('{'), []);
 });
 
 test('parseAgtypeString parses AGE quoted strings', () => {
