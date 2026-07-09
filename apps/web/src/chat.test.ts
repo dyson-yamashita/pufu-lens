@@ -36,6 +36,7 @@ import {
   runPublicChat,
   selectGraphRelatedDocumentCandidates,
   shouldUseGraphRelatedSource,
+  timelineSearchPatterns,
   trimPrivateChatHistoryContent,
 } from './chat.ts';
 import {
@@ -164,6 +165,10 @@ function createRepository(): ChatRepository & {
     async rawReadViewFetch() {
       return undefined;
     },
+    async timelineSearch({ projectId }) {
+      assert.equal(projectId, 'project-a');
+      return [{ ...sampleSource, documentId: 'doc-timeline', title: 'Timeline Event' }];
+    },
     async parsedDocFetch({ projectId }) {
       assert.equal(projectId, 'project-a');
       return [{ ...sampleSource, documentId: 'doc-parsed', title: 'Parsed Metadata' }];
@@ -193,7 +198,14 @@ assert.equal(response.editing?.questionType, 'risk');
 assert.equal(response.sources.length, 4);
 assert.deepEqual(
   response.toolCalls.map((toolCall) => toolCall.name),
-  ['vector-search', 'graph-query', 'document-fetch', 'raw-document-fetch', 'parsed-doc-fetch'],
+  [
+    'vector-search',
+    'graph-query',
+    'timeline-search',
+    'document-fetch',
+    'raw-document-fetch',
+    'parsed-doc-fetch',
+  ],
 );
 assert.equal(repository.rawFetchInputs[0]?.maxBytes, 64 * 1024);
 
@@ -419,6 +431,9 @@ const graphBudgetResponse = await runPrivateChat(
       async rawDocumentFetch() {
         return [];
       },
+      async timelineSearch() {
+        return [];
+      },
       async parsedDocFetch() {
         return [];
       },
@@ -428,6 +443,51 @@ const graphBudgetResponse = await runPrivateChat(
 assert.deepEqual(
   graphBudgetResponse.sources.map((source) => source.documentId),
   ['doc-vector-1', 'doc-vector-2', 'doc-vector-3', 'doc-vector-4', 'doc-graph-budget'],
+);
+
+const timelineBudgetResponse = await runPrivateChat(
+  { projectSlug: 'sample-a', question: '意思決定の経緯を時系列で教えて', userId: 'user-a' },
+  {
+    provider: createExtractiveChatProvider(),
+    repository: {
+      ...createRepository(),
+      async vectorSearch() {
+        return Array.from({ length: 5 }, (_, index) => ({
+          ...sampleSource,
+          documentId: `doc-vector-timeline-${index + 1}`,
+          title: `Vector Timeline ${index + 1}`,
+        }));
+      },
+      async graphQuery() {
+        return [{ ...sampleSource, documentId: 'doc-graph-timeline', title: 'Graph Timeline' }];
+      },
+      async documentFetch() {
+        return [];
+      },
+      async rawDocumentFetch() {
+        return [];
+      },
+      async timelineSearch() {
+        return [
+          { ...sampleSource, documentId: 'doc-time-1', title: 'First Decision' },
+          { ...sampleSource, documentId: 'doc-time-2', title: 'Second Decision' },
+        ];
+      },
+      async parsedDocFetch() {
+        return [];
+      },
+    },
+  },
+);
+assert.deepEqual(
+  timelineBudgetResponse.sources.map((source) => source.documentId),
+  [
+    'doc-vector-timeline-1',
+    'doc-vector-timeline-2',
+    'doc-time-1',
+    'doc-time-2',
+    'doc-graph-timeline',
+  ],
 );
 
 const adminResponse = await runPrivateChat(
@@ -834,6 +894,16 @@ const mastraChatResponse = mastraGenerateToChatResponse({
             toolName: 'graphQuery',
             type: 'tool-result',
           },
+          {
+            output: {
+              value: {
+                resultCount: 1,
+                sources: [{ ...sampleSource, documentId: 'doc-timeline' }],
+              },
+            },
+            toolName: 'timelineSearch',
+            type: 'tool-result',
+          },
         ],
       },
     ],
@@ -846,11 +916,11 @@ assert.equal(mastraChatResponse.answer, 'Mastra agent answer');
 assert.equal(mastraChatResponse.editing?.inferredMode, 'issue_mapping');
 assert.deepEqual(
   mastraChatResponse.toolCalls.map((toolCall) => toolCall.name),
-  ['parsed-doc-fetch', 'graph-query'],
+  ['parsed-doc-fetch', 'graph-query', 'timeline-search'],
 );
 assert.deepEqual(
   mastraChatResponse.sources.map((source) => source.documentId),
-  ['doc-a', 'doc-graph'],
+  ['doc-a', 'doc-graph', 'doc-timeline'],
 );
 
 const mastraRawLeakResponse = mastraGenerateToChatResponse({
@@ -922,11 +992,13 @@ assert.deepEqual(
   publicChatToolCallsFromPrivate([
     { name: 'vector-search', resultCount: 3 },
     { name: 'graph-query', resultCount: 2 },
+    { name: 'timeline-search', resultCount: 2 },
     { name: 'raw-document-fetch', resultCount: 1 },
   ]),
   [
     { name: 'vector-search', resultCount: 3 },
     { name: 'graph-query', resultCount: 2 },
+    { name: 'timeline-search', resultCount: 2 },
     { name: 'raw-document-fetch', resultCount: 1 },
   ],
 );
@@ -996,6 +1068,7 @@ assert.ok(
     '%プロジェクトエディター%',
   ),
 );
+assert.deepEqual(timelineSearchPatterns('意思決定の経緯を時系列で教えて'), ['%意思決定%']);
 
 assert.equal(hybridSearchCandidateLimit(1), 50);
 assert.equal(hybridSearchCandidateLimit(5), 100);

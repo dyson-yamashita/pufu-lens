@@ -46,6 +46,7 @@ export const mastraToolIds = {
   publicContextFetch: 'public-context-fetch',
   publicReportFetch: 'public-report-fetch',
   rawDocumentFetch: 'raw-document-fetch',
+  timelineSearch: 'timeline-search',
   vectorSearch: 'vector-search',
 } as const;
 
@@ -526,6 +527,24 @@ export function createProjectChatTools(repository: ChatRepository) {
         };
       },
     }),
+    timelineSearch: createTool({
+      id: mastraToolIds.timelineSearch,
+      description:
+        'Search document metadata and short snippets for timeline questions in the active project. Results are ordered chronologically by documents.occurred_at, then updated_at.',
+      inputSchema: z.object({
+        limit: z.number().int().min(1).max(10),
+        query: z.string().trim().min(1),
+      }),
+      outputSchema: chatSourceListSchema,
+      requestContextSchema: mastraProjectContextSchema,
+      execute: async ({ limit, query }, context) => ({
+        sources: await repository.timelineSearch({
+          limit,
+          projectId: projectIdFromContext(context),
+          query,
+        }),
+      }),
+    }),
     vectorSearch: createTool({
       id: mastraToolIds.vectorSearch,
       description:
@@ -554,6 +573,7 @@ export const PROJECT_CHAT_AGENT_INSTRUCTIONS = [
   '事実確認・説明・要約の質問では、まず vector-search を実行する。',
   'vector-search で結果が得られた場合でも、graph-query と parsed-doc-fetch を補助検索として続けて使う。',
   'graph-query は vector-search で得た sources の documentId を seedDocumentIds として優先的に使う。',
+  '時系列、経緯、履歴、流れを問う質問では timeline-search を使い、documents.occurred_at の順で候補を確認する。',
   'document-fetch は特定 document id の確認が必要な場合に使う。',
   'raw-document-fetch は、参照する source を選んだ後の詳細確認にだけ使う。',
   'source が 1 件も得られない場合は、確定的な事実主張をしてはいけない。取得できた情報の範囲だけを述べる。',
