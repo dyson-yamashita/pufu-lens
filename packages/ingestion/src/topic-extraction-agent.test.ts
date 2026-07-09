@@ -74,6 +74,40 @@ test('Gemini TopicExtractionAgent constrains LLM output to lexical candidates', 
         { headers: { 'content-type': 'application/json' }, status: 200 },
       ),
     model: 'gemini-test',
+    topicMorphologicalTokenizer: {
+      tokenize(text) {
+        if (text.includes('プロジェクトリスク')) {
+          return [
+            {
+              normalizedForm: 'プロジェクトリスク',
+              partOfSpeech: ['名詞', '普通名詞', '一般', '*', '*', '*'],
+              surface: 'プロジェクトリスク',
+            },
+            {
+              dictionaryForm: '共有',
+              partOfSpeech: ['動詞', '一般', '*', '*', '*', '*'],
+              surface: '共有する',
+            },
+            {
+              normalizedForm: '早い',
+              partOfSpeech: ['形容詞', '一般', '*', '*', '*', '*'],
+              surface: '早め',
+            },
+            {
+              normalizedForm: 'こと',
+              partOfSpeech: ['名詞', '普通名詞', '一般', '*', '*', '*'],
+              surface: 'こと',
+            },
+            {
+              normalizedForm: 'を',
+              partOfSpeech: ['助詞', '格助詞', '*', '*', '*', '*'],
+              surface: 'を',
+            },
+          ];
+        }
+        return [];
+      },
+    },
   });
 
   const topics = await agent.extractTopics({
