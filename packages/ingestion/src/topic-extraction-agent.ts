@@ -291,10 +291,7 @@ function titleTopicCandidates(title: string): string[] {
   const parts = splitTitleTopicParts(normalized)
     .map((part) => normalizeTopicTarget(part))
     .filter(isValidCandidateTerm);
-  if (parts.length > 1) {
-    return parts;
-  }
-  return isValidCandidateTerm(normalized) ? [normalized, ...parts] : parts;
+  return parts;
 }
 
 function buildTopicCandidateLexicon(
@@ -330,8 +327,12 @@ function buildTopicCandidateLexicon(
     addCandidates(extractHashtagTopics(input.html));
     addCandidates(splitTitleTopicParts(normalizeTopicTarget(input.title)));
     addCandidates(extractMetaKeywords(input.html));
-    addCandidates(await topicCandidateTerms(input.title, tokenizer));
-    addCandidates(await topicCandidateTerms(input.bodyText, tokenizer));
+    if (displayTargets.length < maxCandidates) {
+      addCandidates(await topicCandidateTerms(input.title, tokenizer));
+    }
+    if (displayTargets.length < maxCandidates) {
+      addCandidates(await topicCandidateTerms(input.bodyText, tokenizer));
+    }
 
     return { displayTargets, normalizedToDisplayTarget };
   });
@@ -480,7 +481,7 @@ function createWordSegmenter(): { segment(value: string): Iterable<WordSegment> 
 function fallbackWords(text: string): string[] {
   return Array.from(
     text.matchAll(
-      /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}A-Za-z0-9][\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}A-Za-z0-9._+-]*/gu,
+      /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}A-Za-z0-9ーｰ][\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}A-Za-z0-9._+\-ーｰ]*/gu,
     ),
   ).map((match) => match[0]);
 }

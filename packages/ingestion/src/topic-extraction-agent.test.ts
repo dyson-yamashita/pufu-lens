@@ -90,6 +90,42 @@ test('Gemini TopicExtractionAgent constrains LLM output to lexical candidates', 
   ]);
 });
 
+test('Gemini TopicExtractionAgent skips tokenization after candidate limit is reached', async () => {
+  const agent = createGeminiTopicExtractionAgent({
+    apiKey: 'test-key',
+    endpoint: 'https://gemini.example.test/model:generateContent',
+    fetchImpl: async () =>
+      new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [{ text: '{"topics":["AI"]}' }],
+              },
+            },
+          ],
+        }),
+        { headers: { 'content-type': 'application/json' }, status: 200 },
+      ),
+    maxCandidateTopics: 1,
+    model: 'gemini-test',
+    topicMorphologicalTokenizer: {
+      tokenize() {
+        throw new Error('tokenizer should not be called after candidate limit is reached');
+      },
+    },
+  });
+
+  const topics = await agent.extractTopics({
+    bodyText: 'ユーザー調査の本文',
+    canonicalUri: 'https://docs.example.test/ai',
+    html: '<a href="/hashtag/AI">#AI</a>',
+    title: 'ユーザー調査',
+  });
+
+  assert.deepEqual(topics, [{ metadata: { source: 'llm' }, target: 'AI', topicType: 'keyword' }]);
+});
+
 test('Gemini TopicExtractionAgent rejects sentence-like LLM topics without exact candidate matches', async () => {
   const agent = createGeminiTopicExtractionAgent({
     apiKey: 'test-key',
