@@ -255,7 +255,6 @@ function GraphCanvas({
   const [modalSelection, setModalSelection] = useState<GraphSelection | undefined>();
   const [containerWidth, setContainerWidth] = useState(0);
   const isMaximized = isNativeFullscreen || isFallbackFullscreen;
-  isMaximizedRef.current = isMaximized;
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const edgesById = useMemo(() => new Map(edges.map((edge) => [edge.id, edge])), [edges]);
 
@@ -384,6 +383,7 @@ function GraphCanvas({
   }, [isMaximized, modalSelection]);
 
   useEffect(() => {
+    isMaximizedRef.current = isMaximized;
     if (!isMaximized) {
       setModalSelection(undefined);
     }
