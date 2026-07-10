@@ -28,7 +28,7 @@ Source sync dispatcher は起動元に依存せず、DB 上の due schedule を 
 | 本番     | Cloud Scheduler が 5 分ごとに OIDC 付き内部 API を呼び、Cloud Run Job 起動 | Scheduler OIDC / Cloud Run Jobs API        |
 | ローカル | `pnpm schedule:dispatch --once` を開発者または host scheduler から実行     | PostgreSQL / Object Storage / provider API |
 
-ローカル実行は Mastra Server と GCP IAM を必要としないが、本番と同じ `DATABASE_URL`、Object Storage 設定、connection secret 復号設定、provider credentials を必要とする。ローカル専用の schedule 状態や簡略化した排他処理は持たず、本番と同じ DB lease、heartbeat、retry、結果更新を使う。
+ローカル実行は Mastra Server と GCP IAM を必要としないが、本番と同等の環境変数（`DATABASE_URL`、Object Storage 設定、connection secret 復号設定、provider credentials）をローカル専用の値で設定する。本番 DB、Object Storage、credentials へローカル dispatcher から直接接続してはならない。ローカル専用の schedule 状態や簡略化した排他処理は持たず、本番と同じ DB lease、heartbeat、retry、結果更新の実装を使う。
 
 one-shot CLI は due schedule が無ければ外部 API を呼ばず成功終了する。継続実行が必要な開発環境では `cron` / `launchd` などから 5 分ごとに呼び、CLI 自身には常駐 loop を持たせない。`pnpm dev` と通常の `docker compose up` からは自動起動せず、開発者が明示的に有効化した場合だけ外部 provider へアクセスする。
 

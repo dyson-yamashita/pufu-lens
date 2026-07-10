@@ -65,7 +65,7 @@ pnpm schedule:dispatch --once
 
 ローカルで継続的に動かす場合は CLI 内に常駐 loop を持たせず、開発者の `cron` / `launchd` などから 5 分ごとに one-shot CLI を呼ぶ。多重起動時の排他は DB lease で保証する。ローカルの自動起動は既定で有効化せず、通常の `pnpm dev` や `docker compose up` が意図せず外部 API を収集しないようにする。
 
-実行にはローカル PostgreSQL、Object Storage 設定、対象 data source の connection と secret 復号設定が必要である。Google token refresh や GitHub App token 発行が必要な source では、既存 collect CLI と同じ provider credentials を使用する。credential 値は引数、標準出力、schedule error に含めない。
+実行にはローカル PostgreSQL、ローカル用 Object Storage 設定、対象 data source の connection と secret 復号設定が必要である。Google token refresh や GitHub App token 発行が必要な source では、既存 collect CLI と同じ provider credentials のローカル用設定を使用する。本番 DB、Object Storage、credentials へローカル dispatcher から直接接続してはならない。credential 値は引数、標準出力、標準エラー出力、アプリケーションログ、schedule error に含めない。
 
 ## Step 構成
 
