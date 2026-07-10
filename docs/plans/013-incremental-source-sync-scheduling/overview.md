@@ -55,13 +55,13 @@ Cloud Scheduler は OIDC 保護された Mastra Server の内部 endpoint を呼
 
 ## Step 構成
 
-| Step | status    | 内容                                                                             | 完了条件                                                                                     |
-| ---- | --------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| 1    | `active`  | logical ID、版 ID、同期カーソルの DB model と migration を追加する。Issue #512。 | fresh / 既存 DB の migration、runtime guard、repository contract、schema drift test が通る。 |
-| 2    | `planned` | 各 collector の差分取得と document / chunk の最新版置換を実装する。              | 各 source の新規・更新・変更なし・再実行で raw 履歴と最新版参照が正しくなる。                |
-| 3    | `planned` | schedule model、自動作成、既存 backfill、管理 UI を実装する。                    | 非 Web source に schedule が作られ、admin が状態・時刻・ON/OFF を安全に管理できる。          |
-| 4    | `planned` | dispatcher、内部 API、Cloud Scheduler、deploy 設定を実装する。                   | due schedule の排他実行、retry、OIDC、Cloud Run Job 起動、deploy smoke が確認できる。        |
-| 5    | `planned` | E2E、運用検証、設計書・runbook を整備する。                                      | source 更新から検索反映までの E2E と障害・再試行・secret 非露出の手順が検証済みになる。      |
+| Step | status      | 内容                                                                                       | 完了条件                                                                                     |
+| ---- | ----------- | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| 1    | `completed` | logical ID、版 ID、同期カーソルの DB model と migration を追加する。Issue #512 / PR #513。 | fresh / 既存 DB の migration、runtime guard、repository contract、schema drift test が通る。 |
+| 2    | `planned`   | 各 collector の差分取得と document / chunk の最新版置換を実装する。                        | 各 source の新規・更新・変更なし・再実行で raw 履歴と最新版参照が正しくなる。                |
+| 3    | `planned`   | schedule model、自動作成、既存 backfill、管理 UI を実装する。                              | 非 Web source に schedule が作られ、admin が状態・時刻・ON/OFF を安全に管理できる。          |
+| 4    | `planned`   | dispatcher、内部 API、Cloud Scheduler、deploy 設定を実装する。                             | due schedule の排他実行、retry、OIDC、Cloud Run Job 起動、deploy smoke が確認できる。        |
+| 5    | `planned`   | E2E、運用検証、設計書・runbook を整備する。                                                | source 更新から検索反映までの E2E と障害・再試行・secret 非露出の手順が検証済みになる。      |
 
 ## Migration 方針
 
