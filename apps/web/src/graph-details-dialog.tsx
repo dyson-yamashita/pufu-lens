@@ -1,7 +1,7 @@
 'use client';
 
 import { X } from 'lucide-react';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { type PointerEvent, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { PropertyList } from './graph-property-list';
 import type { GraphViewerEdge, GraphViewerNode } from './graph-viewer';
 import {
@@ -85,7 +85,7 @@ export function GraphDetailsDialog({
     return () => observer.disconnect();
   }, [fitPositionToBounds, wrapperElement]);
 
-  const handleHeaderPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+  const handleHeaderPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !position) {
       return;
     }
@@ -106,7 +106,7 @@ export function GraphDetailsDialog({
     };
   };
 
-  const handleHeaderPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+  const handleHeaderPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const drag = dragStateRef.current;
     if (!drag || drag.pointerId !== event.pointerId) {
       return;
@@ -124,7 +124,7 @@ export function GraphDetailsDialog({
     );
   };
 
-  const finishDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+  const finishDrag = (event: PointerEvent<HTMLDivElement>) => {
     const drag = dragStateRef.current;
     if (!drag || drag.pointerId !== event.pointerId) {
       return;
