@@ -61,6 +61,11 @@ export interface RawDocumentInput {
   storageUri: string;
 }
 
+export interface StoredRawDocumentResult {
+  inserted: boolean;
+  rawDocument: RawDocumentRecord;
+}
+
 export interface LinkDataSourceInput {
   dataSourceId: string;
   matchReason: string;
@@ -108,7 +113,7 @@ export interface CollectionRepository {
   }): Promise<RawDocumentRecord | undefined>;
   markDataSourceChecked(dataSourceId: string): Promise<void>;
   queueCandidate(input: QueueCandidateInput): Promise<void>;
-  upsertRawDocument(input: RawDocumentInput): Promise<RawDocumentRecord>;
+  upsertRawDocument(input: RawDocumentInput): Promise<StoredRawDocumentResult>;
 }
 
 export function completedSyncCursor(sourceType: SourceType): Record<string, unknown> {
@@ -232,7 +237,7 @@ export async function collectFixtureSource(
       const stored = await options.storage.put(candidate.raw.storageUri, rawContent, {
         contentType: candidate.raw.mimeType,
       });
-      const rawDocument = await options.repository.upsertRawDocument({
+      const storedResult = await options.repository.upsertRawDocument({
         ...candidate.raw,
         byteSize: rawContent.byteLength,
         metadata,
@@ -245,20 +250,26 @@ export async function collectFixtureSource(
         matchReason: 'fixture-source-match',
         metadata: { fixtureId: candidate.fixture.id },
         projectId: project.id,
-        rawDocumentId: rawDocument.id,
+        rawDocumentId: storedResult.rawDocument.id,
       });
-      await options.repository.queueCandidate({
-        dataSourceId: dataSource.id,
-        projectId: project.id,
-        rawDocumentId: rawDocument.id,
-        targetId: sourceId,
-        targetUri: candidate.raw.sourceUri,
-      });
+      if (storedResult.inserted || storedResult.rawDocument.ingestStatus === 'failed') {
+        await options.repository.queueCandidate({
+          dataSourceId: dataSource.id,
+          projectId: project.id,
+          rawDocumentId: storedResult.rawDocument.id,
+          targetId: sourceId,
+          targetUri: candidate.raw.sourceUri,
+        });
+      }
 
       decisions.push({
         dataSourceId: dataSource.id,
-        decision: 'collected',
-        rawDocumentId: rawDocument.id,
+        decision: storedResult.inserted
+          ? 'collected'
+          : storedResult.rawDocument.ingestStatus === 'failed'
+            ? 'queued_failed'
+            : 'skipped_existing',
+        rawDocumentId: storedResult.rawDocument.id,
         sourceId,
         sourceType: candidate.raw.sourceType,
       });

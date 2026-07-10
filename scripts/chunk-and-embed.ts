@@ -100,6 +100,8 @@ class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
           WHERE newer.project_id = rd.project_id
             AND newer.source_type = rd.source_type
             AND newer.logical_source_id = rd.logical_source_id
+            AND newer.ingest_status IN ('parsed', 'indexed')
+            AND newer.parsed_uri IS NOT NULL
             AND (newer.created_at, newer.id) > (rd.created_at, rd.id)
         )
         AND (
@@ -183,10 +185,16 @@ class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
   async activateDocumentVersion(input: {
     document: UpsertDocumentInput;
     documentId: string;
-  }): Promise<void> {
-    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
+  }): Promise<boolean> {
+    return this.sql.begin(async (transaction: postgres.TransactionSql): Promise<boolean> => {
+      if (
+        !(await lockLatestProcessableDocumentVersion(transaction, input.documentId, input.document))
+      ) {
+        return false;
+      }
       await updateDocumentVersion(transaction, input.documentId, input.document);
       await markRawVersionIndexed(transaction, input.document.rawDocumentId);
+      return true;
     });
   }
 
@@ -207,8 +215,13 @@ class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
     `) as DocumentChunkRecord[];
   }
 
-  async replaceDocumentChunks(input: ReplaceDocumentChunksInput): Promise<void> {
-    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
+  async replaceDocumentChunks(input: ReplaceDocumentChunksInput): Promise<boolean> {
+    return this.sql.begin(async (transaction: postgres.TransactionSql): Promise<boolean> => {
+      if (
+        !(await lockLatestProcessableDocumentVersion(transaction, input.documentId, input.document))
+      ) {
+        return false;
+      }
       await transaction`
         INSERT INTO public.document_chunk_history (
           project_id,
@@ -275,8 +288,47 @@ class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
         `;
       }
       await markRawVersionIndexed(transaction, input.rawDocumentId);
+      return true;
     });
   }
+}
+
+async function lockLatestProcessableDocumentVersion(
+  transaction: postgres.TransactionSql,
+  documentId: string,
+  input: UpsertDocumentInput,
+): Promise<boolean> {
+  const lockedDocuments = await transaction`
+    SELECT id
+    FROM public.documents
+    WHERE id = ${documentId}
+      AND project_id = ${input.projectId}
+    FOR UPDATE
+  `;
+  if (lockedDocuments.length !== 1) {
+    return false;
+  }
+
+  const latestTargets = await transaction`
+    SELECT target.id
+    FROM public.raw_documents target
+    WHERE target.id = ${input.rawDocumentId}
+      AND target.project_id = ${input.projectId}
+      AND target.logical_source_id = ${input.logicalSourceId}
+      AND target.ingest_status IN ('parsed', 'indexed')
+      AND target.parsed_uri IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.raw_documents newer
+        WHERE newer.project_id = target.project_id
+          AND newer.source_type = target.source_type
+          AND newer.logical_source_id = target.logical_source_id
+          AND newer.ingest_status IN ('parsed', 'indexed')
+          AND newer.parsed_uri IS NOT NULL
+          AND (newer.created_at, newer.id) > (target.created_at, target.id)
+      )
+  `;
+  return latestTargets.length === 1;
 }
 
 async function updateDocumentVersion(

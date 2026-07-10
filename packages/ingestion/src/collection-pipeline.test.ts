@@ -453,7 +453,75 @@ test('collectWebUrlSource applies limit across all enabled web data sources', as
   assert.deepEqual(fetchedUrls, ['https://example.test/first']);
   assert.equal(result.decisions.length, 1);
   assert.equal(repository.rawDocuments.size, 1);
-  assert.equal(repository.completedDataSourceSyncs.length, 0);
+  assert.equal(repository.completedDataSourceSyncs.length, 1);
+  assert.equal(repository.completedDataSourceSyncs[0]?.dataSourceId, 'data-source-web-1');
+});
+
+test('collectWebUrlSource does not let an existing version consume the new-version limit', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { urls: ['https://example.test/first', 'https://example.test/second'] },
+      id: 'data-source-web',
+      sourceType: 'web',
+    }),
+  );
+  const storage = new InMemoryObjectStorage();
+  const fetcher = async (url: string): Promise<WebUrlFetchResponse> => ({
+    body: `<html><body>${url}</body></html>`,
+    contentType: 'text/html',
+    finalUrl: url,
+    status: 200,
+  });
+
+  await collectWebUrlSource({ fetcher, limit: 1, projectSlug: 'sample-a', repository, storage });
+  const second = await collectWebUrlSource({
+    fetcher,
+    limit: 1,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+  });
+
+  assert.deepEqual(
+    second.decisions.map((decision) => decision.decision),
+    ['skipped_existing', 'collected'],
+  );
+  assert.equal(repository.rawDocuments.size, 2);
+});
+
+test('collectWebUrlSource does not requeue a concurrent exact-version insert winner', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { urls: ['https://example.test/release'] },
+      id: 'data-source-web',
+      sourceType: 'web',
+    }),
+  );
+  const fetcher = async (): Promise<WebUrlFetchResponse> => ({
+    body: '<html><body>same version</body></html>',
+    contentType: 'text/html',
+    finalUrl: 'https://example.test/release',
+    status: 200,
+  });
+  const storage = new InMemoryObjectStorage();
+  await collectWebUrlSource({ fetcher, projectSlug: 'sample-a', repository, storage });
+  repository.hiddenVersionLookups = 1;
+
+  const raced = await collectWebUrlSource({
+    fetcher,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+  });
+
+  assert.equal(raced.decisions[0]?.decision, 'skipped_existing');
+  assert.equal(repository.queueCalls, 1);
 });
 
 test('collectWebUrlSource restricts collection to the requested data source id', async () => {
@@ -1706,7 +1774,9 @@ class InMemoryCollectionRepository implements CollectionRepository {
   readonly markedDataSources: string[] = [];
   readonly project: ProjectRecord = { id: 'project-1', slug: 'sample-a' };
   readonly queue = new Map<string, QueueCandidateInput>();
+  queueCalls = 0;
   readonly rawDocuments = new Map<string, RawDocumentInput & RawDocumentRecord>();
+  hiddenVersionLookups = 0;
   sameHashCandidates: Array<{
     id: string;
     sourceId: string;
@@ -1744,6 +1814,10 @@ class InMemoryCollectionRepository implements CollectionRepository {
     sourceType: DataSourceRecord['sourceType'];
     sourceVersion: string;
   }): Promise<RawDocumentRecord | undefined> {
+    if (this.hiddenVersionLookups > 0) {
+      this.hiddenVersionLookups -= 1;
+      return undefined;
+    }
     return [...this.rawDocuments.values()].find(
       (rawDocument) =>
         rawDocument.projectId === input.projectId &&
@@ -1759,7 +1833,17 @@ class InMemoryCollectionRepository implements CollectionRepository {
     return this.sameHashCandidates;
   }
 
-  async upsertRawDocument(input: RawDocumentInput): Promise<RawDocumentRecord> {
+  async upsertRawDocument(input: RawDocumentInput) {
+    const existingVersion = [...this.rawDocuments.values()].find(
+      (rawDocument) =>
+        rawDocument.projectId === input.projectId &&
+        rawDocument.sourceType === input.sourceType &&
+        rawDocument.logicalSourceId === input.logicalSourceId &&
+        rawDocument.sourceVersion === input.sourceVersion,
+    );
+    if (existingVersion) {
+      return { inserted: false, rawDocument: existingVersion };
+    }
     const key = rawKey(input.projectId, input.sourceType, input.sourceId);
     const rawDocument = {
       ...input,
@@ -1767,7 +1851,7 @@ class InMemoryCollectionRepository implements CollectionRepository {
       ingestStatus: 'fetched' as const,
     };
     this.rawDocuments.set(key, rawDocument);
-    return rawDocument;
+    return { inserted: true, rawDocument };
   }
 
   async linkDataSource(input: LinkDataSourceInput): Promise<void> {
@@ -1775,6 +1859,7 @@ class InMemoryCollectionRepository implements CollectionRepository {
   }
 
   async queueCandidate(input: QueueCandidateInput): Promise<void> {
+    this.queueCalls += 1;
     this.queue.set(`${input.projectId}:${input.rawDocumentId}`, input);
   }
 

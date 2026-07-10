@@ -105,14 +105,14 @@ export interface ChunkEmbeddingRepository {
   activateDocumentVersion(input: {
     document: UpsertDocumentInput;
     documentId: string;
-  }): Promise<void>;
+  }): Promise<boolean>;
   listCurrentChunks(input: {
     documentId: string;
     projectId: string;
   }): Promise<DocumentChunkRecord[]>;
   lookupProjectBySlug(slug: string): Promise<ChunkEmbeddingProjectRecord | undefined>;
   readParsedDocuments(input: { limit: number; projectId: string }): Promise<ChunkEmbeddingTarget[]>;
-  replaceDocumentChunks(input: ReplaceDocumentChunksInput): Promise<void>;
+  replaceDocumentChunks(input: ReplaceDocumentChunksInput): Promise<boolean>;
   upsertDocument(input: UpsertDocumentInput): Promise<DocumentRecord>;
 }
 
@@ -148,6 +148,13 @@ export type ChunkAndEmbedDecision =
   | {
       chunkCount: number;
       decision: 'unchanged';
+      documentId: string;
+      rawDocumentId: string;
+      sourceId: string;
+    }
+  | {
+      chunkCount: number;
+      decision: 'superseded';
       documentId: string;
       rawDocumentId: string;
       sourceId: string;
@@ -373,10 +380,19 @@ async function chunkAndEmbedTarget(input: {
   });
 
   if (chunksMatch(existingChunks, nextSignatures)) {
-    await input.repository.activateDocumentVersion({
+    const activated = await input.repository.activateDocumentVersion({
       document: documentInput,
       documentId: document.id,
     });
+    if (!activated) {
+      return {
+        chunkCount: nextSignatures.length,
+        decision: 'superseded',
+        documentId: document.id,
+        rawDocumentId: input.target.rawDocumentId,
+        sourceId: parsed.sourceId,
+      };
+    }
     return {
       chunkCount: nextSignatures.length,
       decision: 'unchanged',
@@ -400,7 +416,7 @@ async function chunkAndEmbedTarget(input: {
     rawContentHash: input.target.rawContentHash,
   });
 
-  await input.repository.replaceDocumentChunks({
+  const replaced = await input.repository.replaceDocumentChunks({
     archiveReason: archiveReason(existingChunks, chunks, input.embeddingProvider.model),
     chunks,
     document: documentInput,
@@ -409,6 +425,15 @@ async function chunkAndEmbedTarget(input: {
     rawDocumentId: input.target.rawDocumentId,
     supersededByContentHash: input.target.rawContentHash,
   });
+  if (!replaced) {
+    return {
+      chunkCount: chunks.length,
+      decision: 'superseded',
+      documentId: document.id,
+      rawDocumentId: input.target.rawDocumentId,
+      sourceId: parsed.sourceId,
+    };
+  }
 
   return {
     chunkCount: chunks.length,

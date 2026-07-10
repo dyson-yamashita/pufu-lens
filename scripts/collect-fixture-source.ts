@@ -166,7 +166,7 @@ class PostgresCollectionRepository implements CollectionRepository {
     `) as Array<{ id: string; sourceId: string; sourceType: SourceType }>;
   }
 
-  async upsertRawDocument(input: RawDocumentInput): Promise<RawDocumentRecord> {
+  async upsertRawDocument(input: RawDocumentInput) {
     const rows = (await this.sql`
         INSERT INTO public.raw_documents (
           project_id,
@@ -197,8 +197,7 @@ class PostgresCollectionRepository implements CollectionRepository {
           ${this.sql.json(input.metadata as postgres.JSONValue)}
         )
         ON CONFLICT (project_id, source_type, logical_source_id, source_version)
-        DO UPDATE SET
-          updated_at = now()
+        DO NOTHING
         RETURNING
           id::text AS id,
           ingest_status AS "ingestStatus",
@@ -209,11 +208,14 @@ class PostgresCollectionRepository implements CollectionRepository {
       `) as readonly unknown[];
     const rawDocument = parseOptionalCollectionRawDocumentRecordRow(rows);
 
-    if (!rawDocument) {
-      throw new Error(`Failed to upsert raw document: ${input.sourceType}:${input.sourceId}`);
+    if (rawDocument) {
+      return { inserted: true, rawDocument };
     }
-
-    return rawDocument;
+    const existing = await this.lookupRawDocumentVersion(input);
+    if (!existing) {
+      throw new Error(`Failed to store raw document: ${input.sourceType}:${input.sourceId}`);
+    }
+    return { inserted: false, rawDocument: existing };
   }
 
   async linkDataSource(input: LinkDataSourceInput): Promise<void> {

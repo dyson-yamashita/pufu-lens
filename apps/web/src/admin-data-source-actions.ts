@@ -571,12 +571,16 @@ class AdminCollectionRepository implements CollectionRepository {
     return this.listSameHashCandidateRecords(input);
   }
 
-  async upsertRawDocument(input: RawDocumentInput): Promise<RawDocumentRecord> {
+  async upsertRawDocument(input: RawDocumentInput) {
     const rawDocument = await this.upsertRawDocumentRecord(input);
-    if (!rawDocument) {
-      throw new Error(`Failed to upsert raw document: ${input.sourceType}:${input.sourceId}`);
+    if (rawDocument) {
+      return { inserted: true, rawDocument };
     }
-    return rawDocument;
+    const existing = await this.lookupRawDocumentVersion(input);
+    if (!existing) {
+      throw new Error(`Failed to store raw document: ${input.sourceType}:${input.sourceId}`);
+    }
+    return { inserted: false, rawDocument: existing };
   }
 
   private async lookupProjectRecordBySlug(slug: string): Promise<ProjectRecord | undefined> {
@@ -680,8 +684,7 @@ class AdminCollectionRepository implements CollectionRepository {
         ${this.sql.json(input.metadata as postgres.JSONValue)}
       )
       ON CONFLICT (project_id, source_type, logical_source_id, source_version)
-      DO UPDATE SET
-        updated_at = now()
+      DO NOTHING
       RETURNING
         id::text AS id,
         ingest_status AS "ingestStatus",
