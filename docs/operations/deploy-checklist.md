@@ -20,6 +20,7 @@ API key、DB password は記録しない。
 - [ ] GCS bucket を作成した。
 - [ ] PostgreSQL VM / VPC / firewall / connector を作成した。
 - [ ] Cloud Run / Cloud Run Jobs / Firebase App Hosting の service account を確認した。
+- [ ] Admin UI から Cloud Run Job を起動する App Hosting runtime service account に、対象 Job の `run.jobs.run` / `run.jobs.runWithOverrides` 権限を付与した。
 - [ ] Secret Manager に runtime secret を作成した。
 - [ ] Google AI API key または Vertex AI 認証方式を設定した。
 - [ ] Auth.js アプリログイン用の GitHub OAuth callback URL を設定した。
@@ -86,6 +87,7 @@ pnpm deploy:smoke --env staging
 - `report:backfill-project-manifests`: 既存の `projects.visibility = 'public'` project に対して、公開レポート API が参照する `project-public-state.json` を Object Storage に作成する。初回は `--dry-run` で対象を確認し、問題なければ `--dry-run` なしで一度だけ実行する。
 - `infra:check`:
 - `deploy:smoke`:
+- Admin UI data source ingest: App Hosting runtime service account で workflow job execution が作成され、`run.jobs.run` / `run.jobs.runWithOverrides` 不足の 403 が出ないことを確認する。
 - Cloud Run Job 単発実行:
 - Cloud Scheduler OIDC 実行:
 - GCS prefix 作成:

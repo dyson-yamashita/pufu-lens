@@ -119,6 +119,9 @@ firebase deploy --only apphosting --project PROJECT
 # apps/web/apphosting.yaml に runtime env / secrets / VPC access を定義する。
 # Web API が GCS / PostgreSQL / Mastra にアクセスするため、App Hosting backend service account に
 # Secret Manager、GCS、Cloud Run Invoker、必要に応じて VPC access の権限を付与する。
+# Admin UI から workflow job を起動する場合は、App Hosting backend service account に
+# 対象 Cloud Run Job の run.jobs.run / run.jobs.runWithOverrides 権限を付与する。
+# WORKFLOW_INPUT_JSON override を使う ingest 起動では roles/run.developer または同等の custom role が必要。
 
 gcloud run services add-iam-policy-binding mastra-server \
   --region asia-east1 \
