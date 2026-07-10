@@ -30,7 +30,7 @@
 | `docs/plans/011-custom-report-layouts/overview.md`         | `completed` | 2026-07-01 | Issue #377 で追加。Issue #379 で Step 1 の template schema / data model 実装が完了。Step 2 の template 管理 UI、Step 3 のカスタム report 生成、Step 4 の custom layout renderer、Step 5 の PDF download、Step 6 の import / asset / PDF / public report security regression を実装（Step 2 以降の Issue 作成は手元環境で GitHub CLI (`gh`) が利用できず未実施）。                                   |
 | `docs/plans/012-public-private-result-parity/overview.md`  | `completed` | 2026-07-04 | Issue #425 で追加。Step 1 として public chat の Mastra request context を private chat と揃えた。Issue #429 で Step 2 の public chat source redaction 維持と private tool call summary の公開方針を実装。Step 3 で現行 public chat の正規経路と legacy public-report-chat-agent の互換・検証用責務を整理。Issue #435 で Step 4 の report detail / PDF parity regression を追加し、plan 全体を完了。 |
 
-| `docs/plans/013-incremental-source-sync-scheduling/overview.md` | `active` | 2026-07-10 | Issue #510 で plan を追加。差分取り込み、raw 版履歴、最新版置換、非 Web source の日次 schedule、dispatcher、管理 UI を Step 1–5 で実装する。 |
+| `docs/plans/013-incremental-source-sync-scheduling/overview.md` | `active` | 2026-07-10 | Issue #510 で plan を追加。Issue #514 で local one-shot dispatcher の実行要件を追加。差分取り込み、raw 版履歴、最新版置換、非 Web source の日次 schedule、dispatcher、管理 UI を Step 1–5 で実装する。 |
 
 ## 運用ルール
 

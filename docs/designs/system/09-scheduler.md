@@ -6,6 +6,8 @@ Internal Scheduler / Job API の共通契約は [API デザイン](05-api-design
 
 Cloud Scheduler は Cloud Run Job の `:run` API を直接叩かず、Mastra Server の内部管理 API を呼び出す。Mastra Server は受け取った JSON を検証し、Cloud Run Jobs API の overrides（環境変数または args）として各 Job に渡す。
 
+> Source sync dispatcher とローカル one-shot CLI は [Incremental Source Sync / Scheduling 計画](../../plans/013-incremental-source-sync-scheduling/overview.md) Step 4 で追加予定であり、現時点では未実装である。現在の `scripts/workflow-job.ts` は `curate-workflow`、`ingest-workflow`、`generate-report` のみを受け付ける。
+
 PostgreSQL VM はコスト削減のため業務時間のみ起動する方針だが、DB 依存の Scheduler / Job は DB 稼働時間内に実行する。夜間に実行したい場合は、Scheduler の直前に DB VM を起動し、job 成功後に停止する専用運用を用意する。初期構築では DB 起動制御を増やさず、`curate-workflow`、`ingest-workflow`、`generate-report` は平日業務時間内に寄せる。
 
 入力受け渡しの契約：
@@ -16,6 +18,19 @@ PostgreSQL VM はコスト削減のため業務時間のみ起動する方針だ
 4. Job entrypoint: `WORKFLOW_INPUT_JSON` を parse して対象 Mastra Workflow の `inputData` として渡す。
 
 Ingestion Job は Cloud Run のローカルファイルシステムに parser や中間成果物を永続化しない。parser は Parser Registry で承認済みの version を DB から解決し、Object Storage 上の artifact を hash 検証して使用する。Job 実行中に active parser version が変わっても、dequeue 時に queue item へ固定した `parser_version_id` を使い続ける。承認済み parser が無い raw は `held` にして、Scheduler の通常実行では graph / vector へ進めない。
+
+### Source sync dispatcher の起動契約（planned）
+
+Source sync dispatcher は起動元に依存せず、DB 上の due schedule を claim して対象 data source の collect と ingest を実行する one-shot runner とする。
+
+| 環境     | キック方法                                                                 | 外部境界                                   |
+| -------- | -------------------------------------------------------------------------- | ------------------------------------------ |
+| 本番     | Cloud Scheduler が 5 分ごとに OIDC 付き内部 API を呼び、Cloud Run Job 起動 | Scheduler OIDC / Cloud Run Jobs API        |
+| ローカル | `pnpm schedule:dispatch --once` を開発者または host scheduler から実行     | PostgreSQL / Object Storage / provider API |
+
+ローカル実行は Mastra Server と GCP IAM を必要としないが、本番と同じ `DATABASE_URL`、Object Storage 設定、connection secret 復号設定、provider credentials を必要とする。ローカル専用の schedule 状態や簡略化した排他処理は持たず、本番と同じ DB lease、heartbeat、retry、結果更新を使う。
+
+one-shot CLI は due schedule が無ければ外部 API を呼ばず成功終了する。継続実行が必要な開発環境では `cron` / `launchd` などから 5 分ごとに呼び、CLI 自身には常駐 loop を持たせない。`pnpm dev` と通常の `docker compose up` からは自動起動せず、開発者が明示的に有効化した場合だけ外部 provider へアクセスする。
 
 ```bash
 # 1 時間ごとに全プロジェクトのデータソースを確認
