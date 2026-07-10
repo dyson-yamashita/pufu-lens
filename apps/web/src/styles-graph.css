@@ -180,27 +180,44 @@ body.graph-fallback-fullscreen-active {
   min-width: 0;
 }
 
-.graph-details-dialog {
-  max-width: min(720px, calc(100vw - 32px));
+.graph-details-floating-dialog {
+  margin: 0;
+  max-width: min(720px, calc(100% - 32px));
+  padding: 0;
+  pointer-events: auto;
+  position: absolute;
+  z-index: 2;
 }
 
-.graph-details-modal-card {
+.graph-details-floating-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
   display: grid;
   max-height: min(720px, calc(100dvh - 32px));
   min-height: 0;
+  padding: 20px;
   position: relative;
 }
 
-.graph-details-modal-header {
+.graph-details-floating-header {
+  cursor: grab;
   padding-right: 48px;
+  touch-action: none;
+  user-select: none;
 }
 
-.graph-details-modal-header h2,
-.graph-details-modal-header p {
+.graph-details-floating-header:active {
+  cursor: grabbing;
+}
+
+.graph-details-floating-header h2,
+.graph-details-floating-header p {
   margin: 0;
 }
 
-.graph-details-modal-scroll {
+.graph-details-floating-scroll {
   min-height: 0;
   overflow: auto;
   padding-top: 16px;
@@ -215,7 +232,7 @@ body.graph-fallback-fullscreen-active {
   width: 100%;
 }
 
-.graph-details-modal-scroll .graph-property-table-frame {
+.graph-details-floating-scroll .graph-property-table-frame {
   max-height: min(360px, 45dvh);
 }
 
