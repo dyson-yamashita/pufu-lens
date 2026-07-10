@@ -86,9 +86,12 @@ CREATE TABLE public.data_sources (
   config JSONB NOT NULL,
   ingest_window JSONB NOT NULL DEFAULT '{}',
   enabled BOOLEAN NOT NULL DEFAULT true,
+  sync_cursor JSONB NOT NULL DEFAULT '{}',
   last_checked_at TIMESTAMPTZ,
+  last_sync_succeeded_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT data_sources_sync_cursor_object_check CHECK (jsonb_typeof(sync_cursor) = 'object'),
   UNIQUE (project_id, source_type, name),
   FOREIGN KEY (connection_id, owner_user_id) REFERENCES public.oauth_connections(id, user_id) ON DELETE CASCADE
 );
@@ -134,6 +137,8 @@ CREATE TABLE public.raw_documents (
   project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
   source_type TEXT NOT NULL CHECK (source_type IN ('gmail', 'drive', 'github', 'web')),
   source_id TEXT NOT NULL,
+  logical_source_id TEXT NOT NULL,
+  source_version TEXT NOT NULL,
   source_uri TEXT,
   storage_uri TEXT NOT NULL,
   parsed_uri TEXT,
@@ -154,10 +159,14 @@ CREATE TABLE public.raw_documents (
   metadata JSONB NOT NULL DEFAULT '{}',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (project_id, source_type, source_id)
+  UNIQUE (project_id, source_type, source_id),
+  CONSTRAINT raw_documents_project_source_logical_version_key
+    UNIQUE (project_id, source_type, logical_source_id, source_version)
 );
 CREATE INDEX raw_documents_project_status_fetched_idx ON public.raw_documents (project_id, ingest_status, fetched_at DESC);
 CREATE INDEX raw_documents_project_source_hash_idx ON public.raw_documents (project_id, source_type, content_hash);
+CREATE INDEX raw_documents_project_source_logical_latest_idx
+  ON public.raw_documents (project_id, source_type, logical_source_id, fetched_at DESC);
 
 CREATE TABLE public.raw_document_data_sources (
   raw_document_id UUID NOT NULL REFERENCES public.raw_documents(id) ON DELETE CASCADE,
@@ -204,6 +213,7 @@ CREATE TABLE public.documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
   raw_document_id UUID NOT NULL REFERENCES public.raw_documents(id) ON DELETE CASCADE,
+  logical_source_id TEXT NOT NULL,
   doc_type TEXT NOT NULL CHECK (doc_type IN ('email', 'drive_doc', 'issue', 'pull_request', 'web_page')),
   title TEXT,
   summary TEXT,
@@ -214,6 +224,8 @@ CREATE TABLE public.documents (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (raw_document_id),
+  CONSTRAINT documents_project_doc_type_logical_source_key
+    UNIQUE (project_id, doc_type, logical_source_id),
   UNIQUE (project_id, doc_type, graph_node_id)
 );
 CREATE INDEX documents_project_type_occurred_idx ON public.documents (project_id, doc_type, occurred_at DESC);
@@ -565,5 +577,6 @@ VALUES
   ('0006_private_chat_history'),
   ('0007_normalize_private_chat_editing'),
   ('0008_normalize_private_chat_history_json_arrays'),
-  ('0009_normalize_jsonb_string_storage')
+  ('0009_normalize_jsonb_string_storage'),
+  ('0010_source_version_model')
 ON CONFLICT (version) DO NOTHING;

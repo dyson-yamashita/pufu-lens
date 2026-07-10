@@ -8,6 +8,7 @@ import type {
 } from './collection-pipeline.js';
 import { normalizeSourceId } from './collection-pipeline.js';
 import { fetchWithRetry } from './http-retry.js';
+import { webLogicalSourceId, webSourceVersion } from './source-version-identity.js';
 
 export interface WebUrlFetchResponse {
   body: string;
@@ -259,6 +260,7 @@ export async function buildWebUrlRawCandidate(input: {
   const finalUrl = normalizeHttpUrl(fetched.finalUrl);
   const canonicalUrl = extractCanonicalUrl(fetched.body, finalUrl);
   const sourceId = normalizeSourceId('web', canonicalUrl);
+  const logicalSourceId = webLogicalSourceId(input.candidate.sourceUri);
   const fetchedAt = new Date().toISOString();
   const contentHash = sha256Hex(fetched.body);
   const mimeType = normalizeWebMimeType(fetched.contentType);
@@ -268,8 +270,10 @@ export async function buildWebUrlRawCandidate(input: {
     raw: {
       byteSize: Buffer.byteLength(fetched.body),
       contentHash,
+      logicalSourceId,
       metadata: {
         canonicalUrl: sourceId,
+        configuredUrl: logicalSourceId,
         fetchedAt,
         finalUrl,
         httpStatus: fetched.status,
@@ -281,6 +285,7 @@ export async function buildWebUrlRawCandidate(input: {
       sourceId,
       sourceType: 'web',
       sourceUri: finalUrl,
+      sourceVersion: webSourceVersion(contentHash),
       storageUri: `${input.projectSlug}/raw/web/${safeStorageSegment(sourceId)}.html`,
     },
   };

@@ -32,6 +32,7 @@ export interface ChunkEmbeddingProjectRecord {
 }
 
 export interface ChunkEmbeddingTarget {
+  logicalSourceId: string;
   parsed: ParsedDocument | string;
   parsedUri?: string;
   parserArtifactHash?: string;
@@ -65,6 +66,7 @@ export interface UpsertDocumentInput {
   canonicalUri: string;
   docType: ParsedDocumentType;
   graphNodeId: string;
+  logicalSourceId: string;
   metadata: Record<string, unknown>;
   occurredAt: string;
   projectId: string;
@@ -351,6 +353,7 @@ async function chunkAndEmbedTarget(input: {
     canonicalUri: parsed.canonicalUri,
     docType: parsed.docType,
     graphNodeId: documentGraphNodeId(parsed),
+    logicalSourceId: input.target.logicalSourceId,
     metadata: documentMetadata(input.target, parsed),
     occurredAt: parsed.occurredAt,
     projectId: input.projectId,

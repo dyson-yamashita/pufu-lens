@@ -12,6 +12,7 @@ import {
   readRecoveryArtifactLatestPointer,
   recoveryArtifactEventsSha256,
   recoveryArtifactEventUri,
+  recoveryArtifactNaturalKey,
   validateRecoveryArtifactEvent,
   writeRecoveryArtifactEvent,
   writeRecoveryArtifactLatestPointer,
@@ -168,6 +169,14 @@ test('recovery artifact event hash is stable across toJSON serialization', () =>
   assert.equal(recoveryArtifactEventsSha256([event]), recoveryArtifactEventsSha256([roundTripped]));
 });
 
+test('recoveryArtifactNaturalKey keeps sourceId and contentHash in v2 identity', () => {
+  const event = sampleRawEvent();
+  assert.equal(
+    recoveryArtifactNaturalKey(event),
+    `web:${event.logicalSourceId}:${event.sourceVersion}:${event.sourceId}:${event.contentHash}`,
+  );
+});
+
 test('optional recovery fields accept null from nullable database columns', () => {
   const event = {
     ...sampleRawEvent(),
@@ -215,6 +224,7 @@ function sampleRawEvent(
     contentHash: rawHash,
     dataSourceKeys: ['web:https://example.test/feed'],
     fetchedAt: '2026-06-12T00:00:00.000Z',
+    logicalSourceId: 'https://example.test/feed',
     metadata: { canonicalUrl: 'https://example.test/a', title: 'Example A' },
     mimeType: 'text/html',
     projectSlug: 'sample-a',
@@ -222,6 +232,7 @@ function sampleRawEvent(
     sourceId: 'https://example.test/a',
     sourceType: 'web',
     sourceUri: 'https://example.test/a',
+    sourceVersion: rawHash,
     storageUri: 'sample-a/raw/web/a.html',
     ...overrides,
   };
@@ -234,6 +245,7 @@ function sampleParsedEvent(
     artifactKind: 'parsed-document',
     artifactVersion: RECOVERY_ARTIFACT_VERSION,
     contentHash: parsedHash,
+    logicalSourceId: 'https://example.test/feed',
     parsedAt: '2026-06-12T01:10:00.000Z',
     parsedSchemaVersion: 1,
     parsedUri: 'sample-a/parsed/web/a.json',
@@ -247,6 +259,7 @@ function sampleParsedEvent(
     sourceParserProfileId: 'parser-profile-old',
     sourceParserVersionId: 'parser-version-old',
     sourceType: 'web',
+    sourceVersion: parsedHash,
     ...overrides,
   };
 }
@@ -258,6 +271,7 @@ function sampleGraphEvent(
     artifactKind: 'graph-relation',
     artifactVersion: RECOVERY_ARTIFACT_VERSION,
     contentHash: graphHash,
+    logicalSourceId: 'https://example.test/feed',
     document: {
       canonicalUri: 'https://example.test/a',
       docType: 'web_page',
@@ -300,6 +314,7 @@ function sampleGraphEvent(
     recordedAt: '2026-06-12T01:20:00.000Z',
     sourceId: 'https://example.test/a',
     sourceType: 'web',
+    sourceVersion: graphHash,
     ...overrides,
   };
 }

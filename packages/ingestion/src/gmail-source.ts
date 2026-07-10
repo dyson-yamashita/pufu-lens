@@ -8,6 +8,7 @@ import type {
 } from './collection-pipeline.js';
 import { normalizeSourceId } from './collection-pipeline.js';
 import { fetchWithRetry } from './http-retry.js';
+import { gmailLogicalSourceId, gmailSourceVersion } from './source-version-identity.js';
 
 export interface GmailListMessageResponse {
   id: string;
@@ -375,6 +376,7 @@ export function buildGmailRawCandidate(input: {
     raw: {
       byteSize: Buffer.byteLength(body),
       contentHash,
+      logicalSourceId: gmailLogicalSourceId(rawDocument.threadId),
       metadata: {
         dataSourceId: input.dataSource.id,
         fetchedAt,
@@ -392,6 +394,7 @@ export function buildGmailRawCandidate(input: {
       sourceId,
       sourceType: 'gmail',
       sourceUri: gmailMessageUri(latestMessage),
+      sourceVersion: gmailSourceVersion(rawDocument.messageId),
       storageUri: `${input.projectSlug}/raw/gmail/${safeStorageSegment(sourceId)}.json`,
     },
   };

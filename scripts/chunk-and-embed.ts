@@ -85,6 +85,7 @@ class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
       SELECT
         rd.content_hash AS "rawContentHash",
         rd.id::text AS "rawDocumentId",
+        rd.logical_source_id AS "logicalSourceId",
         rd.parsed_uri AS "parsedUri",
         rd.parser_artifact_hash AS "parserArtifactHash",
         rd.parser_version_id::text AS "parserVersionId"
@@ -113,6 +114,7 @@ class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
     return Promise.all(
       rows.map(
         async (row): Promise<ChunkEmbeddingTarget> => ({
+          logicalSourceId: row.logicalSourceId,
           parsed: await this.storage.getText(row.parsedUri),
           parsedUri: row.parsedUri,
           parserArtifactHash: row.parserArtifactHash,
@@ -130,6 +132,7 @@ class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
         INSERT INTO public.documents (
           project_id,
           raw_document_id,
+          logical_source_id,
           doc_type,
           title,
           summary,
@@ -141,6 +144,7 @@ class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
         VALUES (
           ${input.projectId},
           ${input.rawDocumentId},
+          ${input.logicalSourceId},
           ${input.docType},
           ${input.title},
           ${input.summary ?? null},
@@ -151,6 +155,7 @@ class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
         )
         ON CONFLICT (raw_document_id)
         DO UPDATE SET
+          logical_source_id = EXCLUDED.logical_source_id,
           doc_type = EXCLUDED.doc_type,
           title = EXCLUDED.title,
           summary = EXCLUDED.summary,
