@@ -20,7 +20,7 @@ API key、DB password は記録しない。
 - [ ] GCS bucket を作成した。
 - [ ] PostgreSQL VM / VPC / firewall / connector を作成した。
 - [ ] Cloud Run / Cloud Run Jobs / Firebase App Hosting の service account を確認した。
-- [ ] Admin UI から Cloud Run Job を起動する App Hosting runtime service account に、対象 Job の `run.jobs.run` / `run.jobs.runWithOverrides` 権限を付与した。
+- [ ] Admin UI から Cloud Run Job を起動する App Hosting runtime service account に、対象 Job resource の `run.jobs.run` / `run.jobs.runWithOverrides` 権限を付与した（正準の IAM 要件は `docs/deployment/gcp-cloud-build.md` の IAM 節を参照）。
 - [ ] Secret Manager に runtime secret を作成した。
 - [ ] Google AI API key または Vertex AI 認証方式を設定した。
 - [ ] Auth.js アプリログイン用の GitHub OAuth callback URL を設定した。
