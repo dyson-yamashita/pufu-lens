@@ -92,10 +92,37 @@ CREATE TABLE public.data_sources (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT data_sources_sync_cursor_object_check CHECK (jsonb_typeof(sync_cursor) = 'object'),
+  CONSTRAINT data_sources_id_project_key UNIQUE (id, project_id),
   UNIQUE (project_id, source_type, name),
   FOREIGN KEY (connection_id, owner_user_id) REFERENCES public.oauth_connections(id, user_id) ON DELETE CASCADE
 );
 CREATE INDEX data_sources_project_enabled_idx ON public.data_sources (project_id, enabled);
+
+CREATE TABLE public.data_source_schedules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  data_source_id UUID NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  daily_time TIME NOT NULL DEFAULT TIME '10:00',
+  timezone TEXT NOT NULL DEFAULT 'Asia/Tokyo',
+  next_run_at TIMESTAMPTZ NOT NULL,
+  lease_expires_at TIMESTAMPTZ,
+  worker_token TEXT,
+  last_started_at TIMESTAMPTZ,
+  last_succeeded_at TIMESTAMPTZ,
+  last_failed_at TIMESTAMPTZ,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT data_source_schedules_data_source_key UNIQUE (data_source_id),
+  CONSTRAINT data_source_schedules_project_data_source_key UNIQUE (project_id, data_source_id),
+  CONSTRAINT data_source_schedules_timezone_check CHECK (timezone = 'Asia/Tokyo'),
+  CONSTRAINT data_source_schedules_retry_count_check CHECK (retry_count >= 0),
+  CONSTRAINT data_source_schedules_lease_pair_check CHECK ((lease_expires_at IS NULL) = (worker_token IS NULL)),
+  CONSTRAINT data_source_schedules_source_scope_fkey FOREIGN KEY (data_source_id, project_id) REFERENCES public.data_sources(id, project_id) ON DELETE CASCADE
+);
+CREATE INDEX data_source_schedules_due_idx ON public.data_source_schedules (next_run_at, id) WHERE enabled = true;
 
 CREATE TABLE public.parser_profiles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -578,5 +605,6 @@ VALUES
   ('0007_normalize_private_chat_editing'),
   ('0008_normalize_private_chat_history_json_arrays'),
   ('0009_normalize_jsonb_string_storage'),
-  ('0010_source_version_model')
+  ('0010_source_version_model'),
+  ('0011_data_source_schedules')
 ON CONFLICT (version) DO NOTHING;

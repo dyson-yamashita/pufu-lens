@@ -53,6 +53,7 @@ import {
   requiredProviderForSourceType,
   type SourceType,
 } from './admin-data';
+import { insertDefaultDataSourceSchedule } from './data-source-schedules.ts';
 import { deleteExclusiveDocumentGraphNodes } from './graph-document-cleanup.ts';
 import {
   createGitHubInstallationAccessToken,
@@ -224,6 +225,11 @@ export async function createDataSource(formData: FormData): Promise<void> {
       createdDataSourceId = dataSource.id;
       await ensureDefaultParserProfile(tx, {
         approvedByUserId: project.adminUserId,
+        dataSourceId: dataSource.id,
+        projectId: project.id,
+        sourceType,
+      });
+      await insertDefaultDataSourceSchedule(tx, {
         dataSourceId: dataSource.id,
         projectId: project.id,
         sourceType,

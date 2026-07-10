@@ -150,6 +150,7 @@ test.describe('authenticated admin operation controls', () => {
     await expect(page.getByTestId('data-source-content-snippet').first()).toBeVisible();
     await expect(page.getByTestId('data-source-queue-preview')).toBeVisible();
     await expect(page.getByTestId('data-source-settings-section')).toBeVisible();
+    await expect(page.getByTestId('data-source-schedule-unavailable')).toBeVisible();
     await expect(page.getByTestId('data-source-edit-name-input')).toBeVisible();
     await expect(page.getByTestId('data-source-save-button')).toBeEnabled();
     await page.getByTestId('data-source-detail-dialog-close-button').click();
@@ -158,6 +159,8 @@ test.describe('authenticated admin operation controls', () => {
 
     await page.goto('/projects/sample-a/admin/data-sources?dataSourceId=sample-a-github-main');
     await expect(page.getByTestId('data-source-selected-connection-notice')).toBeVisible();
+    await expect(page.getByTestId('data-source-schedule-form')).toBeVisible();
+    await expect(page.getByTestId('data-source-schedule-time')).toHaveValue('10:00');
     await expect(page.getByTestId('data-source-save-button')).toBeEnabled();
     await expect(page.getByTestId('data-source-test-button')).toHaveCount(0);
     await expect(page.getByTestId('data-source-run-button')).toBeDisabled();
