@@ -7,6 +7,7 @@ import type { GraphViewerEdge, GraphViewerNode } from './graph-viewer';
 import {
   clampFloatingPanelPosition,
   defaultFloatingPanelPosition,
+  type FloatingPanelBounds,
   type FloatingPanelPosition,
 } from './graph-viewer-interactions';
 
@@ -15,6 +16,7 @@ export type GraphDetailsSelection =
   | { readonly item: GraphViewerNode; readonly type: 'node' };
 
 type DragState = {
+  readonly bounds: FloatingPanelBounds;
   readonly originX: number;
   readonly originY: number;
   readonly pointerId: number;
@@ -57,17 +59,6 @@ export function GraphDetailsDialog({
     };
   }, [wrapperElement]);
 
-  const clampPosition = useCallback(
-    (next: FloatingPanelPosition) => {
-      const bounds = measureBounds();
-      if (!bounds) {
-        return next;
-      }
-      return clampFloatingPanelPosition(next, bounds);
-    },
-    [measureBounds],
-  );
-
   const fitPositionToBounds = useCallback(() => {
     const bounds = measureBounds();
     if (!bounds) {
@@ -98,10 +89,15 @@ export function GraphDetailsDialog({
     if (event.button !== 0 || !position) {
       return;
     }
+    const bounds = measureBounds();
+    if (!bounds) {
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     dragStateRef.current = {
+      bounds,
       originX: position.x,
       originY: position.y,
       pointerId: event.pointerId,
@@ -118,10 +114,13 @@ export function GraphDetailsDialog({
     event.preventDefault();
     event.stopPropagation();
     setPosition(
-      clampPosition({
-        x: drag.originX + (event.clientX - drag.startX),
-        y: drag.originY + (event.clientY - drag.startY),
-      }),
+      clampFloatingPanelPosition(
+        {
+          x: drag.originX + (event.clientX - drag.startX),
+          y: drag.originY + (event.clientY - drag.startY),
+        },
+        drag.bounds,
+      ),
     );
   };
 
