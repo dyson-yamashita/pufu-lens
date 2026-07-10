@@ -68,13 +68,13 @@ Google data source の incremental authorization では、Drive source に `http
 
 ### Workflow Jobs And Smoke
 
-| name                        | kind        | used by             | note                                                                            |
-| --------------------------- | ----------- | ------------------- | ------------------------------------------------------------------------------- |
-| `WORKFLOW_ID`               | env         | Workflow Jobs       | `curate-workflow`、`ingest-workflow`、`generate-report` のいずれか              |
-| `WORKFLOW_INPUT_JSON`       | runtime env | Workflow Jobs       | job 実行時に override する JSON input。secret を含めない                        |
-| `DRY_RUN`                   | runtime env | Workflow Jobs       | `true` の場合、外部書き込みを避ける dry-run を優先する                          |
-| `MASTRA_SERVER_URL`         | env         | `pnpm deploy:smoke` | remote smoke が確認する Mastra Server URL。provider deploy 後に動的取得してよい |
-| `SCHEDULER_SERVICE_ACCOUNT` | env         | `pnpm deploy:smoke` | scheduler / OIDC caller の service account identifier                           |
+| name                        | kind        | used by             | note                                                                                         |
+| --------------------------- | ----------- | ------------------- | -------------------------------------------------------------------------------------------- |
+| `WORKFLOW_ID`               | env         | Workflow Jobs       | `curate-workflow`、`ingest-workflow`、`generate-report`、`source-sync-dispatcher` のいずれか |
+| `WORKFLOW_INPUT_JSON`       | runtime env | Workflow Jobs       | job 実行時に override する JSON input。secret を含めない                                     |
+| `DRY_RUN`                   | runtime env | Workflow Jobs       | `true` の場合、外部書き込みを避ける dry-run を優先する                                       |
+| `MASTRA_SERVER_URL`         | env         | `pnpm deploy:smoke` | remote smoke が確認する Mastra Server URL。provider deploy 後に動的取得してよい              |
+| `SCHEDULER_SERVICE_ACCOUNT` | env         | `pnpm deploy:smoke` | scheduler / OIDC caller の service account identifier                                        |
 
 ### Provider Identifiers
 

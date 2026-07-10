@@ -78,7 +78,7 @@ pnpm infra:check --env staging
 pnpm deploy:smoke --env staging
 ```
 
-- `deploy:dry-run`: `pnpm db:migrate --check` と、`curate-workflow`、`ingest-workflow`、`generate-report` の `WORKFLOW_ID` / `WORKFLOW_INPUT_JSON` entrypoint 計画をローカル dry-run で検査する。PGroonga migration を含む DB 変更では、dry-run 前に PostgreSQL イメージ更新 → `pnpm db:migrate` の順序を deploy checklist の DB Migration 記録へ残す。
+- `deploy:dry-run`: `pnpm db:migrate --check` と、`curate-workflow`、`ingest-workflow`、`generate-report`、`source-sync-dispatcher` の `WORKFLOW_ID` / `WORKFLOW_INPUT_JSON` entrypoint 計画をローカル dry-run で検査する。PGroonga migration を含む DB 変更では、dry-run 前に PostgreSQL イメージ更新 → `pnpm db:migrate` の順序を deploy checklist の DB Migration 記録へ残す。
 - `db:migrate --check`: migration file の命名、番号重複、履歴との整合を検査する。`DATABASE_URL` がある場合は online check として `schema_migrations` も照合する。
 - `db:migrate --plan`: staging / production の `DATABASE_URL` に対して、適用予定 migration を表示する。ここではまだ適用しない。
 - `db:migrate`: `infra/db/migrations/*.sql` を番号順に適用し、`auth_accounts`、`auth_password_credentials`、project scoped `oauth_connections` など既存 DB に必要な schema を用意する。migration version はファイル名から `.sql` を除いた値、`public.schema_migrations` に未登録のものが pending として順番に適用される。既存互換の `auth:migrate` も同じ migration runner を呼び出す。
@@ -151,8 +151,10 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 ## Step 14 初期実装メモ
 
 - Cloud Run Job の共通 entrypoint は `scripts/workflow-job.ts`。
-- Job コンテナは `WORKFLOW_ID` と `WORKFLOW_INPUT_JSON` を受け取り、`curate-workflow`、`ingest-workflow`、`generate-report` を個別に計画・実行する。
+- Job コンテナは `WORKFLOW_ID` と `WORKFLOW_INPUT_JSON` を受け取り、`curate-workflow`、`ingest-workflow`、`generate-report`、`source-sync-dispatcher` を個別に計画・実行する。
 - `DRY_RUN=true` または input の `dryRun: true` では DB / Storage / 外部 API に接続せず、secret 値を出さない計画ログだけを出す。
 - Cloud Run Job 用 Dockerfile は `infra/docker/jobs/Dockerfile`。
 - ローカルでは `docker build -f infra/docker/jobs/Dockerfile -t pufu-lens-workflow-job:local .` の後、`docker run --rm -e WORKFLOW_ID=generate-report -e WORKFLOW_INPUT_JSON='{"projectSlug":"sample-a","period":"weekly","dryRun":true}' pufu-lens-workflow-job:local` のように entrypoint dry-run を確認できる。
 - `infra:check` は GCP identifier と Secret Manager の secret 名だけを検査し、secret の実値は出力しない。
+- scheduler OIDC service accountがMastra Serverの`roles/run.invoker`、Mastra runtime service accountがdispatcher Jobの`run.jobs.run` / `run.jobs.runWithOverrides`（`roles/run.jobsExecutorWithOverrides`または同等custom role）を持つことを確認する。
+- ローカルではローカル専用DB/Storage/credentialsを設定し、`pnpm schedule:dispatch --once`を明示実行する。`pnpm dev`や`docker compose up`からは自動起動しない。

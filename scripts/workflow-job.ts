@@ -2,7 +2,12 @@ import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const WORKFLOW_IDS = ['curate-workflow', 'generate-report', 'ingest-workflow'] as const;
+const WORKFLOW_IDS = [
+  'curate-workflow',
+  'generate-report',
+  'ingest-workflow',
+  'source-sync-dispatcher',
+] as const;
 const SOURCE_TYPES = ['drive', 'github', 'gmail', 'web'] as const;
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -53,6 +58,13 @@ async function main(): Promise<void> {
 }
 
 function buildJobPlan(workflowId: WorkflowId, input: WorkflowInput): JobPlan {
+  if (workflowId === 'source-sync-dispatcher') {
+    return {
+      args: [join(repoRoot, 'scripts/source-sync-dispatcher.ts'), '--once'],
+      input,
+      workflowId,
+    };
+  }
   const projectSlug = requiredString(input.projectSlug ?? input.project, 'projectSlug');
   if (workflowId === 'generate-report') {
     const args = [

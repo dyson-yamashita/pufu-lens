@@ -2,7 +2,7 @@
 
 ## デプロイメント
 
-> 2026-06-19 に GCP project `pufu-lens`（asia-east1）へ end-to-end でデプロイし、PostgreSQL(AGE) VM・Mastra Server (Cloud Run)・Cloud Run Jobs ×3・Web (Firebase App Hosting) の稼働を確認した。本番ビルドに必要だったアプリ側の修正は [ADR-004](../../adr/ADR-004-storage-module-resolution-mastra-build.md) を参照。クラウド手順を変更する際は `scripts/deploy-dry-run.ts`、`scripts/deploy-smoke.ts`、`scripts/infra-check.ts`、CI、Secret Manager 設計を同時に確認する。
+> 2026-06-19 に GCP project `pufu-lens`（asia-east1）へ end-to-end でデプロイし、PostgreSQL(AGE) VM・Mastra Server (Cloud Run)・Cloud Run Jobs・Web (Firebase App Hosting) の稼働を確認した。本番ビルドに必要だったアプリ側の修正は [ADR-004](../../adr/ADR-004-storage-module-resolution-mastra-build.md) を参照。クラウド手順を変更する際は `scripts/deploy-dry-run.ts`、`scripts/deploy-smoke.ts`、`scripts/infra-check.ts`、CI、Secret Manager 設計を同時に確認する。
 >
 > 既知の落とし穴（再現デプロイ時に必須）:
 >
@@ -90,7 +90,7 @@ gcloud run deploy mastra-server \
 # 4. Ingestion / Report Jobs デプロイ
 #    共通イメージ infra/docker/jobs/Dockerfile（entrypoint scripts/workflow-job.ts）を build し、
 #    各 Job に WORKFLOW_ID を設定する。WORKFLOW_INPUT_JSON は実行時 override で渡す。
-for WF in curate-workflow ingest-workflow generate-report; do
+for WF in curate-workflow ingest-workflow generate-report source-sync-dispatcher; do
   gcloud run jobs deploy "$WF" \
     --image asia-east1-docker.pkg.dev/PROJECT/pufu-lens/workflow-job:latest \
     --region asia-east1 \
@@ -99,6 +99,10 @@ for WF in curate-workflow ingest-workflow generate-report; do
     --set-env-vars STORAGE_DRIVER=gcs,STORAGE_BUCKET=pufu-lens-prod,WORKFLOW_ID="$WF" \
     --set-secrets="DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
 done
+
+# Mastra runtime service accountにはdispatcher Jobのrun.jobs.run / run.jobs.runWithOverrides権限を付与し、
+# scheduler OIDC service accountにはMastra Serverのrun.invokerを付与する。
+# Cloud Schedulerは5分ごとに /internal/schedules/source-sync-dispatcher:run をPOSTする。
 
 # 5. Next.js デプロイ（Firebase App Hosting）
 #    Firebase CLI >= 14.4.0 のローカルソースデプロイを使うと GitHub 連携や push なしで rollout できる。

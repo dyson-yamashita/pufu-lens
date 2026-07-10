@@ -69,3 +69,17 @@ test('rejects invalid drain boolean in WORKFLOW_INPUT_JSON', async () => {
   assert.notEqual(result.exitCode, 0);
   assert.match(result.stderr, /drain must be a boolean/);
 });
+
+test('source-sync-dispatcher job plan does not require a project input', async () => {
+  const result = await runWorkflowJob({
+    DRY_RUN: 'true',
+    WORKFLOW_ID: 'source-sync-dispatcher',
+    WORKFLOW_INPUT_JSON: '{}',
+  });
+  assert.equal(result.exitCode, 0);
+  const planned = result.events.find((event) => event.event === 'job_planned') as
+    | { argv?: string[] }
+    | undefined;
+  assert.ok(planned?.argv?.some((value) => value.endsWith('source-sync-dispatcher.ts')));
+  assert.ok(planned?.argv?.includes('--once'));
+});

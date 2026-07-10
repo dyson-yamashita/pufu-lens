@@ -6,22 +6,23 @@ Internal Scheduler / Job API の共通契約は [API デザイン](05-api-design
 
 Cloud Scheduler は Cloud Run Job の `:run` API を直接叩かず、Mastra Server の内部管理 API を呼び出す。Mastra Server は受け取った JSON を検証し、Cloud Run Jobs API の overrides（環境変数または args）として各 Job に渡す。
 
-> Source sync の DB schedule と管理 UI は実装済みである。dispatcher とローカル one-shot CLI は [Incremental Source Sync / Scheduling 計画](../../plans/013-incremental-source-sync-scheduling/overview.md) Step 4 で追加予定であり、現時点では未実装である。現在の `scripts/workflow-job.ts` は `curate-workflow`、`ingest-workflow`、`generate-report` のみを受け付ける。
+Source sync dispatcher は `scripts/source-sync-dispatcher.ts` に実装し、ローカル one-shot と Cloud Run Job が同じDB lease・heartbeat・retry処理を使う。`scripts/workflow-job.ts` は `source-sync-dispatcher` を受け付ける。
 
 GitHub / Drive / Gmail の data source は作成 transaction 内で毎日 10:00 `Asia/Tokyo` の schedule を作る。既存の有効な対象 source は migration で backfill する。project admin は Data Sources 詳細で ON / OFF と日次時刻を変更でき、変更時は次の wall-clock occurrence を UTC の `next_run_at` に再計算する。Web は自動 schedule を持たない。
 
-PostgreSQL VM はコスト削減のため業務時間のみ起動する方針だが、DB 依存の Scheduler / Job は DB 稼働時間内に実行する。夜間に実行したい場合は、Scheduler の直前に DB VM を起動し、job 成功後に停止する専用運用を用意する。初期構築では DB 起動制御を増やさず、`curate-workflow`、`ingest-workflow`、`generate-report` は平日業務時間内に寄せる。
+PostgreSQL VM はコスト削減のため業務時間のみ起動する方針だが、DB 依存の Scheduler / Job は DB 稼働時間内に実行する。夜間に実行したい場合は、Scheduler の直前に DB VM を起動し、job 成功後に停止する専用運用を用意する。初期構築では DB 起動制御を増やさず、`curate-workflow`、`ingest-workflow`、`generate-report`、`source-sync-dispatcher` は平日業務時間内に寄せる。
 
 入力受け渡しの契約：
 
-1. Scheduler → Mastra Server: `POST /internal/schedules/{workflowId}:run` に JSON body を送る。
-2. Mastra Server: OIDC の service account を検証し、body を workflow input schema で validate する。
-3. Mastra Server → Cloud Run Jobs API: `run` request の container overrides に `WORKFLOW_INPUT_JSON=<validated json>` を設定する。
-4. Job entrypoint: `WORKFLOW_INPUT_JSON` を parse して対象 Mastra Workflow の `inputData` として渡す。
+1. Scheduler → Mastra Server: `POST /internal/schedules/source-sync-dispatcher:run` に空の JSON objectを送る。
+2. `--no-allow-unauthenticated` のCloud Run IAMがScheduler service accountのOIDC tokenを検証する。Mastra routeはGoogle署名tokenをアプリuser tokenとして解釈しない。
+3. Mastra Serverはbodyが空objectであることを検証し、runtime service accountでdispatcher Cloud Run Jobを起動する。
+4. Cloud Run Jobs API overrideは`WORKFLOW_INPUT_JSON={}`だけを渡し、project、data source、credentialはDBとruntime secretから解決する。
+5. Job entrypointは`source-sync-dispatcher`を選び、DB上のdue scheduleを1件claimしてone-shot実行する。
 
 Ingestion Job は Cloud Run のローカルファイルシステムに parser や中間成果物を永続化しない。parser は Parser Registry で承認済みの version を DB から解決し、Object Storage 上の artifact を hash 検証して使用する。Job 実行中に active parser version が変わっても、dequeue 時に queue item へ固定した `parser_version_id` を使い続ける。承認済み parser が無い raw は `held` にして、Scheduler の通常実行では graph / vector へ進めない。
 
-### Source sync dispatcher の起動契約（planned）
+### Source sync dispatcher の起動契約
 
 Source sync dispatcher は起動元に依存せず、DB 上の due schedule を claim して対象 data source の collect と ingest を実行する one-shot runner とする。
 
@@ -33,6 +34,8 @@ Source sync dispatcher は起動元に依存せず、DB 上の due schedule を 
 ローカル実行は Mastra Server と GCP IAM を必要としないが、本番と同等の環境変数（`DATABASE_URL`、Object Storage 設定、connection secret 復号設定、provider credentials）をローカル専用の値で設定する。本番 DB、Object Storage、credentials へローカル dispatcher から直接接続してはならない。ローカル専用の schedule 状態や簡略化した排他処理は持たず、本番と同じ DB lease、heartbeat、retry、結果更新の実装を使う。
 
 one-shot CLI は due schedule が無ければ外部 API を呼ばず成功終了する。継続実行が必要な開発環境では `cron` / `launchd` などから 5 分ごとに呼び、CLI 自身には常駐 loop を持たせない。`pnpm dev` と通常の `docker compose up` からは自動起動せず、開発者が明示的に有効化した場合だけ外部 provider へアクセスする。
+
+claim は `FOR UPDATE SKIP LOCKED` で1件ずつ行い、15分のleaseをworker tokenで保持する。heartbeatは最大60分まで延長できる。成功時は次の日次時刻へ戻し、失敗時は15分、1時間、6時間の順で再試行した後に通常の日次時刻へ戻す。完了更新はschedule IDとworker tokenの一致を必須とし、期限切れworkerは後続workerの状態を上書きしない。保存するerrorはcommand種別とexit codeだけに制限する。
 
 ```bash
 # 1 時間ごとに全プロジェクトのデータソースを確認
