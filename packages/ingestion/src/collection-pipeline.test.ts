@@ -245,6 +245,8 @@ test('buildWebUrlRawCandidate uses canonical URL as source id and never stores b
   });
 
   assert.equal(candidate.raw.sourceId, 'https://example.test/release');
+  assert.equal(candidate.raw.logicalSourceId, 'https://example.test/release?utm=1');
+  assert.equal(candidate.raw.sourceVersion, candidate.raw.contentHash);
   assert.equal(candidate.raw.sourceUri, 'https://example.test/release?utm=1');
   assert.equal(candidate.raw.mimeType, 'text/html');
   assert.match(candidate.raw.contentHash, /^[a-f0-9]{64}$/);
@@ -752,6 +754,11 @@ test('buildGitHubRawCandidate converts issue comments, PR reviews, and diff meta
   assert.equal(raw.reviews.length, 1);
   assert.match(raw.diff.sha256, /^[a-f0-9]{64}$/);
   assert.equal(rawCandidate.raw.sourceId, 'example-org/pufu-sample/pulls/202');
+  assert.equal(rawCandidate.raw.logicalSourceId, 'example-org/pufu-sample/pulls/202');
+  assert.equal(
+    rawCandidate.raw.sourceVersion,
+    `${githubIssue({ number: 202, pullRequest: true }).updated_at}:${rawCandidate.raw.contentHash}`,
+  );
   assert.equal(rawCandidate.raw.metadata.hasDiff, true);
   assert.equal(rawCandidate.raw.metadata.body, undefined);
 });
@@ -1006,6 +1013,8 @@ test('buildGmailRawCandidate converts latest thread message and previous message
     { email: 'jane@example.test', name: 'Jane Reviewer' },
   ]);
   assert.equal(rawCandidate.raw.sourceId, 'thread-alpha:msg-alpha-002');
+  assert.equal(rawCandidate.raw.logicalSourceId, 'thread-alpha');
+  assert.equal(rawCandidate.raw.sourceVersion, 'msg-alpha-002');
   assert.equal(rawCandidate.raw.metadata.quotedMessageCount, 1);
   assert.equal(rawCandidate.raw.metadata.bodyText, undefined);
 });
@@ -1268,6 +1277,8 @@ test('buildDriveRawCandidate converts file metadata and text without storing bod
   assert.equal(raw.title, 'Project Brief');
   assert.equal(raw.bodyText, 'Drive document body');
   assert.equal(rawCandidate.raw.sourceId, 'drive-file-1:rev-2');
+  assert.equal(rawCandidate.raw.logicalSourceId, 'drive-file-1');
+  assert.equal(rawCandidate.raw.sourceVersion, 'rev-2');
   assert.equal(rawCandidate.raw.metadata.folderId, 'drive-folder-1');
   assert.equal(rawCandidate.raw.metadata.bodyText, undefined);
   assert.doesNotMatch(JSON.stringify(rawCandidate.raw.metadata), /secret-token/);
@@ -1556,8 +1567,10 @@ function dataSource(input: Partial<DataSourceRecord> = {}): DataSourceRecord {
     enabled: true,
     id: 'data-source-github',
     ingestWindow: {},
+    lastSyncSucceededAt: null,
     projectId: 'project-1',
     sourceType: 'github',
+    syncCursor: {},
     ...input,
   };
 }

@@ -170,6 +170,7 @@ test('chunkAndEmbed upserts a document and does not duplicate unchanged chunks',
   const repository = new InMemoryChunkEmbeddingRepository([
     {
       parsed: parsedDocument(),
+      logicalSourceId: 'logical/fixture-1',
       rawContentHash: 'raw-hash-1',
       rawDocumentId: 'raw-1',
     },
@@ -196,6 +197,7 @@ test('chunkAndEmbed skips embedding calls when current chunks are unchanged', as
   const repository = new InMemoryChunkEmbeddingRepository([
     {
       parsed: parsedDocument(),
+      logicalSourceId: 'logical/fixture-1',
       rawContentHash: 'raw-hash-1',
       rawDocumentId: 'raw-1',
     },
@@ -231,6 +233,7 @@ test('chunkAndEmbed treats unchanged chunks as current when repository order dif
         bodyText:
           'First paragraph with enough text to create a chunk. Second paragraph with enough text to create another chunk.',
       }),
+      logicalSourceId: 'logical/fixture-1',
       rawContentHash: 'raw-hash-1',
       rawDocumentId: 'raw-1',
     },
@@ -264,6 +267,7 @@ test('chunkAndEmbed archives old chunks when parsed content changes', async () =
   const repository = new InMemoryChunkEmbeddingRepository([
     {
       parsed: parsedDocument({ bodyText: 'Original body text for chunking.' }),
+      logicalSourceId: 'logical/fixture-1',
       rawContentHash: 'raw-hash-1',
       rawDocumentId: 'raw-1',
     },
@@ -278,6 +282,7 @@ test('chunkAndEmbed archives old chunks when parsed content changes', async () =
 
   await chunkAndEmbed(options);
   repository.targets[0] = {
+    logicalSourceId: 'logical/fixture-1',
     parsed: parsedDocument({ bodyText: 'Updated body text for chunking.' }),
     rawContentHash: 'raw-hash-2',
     rawDocumentId: 'raw-1',

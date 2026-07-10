@@ -1,3 +1,9 @@
+import {
+  type DataSourceRecord,
+  parseCollectionDataSourceRecordRow,
+  parseCollectionRawDocumentRecordRow,
+  type RawDocumentRecord,
+} from '../../../packages/ingestion/dist/index.js';
 import type { ActorStatus } from './admin-actors.ts';
 import { isSourceType, type SourceType } from './admin-data.ts';
 
@@ -36,21 +42,9 @@ export interface AdminActionProjectRecordRow {
   readonly slug: string;
 }
 
-export interface AdminActionDataSourceRecordRow {
-  readonly config: Record<string, unknown>;
-  readonly enabled: boolean;
-  readonly id: string;
-  readonly ingestWindow: Record<string, unknown>;
-  readonly projectId: string;
-  readonly sourceType: SourceType;
-}
+export type AdminActionDataSourceRecordRow = DataSourceRecord;
 
-export interface AdminActionRawDocumentRecordRow {
-  readonly id: string;
-  readonly ingestStatus: 'fetched' | 'held' | 'parsed' | 'indexed' | 'failed';
-  readonly sourceId: string;
-  readonly sourceType: SourceType;
-}
+export type AdminActionRawDocumentRecordRow = RawDocumentRecord;
 
 export interface AdminActionDocumentGraphNodeRow {
   readonly graphNodeId: string;
@@ -148,18 +142,7 @@ export function parseAdminActionProjectRecordRow(value: unknown): AdminActionPro
 export function parseAdminActionDataSourceRecordRow(
   value: unknown,
 ): AdminActionDataSourceRecordRow {
-  const row = requireRecord(value, 'collection data source row');
-  return {
-    config: requireRecord(row.config, 'collection data source row field: config'),
-    enabled: requireBoolean(row.enabled, 'collection data source row', 'enabled'),
-    id: requireString(row.id, 'collection data source row', 'id'),
-    ingestWindow:
-      row.ingestWindow == null
-        ? {}
-        : requireRecord(row.ingestWindow, 'collection data source row field: ingestWindow'),
-    projectId: requireString(row.projectId, 'collection data source row', 'projectId'),
-    sourceType: requireSourceType(row.sourceType, 'collection data source row', 'sourceType'),
-  };
+  return parseCollectionDataSourceRecordRow(value);
 }
 
 export function parseAdminActionDocumentGraphNodeRow(
@@ -203,17 +186,7 @@ export function parseAdminActionStorageObjectUriRow(
 export function parseAdminActionRawDocumentRecordRow(
   value: unknown,
 ): AdminActionRawDocumentRecordRow {
-  const row = requireRecord(value, 'collection raw document row');
-  return {
-    id: requireString(row.id, 'collection raw document row', 'id'),
-    ingestStatus: requireRawIngestStatus(
-      row.ingestStatus,
-      'collection raw document row',
-      'ingestStatus',
-    ),
-    sourceId: requireString(row.sourceId, 'collection raw document row', 'sourceId'),
-    sourceType: requireSourceType(row.sourceType, 'collection raw document row', 'sourceType'),
-  };
+  return parseCollectionRawDocumentRecordRow(value);
 }
 
 function requireRecord(value: unknown, context: string): Record<string, unknown> {
@@ -230,33 +203,9 @@ function requireString(value: unknown, context: string, fieldName: string): stri
   throw new Error(`Invalid ${context} field: ${fieldName}`);
 }
 
-function requireBoolean(value: unknown, context: string, fieldName: string): boolean {
-  if (typeof value === 'boolean') {
-    return value;
-  }
-  throw new Error(`Invalid ${context} field: ${fieldName}`);
-}
-
 function requireNullableString(value: unknown, context: string, fieldName: string): string | null {
   if (value === null || value === undefined || typeof value === 'string') {
     return value ?? null;
-  }
-  throw new Error(`Invalid ${context} field: ${fieldName}`);
-}
-
-function requireRawIngestStatus(
-  value: unknown,
-  context: string,
-  fieldName: string,
-): AdminActionRawDocumentRecordRow['ingestStatus'] {
-  if (
-    value === 'fetched' ||
-    value === 'held' ||
-    value === 'parsed' ||
-    value === 'indexed' ||
-    value === 'failed'
-  ) {
-    return value;
   }
   throw new Error(`Invalid ${context} field: ${fieldName}`);
 }

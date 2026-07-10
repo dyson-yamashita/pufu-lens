@@ -62,6 +62,12 @@ export {
   scanFixtureSource,
   shouldCollectCandidate,
 } from './collection-pipeline.js';
+export {
+  parseCollectionDataSourceRecordRow,
+  parseCollectionDataSourceRecordRows,
+  parseCollectionRawDocumentRecordRow,
+  parseOptionalCollectionRawDocumentRecordRow,
+} from './collection-row-parsers.js';
 export type {
   CollectDriveSourceOptions,
   CollectDriveSourceResult,
@@ -195,6 +201,7 @@ export type {
   RecoveryArtifactStorage,
 } from './recovery-artifacts.js';
 export {
+  LEGACY_RECOVERY_ARTIFACT_VERSION,
   listRecoveryArtifactEvents,
   RECOVERY_ARTIFACT_VERSION,
   readRecoveryArtifactEvent,
@@ -203,11 +210,26 @@ export {
   recoveryArtifactEventsSha256,
   recoveryArtifactEventUri,
   recoveryArtifactLatestUri,
+  recoveryArtifactNaturalKey,
   validateRecoveryArtifactEvent,
   validateRecoveryArtifactLatestPointer,
   writeRecoveryArtifactEvent,
   writeRecoveryArtifactLatestPointer,
 } from './recovery-artifacts.js';
+export type { StoredSourceIdentity } from './source-version-identity.js';
+export {
+  deriveStoredSourceIdentity,
+  driveLogicalSourceId,
+  driveSourceVersion,
+  githubLogicalSourceId,
+  githubSourceVersion,
+  gmailLogicalSourceId,
+  gmailSourceVersion,
+  legacyDocumentLogicalSourceId,
+  legacyLogicalSourceId,
+  webLogicalSourceId,
+  webSourceVersion,
+} from './source-version-identity.js';
 export type {
   GeminiTopicExtractionAgentOptions,
   TopicExtractionAgent,
