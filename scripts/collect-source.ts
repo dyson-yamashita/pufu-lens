@@ -63,13 +63,20 @@ async function main(): Promise<void> {
     const connection = options.connectionId
       ? await readCollectionConnection({
           connectionId: options.connectionId,
+          dataSourceId: options.dataSourceId,
           projectSlug,
           provider,
           sourceType,
           sql,
         })
       : provider
-        ? await readProjectCollectionConnection({ projectSlug, provider, sourceType, sql })
+        ? await readProjectCollectionConnection({
+            dataSourceId: options.dataSourceId,
+            projectSlug,
+            provider,
+            sourceType,
+            sql,
+          })
         : undefined;
 
     const connectionToken =
@@ -112,6 +119,7 @@ async function main(): Promise<void> {
     const result =
       sourceType === 'drive'
         ? await collectDriveSource({
+            dataSourceId: options.dataSourceId,
             dryRun: options.dryRun,
             limit,
             projectSlug,
@@ -121,6 +129,7 @@ async function main(): Promise<void> {
           })
         : sourceType === 'gmail'
           ? await collectGmailSource({
+              dataSourceId: options.dataSourceId,
               dryRun: options.dryRun,
               limit,
               projectSlug,
@@ -130,6 +139,7 @@ async function main(): Promise<void> {
             })
           : sourceType === 'github'
             ? await collectGitHubSource({
+                dataSourceId: options.dataSourceId,
                 dryRun: options.dryRun,
                 limit,
                 projectSlug,
@@ -138,6 +148,7 @@ async function main(): Promise<void> {
                 token: connectionToken,
               })
             : await collectWebUrlSource({
+                dataSourceId: options.dataSourceId,
                 dryRun: options.dryRun,
                 limit,
                 projectSlug,
@@ -167,7 +178,11 @@ class PostgresCollectionRepository implements CollectionRepository {
     );
   }
 
-  async findDataSources(projectId: string, sourceType?: SourceType): Promise<DataSourceRecord[]> {
+  async findDataSources(
+    projectId: string,
+    sourceType?: SourceType,
+    dataSourceId?: string,
+  ): Promise<DataSourceRecord[]> {
     if (!sourceType) {
       return [];
     }
@@ -185,6 +200,7 @@ class PostgresCollectionRepository implements CollectionRepository {
       WHERE project_id = ${projectId}
         AND enabled = true
         AND source_type = ${sourceType}
+        AND (${dataSourceId ?? null}::uuid IS NULL OR id = ${dataSourceId ?? null}::uuid)
       ORDER BY source_type, name
     `) as readonly unknown[];
     return parseCollectionDataSourceRecordRows(rows);
@@ -207,6 +223,29 @@ class PostgresCollectionRepository implements CollectionRepository {
       WHERE project_id = ${input.projectId}
         AND source_type = ${input.sourceType}
         AND source_id = ${input.sourceId}
+    `) as readonly unknown[];
+    return parseOptionalCollectionRawDocumentRecordRow(rows);
+  }
+
+  async lookupRawDocumentVersion(input: {
+    logicalSourceId: string;
+    projectId: string;
+    sourceType: SourceType;
+    sourceVersion: string;
+  }): Promise<RawDocumentRecord | undefined> {
+    const rows = (await this.sql`
+      SELECT
+        id::text AS id,
+        ingest_status AS "ingestStatus",
+        logical_source_id AS "logicalSourceId",
+        source_id AS "sourceId",
+        source_type AS "sourceType",
+        source_version AS "sourceVersion"
+      FROM public.raw_documents
+      WHERE project_id = ${input.projectId}
+        AND source_type = ${input.sourceType}
+        AND logical_source_id = ${input.logicalSourceId}
+        AND source_version = ${input.sourceVersion}
     `) as readonly unknown[];
     return parseOptionalCollectionRawDocumentRecordRow(rows);
   }
@@ -255,16 +294,9 @@ class PostgresCollectionRepository implements CollectionRepository {
           'fetched',
           ${this.sql.json(input.metadata as postgres.JSONValue)}
         )
-        ON CONFLICT (project_id, source_type, source_id)
+        ON CONFLICT (project_id, source_type, logical_source_id, source_version)
         DO UPDATE SET
-          logical_source_id = EXCLUDED.logical_source_id,
-          source_version = EXCLUDED.source_version,
-          source_uri = EXCLUDED.source_uri,
-          storage_uri = EXCLUDED.storage_uri,
-          mime_type = EXCLUDED.mime_type,
-          byte_size = EXCLUDED.byte_size,
-          content_hash = EXCLUDED.content_hash,
-          metadata = EXCLUDED.metadata
+          updated_at = now()
         RETURNING
           id::text AS id,
           ingest_status AS "ingestStatus",
@@ -350,6 +382,22 @@ class PostgresCollectionRepository implements CollectionRepository {
       UPDATE public.data_sources
       SET last_checked_at = now()
       WHERE id = ${dataSourceId}
+    `;
+  }
+
+  async completeDataSourceSync(input: {
+    dataSourceId: string;
+    projectId: string;
+    syncCursor: Record<string, unknown>;
+  }): Promise<void> {
+    await this.sql`
+      UPDATE public.data_sources
+      SET
+        last_checked_at = now(),
+        last_sync_succeeded_at = now(),
+        sync_cursor = ${this.sql.json(input.syncCursor as postgres.JSONValue)}
+      WHERE id = ${input.dataSourceId}
+        AND project_id = ${input.projectId}
     `;
   }
 }
@@ -534,6 +582,7 @@ function parseArgs(args: string[]): {
   folderUrls: string[];
   labelIds: string[];
   connectionId?: string;
+  dataSourceId?: string;
   project?: string;
   query?: string;
   repositories: string[];
@@ -548,6 +597,7 @@ function parseArgs(args: string[]): {
     folderUrls: string[];
     labelIds: string[];
     connectionId?: string;
+    dataSourceId?: string;
     project?: string;
     query?: string;
     repositories: string[];
@@ -564,6 +614,8 @@ function parseArgs(args: string[]): {
       options.project = readOptionValue(args, ++index, arg);
     } else if (arg === '--connection-id') {
       options.connectionId = readUuid(readOptionValue(args, ++index, arg), arg);
+    } else if (arg === '--data-source-id') {
+      options.dataSourceId = readUuid(readOptionValue(args, ++index, arg), arg);
     } else if (arg === '--source') {
       const sourceType = readOptionValue(args, ++index, arg);
       if (!isRealSourceType(sourceType)) {
@@ -654,6 +706,7 @@ function requiredScopeForSourceType(sourceType: RealSourceType): string | undefi
 }
 
 async function readProjectCollectionConnection(input: {
+  dataSourceId?: string;
   projectSlug: string;
   provider: ConnectionProvider;
   sourceType: RealSourceType;
@@ -676,6 +729,17 @@ async function readProjectCollectionConnection(input: {
     JOIN public.projects p ON p.id = oc.project_id
     WHERE p.slug = ${input.projectSlug}
       AND oc.provider = ${input.provider}
+      AND (
+        ${input.dataSourceId ?? null}::uuid IS NULL
+        OR EXISTS (
+          SELECT 1
+          FROM public.data_sources ds
+          WHERE ds.id = ${input.dataSourceId ?? null}::uuid
+            AND ds.project_id = p.id
+            AND ds.source_type = ${input.sourceType}
+            AND ds.connection_id = oc.id
+        )
+      )
       AND (oc.expires_at IS NULL OR oc.expires_at > now())
       AND (oc.metadata->>'connectionError') IS DISTINCT FROM 'true'
       AND (oc.metadata->>'scopeMissing') IS DISTINCT FROM 'true'
@@ -706,6 +770,7 @@ async function readProjectCollectionConnection(input: {
 
 async function readCollectionConnection(input: {
   connectionId: string;
+  dataSourceId?: string;
   projectSlug: string;
   provider?: ConnectionProvider;
   sourceType: RealSourceType;
@@ -733,6 +798,17 @@ async function readCollectionConnection(input: {
     WHERE oc.id = ${input.connectionId}
       AND p.slug = ${input.projectSlug}
       AND oc.provider = ${input.provider}
+      AND (
+        ${input.dataSourceId ?? null}::uuid IS NULL
+        OR EXISTS (
+          SELECT 1
+          FROM public.data_sources ds
+          WHERE ds.id = ${input.dataSourceId ?? null}::uuid
+            AND ds.project_id = p.id
+            AND ds.source_type = ${input.sourceType}
+            AND ds.connection_id = oc.id
+        )
+      )
       AND (oc.expires_at IS NULL OR oc.expires_at > now())
       AND (oc.metadata->>'connectionError') IS DISTINCT FROM 'true'
       AND (oc.metadata->>'scopeMissing') IS DISTINCT FROM 'true'

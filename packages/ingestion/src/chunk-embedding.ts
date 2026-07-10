@@ -78,6 +78,7 @@ export interface UpsertDocumentInput {
 export interface ReplaceDocumentChunksInput {
   archiveReason: ChunkArchiveReason;
   chunks: PreparedDocumentChunk[];
+  document: UpsertDocumentInput;
   documentId: string;
   projectId: string;
   rawDocumentId: string;
@@ -101,6 +102,10 @@ export interface PreparedDocumentChunk {
 }
 
 export interface ChunkEmbeddingRepository {
+  activateDocumentVersion(input: {
+    document: UpsertDocumentInput;
+    documentId: string;
+  }): Promise<void>;
   listCurrentChunks(input: {
     documentId: string;
     projectId: string;
@@ -349,7 +354,7 @@ async function chunkAndEmbedTarget(input: {
     };
   }
 
-  const document = await input.repository.upsertDocument({
+  const documentInput: UpsertDocumentInput = {
     canonicalUri: parsed.canonicalUri,
     docType: parsed.docType,
     graphNodeId: documentGraphNodeId(parsed),
@@ -360,13 +365,18 @@ async function chunkAndEmbedTarget(input: {
     rawDocumentId: input.target.rawDocumentId,
     summary: summarizeText(parsed.bodyText),
     title: parsed.title,
-  });
+  };
+  const document = await input.repository.upsertDocument(documentInput);
   const existingChunks = await input.repository.listCurrentChunks({
     documentId: document.id,
     projectId: input.projectId,
   });
 
   if (chunksMatch(existingChunks, nextSignatures)) {
+    await input.repository.activateDocumentVersion({
+      document: documentInput,
+      documentId: document.id,
+    });
     return {
       chunkCount: nextSignatures.length,
       decision: 'unchanged',
@@ -393,6 +403,7 @@ async function chunkAndEmbedTarget(input: {
   await input.repository.replaceDocumentChunks({
     archiveReason: archiveReason(existingChunks, chunks, input.embeddingProvider.model),
     chunks,
+    document: documentInput,
     documentId: document.id,
     projectId: input.projectId,
     rawDocumentId: input.target.rawDocumentId,

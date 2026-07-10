@@ -135,6 +135,7 @@ class PostgresRawParseRepository implements RawParseRepository {
         jsonb_build_object(
           'contentHash', rd.content_hash,
           'id', rd.id::text,
+          'logicalSourceId', rd.logical_source_id,
           'metadata', rd.metadata,
           'mimeType', rd.mime_type,
           'projectId', rd.project_id::text,

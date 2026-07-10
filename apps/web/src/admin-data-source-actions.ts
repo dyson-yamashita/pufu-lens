@@ -521,8 +521,12 @@ class AdminCollectionRepository implements CollectionRepository {
     return this.lookupProjectRecordBySlug(slug);
   }
 
-  async findDataSources(projectId: string, sourceType?: SourceType): Promise<DataSourceRecord[]> {
-    if (!sourceType) {
+  async findDataSources(
+    projectId: string,
+    sourceType?: SourceType,
+    dataSourceId?: string,
+  ): Promise<DataSourceRecord[]> {
+    if (!sourceType || (dataSourceId !== undefined && dataSourceId !== this.dataSourceId)) {
       return [];
     }
     return this.listCollectionDataSourceRecords(projectId, sourceType);
@@ -534,6 +538,29 @@ class AdminCollectionRepository implements CollectionRepository {
     sourceType: SourceType;
   }): Promise<RawDocumentRecord | undefined> {
     return this.lookupCollectionRawDocumentRecord(input);
+  }
+
+  async lookupRawDocumentVersion(input: {
+    logicalSourceId: string;
+    projectId: string;
+    sourceType: SourceType;
+    sourceVersion: string;
+  }): Promise<RawDocumentRecord | undefined> {
+    const rows = (await this.sql`
+      SELECT
+        id::text AS id,
+        ingest_status AS "ingestStatus",
+        logical_source_id AS "logicalSourceId",
+        source_id AS "sourceId",
+        source_type AS "sourceType",
+        source_version AS "sourceVersion"
+      FROM public.raw_documents
+      WHERE project_id = ${input.projectId}
+        AND source_type = ${input.sourceType}
+        AND logical_source_id = ${input.logicalSourceId}
+        AND source_version = ${input.sourceVersion}
+    `) as readonly unknown[];
+    return parseOptionalAdminActionRow(rows, parseAdminActionRawDocumentRecordRow);
   }
 
   async findSameHashCandidates(input: {
@@ -652,19 +679,8 @@ class AdminCollectionRepository implements CollectionRepository {
         'fetched',
         ${this.sql.json(input.metadata as postgres.JSONValue)}
       )
-      ON CONFLICT (project_id, source_type, source_id)
+      ON CONFLICT (project_id, source_type, logical_source_id, source_version)
       DO UPDATE SET
-        logical_source_id = EXCLUDED.logical_source_id,
-        source_version = EXCLUDED.source_version,
-        source_uri = EXCLUDED.source_uri,
-        storage_uri = EXCLUDED.storage_uri,
-        mime_type = EXCLUDED.mime_type,
-        byte_size = EXCLUDED.byte_size,
-        content_hash = EXCLUDED.content_hash,
-        ingest_status = 'fetched',
-        ingest_error = null,
-        hold_reason = null,
-        metadata = EXCLUDED.metadata,
         updated_at = now()
       RETURNING
         id::text AS id,
@@ -719,7 +735,14 @@ class AdminCollectionRepository implements CollectionRepository {
         ${input.targetId},
         ${input.targetUri},
         'pending',
-        'web-url-collection'
+        (
+          SELECT CASE
+            WHEN source_type = 'web' THEN 'web-url-collection'
+            ELSE source_type || '-collection'
+          END
+          FROM public.raw_documents
+          WHERE id = ${input.rawDocumentId}
+        )
       )
       ON CONFLICT (project_id, raw_document_id)
       DO UPDATE SET
@@ -741,6 +764,23 @@ class AdminCollectionRepository implements CollectionRepository {
       SET last_checked_at = now(),
           updated_at = now()
       WHERE id = ${dataSourceId}
+    `;
+  }
+
+  async completeDataSourceSync(input: {
+    dataSourceId: string;
+    projectId: string;
+    syncCursor: Record<string, unknown>;
+  }): Promise<void> {
+    await this.sql`
+      UPDATE public.data_sources
+      SET
+        last_checked_at = now(),
+        last_sync_succeeded_at = now(),
+        sync_cursor = ${this.sql.json(input.syncCursor as postgres.JSONValue)},
+        updated_at = now()
+      WHERE id = ${input.dataSourceId}
+        AND project_id = ${input.projectId}
     `;
   }
 }
@@ -789,6 +829,7 @@ async function collectProjectDataSource(
     }
     if (dataSource.source_type === 'gmail') {
       await collectGmailSource({
+        dataSourceId,
         projectSlug,
         repository: new AdminCollectionRepository(sql, dataSourceId),
         storage: createCollectionStorageFromEnv(),
@@ -797,6 +838,7 @@ async function collectProjectDataSource(
       return;
     }
     await collectDriveSource({
+      dataSourceId,
       projectSlug,
       repository: new AdminCollectionRepository(sql, dataSourceId),
       storage: createCollectionStorageFromEnv(),
@@ -816,6 +858,7 @@ async function collectProjectDataSource(
       );
     }
     await collectGitHubSource({
+      dataSourceId,
       projectSlug,
       repository: new AdminCollectionRepository(sql, dataSourceId),
       storage: createCollectionStorageFromEnv(),
@@ -824,6 +867,7 @@ async function collectProjectDataSource(
     return;
   }
   await collectWebUrlSource({
+    dataSourceId,
     projectSlug,
     repository: new AdminCollectionRepository(sql, dataSourceId),
     storage: createCollectionStorageFromEnv(),

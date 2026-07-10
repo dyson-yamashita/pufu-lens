@@ -42,6 +42,7 @@ export interface ParseProjectRecord {
 export interface ParseRawDocumentRecord {
   contentHash: string;
   id: string;
+  logicalSourceId: string;
   metadata: Record<string, unknown>;
   mimeType: string;
   projectId: string;
@@ -337,13 +338,14 @@ async function buildParsedDocument(input: {
     sourceUri: input.rawDocument.sourceUri,
     storageUri: input.rawDocument.storageUri,
   };
-  const parsed = validateParsedDocument(
-    await parseRawContent(
+  const parsed = validateParsedDocument({
+    ...(await parseRawContent(
       { raw: rawContract, sourceType: input.rawDocument.sourceType },
       input.rawText,
       { topicExtractionAgent: input.topicExtractionAgent },
-    ),
-  );
+    )),
+    sourceId: input.rawDocument.logicalSourceId,
+  });
 
   return {
     ...parsed,

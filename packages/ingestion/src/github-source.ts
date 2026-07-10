@@ -6,7 +6,11 @@ import type {
   DataSourceRecord,
   RawDocumentInput,
 } from './collection-pipeline.js';
-import { normalizeSourceId } from './collection-pipeline.js';
+import {
+  completedSyncCursor,
+  incrementalScanSince,
+  normalizeSourceId,
+} from './collection-pipeline.js';
 import { fetchWithRetry } from './http-retry.js';
 import { githubLogicalSourceId, githubSourceVersion } from './source-version-identity.js';
 
@@ -84,6 +88,7 @@ export interface GitHubRawCandidate {
 }
 
 export interface CollectGitHubSourceOptions {
+  dataSourceId?: string;
   diffFetcher?: GitHubDiffFetcher;
   dryRun?: boolean;
   fetcher?: GitHubFetcher;
@@ -123,7 +128,11 @@ export async function collectGitHubSource(
 
   const fetcher = options.fetcher ?? fetchGitHubJson;
   const diffFetcher = options.diffFetcher ?? fetchGitHubText;
-  const dataSources = await options.repository.findDataSources(project.id, 'github');
+  const dataSources = await options.repository.findDataSources(
+    project.id,
+    'github',
+    options.dataSourceId,
+  );
   const decisions: CollectGitHubSourceResult['decisions'] = [];
   let remainingLimit = options.limit;
 
@@ -132,10 +141,16 @@ export async function collectGitHubSource(
       break;
     }
 
+    const decisionStart = decisions.length;
+    const scanLimit = remainingLimit;
+    let scanHadFailure = false;
     const candidates = await scanGitHubDataSource({
       dataSource,
       fetcher,
       limit: remainingLimit,
+      onFailure: () => {
+        scanHadFailure = true;
+      },
       token: options.token,
     });
 
@@ -147,11 +162,40 @@ export async function collectGitHubSource(
         remainingLimit -= 1;
       }
 
-      const sourceId = githubCandidateSourceId(candidate);
-      const existing = await options.repository.lookupRawDocument({
+      const fallbackSourceId = githubCandidateSourceId(candidate);
+      let rawCandidate: GitHubRawCandidate;
+      try {
+        rawCandidate = await buildGitHubRawCandidate({
+          candidate,
+          dataSource,
+          diffFetcher,
+          fetcher,
+          projectId: project.id,
+          projectSlug: project.slug,
+          token: options.token,
+        });
+      } catch (error) {
+        const sanitizedError = sanitizeError(error);
+        console.error(
+          `Failed to build raw GitHub candidate for ${redactGitHubUri(
+            candidate.issue.html_url,
+          )}: ${sanitizedError}`,
+        );
+        decisions.push({
+          dataSourceId: dataSource.id,
+          decision: 'failed',
+          error: sanitizedError,
+          sourceId: fallbackSourceId,
+          sourceType: 'github',
+        });
+        continue;
+      }
+      const sourceId = rawCandidate.raw.sourceId;
+      const existing = await options.repository.lookupRawDocumentVersion({
+        logicalSourceId: rawCandidate.raw.logicalSourceId,
         projectId: project.id,
-        sourceId,
         sourceType: 'github',
+        sourceVersion: rawCandidate.raw.sourceVersion,
       });
 
       if (existing) {
@@ -193,34 +237,6 @@ export async function collectGitHubSource(
         decisions.push({
           dataSourceId: dataSource.id,
           decision: 'would_collect',
-          sourceId,
-          sourceType: 'github',
-        });
-        continue;
-      }
-
-      let rawCandidate: GitHubRawCandidate;
-      try {
-        rawCandidate = await buildGitHubRawCandidate({
-          candidate,
-          dataSource,
-          diffFetcher,
-          fetcher,
-          projectId: project.id,
-          projectSlug: project.slug,
-          token: options.token,
-        });
-      } catch (error) {
-        const sanitizedError = sanitizeError(error);
-        console.error(
-          `Failed to build raw GitHub candidate for ${redactGitHubUri(
-            candidate.issue.html_url,
-          )}: ${sanitizedError}`,
-        );
-        decisions.push({
-          dataSourceId: dataSource.id,
-          decision: 'failed',
-          error: sanitizedError,
           sourceId,
           sourceType: 'github',
         });
@@ -270,6 +286,17 @@ export async function collectGitHubSource(
 
     if (!options.dryRun) {
       await options.repository.markDataSourceChecked(dataSource.id);
+      const scanFailed = decisions
+        .slice(decisionStart)
+        .some((decision) => decision.decision === 'failed');
+      const scanTruncated = scanLimit !== undefined && candidates.length >= scanLimit;
+      if (!scanFailed && !scanHadFailure && !scanTruncated) {
+        await options.repository.completeDataSourceSync({
+          dataSourceId: dataSource.id,
+          projectId: project.id,
+          syncCursor: completedSyncCursor('github'),
+        });
+      }
     }
   }
 
@@ -289,6 +316,7 @@ export async function scanGitHubDataSource(input: {
   dataSource: DataSourceRecord;
   fetcher: GitHubFetcher;
   limit?: number;
+  onFailure?: () => void;
   token?: string;
 }): Promise<GitHubCandidate[]> {
   const { dataSource, fetcher, limit, token } = input;
@@ -302,7 +330,7 @@ export async function scanGitHubDataSource(input: {
   const includeStandaloneIssues = readBoolean(dataSource.config.includeIssues, false);
   const pullRequestState = readState(dataSource.config.pullRequestState ?? dataSource.config.state);
   const issueState = readIssueListState(dataSource.config.issueState ?? dataSource.config.state);
-  const since = readString(dataSource.ingestWindow.since);
+  const since = incrementalScanSince(dataSource);
   const candidates: GitHubCandidate[] = [];
   const seenSourceIds = new Set<string>();
 
@@ -339,6 +367,7 @@ export async function scanGitHubDataSource(input: {
           config: dataSource.config,
           fetcher,
           limit: remainingLimit,
+          onFailure: input.onFailure,
           pullRequests,
           repository,
           seenSourceIds,
@@ -478,6 +507,7 @@ async function listLinkedIssues(input: {
   config: Record<string, unknown>;
   fetcher: GitHubFetcher;
   limit?: number;
+  onFailure?: () => void;
   pullRequests: GitHubPullRequestResponse[];
   repository: string;
   seenSourceIds: Set<string>;
@@ -512,6 +542,7 @@ async function listLinkedIssues(input: {
         }),
       );
     } catch (error) {
+      input.onFailure?.();
       console.error(
         `Failed to fetch linked GitHub issue ${ref.repository}#${ref.number}: ${sanitizeError(
           error,
@@ -611,13 +642,14 @@ export async function buildGitHubRawCandidate(input: {
   };
   const body = `${JSON.stringify(rawDocument, null, 2)}\n`;
   const contentHash = sha256Hex(body);
-  const sourceId = githubCandidateSourceId(candidate);
   const fetchedAt = new Date().toISOString();
   const logicalSourceId = githubLogicalSourceId({
     kind,
     number: issue.number,
     repository: candidate.repository,
   });
+  const sourceVersion = githubSourceVersion(issue.updated_at, contentHash);
+  const sourceId = `${logicalSourceId}:${sourceVersion}`;
 
   return {
     body,
@@ -641,7 +673,7 @@ export async function buildGitHubRawCandidate(input: {
       sourceId,
       sourceType: 'github',
       sourceUri: issue.html_url,
-      sourceVersion: githubSourceVersion(issue.updated_at, contentHash),
+      sourceVersion,
       storageUri: `${input.projectSlug}/raw/github/${safeStorageSegment(sourceId)}.json`,
     },
   };
