@@ -32,13 +32,13 @@ export function buildTimelinePositions(
       nodeDates.set(node.id, sortValue);
     }
   }
+  const connectedSortValues = buildConnectedTimelineSortValues(nodes, adjacency, nodeDates);
 
   const orderedNodes = nodes
     .map((node, index) => ({
       index,
       node,
-      sortValue:
-        nodeDates.get(node.id) ?? connectedTimelineSortValue(node.id, adjacency, nodeDates),
+      sortValue: nodeDates.get(node.id) ?? connectedSortValues.get(node.id),
     }))
     .sort((left, right) => {
       const leftSort = left.sortValue ?? Number.POSITIVE_INFINITY;
@@ -57,8 +57,7 @@ export function buildTimelinePositions(
   const laneUsage = new Map<number, number>();
   const positions = new Map<string, GraphTimelinePosition>();
   orderedNodes.forEach(({ node }, index) => {
-    const timestamp =
-      nodeDates.get(node.id) ?? connectedTimelineSortValue(node.id, adjacency, nodeDates);
+    const timestamp = nodeDates.get(node.id) ?? connectedSortValues.get(node.id);
     const laneKey = timestamp ?? Number.POSITIVE_INFINITY;
     const lane = laneUsage.get(laneKey) ?? 0;
     laneUsage.set(laneKey, lane + 1);
@@ -114,25 +113,45 @@ function buildTimelineAdjacency(
     if (!nodesById.has(edge.source) || !nodesById.has(edge.target)) {
       continue;
     }
-    adjacency.set(edge.source, [...(adjacency.get(edge.source) ?? []), edge.target]);
-    adjacency.set(edge.target, [...(adjacency.get(edge.target) ?? []), edge.source]);
+    appendTimelineNeighbor(adjacency, edge.source, edge.target);
+    appendTimelineNeighbor(adjacency, edge.target, edge.source);
   }
   return adjacency;
 }
 
-function connectedTimelineSortValue(
+function appendTimelineNeighbor(
+  adjacency: Map<string, string[]>,
   nodeId: string,
+  neighborId: string,
+): void {
+  const neighbors = adjacency.get(nodeId);
+  if (neighbors) {
+    neighbors.push(neighborId);
+    return;
+  }
+  adjacency.set(nodeId, [neighborId]);
+}
+
+function buildConnectedTimelineSortValues(
+  nodes: readonly GraphViewerNode[],
   adjacency: ReadonlyMap<string, readonly string[]>,
   nodeDates: ReadonlyMap<string, number>,
-): number | undefined {
-  const connectedDates = (adjacency.get(nodeId) ?? [])
-    .map((connectedId) => nodeDates.get(connectedId))
-    .filter((value): value is number => value !== undefined)
-    .sort((left, right) => left - right);
-
-  if (connectedDates.length === 0) {
-    return undefined;
+): Map<string, number> {
+  const connectedSortValues = new Map<string, number>();
+  for (const node of nodes) {
+    if (nodeDates.has(node.id)) {
+      continue;
+    }
+    const connectedDates = (adjacency.get(node.id) ?? [])
+      .map((connectedId) => nodeDates.get(connectedId))
+      .filter((value): value is number => value !== undefined)
+      .sort((left, right) => left - right);
+    if (connectedDates.length > 0) {
+      connectedSortValues.set(
+        node.id,
+        connectedDates[Math.floor((connectedDates.length - 1) / 2)] as number,
+      );
+    }
   }
-
-  return connectedDates[Math.floor((connectedDates.length - 1) / 2)];
+  return connectedSortValues;
 }
