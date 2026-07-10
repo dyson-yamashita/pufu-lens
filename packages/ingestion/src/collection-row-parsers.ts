@@ -111,7 +111,7 @@ function requireCollectionSourceType(
   context: string,
   fieldName: string,
 ): SourceType {
-  if (value === 'drive' || value === 'github' || value === 'gmail' || value === 'web') {
+  if (typeof value === 'string' && isCollectionSourceType(value)) {
     return value;
   }
   throw new Error(`Invalid ${context} field: ${fieldName}`);
@@ -122,16 +122,18 @@ function requireRawIngestStatus(
   context: string,
   fieldName: string,
 ): RawDocumentRecord['ingestStatus'] {
-  if (
-    value === 'fetched' ||
-    value === 'held' ||
-    value === 'parsed' ||
-    value === 'indexed' ||
-    value === 'failed'
-  ) {
+  if (typeof value === 'string' && isRawIngestStatus(value)) {
     return value;
   }
   throw new Error(`Invalid ${context} field: ${fieldName}`);
+}
+
+function isCollectionSourceType(value: string): value is SourceType {
+  return (COLLECTION_SOURCE_TYPES as readonly string[]).includes(value);
+}
+
+function isRawIngestStatus(value: string): value is RawDocumentRecord['ingestStatus'] {
+  return (RAW_INGEST_STATUSES as readonly string[]).includes(value);
 }
 
 function requireNullableIsoTimestamp(
@@ -146,12 +148,11 @@ function requireNullableIsoTimestamp(
     return value.toISOString();
   }
   if (typeof value === 'string') {
-    if (Number.isNaN(Date.parse(value))) {
+    const parsed = Date.parse(value);
+    if (Number.isNaN(parsed)) {
       throw new Error(`Invalid ${context} field: ${fieldName}`);
     }
-    return value;
+    return new Date(parsed).toISOString();
   }
   throw new Error(`Invalid ${context} field: ${fieldName}`);
 }
-
-export { COLLECTION_SOURCE_TYPES, RAW_INGEST_STATUSES };

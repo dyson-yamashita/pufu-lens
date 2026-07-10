@@ -54,6 +54,14 @@ test('parseCollectionDataSourceRecordRow normalizes Date timestamps', () => {
   assert.equal(parsed.lastSyncSucceededAt, syncedAt.toISOString());
 });
 
+test('parseCollectionDataSourceRecordRow normalizes string timestamps to UTC ISO', () => {
+  const parsed = parseCollectionDataSourceRecordRow({
+    ...validDataSourceRow,
+    lastSyncSucceededAt: '2026-05-01T12:00:00+09:00',
+  });
+  assert.equal(parsed.lastSyncSucceededAt, '2026-05-01T03:00:00.000Z');
+});
+
 test('parseCollectionDataSourceRecordRow rejects malformed sync cursor values', () => {
   for (const syncCursor of ['cursor', ['page'], null, undefined] as const) {
     assert.throws(
