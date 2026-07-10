@@ -6,8 +6,10 @@ import cytoscape, {
   type NodeSingular,
   type StylesheetJson,
 } from 'cytoscape';
-import { Maximize2, Minimize2, RotateCcw, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { Maximize2, Minimize2, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { GraphDetailsDialog } from './graph-details-dialog';
+import { PropertyList } from './graph-property-list';
 import type {
   GraphPresetId,
   GraphPresetSummary,
@@ -247,12 +249,12 @@ function GraphCanvas({
 }) {
   const [containerElement, setContainerElement] = useState<HTMLDivElement | null>(null);
   const canvasWrapRef = useRef<HTMLDivElement | null>(null);
+  const [canvasWrapElement, setCanvasWrapElement] = useState<HTMLDivElement | null>(null);
   const cytoscapeRef = useRef<Core | null>(null);
-  const detailsDialogRef = useRef<HTMLDialogElement | null>(null);
   const isMaximizedRef = useRef(false);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
   const [isFallbackFullscreen, setIsFallbackFullscreen] = useState(false);
-  const [modalSelection, setModalSelection] = useState<GraphSelection | undefined>();
+  const [floatingSelection, setFloatingSelection] = useState<GraphSelection | undefined>();
   const [containerWidth, setContainerWidth] = useState(0);
   const isMaximized = isNativeFullscreen || isFallbackFullscreen;
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
@@ -286,19 +288,21 @@ function GraphCanvas({
     }, 0);
   }, []);
 
+  const setCanvasWrap = useCallback((element: HTMLDivElement | null) => {
+    canvasWrapRef.current = element;
+    setCanvasWrapElement(element);
+  }, []);
+
   const selectGraphItem = useCallback(
     (selection: GraphSelection | undefined) => {
       onSelect(selection);
-      setModalSelection(graphDetailsModalSelection(isMaximizedRef.current, selection));
+      setFloatingSelection(graphDetailsModalSelection(isMaximizedRef.current, selection));
     },
     [onSelect],
   );
 
-  const closeDetailsDialog = useCallback(() => {
-    setModalSelection(undefined);
-    if (detailsDialogRef.current?.open) {
-      detailsDialogRef.current.close();
-    }
+  const closeFloatingDetails = useCallback(() => {
+    setFloatingSelection(undefined);
   }, []);
 
   const toggleFullscreen = useCallback(async () => {
@@ -351,41 +355,36 @@ function GraphCanvas({
   useEffect(() => {
     document.body.classList.toggle('graph-fallback-fullscreen-active', isFallbackFullscreen);
     resizeGraph();
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !detailsDialogRef.current?.open) {
-        setIsFallbackFullscreen(false);
-      }
-    };
-
-    if (isFallbackFullscreen) {
-      document.addEventListener('keydown', handleKeyDown);
-    }
-
     return () => {
       document.body.classList.remove('graph-fallback-fullscreen-active');
-      document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isFallbackFullscreen, resizeGraph]);
 
   useEffect(() => {
-    const dialog = detailsDialogRef.current;
-    if (!dialog) {
+    if (!isMaximized) {
       return;
     }
-    if (modalSelection && isMaximized && !dialog.open) {
-      dialog.showModal();
-      return;
-    }
-    if ((!modalSelection || !isMaximized) && dialog.open) {
-      dialog.close();
-    }
-  }, [isMaximized, modalSelection]);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+      if (floatingSelection) {
+        event.preventDefault();
+        setFloatingSelection(undefined);
+        return;
+      }
+      if (isFallbackFullscreen) {
+        setIsFallbackFullscreen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [floatingSelection, isFallbackFullscreen, isMaximized]);
 
   useEffect(() => {
     isMaximizedRef.current = isMaximized;
     if (!isMaximized) {
-      setModalSelection(undefined);
+      setFloatingSelection(undefined);
     }
   }, [isMaximized]);
 
@@ -488,7 +487,7 @@ function GraphCanvas({
           : 'graph-canvas-wrap'
       }
       data-testid="graph-canvas-wrap"
-      ref={canvasWrapRef}
+      ref={setCanvasWrap}
     >
       {nodes.length ? (
         <>
@@ -543,33 +542,12 @@ function GraphCanvas({
               )}
             </button>
           </div>
-          {modalSelection ? (
-            <dialog
-              aria-labelledby="graph-details-dialog-title"
-              className="modal-dialog graph-details-dialog"
-              data-testid="graph-details-dialog"
-              onClose={() => setModalSelection(undefined)}
-              ref={detailsDialogRef}
-            >
-              <div className="modal-card graph-details-modal-card">
-                <button
-                  aria-label="Detailsを閉じる"
-                  className="modal-close-button"
-                  data-testid="graph-details-dialog-close-button"
-                  onClick={closeDetailsDialog}
-                  type="button"
-                >
-                  <X aria-hidden="true" size={18} />
-                </button>
-                <div className="graph-details-modal-header">
-                  <h2 id="graph-details-dialog-title">Details</h2>
-                  <p className="mono">{modalSelection.type}</p>
-                </div>
-                <div className="graph-details-modal-scroll">
-                  <PropertyList item={modalSelection.item} />
-                </div>
-              </div>
-            </dialog>
+          {floatingSelection ? (
+            <GraphDetailsDialog
+              onClose={closeFloatingDetails}
+              selection={floatingSelection}
+              wrapperElement={canvasWrapElement}
+            />
           ) : null}
         </>
       ) : (
@@ -665,86 +643,6 @@ function truncateGraphLabel(value: string): string {
     return value;
   }
   return `${characters.slice(0, 8).join('')}...${characters.slice(-8).join('')}`;
-}
-
-function PropertyList({ item }: { readonly item: GraphViewerEdge | GraphViewerNode }) {
-  const propertyRows = Object.entries(item.properties).sort(([left], [right]) =>
-    left.localeCompare(right),
-  );
-
-  return (
-    <dl className="detail-list stacked">
-      <div>
-        <dt>ID</dt>
-        <dd className="mono">{item.id}</dd>
-      </div>
-      <div>
-        <dt>Label</dt>
-        <dd>{item.label}</dd>
-      </div>
-      {'source' in item ? (
-        <>
-          <div>
-            <dt>Source</dt>
-            <dd className="mono">{item.source}</dd>
-          </div>
-          <div>
-            <dt>Target</dt>
-            <dd className="mono">{item.target}</dd>
-          </div>
-        </>
-      ) : null}
-      <div>
-        <dt>Properties</dt>
-        <dd>
-          {propertyRows.length ? (
-            <div className="graph-property-table-frame">
-              <table className="graph-property-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Property</th>
-                    <th scope="col">Value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {propertyRows.map(([key, value]) => (
-                    <tr key={key}>
-                      <th className="mono" scope="row">
-                        {key}
-                      </th>
-                      <td className="mono">{formatPropertyValue(value)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="notice">property はありません。</p>
-          )}
-        </dd>
-      </div>
-    </dl>
-  );
-}
-
-function formatPropertyValue(value: unknown): string {
-  if (typeof value === 'string') {
-    return value;
-  }
-  if (
-    value === null ||
-    typeof value === 'number' ||
-    typeof value === 'boolean' ||
-    typeof value === 'bigint' ||
-    typeof value === 'undefined'
-  ) {
-    return String(value);
-  }
-  try {
-    return JSON.stringify(value, null, 2) ?? String(value);
-  } catch {
-    return String(value);
-  }
 }
 
 function readGraphTheme(container: HTMLElement) {
