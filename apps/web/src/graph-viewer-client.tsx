@@ -6,7 +6,7 @@ import cytoscape, {
   type NodeSingular,
   type StylesheetJson,
 } from 'cytoscape';
-import { Maximize2, Minimize2, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import { Maximize2, Minimize2, RotateCcw, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   GraphPresetId,
@@ -15,6 +15,7 @@ import type {
   GraphViewerEdge,
   GraphViewerNode,
 } from './graph-viewer';
+import { graphDetailsModalSelection } from './graph-viewer-interactions';
 import { buildTimelinePositions } from './graph-viewer-layout';
 
 type GraphSelection =
@@ -247,8 +248,11 @@ function GraphCanvas({
   const [containerElement, setContainerElement] = useState<HTMLDivElement | null>(null);
   const canvasWrapRef = useRef<HTMLDivElement | null>(null);
   const cytoscapeRef = useRef<Core | null>(null);
+  const detailsDialogRef = useRef<HTMLDialogElement | null>(null);
+  const isMaximizedRef = useRef(false);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
   const [isFallbackFullscreen, setIsFallbackFullscreen] = useState(false);
+  const [modalSelection, setModalSelection] = useState<GraphSelection | undefined>();
   const [containerWidth, setContainerWidth] = useState(0);
   const isMaximized = isNativeFullscreen || isFallbackFullscreen;
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
@@ -280,6 +284,21 @@ function GraphCanvas({
         cy.resize();
       }
     }, 0);
+  }, []);
+
+  const selectGraphItem = useCallback(
+    (selection: GraphSelection | undefined) => {
+      onSelect(selection);
+      setModalSelection(graphDetailsModalSelection(isMaximizedRef.current, selection));
+    },
+    [onSelect],
+  );
+
+  const closeDetailsDialog = useCallback(() => {
+    setModalSelection(undefined);
+    if (detailsDialogRef.current?.open) {
+      detailsDialogRef.current.close();
+    }
   }, []);
 
   const toggleFullscreen = useCallback(async () => {
@@ -334,7 +353,7 @@ function GraphCanvas({
     resizeGraph();
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !detailsDialogRef.current?.open) {
         setIsFallbackFullscreen(false);
       }
     };
@@ -348,6 +367,27 @@ function GraphCanvas({
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isFallbackFullscreen, resizeGraph]);
+
+  useEffect(() => {
+    const dialog = detailsDialogRef.current;
+    if (!dialog) {
+      return;
+    }
+    if (modalSelection && isMaximized && !dialog.open) {
+      dialog.showModal();
+      return;
+    }
+    if ((!modalSelection || !isMaximized) && dialog.open) {
+      dialog.close();
+    }
+  }, [isMaximized, modalSelection]);
+
+  useEffect(() => {
+    isMaximizedRef.current = isMaximized;
+    if (!isMaximized) {
+      setModalSelection(undefined);
+    }
+  }, [isMaximized]);
 
   useEffect(() => {
     const container = containerElement;
@@ -412,22 +452,22 @@ function GraphCanvas({
     cytoscapeRef.current = cy;
     cy.on('tap', 'node', (event) => {
       const node = nodesById.get((event.target as NodeSingular).id());
-      onSelect(node ? { item: node, type: 'node' } : undefined);
+      selectGraphItem(node ? { item: node, type: 'node' } : undefined);
     });
     cy.on('tap', 'edge', (event) => {
       const edge = edgesById.get((event.target as EdgeSingular).id());
-      onSelect(edge ? { item: edge, type: 'edge' } : undefined);
+      selectGraphItem(edge ? { item: edge, type: 'edge' } : undefined);
     });
     cy.on('tap', (event) => {
       if (event.target === cy) {
-        onSelect(undefined);
+        selectGraphItem(undefined);
       }
     });
     return () => {
       cytoscapeRef.current = null;
       cy.destroy();
     };
-  }, [containerElement, edges, edgesById, nodes, nodesById, onSelect]);
+  }, [containerElement, edges, edgesById, nodes, nodesById, selectGraphItem]);
 
   useEffect(() => {
     const container = containerElement;
@@ -503,6 +543,34 @@ function GraphCanvas({
               )}
             </button>
           </div>
+          {modalSelection ? (
+            <dialog
+              aria-labelledby="graph-details-dialog-title"
+              className="modal-dialog graph-details-dialog"
+              data-testid="graph-details-dialog"
+              onClose={() => setModalSelection(undefined)}
+              ref={detailsDialogRef}
+            >
+              <div className="modal-card graph-details-modal-card">
+                <button
+                  aria-label="Detailsを閉じる"
+                  className="modal-close-button"
+                  data-testid="graph-details-dialog-close-button"
+                  onClick={closeDetailsDialog}
+                  type="button"
+                >
+                  <X aria-hidden="true" size={18} />
+                </button>
+                <div className="graph-details-modal-header">
+                  <h2 id="graph-details-dialog-title">Details</h2>
+                  <p className="mono">{modalSelection.type}</p>
+                </div>
+                <div className="graph-details-modal-scroll">
+                  <PropertyList item={modalSelection.item} />
+                </div>
+              </div>
+            </dialog>
+          ) : null}
         </>
       ) : (
         <div className="graph-empty" data-testid="graph-empty">
