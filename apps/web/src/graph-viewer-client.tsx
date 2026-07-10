@@ -15,6 +15,7 @@ import type {
   GraphViewerEdge,
   GraphViewerNode,
 } from './graph-viewer';
+import { buildTimelinePositions } from './graph-viewer-layout';
 
 type GraphSelection =
   | { readonly item: GraphViewerEdge; readonly type: 'edge' }
@@ -29,12 +30,6 @@ const GRAPH_LAYOUT_OPTIONS: readonly { readonly id: GraphLayoutId; readonly labe
   { id: 'timeline', label: 'Timeline' },
   { id: 'grid', label: 'Grid' },
 ];
-const TIMELINE_COLUMN_WIDTH = 180;
-const TIMELINE_MIN_COLUMNS = 4;
-const TIMELINE_MAX_COLUMNS = 24;
-const TIMELINE_ROW_HEIGHT = 170;
-const TIMELINE_ALTERNATE_OFFSET = 48;
-const TIMELINE_HORIZONTAL_PADDING = 112;
 
 /**
  * Renders the graph query workspace.
@@ -409,7 +404,7 @@ function GraphCanvas({
             data: { id: edge.id, label: edge.label, source: edge.source, target: edge.target },
           })),
       ],
-      layout: buildGraphLayoutOptions('force', nodes, edges, container.clientWidth),
+      layout: buildGraphLayoutOptions('force', nodes, edges),
       maxZoom: 4,
       minZoom: 0.08,
       style: buildGraphStyles(graphTheme),
@@ -524,7 +519,6 @@ function GraphCanvas({
  * @param layoutId - The layout to apply.
  * @param nodes - The graph nodes used to compute layout positions.
  * @param edges - The graph edges used to compute layout positions.
- * @param containerWidth - The available width for layout calculations.
  * @param fit - Whether Cytoscape should fit the graph to the viewport.
  * @returns The Cytoscape layout configuration.
  */
@@ -532,24 +526,25 @@ function buildGraphLayoutOptions(
   layoutId: GraphLayoutId,
   nodes: readonly GraphViewerNode[],
   edges: readonly GraphViewerEdge[],
-  containerWidth: number,
+  containerWidth = 0,
   fit = true,
 ) {
+  const padding = Math.max(40, Math.min(72, Math.round(containerWidth * 0.05) || 56));
   if (layoutId === 'grid') {
     return {
       name: 'grid',
       animate: false,
       fit,
       nodeDimensionsIncludeLabels: true,
-      padding: 56,
+      padding,
     };
   }
   if (layoutId === 'timeline') {
-    const positions = buildTimelinePositions(nodes, edges, containerWidth);
+    const positions = buildTimelinePositions(nodes, edges);
     return {
       name: 'preset',
       fit,
-      padding: 56,
+      padding,
       positions: (node: NodeSingular) => positions.get(node.id()) ?? { x: 0, y: 0 },
     };
   }
@@ -564,67 +559,8 @@ function buildGraphLayoutOptions(
     nodeOverlap: 64,
     nodeRepulsion: 220000,
     numIter: 2000,
-    padding: 56,
+    padding,
   };
-}
-
-/**
- * Assigns timeline layout positions to graph nodes.
- *
- * @param nodes - The nodes to position
- * @param edges - The edges used to adjust spacing for connected nodes
- * @param containerWidth - The available width for determining the column count
- * @returns A map from node ID to its timeline position
- */
-function buildTimelinePositions(
-  nodes: readonly GraphViewerNode[],
-  edges: readonly GraphViewerEdge[],
-  containerWidth: number,
-): Map<string, { readonly x: number; readonly y: number }> {
-  const connectedCounts = new Map<string, number>();
-  for (const edge of edges) {
-    connectedCounts.set(edge.source, (connectedCounts.get(edge.source) ?? 0) + 1);
-    connectedCounts.set(edge.target, (connectedCounts.get(edge.target) ?? 0) + 1);
-  }
-  const orderedNodes = nodes
-    .map((node, index) => ({ index, node, sortValue: graphNodeSortValue(node) }))
-    .sort((left, right) => {
-      const leftSort = left.sortValue ?? Number.POSITIVE_INFINITY;
-      const rightSort = right.sortValue ?? Number.POSITIVE_INFINITY;
-      if (leftSort !== rightSort) {
-        return leftSort - rightSort;
-      }
-      return left.node.label.localeCompare(right.node.label) || left.index - right.index;
-    });
-  const positions = new Map<string, { readonly x: number; readonly y: number }>();
-  const columnCount = timelineColumnCount(containerWidth);
-  orderedNodes.forEach(({ node }, index) => {
-    const row = Math.floor(index / columnCount);
-    const column = index % columnCount;
-    const degreeOffset = Math.min(connectedCounts.get(node.id) ?? 0, 6) * 10;
-    positions.set(node.id, {
-      x: column * TIMELINE_COLUMN_WIDTH,
-      y:
-        row * TIMELINE_ROW_HEIGHT +
-        (index % 2 === 0 ? 0 : TIMELINE_ALTERNATE_OFFSET) -
-        degreeOffset,
-    });
-  });
-  return positions;
-}
-
-/**
- * Determines the number of columns used for the timeline layout.
- *
- * @param containerWidth - The available container width in pixels
- * @returns The clamped column count for the timeline layout
- */
-function timelineColumnCount(containerWidth: number): number {
-  const usableWidth = Math.max(containerWidth - TIMELINE_HORIZONTAL_PADDING, TIMELINE_COLUMN_WIDTH);
-  return Math.max(
-    TIMELINE_MIN_COLUMNS,
-    Math.min(TIMELINE_MAX_COLUMNS, Math.floor(usableWidth / TIMELINE_COLUMN_WIDTH)),
-  );
 }
 
 /**
@@ -647,38 +583,6 @@ function buildLimitOptions(preset: GraphPresetSummary | undefined): readonly num
   }
   options.add(maxLimit);
   return [...options].sort((left, right) => left - right);
-}
-
-/**
- * Produces a sort value from a node's date-related properties.
- *
- * @returns A numeric timestamp when a supported property contains a finite number or a parseable date string, or `undefined` when no suitable value is found.
- */
-function graphNodeSortValue(node: GraphViewerNode): number | undefined {
-  for (const key of [
-    'createdAt',
-    'created_at',
-    'updatedAt',
-    'updated_at',
-    'publishedAt',
-    'published_at',
-    'collectedAt',
-    'collected_at',
-    'timestamp',
-    'date',
-  ]) {
-    const value = node.properties[key];
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value;
-    }
-    if (typeof value === 'string') {
-      const timestamp = Date.parse(value);
-      if (Number.isFinite(timestamp)) {
-        return timestamp;
-      }
-    }
-  }
-  return undefined;
 }
 
 /**
