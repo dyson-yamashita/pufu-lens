@@ -571,8 +571,10 @@ class AdminCollectionRepository implements CollectionRepository {
         enabled,
         id::text AS id,
         ingest_window AS "ingestWindow",
+        last_sync_succeeded_at AS "lastSyncSucceededAt",
         project_id::text AS "projectId",
-        source_type AS "sourceType"
+        source_type AS "sourceType",
+        sync_cursor AS "syncCursor"
       FROM public.data_sources
       WHERE project_id = ${projectId}
         AND enabled = true
@@ -591,8 +593,10 @@ class AdminCollectionRepository implements CollectionRepository {
       SELECT
         id::text AS id,
         ingest_status AS "ingestStatus",
+        logical_source_id AS "logicalSourceId",
         source_id AS "sourceId",
-        source_type AS "sourceType"
+        source_type AS "sourceType",
+        source_version AS "sourceVersion"
       FROM public.raw_documents
       WHERE project_id = ${input.projectId}
         AND source_type = ${input.sourceType}
@@ -624,6 +628,8 @@ class AdminCollectionRepository implements CollectionRepository {
         project_id,
         source_type,
         source_id,
+        logical_source_id,
+        source_version,
         source_uri,
         storage_uri,
         mime_type,
@@ -636,6 +642,8 @@ class AdminCollectionRepository implements CollectionRepository {
         ${input.projectId},
         ${input.sourceType},
         ${input.sourceId},
+        ${input.logicalSourceId},
+        ${input.sourceVersion},
         ${input.sourceUri},
         ${input.storageUri},
         ${input.mimeType},
@@ -646,6 +654,8 @@ class AdminCollectionRepository implements CollectionRepository {
       )
       ON CONFLICT (project_id, source_type, source_id)
       DO UPDATE SET
+        logical_source_id = EXCLUDED.logical_source_id,
+        source_version = EXCLUDED.source_version,
         source_uri = EXCLUDED.source_uri,
         storage_uri = EXCLUDED.storage_uri,
         mime_type = EXCLUDED.mime_type,
@@ -659,8 +669,10 @@ class AdminCollectionRepository implements CollectionRepository {
       RETURNING
         id::text AS id,
         ingest_status AS "ingestStatus",
+        logical_source_id AS "logicalSourceId",
         source_id AS "sourceId",
-        source_type AS "sourceType"
+        source_type AS "sourceType",
+        source_version AS "sourceVersion"
     `) as readonly unknown[];
     return parseOptionalAdminActionRow(rows, parseAdminActionRawDocumentRecordRow);
   }

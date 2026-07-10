@@ -8,6 +8,7 @@ import type {
 } from './collection-pipeline.js';
 import { normalizeSourceId } from './collection-pipeline.js';
 import { fetchWithRetry } from './http-retry.js';
+import { githubLogicalSourceId, githubSourceVersion } from './source-version-identity.js';
 
 export interface GitHubIssueResponse {
   body?: string | null;
@@ -612,12 +613,18 @@ export async function buildGitHubRawCandidate(input: {
   const contentHash = sha256Hex(body);
   const sourceId = githubCandidateSourceId(candidate);
   const fetchedAt = new Date().toISOString();
+  const logicalSourceId = githubLogicalSourceId({
+    kind,
+    number: issue.number,
+    repository: candidate.repository,
+  });
 
   return {
     body,
     raw: {
       byteSize: Buffer.byteLength(body),
       contentHash,
+      logicalSourceId,
       metadata: {
         commentCount: rawDocument.comments.length,
         dataSourceId: input.dataSource.id,
@@ -634,6 +641,7 @@ export async function buildGitHubRawCandidate(input: {
       sourceId,
       sourceType: 'github',
       sourceUri: issue.html_url,
+      sourceVersion: githubSourceVersion(issue.updated_at, contentHash),
       storageUri: `${input.projectSlug}/raw/github/${safeStorageSegment(sourceId)}.json`,
     },
   };

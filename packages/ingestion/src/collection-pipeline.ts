@@ -5,6 +5,7 @@ import {
   loadIngestionFixtureCases,
   type SourceType,
 } from './ingestion-fixtures.js';
+import { deriveStoredSourceIdentity } from './source-version-identity.js';
 
 export interface CollectionObjectStorage {
   put(
@@ -31,26 +32,32 @@ export interface DataSourceRecord {
   enabled: boolean;
   id: string;
   ingestWindow: Record<string, unknown>;
+  lastSyncSucceededAt: string | null;
   projectId: string;
   sourceType: SourceType;
+  syncCursor: Record<string, unknown>;
 }
 
 export interface RawDocumentRecord {
   id: string;
   ingestStatus: 'fetched' | 'held' | 'parsed' | 'indexed' | 'failed';
+  logicalSourceId: string;
   sourceId: string;
   sourceType: SourceType;
+  sourceVersion: string;
 }
 
 export interface RawDocumentInput {
   byteSize: number;
   contentHash: string;
+  logicalSourceId: string;
   metadata: Record<string, unknown>;
   mimeType: string;
   projectId: string;
   sourceId: string;
   sourceType: SourceType;
   sourceUri: string;
+  sourceVersion: string;
   storageUri: string;
 }
 
@@ -241,23 +248,34 @@ export async function scanFixtureSource(input: {
 
   return fixtureCases
     .filter((fixtureCase) => !input.sourceType || fixtureCase.sourceType === input.sourceType)
-    .map((fixtureCase) => ({
-      fixture: fixtureCase,
-      raw: {
-        byteSize: 0,
+    .map((fixtureCase) => {
+      const sourceId = normalizeSourceId(fixtureCase.sourceType, fixtureCase.raw.sourceId);
+      const identity = deriveStoredSourceIdentity({
         contentHash: fixtureCase.raw.contentHash,
         metadata: fixtureCase.raw.metadata,
-        mimeType: fixtureCase.raw.mimeType,
-        projectId: input.projectId,
-        sourceId: normalizeSourceId(fixtureCase.sourceType, fixtureCase.raw.sourceId),
+        sourceId,
         sourceType: fixtureCase.sourceType,
-        sourceUri: fixtureCase.raw.sourceUri,
-        storageUri: `${input.projectSlug}/raw/${fixtureCase.sourceType}/${basename(
-          fixtureCase.raw.storageUri,
-        )}`,
-      },
-      rawPath: fixtureCase.rawPath,
-    }));
+      });
+      return {
+        fixture: fixtureCase,
+        raw: {
+          byteSize: 0,
+          contentHash: fixtureCase.raw.contentHash,
+          logicalSourceId: identity.logicalSourceId,
+          metadata: fixtureCase.raw.metadata,
+          mimeType: fixtureCase.raw.mimeType,
+          projectId: input.projectId,
+          sourceId,
+          sourceType: fixtureCase.sourceType,
+          sourceUri: fixtureCase.raw.sourceUri,
+          sourceVersion: identity.sourceVersion,
+          storageUri: `${input.projectSlug}/raw/${fixtureCase.sourceType}/${basename(
+            fixtureCase.raw.storageUri,
+          )}`,
+        },
+        rawPath: fixtureCase.rawPath,
+      };
+    });
 }
 
 export function shouldCollectCandidate(input: {

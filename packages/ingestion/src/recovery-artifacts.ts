@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import type { GraphEdgeInput, GraphEmailQuoteInput, GraphNodeInput } from './graph-relations.js';
 import type { ParsedDocumentType, SourceType } from './ingestion-fixtures.js';
 
-export const RECOVERY_ARTIFACT_VERSION = 1;
+export const RECOVERY_ARTIFACT_VERSION = 2;
+export const LEGACY_RECOVERY_ARTIFACT_VERSION = 1;
 const RECOVERY_ARTIFACT_READ_CONCURRENCY = 10;
 
 export type RecoveryArtifactKind = 'graph-relation' | 'parsed-document' | 'raw-document';
@@ -19,12 +20,14 @@ export interface RecoveryArtifactStorage {
 
 export interface RecoveryArtifactBaseEvent {
   artifactKind: RecoveryArtifactKind;
-  artifactVersion: typeof RECOVERY_ARTIFACT_VERSION;
+  artifactVersion: typeof LEGACY_RECOVERY_ARTIFACT_VERSION | typeof RECOVERY_ARTIFACT_VERSION;
   contentHash: string;
+  logicalSourceId?: string;
   projectSlug: string;
   recordedAt: string;
   sourceId: string;
   sourceType: SourceType;
+  sourceVersion?: string;
 }
 
 export interface RawRecoveryArtifactEvent extends RecoveryArtifactBaseEvent {
@@ -76,7 +79,7 @@ export type RecoveryArtifactEvent =
 
 export interface RecoveryArtifactLatestPointer {
   artifactKind: RecoveryArtifactKind;
-  artifactVersion: typeof RECOVERY_ARTIFACT_VERSION;
+  artifactVersion: typeof LEGACY_RECOVERY_ARTIFACT_VERSION | typeof RECOVERY_ARTIFACT_VERSION;
   eventCount: number;
   generatedAt: string;
   projectSlug: string;
@@ -114,14 +117,21 @@ export function recoveryArtifactEventUri(event: RecoveryArtifactEvent): string {
     artifactKind: event.artifactKind,
     projectSlug: event.projectSlug,
   });
-  const key =
-    event.artifactKind === 'graph-relation'
-      ? event.documentGraphNodeId
-      : `${event.sourceType}:${event.sourceId}`;
+  const key = recoveryArtifactNaturalKey(event);
   const recordedAt = event.recordedAt.replace(/[^0-9A-Za-z]/g, '');
   const sourceIdHash = sha256Hex(key).slice(0, 16);
   const contentHashPrefix = event.contentHash.slice(0, 16);
   return `${prefix}/${recordedAt}-${event.sourceType}-${sourceIdHash}-${contentHashPrefix}.json`;
+}
+
+export function recoveryArtifactNaturalKey(event: RecoveryArtifactEvent): string {
+  if (event.artifactKind === 'graph-relation') {
+    return event.documentGraphNodeId;
+  }
+  if (event.artifactVersion >= RECOVERY_ARTIFACT_VERSION) {
+    return `${event.sourceType}:${event.logicalSourceId}:${event.sourceVersion}:${event.sourceId}:${event.contentHash}`;
+  }
+  return `${event.sourceType}:${event.sourceId}:${event.contentHash}`;
 }
 
 export async function writeRecoveryArtifactEvent(
@@ -235,14 +245,14 @@ export function validateRecoveryArtifactLatestPointer(
 ): RecoveryArtifactLatestPointer {
   const pointer = requireRecord(value, 'Recovery artifact latest pointer');
   const artifactKind = requireArtifactKind(pointer.artifactKind);
-  requireArtifactVersion(pointer.artifactVersion);
+  const artifactVersion = requireArtifactVersion(pointer.artifactVersion);
   const eventCount = requireNumber(pointer.eventCount, 'eventCount');
   if (!Number.isInteger(eventCount) || eventCount < 0) {
     throw new Error('Recovery artifact latest pointer eventCount must be a non-negative integer.');
   }
   return {
     artifactKind,
-    artifactVersion: RECOVERY_ARTIFACT_VERSION,
+    artifactVersion,
     eventCount,
     generatedAt: requireIsoDate(pointer.generatedAt, 'generatedAt'),
     projectSlug: requireNonEmptyString(pointer.projectSlug, 'projectSlug'),
@@ -251,9 +261,11 @@ export function validateRecoveryArtifactLatestPointer(
 }
 
 function validateRawRecoveryEvent(event: Record<string, unknown>): RawRecoveryArtifactEvent {
+  const artifactVersion = requireArtifactVersion(event.artifactVersion);
+  const base = validateIdentityFields(event, artifactVersion);
   return {
     artifactKind: 'raw-document',
-    artifactVersion: RECOVERY_ARTIFACT_VERSION,
+    artifactVersion,
     byteSize: optionalNonNegativeInteger(event.byteSize, 'byteSize'),
     contentHash: requireSha256(event.contentHash, 'contentHash'),
     dataSourceKeys: optionalStringArray(event.dataSourceKeys, 'dataSourceKeys'),
@@ -266,13 +278,16 @@ function validateRawRecoveryEvent(event: Record<string, unknown>): RawRecoveryAr
     sourceType: requireSourceType(event.sourceType),
     sourceUri: optionalString(event.sourceUri, 'sourceUri'),
     storageUri: requireNonEmptyString(event.storageUri, 'storageUri'),
+    ...base,
   };
 }
 
 function validateParsedRecoveryEvent(event: Record<string, unknown>): ParsedRecoveryArtifactEvent {
+  const artifactVersion = requireArtifactVersion(event.artifactVersion);
+  const base = validateIdentityFields(event, artifactVersion);
   return {
     artifactKind: 'parsed-document',
-    artifactVersion: RECOVERY_ARTIFACT_VERSION,
+    artifactVersion,
     contentHash: requireSha256(event.contentHash, 'contentHash'),
     parsedAt: requireIsoDate(event.parsedAt, 'parsedAt'),
     parsedSchemaVersion: requirePositiveInteger(event.parsedSchemaVersion, 'parsedSchemaVersion'),
@@ -287,13 +302,16 @@ function validateParsedRecoveryEvent(event: Record<string, unknown>): ParsedReco
     sourceParserProfileId: optionalString(event.sourceParserProfileId, 'sourceParserProfileId'),
     sourceParserVersionId: optionalString(event.sourceParserVersionId, 'sourceParserVersionId'),
     sourceType: requireSourceType(event.sourceType),
+    ...base,
   };
 }
 
 function validateGraphRecoveryEvent(event: Record<string, unknown>): GraphRecoveryArtifactEvent {
+  const artifactVersion = requireArtifactVersion(event.artifactVersion);
+  const base = validateIdentityFields(event, artifactVersion);
   return {
     artifactKind: 'graph-relation',
-    artifactVersion: RECOVERY_ARTIFACT_VERSION,
+    artifactVersion,
     contentHash: requireSha256(event.contentHash, 'contentHash'),
     document: validateDocumentSnapshot(event.document),
     documentGraphNodeId: requireNonEmptyString(event.documentGraphNodeId, 'documentGraphNodeId'),
@@ -310,6 +328,25 @@ function validateGraphRecoveryEvent(event: Record<string, unknown>): GraphRecove
     recordedAt: requireIsoDate(event.recordedAt, 'recordedAt'),
     sourceId: requireNonEmptyString(event.sourceId, 'sourceId'),
     sourceType: requireSourceType(event.sourceType),
+    ...base,
+  };
+}
+
+function validateIdentityFields(
+  event: Record<string, unknown>,
+  artifactVersion: typeof LEGACY_RECOVERY_ARTIFACT_VERSION | typeof RECOVERY_ARTIFACT_VERSION,
+): Pick<RecoveryArtifactBaseEvent, 'logicalSourceId' | 'sourceVersion'> {
+  if (artifactVersion >= RECOVERY_ARTIFACT_VERSION) {
+    return {
+      logicalSourceId: requireNonEmptyString(event.logicalSourceId, 'logicalSourceId'),
+      sourceVersion: requireNonEmptyString(event.sourceVersion, 'sourceVersion'),
+    };
+  }
+  const logicalSourceId = optionalString(event.logicalSourceId, 'logicalSourceId');
+  const sourceVersion = optionalString(event.sourceVersion, 'sourceVersion');
+  return {
+    ...(logicalSourceId === undefined ? {} : { logicalSourceId }),
+    ...(sourceVersion === undefined ? {} : { sourceVersion }),
   };
 }
 
@@ -410,11 +447,15 @@ function requireArtifactKind(value: unknown): RecoveryArtifactKind {
   throw new Error('Recovery artifact kind is invalid.');
 }
 
-function requireArtifactVersion(value: unknown): typeof RECOVERY_ARTIFACT_VERSION {
-  if (value !== RECOVERY_ARTIFACT_VERSION) {
-    throw new Error(`Recovery artifact version must be ${RECOVERY_ARTIFACT_VERSION}.`);
+function requireArtifactVersion(
+  value: unknown,
+): typeof LEGACY_RECOVERY_ARTIFACT_VERSION | typeof RECOVERY_ARTIFACT_VERSION {
+  if (value === LEGACY_RECOVERY_ARTIFACT_VERSION || value === RECOVERY_ARTIFACT_VERSION) {
+    return value;
   }
-  return RECOVERY_ARTIFACT_VERSION;
+  throw new Error(
+    `Recovery artifact version must be ${LEGACY_RECOVERY_ARTIFACT_VERSION} or ${RECOVERY_ARTIFACT_VERSION}.`,
+  );
 }
 
 function requireSourceType(value: unknown): SourceType {

@@ -8,6 +8,7 @@ import type {
 } from './collection-pipeline.js';
 import { normalizeSourceId } from './collection-pipeline.js';
 import { fetchWithRetry } from './http-retry.js';
+import { driveLogicalSourceId, driveSourceVersion } from './source-version-identity.js';
 
 export interface DriveOwnerResponse {
   displayName?: string;
@@ -350,6 +351,7 @@ export async function buildDriveRawCandidate(input: {
     raw: {
       byteSize: Buffer.byteLength(body),
       contentHash,
+      logicalSourceId: driveLogicalSourceId(rawDocument.fileId),
       metadata: {
         dataSourceId: input.dataSource.id,
         fetchedAt,
@@ -366,6 +368,7 @@ export async function buildDriveRawCandidate(input: {
       sourceId,
       sourceType: 'drive',
       sourceUri: rawDocument.webViewLink,
+      sourceVersion: driveSourceVersion(rawDocument.revisionId),
       storageUri: `${input.projectSlug}/raw/drive/${safeStorageSegment(sourceId)}.json`,
     },
   };

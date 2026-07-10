@@ -103,16 +103,20 @@ assert.deepEqual(
     enabled: true,
     id: 'source-a',
     ingestWindow: {},
+    lastSyncSucceededAt: null,
     projectId: 'project-a',
     sourceType: 'github',
+    syncCursor: {},
   }),
   {
     config: { repository: 'owner/repo' },
     enabled: true,
     id: 'source-a',
     ingestWindow: {},
+    lastSyncSucceededAt: null,
     projectId: 'project-a',
     sourceType: 'github',
+    syncCursor: {},
   },
 );
 assert.throws(
@@ -122,8 +126,10 @@ assert.throws(
       enabled: true,
       id: 'source-a',
       ingestWindow: {},
+      lastSyncSucceededAt: null,
       projectId: 'project-a',
       sourceType: 'github',
+      syncCursor: {},
     }),
   /Invalid collection data source row field: config/,
 );
@@ -133,16 +139,20 @@ assert.deepEqual(
     enabled: true,
     id: 'source-a',
     ingestWindow: null,
+    lastSyncSucceededAt: null,
     projectId: 'project-a',
     sourceType: 'github',
+    syncCursor: {},
   }),
   {
     config: { repository: 'owner/repo' },
     enabled: true,
     id: 'source-a',
     ingestWindow: {},
+    lastSyncSucceededAt: null,
     projectId: 'project-a',
     sourceType: 'github',
+    syncCursor: {},
   },
 );
 assert.deepEqual(
@@ -150,16 +160,20 @@ assert.deepEqual(
     config: { repository: 'owner/repo' },
     enabled: true,
     id: 'source-b',
+    lastSyncSucceededAt: null,
     projectId: 'project-a',
     sourceType: 'github',
+    syncCursor: {},
   }),
   {
     config: { repository: 'owner/repo' },
     enabled: true,
     id: 'source-b',
     ingestWindow: {},
+    lastSyncSucceededAt: null,
     projectId: 'project-a',
     sourceType: 'github',
+    syncCursor: {},
   },
 );
 assert.throws(
@@ -169,8 +183,10 @@ assert.throws(
       enabled: 'true',
       id: 'source-a',
       ingestWindow: {},
+      lastSyncSucceededAt: null,
       projectId: 'project-a',
       sourceType: 'github',
+      syncCursor: {},
     }),
   /Invalid collection data source row field: enabled/,
 );
@@ -181,8 +197,10 @@ assert.throws(
       enabled: true,
       id: 'source-a',
       ingestWindow: {},
+      lastSyncSucceededAt: null,
       projectId: 'project-a',
       sourceType: 'slack',
+      syncCursor: {},
     }),
   /Invalid collection data source row field: sourceType/,
 );
@@ -208,14 +226,18 @@ assert.deepEqual(
   parseAdminActionRawDocumentRecordRow({
     id: 'raw-a',
     ingestStatus: 'fetched',
+    logicalSourceId: 'repo/issues/1',
     sourceId: 'issue-1',
     sourceType: 'github',
+    sourceVersion: '2026-01-01T00:00:00.000Z:abc123',
   }),
   {
     id: 'raw-a',
     ingestStatus: 'fetched',
+    logicalSourceId: 'repo/issues/1',
     sourceId: 'issue-1',
     sourceType: 'github',
+    sourceVersion: '2026-01-01T00:00:00.000Z:abc123',
   },
 );
 assert.throws(
@@ -233,8 +255,10 @@ assert.throws(
     parseAdminActionRawDocumentRecordRow({
       id: 'raw-a',
       ingestStatus: 'fetched',
+      logicalSourceId: 'repo/issues/1',
       sourceId: 123,
       sourceType: 'github',
+      sourceVersion: '2026-01-01T00:00:00.000Z:abc123',
     }),
   /Invalid collection raw document row field: sourceId/,
 );
