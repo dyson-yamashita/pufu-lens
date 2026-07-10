@@ -66,7 +66,11 @@ class PostgresCollectionRepository implements CollectionRepository {
     );
   }
 
-  async findDataSources(projectId: string, sourceType?: SourceType): Promise<DataSourceRecord[]> {
+  async findDataSources(
+    projectId: string,
+    sourceType?: SourceType,
+    dataSourceId?: string,
+  ): Promise<DataSourceRecord[]> {
     const rows = sourceType
       ? ((await this.sql`
           SELECT
@@ -82,6 +86,7 @@ class PostgresCollectionRepository implements CollectionRepository {
           WHERE project_id = ${projectId}
             AND enabled = true
             AND source_type = ${sourceType}
+            AND (${dataSourceId ?? null}::uuid IS NULL OR id = ${dataSourceId ?? null}::uuid)
           ORDER BY source_type, name
         `) as readonly unknown[])
       : ((await this.sql`
@@ -97,6 +102,7 @@ class PostgresCollectionRepository implements CollectionRepository {
           FROM public.data_sources
           WHERE project_id = ${projectId}
             AND enabled = true
+            AND (${dataSourceId ?? null}::uuid IS NULL OR id = ${dataSourceId ?? null}::uuid)
           ORDER BY source_type, name
         `) as readonly unknown[]);
     return parseCollectionDataSourceRecordRows(rows);
@@ -123,6 +129,29 @@ class PostgresCollectionRepository implements CollectionRepository {
     return parseOptionalCollectionRawDocumentRecordRow(rows);
   }
 
+  async lookupRawDocumentVersion(input: {
+    logicalSourceId: string;
+    projectId: string;
+    sourceType: SourceType;
+    sourceVersion: string;
+  }): Promise<RawDocumentRecord | undefined> {
+    const rows = (await this.sql`
+      SELECT
+        id::text AS id,
+        ingest_status AS "ingestStatus",
+        logical_source_id AS "logicalSourceId",
+        source_id AS "sourceId",
+        source_type AS "sourceType",
+        source_version AS "sourceVersion"
+      FROM public.raw_documents
+      WHERE project_id = ${input.projectId}
+        AND source_type = ${input.sourceType}
+        AND logical_source_id = ${input.logicalSourceId}
+        AND source_version = ${input.sourceVersion}
+    `) as readonly unknown[];
+    return parseOptionalCollectionRawDocumentRecordRow(rows);
+  }
+
   async findSameHashCandidates(input: {
     contentHash: string;
     projectId: string;
@@ -137,7 +166,7 @@ class PostgresCollectionRepository implements CollectionRepository {
     `) as Array<{ id: string; sourceId: string; sourceType: SourceType }>;
   }
 
-  async upsertRawDocument(input: RawDocumentInput): Promise<RawDocumentRecord> {
+  async upsertRawDocument(input: RawDocumentInput) {
     const rows = (await this.sql`
         INSERT INTO public.raw_documents (
           project_id,
@@ -167,16 +196,8 @@ class PostgresCollectionRepository implements CollectionRepository {
           'fetched',
           ${this.sql.json(input.metadata as postgres.JSONValue)}
         )
-        ON CONFLICT (project_id, source_type, source_id)
-        DO UPDATE SET
-          logical_source_id = EXCLUDED.logical_source_id,
-          source_version = EXCLUDED.source_version,
-          source_uri = EXCLUDED.source_uri,
-          storage_uri = EXCLUDED.storage_uri,
-          mime_type = EXCLUDED.mime_type,
-          byte_size = EXCLUDED.byte_size,
-          content_hash = EXCLUDED.content_hash,
-          metadata = EXCLUDED.metadata
+        ON CONFLICT (project_id, source_type, logical_source_id, source_version)
+        DO NOTHING
         RETURNING
           id::text AS id,
           ingest_status AS "ingestStatus",
@@ -187,11 +208,14 @@ class PostgresCollectionRepository implements CollectionRepository {
       `) as readonly unknown[];
     const rawDocument = parseOptionalCollectionRawDocumentRecordRow(rows);
 
-    if (!rawDocument) {
-      throw new Error(`Failed to upsert raw document: ${input.sourceType}:${input.sourceId}`);
+    if (rawDocument) {
+      return { inserted: true, rawDocument };
     }
-
-    return rawDocument;
+    const existing = await this.lookupRawDocumentVersion(input);
+    if (!existing) {
+      throw new Error(`Failed to store raw document: ${input.sourceType}:${input.sourceId}`);
+    }
+    return { inserted: false, rawDocument: existing };
   }
 
   async linkDataSource(input: LinkDataSourceInput): Promise<void> {
@@ -255,6 +279,23 @@ class PostgresCollectionRepository implements CollectionRepository {
       UPDATE public.data_sources
       SET last_checked_at = now()
       WHERE id = ${dataSourceId}
+    `;
+  }
+
+  async completeDataSourceSync(input: {
+    dataSourceId: string;
+    projectId: string;
+    syncCursor: Record<string, unknown>;
+  }): Promise<void> {
+    await this.sql`
+      UPDATE public.data_sources
+      SET
+        last_checked_at = now(),
+        last_sync_succeeded_at = now(),
+        sync_cursor = ${this.sql.json(input.syncCursor as postgres.JSONValue)},
+        updated_at = now()
+      WHERE id = ${input.dataSourceId}
+        AND project_id = ${input.projectId}
     `;
   }
 }

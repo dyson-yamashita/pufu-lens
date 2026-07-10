@@ -61,6 +61,11 @@ export interface RawDocumentInput {
   storageUri: string;
 }
 
+export interface StoredRawDocumentResult {
+  inserted: boolean;
+  rawDocument: RawDocumentRecord;
+}
+
 export interface LinkDataSourceInput {
   dataSourceId: string;
   matchReason: string;
@@ -78,7 +83,16 @@ export interface QueueCandidateInput {
 }
 
 export interface CollectionRepository {
-  findDataSources(projectId: string, sourceType?: SourceType): Promise<DataSourceRecord[]>;
+  completeDataSourceSync(input: {
+    dataSourceId: string;
+    projectId: string;
+    syncCursor: Record<string, unknown>;
+  }): Promise<void>;
+  findDataSources(
+    projectId: string,
+    sourceType?: SourceType,
+    dataSourceId?: string,
+  ): Promise<DataSourceRecord[]>;
   findSameHashCandidates(input: {
     contentHash: string;
     projectId: string;
@@ -91,9 +105,31 @@ export interface CollectionRepository {
     sourceId: string;
     sourceType: SourceType;
   }): Promise<RawDocumentRecord | undefined>;
+  lookupRawDocumentVersion(input: {
+    logicalSourceId: string;
+    projectId: string;
+    sourceType: SourceType;
+    sourceVersion: string;
+  }): Promise<RawDocumentRecord | undefined>;
   markDataSourceChecked(dataSourceId: string): Promise<void>;
   queueCandidate(input: QueueCandidateInput): Promise<void>;
-  upsertRawDocument(input: RawDocumentInput): Promise<RawDocumentRecord>;
+  upsertRawDocument(input: RawDocumentInput): Promise<StoredRawDocumentResult>;
+}
+
+export function completedSyncCursor(sourceType: SourceType): Record<string, unknown> {
+  return { mode: 'full-scan-v1', sourceType };
+}
+
+export function incrementalScanSince(
+  dataSource: DataSourceRecord,
+  overlapMilliseconds = 5 * 60 * 1000,
+): string | undefined {
+  const configuredSince = readIsoTime(dataSource.ingestWindow.since);
+  const lastSuccess = readIsoTime(dataSource.lastSyncSucceededAt);
+  const overlapSince =
+    lastSuccess === undefined ? undefined : Math.max(0, lastSuccess - overlapMilliseconds);
+  const since = Math.max(configuredSince ?? 0, overlapSince ?? 0);
+  return since === 0 ? undefined : new Date(since).toISOString();
 }
 
 export interface FixtureCandidate {
@@ -201,7 +237,7 @@ export async function collectFixtureSource(
       const stored = await options.storage.put(candidate.raw.storageUri, rawContent, {
         contentType: candidate.raw.mimeType,
       });
-      const rawDocument = await options.repository.upsertRawDocument({
+      const storedResult = await options.repository.upsertRawDocument({
         ...candidate.raw,
         byteSize: rawContent.byteLength,
         metadata,
@@ -214,20 +250,26 @@ export async function collectFixtureSource(
         matchReason: 'fixture-source-match',
         metadata: { fixtureId: candidate.fixture.id },
         projectId: project.id,
-        rawDocumentId: rawDocument.id,
+        rawDocumentId: storedResult.rawDocument.id,
       });
-      await options.repository.queueCandidate({
-        dataSourceId: dataSource.id,
-        projectId: project.id,
-        rawDocumentId: rawDocument.id,
-        targetId: sourceId,
-        targetUri: candidate.raw.sourceUri,
-      });
+      if (storedResult.inserted || storedResult.rawDocument.ingestStatus === 'failed') {
+        await options.repository.queueCandidate({
+          dataSourceId: dataSource.id,
+          projectId: project.id,
+          rawDocumentId: storedResult.rawDocument.id,
+          targetId: sourceId,
+          targetUri: candidate.raw.sourceUri,
+        });
+      }
 
       decisions.push({
         dataSourceId: dataSource.id,
-        decision: 'collected',
-        rawDocumentId: rawDocument.id,
+        decision: storedResult.inserted
+          ? 'collected'
+          : storedResult.rawDocument.ingestStatus === 'failed'
+            ? 'queued_failed'
+            : 'skipped_existing',
+        rawDocumentId: storedResult.rawDocument.id,
         sourceId,
         sourceType: candidate.raw.sourceType,
       });
@@ -337,6 +379,14 @@ function normalizeWebSourceId(sourceId: string): string {
 
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function readIsoTime(value: unknown): number | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? undefined : parsed;
 }
 
 function readStringArray(value: unknown): string[] | undefined {

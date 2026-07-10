@@ -285,7 +285,7 @@ test('chunkAndEmbed archives old chunks when parsed content changes', async () =
     logicalSourceId: 'logical/fixture-1',
     parsed: parsedDocument({ bodyText: 'Updated body text for chunking.' }),
     rawContentHash: 'raw-hash-2',
-    rawDocumentId: 'raw-1',
+    rawDocumentId: 'raw-2',
   };
   const updated = await chunkAndEmbed(options);
 
@@ -295,6 +295,41 @@ test('chunkAndEmbed archives old chunks when parsed content changes', async () =
   assert.equal(repository.history[0]?.supersededByContentHash, 'raw-hash-2');
   assert.equal(repository.chunks.length, 1);
   assert.equal(repository.chunks[0]?.metadata.rawContentHash, 'raw-hash-2');
+  assert.equal(repository.documents.length, 1);
+  assert.equal(repository.documents[0]?.rawDocumentId, 'raw-2');
+});
+
+test('chunkAndEmbed does not let a superseded worker replace the current document version', async () => {
+  const repository = new InMemoryChunkEmbeddingRepository([
+    {
+      parsed: parsedDocument({ bodyText: 'Original body text.' }),
+      logicalSourceId: 'logical/fixture-1',
+      rawContentHash: 'raw-hash-1',
+      rawDocumentId: 'raw-1',
+    },
+  ]);
+  const options = {
+    chunkConfig: { maxCharacters: 64, overlapCharacters: 8, version: 'test-chunk-v1' },
+    embeddingProvider: createDeterministicEmbeddingProvider({ dimensions: 4 }),
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  };
+  await chunkAndEmbed(options);
+  repository.targets[0] = {
+    parsed: parsedDocument({ bodyText: 'Stale worker body text.' }),
+    logicalSourceId: 'logical/fixture-1',
+    rawContentHash: 'raw-hash-stale',
+    rawDocumentId: 'raw-stale',
+  };
+  repository.supersededRawDocumentIds.add('raw-stale');
+
+  const result = await chunkAndEmbed(options);
+
+  assert.equal(result.decisions[0]?.decision, 'superseded');
+  assert.equal(repository.documents[0]?.rawDocumentId, 'raw-1');
+  assert.equal(repository.history.length, 0);
+  assert.equal(repository.chunks[0]?.metadata.rawContentHash, 'raw-hash-1');
 });
 
 test('validateGeminiEmbeddingConfig requires a 1536-dimensional Gemini configuration', () => {
@@ -321,6 +356,7 @@ class InMemoryChunkEmbeddingRepository implements ChunkEmbeddingRepository {
     docType: ParsedDocument['docType'];
     graphNodeId: string;
     id: string;
+    logicalSourceId: string;
     projectId: string;
     rawDocumentId: string;
   }> = [];
@@ -333,6 +369,7 @@ class InMemoryChunkEmbeddingRepository implements ChunkEmbeddingRepository {
   readonly chunks: Array<
     PreparedDocumentChunk & { documentId: string; id: string; projectId: string }
   > = [];
+  readonly supersededRawDocumentIds = new Set<string>();
 
   constructor(readonly targets: ChunkEmbeddingTarget[]) {}
 
@@ -346,12 +383,18 @@ class InMemoryChunkEmbeddingRepository implements ChunkEmbeddingRepository {
   }
 
   async upsertDocument(input: UpsertDocumentInput) {
-    let document = this.documents.find((item) => item.rawDocumentId === input.rawDocumentId);
+    let document = this.documents.find(
+      (item) =>
+        item.projectId === input.projectId &&
+        item.docType === input.docType &&
+        item.logicalSourceId === input.logicalSourceId,
+    );
     if (!document) {
       document = {
         docType: input.docType,
         graphNodeId: input.graphNodeId,
         id: `document-${this.documents.length + 1}`,
+        logicalSourceId: input.logicalSourceId,
         projectId: input.projectId,
         rawDocumentId: input.rawDocumentId,
       };
@@ -361,6 +404,22 @@ class InMemoryChunkEmbeddingRepository implements ChunkEmbeddingRepository {
       document.graphNodeId = input.graphNodeId;
     }
     return document;
+  }
+
+  async activateDocumentVersion(input: {
+    document: UpsertDocumentInput;
+    documentId: string;
+  }): Promise<boolean> {
+    if (this.supersededRawDocumentIds.has(input.document.rawDocumentId)) {
+      return false;
+    }
+    const document = this.documents.find((item) => item.id === input.documentId);
+    assert.ok(document);
+    document.docType = input.document.docType;
+    document.graphNodeId = input.document.graphNodeId;
+    document.logicalSourceId = input.document.logicalSourceId;
+    document.rawDocumentId = input.document.rawDocumentId;
+    return true;
   }
 
   async listCurrentChunks(input: { documentId: string; projectId: string }) {
@@ -378,6 +437,14 @@ class InMemoryChunkEmbeddingRepository implements ChunkEmbeddingRepository {
   }
 
   async replaceDocumentChunks(input: ReplaceDocumentChunksInput) {
+    if (
+      !(await this.activateDocumentVersion({
+        document: input.document,
+        documentId: input.documentId,
+      }))
+    ) {
+      return false;
+    }
     const existing = this.chunks.filter(
       (chunk) => chunk.projectId === input.projectId && chunk.documentId === input.documentId,
     );
@@ -402,6 +469,7 @@ class InMemoryChunkEmbeddingRepository implements ChunkEmbeddingRepository {
         projectId: input.projectId,
       })),
     );
+    return true;
   }
 }
 

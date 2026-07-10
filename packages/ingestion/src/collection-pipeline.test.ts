@@ -7,6 +7,7 @@ import {
   type CollectionRepository,
   collectFixtureSource,
   type DataSourceRecord,
+  incrementalScanSince,
   type LinkDataSourceInput,
   normalizeSourceId,
   type ProjectRecord,
@@ -46,6 +47,27 @@ import {
 } from './web-url-source.js';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..');
+
+test('incrementalScanSince applies overlap and respects configured lower bound', () => {
+  assert.equal(
+    incrementalScanSince(
+      dataSource({
+        ingestWindow: { since: '2026-05-01T00:00:00.000Z' },
+        lastSyncSucceededAt: '2026-05-02T00:00:00.000Z',
+      }),
+    ),
+    '2026-05-01T23:55:00.000Z',
+  );
+  assert.equal(
+    incrementalScanSince(
+      dataSource({
+        ingestWindow: { since: '2026-05-03T00:00:00.000Z' },
+        lastSyncSucceededAt: '2026-05-02T00:00:00.000Z',
+      }),
+    ),
+    '2026-05-03T00:00:00.000Z',
+  );
+});
 
 test('scanFixtureSource rewrites fixture storage paths for the target project', async () => {
   const candidates = await scanFixtureSource({
@@ -223,11 +245,14 @@ test('buildWebUrlRawCandidate falls back to final URL for invalid canonical link
     projectSlug: 'sample-a',
   });
 
-  assert.equal(candidate.raw.sourceId, 'https://example.test/release');
+  assert.equal(
+    candidate.raw.sourceId,
+    `https://example.test/release#pufu-version=${candidate.raw.sourceVersion}`,
+  );
   assert.equal(candidate.raw.metadata.canonicalUrl, 'https://example.test/release');
 });
 
-test('buildWebUrlRawCandidate uses canonical URL as source id and never stores body in metadata', async () => {
+test('buildWebUrlRawCandidate keeps configured logical URL and versioned source id', async () => {
   const html =
     '<html><head><title lang="ja"> Release Notes </title><link rel="canonical" href="/release"></head><body>Body</body></html>';
 
@@ -244,7 +269,10 @@ test('buildWebUrlRawCandidate uses canonical URL as source id and never stores b
     projectSlug: 'sample-a',
   });
 
-  assert.equal(candidate.raw.sourceId, 'https://example.test/release');
+  assert.equal(
+    candidate.raw.sourceId,
+    `https://example.test/release?utm=1#pufu-version=${candidate.raw.sourceVersion}`,
+  );
   assert.equal(candidate.raw.logicalSourceId, 'https://example.test/release?utm=1');
   assert.equal(candidate.raw.sourceVersion, candidate.raw.contentHash);
   assert.equal(candidate.raw.sourceUri, 'https://example.test/release?utm=1');
@@ -347,6 +375,44 @@ test('collectWebUrlSource supports dry-run and duplicate skip without writing st
   assert.equal(repository.queue.size, 1);
   assert.equal(repository.links.size, 1);
   assert.equal(storage.objects.size, 1);
+  assert.equal(repository.completedDataSourceSyncs.length, 2);
+  assert.deepEqual(repository.completedDataSourceSyncs[0]?.syncCursor, {
+    mode: 'full-scan-v1',
+    sourceType: 'web',
+  });
+});
+
+test('collectWebUrlSource stores a new raw version when configured URL content changes', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { urls: ['https://example.test/release'] },
+      id: 'data-source-web',
+      sourceType: 'web',
+    }),
+  );
+  const storage = new InMemoryObjectStorage();
+  let body = '<html><body>Version one</body></html>';
+  const fetcher = async (): Promise<WebUrlFetchResponse> => ({
+    body,
+    contentType: 'text/html',
+    finalUrl: 'https://cdn.example.test/current',
+    status: 200,
+  });
+
+  await collectWebUrlSource({ fetcher, projectSlug: 'sample-a', repository, storage });
+  body = '<html><body>Version two</body></html>';
+  await collectWebUrlSource({ fetcher, projectSlug: 'sample-a', repository, storage });
+
+  const versions = [...repository.rawDocuments.values()];
+  assert.equal(versions.length, 2);
+  assert.equal(storage.objects.size, 2);
+  assert.ok(
+    versions.every((version) => version.logicalSourceId === 'https://example.test/release'),
+  );
+  assert.notEqual(versions[0]?.sourceVersion, versions[1]?.sourceVersion);
 });
 
 test('collectWebUrlSource applies limit across all enabled web data sources', async () => {
@@ -387,6 +453,108 @@ test('collectWebUrlSource applies limit across all enabled web data sources', as
   assert.deepEqual(fetchedUrls, ['https://example.test/first']);
   assert.equal(result.decisions.length, 1);
   assert.equal(repository.rawDocuments.size, 1);
+  assert.equal(repository.completedDataSourceSyncs.length, 1);
+  assert.equal(repository.completedDataSourceSyncs[0]?.dataSourceId, 'data-source-web-1');
+});
+
+test('collectWebUrlSource does not let an existing version consume the new-version limit', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { urls: ['https://example.test/first', 'https://example.test/second'] },
+      id: 'data-source-web',
+      sourceType: 'web',
+    }),
+  );
+  const storage = new InMemoryObjectStorage();
+  const fetcher = async (url: string): Promise<WebUrlFetchResponse> => ({
+    body: `<html><body>${url}</body></html>`,
+    contentType: 'text/html',
+    finalUrl: url,
+    status: 200,
+  });
+
+  await collectWebUrlSource({ fetcher, limit: 1, projectSlug: 'sample-a', repository, storage });
+  const second = await collectWebUrlSource({
+    fetcher,
+    limit: 1,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+  });
+
+  assert.deepEqual(
+    second.decisions.map((decision) => decision.decision),
+    ['skipped_existing', 'collected'],
+  );
+  assert.equal(repository.rawDocuments.size, 2);
+});
+
+test('collectWebUrlSource does not requeue a concurrent exact-version insert winner', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { urls: ['https://example.test/release'] },
+      id: 'data-source-web',
+      sourceType: 'web',
+    }),
+  );
+  const fetcher = async (): Promise<WebUrlFetchResponse> => ({
+    body: '<html><body>same version</body></html>',
+    contentType: 'text/html',
+    finalUrl: 'https://example.test/release',
+    status: 200,
+  });
+  const storage = new InMemoryObjectStorage();
+  await collectWebUrlSource({ fetcher, projectSlug: 'sample-a', repository, storage });
+  repository.hiddenVersionLookups = 1;
+
+  const raced = await collectWebUrlSource({
+    fetcher,
+    projectSlug: 'sample-a',
+    repository,
+    storage,
+  });
+
+  assert.equal(raced.decisions[0]?.decision, 'skipped_existing');
+  assert.equal(repository.queueCalls, 1);
+});
+
+test('collectWebUrlSource restricts collection to the requested data source id', async () => {
+  const repository = new InMemoryCollectionRepository();
+  repository.dataSources.splice(
+    0,
+    repository.dataSources.length,
+    dataSource({
+      config: { urls: ['https://example.test/first'] },
+      id: 'data-source-web-1',
+      sourceType: 'web',
+    }),
+    dataSource({
+      config: { urls: ['https://example.test/second'] },
+      id: 'data-source-web-2',
+      sourceType: 'web',
+    }),
+  );
+  const fetchedUrls: string[] = [];
+
+  await collectWebUrlSource({
+    dataSourceId: 'data-source-web-2',
+    fetcher: async (url): Promise<WebUrlFetchResponse> => {
+      fetchedUrls.push(url);
+      return { body: 'second', contentType: 'text/plain', finalUrl: url, status: 200 };
+    },
+    projectSlug: 'sample-a',
+    repository,
+    storage: new InMemoryObjectStorage(),
+  });
+
+  assert.deepEqual(fetchedUrls, ['https://example.test/second']);
+  assert.equal(repository.completedDataSourceSyncs[0]?.dataSourceId, 'data-source-web-2');
 });
 
 test('collectWebUrlSource continues after a candidate fetch failure', async () => {
@@ -433,6 +601,7 @@ test('collectWebUrlSource continues after a candidate fetch failure', async () =
     assert.equal(result.decisions[1]?.decision, 'collected');
     assert.equal(repository.rawDocuments.size, 1);
     assert.equal(storage.objects.size, 1);
+    assert.equal(repository.completedDataSourceSyncs.length, 0);
     assert.match(String(errors[0]), /Failed to build raw web candidate/);
     assert.doesNotMatch(JSON.stringify(errors), /token=secret/);
   } finally {
@@ -753,7 +922,10 @@ test('buildGitHubRawCandidate converts issue comments, PR reviews, and diff meta
   assert.equal(raw.comments.length, 1);
   assert.equal(raw.reviews.length, 1);
   assert.match(raw.diff.sha256, /^[a-f0-9]{64}$/);
-  assert.equal(rawCandidate.raw.sourceId, 'example-org/pufu-sample/pulls/202');
+  assert.equal(
+    rawCandidate.raw.sourceId,
+    `${rawCandidate.raw.logicalSourceId}:${rawCandidate.raw.sourceVersion}`,
+  );
   assert.equal(rawCandidate.raw.logicalSourceId, 'example-org/pufu-sample/pulls/202');
   assert.equal(
     rawCandidate.raw.sourceVersion,
@@ -837,8 +1009,9 @@ test('collectGitHubSource supports dry-run and duplicate skip without storing to
   const [rawDocument] = [...repository.rawDocuments.values()];
   assert.ok(rawDocument);
   assert.doesNotMatch(JSON.stringify(rawDocument.metadata), /secret-token/);
-  assert.equal(paths.filter((path) => path.endsWith('/issues/202/comments')).length, 1);
-  assert.equal(paths.filter((path) => path.endsWith('/pulls/202/reviews')).length, 1);
+  assert.equal(paths.filter((path) => path.endsWith('/issues/202/comments')).length, 3);
+  assert.equal(paths.filter((path) => path.endsWith('/pulls/202/reviews')).length, 3);
+  assert.equal(repository.completedDataSourceSyncs.length, 2);
 });
 
 test('collectGitHubSource does not store incomplete PR raw when diff fetch fails', async () => {
@@ -878,6 +1051,7 @@ test('collectGitHubSource does not store incomplete PR raw when diff fetch fails
     assert.equal(repository.rawDocuments.size, 0);
     assert.equal(repository.queue.size, 0);
     assert.equal(storage.objects.size, 0);
+    assert.equal(repository.completedDataSourceSyncs.length, 0);
     assert.match(JSON.stringify(errors), /Failed to fetch GitHub diff/);
     assert.doesNotMatch(JSON.stringify(errors), /token=secret/);
   } finally {
@@ -933,6 +1107,7 @@ test('collectGitHubSource continues after a candidate fetch failure with sanitiz
     assert.match(String(result.decisions[0]?.error), /temporary GitHub failure/);
     assert.doesNotMatch(String(result.decisions[0]?.error), /token=secret/);
     assert.equal(repository.rawDocuments.size, 1);
+    assert.equal(repository.completedDataSourceSyncs.length, 0);
     assert.match(String(errors[0]), /Failed to build raw GitHub candidate/);
     assert.doesNotMatch(JSON.stringify(errors), /token=secret/);
   } finally {
@@ -1589,12 +1764,19 @@ class InMemoryObjectStorage implements CollectionObjectStorage {
 }
 
 class InMemoryCollectionRepository implements CollectionRepository {
+  readonly completedDataSourceSyncs: Array<{
+    dataSourceId: string;
+    projectId: string;
+    syncCursor: Record<string, unknown>;
+  }> = [];
   readonly dataSources: DataSourceRecord[] = [dataSource()];
   readonly links = new Map<string, LinkDataSourceInput>();
   readonly markedDataSources: string[] = [];
   readonly project: ProjectRecord = { id: 'project-1', slug: 'sample-a' };
   readonly queue = new Map<string, QueueCandidateInput>();
+  queueCalls = 0;
   readonly rawDocuments = new Map<string, RawDocumentInput & RawDocumentRecord>();
+  hiddenVersionLookups = 0;
   sameHashCandidates: Array<{
     id: string;
     sourceId: string;
@@ -1608,10 +1790,13 @@ class InMemoryCollectionRepository implements CollectionRepository {
   async findDataSources(
     projectId: string,
     sourceType?: DataSourceRecord['sourceType'],
+    dataSourceId?: string,
   ): Promise<DataSourceRecord[]> {
     return this.dataSources.filter(
       (source) =>
-        source.projectId === projectId && (!sourceType || source.sourceType === sourceType),
+        source.projectId === projectId &&
+        (!sourceType || source.sourceType === sourceType) &&
+        (!dataSourceId || source.id === dataSourceId),
     );
   }
 
@@ -1623,13 +1808,42 @@ class InMemoryCollectionRepository implements CollectionRepository {
     return this.rawDocuments.get(rawKey(input.projectId, input.sourceType, input.sourceId));
   }
 
+  async lookupRawDocumentVersion(input: {
+    logicalSourceId: string;
+    projectId: string;
+    sourceType: DataSourceRecord['sourceType'];
+    sourceVersion: string;
+  }): Promise<RawDocumentRecord | undefined> {
+    if (this.hiddenVersionLookups > 0) {
+      this.hiddenVersionLookups -= 1;
+      return undefined;
+    }
+    return [...this.rawDocuments.values()].find(
+      (rawDocument) =>
+        rawDocument.projectId === input.projectId &&
+        rawDocument.sourceType === input.sourceType &&
+        rawDocument.logicalSourceId === input.logicalSourceId &&
+        rawDocument.sourceVersion === input.sourceVersion,
+    );
+  }
+
   async findSameHashCandidates(): Promise<
     Array<{ id: string; sourceId: string; sourceType: 'github' | 'web' | 'gmail' | 'drive' }>
   > {
     return this.sameHashCandidates;
   }
 
-  async upsertRawDocument(input: RawDocumentInput): Promise<RawDocumentRecord> {
+  async upsertRawDocument(input: RawDocumentInput) {
+    const existingVersion = [...this.rawDocuments.values()].find(
+      (rawDocument) =>
+        rawDocument.projectId === input.projectId &&
+        rawDocument.sourceType === input.sourceType &&
+        rawDocument.logicalSourceId === input.logicalSourceId &&
+        rawDocument.sourceVersion === input.sourceVersion,
+    );
+    if (existingVersion) {
+      return { inserted: false, rawDocument: existingVersion };
+    }
     const key = rawKey(input.projectId, input.sourceType, input.sourceId);
     const rawDocument = {
       ...input,
@@ -1637,7 +1851,7 @@ class InMemoryCollectionRepository implements CollectionRepository {
       ingestStatus: 'fetched' as const,
     };
     this.rawDocuments.set(key, rawDocument);
-    return rawDocument;
+    return { inserted: true, rawDocument };
   }
 
   async linkDataSource(input: LinkDataSourceInput): Promise<void> {
@@ -1645,11 +1859,20 @@ class InMemoryCollectionRepository implements CollectionRepository {
   }
 
   async queueCandidate(input: QueueCandidateInput): Promise<void> {
+    this.queueCalls += 1;
     this.queue.set(`${input.projectId}:${input.rawDocumentId}`, input);
   }
 
   async markDataSourceChecked(dataSourceId: string): Promise<void> {
     this.markedDataSources.push(dataSourceId);
+  }
+
+  async completeDataSourceSync(input: {
+    dataSourceId: string;
+    projectId: string;
+    syncCursor: Record<string, unknown>;
+  }): Promise<void> {
+    this.completedDataSourceSyncs.push(input);
   }
 }
 

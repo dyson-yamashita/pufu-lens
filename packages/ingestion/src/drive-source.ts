@@ -6,7 +6,11 @@ import type {
   DataSourceRecord,
   RawDocumentInput,
 } from './collection-pipeline.js';
-import { normalizeSourceId } from './collection-pipeline.js';
+import {
+  completedSyncCursor,
+  incrementalScanSince,
+  normalizeSourceId,
+} from './collection-pipeline.js';
 import { fetchWithRetry } from './http-retry.js';
 import { driveLogicalSourceId, driveSourceVersion } from './source-version-identity.js';
 
@@ -61,6 +65,7 @@ export interface DriveRawCandidate {
 }
 
 export interface CollectDriveSourceOptions {
+  dataSourceId?: string;
   dryRun?: boolean;
   fetcher?: DriveFetcher;
   limit?: number;
@@ -109,7 +114,11 @@ export async function collectDriveSource(
 
   const fetcher = options.fetcher ?? fetchDriveJson;
   const textFetcher = options.textFetcher ?? fetchDriveText;
-  const dataSources = await options.repository.findDataSources(project.id, 'drive');
+  const dataSources = await options.repository.findDataSources(
+    project.id,
+    'drive',
+    options.dataSourceId,
+  );
   const decisions: CollectDriveSourceResult['decisions'] = [];
   let remainingLimit = options.limit;
 
@@ -118,6 +127,8 @@ export async function collectDriveSource(
       break;
     }
 
+    const decisionStart = decisions.length;
+    const scanLimit = remainingLimit;
     const candidates = await scanDriveDataSource({
       dataSource,
       fetcher,
@@ -134,10 +145,11 @@ export async function collectDriveSource(
       }
 
       const sourceId = driveCandidateSourceId(candidate);
-      const existing = await options.repository.lookupRawDocument({
+      const existing = await options.repository.lookupRawDocumentVersion({
+        logicalSourceId: driveLogicalSourceId(candidate.file.id),
         projectId: project.id,
-        sourceId,
         sourceType: 'drive',
+        sourceVersion: driveSourceVersion(driveRevisionId(candidate.file)),
       });
 
       if (existing) {
@@ -220,7 +232,7 @@ export async function collectDriveSource(
       const stored = await options.storage.put(rawCandidate.raw.storageUri, rawCandidate.body, {
         contentType: rawCandidate.raw.mimeType,
       });
-      const rawDocument = await options.repository.upsertRawDocument({
+      const storedResult = await options.repository.upsertRawDocument({
         ...rawCandidate.raw,
         metadata: {
           ...rawCandidate.raw.metadata,
@@ -234,20 +246,26 @@ export async function collectDriveSource(
         matchReason: 'drive-folder-source-match',
         metadata: { folderId: candidate.folderId },
         projectId: project.id,
-        rawDocumentId: rawDocument.id,
+        rawDocumentId: storedResult.rawDocument.id,
       });
-      await options.repository.queueCandidate({
-        dataSourceId: dataSource.id,
-        projectId: project.id,
-        rawDocumentId: rawDocument.id,
-        targetId: sourceId,
-        targetUri: rawCandidate.raw.sourceUri,
-      });
+      if (storedResult.inserted || storedResult.rawDocument.ingestStatus === 'failed') {
+        await options.repository.queueCandidate({
+          dataSourceId: dataSource.id,
+          projectId: project.id,
+          rawDocumentId: storedResult.rawDocument.id,
+          targetId: sourceId,
+          targetUri: rawCandidate.raw.sourceUri,
+        });
+      }
 
       decisions.push({
         dataSourceId: dataSource.id,
-        decision: 'collected',
-        rawDocumentId: rawDocument.id,
+        decision: storedResult.inserted
+          ? 'collected'
+          : storedResult.rawDocument.ingestStatus === 'failed'
+            ? 'queued_failed'
+            : 'skipped_existing',
+        rawDocumentId: storedResult.rawDocument.id,
         sourceId,
         sourceType: 'drive',
       });
@@ -255,6 +273,17 @@ export async function collectDriveSource(
 
     if (!options.dryRun) {
       await options.repository.markDataSourceChecked(dataSource.id);
+      const scanFailed = decisions
+        .slice(decisionStart)
+        .some((decision) => decision.decision === 'failed');
+      const scanTruncated = scanLimit !== undefined && candidates.length >= scanLimit;
+      if (!scanFailed && !scanTruncated) {
+        await options.repository.completeDataSourceSync({
+          dataSourceId: dataSource.id,
+          projectId: project.id,
+          syncCursor: completedSyncCursor('drive'),
+        });
+      }
     }
   }
 
@@ -295,7 +324,7 @@ export async function scanDriveDataSource(input: {
           'nextPageToken,files(id,name,mimeType,modifiedTime,webViewLink,owners(displayName,emailAddress),headRevisionId,version,md5Checksum)',
         orderBy: 'modifiedTime desc',
         pageSize: String(drivePageSize(limit)),
-        q: driveQuery(folderId, dataSource.ingestWindow.since),
+        q: driveQuery(folderId, incrementalScanSince(dataSource)),
         supportsAllDrives: 'true',
       });
       if (pageToken) {

@@ -6,7 +6,7 @@ import type {
   DataSourceRecord,
   RawDocumentInput,
 } from './collection-pipeline.js';
-import { normalizeSourceId } from './collection-pipeline.js';
+import { completedSyncCursor, normalizeSourceId } from './collection-pipeline.js';
 import { fetchWithRetry } from './http-retry.js';
 import { webLogicalSourceId, webSourceVersion } from './source-version-identity.js';
 
@@ -29,6 +29,7 @@ export interface WebUrlRawCandidate {
 }
 
 export interface CollectWebUrlSourceOptions {
+  dataSourceId?: string;
   dryRun?: boolean;
   fetcher?: WebUrlFetcher;
   limit?: number;
@@ -62,7 +63,11 @@ export async function collectWebUrlSource(
   }
 
   const fetcher = options.fetcher ?? fetchWebUrl;
-  const dataSources = await options.repository.findDataSources(project.id, 'web');
+  const dataSources = await options.repository.findDataSources(
+    project.id,
+    'web',
+    options.dataSourceId,
+  );
   const decisions: CollectWebUrlSourceResult['decisions'] = [];
   let remainingLimit = options.limit;
 
@@ -71,14 +76,14 @@ export async function collectWebUrlSource(
       break;
     }
 
-    const candidates = scanWebUrlDataSource(dataSource, remainingLimit);
+    const decisionStart = decisions.length;
+    let scanTruncated = false;
+    const candidates = scanWebUrlDataSource(dataSource);
 
     for (const candidate of candidates) {
       if (remainingLimit !== undefined && remainingLimit <= 0) {
+        scanTruncated = true;
         break;
-      }
-      if (remainingLimit !== undefined) {
-        remainingLimit -= 1;
       }
 
       let rawCandidate: WebUrlRawCandidate;
@@ -108,10 +113,11 @@ export async function collectWebUrlSource(
         continue;
       }
       const sourceId = rawCandidate.raw.sourceId;
-      const existing = await options.repository.lookupRawDocument({
+      const existing = await options.repository.lookupRawDocumentVersion({
+        logicalSourceId: rawCandidate.raw.logicalSourceId,
         projectId: project.id,
-        sourceId,
         sourceType: 'web',
+        sourceVersion: rawCandidate.raw.sourceVersion,
       });
 
       if (existing) {
@@ -119,7 +125,7 @@ export async function collectWebUrlSource(
           await options.repository.linkDataSource({
             dataSourceId: dataSource.id,
             matchReason: 'web-url-source-match',
-            metadata: { sourceUri: candidate.sourceUri },
+            metadata: webLinkMetadata(candidate, rawCandidate),
             projectId: project.id,
             rawDocumentId: existing.id,
           });
@@ -150,6 +156,9 @@ export async function collectWebUrlSource(
       }
 
       if (options.dryRun) {
+        if (remainingLimit !== undefined) {
+          remainingLimit -= 1;
+        }
         decisions.push({
           dataSourceId: dataSource.id,
           decision: 'would_collect',
@@ -167,7 +176,7 @@ export async function collectWebUrlSource(
       const stored = await options.storage.put(rawCandidate.raw.storageUri, rawCandidate.body, {
         contentType: rawCandidate.raw.mimeType,
       });
-      const rawDocument = await options.repository.upsertRawDocument({
+      const storedResult = await options.repository.upsertRawDocument({
         ...rawCandidate.raw,
         metadata: {
           ...rawCandidate.raw.metadata,
@@ -179,29 +188,51 @@ export async function collectWebUrlSource(
       await options.repository.linkDataSource({
         dataSourceId: dataSource.id,
         matchReason: 'web-url-source-match',
-        metadata: { sourceUri: candidate.sourceUri },
+        metadata: webLinkMetadata(candidate, rawCandidate),
         projectId: project.id,
-        rawDocumentId: rawDocument.id,
+        rawDocumentId: storedResult.rawDocument.id,
       });
-      await options.repository.queueCandidate({
-        dataSourceId: dataSource.id,
-        projectId: project.id,
-        rawDocumentId: rawDocument.id,
-        targetId: sourceId,
-        targetUri: rawCandidate.raw.sourceUri,
-      });
+      if (storedResult.inserted || storedResult.rawDocument.ingestStatus === 'failed') {
+        await options.repository.queueCandidate({
+          dataSourceId: dataSource.id,
+          projectId: project.id,
+          rawDocumentId: storedResult.rawDocument.id,
+          targetId: sourceId,
+          targetUri: rawCandidate.raw.sourceUri,
+        });
+      }
 
       decisions.push({
         dataSourceId: dataSource.id,
-        decision: 'collected',
-        rawDocumentId: rawDocument.id,
+        decision: storedResult.inserted
+          ? 'collected'
+          : storedResult.rawDocument.ingestStatus === 'failed'
+            ? 'queued_failed'
+            : 'skipped_existing',
+        rawDocumentId: storedResult.rawDocument.id,
         sourceId,
         sourceType: 'web',
       });
+      if (
+        remainingLimit !== undefined &&
+        (storedResult.inserted || storedResult.rawDocument.ingestStatus === 'failed')
+      ) {
+        remainingLimit -= 1;
+      }
     }
 
     if (!options.dryRun) {
       await options.repository.markDataSourceChecked(dataSource.id);
+      const scanFailed = decisions
+        .slice(decisionStart)
+        .some((decision) => decision.decision === 'failed');
+      if (!scanFailed && !scanTruncated) {
+        await options.repository.completeDataSourceSync({
+          dataSourceId: dataSource.id,
+          projectId: project.id,
+          syncCursor: completedSyncCursor('web'),
+        });
+      }
     }
   }
 
@@ -210,6 +241,17 @@ export async function collectWebUrlSource(
     dryRun: options.dryRun ?? false,
     failureCount: countFailedDecisions(decisions),
     projectSlug: project.slug,
+  };
+}
+
+function webLinkMetadata(
+  candidate: WebUrlCandidate,
+  rawCandidate: WebUrlRawCandidate,
+): Record<string, unknown> {
+  return {
+    canonicalUrl: rawCandidate.raw.metadata.canonicalUrl,
+    finalUrl: rawCandidate.raw.metadata.finalUrl,
+    sourceUri: candidate.sourceUri,
   };
 }
 
@@ -259,10 +301,12 @@ export async function buildWebUrlRawCandidate(input: {
 
   const finalUrl = normalizeHttpUrl(fetched.finalUrl);
   const canonicalUrl = extractCanonicalUrl(fetched.body, finalUrl);
-  const sourceId = normalizeSourceId('web', canonicalUrl);
   const logicalSourceId = webLogicalSourceId(input.candidate.sourceUri);
   const fetchedAt = new Date().toISOString();
   const contentHash = sha256Hex(fetched.body);
+  const sourceVersion = webSourceVersion(contentHash);
+  const canonicalSourceId = normalizeSourceId('web', canonicalUrl);
+  const sourceId = `${logicalSourceId}#pufu-version=${sourceVersion}`;
   const mimeType = normalizeWebMimeType(fetched.contentType);
 
   return {
@@ -272,7 +316,7 @@ export async function buildWebUrlRawCandidate(input: {
       contentHash,
       logicalSourceId,
       metadata: {
-        canonicalUrl: sourceId,
+        canonicalUrl: canonicalSourceId,
         configuredUrl: logicalSourceId,
         fetchedAt,
         finalUrl,
@@ -285,7 +329,7 @@ export async function buildWebUrlRawCandidate(input: {
       sourceId,
       sourceType: 'web',
       sourceUri: finalUrl,
-      sourceVersion: webSourceVersion(contentHash),
+      sourceVersion,
       storageUri: `${input.projectSlug}/raw/web/${safeStorageSegment(sourceId)}.html`,
     },
   };

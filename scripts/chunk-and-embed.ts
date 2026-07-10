@@ -94,6 +94,16 @@ class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
         AND rd.ingest_status IN ('parsed', 'indexed')
         AND rd.parsed_uri IS NOT NULL
         AND (${this.sourceType ?? null}::text IS NULL OR rd.source_type = ${this.sourceType ?? null})
+        AND NOT EXISTS (
+          SELECT 1
+          FROM public.raw_documents newer
+          WHERE newer.project_id = rd.project_id
+            AND newer.source_type = rd.source_type
+            AND newer.logical_source_id = rd.logical_source_id
+            AND newer.ingest_status IN ('parsed', 'indexed')
+            AND newer.parsed_uri IS NOT NULL
+            AND (newer.created_at, newer.id) > (rd.created_at, rd.id)
+        )
         AND (
           ${this.dataSourceId ?? null}::uuid IS NULL
           OR EXISTS (
@@ -101,6 +111,7 @@ class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
             FROM public.raw_document_data_sources rdds
             WHERE rdds.raw_document_id = rd.id
               AND rdds.data_source_id = ${this.dataSourceId ?? null}::uuid
+              AND rdds.project_id = ${input.projectId}
           )
         )
       ORDER BY
@@ -153,16 +164,9 @@ class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
           ${input.graphNodeId},
           ${this.sql.json(input.metadata as postgres.JSONValue)}
         )
-        ON CONFLICT (raw_document_id)
+        ON CONFLICT (project_id, doc_type, logical_source_id)
         DO UPDATE SET
-          logical_source_id = EXCLUDED.logical_source_id,
-          doc_type = EXCLUDED.doc_type,
-          title = EXCLUDED.title,
-          summary = EXCLUDED.summary,
-          canonical_uri = EXCLUDED.canonical_uri,
-          occurred_at = EXCLUDED.occurred_at,
-          graph_node_id = EXCLUDED.graph_node_id,
-          metadata = EXCLUDED.metadata
+          updated_at = documents.updated_at
         RETURNING
           doc_type AS "docType",
           graph_node_id AS "graphNodeId",
@@ -176,6 +180,22 @@ class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
       throw new Error(`Failed to upsert document for raw document: ${input.rawDocumentId}`);
     }
     return document;
+  }
+
+  async activateDocumentVersion(input: {
+    document: UpsertDocumentInput;
+    documentId: string;
+  }): Promise<boolean> {
+    return this.sql.begin(async (transaction: postgres.TransactionSql): Promise<boolean> => {
+      if (
+        !(await lockLatestProcessableDocumentVersion(transaction, input.documentId, input.document))
+      ) {
+        return false;
+      }
+      await updateDocumentVersion(transaction, input.documentId, input.document);
+      await markRawVersionIndexed(transaction, input.document.rawDocumentId);
+      return true;
+    });
   }
 
   async listCurrentChunks(input: {
@@ -195,8 +215,13 @@ class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
     `) as DocumentChunkRecord[];
   }
 
-  async replaceDocumentChunks(input: ReplaceDocumentChunksInput): Promise<void> {
-    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
+  async replaceDocumentChunks(input: ReplaceDocumentChunksInput): Promise<boolean> {
+    return this.sql.begin(async (transaction: postgres.TransactionSql): Promise<boolean> => {
+      if (
+        !(await lockLatestProcessableDocumentVersion(transaction, input.documentId, input.document))
+      ) {
+        return false;
+      }
       await transaction`
         INSERT INTO public.document_chunk_history (
           project_id,
@@ -216,7 +241,7 @@ class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
         SELECT
           dc.project_id,
           dc.document_id,
-          ${input.rawDocumentId},
+          document.raw_document_id,
           dc.id,
           dc.chunk_index,
           dc.content,
@@ -228,9 +253,11 @@ class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
           ${input.rawDocumentId},
           ${input.supersededByContentHash}
         FROM public.document_chunks dc
+        JOIN public.documents document ON document.id = dc.document_id
         WHERE dc.project_id = ${input.projectId}
           AND dc.document_id = ${input.documentId}
       `;
+      await updateDocumentVersion(transaction, input.documentId, input.document);
       await transaction`
         DELETE FROM public.document_chunks
         WHERE project_id = ${input.projectId}
@@ -260,18 +287,87 @@ class PostgresChunkEmbeddingRepository implements ChunkEmbeddingRepository {
           )
         `;
       }
-      await transaction`
-        UPDATE public.raw_documents
-        SET ingest_status = 'indexed', indexed_at = now(), ingest_error = null
-        WHERE id = ${input.rawDocumentId}
-      `;
-      await transaction`
-        UPDATE public.ingestion_queue
-        SET status = 'indexed', last_error = null
-        WHERE raw_document_id = ${input.rawDocumentId}
-      `;
+      await markRawVersionIndexed(transaction, input.rawDocumentId);
+      return true;
     });
   }
+}
+
+async function lockLatestProcessableDocumentVersion(
+  transaction: postgres.TransactionSql,
+  documentId: string,
+  input: UpsertDocumentInput,
+): Promise<boolean> {
+  const lockedDocuments = await transaction`
+    SELECT id
+    FROM public.documents
+    WHERE id = ${documentId}
+      AND project_id = ${input.projectId}
+    FOR UPDATE
+  `;
+  if (lockedDocuments.length !== 1) {
+    return false;
+  }
+
+  const latestTargets = await transaction`
+    SELECT target.id
+    FROM public.raw_documents target
+    WHERE target.id = ${input.rawDocumentId}
+      AND target.project_id = ${input.projectId}
+      AND target.logical_source_id = ${input.logicalSourceId}
+      AND target.ingest_status IN ('parsed', 'indexed')
+      AND target.parsed_uri IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.raw_documents newer
+        WHERE newer.project_id = target.project_id
+          AND newer.source_type = target.source_type
+          AND newer.logical_source_id = target.logical_source_id
+          AND newer.ingest_status IN ('parsed', 'indexed')
+          AND newer.parsed_uri IS NOT NULL
+          AND (newer.created_at, newer.id) > (target.created_at, target.id)
+      )
+  `;
+  return latestTargets.length === 1;
+}
+
+async function updateDocumentVersion(
+  transaction: postgres.TransactionSql,
+  documentId: string,
+  input: UpsertDocumentInput,
+): Promise<void> {
+  await transaction`
+    UPDATE public.documents
+    SET
+      raw_document_id = ${input.rawDocumentId},
+      logical_source_id = ${input.logicalSourceId},
+      doc_type = ${input.docType},
+      title = ${input.title},
+      summary = ${input.summary ?? null},
+      canonical_uri = ${input.canonicalUri},
+      occurred_at = ${input.occurredAt},
+      graph_node_id = ${input.graphNodeId},
+      metadata = ${transaction.json(input.metadata as postgres.JSONValue)},
+      updated_at = now()
+    WHERE id = ${documentId}
+      AND project_id = ${input.projectId}
+  `;
+}
+
+async function markRawVersionIndexed(
+  transaction: postgres.TransactionSql,
+  rawDocumentId: string,
+): Promise<void> {
+  await transaction`
+    UPDATE public.raw_documents
+    SET ingest_status = 'indexed', indexed_at = now(), ingest_error = null
+    WHERE id = ${rawDocumentId}
+  `;
+  await transaction`
+    UPDATE public.ingestion_queue
+    SET status = 'indexed', last_error = null
+    WHERE raw_document_id = ${rawDocumentId}
+  `;
 }
 
 function createEmbeddingProvider(options: { embeddingProvider?: string }): EmbeddingProvider {

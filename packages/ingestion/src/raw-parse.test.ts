@@ -18,7 +18,9 @@ import {
 
 test('parseRawDocuments stores parsed JSON and marks raw and queue parsed', async () => {
   const storage = new InMemoryParseStorage();
-  const rawDocument = rawGithubDocument();
+  const rawDocument = rawGithubDocument({
+    logicalSourceId: 'example-org/pufu-sample/issues/101',
+  });
   storage.objects.set(
     rawDocument.storageUri,
     JSON.stringify({
@@ -51,6 +53,7 @@ test('parseRawDocuments stores parsed JSON and marks raw and queue parsed', asyn
   assert.ok(parsedBody);
   const parsed = JSON.parse(parsedBody);
   assert.equal(parsed.title, 'Fixture issue');
+  assert.equal(parsed.sourceId, 'example-org/pufu-sample/issues/101');
   assert.equal(parsed.metadata.parser.parserVersionId, 'parser-version-github');
 });
 
@@ -236,12 +239,13 @@ class InMemoryRawParseRepository implements RawParseRepository {
 }
 
 function rawGithubDocument(
-  input: Partial<Pick<ParseQueueTarget['rawDocument'], 'id' | 'sourceId'>> = {},
+  input: Partial<Pick<ParseQueueTarget['rawDocument'], 'id' | 'logicalSourceId' | 'sourceId'>> = {},
 ): ParseQueueTarget['rawDocument'] {
   const sourceId = input.sourceId ?? 'github-issue-101';
   return {
     contentHash: 'a'.repeat(64),
     id: input.id ?? 'raw-1',
+    logicalSourceId: input.logicalSourceId ?? sourceId,
     metadata: { fetchedAt: '2026-05-08T00:00:00.000Z' },
     mimeType: 'application/json',
     projectId: 'project-1',

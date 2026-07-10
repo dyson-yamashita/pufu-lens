@@ -6,7 +6,11 @@ import type {
   DataSourceRecord,
   RawDocumentInput,
 } from './collection-pipeline.js';
-import { normalizeSourceId } from './collection-pipeline.js';
+import {
+  completedSyncCursor,
+  incrementalScanSince,
+  normalizeSourceId,
+} from './collection-pipeline.js';
 import { fetchWithRetry } from './http-retry.js';
 import { gmailLogicalSourceId, gmailSourceVersion } from './source-version-identity.js';
 
@@ -80,6 +84,7 @@ export interface GmailRawCandidate {
 }
 
 export interface CollectGmailSourceOptions {
+  dataSourceId?: string;
   dryRun?: boolean;
   fetcher?: GmailFetcher;
   limit?: number;
@@ -116,7 +121,11 @@ export async function collectGmailSource(
   }
 
   const fetcher = options.fetcher ?? fetchGmailJson;
-  const dataSources = await options.repository.findDataSources(project.id, 'gmail');
+  const dataSources = await options.repository.findDataSources(
+    project.id,
+    'gmail',
+    options.dataSourceId,
+  );
   const decisions: CollectGmailSourceResult['decisions'] = [];
   let remainingLimit = options.limit;
 
@@ -125,6 +134,8 @@ export async function collectGmailSource(
       break;
     }
 
+    const decisionStart = decisions.length;
+    const scanLimit = remainingLimit;
     const candidates = await scanGmailDataSource({
       dataSource,
       fetcher,
@@ -166,10 +177,11 @@ export async function collectGmailSource(
       }
       const latestMessage = latestThreadMessage(thread);
       const sourceId = gmailMessageSourceId(latestMessage);
-      const existing = await options.repository.lookupRawDocument({
+      const existing = await options.repository.lookupRawDocumentVersion({
+        logicalSourceId: gmailLogicalSourceId(latestMessage.threadId),
         projectId: project.id,
-        sourceId,
         sourceType: 'gmail',
+        sourceVersion: gmailSourceVersion(latestMessage.id),
       });
 
       if (existing) {
@@ -250,7 +262,7 @@ export async function collectGmailSource(
       const stored = await options.storage.put(rawCandidate.raw.storageUri, rawCandidate.body, {
         contentType: rawCandidate.raw.mimeType,
       });
-      const rawDocument = await options.repository.upsertRawDocument({
+      const storedResult = await options.repository.upsertRawDocument({
         ...rawCandidate.raw,
         metadata: {
           ...rawCandidate.raw.metadata,
@@ -264,20 +276,26 @@ export async function collectGmailSource(
         matchReason: 'gmail-query-source-match',
         metadata: { query: candidate.query, threadId: latestMessage.threadId },
         projectId: project.id,
-        rawDocumentId: rawDocument.id,
+        rawDocumentId: storedResult.rawDocument.id,
       });
-      await options.repository.queueCandidate({
-        dataSourceId: dataSource.id,
-        projectId: project.id,
-        rawDocumentId: rawDocument.id,
-        targetId: sourceId,
-        targetUri: rawCandidate.raw.sourceUri,
-      });
+      if (storedResult.inserted || storedResult.rawDocument.ingestStatus === 'failed') {
+        await options.repository.queueCandidate({
+          dataSourceId: dataSource.id,
+          projectId: project.id,
+          rawDocumentId: storedResult.rawDocument.id,
+          targetId: sourceId,
+          targetUri: rawCandidate.raw.sourceUri,
+        });
+      }
 
       decisions.push({
         dataSourceId: dataSource.id,
-        decision: 'collected',
-        rawDocumentId: rawDocument.id,
+        decision: storedResult.inserted
+          ? 'collected'
+          : storedResult.rawDocument.ingestStatus === 'failed'
+            ? 'queued_failed'
+            : 'skipped_existing',
+        rawDocumentId: storedResult.rawDocument.id,
         sourceId,
         sourceType: 'gmail',
       });
@@ -285,6 +303,17 @@ export async function collectGmailSource(
 
     if (!options.dryRun) {
       await options.repository.markDataSourceChecked(dataSource.id);
+      const scanFailed = decisions
+        .slice(decisionStart)
+        .some((decision) => decision.decision === 'failed');
+      const scanTruncated = scanLimit !== undefined && candidates.length >= scanLimit;
+      if (!scanFailed && !scanTruncated) {
+        await options.repository.completeDataSourceSync({
+          dataSourceId: dataSource.id,
+          projectId: project.id,
+          syncCursor: completedSyncCursor('gmail'),
+        });
+      }
     }
   }
 
@@ -318,7 +347,7 @@ export async function scanGmailDataSource(input: {
       break;
     }
 
-    const query = gmailQuery(dataSource.config, dataSource.ingestWindow.since);
+    const query = gmailQuery(dataSource.config, incrementalScanSince(dataSource));
     const searchParams = new URLSearchParams({
       maxResults: String(gmailPageSize(limit)),
     });
