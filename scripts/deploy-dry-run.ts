@@ -22,6 +22,10 @@ const samples = [
     input: { dryRun: true, period: 'weekly', projectSlug: 'sample-a' },
     workflowId: 'generate-report',
   },
+  {
+    input: {},
+    workflowId: 'source-sync-dispatcher',
+  },
 ] as const;
 
 async function main(): Promise<void> {

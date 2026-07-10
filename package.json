@@ -32,6 +32,7 @@
     "report:generate": "pnpm --filter @pufu-lens/storage build && node --experimental-strip-types scripts/generate-report.ts",
     "report:backfill-project-manifests": "pnpm --filter @pufu-lens/storage build && node --experimental-strip-types scripts/backfill-public-project-manifests.ts",
     "report:publish": "pnpm --filter @pufu-lens/storage build && node --experimental-strip-types scripts/publish-report.ts",
+    "schedule:dispatch": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node --experimental-strip-types scripts/source-sync-dispatcher.ts",
     "lint": "biome ci . && markdownlint-cli2",
     "db:migrate": "node --experimental-strip-types scripts/db-migrate.ts",
     "db:migration:new": "node --experimental-strip-types scripts/create-db-migration.ts",

@@ -8,7 +8,7 @@
     "dev": "DATABASE_URL=${DATABASE_URL:-postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens} GOOGLE_API_KEY=${GOOGLE_API_KEY:-$GEMINI_API_KEY} GOOGLE_GENERATIVE_AI_API_KEY=${GOOGLE_GENERATIVE_AI_API_KEY:-$GEMINI_API_KEY} mastra dev",
     "mastra:build": "mastra build",
     "mastra:lint": "mastra lint",
-    "test": "node --experimental-strip-types src/index.test.ts",
+    "test": "node --experimental-strip-types --test src/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
@@ -16,6 +16,7 @@
     "@mastra/core": "^1.40.0",
     "@pufu-lens/storage": "workspace:*",
     "@pufu-lens/web": "workspace:*",
+    "google-auth-library": "9.15.1",
     "postgres": "^3.4.9",
     "zod": "^4.4.3"
   },
