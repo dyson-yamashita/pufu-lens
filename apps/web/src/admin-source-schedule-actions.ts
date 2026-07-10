@@ -9,7 +9,6 @@ import {
 import {
   type DataSourceScheduleSummary,
   readDataSourceSchedule,
-  requireDailyTime,
   updateDataSourceScheduleRow,
 } from './data-source-schedules.ts';
 
@@ -26,7 +25,7 @@ export async function getDataSourceSchedule(
 export async function updateDataSourceSchedule(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
   const dataSourceId = requireFormValue(formData, 'dataSourceId');
-  const dailyTime = requireDailyTime(requireFormValue(formData, 'dailyTime'));
+  const dailyTime = requireFormValue(formData, 'dailyTime');
   const enabled = formData.get('enabled')?.toString() === 'on';
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);

@@ -17,8 +17,8 @@ test('only provider-backed non-web sources are schedulable', () => {
 test('daily time accepts a strict 24-hour HH:mm value', () => {
   assert.equal(requireDailyTime('00:00'), '00:00');
   assert.equal(requireDailyTime('23:59'), '23:59');
+  assert.equal(requireDailyTime('10:00:00'), '10:00');
   assert.throws(() => requireDailyTime('24:00'), /dailyTime/);
-  assert.throws(() => requireDailyTime('10:00:00'), /dailyTime/);
 });
 
 test('schedule SQL rows are runtime validated and timestamps normalized', () => {

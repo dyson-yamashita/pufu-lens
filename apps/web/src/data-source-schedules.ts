@@ -22,10 +22,11 @@ export function isSchedulableSourceType(sourceType: SourceType): boolean {
 }
 
 export function requireDailyTime(value: string): string {
-  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) {
-    throw new Error('dailyTime must use HH:mm in the 24-hour clock.');
+  const match = value.match(/^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/);
+  if (!match) {
+    throw new Error('dailyTime must use HH:mm or HH:mm:ss in the 24-hour clock.');
   }
-  return value;
+  return `${match[1]}:${match[2]}`;
 }
 
 export function parseDataSourceScheduleRow(value: unknown): DataSourceScheduleSummary {
@@ -59,14 +60,15 @@ export async function insertDefaultDataSourceSchedule(
       project_id, data_source_id, enabled, daily_time, timezone, next_run_at
     )
     VALUES (
-      ${input.projectId}, ${input.dataSourceId}, true, TIME '10:00', 'Asia/Tokyo',
+      ${input.projectId}, ${input.dataSourceId}, true,
+      ${DEFAULT_SCHEDULE_TIME}::time, ${SCHEDULE_TIMEZONE},
       (
         CASE
-          WHEN (now() AT TIME ZONE 'Asia/Tokyo')::time < TIME '10:00'
-            THEN (now() AT TIME ZONE 'Asia/Tokyo')::date
-          ELSE (now() AT TIME ZONE 'Asia/Tokyo')::date + 1
-        END + TIME '10:00'
-      ) AT TIME ZONE 'Asia/Tokyo'
+          WHEN (now() AT TIME ZONE ${SCHEDULE_TIMEZONE})::time < ${DEFAULT_SCHEDULE_TIME}::time
+            THEN (now() AT TIME ZONE ${SCHEDULE_TIMEZONE})::date
+          ELSE (now() AT TIME ZONE ${SCHEDULE_TIMEZONE})::date + 1
+        END + ${DEFAULT_SCHEDULE_TIME}::time
+      ) AT TIME ZONE ${SCHEDULE_TIMEZONE}
     )
   `;
 }
@@ -114,11 +116,11 @@ export async function updateDataSourceScheduleRow(
       daily_time = ${dailyTime}::time,
       next_run_at = (
         CASE
-          WHEN (now() AT TIME ZONE 'Asia/Tokyo')::time < ${dailyTime}::time
-            THEN (now() AT TIME ZONE 'Asia/Tokyo')::date
-          ELSE (now() AT TIME ZONE 'Asia/Tokyo')::date + 1
+          WHEN (now() AT TIME ZONE ${SCHEDULE_TIMEZONE})::time < ${dailyTime}::time
+            THEN (now() AT TIME ZONE ${SCHEDULE_TIMEZONE})::date
+          ELSE (now() AT TIME ZONE ${SCHEDULE_TIMEZONE})::date + 1
         END + ${dailyTime}::time
-      ) AT TIME ZONE 'Asia/Tokyo',
+      ) AT TIME ZONE ${SCHEDULE_TIMEZONE},
       retry_count = 0,
       last_error = NULL,
       updated_at = now()
