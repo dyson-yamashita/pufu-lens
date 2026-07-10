@@ -295,6 +295,13 @@ function GraphCanvas({
     [onSelect],
   );
 
+  const closeDetailsDialog = useCallback(() => {
+    setModalSelection(undefined);
+    if (detailsDialogRef.current?.open) {
+      detailsDialogRef.current.close();
+    }
+  }, []);
+
   const toggleFullscreen = useCallback(async () => {
     const canvasWrap = canvasWrapRef.current;
     if (!canvasWrap) {
@@ -549,7 +556,7 @@ function GraphCanvas({
                   aria-label="Detailsを閉じる"
                   className="modal-close-button"
                   data-testid="graph-details-dialog-close-button"
-                  onClick={() => detailsDialogRef.current?.close()}
+                  onClick={closeDetailsDialog}
                   type="button"
                 >
                   <X aria-hidden="true" size={18} />
