@@ -13,6 +13,8 @@ const middleDocument = node('doc-middle', 'Middle Document', {
   occurredAt: '2026-07-02T00:00:00.000Z',
 });
 const actorWithoutDate = node('actor-a', 'Actor A', {});
+const undatedNeighbor = node('undated-neighbor', 'Y Undated Neighbor', {});
+const undatedTail = node('undated-tail', 'Z Undated Tail', {});
 
 assert.equal(graphNodeSortValue(olderDocument), Date.parse('2026-07-01T00:00:00.000Z'));
 
@@ -32,6 +34,22 @@ assert.ok(
 assert.ok(
   requiredPosition(positions, actorWithoutDate.id).x <
     requiredPosition(positions, newerDocument.id).x,
+);
+
+assert.equal(graphNodeSortValue(undatedTail), undefined);
+
+const undatedPositions = buildTimelinePositions(
+  [undatedTail, newerDocument, olderDocument, undatedNeighbor],
+  [edge('edge-undated', undatedTail.id, undatedNeighbor.id)],
+);
+
+assert.ok(
+  requiredPosition(undatedPositions, newerDocument.id).x <
+    requiredPosition(undatedPositions, undatedNeighbor.id).x,
+);
+assert.ok(
+  requiredPosition(undatedPositions, undatedNeighbor.id).x <
+    requiredPosition(undatedPositions, undatedTail.id).x,
 );
 
 console.log('web graph viewer layout tests passed');
