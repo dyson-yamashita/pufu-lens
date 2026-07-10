@@ -6,7 +6,9 @@ Internal Scheduler / Job API の共通契約は [API デザイン](05-api-design
 
 Cloud Scheduler は Cloud Run Job の `:run` API を直接叩かず、Mastra Server の内部管理 API を呼び出す。Mastra Server は受け取った JSON を検証し、Cloud Run Jobs API の overrides（環境変数または args）として各 Job に渡す。
 
-> Source sync dispatcher とローカル one-shot CLI は [Incremental Source Sync / Scheduling 計画](../../plans/013-incremental-source-sync-scheduling/overview.md) Step 4 で追加予定であり、現時点では未実装である。現在の `scripts/workflow-job.ts` は `curate-workflow`、`ingest-workflow`、`generate-report` のみを受け付ける。
+> Source sync の DB schedule と管理 UI は実装済みである。dispatcher とローカル one-shot CLI は [Incremental Source Sync / Scheduling 計画](../../plans/013-incremental-source-sync-scheduling/overview.md) Step 4 で追加予定であり、現時点では未実装である。現在の `scripts/workflow-job.ts` は `curate-workflow`、`ingest-workflow`、`generate-report` のみを受け付ける。
+
+GitHub / Drive / Gmail の data source は作成 transaction 内で毎日 10:00 `Asia/Tokyo` の schedule を作る。既存の有効な対象 source は migration で backfill する。project admin は Data Sources 詳細で ON / OFF と日次時刻を変更でき、変更時は次の wall-clock occurrence を UTC の `next_run_at` に再計算する。Web は自動 schedule を持たない。
 
 PostgreSQL VM はコスト削減のため業務時間のみ起動する方針だが、DB 依存の Scheduler / Job は DB 稼働時間内に実行する。夜間に実行したい場合は、Scheduler の直前に DB VM を起動し、job 成功後に停止する専用運用を用意する。初期構築では DB 起動制御を増やさず、`curate-workflow`、`ingest-workflow`、`generate-report` は平日業務時間内に寄せる。
 

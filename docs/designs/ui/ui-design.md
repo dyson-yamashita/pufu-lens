@@ -236,6 +236,8 @@ spacing:
 
 ### インタラクティブなデータソース
 
+- Data Source 詳細の Settings では、GitHub / Drive / Gmail に自動同期の ON / OFF、`Asia/Tokyo` の日次時刻、次回実行、前回成功・失敗を表示する。Web は自動実行対象外であることと手動 Collect & Ingest の導線を表示する。
+
 - **状態:**
   - _Default:_ 控えめなボーダーと低コントラストのアイコン。
   - _Hover:_ サーフェスカラーを 5% 明るくし、ボーダーも明るくします。

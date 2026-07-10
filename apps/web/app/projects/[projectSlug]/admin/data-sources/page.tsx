@@ -5,6 +5,7 @@ import {
   deleteDataSource,
   retryFailedQueue,
   updateDataSource,
+  updateDataSourceSchedule,
 } from '../../../../../src/admin-actions';
 import {
   isAdminUiCollectionSupported,
@@ -16,6 +17,7 @@ import {
   getProjectSourceAvailability,
   getSourceTypeCounts,
 } from '../../../../../src/admin-db';
+import { getDataSourceSchedule } from '../../../../../src/admin-source-schedule-actions.ts';
 import { DataSourceDetailDialog } from '../../../../../src/data-source-detail-dialog';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
 import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
@@ -54,11 +56,17 @@ export default async function DataSourcesPage({
   const selectedSourceAvailable = selectedSource ? availability[selectedSource.sourceType] : true;
   const counts = getSourceTypeCounts(project);
   let contentPreview = null;
+  let schedule = null;
   if (selectedSource) {
     try {
       contentPreview = await getDataSourceContentPreview(projectSlug, selectedSource.id);
     } catch (error) {
       console.error('Failed to load data source content preview:', error);
+    }
+    try {
+      schedule = await getDataSourceSchedule(projectSlug, selectedSource.id);
+    } catch (error) {
+      console.error('Failed to load data source schedule:', error);
     }
   }
 
@@ -258,6 +266,77 @@ export default async function DataSourcesPage({
                     </PendingSubmitButton>
                   </div>
                 </ActionForm>
+                {selectedSource.sourceType === 'web' ? (
+                  <section
+                    className="schedule-settings"
+                    data-testid="data-source-schedule-unavailable"
+                  >
+                    <h3 className="data-source-section-title">Schedule</h3>
+                    <p className="content-preview-empty">
+                      Web source は自動実行せず、Collect &amp; Ingest から手動で差分を取り込みます。
+                    </p>
+                  </section>
+                ) : schedule ? (
+                  <ActionForm
+                    action={updateDataSourceSchedule}
+                    className="detail-edit-form schedule-settings"
+                    testId="data-source-schedule-form"
+                  >
+                    <input name="projectSlug" type="hidden" value={project.slug} />
+                    <input name="dataSourceId" type="hidden" value={selectedSource.id} />
+                    <h3 className="data-source-section-title">Schedule</h3>
+                    <label>
+                      <span>Automatic sync</span>
+                      <input
+                        data-testid="data-source-schedule-enabled"
+                        defaultChecked={schedule.enabled}
+                        name="enabled"
+                        type="checkbox"
+                      />
+                    </label>
+                    <label>
+                      <span>Daily time ({schedule.timezone})</span>
+                      <input
+                        data-testid="data-source-schedule-time"
+                        defaultValue={schedule.dailyTime}
+                        name="dailyTime"
+                        required
+                        type="time"
+                      />
+                    </label>
+                    <dl className="detail-list stacked">
+                      <div>
+                        <dt>Next run</dt>
+                        <dd>{formatScheduleTimestamp(schedule.nextRunAt)}</dd>
+                      </div>
+                      <div>
+                        <dt>Last success</dt>
+                        <dd>{formatScheduleTimestamp(schedule.lastSucceededAt)}</dd>
+                      </div>
+                      <div>
+                        <dt>Last failure</dt>
+                        <dd>{formatScheduleTimestamp(schedule.lastFailedAt)}</dd>
+                      </div>
+                      <div>
+                        <dt>Retry count</dt>
+                        <dd>{schedule.retryCount}</dd>
+                      </div>
+                    </dl>
+                    <div className="action-row">
+                      <PendingSubmitButton
+                        className="icon-button"
+                        testId="data-source-schedule-save-button"
+                        title="Save schedule"
+                      >
+                        Save schedule
+                      </PendingSubmitButton>
+                    </div>
+                  </ActionForm>
+                ) : (
+                  <p className="content-preview-empty" data-testid="data-source-schedule-missing">
+                    Schedule を読み込めませんでした。
+                  </p>
+                )}
                 <div className="action-row">
                   <ActionForm action={collectAndIngestDataSource} className="inline-action-form">
                     <input name="projectSlug" type="hidden" value={project.slug} />
@@ -317,6 +396,15 @@ export default async function DataSourcesPage({
       </section>
     </AppShell>
   );
+}
+
+function formatScheduleTimestamp(value: string | null): string {
+  if (!value) return 'Never';
+  return new Intl.DateTimeFormat('ja-JP', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Asia/Tokyo',
+  }).format(new Date(value));
 }
 
 function parseSourceType(value: string | undefined): SourceType | undefined {
