@@ -57,34 +57,35 @@ export async function dispatchDueSourceSyncs(input: {
     const [target] = await input.repository.claimDue({ limit: 1, workerToken });
     if (!target) break;
     claimed += 1;
-    let heartbeatLost = false;
     const heartbeat = setInterval(() => {
       void input.repository
         .heartbeat({ scheduleId: target.scheduleId, workerToken })
-        .then((extended) => {
-          if (!extended) heartbeatLost = true;
-        })
-        .catch(() => {
-          heartbeatLost = true;
-        });
+        .catch(() => undefined);
     }, input.heartbeatIntervalMs ?? 60_000);
     heartbeat.unref();
 
     try {
       await input.runner.run(target);
       clearInterval(heartbeat);
-      const updated =
-        !heartbeatLost &&
-        (await input.repository.markSucceeded({
-          scheduleId: target.scheduleId,
-          workerToken,
-        }));
+      const updated = await input.repository.markSucceeded({
+        scheduleId: target.scheduleId,
+        workerToken,
+      });
       if (updated) succeeded += 1;
       else leaseLost += 1;
     } catch (error) {
       clearInterval(heartbeat);
+      const safeError = safeScheduleError(error);
+      console.error(
+        JSON.stringify({
+          error: safeError,
+          event: 'source_sync_execution_failed',
+          scheduleId: target.scheduleId,
+          sourceType: target.sourceType,
+        }),
+      );
       const updated = await input.repository.markFailed({
-        error: safeScheduleError(error),
+        error: safeError,
         scheduleId: target.scheduleId,
         workerToken,
       });

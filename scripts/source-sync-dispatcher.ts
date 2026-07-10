@@ -104,7 +104,6 @@ export function createPostgresScheduleRepository(sql: postgres.Sql): SourceSyncS
           updated_at = now()
         WHERE schedule.id = ${scheduleId}
           AND schedule.worker_token = ${workerToken}
-          AND schedule.lease_expires_at > now()
         RETURNING id
       `) as readonly unknown[];
       return rows.length === 1;
@@ -133,7 +132,6 @@ export function createPostgresScheduleRepository(sql: postgres.Sql): SourceSyncS
           updated_at = now()
         WHERE schedule.id = ${scheduleId}
           AND schedule.worker_token = ${workerToken}
-          AND schedule.lease_expires_at > now()
         RETURNING id
       `) as readonly unknown[];
       return rows.length === 1;
@@ -172,10 +170,23 @@ async function runScript(step: 'collect' | 'ingest', args: string[]): Promise<vo
     env: process.env,
     stdio: 'inherit',
   });
-  const exitCode = await new Promise<number | null>((resolve, reject) => {
-    child.on('error', reject);
-    child.on('close', resolve);
-  });
+  const forwardSignal = (signal: NodeJS.Signals): void => {
+    child.kill(signal);
+  };
+  const onSigterm = (): void => forwardSignal('SIGTERM');
+  const onSigint = (): void => forwardSignal('SIGINT');
+  process.once('SIGTERM', onSigterm);
+  process.once('SIGINT', onSigint);
+  let exitCode: number | null;
+  try {
+    exitCode = await new Promise<number | null>((resolve, reject) => {
+      child.on('error', reject);
+      child.on('close', resolve);
+    });
+  } finally {
+    process.off('SIGTERM', onSigterm);
+    process.off('SIGINT', onSigint);
+  }
   if (exitCode !== 0) throw new SourceSyncCommandError(step, exitCode);
 }
 

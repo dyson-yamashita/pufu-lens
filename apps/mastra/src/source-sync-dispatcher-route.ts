@@ -26,6 +26,14 @@ export const sourceSyncDispatcherRoute = registerApiRoute(
         return context.json({ accepted: true, execution }, 202);
       } catch (error) {
         const invalidRequest = error instanceof DispatcherRequestError;
+        if (!invalidRequest) {
+          console.error(
+            JSON.stringify({
+              error: safeDispatcherRouteError(error),
+              event: 'source_sync_dispatcher_start_failed',
+            }),
+          );
+        }
         return context.json(
           { error: invalidRequest ? error.message : 'dispatcher job could not be started' },
           invalidRequest ? 400 : 503,
@@ -45,6 +53,16 @@ export function parseDispatcherRequest(value: unknown): Record<string, never> {
     throw new DispatcherRequestError('request body must be an empty JSON object');
   }
   return {};
+}
+
+export function safeDispatcherRouteError(error: unknown): string {
+  if (error instanceof Error) {
+    const httpStatus = error.message.match(/HTTP (\d{3})/i)?.[1];
+    if (httpStatus) return `Cloud Run Jobs API HTTP ${httpStatus}`;
+    if (/^[A-Z0-9_]+ is required$/.test(error.message)) return error.message;
+    if (error.message === 'cloud access token unavailable') return error.message;
+  }
+  return 'dispatcher job start failed';
 }
 
 export function dispatcherJobRunUrl(config: DispatcherJobConfig): string {

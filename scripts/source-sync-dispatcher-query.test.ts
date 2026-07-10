@@ -31,4 +31,6 @@ test('process runner targets one data source and runs collect before ingest', ()
   assert.ok(collect >= 0 && ingest > collect);
   assert.equal(source.match(/'--data-source-id'/g)?.length, 2);
   assert.equal(source.match(/target\.dataSourceId/g)?.length, 2);
+  assert.match(source, /process\.once\('SIGTERM'/);
+  assert.match(source, /child\.kill\(signal\)/);
 });

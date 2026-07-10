@@ -106,7 +106,7 @@ test('stale worker completion is counted as lease lost', async () => {
   assert.equal(result.succeeded, 0);
 });
 
-test('heartbeat lease loss prevents stale success completion', async () => {
+test('transient heartbeat failure still lets worker-token CAS decide completion', async () => {
   const repo = repository();
   repo.heartbeat = async () => false;
   let completionCalls = 0;
@@ -124,6 +124,6 @@ test('heartbeat lease loss prevents stale success completion', async () => {
     },
     workerToken: 'worker-a',
   });
-  assert.equal(completionCalls, 0);
-  assert.equal(result.leaseLost, 1);
+  assert.equal(completionCalls, 1);
+  assert.equal(result.succeeded, 1);
 });

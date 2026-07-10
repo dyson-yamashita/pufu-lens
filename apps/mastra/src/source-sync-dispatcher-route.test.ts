@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   dispatcherJobRunUrl,
   parseDispatcherRequest,
+  safeDispatcherRouteError,
   startDispatcherJob,
 } from './source-sync-dispatcher-route.ts';
 
@@ -16,6 +17,17 @@ test('dispatcher request accepts only an empty JSON object', () => {
   assert.deepEqual(parseDispatcherRequest({}), {});
   assert.throws(() => parseDispatcherRequest({ project: 'other' }), /empty JSON object/);
   assert.throws(() => parseDispatcherRequest([]), /empty JSON object/);
+});
+
+test('dispatcher route errors never expose provider response bodies or tokens', () => {
+  assert.equal(
+    safeDispatcherRouteError(new Error('Cloud Run Jobs API returned HTTP 403: token=secret')),
+    'Cloud Run Jobs API HTTP 403',
+  );
+  assert.equal(
+    safeDispatcherRouteError(new Error('oauth_token=secret raw provider response')),
+    'dispatcher job start failed',
+  );
 });
 
 test('dispatcher Cloud Run Job URL encodes resource identifiers', () => {
