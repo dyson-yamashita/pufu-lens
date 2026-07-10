@@ -395,7 +395,8 @@ class PostgresCollectionRepository implements CollectionRepository {
       SET
         last_checked_at = now(),
         last_sync_succeeded_at = now(),
-        sync_cursor = ${this.sql.json(input.syncCursor as postgres.JSONValue)}
+        sync_cursor = ${this.sql.json(input.syncCursor as postgres.JSONValue)},
+        updated_at = now()
       WHERE id = ${input.dataSourceId}
         AND project_id = ${input.projectId}
     `;
