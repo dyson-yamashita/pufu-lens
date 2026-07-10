@@ -106,7 +106,7 @@ test('stale worker completion is counted as lease lost', async () => {
   assert.equal(result.succeeded, 0);
 });
 
-test('transient heartbeat failure still lets worker-token CAS decide completion', async () => {
+test('heartbeat lease loss aborts the runner and prevents completion', async () => {
   const repo = repository();
   repo.heartbeat = async () => false;
   let completionCalls = 0;
@@ -118,12 +118,14 @@ test('transient heartbeat failure still lets worker-token CAS decide completion'
     heartbeatIntervalMs: 1,
     repository: repo,
     runner: {
-      async run() {
-        await new Promise((resolve) => setTimeout(resolve, 10));
+      async run(_target, signal) {
+        await new Promise<void>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+        });
       },
     },
     workerToken: 'worker-a',
   });
-  assert.equal(completionCalls, 1);
-  assert.equal(result.succeeded, 1);
+  assert.equal(completionCalls, 0);
+  assert.equal(result.leaseLost, 1);
 });

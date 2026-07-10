@@ -156,5 +156,5 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 - Cloud Run Job 用 Dockerfile は `infra/docker/jobs/Dockerfile`。
 - ローカルでは `docker build -f infra/docker/jobs/Dockerfile -t pufu-lens-workflow-job:local .` の後、`docker run --rm -e WORKFLOW_ID=generate-report -e WORKFLOW_INPUT_JSON='{"projectSlug":"sample-a","period":"weekly","dryRun":true}' pufu-lens-workflow-job:local` のように entrypoint dry-run を確認できる。
 - `infra:check` は GCP identifier と Secret Manager の secret 名だけを検査し、secret の実値は出力しない。
-- scheduler OIDC service accountがMastra Serverの`roles/run.invoker`、Mastra runtime service accountがdispatcher Jobの`run.jobs.run`を持つことを確認する。
+- scheduler OIDC service accountがMastra Serverの`roles/run.invoker`、Mastra runtime service accountがdispatcher Jobの`run.jobs.run` / `run.jobs.runWithOverrides`（`roles/run.jobsExecutorWithOverrides`または同等custom role）を持つことを確認する。
 - ローカルではローカル専用DB/Storage/credentialsを設定し、`pnpm schedule:dispatch --once`を明示実行する。`pnpm dev`や`docker compose up`からは自動起動しない。

@@ -26,8 +26,9 @@ test('retry sequence is 15 minutes, one hour, six hours, then daily', () => {
 });
 
 test('process runner targets one data source and runs collect before ingest', () => {
-  const collect = source.indexOf("runScript('collect'");
-  const ingest = source.indexOf("runScript('ingest'");
+  const runner = source.indexOf('async function runSourceSync');
+  const collect = source.indexOf("'collect',", runner);
+  const ingest = source.indexOf("'ingest',", collect);
   assert.ok(collect >= 0 && ingest > collect);
   assert.equal(source.match(/'--data-source-id'/g)?.length, 2);
   assert.equal(source.match(/target\.dataSourceId/g)?.length, 2);

@@ -25,7 +25,7 @@ export interface SourceSyncScheduleRepository {
 }
 
 export interface SourceSyncRunner {
-  run(target: SourceSyncTarget): Promise<void>;
+  run(target: SourceSyncTarget, signal: AbortSignal): Promise<void>;
 }
 
 export interface SourceSyncDispatchResult {
@@ -57,16 +57,37 @@ export async function dispatchDueSourceSyncs(input: {
     const [target] = await input.repository.claimDue({ limit: 1, workerToken });
     if (!target) break;
     claimed += 1;
+    const abortController = new AbortController();
+    let heartbeatInFlight = false;
+    let leaseLostDuringRun = false;
     const heartbeat = setInterval(() => {
+      if (heartbeatInFlight) return;
+      heartbeatInFlight = true;
       void input.repository
         .heartbeat({ scheduleId: target.scheduleId, workerToken })
-        .catch(() => undefined);
+        .then((extended) => {
+          if (!extended) {
+            leaseLostDuringRun = true;
+            abortController.abort();
+          }
+        })
+        .catch(() => {
+          leaseLostDuringRun = true;
+          abortController.abort();
+        })
+        .finally(() => {
+          heartbeatInFlight = false;
+        });
     }, input.heartbeatIntervalMs ?? 60_000);
     heartbeat.unref();
 
     try {
-      await input.runner.run(target);
+      await input.runner.run(target, abortController.signal);
       clearInterval(heartbeat);
+      if (leaseLostDuringRun) {
+        leaseLost += 1;
+        continue;
+      }
       const updated = await input.repository.markSucceeded({
         scheduleId: target.scheduleId,
         workerToken,
@@ -75,6 +96,17 @@ export async function dispatchDueSourceSyncs(input: {
       else leaseLost += 1;
     } catch (error) {
       clearInterval(heartbeat);
+      if (leaseLostDuringRun) {
+        console.error(
+          JSON.stringify({
+            event: 'source_sync_lease_lost',
+            scheduleId: target.scheduleId,
+            sourceType: target.sourceType,
+          }),
+        );
+        leaseLost += 1;
+        continue;
+      }
       const safeError = safeScheduleError(error);
       console.error(
         JSON.stringify({

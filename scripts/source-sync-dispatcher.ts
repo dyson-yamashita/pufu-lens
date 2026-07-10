@@ -104,6 +104,7 @@ export function createPostgresScheduleRepository(sql: postgres.Sql): SourceSyncS
           updated_at = now()
         WHERE schedule.id = ${scheduleId}
           AND schedule.worker_token = ${workerToken}
+          AND schedule.lease_expires_at > now()
         RETURNING id
       `) as readonly unknown[];
       return rows.length === 1;
@@ -132,6 +133,7 @@ export function createPostgresScheduleRepository(sql: postgres.Sql): SourceSyncS
           updated_at = now()
         WHERE schedule.id = ${scheduleId}
           AND schedule.worker_token = ${workerToken}
+          AND schedule.lease_expires_at > now()
         RETURNING id
       `) as readonly unknown[];
       return rows.length === 1;
@@ -139,35 +141,48 @@ export function createPostgresScheduleRepository(sql: postgres.Sql): SourceSyncS
   };
 }
 
-async function runSourceSync(target: SourceSyncTarget): Promise<void> {
-  await runScript('collect', [
-    join(repoRoot, 'scripts/collect-source.ts'),
-    '--project',
-    target.projectSlug,
-    '--source',
-    target.sourceType,
-    '--data-source-id',
-    target.dataSourceId,
-  ]);
-  await runScript('ingest', [
-    join(repoRoot, 'scripts/ingest-workflow.ts'),
-    'run',
-    '--project',
-    target.projectSlug,
-    '--source',
-    target.sourceType,
-    '--data-source-id',
-    target.dataSourceId,
-    '--drain',
-    '--max-runtime-seconds',
-    '540',
-  ]);
+async function runSourceSync(target: SourceSyncTarget, signal: AbortSignal): Promise<void> {
+  await runScript(
+    'collect',
+    [
+      join(repoRoot, 'scripts/collect-source.ts'),
+      '--project',
+      target.projectSlug,
+      '--source',
+      target.sourceType,
+      '--data-source-id',
+      target.dataSourceId,
+    ],
+    signal,
+  );
+  await runScript(
+    'ingest',
+    [
+      join(repoRoot, 'scripts/ingest-workflow.ts'),
+      'run',
+      '--project',
+      target.projectSlug,
+      '--source',
+      target.sourceType,
+      '--data-source-id',
+      target.dataSourceId,
+      '--drain',
+      '--max-runtime-seconds',
+      '540',
+    ],
+    signal,
+  );
 }
 
-async function runScript(step: 'collect' | 'ingest', args: string[]): Promise<void> {
+async function runScript(
+  step: 'collect' | 'ingest',
+  args: string[],
+  signal: AbortSignal,
+): Promise<void> {
   const child = spawn(process.execPath, [...process.execArgv, ...args], {
     cwd: repoRoot,
     env: process.env,
+    signal,
     stdio: 'inherit',
   });
   const forwardSignal = (signal: NodeJS.Signals): void => {
