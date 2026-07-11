@@ -21,6 +21,15 @@ export type GraphViewerNode = {
   readonly properties: Record<string, unknown>;
 };
 
+export type GraphViewerDocumentChunk = {
+  readonly chunkIndex: number;
+  readonly content: string;
+  readonly contentHash: string;
+  readonly createdAt: string;
+  readonly id: string;
+  readonly metadata: Record<string, unknown>;
+};
+
 export type GraphViewerEdge = {
   readonly id: string;
   readonly label: string;
@@ -60,6 +69,10 @@ export interface GraphViewerRepository {
     graphName: string;
     preset: GraphPreset;
   }): Promise<readonly Record<string, unknown>[]>;
+  fetchDocumentChunks(input: {
+    documentIds: readonly string[];
+    projectId: string;
+  }): Promise<ReadonlyMap<string, readonly GraphViewerDocumentChunk[]>>;
   lookupProjectMember(input: {
     projectSlug: string;
     userId: string;
@@ -201,6 +214,33 @@ export async function runGraphPresetQuery(
 }
 
 /**
+ * Fetches chunks for one selected graph Document node after project access is confirmed.
+ *
+ * @param input - The project, selected document, and current user.
+ * @param options - Repository used to resolve project access and fetch chunks.
+ * @returns The chunks attached to the selected document in chunk index order.
+ */
+export async function fetchGraphDocumentChunks(
+  input: { documentId: string; projectSlug: string; userId: string },
+  options: {
+    repository: Pick<GraphViewerRepository, 'fetchDocumentChunks' | 'lookupProjectMember'>;
+  },
+): Promise<readonly GraphViewerDocumentChunk[]> {
+  const project = await options.repository.lookupProjectMember({
+    projectSlug: input.projectSlug,
+    userId: input.userId,
+  });
+  if (!project) {
+    throw new GraphAccessDeniedError(input.projectSlug);
+  }
+  const chunksByDocumentId = await options.repository.fetchDocumentChunks({
+    documentIds: [input.documentId],
+    projectId: project.id,
+  });
+  return chunksByDocumentId.get(input.documentId) ?? [];
+}
+
+/**
  * Validates a graph query limit.
  *
  * @param limit - The requested limit value
@@ -241,6 +281,33 @@ export function createPostgresGraphViewerRepository(
           )}) AS (${safeRecordDefinition})`,
         ) as Promise<readonly Record<string, unknown>[]>;
       });
+    },
+    async fetchDocumentChunks({ documentIds, projectId }) {
+      if (documentIds.length === 0) {
+        return new Map();
+      }
+      const rows = (await sql`
+        SELECT
+          dc.document_id::text AS document_id,
+          dc.id::text AS id,
+          dc.chunk_index,
+          dc.content,
+          dc.content_hash,
+          dc.metadata,
+          dc.created_at::text AS created_at
+        FROM public.document_chunks dc
+        WHERE dc.project_id = ${projectId}
+          AND dc.document_id::text = ANY(${documentIds})
+        ORDER BY dc.document_id, dc.chunk_index
+      `) as readonly Record<string, unknown>[];
+      const chunksByDocumentId = new Map<string, GraphViewerDocumentChunk[]>();
+      for (const row of rows) {
+        const { chunk, documentId } = parseGraphDocumentChunkRow(row);
+        const chunks = chunksByDocumentId.get(documentId) ?? [];
+        chunks.push(chunk);
+        chunksByDocumentId.set(documentId, chunks);
+      }
+      return chunksByDocumentId;
     },
     async lookupProjectMember({ projectSlug, userId }) {
       const access = await lookupProjectMemberAccess(sql, { projectSlug, userId });
@@ -473,6 +540,38 @@ function displayNodeLabel(label: string, properties: Record<string, unknown>): s
 function propertyString(properties: Record<string, unknown>, key: string): string | undefined {
   const value = properties[key];
   return typeof value === 'string' && value ? value : undefined;
+}
+
+function parseGraphDocumentChunkRow(row: Record<string, unknown>): {
+  readonly chunk: GraphViewerDocumentChunk;
+  readonly documentId: string;
+} {
+  const documentId = requireString(row.document_id, 'document chunk document_id');
+  return {
+    chunk: {
+      chunkIndex: requireNumber(row.chunk_index, 'document chunk chunk_index'),
+      content: requireString(row.content, 'document chunk content'),
+      contentHash: requireString(row.content_hash, 'document chunk content_hash'),
+      createdAt: requireString(row.created_at, 'document chunk created_at'),
+      id: requireString(row.id, 'document chunk id'),
+      metadata: isRecord(row.metadata) ? row.metadata : {},
+    },
+    documentId,
+  };
+}
+
+function requireString(value: unknown, label: string): string {
+  if (typeof value !== 'string') {
+    throw new Error(`Invalid ${label}.`);
+  }
+  return value;
+}
+
+function requireNumber(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`Invalid ${label}.`);
+  }
+  return value;
 }
 
 function isAgeVertexRecord(value: Record<string, unknown>): boolean {
