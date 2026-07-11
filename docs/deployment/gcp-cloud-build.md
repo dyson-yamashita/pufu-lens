@@ -286,6 +286,17 @@ Cloud Run resource には secret reference を渡す。secret 値そのものを
 
 `apps/web/apphosting.yaml` には project id、hosted domain、bucket 名、OAuth client id などの環境固有値が入るため、公式 repository へ実値を upstream しない。
 
+deploy trigger を有効化する前に、Firebase CLI builder image を Artifact Registry へ 1 回 push する。
+
+```bash
+gcloud builds submit \
+  --region="${RUNTIME_REGION}" \
+  --tag "${RUNTIME_REGION}-docker.pkg.dev/${PROJECT_ID}/<artifact-repo>/firebase-tools:14.4.0" \
+  infra/docker/firebase-tools
+```
+
+`_FIREBASE_TOOLS_VERSION` を更新した場合は、同じ tag で builder image を再 build する。
+
 Cloud Build から Web deploy しない場合は、deploy trigger substitution で `_FIREBASE_DEPLOY=false` を設定する。この場合 Cloud Build は Mastra Server と Workflow Jobs の deploy と smoke check を担当し、Web は Firebase App Hosting の GitHub integration など別 release process で管理する。
 
 ## Migration

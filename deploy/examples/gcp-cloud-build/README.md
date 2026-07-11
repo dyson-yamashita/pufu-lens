@@ -153,7 +153,7 @@ Set these trigger substitutions in the user's GCP project:
 5. Deploy the Mastra Server to Cloud Run after its image is pushed and the migration step finishes.
 6. Deploy `${_ENV}-curate-workflow`, `${_ENV}-ingest-workflow`, `${_ENV}-generate-report`, and `${_ENV}-source-sync-dispatcher` as Cloud Run Jobs after the jobs image is pushed and the migration step finishes, while keeping each runtime `WORKFLOW_ID` unchanged.
 7. Create or update one five-minute Cloud Scheduler job that POSTs `{}` with an OIDC token to the Mastra Server dispatcher route.
-8. Deploy the Web app with Firebase App Hosting after Mastra Server, Workflow Jobs, and Scheduler finish when `_FIREBASE_DEPLOY=true`.
+8. Deploy the Web app with Firebase App Hosting after Mastra Server, Workflow Jobs, and Scheduler finish when `_FIREBASE_DEPLOY=true`. The step uses a prebuilt `firebase-tools` builder image from Artifact Registry instead of installing Firebase CLI on every deploy. When git history is available, it skips App Hosting deploy if the previous commit did not touch web-related paths.
 9. Read the deployed Mastra Server URL dynamically and run `deploy:smoke` after all deploy steps finish.
 
 The deploy config keeps the default Cloud Build worker and uses `waitFor` only to remove avoidable serial waits. Docker image builds use `docker buildx` registry caches at each image's `:buildcache` tag so unchanged layers, including multi-stage intermediate layers, can be reused without pulling the full previous runtime image first. App Hosting deploy still waits for backend deploy completion so the Web rollout does not expose a newer frontend before the matching backend is live. Runtime deploy steps wait for the migration barrier so new Cloud Run / App Hosting code is not rolled out before pending schema migrations are applied. Cost-sensitive environments should keep this default-worker shape unless they explicitly accept higher per-minute build costs.
@@ -216,11 +216,22 @@ The runtime service account generally needs:
 
 ## Firebase App Hosting
 
+Before enabling the deploy trigger, build and push the Firebase CLI builder image once per project and `_FIREBASE_TOOLS_VERSION`:
+
+```bash
+gcloud builds submit \
+  --region="${_REGION}" \
+  --tag "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/firebase-tools:${_FIREBASE_TOOLS_VERSION}" \
+  infra/docker/firebase-tools
+```
+
 The example uses:
 
 ```bash
 firebase deploy --only apphosting --project "$PROJECT_ID" --non-interactive
 ```
+
+When the checkout includes the parent commit, `deploy-web-app-hosting` skips App Hosting deploy if `HEAD^..HEAD` does not touch `apps/web/`, `firebase.json`, root workspace manifests, or `packages/`. Cloud Build performs a shallow clone by default, so the skip logic falls back to deploy when parent history is unavailable. For stricter control, split Web deploy into a dedicated trigger with `includedFiles` instead of relying on in-step diffing.
 
 Firebase App Hosting reads runtime configuration from `apps/web/apphosting.yaml` and `firebase.json`. In an OSS fork, copy `apphosting.example.yaml` to `apps/web/apphosting.yaml` in the user's own repository or generated release workspace, then replace placeholder values there. Do not upstream project ids, hosted domains, bucket names, OAuth client ids, or secret values.
 
