@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import type { GraphViewerDocumentChunk, GraphViewerEdge, GraphViewerNode } from './graph-viewer';
 
 /**
- * Renders the property list for a graph node or edge.
+ * Displays graph item properties and loads document chunks when a document node is selected.
  *
- * @param item - The selected graph node or edge.
+ * @param item - The graph node or edge whose details are displayed.
+ * @param projectSlug - The project used to load document chunks for document nodes.
  */
 export function PropertyList({
   item,
@@ -30,6 +31,7 @@ export function PropertyList({
     selectedChunkState?.itemId === item.id ? selectedChunkState.chunk : undefined;
 
   useEffect(() => {
+    setSelectedChunkState(undefined);
     if (!documentId) {
       setChunksState({ status: 'idle' });
       return;
@@ -183,7 +185,9 @@ export function PropertyList({
                 </thead>
                 <tbody>
                   {chunks.map((chunk) => (
+                    // biome-ignore lint/a11y/useSemanticElements: table row layout requires tr; role conveys interactivity to assistive tech
                     <tr
+                      aria-label={`Chunk ${chunk.chunkIndex} の詳細を表示`}
                       data-testid="graph-chunk-row"
                       key={chunk.id}
                       onClick={() => setSelectedChunkState({ chunk, itemId: item.id })}
@@ -193,6 +197,7 @@ export function PropertyList({
                           setSelectedChunkState({ chunk, itemId: item.id });
                         }
                       }}
+                      role="button"
                       tabIndex={0}
                     >
                       <th className="mono" scope="row">
@@ -215,8 +220,17 @@ export function PropertyList({
 }
 
 function truncateChunkPreview(value: string): string {
-  const characters = Array.from(value.replace(/\s+/g, ' ').trim());
-  return characters.length <= 120 ? characters.join('') : `${characters.slice(0, 120).join('')}…`;
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  let preview = '';
+  let count = 0;
+  for (const character of normalized) {
+    if (count >= 120) {
+      return `${preview}…`;
+    }
+    preview += character;
+    count += 1;
+  }
+  return preview;
 }
 
 type GraphDocumentChunksState =
@@ -226,7 +240,7 @@ type GraphDocumentChunksState =
 
 type GraphDocumentChunksResponse =
   | { readonly chunks: readonly GraphViewerDocumentChunk[] }
-  | { readonly error: { readonly message: string } };
+  | { readonly error: { readonly code: string; readonly message: string } };
 
 function propertyString(properties: Record<string, unknown>, key: string): string | undefined {
   const value = properties[key];

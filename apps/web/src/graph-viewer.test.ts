@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import {
   fetchGraphDocumentChunks,
   GraphAccessDeniedError,
+  GraphInvalidDocumentIdError,
   GraphLimitError,
   GraphPresetNotFoundError,
   type GraphViewerRepository,
+  graphNodeDocumentId,
   listGraphPresets,
   normalizeGraphLimit,
   normalizeGraphRows,
@@ -181,11 +183,38 @@ assert.equal('chunks' in (result.nodes[1] ?? {}), false);
 assert.equal(result.edges.length, 1);
 assert.equal(result.rawRows.length, 1);
 
+const documentNode = {
+  id: 'doc-node',
+  label: 'Document',
+  labels: ['Document'],
+  properties: { documentId: 'doc-a', title: 'Spec' },
+};
+assert.equal(graphNodeDocumentId(documentNode), 'doc-a');
+
 const chunks = await fetchGraphDocumentChunks(
   { documentId: 'doc-a', projectSlug: 'sample-a', userId: 'user-a' },
   { repository: createRepository() },
 );
+assert.equal(chunks.length, 1);
 assert.equal(chunks[0]?.content, 'Chunk content');
+
+await assert.rejects(
+  () =>
+    fetchGraphDocumentChunks(
+      { documentId: 'doc-a', projectSlug: 'sample-b', userId: 'user-a' },
+      { repository: createRepository() },
+    ),
+  GraphAccessDeniedError,
+);
+
+await assert.rejects(
+  () =>
+    fetchGraphDocumentChunks(
+      { documentId: '   ', projectSlug: 'sample-a', userId: 'user-a' },
+      { repository: createRepository() },
+    ),
+  GraphInvalidDocumentIdError,
+);
 
 const presetSummary = listGraphPresets().find((preset) => preset.id === 'recent-relations');
 assert.match(presetSummary?.preview ?? '', /LIMIT 100$/);

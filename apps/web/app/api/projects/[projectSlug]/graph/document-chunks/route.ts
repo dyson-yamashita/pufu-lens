@@ -1,23 +1,21 @@
 import { NextResponse } from 'next/server';
 import { AuthRequiredError, requireSessionUserId } from '../../../../../../src/auth-session';
-import {
-  createPostgresGraphViewerRepository,
-  fetchGraphDocumentChunks,
-  GraphAccessDeniedError,
-} from '../../../../../../src/graph-viewer';
+import { runGraphDocumentChunksApi } from '../../../../../../src/graph-document-chunks-api';
+import { createPostgresGraphViewerRepository } from '../../../../../../src/graph-viewer';
 
 /**
- * Fetches chunks for one selected graph Document node.
+ * Loads document chunks for a graph document node in the requested project.
  *
- * @param request - The incoming request containing a `documentId` query parameter.
- * @param params - The route parameters containing `projectSlug`.
- * @returns A JSON response with chunks or an error code.
+ * @param request - The incoming request containing the documentId query parameter
+ * @param params - The route parameters containing `projectSlug`
+ * @returns A JSON response with the document chunks or an error code
  */
 export async function GET(
   request: Request,
   { params }: { readonly params: Promise<{ readonly projectSlug: string }> },
 ) {
   const { projectSlug } = await params;
+  const documentId = new URL(request.url).searchParams.get('documentId');
   let userId: string;
   try {
     userId = await requireSessionUserId();
@@ -28,22 +26,17 @@ export async function GET(
     throw error;
   }
 
-  const documentId = new URL(request.url).searchParams.get('documentId')?.trim() ?? '';
-  if (!documentId) {
-    return graphDocumentChunksErrorResponse('invalid_request', 'documentId is required.', 400);
-  }
-
   try {
-    const chunks = await fetchGraphDocumentChunks(
+    const result = await runGraphDocumentChunksApi(
       { documentId, projectSlug, userId },
       { repository: createPostgresGraphViewerRepository() },
     );
-    return NextResponse.json({ chunks });
-  } catch (error) {
-    if (error instanceof GraphAccessDeniedError) {
-      return graphDocumentChunksErrorResponse('project_access_denied', error.message, 403);
+    if (result.status === 200) {
+      return NextResponse.json({ chunks: result.chunks });
     }
-    console.error('Graph Document Chunks API Error:', error);
+    return graphDocumentChunksErrorResponse(result.error.code, result.error.message, result.status);
+  } catch (error) {
+    console.error('Graph document chunks API error:', error);
     return graphDocumentChunksErrorResponse(
       'graph_document_chunks_internal_error',
       'An unexpected error occurred.',

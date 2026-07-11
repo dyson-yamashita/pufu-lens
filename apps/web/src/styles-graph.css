@@ -297,9 +297,13 @@ body.graph-fallback-fullscreen-active {
   cursor: pointer;
 }
 
-.graph-chunk-table tbody tr:focus,
 .graph-chunk-table tbody tr:hover {
   background: var(--surface-2);
+}
+
+.graph-chunk-table tbody tr:focus-visible {
+  background: var(--surface-2);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
   outline: none;
 }
 

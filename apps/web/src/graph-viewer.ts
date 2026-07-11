@@ -104,6 +104,13 @@ export class GraphLimitError extends Error {
   }
 }
 
+export class GraphInvalidDocumentIdError extends Error {
+  constructor(documentId: unknown) {
+    super(`Invalid graph documentId: ${String(documentId)}`);
+    this.name = 'GraphInvalidDocumentIdError';
+  }
+}
+
 export const GRAPH_PRESETS: readonly GraphPreset[] = [
   {
     cypher: (limit) => `MATCH (source)-[relation]->(target)
@@ -214,11 +221,23 @@ export async function runGraphPresetQuery(
 }
 
 /**
- * Fetches chunks for one selected graph Document node after project access is confirmed.
+ * Returns the documentId property from a graph node when present.
  *
- * @param input - The project, selected document, and current user.
- * @param options - Repository used to resolve project access and fetch chunks.
- * @returns The chunks attached to the selected document in chunk index order.
+ * @param node - The graph node to inspect
+ * @returns The documentId value, or undefined when the node is not a document
+ */
+export function graphNodeDocumentId(node: GraphViewerNode): string | undefined {
+  return propertyString(node.properties, 'documentId');
+}
+
+/**
+ * Loads document chunks for a graph document node after project access is verified.
+ *
+ * @param input - The project, document ID, and requesting user
+ * @param options - Repository used to resolve project access and fetch document chunks
+ * @returns The document chunks for the requested document
+ * @throws GraphAccessDeniedError If the user cannot access the project
+ * @throws GraphInvalidDocumentIdError If documentId is missing or blank
  */
 export async function fetchGraphDocumentChunks(
   input: { documentId: string; projectSlug: string; userId: string },
@@ -226,6 +245,10 @@ export async function fetchGraphDocumentChunks(
     repository: Pick<GraphViewerRepository, 'fetchDocumentChunks' | 'lookupProjectMember'>;
   },
 ): Promise<readonly GraphViewerDocumentChunk[]> {
+  const documentId = input.documentId.trim();
+  if (!documentId) {
+    throw new GraphInvalidDocumentIdError(input.documentId);
+  }
   const project = await options.repository.lookupProjectMember({
     projectSlug: input.projectSlug,
     userId: input.userId,
@@ -234,10 +257,10 @@ export async function fetchGraphDocumentChunks(
     throw new GraphAccessDeniedError(input.projectSlug);
   }
   const chunksByDocumentId = await options.repository.fetchDocumentChunks({
-    documentIds: [input.documentId],
+    documentIds: [documentId],
     projectId: project.id,
   });
-  return chunksByDocumentId.get(input.documentId) ?? [];
+  return chunksByDocumentId.get(documentId) ?? [];
 }
 
 /**
@@ -261,7 +284,7 @@ export function normalizeGraphLimit(limit: unknown, maxLimit: number = GRAPH_MAX
 /**
  * Creates a PostgreSQL-backed graph viewer repository.
  *
- * @returns A repository that executes preset graph queries and looks up project graph access.
+ * @returns A repository that executes preset graph queries, loads document chunks, and looks up project graph access.
  */
 export function createPostgresGraphViewerRepository(
   sql: postgres.Sql = getRequiredAdminSql(),
@@ -286,28 +309,32 @@ export function createPostgresGraphViewerRepository(
       if (documentIds.length === 0) {
         return new Map();
       }
-      const rows = (await sql`
-        SELECT
-          dc.document_id::text AS document_id,
-          dc.id::text AS id,
-          dc.chunk_index,
-          dc.content,
-          dc.content_hash,
-          dc.metadata,
-          dc.created_at::text AS created_at
-        FROM public.document_chunks dc
-        WHERE dc.project_id = ${projectId}
-          AND dc.document_id::text = ANY(${documentIds})
-        ORDER BY dc.document_id, dc.chunk_index
-      `) as readonly Record<string, unknown>[];
-      const chunksByDocumentId = new Map<string, GraphViewerDocumentChunk[]>();
-      for (const row of rows) {
-        const { chunk, documentId } = parseGraphDocumentChunkRow(row);
-        const chunks = chunksByDocumentId.get(documentId) ?? [];
-        chunks.push(chunk);
-        chunksByDocumentId.set(documentId, chunks);
-      }
-      return chunksByDocumentId;
+      return sql.begin(async (transaction) => {
+        await transaction`SET TRANSACTION READ ONLY`;
+        await transaction`SET LOCAL statement_timeout = '5000ms'`;
+        const rows = (await transaction`
+          SELECT
+            dc.document_id::text AS document_id,
+            dc.id::text AS id,
+            dc.chunk_index,
+            dc.content,
+            dc.content_hash,
+            dc.metadata,
+            dc.created_at::text AS created_at
+          FROM public.document_chunks dc
+          WHERE dc.project_id = ${projectId}
+            AND dc.document_id IN ${transaction(documentIds)}
+          ORDER BY dc.document_id, dc.chunk_index
+        `) as readonly Record<string, unknown>[];
+        const chunksByDocumentId = new Map<string, GraphViewerDocumentChunk[]>();
+        for (const row of rows) {
+          const { chunk, documentId } = parseGraphDocumentChunkRow(row);
+          const chunks = chunksByDocumentId.get(documentId) ?? [];
+          chunks.push(chunk);
+          chunksByDocumentId.set(documentId, chunks);
+        }
+        return chunksByDocumentId;
+      });
     },
     async lookupProjectMember({ projectSlug, userId }) {
       const access = await lookupProjectMemberAccess(sql, { projectSlug, userId });
@@ -542,6 +569,12 @@ function propertyString(properties: Record<string, unknown>, key: string): strin
   return typeof value === 'string' && value ? value : undefined;
 }
 
+/**
+ * Parses a PostgreSQL document chunk row into a typed chunk and document ID.
+ *
+ * @param row - The raw database row to parse
+ * @returns The parsed chunk and its parent document ID
+ */
 function parseGraphDocumentChunkRow(row: Record<string, unknown>): {
   readonly chunk: GraphViewerDocumentChunk;
   readonly documentId: string;
@@ -560,6 +593,13 @@ function parseGraphDocumentChunkRow(row: Record<string, unknown>): {
   };
 }
 
+/**
+ * Validates that a value is a string.
+ *
+ * @param value - The value to validate
+ * @param label - The name used in the validation error message
+ * @returns The validated string
+ */
 function requireString(value: unknown, label: string): string {
   if (typeof value !== 'string') {
     throw new Error(`Invalid ${label}.`);
@@ -567,6 +607,13 @@ function requireString(value: unknown, label: string): string {
   return value;
 }
 
+/**
+ * Validates and returns a finite numeric value.
+ *
+ * @param value - The value to validate
+ * @param label - The name used in the validation error message
+ * @returns The validated number
+ */
 function requireNumber(value: unknown, label: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw new Error(`Invalid ${label}.`);
