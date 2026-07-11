@@ -9,4 +9,5 @@ RUN apt-get update \
 
 ARG FIREBASE_TOOLS_VERSION
 RUN test -n "${FIREBASE_TOOLS_VERSION}"
-RUN npm install --global "firebase-tools@${FIREBASE_TOOLS_VERSION}"
+RUN npm install --global "firebase-tools@${FIREBASE_TOOLS_VERSION}" \
+  && npm cache clean --force
