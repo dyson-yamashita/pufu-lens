@@ -286,15 +286,30 @@ Cloud Run resource には secret reference を渡す。secret 値そのものを
 
 `apps/web/apphosting.yaml` には project id、hosted domain、bucket 名、OAuth client id などの環境固有値が入るため、公式 repository へ実値を upstream しない。
 
-deploy trigger を有効化する前に、Firebase CLI builder image を Artifact Registry へ 1 回 push する。version の正は `cloudbuild.deploy.yaml` の `_FIREBASE_TOOLS_VERSION` とし、image tag と build arg の両方に同じ値を使う。
+deploy trigger を有効化する前に、Firebase CLI builder image を Artifact Registry へ 1 回 push する。version の正は `cloudbuild.deploy.yaml` の `_FIREBASE_TOOLS_VERSION` とし、image tag と build arg の両方に同じ値を使う。`gcloud builds submit --tag` は `--build-arg` を受け付けないため、一時 config 経由で docker build する。
 
 ```bash
 FIREBASE_TOOLS_VERSION=14.4.0
+IMAGE="${RUNTIME_REGION}-docker.pkg.dev/${PROJECT_ID}/<artifact-repo>/firebase-tools:${FIREBASE_TOOLS_VERSION}"
+
+cat > /tmp/cloudbuild.firebase-tools.yaml <<EOF
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg
+      - FIREBASE_TOOLS_VERSION=${FIREBASE_TOOLS_VERSION}
+      - --tag
+      - ${IMAGE}
+      - .
+images:
+  - ${IMAGE}
+EOF
 
 gcloud builds submit \
+  --project="${PROJECT_ID}" \
   --region="${RUNTIME_REGION}" \
-  --tag "${RUNTIME_REGION}-docker.pkg.dev/${PROJECT_ID}/<artifact-repo>/firebase-tools:${FIREBASE_TOOLS_VERSION}" \
-  --build-arg "FIREBASE_TOOLS_VERSION=${FIREBASE_TOOLS_VERSION}" \
+  --config=/tmp/cloudbuild.firebase-tools.yaml \
   infra/docker/firebase-tools
 ```
 

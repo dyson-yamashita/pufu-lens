@@ -220,11 +220,26 @@ Before enabling the deploy trigger, build and push the Firebase CLI builder imag
 
 ```bash
 FIREBASE_TOOLS_VERSION=14.4.0
+IMAGE="asia-east1-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/firebase-tools:${FIREBASE_TOOLS_VERSION}"
+
+cat > /tmp/cloudbuild.firebase-tools.yaml <<EOF
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg
+      - FIREBASE_TOOLS_VERSION=${FIREBASE_TOOLS_VERSION}
+      - --tag
+      - ${IMAGE}
+      - .
+images:
+  - ${IMAGE}
+EOF
 
 gcloud builds submit \
+  --project="${PROJECT_ID}" \
   --region="${_REGION}" \
-  --tag "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/firebase-tools:${FIREBASE_TOOLS_VERSION}" \
-  --build-arg "FIREBASE_TOOLS_VERSION=${FIREBASE_TOOLS_VERSION}" \
+  --config=/tmp/cloudbuild.firebase-tools.yaml \
   infra/docker/firebase-tools
 ```
 
