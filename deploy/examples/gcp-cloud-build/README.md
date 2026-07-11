@@ -231,7 +231,7 @@ The example uses:
 firebase deploy --only apphosting --project "$PROJECT_ID" --non-interactive
 ```
 
-When the checkout includes the parent commit, `deploy-web-app-hosting` skips App Hosting deploy if `HEAD^..HEAD` does not touch `apps/web/`, `firebase.json`, root workspace manifests, or `packages/`. Cloud Build performs a shallow clone by default, so the skip logic falls back to deploy when parent history is unavailable. For stricter control, split Web deploy into a dedicated trigger with `includedFiles` instead of relying on in-step diffing.
+When the checkout includes the parent commit, `deploy-web-app-hosting` skips App Hosting deploy if `HEAD^..HEAD` does not touch `apps/web/`, `firebase.json`, root workspace manifests, `packages/`, `infra/docker/firebase-tools/`, or `deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml`. Cloud Build performs a shallow clone by default, so the skip logic falls back to deploy when parent history is unavailable. For stricter control, split Web deploy into a dedicated trigger with `includedFiles` instead of relying on in-step diffing.
 
 Firebase App Hosting reads runtime configuration from `apps/web/apphosting.yaml` and `firebase.json`. In an OSS fork, copy `apphosting.example.yaml` to `apps/web/apphosting.yaml` in the user's own repository or generated release workspace, then replace placeholder values there. Do not upstream project ids, hosted domains, bucket names, OAuth client ids, or secret values.
 

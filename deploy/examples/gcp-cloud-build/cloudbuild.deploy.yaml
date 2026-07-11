@@ -295,7 +295,7 @@ steps:
 
         # apps/web に影響しない変更ならスキップ。
         # git 情報が無い / 親コミットが取れない場合はデプロイ側に倒す。
-        web_paths='^(apps/web/|firebase\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|package\.json|packages/)'
+        web_paths='^(apps/web/|firebase\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|package\.json|packages/|infra/docker/firebase-tools/|deploy/examples/gcp-cloud-build/cloudbuild\.deploy\.yaml)'
         if git rev-parse --git-dir >/dev/null 2>&1; then
           git fetch --deepen=1 >/dev/null 2>&1 || true
           if git rev-parse HEAD^ >/dev/null 2>&1; then
