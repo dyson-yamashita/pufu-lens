@@ -271,11 +271,9 @@ steps:
           --oidc-token-audience "$${service_url}"
         )
         if gcloud scheduler jobs describe "$${scheduler_name}" --location "${_REGION}" >/dev/null 2>&1; then
-          gcloud scheduler jobs update http "$${scheduler_name}" "$${scheduler_args[@]}" \
-            --update-headers "Content-Type=application/json"
+          gcloud scheduler jobs update http "$${scheduler_name}" "$${scheduler_args[@]}" --update-headers "Content-Type=application/json"
         else
-          gcloud scheduler jobs create http "$${scheduler_name}" "$${scheduler_args[@]}" \
-            --headers "Content-Type=application/json"
+          gcloud scheduler jobs create http "$${scheduler_name}" "$${scheduler_args[@]}" --headers "Content-Type=application/json"
         fi
 
   - id: deploy-web-app-hosting

@@ -19,11 +19,11 @@ test('deploy config creates one dispatcher job and one five-minute scheduler', (
   assert.match(deploy, /--oidc-service-account-email/);
   assert.match(
     deploy,
-    /scheduler jobs update http[^\n]+\n\s+--update-headers "Content-Type=application\/json"/,
+    /scheduler jobs update http[^\n]+--update-headers "Content-Type=application\/json"/,
   );
   assert.match(
     deploy,
-    /scheduler jobs create http[^\n]+\n\s+--headers "Content-Type=application\/json"/,
+    /scheduler jobs create http[^\n]+--headers "Content-Type=application\/json"/,
   );
   assert.match(deploy, /--max-retries 0/);
   assert.match(deploy, /--task-timeout 3300s/);
