@@ -228,6 +228,8 @@ gcloud builds submit \
   infra/docker/firebase-tools
 ```
 
+This image is a Cloud Build step builder and intentionally runs as root so it can write to `/workspace` and use the deploy service account credentials that Cloud Build injects.
+
 The example uses:
 
 ```bash
