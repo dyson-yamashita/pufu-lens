@@ -1,11 +1,7 @@
 import { NextResponse } from 'next/server';
 import { AuthRequiredError, requireSessionUserId } from '../../../../../../src/auth-session';
-import {
-  createPostgresGraphViewerRepository,
-  fetchGraphDocumentChunks,
-  GraphAccessDeniedError,
-  GraphInvalidDocumentIdError,
-} from '../../../../../../src/graph-viewer';
+import { runGraphDocumentChunksApi } from '../../../../../../src/graph-document-chunks-api';
+import { createPostgresGraphViewerRepository } from '../../../../../../src/graph-viewer';
 
 /**
  * Loads document chunks for a graph document node in the requested project.
@@ -19,7 +15,7 @@ export async function GET(
   { params }: { readonly params: Promise<{ readonly projectSlug: string }> },
 ) {
   const { projectSlug } = await params;
-  const documentId = new URL(request.url).searchParams.get('documentId')?.trim() ?? '';
+  const documentId = new URL(request.url).searchParams.get('documentId');
   let userId: string;
   try {
     userId = await requireSessionUserId();
@@ -31,18 +27,15 @@ export async function GET(
   }
 
   try {
-    const chunks = await fetchGraphDocumentChunks(
+    const result = await runGraphDocumentChunksApi(
       { documentId, projectSlug, userId },
       { repository: createPostgresGraphViewerRepository() },
     );
-    return NextResponse.json({ chunks });
+    if (result.status === 200) {
+      return NextResponse.json({ chunks: result.chunks });
+    }
+    return graphDocumentChunksErrorResponse(result.error.code, result.error.message, result.status);
   } catch (error) {
-    if (error instanceof GraphAccessDeniedError) {
-      return graphDocumentChunksErrorResponse('project_access_denied', error.message, 403);
-    }
-    if (error instanceof GraphInvalidDocumentIdError) {
-      return graphDocumentChunksErrorResponse('invalid_document_id', error.message, 400);
-    }
     console.error('Graph document chunks API error:', error);
     return graphDocumentChunksErrorResponse(
       'graph_document_chunks_internal_error',

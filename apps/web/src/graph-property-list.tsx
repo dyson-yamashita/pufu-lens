@@ -205,6 +205,7 @@ export function PropertyList({
                   {chunks.map((chunk) => (
                     // biome-ignore lint/a11y/useSemanticElements: table row layout requires tr; role conveys interactivity to assistive tech
                     <tr
+                      aria-label={`Chunk ${chunk.chunkIndex} の詳細を表示`}
                       data-testid="graph-chunk-row"
                       key={chunk.id}
                       onClick={() => setSelectedChunkState({ chunk, itemId: item.id })}

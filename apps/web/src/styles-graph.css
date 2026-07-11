@@ -303,8 +303,8 @@ body.graph-fallback-fullscreen-active {
 
 .graph-chunk-table tbody tr:focus-visible {
   background: var(--surface-2);
-  outline: 2px solid var(--graph-selected);
-  outline-offset: -2px;
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
+  outline: none;
 }
 
 .graph-chunk-table td {
