@@ -64,6 +64,22 @@ ORDER BY next_run_at;
 3. Cloud Run Jobの構造化logではevent名、schedule ID、source type、件数だけを確認する。
 4. DB停止時間帯に起動していないことを確認する。夜間実行が必要ならDB起動・停止を別運用として用意する。
 
+Cloud Scheduler の status が code 7 / HTTP 403 で、dispatcher Job execution が作成されていない場合は、リクエストが内部routeへ到達していない。Scheduler Job の OIDC service accountとaudienceが現在のMastra service URLを指していること、およびそのScheduler SAがMastra Cloud Run service resourceの`roles/run.invoker`を持つことを確認する。
+
+Schedulerのstatusが成功に変わってもdispatcher Job executionが作成されず、Mastra logに`Cloud Run Jobs API HTTP 403`がある場合は、Mastra runtime SAがdispatcher Job resourceの`roles/run.jobsExecutorWithOverrides`を持つことを確認する。Deploy Cloud Build SAの`iam.serviceAccounts.actAs`はdeploy時のSA指定権限であり、この2つのruntime呼び出し権限を代替しない。
+
+```bash
+gcloud scheduler jobs describe "$SCHEDULER_JOB" \
+  --project "$PROJECT_ID" \
+  --location "$REGION" \
+  --format='yaml(httpTarget.uri,httpTarget.oidcToken,lastAttemptTime,status)'
+
+gcloud run jobs executions list \
+  --project "$PROJECT_ID" \
+  --region "$REGION" \
+  --job "$DISPATCHER_JOB"
+```
+
 Cloud SchedulerやJobを手動実行する前に、同じdue scheduleを処理中のexecutionがないこととDB稼働を確認する。手動実行でもsource IDやcredentialをJob overrideへ渡さず、dispatcherにDBから解決させる。
 
 ## 自動回帰テスト

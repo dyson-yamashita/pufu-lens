@@ -220,6 +220,34 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 
 Scheduler Job に `_SCHEDULER_SERVICE_ACCOUNT` の OIDC token を設定するため、Deploy Cloud Build SA には対象 Scheduler SA に対する `iam.serviceAccounts.actAs`（`roles/iam.serviceAccountUser`）も付与する。project 全体ではなく、対象 service account resource に scope を絞る。
 
+この `iam.serviceAccounts.actAs` は deploy 時に Scheduler SA を指定する権限であり、Scheduler SA 自身が Mastra Server を呼び出す権限ではない。Scheduler SA には、deploy 後の Mastra Cloud Run service resource に対して `roles/run.invoker` を別途付与する。
+
+```bash
+PROJECT_ID="<gcp-project-id>"
+REGION="<gcp-region>"
+MASTRA_SERVICE="<mastra-cloud-run-service>"
+SCHEDULER_SA="<scheduler-oidc-service-account>"
+
+gcloud run services add-iam-policy-binding "$MASTRA_SERVICE" \
+  --project "$PROJECT_ID" \
+  --region "$REGION" \
+  --member="serviceAccount:${SCHEDULER_SA}" \
+  --role="roles/run.invoker"
+```
+
+Mastra runtime SA から dispatcher Cloud Run Job を container override 付きで起動するため、対象 Job resource には `roles/run.jobsExecutorWithOverrides` も付与する。
+
+```bash
+DISPATCHER_JOB="<environment>-source-sync-dispatcher"
+RUNTIME_SA="<mastra-runtime-service-account>"
+
+gcloud run jobs add-iam-policy-binding "$DISPATCHER_JOB" \
+  --project "$PROJECT_ID" \
+  --region "$REGION" \
+  --member="serviceAccount:${RUNTIME_SA}" \
+  --role="roles/run.jobsExecutorWithOverrides"
+```
+
 Deploy Cloud Build SA は runtime service account を attach するため、対象 runtime SA に対する Service Account User が必要になる。Cloud Build から `firebase deploy --only apphosting` を実行する場合、Firebase CLI が有効 API と project IAM policy を確認するため `serviceusage.services.get`、`resourcemanager.projects.get`、`resourcemanager.projects.getIamPolicy` も必要になる。project scope の `roles/serviceusage.serviceUsageViewer` と `roles/browser` を付与するか、最小権限を厳格にする環境では Resource Manager の読み取り権限だけを含む custom role を付与する。
 
 Firebase App Hosting で custom service account を使う場合は、App Hosting source bucket の read 権限、`roles/firebaseapphosting.computeRunner`、参照 secret への access grant を確認する。
@@ -344,8 +372,8 @@ deploy 後は次を確認する。
 - migration 適用後、`public.schema_migrations` に期待どおりの version が記録されている（IAP tunnel など DB に到達できる端末から確認する）。
 - Cloud Run service が `_RUNTIME_SERVICE_ACCOUNT`、VPC connector、Secret Manager reference を使っている。
 - Cloud Run Jobs が deploy config の命名規則どおりに作成または更新されている。
-- 5分間隔のsource sync Cloud Schedulerが1件だけ存在し、Scheduler SAのOIDCでMastra内部routeを呼べる。
-- Mastra runtime SAがdispatcher Jobを起動でき、routeやJob logにtoken/secret/raw本文が出ていない。
+- 5分間隔のsource sync Cloud Schedulerが1件だけ存在し、Scheduler SAがMastra Cloud Run service resourceの`roles/run.invoker`を持ち、OIDCで内部routeを呼べる。
+- Mastra runtime SAがdispatcher Job resourceの`roles/run.jobsExecutorWithOverrides`を持ち、routeやJob logにtoken/secret/raw本文が出ていない。
 - Web runtime が正しい App Hosting backend、secret、bucket、Mastra URL を参照している。
 - Admin UI から data source ingest を実行し、Web runtime SA が対象 workflow job resource を起動できる（`run.jobs.run` / `run.jobs.runWithOverrides` 不足の 403 が出ていない）。
 - `pnpm deploy:smoke --env staging` または `pnpm deploy:smoke --env production` が通る。
