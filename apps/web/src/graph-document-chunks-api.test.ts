@@ -54,10 +54,10 @@ test('runGraphDocumentChunksApi returns 403 when project access is denied', asyn
     { documentId: 'doc-a', projectSlug: 'sample-b', userId: 'user-a' },
     { repository: createRepository() },
   );
-  assert.equal(result.status, 403);
   if (result.status === 200) {
-    return;
+    assert.fail('expected project access to be denied');
   }
+  assert.equal(result.status, 403);
   assert.equal(result.error.code, 'project_access_denied');
 });
 
@@ -66,10 +66,10 @@ test('runGraphDocumentChunksApi returns 400 for blank documentId', async () => {
     { documentId: '   ', projectSlug: 'sample-a', userId: 'user-a' },
     { repository: createRepository() },
   );
-  assert.equal(result.status, 400);
   if (result.status === 200) {
-    return;
+    assert.fail('expected invalid documentId error');
   }
+  assert.equal(result.status, 400);
   assert.equal(result.error.code, 'invalid_document_id');
 });
 
