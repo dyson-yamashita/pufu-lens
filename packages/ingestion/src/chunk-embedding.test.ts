@@ -281,6 +281,8 @@ test('chunkAndEmbed archives old chunks when parsed content changes', async () =
   };
 
   await chunkAndEmbed(options);
+  const stableDocumentId = repository.documents[0]?.id;
+  const previousChunkHashes = repository.chunks.map((chunk) => chunk.metadata.rawContentHash);
   repository.targets[0] = {
     logicalSourceId: 'logical/fixture-1',
     parsed: parsedDocument({ bodyText: 'Updated body text for chunking.' }),
@@ -293,9 +295,11 @@ test('chunkAndEmbed archives old chunks when parsed content changes', async () =
   assert.equal(repository.history.length, 1);
   assert.equal(repository.history[0]?.archiveReason, 'document_updated');
   assert.equal(repository.history[0]?.supersededByContentHash, 'raw-hash-2');
+  assert.deepEqual(previousChunkHashes, ['raw-hash-1']);
   assert.equal(repository.chunks.length, 1);
   assert.equal(repository.chunks[0]?.metadata.rawContentHash, 'raw-hash-2');
   assert.equal(repository.documents.length, 1);
+  assert.equal(repository.documents[0]?.id, stableDocumentId);
   assert.equal(repository.documents[0]?.rawDocumentId, 'raw-2');
 });
 
