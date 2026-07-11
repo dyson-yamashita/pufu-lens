@@ -18,7 +18,7 @@ const actor = {
 const document = {
   id: '2',
   label: 'Document',
-  properties: { graphNodeId: 'document:spec', title: 'Spec' },
+  properties: { documentId: 'doc-a', graphNodeId: 'document:spec', title: 'Spec' },
 };
 const edge = {
   end_id: '2',
@@ -141,6 +141,25 @@ function createRepository(): GraphViewerRepository {
         },
       ];
     },
+    async fetchDocumentChunks({ documentIds, projectId }) {
+      assert.equal(projectId, 'project-a');
+      assert.deepEqual(documentIds, ['doc-a']);
+      return new Map([
+        [
+          'doc-a',
+          [
+            {
+              chunkIndex: 0,
+              content: 'Chunk content',
+              contentHash: 'hash-a',
+              createdAt: '2026-07-11 00:00:00+00',
+              id: 'chunk-a',
+              metadata: { section: 'intro' },
+            },
+          ],
+        ],
+      ]);
+    },
     async lookupProjectMember({ projectSlug, userId }) {
       return projectSlug === 'sample-a' && userId === 'user-a'
         ? { graphName: 'graph_sample_a', id: 'project-a', name: 'Sample A', slug: 'sample-a' }
@@ -157,6 +176,7 @@ assert.equal(result.graphName, 'graph_sample_a');
 assert.equal(result.limit, 200);
 assert.match(result.preset.preview, /LIMIT 200$/);
 assert.equal(result.nodes.length, 2);
+assert.equal(result.nodes[1]?.chunks?.[0]?.content, 'Chunk content');
 assert.equal(result.edges.length, 1);
 assert.equal(result.rawRows.length, 1);
 
