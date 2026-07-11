@@ -26,6 +26,10 @@ COPY infra/db/migrations ./infra/db/migrations
 # packages/* のみビルド(apps/web の next build を除外)
 RUN pnpm exec turbo run build --filter='./packages/*'
 
+RUN chown -R node:node /app /pnpm
+
 ENV NODE_ENV=production
+
+USER node
 
 ENTRYPOINT ["node", "--experimental-strip-types", "scripts/workflow-job.ts"]

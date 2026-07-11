@@ -216,12 +216,15 @@ The runtime service account generally needs:
 
 ## Firebase App Hosting
 
-Before enabling the deploy trigger, build and push the Firebase CLI builder image once per project and `_FIREBASE_TOOLS_VERSION`:
+Before enabling the deploy trigger, build and push the Firebase CLI builder image once per project. Use the same version as `_FIREBASE_TOOLS_VERSION` in `cloudbuild.deploy.yaml` for both the image tag and build arg:
 
 ```bash
+FIREBASE_TOOLS_VERSION=14.4.0
+
 gcloud builds submit \
   --region="${_REGION}" \
-  --tag "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/firebase-tools:${_FIREBASE_TOOLS_VERSION}" \
+  --tag "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/firebase-tools:${FIREBASE_TOOLS_VERSION}" \
+  --build-arg "FIREBASE_TOOLS_VERSION=${FIREBASE_TOOLS_VERSION}" \
   infra/docker/firebase-tools
 ```
 
