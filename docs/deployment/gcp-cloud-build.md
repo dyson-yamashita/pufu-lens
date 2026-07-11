@@ -236,6 +236,7 @@ gcloud run services add-iam-policy-binding "$MASTRA_SERVICE" \
 ```
 
 Mastra runtime SA から dispatcher Cloud Run Job を container override 付きで起動するため、対象 Job resource には `roles/run.jobsExecutorWithOverrides` も付与する。
+`<environment>` には deploy substitution の `_ENV` と同じ値（例: `staging`、`production`）を指定する。
 
 ```bash
 DISPATCHER_JOB="<environment>-source-sync-dispatcher"
