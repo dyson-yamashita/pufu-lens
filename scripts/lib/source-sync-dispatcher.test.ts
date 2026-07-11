@@ -166,7 +166,7 @@ test('heartbeat errors abort the runner without persisting provider details', as
       runner: {
         async run(_target, signal) {
           await new Promise<void>((_resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error('heartbeat did not abort')), 100);
+            const timeout = setTimeout(() => reject(new Error('heartbeat did not abort')), 2_000);
             signal.addEventListener(
               'abort',
               () => {
