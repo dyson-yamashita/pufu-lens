@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { runGraphDocumentChunksApi } from './graph-document-chunks-api.ts';
-import type { GraphViewerRepository } from './graph-viewer.ts';
+import { createPostgresGraphViewerRepository, type GraphViewerRepository } from './graph-viewer.ts';
 
 function createRepository(): GraphViewerRepository {
   return {
@@ -33,6 +32,33 @@ function createRepository(): GraphViewerRepository {
         ? { graphName: 'graph_sample_a', id: 'project-a', name: 'Sample A', slug: 'sample-a' }
         : undefined;
     },
+  };
+}
+
+function isTemplateStringsArray(value: unknown): value is TemplateStringsArray {
+  return Array.isArray(value) && 'raw' in value;
+}
+
+function createRecordingSql() {
+  const statements: string[] = [];
+
+  function createTransaction() {
+    const tx = (stringsOrArray: TemplateStringsArray | readonly string[], ...values: unknown[]) => {
+      if (isTemplateStringsArray(stringsOrArray)) {
+        statements.push(String.raw(stringsOrArray, ...values.map(() => '?')));
+        return Promise.resolve([]);
+      }
+      return stringsOrArray;
+    };
+    return Object.assign(tx, { unsafe: () => Promise.resolve([]) });
+  }
+
+  return {
+    sql: Object.assign(createTransaction(), {
+      begin: async (fn: (tx: ReturnType<typeof createTransaction>) => Promise<unknown>) =>
+        fn(createTransaction()),
+    }) as never,
+    statements,
   };
 }
 
@@ -73,31 +99,38 @@ test('runGraphDocumentChunksApi returns 400 for blank documentId', async () => {
   assert.equal(result.error.code, 'invalid_document_id');
 });
 
-test('document-chunks route delegates auth errors to requireSessionUserId handling', async () => {
-  const source = await readFile(
-    new URL('../app/api/projects/[projectSlug]/graph/document-chunks/route.ts', import.meta.url),
-    'utf8',
-  );
-  assert.match(source, /requireSessionUserId\(\)/);
-  assert.match(source, /auth_required/);
-  assert.match(source, /runGraphDocumentChunksApi/);
-  assert.doesNotMatch(
-    source,
-    /catch \(error\)[\s\S]*AuthRequiredError[\s\S]*fetchGraphDocumentChunks/,
+test('runGraphDocumentChunksApi propagates unexpected repository errors', async () => {
+  await assert.rejects(
+    () =>
+      runGraphDocumentChunksApi(
+        { documentId: 'doc-a', projectSlug: 'sample-a', userId: 'user-a' },
+        {
+          repository: {
+            ...createRepository(),
+            async fetchDocumentChunks() {
+              throw new Error('db down');
+            },
+          },
+        },
+      ),
+    /db down/,
   );
 });
 
-test('fetchDocumentChunks applies a read-only transaction timeout', async () => {
-  const source = await readFile(new URL('./graph-viewer.ts', import.meta.url), 'utf8');
-  const fetchDocumentChunks = source.slice(
-    source.indexOf('async fetchDocumentChunks'),
-    source.indexOf('async lookupProjectMember'),
-  );
-  assert.match(fetchDocumentChunks, /sql\.begin/);
-  assert.match(fetchDocumentChunks, /SET TRANSACTION READ ONLY/);
-  assert.match(fetchDocumentChunks, /SET LOCAL statement_timeout = '5000ms'/);
-  assert.match(fetchDocumentChunks, /document_id IN \$\{transaction\(documentIds\)\}/);
-  assert.doesNotMatch(fetchDocumentChunks, /document_id::text\s*=/);
+test('fetchDocumentChunks uses read-only transaction and index-friendly document_id filter', async () => {
+  const { sql, statements } = createRecordingSql();
+  const repository = createPostgresGraphViewerRepository(sql);
+  const result = await repository.fetchDocumentChunks({
+    documentIds: ['doc-a'],
+    projectId: 'project-a',
+  });
+  assert.equal(result.size, 0);
+  const queryText = statements.join('\n');
+  assert.match(queryText, /SET TRANSACTION READ ONLY/);
+  assert.match(queryText, /SET LOCAL statement_timeout = '5000ms'/);
+  assert.match(queryText, /FROM public\.document_chunks dc/);
+  assert.match(queryText, /document_id IN/);
+  assert.doesNotMatch(queryText, /document_id::text\s*=/);
 });
 
 console.log('web graph document chunks api tests passed');
