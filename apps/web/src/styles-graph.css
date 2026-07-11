@@ -272,6 +272,58 @@ body.graph-fallback-fullscreen-active {
   white-space: pre;
 }
 
+.graph-chunk-list {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+}
+
+.graph-chunk-list-heading {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.graph-chunk-list-heading h3 {
+  font-size: 16px;
+  line-height: 24px;
+  margin: 0;
+}
+
+.graph-chunk-table tbody tr {
+  cursor: pointer;
+}
+
+.graph-chunk-table tbody tr:hover {
+  background: var(--surface-2);
+}
+
+.graph-chunk-table tbody tr:focus-visible {
+  background: var(--surface-2);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
+  outline: none;
+}
+
+.graph-chunk-table td {
+  white-space: normal;
+}
+
+.graph-chunk-content {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+.graph-chunk-detail {
+  display: grid;
+  gap: 16px;
+}
+
 @media (max-width: 1023px) {
   .graph-control-grid {
     grid-template-columns: minmax(0, 1fr);

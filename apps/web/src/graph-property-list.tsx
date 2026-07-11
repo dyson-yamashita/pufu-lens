@@ -1,69 +1,272 @@
-import type { GraphViewerEdge, GraphViewerNode } from './graph-viewer';
+import { useEffect, useState } from 'react';
+import { graphPropertyString } from './graph-property-utils';
+import type { GraphViewerDocumentChunk, GraphViewerEdge, GraphViewerNode } from './graph-viewer';
 
 /**
- * Renders the property list for a graph node or edge.
+ * Displays graph item properties and loads document chunks when a document node is selected.
  *
- * @param item - The selected graph node or edge.
+ * @param item - The graph node or edge whose details are displayed.
+ * @param loadDocumentChunks - When false, skips document chunk fetching (e.g. while Details are shown in the floating dialog).
+ * @param projectSlug - The project used to load document chunks for document nodes.
  */
-export function PropertyList({ item }: { readonly item: GraphViewerEdge | GraphViewerNode }) {
+export function PropertyList({
+  item,
+  loadDocumentChunks = true,
+  projectSlug,
+}: {
+  readonly item: GraphViewerEdge | GraphViewerNode;
+  readonly loadDocumentChunks?: boolean;
+  readonly projectSlug: string;
+}) {
+  const [selectedChunkState, setSelectedChunkState] = useState<
+    | {
+        readonly chunk: GraphViewerDocumentChunk;
+        readonly itemId: string;
+      }
+    | undefined
+  >();
+  const [chunksState, setChunksState] = useState<GraphDocumentChunksState>({ status: 'idle' });
   const propertyRows = Object.entries(item.properties).sort(([left], [right]) =>
     left.localeCompare(right),
   );
+  const documentId =
+    'source' in item ? undefined : graphPropertyString(item.properties, 'documentId');
+  const chunks = chunksState.status === 'loaded' ? chunksState.chunks : undefined;
+  const selectedChunk =
+    selectedChunkState?.itemId === item.id ? selectedChunkState.chunk : undefined;
+
+  useEffect(() => {
+    setSelectedChunkState(undefined);
+    if (!loadDocumentChunks || !documentId) {
+      setChunksState((prev) => (prev.status === 'idle' ? prev : { status: 'idle' }));
+      return;
+    }
+    let active = true;
+    const abortController = new AbortController();
+    setChunksState({ status: 'loading' });
+    void fetch(
+      `/api/projects/${encodeURIComponent(projectSlug)}/graph/document-chunks?documentId=${encodeURIComponent(
+        documentId,
+      )}`,
+      { signal: abortController.signal },
+    )
+      .then(async (response) => {
+        if (!response.ok) {
+          let errorMessage = 'チャンクの取得に失敗しました。';
+          try {
+            const body = (await response.json()) as GraphDocumentChunksResponse;
+            if ('error' in body) {
+              errorMessage = body.error.message;
+            }
+          } catch {
+            // Non-JSON error bodies (e.g. HTML 502) fall back to the default message.
+          }
+          throw new Error(errorMessage);
+        }
+        const body = (await response.json()) as GraphDocumentChunksResponse;
+        if ('error' in body) {
+          throw new Error(body.error.message);
+        }
+        if (active) {
+          setChunksState({ chunks: body.chunks, status: 'loaded' });
+        }
+      })
+      .catch((error: unknown) => {
+        if (!active) {
+          return;
+        }
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
+        setChunksState({
+          message: error instanceof Error ? error.message : String(error),
+          status: 'error',
+        });
+      });
+    return () => {
+      active = false;
+      abortController.abort();
+    };
+  }, [documentId, loadDocumentChunks, projectSlug]);
+
+  if (selectedChunk) {
+    return (
+      <div className="graph-chunk-detail" data-testid="graph-chunk-detail">
+        <button
+          className="secondary-button"
+          data-testid="graph-chunk-detail-back-button"
+          onClick={() => setSelectedChunkState(undefined)}
+          type="button"
+        >
+          チャンク一覧に戻る
+        </button>
+        <dl className="detail-list stacked">
+          <div>
+            <dt>Chunk ID</dt>
+            <dd className="mono">{selectedChunk.id}</dd>
+          </div>
+          <div>
+            <dt>Index</dt>
+            <dd className="mono">{selectedChunk.chunkIndex}</dd>
+          </div>
+          <div>
+            <dt>Content hash</dt>
+            <dd className="mono">{selectedChunk.contentHash}</dd>
+          </div>
+          <div>
+            <dt>Created at</dt>
+            <dd className="mono">{selectedChunk.createdAt}</dd>
+          </div>
+          <div>
+            <dt>Metadata</dt>
+            <dd className="mono">{formatPropertyValue(selectedChunk.metadata)}</dd>
+          </div>
+          <div>
+            <dt>Content</dt>
+            <dd className="graph-chunk-content">{selectedChunk.content}</dd>
+          </div>
+        </dl>
+      </div>
+    );
+  }
 
   return (
-    <dl className="detail-list stacked">
-      <div>
-        <dt>ID</dt>
-        <dd className="mono">{item.id}</dd>
-      </div>
-      <div>
-        <dt>Label</dt>
-        <dd>{item.label}</dd>
-      </div>
-      {'source' in item ? (
-        <>
-          <div>
-            <dt>Source</dt>
-            <dd className="mono">{item.source}</dd>
+    <>
+      <dl className="detail-list stacked">
+        <div>
+          <dt>ID</dt>
+          <dd className="mono">{item.id}</dd>
+        </div>
+        <div>
+          <dt>Label</dt>
+          <dd>{item.label}</dd>
+        </div>
+        {'source' in item ? (
+          <>
+            <div>
+              <dt>Source</dt>
+              <dd className="mono">{item.source}</dd>
+            </div>
+            <div>
+              <dt>Target</dt>
+              <dd className="mono">{item.target}</dd>
+            </div>
+          </>
+        ) : null}
+        <div>
+          <dt>Properties</dt>
+          <dd>
+            {propertyRows.length ? (
+              <div className="graph-property-table-frame">
+                <table className="graph-property-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Property</th>
+                      <th scope="col">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {propertyRows.map(([key, value]) => (
+                      <tr key={key}>
+                        <th className="mono" scope="row">
+                          {key}
+                        </th>
+                        <td className="mono">{formatPropertyValue(value)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="notice">property はありません。</p>
+            )}
+          </dd>
+        </div>
+      </dl>
+      {documentId && loadDocumentChunks ? (
+        <section className="graph-chunk-list" data-testid="graph-chunk-list">
+          <div className="graph-chunk-list-heading">
+            <h3>Chunks</h3>
+            <span className="mono">
+              {chunksState.status === 'loaded' ? `${chunksState.chunks.length} chunks` : 'loading'}
+            </span>
           </div>
-          <div>
-            <dt>Target</dt>
-            <dd className="mono">{item.target}</dd>
-          </div>
-        </>
-      ) : null}
-      <div>
-        <dt>Properties</dt>
-        <dd>
-          {propertyRows.length ? (
+          {chunksState.status === 'loading' ? (
+            <p className="notice" data-testid="graph-chunk-loading">
+              チャンクを取得しています。
+            </p>
+          ) : chunksState.status === 'error' ? (
+            <p className="action-error" data-testid="graph-chunk-error">
+              {chunksState.message}
+            </p>
+          ) : chunks?.length ? (
             <div className="graph-property-table-frame">
-              <table className="graph-property-table">
+              <table className="graph-property-table graph-chunk-table">
                 <thead>
                   <tr>
-                    <th scope="col">Property</th>
-                    <th scope="col">Value</th>
+                    <th scope="col">Index</th>
+                    <th scope="col">Preview</th>
+                    <th scope="col">Hash</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {propertyRows.map(([key, value]) => (
-                    <tr key={key}>
+                  {chunks.map((chunk) => (
+                    // biome-ignore lint/a11y/useSemanticElements: table row layout requires tr; role conveys interactivity to assistive tech
+                    <tr
+                      aria-label={`Chunk ${chunk.chunkIndex} の詳細を表示`}
+                      data-testid="graph-chunk-row"
+                      key={chunk.id}
+                      onClick={() => setSelectedChunkState({ chunk, itemId: item.id })}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          setSelectedChunkState({ chunk, itemId: item.id });
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                    >
                       <th className="mono" scope="row">
-                        {key}
+                        {chunk.chunkIndex}
                       </th>
-                      <td className="mono">{formatPropertyValue(value)}</td>
+                      <td>{truncateChunkPreview(chunk.content)}</td>
+                      <td className="mono">{chunk.contentHash}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           ) : (
-            <p className="notice">property はありません。</p>
+            <p className="notice">チャンクはありません。</p>
           )}
-        </dd>
-      </div>
-    </dl>
+        </section>
+      ) : null}
+    </>
   );
 }
+
+function truncateChunkPreview(value: string): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  let preview = '';
+  let count = 0;
+  for (const character of normalized) {
+    if (count >= 120) {
+      return `${preview}…`;
+    }
+    preview += character;
+    count += 1;
+  }
+  return preview;
+}
+
+type GraphDocumentChunksState =
+  | { readonly status: 'idle' | 'loading' }
+  | { readonly chunks: readonly GraphViewerDocumentChunk[]; readonly status: 'loaded' }
+  | { readonly message: string; readonly status: 'error' };
+
+type GraphDocumentChunksResponse =
+  | { readonly chunks: readonly GraphViewerDocumentChunk[] }
+  | { readonly error: { readonly code: string; readonly message: string } };
 
 function formatPropertyValue(value: unknown): string {
   if (typeof value === 'string') {

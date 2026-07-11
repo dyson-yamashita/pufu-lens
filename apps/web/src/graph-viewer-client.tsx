@@ -60,6 +60,7 @@ export function GraphViewerPanel({
       GRAPH_VIEWER_DEFAULT_LIMIT,
   );
   const [layoutId, setLayoutId] = useState<GraphLayoutId>('force');
+  const [isGraphMaximized, setIsGraphMaximized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const selectedPreset = presets.find((preset) => preset.id === queryId) ?? presets[0];
   const limitOptions = useMemo(() => buildLimitOptions(selectedPreset), [selectedPreset]);
@@ -187,7 +188,9 @@ export function GraphViewerPanel({
           edges={result?.edges ?? []}
           layoutId={layoutId}
           nodes={result?.nodes ?? []}
+          onMaximizedChange={setIsGraphMaximized}
           onSelect={setSelection}
+          projectSlug={projectSlug}
         />
       </section>
 
@@ -199,7 +202,11 @@ export function GraphViewerPanel({
           </div>
         </div>
         {selection ? (
-          <PropertyList item={selection.item} />
+          <PropertyList
+            item={selection.item}
+            loadDocumentChunks={!isGraphMaximized}
+            projectSlug={projectSlug}
+          />
         ) : (
           <p className="notice">Node or edge を選択すると property を確認できます。</p>
         )}
@@ -234,24 +241,30 @@ export function GraphViewerPanel({
  * @param edges - Graph edges to display.
  * @param layoutId - Layout used to arrange the graph.
  * @param nodes - Graph nodes to display.
+ * @param onMaximizedChange - Called when native or fallback fullscreen state changes.
  * @param onSelect - Called when a node, edge, or empty space is selected.
  */
 function GraphCanvas({
   edges,
   layoutId,
   nodes,
+  onMaximizedChange,
   onSelect,
+  projectSlug,
 }: {
   readonly edges: readonly GraphViewerEdge[];
   readonly layoutId: GraphLayoutId;
   readonly nodes: readonly GraphViewerNode[];
+  readonly onMaximizedChange: (isMaximized: boolean) => void;
   readonly onSelect: (selection: GraphSelection | undefined) => void;
+  readonly projectSlug: string;
 }) {
   const [containerElement, setContainerElement] = useState<HTMLDivElement | null>(null);
   const canvasWrapRef = useRef<HTMLDivElement | null>(null);
   const [canvasWrapElement, setCanvasWrapElement] = useState<HTMLDivElement | null>(null);
   const cytoscapeRef = useRef<Core | null>(null);
   const isMaximizedRef = useRef(false);
+  const onMaximizedChangeRef = useRef(onMaximizedChange);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
   const [isFallbackFullscreen, setIsFallbackFullscreen] = useState(false);
   const [floatingSelection, setFloatingSelection] = useState<GraphSelection | undefined>();
@@ -382,7 +395,12 @@ function GraphCanvas({
   }, [floatingSelection, isFallbackFullscreen, isMaximized]);
 
   useEffect(() => {
+    onMaximizedChangeRef.current = onMaximizedChange;
+  }, [onMaximizedChange]);
+
+  useEffect(() => {
     isMaximizedRef.current = isMaximized;
+    onMaximizedChangeRef.current(isMaximized);
     if (!isMaximized) {
       setFloatingSelection(undefined);
     }
@@ -545,6 +563,7 @@ function GraphCanvas({
           {floatingSelection ? (
             <GraphDetailsDialog
               onClose={closeFloatingDetails}
+              projectSlug={projectSlug}
               selection={floatingSelection}
               wrapperElement={canvasWrapElement}
             />
