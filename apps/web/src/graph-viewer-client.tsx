@@ -188,6 +188,7 @@ export function GraphViewerPanel({
           layoutId={layoutId}
           nodes={result?.nodes ?? []}
           onSelect={setSelection}
+          projectSlug={projectSlug}
         />
       </section>
 
@@ -199,7 +200,7 @@ export function GraphViewerPanel({
           </div>
         </div>
         {selection ? (
-          <PropertyList item={selection.item} />
+          <PropertyList item={selection.item} projectSlug={projectSlug} />
         ) : (
           <p className="notice">Node or edge を選択すると property を確認できます。</p>
         )}
@@ -241,11 +242,13 @@ function GraphCanvas({
   layoutId,
   nodes,
   onSelect,
+  projectSlug,
 }: {
   readonly edges: readonly GraphViewerEdge[];
   readonly layoutId: GraphLayoutId;
   readonly nodes: readonly GraphViewerNode[];
   readonly onSelect: (selection: GraphSelection | undefined) => void;
+  readonly projectSlug: string;
 }) {
   const [containerElement, setContainerElement] = useState<HTMLDivElement | null>(null);
   const canvasWrapRef = useRef<HTMLDivElement | null>(null);
@@ -545,6 +548,7 @@ function GraphCanvas({
           {floatingSelection ? (
             <GraphDetailsDialog
               onClose={closeFloatingDetails}
+              projectSlug={projectSlug}
               selection={floatingSelection}
               wrapperElement={canvasWrapElement}
             />

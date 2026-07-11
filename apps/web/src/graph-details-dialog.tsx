@@ -33,10 +33,12 @@ type DragState = {
  */
 export function GraphDetailsDialog({
   onClose,
+  projectSlug,
   selection,
   wrapperElement,
 }: {
   readonly onClose: () => void;
+  readonly projectSlug: string;
   readonly selection: GraphDetailsSelection;
   readonly wrapperElement: HTMLElement | null;
 }) {
@@ -174,7 +176,7 @@ export function GraphDetailsDialog({
           <p className="mono">{selection.type}</p>
         </div>
         <div className="graph-details-floating-scroll">
-          <PropertyList item={selection.item} />
+          <PropertyList item={selection.item} projectSlug={projectSlug} />
         </div>
       </div>
     </div>
