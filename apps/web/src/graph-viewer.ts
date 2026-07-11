@@ -166,11 +166,12 @@ export function getGraphPreset(queryId: string): GraphPreset {
 }
 
 /**
- * Runs a graph preset query for an accessible project.
+ * Runs a graph preset query for an accessible project and enriches document nodes with their chunks.
  *
- * @param input - Query parameters including the project, preset ID, and optional limit.
- * @param options - Repository used to resolve project access and execute the preset.
- * @returns The normalized graph result, including preset metadata, raw rows, and the applied limit.
+ * @param input - Query parameters including the project, preset ID, and optional result limit.
+ * @param options - Repository used to resolve project access, execute the preset, and fetch document chunks.
+ * @returns The normalized graph result with nodes, edges, preset metadata, raw rows, and the applied limit.
+ * @throws GraphAccessDeniedError If the user cannot access the project.
  */
 export async function runGraphPresetQuery(
   input: { limit?: number; projectSlug: string; queryId: string; userId: string },
@@ -244,9 +245,9 @@ export function normalizeGraphLimit(limit: unknown, maxLimit: number = GRAPH_MAX
 }
 
 /**
- * Creates a PostgreSQL-backed graph viewer repository.
+ * Creates a PostgreSQL-backed repository for executing graph preset queries, loading document chunks, and resolving project graph access.
  *
- * @returns A repository that executes preset graph queries and looks up project graph access.
+ * @returns A graph viewer repository backed by PostgreSQL.
  */
 export function createPostgresGraphViewerRepository(
   sql: postgres.Sql = getRequiredAdminSql(),
@@ -522,11 +523,24 @@ function displayNodeLabel(label: string, properties: Record<string, unknown>): s
   );
 }
 
+/**
+ * Retrieves a non-empty string property value.
+ *
+ * @param properties - The properties to search
+ * @param key - The property key
+ * @returns The property value when it is a non-empty string, `undefined` otherwise.
+ */
 function propertyString(properties: Record<string, unknown>, key: string): string | undefined {
   const value = properties[key];
   return typeof value === 'string' && value ? value : undefined;
 }
 
+/**
+ * Parses a document chunk database row into a document identifier and chunk.
+ *
+ * @param row - The database row containing document chunk fields.
+ * @returns The document identifier and parsed document chunk.
+ */
 function parseGraphDocumentChunkRow(row: Record<string, unknown>): {
   readonly chunk: GraphViewerDocumentChunk;
   readonly documentId: string;
@@ -545,6 +559,13 @@ function parseGraphDocumentChunkRow(row: Record<string, unknown>): {
   };
 }
 
+/**
+ * Validates that a value is a string.
+ *
+ * @param value - The value to validate
+ * @param label - The name used in the validation error message
+ * @returns The validated string
+ */
 function requireString(value: unknown, label: string): string {
   if (typeof value !== 'string') {
     throw new Error(`Invalid ${label}.`);
@@ -552,6 +573,13 @@ function requireString(value: unknown, label: string): string {
   return value;
 }
 
+/**
+ * Validates and returns a finite numeric value.
+ *
+ * @param value - The value to validate
+ * @param label - The name used in the validation error message
+ * @returns The validated number
+ */
 function requireNumber(value: unknown, label: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw new Error(`Invalid ${label}.`);
@@ -559,6 +587,12 @@ function requireNumber(value: unknown, label: string): number {
   return value;
 }
 
+/**
+ * Determines whether a record represents an AGE vertex.
+ *
+ * @param value - The record to inspect
+ * @returns `true` if the record has vertex fields and no edge start identifier, `false` otherwise.
+ */
 function isAgeVertexRecord(value: Record<string, unknown>): boolean {
   return 'id' in value && 'label' in value && 'properties' in value && !('start_id' in value);
 }

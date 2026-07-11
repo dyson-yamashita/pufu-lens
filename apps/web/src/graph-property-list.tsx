@@ -2,9 +2,10 @@ import { useState } from 'react';
 import type { GraphViewerDocumentChunk, GraphViewerEdge, GraphViewerNode } from './graph-viewer';
 
 /**
- * Renders the property list for a graph node or edge.
+ * Displays graph item properties and, when available, its document chunks.
  *
- * @param item - The selected graph node or edge.
+ * @param item - The graph node or edge whose details are displayed.
+ * @returns The property list or selected chunk detail view for `item`.
  */
 export function PropertyList({ item }: { readonly item: GraphViewerEdge | GraphViewerNode }) {
   const [selectedChunkState, setSelectedChunkState] = useState<
@@ -164,11 +165,23 @@ export function PropertyList({ item }: { readonly item: GraphViewerEdge | GraphV
   );
 }
 
+/**
+ * Creates a compact preview of chunk content by normalizing whitespace and limiting its length.
+ *
+ * @param value - The chunk content to preview
+ * @returns The normalized content, truncated to 120 characters with an ellipsis when longer
+ */
 function truncateChunkPreview(value: string): string {
   const characters = Array.from(value.replace(/\s+/g, ' ').trim());
   return characters.length <= 120 ? characters.join('') : `${characters.slice(0, 120).join('')}…`;
 }
 
+/**
+ * Formats a property value for display.
+ *
+ * @param value - The property value to format
+ * @returns The string value, JSON representation, or fallback string representation
+ */
 function formatPropertyValue(value: unknown): string {
   if (typeof value === 'string') {
     return value;
