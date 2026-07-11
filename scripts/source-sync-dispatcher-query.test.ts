@@ -40,6 +40,7 @@ test('dispatcher drains ingest from parse after its separate collect step', () =
   const runner = source.indexOf('async function runSourceSync');
   const ingest = source.indexOf("'ingest',", runner);
   const runScript = source.indexOf('async function runScript', ingest);
+  assert.ok(runner >= 0 && ingest > runner && runScript > ingest);
   const ingestInvocation = source.slice(ingest, runScript);
 
   assert.match(ingestInvocation, /'--drain'/);
