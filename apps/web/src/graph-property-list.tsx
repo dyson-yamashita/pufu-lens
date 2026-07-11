@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import type { GraphViewerDocumentChunk, GraphViewerEdge, GraphViewerNode } from './graph-viewer';
-import { graphNodeDocumentId } from './graph-viewer';
 
 type GraphDocumentChunksResponse =
   | { readonly chunks: readonly GraphViewerDocumentChunk[] }
@@ -34,7 +33,7 @@ export function PropertyList({
   const propertyRows = Object.entries(item.properties).sort(([left], [right]) =>
     left.localeCompare(right),
   );
-  const documentId = 'source' in item ? undefined : graphNodeDocumentId(item);
+  const documentId = 'source' in item ? undefined : readGraphNodeDocumentId(item);
   const selectedChunk =
     selectedChunkState?.itemId === item.id ? selectedChunkState.chunk : undefined;
 
@@ -233,6 +232,11 @@ export function PropertyList({
       ) : null}
     </>
   );
+}
+
+function readGraphNodeDocumentId(node: GraphViewerNode): string | undefined {
+  const documentId = node.properties.documentId;
+  return typeof documentId === 'string' && documentId ? documentId : undefined;
 }
 
 function truncateChunkPreview(value: string): string {
