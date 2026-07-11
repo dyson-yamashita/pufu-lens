@@ -7,7 +7,7 @@ import { createPostgresGraphViewerRepository } from '../../../../../../src/graph
  * Loads document chunks for a graph document node in the requested project.
  *
  * @param request - The incoming request containing the documentId query parameter
- * @param params - The route parameters containing `projectSlug`
+ * @param params - The route parameters containing `projectSlug` (async in Next.js App Router)
  * @returns A JSON response with the document chunks or an error code
  */
 export async function GET(

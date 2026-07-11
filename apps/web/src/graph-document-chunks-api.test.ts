@@ -96,6 +96,8 @@ test('fetchDocumentChunks applies a read-only transaction timeout', async () => 
   assert.match(fetchDocumentChunks, /sql\.begin/);
   assert.match(fetchDocumentChunks, /SET TRANSACTION READ ONLY/);
   assert.match(fetchDocumentChunks, /SET LOCAL statement_timeout = '5000ms'/);
+  assert.match(fetchDocumentChunks, /document_id IN \$\{transaction\(documentIds\)\}/);
+  assert.doesNotMatch(fetchDocumentChunks, /document_id::text\s*=/);
 });
 
 console.log('web graph document chunks api tests passed');

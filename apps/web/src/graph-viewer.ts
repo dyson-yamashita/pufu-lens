@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type postgres from 'postgres';
 import { getRequiredAdminSql } from './admin-sql.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
+import { graphPropertyString as propertyString } from './graph-property-utils.ts';
 
 export type GraphPresetId = 'actor-documents' | 'recent-relations';
 
@@ -562,11 +563,6 @@ function displayNodeLabel(label: string, properties: Record<string, unknown>): s
     propertyString(properties, 'graphNodeId') ??
     label
   );
-}
-
-function propertyString(properties: Record<string, unknown>, key: string): string | undefined {
-  const value = properties[key];
-  return typeof value === 'string' && value ? value : undefined;
 }
 
 /**

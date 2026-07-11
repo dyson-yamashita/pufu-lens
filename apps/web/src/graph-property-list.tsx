@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { graphPropertyString } from './graph-property-utils';
 import type { GraphViewerDocumentChunk, GraphViewerEdge, GraphViewerNode } from './graph-viewer';
 
 /**
@@ -28,7 +29,8 @@ export function PropertyList({
   const propertyRows = Object.entries(item.properties).sort(([left], [right]) =>
     left.localeCompare(right),
   );
-  const documentId = 'source' in item ? undefined : propertyString(item.properties, 'documentId');
+  const documentId =
+    'source' in item ? undefined : graphPropertyString(item.properties, 'documentId');
   const chunks = chunksState.status === 'loaded' ? chunksState.chunks : undefined;
   const selectedChunk =
     selectedChunkState?.itemId === item.id ? selectedChunkState.chunk : undefined;
@@ -39,6 +41,7 @@ export function PropertyList({
       setChunksState((prev) => (prev.status === 'idle' ? prev : { status: 'idle' }));
       return;
     }
+    let active = true;
     const abortController = new AbortController();
     setChunksState({ status: 'loading' });
     void fetch(
@@ -48,13 +51,30 @@ export function PropertyList({
       { signal: abortController.signal },
     )
       .then(async (response) => {
-        const body = (await response.json()) as GraphDocumentChunksResponse;
-        if (!response.ok || 'error' in body) {
-          throw new Error('error' in body ? body.error.message : 'チャンクの取得に失敗しました。');
+        if (!response.ok) {
+          let errorMessage = 'チャンクの取得に失敗しました。';
+          try {
+            const body = (await response.json()) as GraphDocumentChunksResponse;
+            if ('error' in body) {
+              errorMessage = body.error.message;
+            }
+          } catch {
+            // Non-JSON error bodies (e.g. HTML 502) fall back to the default message.
+          }
+          throw new Error(errorMessage);
         }
-        setChunksState({ chunks: body.chunks, status: 'loaded' });
+        const body = (await response.json()) as GraphDocumentChunksResponse;
+        if ('error' in body) {
+          throw new Error(body.error.message);
+        }
+        if (active) {
+          setChunksState({ chunks: body.chunks, status: 'loaded' });
+        }
       })
       .catch((error: unknown) => {
+        if (!active) {
+          return;
+        }
         if (error instanceof DOMException && error.name === 'AbortError') {
           return;
         }
@@ -63,7 +83,10 @@ export function PropertyList({
           status: 'error',
         });
       });
-    return () => abortController.abort();
+    return () => {
+      active = false;
+      abortController.abort();
+    };
   }, [documentId, loadDocumentChunks, projectSlug]);
 
   if (selectedChunk) {
@@ -244,11 +267,6 @@ type GraphDocumentChunksState =
 type GraphDocumentChunksResponse =
   | { readonly chunks: readonly GraphViewerDocumentChunk[] }
   | { readonly error: { readonly code: string; readonly message: string } };
-
-function propertyString(properties: Record<string, unknown>, key: string): string | undefined {
-  const value = properties[key];
-  return typeof value === 'string' && value ? value : undefined;
-}
 
 function formatPropertyValue(value: unknown): string {
   if (typeof value === 'string') {
