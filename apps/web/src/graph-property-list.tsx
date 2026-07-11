@@ -5,13 +5,16 @@ import type { GraphViewerDocumentChunk, GraphViewerEdge, GraphViewerNode } from 
  * Displays graph item properties and loads document chunks when a document node is selected.
  *
  * @param item - The graph node or edge whose details are displayed.
+ * @param loadDocumentChunks - When false, skips document chunk fetching (e.g. while Details are shown in the floating dialog).
  * @param projectSlug - The project used to load document chunks for document nodes.
  */
 export function PropertyList({
   item,
+  loadDocumentChunks = true,
   projectSlug,
 }: {
   readonly item: GraphViewerEdge | GraphViewerNode;
+  readonly loadDocumentChunks?: boolean;
   readonly projectSlug: string;
 }) {
   const [selectedChunkState, setSelectedChunkState] = useState<
@@ -32,7 +35,7 @@ export function PropertyList({
 
   useEffect(() => {
     setSelectedChunkState(undefined);
-    if (!documentId) {
+    if (!loadDocumentChunks || !documentId) {
       setChunksState({ status: 'idle' });
       return;
     }
@@ -61,7 +64,7 @@ export function PropertyList({
         });
       });
     return () => abortController.abort();
-  }, [documentId, projectSlug]);
+  }, [documentId, loadDocumentChunks, projectSlug]);
 
   if (selectedChunk) {
     return (
@@ -157,7 +160,7 @@ export function PropertyList({
           </dd>
         </div>
       </dl>
-      {documentId ? (
+      {documentId && loadDocumentChunks ? (
         <section className="graph-chunk-list" data-testid="graph-chunk-list">
           <div className="graph-chunk-list-heading">
             <h3>Chunks</h3>

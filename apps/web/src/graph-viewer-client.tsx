@@ -60,6 +60,7 @@ export function GraphViewerPanel({
       GRAPH_VIEWER_DEFAULT_LIMIT,
   );
   const [layoutId, setLayoutId] = useState<GraphLayoutId>('force');
+  const [isGraphMaximized, setIsGraphMaximized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const selectedPreset = presets.find((preset) => preset.id === queryId) ?? presets[0];
   const limitOptions = useMemo(() => buildLimitOptions(selectedPreset), [selectedPreset]);
@@ -187,6 +188,7 @@ export function GraphViewerPanel({
           edges={result?.edges ?? []}
           layoutId={layoutId}
           nodes={result?.nodes ?? []}
+          onMaximizedChange={setIsGraphMaximized}
           onSelect={setSelection}
           projectSlug={projectSlug}
         />
@@ -200,7 +202,11 @@ export function GraphViewerPanel({
           </div>
         </div>
         {selection ? (
-          <PropertyList item={selection.item} projectSlug={projectSlug} />
+          <PropertyList
+            item={selection.item}
+            loadDocumentChunks={!isGraphMaximized}
+            projectSlug={projectSlug}
+          />
         ) : (
           <p className="notice">Node or edge を選択すると property を確認できます。</p>
         )}
@@ -235,18 +241,21 @@ export function GraphViewerPanel({
  * @param edges - Graph edges to display.
  * @param layoutId - Layout used to arrange the graph.
  * @param nodes - Graph nodes to display.
+ * @param onMaximizedChange - Called when native or fallback fullscreen state changes.
  * @param onSelect - Called when a node, edge, or empty space is selected.
  */
 function GraphCanvas({
   edges,
   layoutId,
   nodes,
+  onMaximizedChange,
   onSelect,
   projectSlug,
 }: {
   readonly edges: readonly GraphViewerEdge[];
   readonly layoutId: GraphLayoutId;
   readonly nodes: readonly GraphViewerNode[];
+  readonly onMaximizedChange: (isMaximized: boolean) => void;
   readonly onSelect: (selection: GraphSelection | undefined) => void;
   readonly projectSlug: string;
 }) {
@@ -386,10 +395,11 @@ function GraphCanvas({
 
   useEffect(() => {
     isMaximizedRef.current = isMaximized;
+    onMaximizedChange(isMaximized);
     if (!isMaximized) {
       setFloatingSelection(undefined);
     }
-  }, [isMaximized]);
+  }, [isMaximized, onMaximizedChange]);
 
   useEffect(() => {
     const container = containerElement;
