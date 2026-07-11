@@ -194,6 +194,8 @@ The deploy service account generally needs:
   `cloudscheduler.jobs.update`, and `cloudscheduler.locations.get`. Prefer a
   project custom role with only these permissions; see
   [GCP Cloud Build Deployment](../../../docs/deployment/gcp-cloud-build.md#iam).
+- Service Account User on `_SCHEDULER_SERVICE_ACCOUNT` so the Scheduler job can
+  use that service account for OIDC authentication.
 - Service Account User on `_RUNTIME_SERVICE_ACCOUNT`.
 - Firebase App Hosting deploy permissions when `_FIREBASE_DEPLOY=true`.
 - Service Usage read permission, such as `roles/serviceusage.serviceUsageViewer`,
