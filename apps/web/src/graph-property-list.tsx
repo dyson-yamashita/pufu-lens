@@ -1,11 +1,5 @@
-'use client';
-
 import { useEffect, useState } from 'react';
 import type { GraphViewerDocumentChunk, GraphViewerEdge, GraphViewerNode } from './graph-viewer';
-
-type GraphDocumentChunksResponse =
-  | { readonly chunks: readonly GraphViewerDocumentChunk[] }
-  | { readonly error: { readonly code: string; readonly message: string } };
 
 /**
  * Displays graph item properties and loads document chunks when a document node is selected.
@@ -27,58 +21,46 @@ export function PropertyList({
       }
     | undefined
   >();
-  const [chunks, setChunks] = useState<readonly GraphViewerDocumentChunk[] | undefined>();
-  const [chunksError, setChunksError] = useState<string | undefined>();
-  const [isLoadingChunks, setIsLoadingChunks] = useState(false);
+  const [chunksState, setChunksState] = useState<GraphDocumentChunksState>({ status: 'idle' });
   const propertyRows = Object.entries(item.properties).sort(([left], [right]) =>
     left.localeCompare(right),
   );
-  const documentId = 'source' in item ? undefined : readGraphNodeDocumentId(item);
+  const documentId = 'source' in item ? undefined : propertyString(item.properties, 'documentId');
+  const chunks = chunksState.status === 'loaded' ? chunksState.chunks : undefined;
   const selectedChunk =
     selectedChunkState?.itemId === item.id ? selectedChunkState.chunk : undefined;
 
   useEffect(() => {
     setSelectedChunkState(undefined);
     if (!documentId) {
-      setChunks(undefined);
-      setChunksError(undefined);
-      setIsLoadingChunks(false);
+      setChunksState({ status: 'idle' });
       return;
     }
-
-    let cancelled = false;
-    setChunks(undefined);
-    setChunksError(undefined);
-    setIsLoadingChunks(true);
-
-    void (async () => {
-      try {
-        const response = await fetch(
-          `/api/projects/${encodeURIComponent(projectSlug)}/graph/document-chunks?documentId=${encodeURIComponent(documentId)}`,
-        );
+    const abortController = new AbortController();
+    setChunksState({ status: 'loading' });
+    void fetch(
+      `/api/projects/${encodeURIComponent(projectSlug)}/graph/document-chunks?documentId=${encodeURIComponent(
+        documentId,
+      )}`,
+      { signal: abortController.signal },
+    )
+      .then(async (response) => {
         const body = (await response.json()) as GraphDocumentChunksResponse;
-        if (cancelled) {
+        if (!response.ok || 'error' in body) {
+          throw new Error('error' in body ? body.error.message : 'チャンクの取得に失敗しました。');
+        }
+        setChunksState({ chunks: body.chunks, status: 'loaded' });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') {
           return;
         }
-        if (!response.ok || 'error' in body) {
-          throw new Error('error' in body ? body.error.message : 'Failed to load document chunks.');
-        }
-        setChunks(body.chunks);
-      } catch (caught) {
-        if (!cancelled) {
-          setChunks(undefined);
-          setChunksError(caught instanceof Error ? caught.message : String(caught));
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingChunks(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+        setChunksState({
+          message: error instanceof Error ? error.message : String(error),
+          status: 'error',
+        });
+      });
+    return () => abortController.abort();
   }, [documentId, projectSlug]);
 
   if (selectedChunk) {
@@ -179,18 +161,18 @@ export function PropertyList({
         <section className="graph-chunk-list" data-testid="graph-chunk-list">
           <div className="graph-chunk-list-heading">
             <h3>Chunks</h3>
-            {isLoadingChunks ? (
-              <span className="mono">Loading...</span>
-            ) : chunks ? (
-              <span className="mono">{chunks.length} chunks</span>
-            ) : null}
+            <span className="mono">
+              {chunksState.status === 'loaded' ? `${chunksState.chunks.length} chunks` : 'loading'}
+            </span>
           </div>
-          {chunksError ? (
-            <p className="action-error" data-testid="graph-chunk-error">
-              {chunksError}
+          {chunksState.status === 'loading' ? (
+            <p className="notice" data-testid="graph-chunk-loading">
+              チャンクを取得しています。
             </p>
-          ) : isLoadingChunks ? (
-            <p className="notice">チャンクを読み込んでいます。</p>
+          ) : chunksState.status === 'error' ? (
+            <p className="action-error" data-testid="graph-chunk-error">
+              {chunksState.message}
+            </p>
           ) : chunks?.length ? (
             <div className="graph-property-table-frame">
               <table className="graph-property-table graph-chunk-table">
@@ -237,11 +219,6 @@ export function PropertyList({
   );
 }
 
-function readGraphNodeDocumentId(node: GraphViewerNode): string | undefined {
-  const documentId = node.properties.documentId;
-  return typeof documentId === 'string' && documentId ? documentId : undefined;
-}
-
 function truncateChunkPreview(value: string): string {
   const normalized = value.replace(/\s+/g, ' ').trim();
   let preview = '';
@@ -254,6 +231,20 @@ function truncateChunkPreview(value: string): string {
     count += 1;
   }
   return preview;
+}
+
+type GraphDocumentChunksState =
+  | { readonly status: 'idle' | 'loading' }
+  | { readonly chunks: readonly GraphViewerDocumentChunk[]; readonly status: 'loaded' }
+  | { readonly message: string; readonly status: 'error' };
+
+type GraphDocumentChunksResponse =
+  | { readonly chunks: readonly GraphViewerDocumentChunk[] }
+  | { readonly error: { readonly code: string; readonly message: string } };
+
+function propertyString(properties: Record<string, unknown>, key: string): string | undefined {
+  const value = properties[key];
+  return typeof value === 'string' && value ? value : undefined;
 }
 
 function formatPropertyValue(value: unknown): string {

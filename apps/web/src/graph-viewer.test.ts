@@ -21,7 +21,7 @@ const actor = {
 const document = {
   id: '2',
   label: 'Document',
-  properties: { graphNodeId: 'document:spec', title: 'Spec' },
+  properties: { documentId: 'doc-a', graphNodeId: 'document:spec', title: 'Spec' },
 };
 const edge = {
   end_id: '2',
@@ -179,6 +179,7 @@ assert.equal(result.graphName, 'graph_sample_a');
 assert.equal(result.limit, 200);
 assert.match(result.preset.preview, /LIMIT 200$/);
 assert.equal(result.nodes.length, 2);
+assert.equal('chunks' in (result.nodes[1] ?? {}), false);
 assert.equal(result.edges.length, 1);
 assert.equal(result.rawRows.length, 1);
 

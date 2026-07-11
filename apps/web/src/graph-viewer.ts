@@ -241,7 +241,9 @@ export function graphNodeDocumentId(node: GraphViewerNode): string | undefined {
  */
 export async function fetchGraphDocumentChunks(
   input: { documentId: string; projectSlug: string; userId: string },
-  options: { repository: GraphViewerRepository },
+  options: {
+    repository: Pick<GraphViewerRepository, 'fetchDocumentChunks' | 'lookupProjectMember'>;
+  },
 ): Promise<readonly GraphViewerDocumentChunk[]> {
   const documentId = input.documentId.trim();
   if (!documentId) {
