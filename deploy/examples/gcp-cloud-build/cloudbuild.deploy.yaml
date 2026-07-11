@@ -303,7 +303,9 @@ steps:
         if git rev-parse --git-dir >/dev/null 2>&1; then
           last_success="$$(node --experimental-strip-types scripts/apphosting-deploy-state.ts read --bucket "$${state_bucket}" --object "$${state_object}" || true)"
           if [[ -n "$${last_success}" ]]; then
-            git fetch --deepen=200 >/dev/null 2>&1 || git fetch --unshallow >/dev/null 2>&1 || true
+            if ! git cat-file -e "$${last_success}^{commit}" 2>/dev/null; then
+              git fetch --deepen=200 >/dev/null 2>&1 || git fetch --unshallow >/dev/null 2>&1 || true
+            fi
             if git cat-file -e "$${last_success}^{commit}" 2>/dev/null; then
               if [[ "$${last_success}" == "$${commit_sha}" ]]; then
                 echo "App Hosting already deployed for $${commit_sha}. Skipping."

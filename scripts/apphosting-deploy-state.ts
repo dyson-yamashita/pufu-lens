@@ -60,12 +60,7 @@ async function main(): Promise<void> {
 }
 
 function isCommand(value: string | undefined): value is Command {
-  return (
-    value === 'read' ||
-    value === 'write' ||
-    value === 'object-path' ||
-    value === 'bucket'
-  );
+  return value === 'read' || value === 'write' || value === 'object-path' || value === 'bucket';
 }
 
 function requiredFlag(args: string[], name: string): string | undefined {
@@ -122,11 +117,7 @@ async function readObject(bucket: string, object: string): Promise<string> {
   return await response.text();
 }
 
-async function writeObject(
-  bucket: string,
-  object: string,
-  body: string,
-): Promise<void> {
+async function writeObject(bucket: string, object: string, body: string): Promise<void> {
   const token = await getAccessToken();
   const url = `https://storage.googleapis.com/upload/storage/v1/b/${encodeURIComponent(bucket)}/o?uploadType=media&name=${encodeURIComponent(object)}`;
   const response = await fetch(url, {
