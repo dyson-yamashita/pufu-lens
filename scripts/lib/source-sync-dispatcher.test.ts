@@ -80,18 +80,32 @@ test('successful exact target is completed with the claiming worker token', asyn
 
 test('failed commands persist only a bounded safe category', async () => {
   const repo = repository();
-  const result = await dispatchDueSourceSyncs({
-    repository: repo,
-    runner: {
-      async run() {
-        throw new SourceSyncCommandError('collect', 7);
+  const originalConsoleError = console.error;
+  const logs: unknown[] = [];
+  console.error = (...values: unknown[]) => {
+    logs.push(values);
+  };
+  try {
+    const result = await dispatchDueSourceSyncs({
+      repository: repo,
+      runner: {
+        async run() {
+          throw new SourceSyncCommandError('collect', 7);
+        },
       },
-    },
-    workerToken: 'worker-a',
-  });
-  assert.deepEqual(repo.failed, ['source sync collect failed (exit 7)']);
-  assert.deepEqual(result, { claimed: 1, failed: 1, leaseLost: 0, succeeded: 0 });
-  assert.equal(safeScheduleError(new Error('oauth_token=secret raw body')), 'source sync failed');
+      workerToken: 'worker-a',
+    });
+    assert.deepEqual(repo.failed, ['source sync collect failed (exit 7)']);
+    assert.deepEqual(result, { claimed: 1, failed: 1, leaseLost: 0, succeeded: 0 });
+    assert.equal(
+      safeScheduleError(new Error('oauth_token=secret raw provider body')),
+      'source sync failed',
+    );
+    assert.match(JSON.stringify(logs), /source sync collect failed \(exit 7\)/);
+    assert.doesNotMatch(JSON.stringify(logs), /secret|provider body|oauth_token/);
+  } finally {
+    console.error = originalConsoleError;
+  }
 });
 
 test('stale worker completion is counted as lease lost', async () => {
@@ -128,4 +142,49 @@ test('heartbeat lease loss aborts the runner and prevents completion', async () 
   });
   assert.equal(completionCalls, 0);
   assert.equal(result.leaseLost, 1);
+});
+
+test('heartbeat errors abort the runner without persisting provider details', async () => {
+  const repo = repository();
+  repo.heartbeat = async () => {
+    throw new Error('database response token=secret');
+  };
+  let failureCalls = 0;
+  repo.markFailed = async () => {
+    failureCalls += 1;
+    return true;
+  };
+  const originalConsoleError = console.error;
+  const logs: unknown[] = [];
+  console.error = (...values: unknown[]) => {
+    logs.push(values);
+  };
+  try {
+    const result = await dispatchDueSourceSyncs({
+      heartbeatIntervalMs: 1,
+      repository: repo,
+      runner: {
+        async run(_target, signal) {
+          await new Promise<void>((_resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('heartbeat did not abort')), 2_000);
+            signal.addEventListener(
+              'abort',
+              () => {
+                clearTimeout(timeout);
+                reject(new Error('raw provider body'));
+              },
+              { once: true },
+            );
+          });
+        },
+      },
+      workerToken: 'worker-a',
+    });
+    assert.equal(failureCalls, 0);
+    assert.deepEqual(result, { claimed: 1, failed: 0, leaseLost: 1, succeeded: 0 });
+    assert.match(JSON.stringify(logs), /source_sync_lease_lost/);
+    assert.doesNotMatch(JSON.stringify(logs), /secret|provider body|database response/);
+  } finally {
+    console.error = originalConsoleError;
+  }
 });
