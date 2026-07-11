@@ -277,7 +277,7 @@ steps:
         fi
 
   - id: deploy-web-app-hosting
-    name: node:22-bookworm
+    name: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/firebase-tools:${_FIREBASE_TOOLS_VERSION}
     waitFor:
       - deploy-mastra-server
       - deploy-workflow-jobs
@@ -293,7 +293,19 @@ steps:
           exit 0
         fi
 
-        npm install --global "firebase-tools@${_FIREBASE_TOOLS_VERSION}"
+        # apps/web に影響しない変更ならスキップ。
+        # git 情報が無い / 親コミットが取れない場合はデプロイ側に倒す。
+        web_paths='^(apps/web/|firebase\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|package\.json|packages/|infra/docker/firebase-tools/|deploy/examples/gcp-cloud-build/cloudbuild\.deploy\.yaml)'
+        if git rev-parse --git-dir >/dev/null 2>&1; then
+          git fetch --deepen=1 >/dev/null 2>&1 || true
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            if ! git diff --name-only HEAD^ HEAD | grep -qE "$${web_paths}"; then
+              echo "No web-related changes since previous commit. Skipping App Hosting deploy."
+              exit 0
+            fi
+          fi
+        fi
+
         firebase deploy --only apphosting --project "${PROJECT_ID}" --non-interactive
 
   - id: smoke
