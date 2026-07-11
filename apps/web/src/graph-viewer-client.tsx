@@ -264,6 +264,7 @@ function GraphCanvas({
   const [canvasWrapElement, setCanvasWrapElement] = useState<HTMLDivElement | null>(null);
   const cytoscapeRef = useRef<Core | null>(null);
   const isMaximizedRef = useRef(false);
+  const onMaximizedChangeRef = useRef(onMaximizedChange);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
   const [isFallbackFullscreen, setIsFallbackFullscreen] = useState(false);
   const [floatingSelection, setFloatingSelection] = useState<GraphSelection | undefined>();
@@ -394,12 +395,16 @@ function GraphCanvas({
   }, [floatingSelection, isFallbackFullscreen, isMaximized]);
 
   useEffect(() => {
+    onMaximizedChangeRef.current = onMaximizedChange;
+  }, [onMaximizedChange]);
+
+  useEffect(() => {
     isMaximizedRef.current = isMaximized;
-    onMaximizedChange(isMaximized);
+    onMaximizedChangeRef.current(isMaximized);
     if (!isMaximized) {
       setFloatingSelection(undefined);
     }
-  }, [isMaximized, onMaximizedChange]);
+  }, [isMaximized]);
 
   useEffect(() => {
     const container = containerElement;

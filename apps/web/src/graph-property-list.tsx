@@ -36,7 +36,7 @@ export function PropertyList({
   useEffect(() => {
     setSelectedChunkState(undefined);
     if (!loadDocumentChunks || !documentId) {
-      setChunksState({ status: 'idle' });
+      setChunksState((prev) => (prev.status === 'idle' ? prev : { status: 'idle' }));
       return;
     }
     const abortController = new AbortController();
