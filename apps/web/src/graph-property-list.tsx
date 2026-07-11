@@ -203,6 +203,7 @@ export function PropertyList({
                 </thead>
                 <tbody>
                   {chunks.map((chunk) => (
+                    // biome-ignore lint/a11y/useSemanticElements: table row layout requires tr; role conveys interactivity to assistive tech
                     <tr
                       data-testid="graph-chunk-row"
                       key={chunk.id}
@@ -213,6 +214,7 @@ export function PropertyList({
                           setSelectedChunkState({ chunk, itemId: item.id });
                         }
                       }}
+                      role="button"
                       tabIndex={0}
                     >
                       <th className="mono" scope="row">
@@ -240,8 +242,17 @@ function readGraphNodeDocumentId(node: GraphViewerNode): string | undefined {
 }
 
 function truncateChunkPreview(value: string): string {
-  const characters = Array.from(value.replace(/\s+/g, ' ').trim());
-  return characters.length <= 120 ? characters.join('') : `${characters.slice(0, 120).join('')}…`;
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  let preview = '';
+  let count = 0;
+  for (const character of normalized) {
+    if (count >= 120) {
+      return `${preview}…`;
+    }
+    preview += character;
+    count += 1;
+  }
+  return preview;
 }
 
 function formatPropertyValue(value: unknown): string {

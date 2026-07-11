@@ -37,9 +37,6 @@ export async function GET(
     );
     return NextResponse.json({ chunks });
   } catch (error) {
-    if (error instanceof AuthRequiredError) {
-      return graphDocumentChunksErrorResponse('auth_required', error.message, 401);
-    }
     if (error instanceof GraphAccessDeniedError) {
       return graphDocumentChunksErrorResponse('project_access_denied', error.message, 403);
     }

@@ -318,7 +318,7 @@ export function createPostgresGraphViewerRepository(
           dc.created_at::text AS created_at
         FROM public.document_chunks dc
         WHERE dc.project_id = ${projectId}
-          AND dc.document_id::text = ANY(${documentIds})
+          AND dc.document_id IN ${sql(documentIds)}
         ORDER BY dc.document_id, dc.chunk_index
       `) as readonly Record<string, unknown>[];
       const chunksByDocumentId = new Map<string, GraphViewerDocumentChunk[]>();
