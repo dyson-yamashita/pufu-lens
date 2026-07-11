@@ -298,7 +298,7 @@ gcloud builds submit \
   infra/docker/firebase-tools
 ```
 
-`_FIREBASE_TOOLS_VERSION` を更新した場合は、substitution・image tag・build arg を同じ値に揃えて builder image を再 build する。
+`_FIREBASE_TOOLS_VERSION` を更新した場合は、substitution・image tag・build arg を同じ値に揃えて builder image を再 build する。この builder image は Cloud Build step 用のため root で実行する（`/workspace` への書き込みと deploy SA の credentials 利用のため）。
 
 Cloud Build から Web deploy しない場合は、deploy trigger substitution で `_FIREBASE_DEPLOY=false` を設定する。この場合 Cloud Build は Mastra Server と Workflow Jobs の deploy と smoke check を担当し、Web は Firebase App Hosting の GitHub integration など別 release process で管理する。
 
