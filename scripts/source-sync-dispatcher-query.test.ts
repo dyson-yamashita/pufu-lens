@@ -35,3 +35,14 @@ test('process runner targets one data source and runs collect before ingest', ()
   assert.match(source, /process\.once\('SIGTERM'/);
   assert.match(source, /child\.kill\(signal\)/);
 });
+
+test('dispatcher drains ingest from parse after its separate collect step', () => {
+  const runner = source.indexOf('async function runSourceSync');
+  const ingest = source.indexOf("'ingest',", runner);
+  const runScript = source.indexOf('async function runScript', ingest);
+  assert.ok(runner >= 0 && ingest > runner && runScript > ingest);
+  const ingestInvocation = source.slice(ingest, runScript);
+
+  assert.match(ingestInvocation, /'--drain'/);
+  assert.match(ingestInvocation, /'--resume-from',\s*'parse'/);
+});

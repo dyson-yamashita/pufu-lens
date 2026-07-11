@@ -167,6 +167,8 @@ async function runSourceSync(target: SourceSyncTarget, signal: AbortSignal): Pro
       '--data-source-id',
       target.dataSourceId,
       '--drain',
+      '--resume-from',
+      'parse',
       '--max-runtime-seconds',
       '540',
     ],
