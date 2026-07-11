@@ -1,6 +1,6 @@
 # Storage Recovery Artifacts 計画
 
-> **中止（2026-07-11）**: 現時点で Step 2 以降の着手予定がないため、本計画を `deprecated` とする。Step 1 で実装済みの artifact schema / writer / reader は削除せず維持する。将来再開する場合は、現行の logical source ID / source version 契約と実装状況を再調査し、新しい Issue または plan でスコープを定義する。
+> **中止（2026-07-11、Issue #524）**: 現時点で Step 2 以降の着手予定がないため、本計画を `deprecated` とする。Step 1 で実装済みの artifact schema / writer / reader は削除せず維持する。将来再開する場合は、現行の logical source ID / source version 契約と実装状況を再調査し、新しい Issue または plan でスコープを定義する。
 
 ## 目的
 
