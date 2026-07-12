@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fontkit from '@pdf-lib/fontkit';
-import { PDFDocument, type PDFPage, type PDFFont, rgb } from 'pdf-lib';
+import { PDFDocument, type PDFFont, type PDFPage, rgb } from 'pdf-lib';
 import type { CustomReportPart, CustomReportSnapshotV1 } from './custom-report-schema.ts';
 import { redactSensitivePdfText } from './report-public-redaction.ts';
 import type { PrivateReportJsonV1 } from './report-schema.ts';
@@ -442,15 +442,15 @@ function drawCallout(context: PdfContext, text: string): void {
     x: PAGE_MARGIN,
     y: context.y - height,
   });
-  lines.forEach((line, index) =>
+  lines.forEach((line, index) => {
     context.page.drawText(line, {
       color: COLORS.text,
       font: context.font,
       size: 10.5,
       x: PAGE_MARGIN + 18,
       y: context.y - 24 - index * 16,
-    }),
-  );
+    });
+  });
   context.y -= height;
 }
 
@@ -585,7 +585,7 @@ function formatGeneratedAt(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? redactPdfText(value)
-    : date.toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+    : `${date.toISOString().replace('T', ' ').slice(0, 16)} UTC`;
 }
 
 /**
