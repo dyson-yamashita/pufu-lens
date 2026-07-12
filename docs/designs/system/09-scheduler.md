@@ -19,7 +19,7 @@ PostgreSQL VM はコスト削減のため業務時間のみ起動する方針だ
 2. `--no-allow-unauthenticated` のCloud Run IAMがScheduler service accountのOIDC tokenを検証する。Mastra routeはGoogle署名tokenをアプリuser tokenとして解釈しない。
 3. Mastra Serverはbodyが空objectであることを検証し、runtime service accountでdispatcher Cloud Run Jobを起動する。
 4. Cloud Run Jobs API overrideは`WORKFLOW_INPUT_JSON={}`だけを渡し、project、data source、credentialはDBとruntime secretから解決する。
-5. Job entrypointは`source-sync-dispatcher`を選び、DB上のdue scheduleを1件claimしてone-shot実行する。
+5. Job entrypointは`source-sync-dispatcher`を選び、DB上のdue scheduleを最大10件、開始から最大45分まで順次claimしてone-shot実行する。
 
 Ingestion Job は Cloud Run のローカルファイルシステムに parser や中間成果物を永続化しない。parser は Parser Registry で承認済みの version を DB から解決し、Object Storage 上の artifact を hash 検証して使用する。Job 実行中に active parser version が変わっても、dequeue 時に queue item へ固定した `parser_version_id` を使い続ける。承認済み parser が無い raw は `held` にして、Scheduler の通常実行では graph / vector へ進めない。
 
@@ -36,7 +36,7 @@ Source sync dispatcher は起動元に依存せず、DB 上の due schedule を 
 
 one-shot CLI は due schedule が無ければ外部 API を呼ばず成功終了する。継続実行が必要な開発環境では `cron` / `launchd` などから 5 分ごとに呼び、CLI 自身には常駐 loop を持たせない。`pnpm dev` と通常の `docker compose up` からは自動起動せず、開発者が明示的に有効化した場合だけ外部 provider へアクセスする。
 
-claim は `FOR UPDATE SKIP LOCKED` で1件ずつ行い、15分のleaseをworker tokenで保持する。heartbeatは最大60分まで延長できる。ingest drain が `max_runtime` または `max_batches` に達した時点で実処理対象の残件がある場合は成功扱いにせず、dispatcher の失敗・再試行経路へ渡す。成功時は次の日次時刻へ戻し、失敗時は15分、1時間、6時間の順で再試行した後に通常の日次時刻へ戻す。完了更新はschedule IDとworker tokenの一致を必須とし、期限切れworkerは後続workerの状態を上書きしない。保存するerrorはcommand種別とexit codeだけに制限する。
+claim は `FOR UPDATE SKIP LOCKED` で1件ずつ行い、1件の完了後に次のdue scheduleを再取得する。1回のdispatcherは最大10件または開始から45分の早い方を上限とし、期限到達後は新規claimしない。Cloud Run Jobのtask timeoutは55分とし、dispatcher期限との差10分を中断・結果更新などの後処理に確保する。処理中に期限へ到達したsourceは中断し、leaseが有効なら失敗・再試行経路へ渡す。各claimは15分のleaseをworker tokenで保持し、heartbeatは最大60分まで延長できる。ingest drain が `max_runtime` または `max_batches` に達した時点で実処理対象の残件がある場合も成功扱いにせず、dispatcher の失敗・再試行経路へ渡す。成功時は次の日次時刻へ戻し、失敗時は15分、1時間、6時間の順で再試行した後に通常の日次時刻へ戻す。完了更新はschedule IDとworker tokenの一致を必須とし、期限切れworkerは後続workerの状態を上書きしない。保存するerrorはcommand種別とexit codeだけに制限する。
 
 ```bash
 # 1 時間ごとに全プロジェクトのデータソースを確認

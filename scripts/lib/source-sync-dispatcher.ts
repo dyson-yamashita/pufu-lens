@@ -1,4 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
+
+const DEFAULT_DISPATCH_LIMIT = 10;
+const DEFAULT_MAX_RUNTIME_MS = 45 * 60 * 1000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+export const SOURCE_SYNC_RUNTIME_EXCEEDED_ERROR = 'source sync dispatcher runtime exceeded';
 
 export interface SourceSyncTarget {
   readonly dataSourceId: string;
@@ -38,20 +44,23 @@ export interface SourceSyncDispatchResult {
 export async function dispatchDueSourceSyncs(input: {
   readonly heartbeatIntervalMs?: number;
   readonly limit?: number;
+  readonly maxRuntimeMs?: number;
+  readonly now?: () => number;
   readonly repository: SourceSyncScheduleRepository;
   readonly runner: SourceSyncRunner;
   readonly workerToken?: string;
 }): Promise<SourceSyncDispatchResult> {
   const workerToken = input.workerToken ?? randomUUID();
-  // Cloud Scheduler starts another execution every five minutes. One source per
-  // execution keeps the Cloud Run task within the bounded lease/runtime window.
-  const limit = input.limit ?? 1;
+  const limit = input.limit ?? DEFAULT_DISPATCH_LIMIT;
+  const maxRuntimeMs = input.maxRuntimeMs ?? DEFAULT_MAX_RUNTIME_MS;
+  const now = input.now ?? (() => performance.now());
+  const deadline = now() + maxRuntimeMs;
   let claimed = 0;
   let failed = 0;
   let leaseLost = 0;
   let succeeded = 0;
 
-  while (claimed < limit) {
+  while (claimed < limit && now() < deadline) {
     // Claim immediately before execution so later serial targets do not lose
     // their lease while an earlier source is still running.
     const [target] = await input.repository.claimDue({ limit: 1, workerToken });
@@ -60,6 +69,15 @@ export async function dispatchDueSourceSyncs(input: {
     const abortController = new AbortController();
     let heartbeatInFlight = false;
     let leaseLostDuringRun = false;
+    let runtimeExceededDuringRun = false;
+    const runtimeTimer = setTimeout(
+      () => {
+        runtimeExceededDuringRun = true;
+        abortController.abort();
+      },
+      Math.min(MAX_TIMER_DELAY_MS, Math.max(0, deadline - now())),
+    );
+    runtimeTimer.unref();
     const heartbeat = setInterval(() => {
       if (heartbeatInFlight) return;
       heartbeatInFlight = true;
@@ -83,10 +101,12 @@ export async function dispatchDueSourceSyncs(input: {
 
     try {
       await input.runner.run(target, abortController.signal);
-      clearInterval(heartbeat);
       if (leaseLostDuringRun) {
         leaseLost += 1;
         continue;
+      }
+      if (runtimeExceededDuringRun) {
+        throw new Error(SOURCE_SYNC_RUNTIME_EXCEEDED_ERROR);
       }
       const updated = await input.repository.markSucceeded({
         scheduleId: target.scheduleId,
@@ -95,7 +115,6 @@ export async function dispatchDueSourceSyncs(input: {
       if (updated) succeeded += 1;
       else leaseLost += 1;
     } catch (error) {
-      clearInterval(heartbeat);
       if (leaseLostDuringRun) {
         console.error(
           JSON.stringify({
@@ -107,7 +126,9 @@ export async function dispatchDueSourceSyncs(input: {
         leaseLost += 1;
         continue;
       }
-      const safeError = safeScheduleError(error);
+      const safeError = runtimeExceededDuringRun
+        ? SOURCE_SYNC_RUNTIME_EXCEEDED_ERROR
+        : safeScheduleError(error);
       console.error(
         JSON.stringify({
           error: safeError,
@@ -123,6 +144,9 @@ export async function dispatchDueSourceSyncs(input: {
       });
       if (updated) failed += 1;
       else leaseLost += 1;
+    } finally {
+      clearInterval(heartbeat);
+      clearTimeout(runtimeTimer);
     }
   }
 

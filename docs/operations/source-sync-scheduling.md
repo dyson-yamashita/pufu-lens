@@ -1,13 +1,13 @@
 # Source Sync Scheduling 運用手順
 
-GitHub / Drive / Gmail の日次差分同期と、Web の手動差分同期を安全に確認・復旧するための手順をまとめる。dispatcher は DB 上の due schedule を1件ずつ claim し、対象 data source の collect と ingest を直列実行する。
+GitHub / Drive / Gmail の日次差分同期と、Web の手動差分同期を安全に確認・復旧するための手順をまとめる。dispatcher は DB 上の due schedule を1件ずつ claim し、対象 data source の collect と ingest を直列実行する。1回の起動では最大10件または開始から45分まで連続処理する。
 
 ## キック経路
 
-| 環境     | 起動経路                                                              | 実行単位         |
-| -------- | --------------------------------------------------------------------- | ---------------- |
-| 本番     | Cloud Scheduler（5分間隔）→ OIDC 付き Mastra 内部 API → Cloud Run Job | due schedule 1件 |
-| ローカル | `pnpm schedule:dispatch --once`                                       | due schedule 1件 |
+| 環境     | 起動経路                                                              | 実行単位       |
+| -------- | --------------------------------------------------------------------- | -------------- |
+| 本番     | Cloud Scheduler（5分間隔）→ OIDC 付き Mastra 内部 API → Cloud Run Job | 最大10件・45分 |
+| ローカル | `pnpm schedule:dispatch --once`                                       | 最大10件・45分 |
 
 source ごとの Cloud Scheduler resource は作らない。Web source は自動 schedule を持たず、管理画面または既存の collect / ingest 導線から手動実行する。
 
@@ -27,6 +27,8 @@ pnpm schedule:dispatch --once
 ```
 
 due schedule が無い場合は外部 provider を呼ばず正常終了する。継続確認では `cron` / `launchd` などのhost schedulerから5分ごとにone-shotを呼び、CLIを常駐させない。
+
+45分到達後は新しいscheduleをclaimしない。処理中に45分へ到達した場合はchild processを中断し、leaseが有効なら失敗として記録して通常の再試行間隔へ送る。Cloud Run Jobのtask timeoutは55分とし、dispatcherの後処理時間を確保する。
 
 ## 正常性の確認
 
