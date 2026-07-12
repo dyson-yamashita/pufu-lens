@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import type {
   ChatEditingMetadata,
   ChatResponse,
@@ -9,6 +9,7 @@ import type {
   PublicChatResponse,
   PublicChatSource,
 } from './chat';
+import { MarkdownContent } from './markdown-content';
 
 export type ChatThreadUserMessage = {
   readonly id: string;
@@ -247,134 +248,8 @@ function PendingThinking({ testId }: { readonly testId: string }) {
 
 function ChatMarkdownText({ testId, text }: { readonly testId: string; readonly text: string }) {
   return (
-    <div className="chat-message-text chat-markdown" data-testid={testId}>
-      {markdownBlocks(text)}
-    </div>
+    <MarkdownContent className="chat-message-text chat-markdown" testId={testId} text={text} />
   );
-}
-
-function markdownBlocks(text: string) {
-  const blocks: ReactNode[] = [];
-  const paragraph: string[] = [];
-  let listItems: string[] = [];
-  let orderedItems: string[] = [];
-
-  function flushParagraph() {
-    if (paragraph.length === 0) {
-      return;
-    }
-    blocks.push(<p key={`p-${blocks.length}`}>{inlineMarkdown(paragraph.join('\n'))}</p>);
-    paragraph.length = 0;
-  }
-
-  function flushList() {
-    if (listItems.length > 0) {
-      blocks.push(
-        <ul key={`ul-${blocks.length}`}>
-          {listItems.map((item) => (
-            <li key={item}>{inlineMarkdown(item)}</li>
-          ))}
-        </ul>,
-      );
-      listItems = [];
-    }
-    if (orderedItems.length > 0) {
-      blocks.push(
-        <ol key={`ol-${blocks.length}`}>
-          {orderedItems.map((item) => (
-            <li key={item}>{inlineMarkdown(item)}</li>
-          ))}
-        </ol>,
-      );
-      orderedItems = [];
-    }
-  }
-
-  for (const line of text.split(/\r?\n/)) {
-    const unordered = line.match(/^\s*[-*]\s+(.+)$/);
-    const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
-    const heading = line.match(/^(#{1,3})\s+(.+)$/);
-
-    if (!line.trim()) {
-      flushParagraph();
-      flushList();
-      continue;
-    }
-    if (heading) {
-      const headingLevel = heading[1];
-      const headingText = heading[2];
-      if (!headingLevel || !headingText) {
-        continue;
-      }
-      flushParagraph();
-      flushList();
-      const HeadingTag = `h${headingLevel.length + 3}` as 'h4' | 'h5' | 'h6';
-      blocks.push(
-        <HeadingTag key={`h-${blocks.length}`}>{inlineMarkdown(headingText)}</HeadingTag>,
-      );
-      continue;
-    }
-    if (unordered) {
-      const item = unordered[1];
-      if (!item) {
-        continue;
-      }
-      flushParagraph();
-      flushList();
-      listItems.push(item);
-      continue;
-    }
-    if (ordered) {
-      const item = ordered[1];
-      if (!item) {
-        continue;
-      }
-      flushParagraph();
-      flushList();
-      orderedItems.push(item);
-      continue;
-    }
-    flushList();
-    paragraph.push(line);
-  }
-
-  flushParagraph();
-  flushList();
-
-  return blocks.length ? blocks : <p>{text}</p>;
-}
-
-function inlineMarkdown(text: string) {
-  const nodes: ReactNode[] = [];
-  const pattern = /(\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\))/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  match = pattern.exec(text);
-  while (match) {
-    if (match.index > lastIndex) {
-      nodes.push(text.slice(lastIndex, match.index));
-    }
-    if (match[2]) {
-      nodes.push(<strong key={`strong-${match.index}`}>{match[2]}</strong>);
-    } else if (match[3]) {
-      nodes.push(<code key={`code-${match.index}`}>{match[3]}</code>);
-    } else if (match[4] && match[5]) {
-      nodes.push(
-        <a href={match[5]} key={`link-${match.index}`} rel="noreferrer" target="_blank">
-          {match[4]}
-        </a>,
-      );
-    }
-    lastIndex = pattern.lastIndex;
-    match = pattern.exec(text);
-  }
-
-  if (lastIndex < text.length) {
-    nodes.push(text.slice(lastIndex));
-  }
-
-  return nodes;
 }
 
 function PrivateSourceStrip({

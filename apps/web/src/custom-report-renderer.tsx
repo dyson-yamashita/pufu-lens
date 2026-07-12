@@ -4,6 +4,7 @@ import type {
   CustomReportSnapshotV1,
   SliderJudgementResult,
 } from './custom-report-schema';
+import { MarkdownContent } from './markdown-content';
 import { PufuReportViewer } from './pufu-report-viewer';
 import type { PrivateReportJsonV1, PrivateReportSection } from './report';
 
@@ -272,7 +273,7 @@ function StandardReportSection({
       data-testid={`${publicView ? 'public-' : ''}report-section-${section.id}`}
     >
       <h3>{section.title}</h3>
-      <p className="markdown-text">{section.markdown}</p>
+      <MarkdownContent className="report-markdown" text={section.markdown} />
       {section.metrics && Object.keys(section.metrics).length > 0 ? (
         <div className="metric-strip compact">
           {Object.entries(section.metrics).map(([name, value]) => (
