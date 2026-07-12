@@ -24,6 +24,13 @@ export function hasGraphStep(steps: readonly DrainWorkflowStep[]): boolean {
   return steps.includes('graph');
 }
 
+export function shouldFailDrainAtLimit(
+  steps: readonly DrainWorkflowStep[],
+  remaining: DrainRemainingState,
+): boolean {
+  return hasDrainRemainingWork(steps, remaining);
+}
+
 export function shouldContinueDrainAfterBatch(input: {
   batchProgress: number;
   remaining: DrainRemainingState;

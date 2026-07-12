@@ -5,8 +5,18 @@ import {
   hasGraphStep,
   shouldContinueDrainAfterBatch,
   shouldCountParsedRaw,
+  shouldFailDrainAtLimit,
   summarizeDrainRemaining,
 } from './ingest-workflow-drain.ts';
+
+test('shouldFailDrainAtLimit fails only when selected steps still have remaining work', () => {
+  assert.equal(
+    shouldFailDrainAtLimit(['parse', 'chunk', 'graph'], { parseQueue: 0, parsedRaw: 1 }),
+    true,
+  );
+  assert.equal(shouldFailDrainAtLimit(['parse'], { parseQueue: 0, parsedRaw: 1 }), false);
+  assert.equal(shouldFailDrainAtLimit(['chunk'], { parseQueue: 0, parsedRaw: 0 }), false);
+});
 
 test('hasDrainRemainingWork uses parseQueue for parse and parsedRaw for downstream steps', () => {
   assert.equal(hasDrainRemainingWork(['parse'], { parseQueue: 2, parsedRaw: 0 }), true);

@@ -36,7 +36,7 @@ Source sync dispatcher は起動元に依存せず、DB 上の due schedule を 
 
 one-shot CLI は due schedule が無ければ外部 API を呼ばず成功終了する。継続実行が必要な開発環境では `cron` / `launchd` などから 5 分ごとに呼び、CLI 自身には常駐 loop を持たせない。`pnpm dev` と通常の `docker compose up` からは自動起動せず、開発者が明示的に有効化した場合だけ外部 provider へアクセスする。
 
-claim は `FOR UPDATE SKIP LOCKED` で1件ずつ行い、15分のleaseをworker tokenで保持する。heartbeatは最大60分まで延長できる。成功時は次の日次時刻へ戻し、失敗時は15分、1時間、6時間の順で再試行した後に通常の日次時刻へ戻す。完了更新はschedule IDとworker tokenの一致を必須とし、期限切れworkerは後続workerの状態を上書きしない。保存するerrorはcommand種別とexit codeだけに制限する。
+claim は `FOR UPDATE SKIP LOCKED` で1件ずつ行い、15分のleaseをworker tokenで保持する。heartbeatは最大60分まで延長できる。ingest drain が `max_runtime` または `max_batches` に達した時点で実処理対象の残件がある場合は成功扱いにせず、dispatcher の失敗・再試行経路へ渡す。成功時は次の日次時刻へ戻し、失敗時は15分、1時間、6時間の順で再試行した後に通常の日次時刻へ戻す。完了更新はschedule IDとworker tokenの一致を必須とし、期限切れworkerは後続workerの状態を上書きしない。保存するerrorはcommand種別とexit codeだけに制限する。
 
 ```bash
 # 1 時間ごとに全プロジェクトのデータソースを確認
