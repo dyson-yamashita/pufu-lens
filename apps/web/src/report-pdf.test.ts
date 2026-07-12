@@ -157,6 +157,13 @@ const tokenVariantText = safeReportPdfLines(tokenVariantReport).join('\n');
 assert.equal(tokenVariantText.includes('secret-value'), false);
 assert.equal(tokenVariantText.includes('another-secret'), false);
 assert.equal(tokenVariantText.includes('[redacted]'), true);
+const tokenVariantPdf = await renderReportPdf({
+  projectSlug: 'sample-project',
+  report: tokenVariantReport,
+});
+const tokenVariantPdfBytes = new TextDecoder().decode(tokenVariantPdf.bytes);
+assert.equal(tokenVariantPdfBytes.includes('secret-value'), false);
+assert.equal(tokenVariantPdfBytes.includes('another-secret'), false);
 
 const secretVariantReport: PrivateReportJsonV1 = {
   ...standardReport,
@@ -172,6 +179,13 @@ const secretVariantText = safeReportPdfLines(secretVariantReport).join('\n');
 assert.equal(secretVariantText.includes('hidden-value'), false);
 assert.equal(secretVariantText.includes('another-hidden'), false);
 assert.equal(secretVariantText.includes('[redacted]'), true);
+const secretVariantPdf = await renderReportPdf({
+  projectSlug: 'sample-project',
+  report: secretVariantReport,
+});
+const secretVariantPdfBytes = new TextDecoder().decode(secretVariantPdf.bytes);
+assert.equal(secretVariantPdfBytes.includes('hidden-value'), false);
+assert.equal(secretVariantPdfBytes.includes('another-hidden'), false);
 
 const nullMetricsReport: PrivateReportJsonV1 = {
   ...standardReport,

@@ -314,14 +314,14 @@ function drawCover(context: PdfContext, report: PrivateReportJsonV1): void {
   drawMeta(
     context,
     '対象期間',
-    `${report.period.start}  —  ${report.period.end}`,
+    redactPdfText(`${report.period.start}  —  ${report.period.end}`),
     PAGE_MARGIN + 16,
     metaTop - 22,
   );
   drawMeta(
     context,
     '生成日時',
-    formatGeneratedAt(report.generated_at),
+    redactPdfText(formatGeneratedAt(report.generated_at)),
     PAGE_MARGIN + 184,
     metaTop - 22,
   );
@@ -342,7 +342,7 @@ function drawReportContent(context: PdfContext, report: PrivateReportJsonV1): vo
   for (const section of report.sections) {
     ensureSpace(context, 100);
     drawSectionHeading(context, redactPdfText(section.title), section.id.toUpperCase());
-    drawBodyLines(context, redactPdfText(section.markdown).split(/\r?\n/));
+    drawBodyLines(context, section.markdown.split(/\r?\n/));
     if (section.metrics && Object.keys(section.metrics).length > 0) {
       drawMetricStrip(context, section.metrics);
     }
@@ -555,6 +555,7 @@ function ensureSpace(context: PdfContext, requiredHeight: number): void {
 
 function addPageFurniture(pdfDoc: PDFDocument, font: PDFFont, title: string): void {
   const pages = pdfDoc.getPages();
+  const redactedTitle = [...redactPdfText(title)].slice(0, 44).join('');
   pages.forEach((page, index) => {
     page.drawLine({
       color: COLORS.border,
@@ -562,7 +563,7 @@ function addPageFurniture(pdfDoc: PDFDocument, font: PDFFont, title: string): vo
       start: { x: PAGE_MARGIN, y: 34 },
       thickness: 0.5,
     });
-    page.drawText(redactPdfText(title).slice(0, 44), {
+    page.drawText(redactedTitle, {
       color: COLORS.muted,
       font,
       size: 7,
