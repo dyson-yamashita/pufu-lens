@@ -78,6 +78,81 @@ test('successful exact target is completed with the claiming worker token', asyn
   assert.deepEqual(result, { claimed: 1, failed: 0, leaseLost: 0, succeeded: 1 });
 });
 
+test('default dispatch processes at most ten due sources', async () => {
+  const targets = Array.from(
+    { length: 12 },
+    (_, index): SourceSyncTarget => ({
+      ...target,
+      dataSourceId: `source-${index}`,
+      scheduleId: `schedule-${index}`,
+    }),
+  );
+  const repo = repository(targets);
+  let calls = 0;
+  const result = await dispatchDueSourceSyncs({
+    repository: repo,
+    runner: {
+      async run() {
+        calls += 1;
+      },
+    },
+    workerToken: 'worker-a',
+  });
+  assert.equal(calls, 10);
+  assert.deepEqual(result, { claimed: 10, failed: 0, leaseLost: 0, succeeded: 10 });
+});
+
+test('runtime budget stops claiming another due source', async () => {
+  let now = 1_000;
+  const repo = repository([
+    target,
+    { ...target, dataSourceId: 'source-b', scheduleId: 'schedule-b' },
+  ]);
+  const result = await dispatchDueSourceSyncs({
+    maxRuntimeMs: 45 * 60 * 1000,
+    now: () => now,
+    repository: repo,
+    runner: {
+      async run() {
+        now += 45 * 60 * 1000;
+      },
+    },
+    workerToken: 'worker-a',
+  });
+  assert.deepEqual(repo.succeeded, ['schedule-a']);
+  assert.deepEqual(result, { claimed: 1, failed: 0, leaseLost: 0, succeeded: 1 });
+});
+
+test('runtime budget aborts an active source and marks it failed for retry', async () => {
+  const repo = repository();
+  let signalAborted = false;
+  const result = await dispatchDueSourceSyncs({
+    maxRuntimeMs: 5,
+    repository: repo,
+    runner: {
+      async run(_target, signal) {
+        await new Promise<void>((_resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('runtime did not abort')), 100);
+          signal.addEventListener(
+            'abort',
+            () => {
+              signalAborted = true;
+              clearTimeout(timeout);
+              reject(new Error('aborted at runtime limit'));
+            },
+            { once: true },
+          );
+        });
+      },
+    },
+    workerToken: 'worker-a',
+  });
+  assert.equal(signalAborted, true);
+  assert.deepEqual(repo.succeeded, []);
+  assert.deepEqual(repo.failed, ['source sync dispatcher runtime exceeded']);
+  assert.deepEqual(result, { claimed: 1, failed: 1, leaseLost: 0, succeeded: 0 });
+});
+
 test('failed commands persist only a bounded safe category', async () => {
   const repo = repository();
   const originalConsoleError = console.error;
@@ -134,7 +209,15 @@ test('heartbeat lease loss aborts the runner and prevents completion', async () 
     runner: {
       async run(_target, signal) {
         await new Promise<void>((_resolve, reject) => {
-          signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+          const timeout = setTimeout(() => reject(new Error('heartbeat did not abort')), 2_000);
+          signal.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(timeout);
+              reject(new Error('aborted'));
+            },
+            { once: true },
+          );
         });
       },
     },
