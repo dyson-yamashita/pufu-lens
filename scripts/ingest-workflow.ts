@@ -8,11 +8,11 @@ import { ensureIngestionQueueLeaseColumn } from './ingestion-queue-lease.ts';
 import { requiredEnv } from './lib/cli.ts';
 import {
   type DrainRemainingState,
+  drainLimitErrorMessage,
   hasDrainRemainingWork,
   hasGraphStep,
   shouldContinueDrainAfterBatch,
   shouldCountParsedRaw,
-  shouldFailDrainAtLimit,
   summarizeDrainRemaining,
 } from './lib/ingest-workflow-drain.ts';
 
@@ -453,8 +453,9 @@ function throwIfDrainLimitReachedWithRemainingWork(
   remaining: DrainRemainingState,
   stopReason: Extract<DrainStopReason, 'max_batches' | 'max_runtime'>,
 ): void {
-  if (shouldFailDrainAtLimit(steps, remaining)) {
-    throw new Error(`Ingest drain reached ${stopReason} with remaining work.`);
+  const message = drainLimitErrorMessage(steps, remaining, stopReason);
+  if (message) {
+    throw new Error(message);
   }
 }
 
