@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 const DEFAULT_DISPATCH_LIMIT = 10;
 const DEFAULT_MAX_RUNTIME_MS = 45 * 60 * 1000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+export const SOURCE_SYNC_RUNTIME_EXCEEDED_ERROR = 'source sync dispatcher runtime exceeded';
 
 export interface SourceSyncTarget {
   readonly dataSourceId: string;
@@ -72,7 +74,7 @@ export async function dispatchDueSourceSyncs(input: {
         runtimeExceededDuringRun = true;
         abortController.abort();
       },
-      Math.max(0, deadline - now()),
+      Math.min(MAX_TIMER_DELAY_MS, Math.max(0, deadline - now())),
     );
     runtimeTimer.unref();
     const heartbeat = setInterval(() => {
@@ -98,14 +100,12 @@ export async function dispatchDueSourceSyncs(input: {
 
     try {
       await input.runner.run(target, abortController.signal);
-      clearInterval(heartbeat);
-      clearTimeout(runtimeTimer);
       if (leaseLostDuringRun) {
         leaseLost += 1;
         continue;
       }
       if (runtimeExceededDuringRun) {
-        throw new Error('source sync dispatcher runtime exceeded');
+        throw new Error(SOURCE_SYNC_RUNTIME_EXCEEDED_ERROR);
       }
       const updated = await input.repository.markSucceeded({
         scheduleId: target.scheduleId,
@@ -114,8 +114,6 @@ export async function dispatchDueSourceSyncs(input: {
       if (updated) succeeded += 1;
       else leaseLost += 1;
     } catch (error) {
-      clearInterval(heartbeat);
-      clearTimeout(runtimeTimer);
       if (leaseLostDuringRun) {
         console.error(
           JSON.stringify({
@@ -128,7 +126,7 @@ export async function dispatchDueSourceSyncs(input: {
         continue;
       }
       const safeError = runtimeExceededDuringRun
-        ? 'source sync dispatcher runtime exceeded'
+        ? SOURCE_SYNC_RUNTIME_EXCEEDED_ERROR
         : safeScheduleError(error);
       console.error(
         JSON.stringify({
@@ -145,6 +143,9 @@ export async function dispatchDueSourceSyncs(input: {
       });
       if (updated) failed += 1;
       else leaseLost += 1;
+    } finally {
+      clearInterval(heartbeat);
+      clearTimeout(runtimeTimer);
     }
   }
 

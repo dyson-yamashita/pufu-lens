@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   dispatchDueSourceSyncs,
+  SOURCE_SYNC_RUNTIME_EXCEEDED_ERROR,
   SourceSyncCommandError,
   type SourceSyncScheduleRepository,
   type SourceSyncTarget,
@@ -149,8 +150,24 @@ test('runtime budget aborts an active source and marks it failed for retry', asy
   });
   assert.equal(signalAborted, true);
   assert.deepEqual(repo.succeeded, []);
-  assert.deepEqual(repo.failed, ['source sync dispatcher runtime exceeded']);
+  assert.deepEqual(repo.failed, [SOURCE_SYNC_RUNTIME_EXCEEDED_ERROR]);
   assert.deepEqual(result, { claimed: 1, failed: 1, leaseLost: 0, succeeded: 0 });
+});
+
+test('large runtime budgets do not overflow the active source timer', async () => {
+  const repo = repository();
+  const result = await dispatchDueSourceSyncs({
+    maxRuntimeMs: Number.MAX_SAFE_INTEGER,
+    repository: repo,
+    runner: {
+      async run() {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      },
+    },
+    workerToken: 'worker-a',
+  });
+  assert.deepEqual(repo.succeeded, ['schedule-a']);
+  assert.deepEqual(result, { claimed: 1, failed: 0, leaseLost: 0, succeeded: 1 });
 });
 
 test('failed commands persist only a bounded safe category', async () => {
