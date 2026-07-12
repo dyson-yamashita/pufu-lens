@@ -1,6 +1,36 @@
 import assert from 'node:assert/strict';
-import { renderReportPdf, safeReportPdfLines } from './report-pdf.ts';
+import { PDFDocument } from 'pdf-lib';
+import {
+  renderReportPdf,
+  reportPdfImageDataUrlFromRequest,
+  safeReportPdfLines,
+} from './report-pdf.ts';
 import type { PrivateReportJsonV1 } from './report-schema.ts';
+
+const pufuEditorPng =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+assert.equal(
+  await reportPdfImageDataUrlFromRequest(
+    new Request('https://example.test/report.pdf', {
+      body: JSON.stringify({ pufuImageDataUrl: pufuEditorPng }),
+      method: 'POST',
+    }),
+  ),
+  pufuEditorPng,
+);
+assert.equal(
+  await reportPdfImageDataUrlFromRequest(
+    new Request('https://example.test/report.pdf', { body: 'not-json', method: 'POST' }),
+  ),
+  undefined,
+);
+assert.equal(
+  await reportPdfImageDataUrlFromRequest(
+    new Request('https://example.test/report.pdf', { method: 'POST' }),
+  ),
+  undefined,
+);
 
 const standardReport: PrivateReportJsonV1 = {
   generated_at: '2026-06-30T00:00:00.000Z',
@@ -30,9 +60,26 @@ assert.equal(redactedText.includes('storage_uri'), false);
 assert.equal(redactedText.toLowerCase().includes('raw document id'), false);
 assert.equal(redactedText.toLowerCase().includes('storage uri'), false);
 
-const pdf = await renderReportPdf({ projectSlug: 'sample/project', report: standardReport });
+const pdf = await renderReportPdf({
+  projectSlug: 'sample/project',
+  pufuImageDataUrl: pufuEditorPng,
+  report: standardReport,
+});
 assert.equal(pdf.fileName, 'sample-project-report-a.pdf');
 assert.equal(new TextDecoder().decode(pdf.bytes).startsWith('%PDF-'), true);
+const parsedPdf = await PDFDocument.load(pdf.bytes);
+assert.equal(parsedPdf.getTitle(), standardReport.title);
+assert.equal(parsedPdf.getAuthor(), 'Pufu Lens');
+assert.equal(parsedPdf.getPageCount() >= 2, true, 'standard PDF includes a dedicated Pufu board');
+assert.deepEqual(parsedPdf.getPage(0).getSize(), { height: 841.89, width: 595.28 });
+await assert.rejects(
+  renderReportPdf({
+    projectSlug: 'sample-project',
+    pufuImageDataUrl: 'data:image/svg+xml;base64,PHN2Zy8+',
+    report: standardReport,
+  }),
+  /PNG data URL/,
+);
 
 const japaneseReport: PrivateReportJsonV1 = {
   ...standardReport,
@@ -136,6 +183,13 @@ const tokenVariantText = safeReportPdfLines(tokenVariantReport).join('\n');
 assert.equal(tokenVariantText.includes('secret-value'), false);
 assert.equal(tokenVariantText.includes('another-secret'), false);
 assert.equal(tokenVariantText.includes('[redacted]'), true);
+const tokenVariantPdf = await renderReportPdf({
+  projectSlug: 'sample-project',
+  report: tokenVariantReport,
+});
+const tokenVariantPdfBytes = new TextDecoder().decode(tokenVariantPdf.bytes);
+assert.equal(tokenVariantPdfBytes.includes('secret-value'), false);
+assert.equal(tokenVariantPdfBytes.includes('another-secret'), false);
 
 const secretVariantReport: PrivateReportJsonV1 = {
   ...standardReport,
@@ -151,6 +205,13 @@ const secretVariantText = safeReportPdfLines(secretVariantReport).join('\n');
 assert.equal(secretVariantText.includes('hidden-value'), false);
 assert.equal(secretVariantText.includes('another-hidden'), false);
 assert.equal(secretVariantText.includes('[redacted]'), true);
+const secretVariantPdf = await renderReportPdf({
+  projectSlug: 'sample-project',
+  report: secretVariantReport,
+});
+const secretVariantPdfBytes = new TextDecoder().decode(secretVariantPdf.bytes);
+assert.equal(secretVariantPdfBytes.includes('hidden-value'), false);
+assert.equal(secretVariantPdfBytes.includes('another-hidden'), false);
 
 const nullMetricsReport: PrivateReportJsonV1 = {
   ...standardReport,

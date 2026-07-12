@@ -160,6 +160,9 @@ importers:
       '@playwright/test':
         specifier: ^1.60.0
         version: 1.60.0
+      '@types/dom-to-image':
+        specifier: 2.6.7
+        version: 2.6.7
       '@types/react':
         specifier: ^19.2.15
         version: 19.2.15

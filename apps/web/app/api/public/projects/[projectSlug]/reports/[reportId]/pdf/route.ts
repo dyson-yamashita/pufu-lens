@@ -1,4 +1,5 @@
-import { handlePublicReportPdfGet } from '../../../../../../../../src/public-report-api';
+import { handlePublicReportPdfPost } from '../../../../../../../../src/public-report-api';
+import { reportPdfImageDataUrlFromRequest } from '../../../../../../../../src/report-pdf';
 
 /**
  * Handles public report PDF requests.
@@ -6,12 +7,16 @@ import { handlePublicReportPdfGet } from '../../../../../../../../src/public-rep
  * @param params - Route parameters containing the project slug and report ID.
  * @returns The response for the requested public report PDF.
  */
-export async function GET(
-  _request: Request,
+export async function POST(
+  request: Request,
   {
     params,
   }: { readonly params: Promise<{ readonly projectSlug: string; readonly reportId: string }> },
 ) {
   const { projectSlug, reportId } = await params;
-  return handlePublicReportPdfGet({ projectSlug, reportId });
+  return handlePublicReportPdfPost({
+    projectSlug,
+    pufuImageDataUrl: await reportPdfImageDataUrlFromRequest(request),
+    reportId,
+  });
 }
