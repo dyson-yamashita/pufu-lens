@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url';
 import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, type PDFPage, type PDFFont, rgb } from 'pdf-lib';
 import type { CustomReportPart, CustomReportSnapshotV1 } from './custom-report-schema.ts';
-import { createPufuScoreFromReport, type PufuScoreModel } from './pufu-score.ts';
 import { redactSensitivePdfText } from './report-public-redaction.ts';
 import type { PrivateReportJsonV1 } from './report-schema.ts';
 
@@ -30,12 +29,13 @@ let cachedFontBytes: Uint8Array | undefined;
  * @returns The generated PDF bytes and sanitized file name.
  */
 export async function renderReportPdf(input: {
+  readonly pufuImageDataUrl?: string;
   readonly projectSlug: string;
   readonly report: PrivateReportJsonV1;
 }): Promise<ReportPdfFile> {
   return {
-    bytes: await createStyledPdf(input.report),
-    fileName: safePdfFileName(`${input.projectSlug}-${input.report.report_id}.pdf`)
+    bytes: await createStyledPdf(input.report, input.pufuImageDataUrl),
+    fileName: safePdfFileName(`${input.projectSlug}-${input.report.report_id}.pdf`),
   };
 }
 
@@ -56,7 +56,7 @@ export function safeReportPdfLines(report: PrivateReportJsonV1): readonly string
     `Generated: ${report.generated_at}`,
     '',
     'Summary',
-    report.summary
+    report.summary,
   ];
   if (report.custom_layout) {
     lines.push('', 'Custom layout', ...customLayoutLines(report.custom_layout));
@@ -72,7 +72,7 @@ export function safeReportPdfLines(report: PrivateReportJsonV1): readonly string
         lines.push(
           `Metrics: ${Object.entries(section.metrics)
             .map(([key, value]) => `${key}=${value}`)
-            .join(', ')}`
+            .join(', ')}`,
         );
       }
     }
@@ -127,7 +127,7 @@ function partLines(part: CustomReportPart, snapshot: CustomReportSnapshotV1): st
       return [`Image: ${part.alt_text}${part.caption ? ` (${part.caption})` : ''}`];
     case 'columns':
       return part.columns.flatMap((column) =>
-        column.children.flatMap((child) => partLines(child, snapshot))
+        column.children.flatMap((child) => partLines(child, snapshot)),
       );
     case 'row':
       return part.children.flatMap((child) => partLines(child, snapshot));
@@ -187,7 +187,7 @@ function wrapLineToWidth(
   line: string,
   font: PDFFont,
   fontSize: number,
-  maxWidth: number
+  maxWidth: number,
 ): readonly string[] {
   if (!line) return [''];
   const chunks: string[] = [];
@@ -249,7 +249,7 @@ const COLORS = {
   paper: rgb(1, 1, 1),
   surface: rgb(0.96, 0.97, 0.985),
   text: rgb(0.07, 0.1, 0.16),
-  white: rgb(1, 1, 1)
+  white: rgb(1, 1, 1),
 } as const;
 
 type PdfContext = {
@@ -259,7 +259,10 @@ type PdfContext = {
   y: number;
 };
 
-async function createStyledPdf(report: PrivateReportJsonV1): Promise<ArrayBuffer> {
+async function createStyledPdf(
+  report: PrivateReportJsonV1,
+  pufuImageDataUrl?: string,
+): Promise<ArrayBuffer> {
   const pdfDoc = await PDFDocument.create();
   pdfDoc.setAuthor('Pufu Lens');
   pdfDoc.setCreator('Pufu Lens');
@@ -272,8 +275,8 @@ async function createStyledPdf(report: PrivateReportJsonV1): Promise<ArrayBuffer
   const context: PdfContext = { font, page, pdfDoc, y: PAGE_HEIGHT - 58 };
 
   drawCover(context, report);
-  if (!report.custom_layout) {
-    drawPufuBoard(context, createPufuScoreFromReport(report));
+  if (pufuImageDataUrl) {
+    await drawPufuImage(context, pufuImageDataUrl);
   }
   drawReportContent(context, report);
   addPageFurniture(pdfDoc, font, report.title);
@@ -292,7 +295,7 @@ function drawCover(context: PdfContext, report: PrivateReportJsonV1): void {
     height: 8,
     width: PAGE_WIDTH,
     x: 0,
-    y: PAGE_HEIGHT - 8
+    y: PAGE_HEIGHT - 8,
   });
   drawLabel(context, 'PUFU LENS  /  PROJECT REPORT', 10, COLORS.accent);
   context.y -= 18;
@@ -306,21 +309,21 @@ function drawCover(context: PdfContext, report: PrivateReportJsonV1): void {
     height: 66,
     width: CONTENT_WIDTH,
     x: PAGE_MARGIN,
-    y: metaTop - 66
+    y: metaTop - 66,
   });
   drawMeta(
     context,
     '対象期間',
     `${report.period.start}  —  ${report.period.end}`,
     PAGE_MARGIN + 16,
-    metaTop - 22
+    metaTop - 22,
   );
   drawMeta(
     context,
     '生成日時',
     formatGeneratedAt(report.generated_at),
     PAGE_MARGIN + 184,
-    metaTop - 22
+    metaTop - 22,
   );
   drawMeta(context, 'REPORT ID', redactPdfText(report.report_id), PAGE_MARGIN + 338, metaTop - 22);
   context.y = metaTop - 92;
@@ -347,200 +350,44 @@ function drawReportContent(context: PdfContext, report: PrivateReportJsonV1): vo
   }
 }
 
-function drawPufuBoard(context: PdfContext, score: PufuScoreModel): void {
-  ensureSpace(context, 390);
-  drawSectionHeading(context, 'プ譜', 'PROJECT SCORE');
-  const boardTop = context.y;
-  const boardHeight = 330;
+async function drawPufuImage(context: PdfContext, dataUrl: string): Promise<void> {
+  const pngBytes = decodePngDataUrl(dataUrl);
+  const image = await context.pdfDoc.embedPng(pngBytes);
+  const imageWidth = CONTENT_WIDTH;
+  const imageHeight = image.height * (imageWidth / image.width);
+  const maxImageHeight = PAGE_HEIGHT - 150;
+  const renderedHeight = Math.min(imageHeight, maxImageHeight);
+  const renderedWidth = imageWidth * (renderedHeight / imageHeight);
+  ensureSpace(context, renderedHeight + 58);
+  drawSectionHeading(context, 'プ譜', 'PROJECT SCORE / PUFU EDITOR');
   context.page.drawRectangle({
     borderColor: COLORS.border,
     borderWidth: 0.8,
-    color: COLORS.surface,
-    height: boardHeight,
-    width: CONTENT_WIDTH,
+    color: COLORS.white,
+    height: renderedHeight + 16,
+    width: renderedWidth + 16,
+    x: PAGE_MARGIN - 8,
+    y: context.y - renderedHeight - 8,
+  });
+  context.page.drawImage(image, {
+    height: renderedHeight,
+    width: renderedWidth,
     x: PAGE_MARGIN,
-    y: boardTop - boardHeight
+    y: context.y - renderedHeight,
   });
-  const innerX = PAGE_MARGIN + 14;
-  const innerWidth = CONTENT_WIDTH - 28;
-  drawScoreBanner(
-    context,
-    innerX,
-    boardTop - 14,
-    innerWidth,
-    42,
-    '獲得目標',
-    score.gainingGoal.text,
-    COLORS.accent
-  );
-  const elementLabels: ReadonlyArray<[string, keyof PufuScoreModel['elements']]> = [
-    ['環境', 'environment'],
-    ['人材', 'people'],
-    ['時間', 'time'],
-    ['予算', 'money'],
-    ['品質', 'quality'],
-    ['競合', 'rival'],
-    ['外敵', 'foreignEnemy'],
-    ['座組', 'businessScheme']
-  ];
-  const gap = 6;
-  const cardWidth = (innerWidth - gap * 3) / 4;
-  elementLabels.forEach(([label, key], index) => {
-    const column = index % 4;
-    const row = Math.floor(index / 4);
-    drawScoreCard(
-      context,
-      innerX + column * (cardWidth + gap),
-      boardTop - 64 - row * 55,
-      cardWidth,
-      48,
-      label,
-      score.elements[key].text
-    );
-  });
-  const purposeTop = boardTop - 180;
-  const purposeWidth = (innerWidth - gap * 2) / 3;
-  score.purposes.slice(0, 3).forEach((purpose, index) => {
-    drawPurposeCard(
-      context,
-      innerX + index * (purposeWidth + gap),
-      purposeTop,
-      purposeWidth,
-      92,
-      purpose
-    );
-  });
-  drawScoreBanner(
-    context,
-    innerX,
-    boardTop - 284,
-    innerWidth,
-    32,
-    '勝利条件',
-    score.winCondition.text,
-    rgb(0.03, 0.48, 0.34)
-  );
-  context.y = boardTop - boardHeight - 24;
+  context.y -= renderedHeight + 28;
 }
 
-function drawScoreBanner(
-  context: PdfContext,
-  x: number,
-  top: number,
-  width: number,
-  height: number,
-  label: string,
-  text: string,
-  color: ReturnType<typeof rgb>
-): void {
-  context.page.drawRectangle({ color, height, width, x, y: top - height });
-  context.page.drawText(label, {
-    color: COLORS.white,
-    font: context.font,
-    size: 7,
-    x: x + 10,
-    y: top - 13
-  });
-  drawTextInBox(
-    context,
-    redactPdfText(text),
-    x + 10,
-    top - 18,
-    width - 20,
-    height - 20,
-    8.5,
-    COLORS.white,
-    11
-  );
-}
-
-function drawScoreCard(
-  context: PdfContext,
-  x: number,
-  top: number,
-  width: number,
-  height: number,
-  label: string,
-  text: string
-): void {
-  context.page.drawRectangle({
-    borderColor: COLORS.border,
-    borderWidth: 0.6,
-    color: COLORS.white,
-    height,
-    width,
-    x,
-    y: top - height
-  });
-  context.page.drawText(label, {
-    color: COLORS.accent,
-    font: context.font,
-    size: 7,
-    x: x + 7,
-    y: top - 11
-  });
-  drawTextInBox(
-    context,
-    redactPdfText(text),
-    x + 7,
-    top - 16,
-    width - 14,
-    height - 18,
-    6.8,
-    COLORS.text,
-    8.5
-  );
-}
-
-function drawPurposeCard(
-  context: PdfContext,
-  x: number,
-  top: number,
-  width: number,
-  height: number,
-  purpose: PufuScoreModel['purposes'][number]
-): void {
-  context.page.drawRectangle({
-    borderColor: COLORS.border,
-    borderWidth: 0.6,
-    color: COLORS.white,
-    height,
-    width,
-    x,
-    y: top - height
-  });
-  drawTextInBox(
-    context,
-    redactPdfText(purpose.text),
-    x + 8,
-    top - 8,
-    width - 16,
-    25,
-    7.6,
-    COLORS.text,
-    9.5
-  );
-  purpose.measures.slice(0, 2).forEach((measure, index) => {
-    const y = top - 39 - index * 23;
-    const color =
-      measure.color === 'green'
-        ? rgb(0.03, 0.48, 0.34)
-        : measure.color === 'yellow'
-          ? rgb(0.72, 0.45, 0.02)
-          : COLORS.accent;
-    context.page.drawCircle({ color, size: 2.4, x: x + 10, y: y - 3 });
-    drawTextInBox(
-      context,
-      redactPdfText(measure.text),
-      x + 17,
-      y + 2,
-      width - 24,
-      19,
-      6.5,
-      COLORS.muted,
-      8
-    );
-  });
+function decodePngDataUrl(dataUrl: string): Uint8Array {
+  const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/u.exec(dataUrl);
+  if (!match?.[1]) {
+    throw new Error('Pufu image must be a PNG data URL.');
+  }
+  const bytes = Buffer.from(match[1], 'base64');
+  if (bytes.length === 0 || bytes.length > 10 * 1024 * 1024) {
+    throw new Error('Pufu image size is invalid.');
+  }
+  return bytes;
 }
 
 function drawTextInBox(
@@ -552,7 +399,7 @@ function drawTextInBox(
   height: number,
   size: number,
   color: ReturnType<typeof rgb>,
-  lineHeight: number
+  lineHeight: number,
 ): void {
   const lines = wrapLineToWidth(text, context.font, size, width);
   const maxLines = Math.max(1, Math.floor(height / lineHeight));
@@ -565,7 +412,7 @@ function drawTextInBox(
       font: context.font,
       size,
       x,
-      y: top - size - index * lineHeight
+      y: top - size - index * lineHeight,
     });
   });
 }
@@ -586,14 +433,14 @@ function drawCallout(context: PdfContext, text: string): void {
     height,
     width: CONTENT_WIDTH,
     x: PAGE_MARGIN,
-    y: context.y - height
+    y: context.y - height,
   });
   context.page.drawRectangle({
     color: COLORS.accent,
     height,
     width: 4,
     x: PAGE_MARGIN,
-    y: context.y - height
+    y: context.y - height,
   });
   lines.forEach((line, index) =>
     context.page.drawText(line, {
@@ -601,8 +448,8 @@ function drawCallout(context: PdfContext, text: string): void {
       font: context.font,
       size: 10.5,
       x: PAGE_MARGIN + 18,
-      y: context.y - 24 - index * 16
-    })
+      y: context.y - 24 - index * 16,
+    }),
   );
   context.y -= height;
 }
@@ -624,7 +471,7 @@ function drawBodyLines(context: PdfContext, lines: readonly string[]): void {
         font: context.font,
         size: 10,
         x: PAGE_MARGIN,
-        y: context.y - 10
+        y: context.y - 10,
       });
       context.y -= 16;
     }
@@ -643,7 +490,7 @@ function drawMetricStrip(context: PdfContext, metrics: Record<string, number>): 
     height: 28,
     width: CONTENT_WIDTH,
     x: PAGE_MARGIN,
-    y: context.y - 28
+    y: context.y - 28,
   });
   drawTextInBox(
     context,
@@ -654,7 +501,7 @@ function drawMetricStrip(context: PdfContext, metrics: Record<string, number>): 
     20,
     8,
     COLORS.muted,
-    10
+    10,
   );
   context.y -= 34;
 }
@@ -663,14 +510,14 @@ function drawLabel(
   context: PdfContext,
   text: string,
   size: number,
-  color: ReturnType<typeof rgb>
+  color: ReturnType<typeof rgb>,
 ): void {
   context.page.drawText(text, {
     color,
     font: context.font,
     size,
     x: PAGE_MARGIN,
-    y: context.y - size
+    y: context.y - size,
   });
   context.y -= size;
 }
@@ -680,7 +527,7 @@ function drawWrappedText(
   text: string,
   size: number,
   lineHeight: number,
-  color: ReturnType<typeof rgb>
+  color: ReturnType<typeof rgb>,
 ): void {
   for (const line of wrapLineToWidth(text, context.font, size, CONTENT_WIDTH)) {
     ensureSpace(context, lineHeight);
@@ -689,7 +536,7 @@ function drawWrappedText(
       font: context.font,
       size,
       x: PAGE_MARGIN,
-      y: context.y - size
+      y: context.y - size,
     });
     context.y -= lineHeight;
   }
@@ -713,14 +560,14 @@ function addPageFurniture(pdfDoc: PDFDocument, font: PDFFont, title: string): vo
       color: COLORS.border,
       end: { x: PAGE_WIDTH - PAGE_MARGIN, y: 34 },
       start: { x: PAGE_MARGIN, y: 34 },
-      thickness: 0.5
+      thickness: 0.5,
     });
     page.drawText(redactPdfText(title).slice(0, 44), {
       color: COLORS.muted,
       font,
       size: 7,
       x: PAGE_MARGIN,
-      y: 20
+      y: 20,
     });
     const pageNumber = `${index + 1} / ${pages.length}`;
     page.drawText(pageNumber, {
@@ -728,7 +575,7 @@ function addPageFurniture(pdfDoc: PDFDocument, font: PDFFont, title: string): vo
       font,
       size: 7,
       x: PAGE_WIDTH - PAGE_MARGIN - font.widthOfTextAtSize(pageNumber, 7),
-      y: 20
+      y: 20,
     });
   });
 }
@@ -766,7 +613,7 @@ function resolveJapaneseFontPath(): string {
   const candidates = [
     join(process.cwd(), 'assets/fonts/IPAexGothic.ttf'),
     join(process.cwd(), 'apps/web/assets/fonts/IPAexGothic.ttf'),
-    join(dirname(fileURLToPath(import.meta.url)), '../assets/fonts/IPAexGothic.ttf')
+    join(dirname(fileURLToPath(import.meta.url)), '../assets/fonts/IPAexGothic.ttf'),
   ];
   for (const candidate of candidates) {
     if (existsSync(candidate)) {

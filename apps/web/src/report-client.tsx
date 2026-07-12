@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import domToImage from 'dom-to-image';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CustomReportLayoutRenderer, StandardReportSections } from './custom-report-renderer';
@@ -546,7 +547,12 @@ async function downloadReportPdf(input: {
   readonly fallbackFileName: string;
   readonly url: string;
 }): Promise<{ readonly ok: true } | { readonly message: string; readonly ok: false }> {
-  const response = await fetch(input.url);
+  const pufuImageDataUrl = await capturePufuEditorImage();
+  const response = await fetch(input.url, {
+    body: JSON.stringify({ pufuImageDataUrl }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  });
   if (!response.ok) {
     let message = `http_${response.status}`;
     try {
@@ -577,6 +583,18 @@ async function downloadReportPdf(input: {
     URL.revokeObjectURL(objectUrl);
   }, 0);
   return { ok: true };
+}
+
+async function capturePufuEditorImage(): Promise<string | undefined> {
+  const score = document.querySelector<HTMLElement>(
+    '[data-testid="pufu-report-score"] [role="score"]',
+  );
+  if (!score) return undefined;
+  await document.fonts.ready;
+  await new Promise<void>((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
+  return domToImage.toPng(score, { bgcolor: 'white', quality: 1 });
 }
 
 /**

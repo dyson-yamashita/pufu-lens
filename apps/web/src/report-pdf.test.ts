@@ -3,6 +3,9 @@ import { PDFDocument } from 'pdf-lib';
 import { renderReportPdf, safeReportPdfLines } from './report-pdf.ts';
 import type { PrivateReportJsonV1 } from './report-schema.ts';
 
+const pufuEditorPng =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
 const standardReport: PrivateReportJsonV1 = {
   generated_at: '2026-06-30T00:00:00.000Z',
   period: { end: '2026-06-30', start: '2026-06-24' },
@@ -14,11 +17,11 @@ const standardReport: PrivateReportJsonV1 = {
       id: 'activity',
       markdown:
         'Completed **work** with secret token abc and alice@example.com. storage_uri should not leak.',
-      title: 'Activity'
-    }
+      title: 'Activity',
+    },
   ],
   summary: 'Weekly summary with raw_document_id mention.',
-  title: 'Weekly Report'
+  title: 'Weekly Report',
 };
 
 const lines = safeReportPdfLines(standardReport);
@@ -31,7 +34,11 @@ assert.equal(redactedText.includes('storage_uri'), false);
 assert.equal(redactedText.toLowerCase().includes('raw document id'), false);
 assert.equal(redactedText.toLowerCase().includes('storage uri'), false);
 
-const pdf = await renderReportPdf({ projectSlug: 'sample/project', report: standardReport });
+const pdf = await renderReportPdf({
+  projectSlug: 'sample/project',
+  pufuImageDataUrl: pufuEditorPng,
+  report: standardReport,
+});
 assert.equal(pdf.fileName, 'sample-project-report-a.pdf');
 assert.equal(new TextDecoder().decode(pdf.bytes).startsWith('%PDF-'), true);
 const parsedPdf = await PDFDocument.load(pdf.bytes);
@@ -39,6 +46,14 @@ assert.equal(parsedPdf.getTitle(), standardReport.title);
 assert.equal(parsedPdf.getAuthor(), 'Pufu Lens');
 assert.equal(parsedPdf.getPageCount() >= 2, true, 'standard PDF includes a dedicated Pufu board');
 assert.deepEqual(parsedPdf.getPage(0).getSize(), { height: 841.89, width: 595.28 });
+await assert.rejects(
+  renderReportPdf({
+    projectSlug: 'sample-project',
+    pufuImageDataUrl: 'data:image/svg+xml;base64,PHN2Zy8+',
+    report: standardReport,
+  }),
+  /PNG data URL/,
+);
 
 const japaneseReport: PrivateReportJsonV1 = {
   ...standardReport,
@@ -46,28 +61,28 @@ const japaneseReport: PrivateReportJsonV1 = {
     {
       id: 'activity',
       markdown: '判定結果\n\nプ譜の進捗は順調です。',
-      title: '活動'
-    }
+      title: '活動',
+    },
   ],
   summary: '週次サマリー',
-  title: '週次レポート'
+  title: '週次レポート',
 };
 const japaneseLines = safeReportPdfLines(japaneseReport);
 assert.equal(
   japaneseLines.some((line) => line.includes('週次レポート')),
-  true
+  true,
 );
 assert.equal(
   japaneseLines.some((line) => line.includes('判定結果')),
-  true
+  true,
 );
 assert.equal(
   japaneseLines.some((line) => line.includes('プ譜')),
-  true
+  true,
 );
 const japanesePdf = await renderReportPdf({
   projectSlug: 'sample-project',
-  report: japaneseReport
+  report: japaneseReport,
 });
 assert.equal(new TextDecoder().decode(japanesePdf.bytes).startsWith('%PDF-'), true);
 
@@ -83,7 +98,7 @@ const customReport: PrivateReportJsonV1 = {
             asset_ref: 'asset-logo',
             caption: 'storage_uri gs://private-bucket/logo.png token abc user@example.com',
             id: 'logo',
-            type: 'fixed_image'
+            type: 'fixed_image',
           },
           {
             id: 'score',
@@ -91,14 +106,14 @@ const customReport: PrivateReportJsonV1 = {
             prompt: 'Judge',
             result_key: 'score_result',
             right_label: 'High',
-            type: 'slider_judgement'
+            type: 'slider_judgement',
           },
-          { id: 'copyright', text: '© Pufu Lens', type: 'copyright' }
+          { id: 'copyright', text: '© Pufu Lens', type: 'copyright' },
         ],
         id: 'root',
-        type: 'row'
+        type: 'row',
       },
-      schema_version: 'custom-report-layout-v1'
+      schema_version: 'custom-report-layout-v1',
     },
     results: {
       score_result: {
@@ -107,14 +122,14 @@ const customReport: PrivateReportJsonV1 = {
         reason: 'Progress is steady.',
         right_label: 'High',
         score: 82,
-        type: 'slider_judgement'
-      }
+        type: 'slider_judgement',
+      },
     },
     schema_version: 'custom-report-snapshot-v1',
     template_id: 'template-a',
     template_snapshot_hash: 'hash-a',
-    template_version: 1
-  }
+    template_version: 1,
+  },
 };
 assert.equal(safeReportPdfLines(customReport).join('\n').includes('Custom Title'), true);
 assert.equal(safeReportPdfLines(customReport).join('\n').includes('82'), true);
@@ -134,9 +149,9 @@ const tokenVariantReport: PrivateReportJsonV1 = {
     {
       id: 'activity',
       markdown: 'token=secret-value token: another-secret',
-      title: 'Activity'
-    }
-  ]
+      title: 'Activity',
+    },
+  ],
 };
 const tokenVariantText = safeReportPdfLines(tokenVariantReport).join('\n');
 assert.equal(tokenVariantText.includes('secret-value'), false);
@@ -149,9 +164,9 @@ const secretVariantReport: PrivateReportJsonV1 = {
     {
       id: 'activity',
       markdown: 'secret=hidden-value api_key=another-hidden',
-      title: 'Activity'
-    }
-  ]
+      title: 'Activity',
+    },
+  ],
 };
 const secretVariantText = safeReportPdfLines(secretVariantReport).join('\n');
 assert.equal(secretVariantText.includes('hidden-value'), false);
@@ -165,9 +180,9 @@ const nullMetricsReport: PrivateReportJsonV1 = {
       id: 'activity',
       markdown: 'Activity note',
       metrics: null as unknown as Record<string, number>,
-      title: 'Activity'
-    }
-  ]
+      title: 'Activity',
+    },
+  ],
 };
 assert.doesNotThrow(() => safeReportPdfLines(nullMetricsReport));
 

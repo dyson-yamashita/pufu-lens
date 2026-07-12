@@ -91,7 +91,8 @@ export async function handlePublicReportGet(input: {
  * @param input - The public report locator.
  * @returns A PDF download response, a 404 response when the report is not found, a 503 response when the report is unavailable outside business hours, or a 500 response on unexpected errors.
  */
-export async function handlePublicReportPdfGet(input: {
+export async function handlePublicReportPdfPost(input: {
+  readonly pufuImageDataUrl?: string;
   readonly projectSlug: string;
   readonly reportId: string;
 }) {
@@ -112,7 +113,11 @@ export async function handlePublicReportPdfGet(input: {
     if (response.status === 'db_outside_business_hours') {
       return reportOutsideBusinessHoursResponse();
     }
-    const pdf = await renderReportPdf({ projectSlug: input.projectSlug, report: response.report });
+    const pdf = await renderReportPdf({
+      projectSlug: input.projectSlug,
+      pufuImageDataUrl: input.pufuImageDataUrl,
+      report: response.report,
+    });
     return createReportPdfDownloadResponse(pdf);
   } catch (error) {
     if (error instanceof PublicReportNotFoundError) {

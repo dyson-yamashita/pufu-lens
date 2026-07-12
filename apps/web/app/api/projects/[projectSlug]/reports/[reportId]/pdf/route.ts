@@ -16,8 +16,8 @@ import {
  * @param params - Route parameters containing the project slug and report ID.
  * @returns A PDF download, or a JSON error response when the report cannot be retrieved or rendered.
  */
-export async function GET(
-  _request: Request,
+export async function POST(
+  request: Request,
   {
     params,
   }: { readonly params: Promise<{ readonly projectSlug: string; readonly reportId: string }> },
@@ -39,7 +39,13 @@ export async function GET(
     if (response.status === 'db_outside_business_hours') {
       return reportOutsideBusinessHoursResponse();
     }
-    const pdf = await renderReportPdf({ projectSlug, report: response.report });
+    const body = (await request.json()) as { readonly pufuImageDataUrl?: unknown };
+    const pdf = await renderReportPdf({
+      projectSlug,
+      pufuImageDataUrl:
+        typeof body.pufuImageDataUrl === 'string' ? body.pufuImageDataUrl : undefined,
+      report: response.report,
+    });
     return createReportPdfDownloadResponse(pdf);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
