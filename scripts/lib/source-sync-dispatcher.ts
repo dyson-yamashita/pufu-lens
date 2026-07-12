@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 
 const DEFAULT_DISPATCH_LIMIT = 10;
 const DEFAULT_MAX_RUNTIME_MS = 45 * 60 * 1000;
@@ -52,7 +53,7 @@ export async function dispatchDueSourceSyncs(input: {
   const workerToken = input.workerToken ?? randomUUID();
   const limit = input.limit ?? DEFAULT_DISPATCH_LIMIT;
   const maxRuntimeMs = input.maxRuntimeMs ?? DEFAULT_MAX_RUNTIME_MS;
-  const now = input.now ?? Date.now;
+  const now = input.now ?? (() => performance.now());
   const deadline = now() + maxRuntimeMs;
   let claimed = 0;
   let failed = 0;

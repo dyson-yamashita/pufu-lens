@@ -36,7 +36,7 @@ Source sync dispatcher は起動元に依存せず、DB 上の due schedule を 
 
 one-shot CLI は due schedule が無ければ外部 API を呼ばず成功終了する。継続実行が必要な開発環境では `cron` / `launchd` などから 5 分ごとに呼び、CLI 自身には常駐 loop を持たせない。`pnpm dev` と通常の `docker compose up` からは自動起動せず、開発者が明示的に有効化した場合だけ外部 provider へアクセスする。
 
-claim は `FOR UPDATE SKIP LOCKED` で1件ずつ行い、1件の完了後に次のdue scheduleを再取得する。1回のdispatcherは最大10件または開始から45分の早い方を上限とし、期限到達後は新規claimしない。処理中に期限へ到達したsourceは中断し、leaseが有効なら失敗・再試行経路へ渡す。各claimは15分のleaseをworker tokenで保持し、heartbeatは最大60分まで延長できる。ingest drain が `max_runtime` または `max_batches` に達した時点で実処理対象の残件がある場合も成功扱いにせず、dispatcher の失敗・再試行経路へ渡す。成功時は次の日次時刻へ戻し、失敗時は15分、1時間、6時間の順で再試行した後に通常の日次時刻へ戻す。完了更新はschedule IDとworker tokenの一致を必須とし、期限切れworkerは後続workerの状態を上書きしない。保存するerrorはcommand種別とexit codeだけに制限する。
+claim は `FOR UPDATE SKIP LOCKED` で1件ずつ行い、1件の完了後に次のdue scheduleを再取得する。1回のdispatcherは最大10件または開始から45分の早い方を上限とし、期限到達後は新規claimしない。Cloud Run Jobのtask timeoutは55分とし、dispatcher期限との差10分を中断・結果更新などの後処理に確保する。処理中に期限へ到達したsourceは中断し、leaseが有効なら失敗・再試行経路へ渡す。各claimは15分のleaseをworker tokenで保持し、heartbeatは最大60分まで延長できる。ingest drain が `max_runtime` または `max_batches` に達した時点で実処理対象の残件がある場合も成功扱いにせず、dispatcher の失敗・再試行経路へ渡す。成功時は次の日次時刻へ戻し、失敗時は15分、1時間、6時間の順で再試行した後に通常の日次時刻へ戻す。完了更新はschedule IDとworker tokenの一致を必須とし、期限切れworkerは後続workerの状態を上書きしない。保存するerrorはcommand種別とexit codeだけに制限する。
 
 ```bash
 # 1 時間ごとに全プロジェクトのデータソースを確認
