@@ -31,27 +31,37 @@ function markdownBlocks(text: string) {
     paragraph.length = 0;
   }
 
-  function flushList() {
-    if (listItems.length > 0) {
-      blocks.push(
-        <ul key={`ul-${blocks.length}`}>
-          {listItems.map((item) => (
-            <li key={item.key}>{inlineMarkdown(item.text)}</li>
-          ))}
-        </ul>,
-      );
-      listItems = [];
+  function flushUnorderedList() {
+    if (listItems.length === 0) {
+      return;
     }
-    if (orderedItems.length > 0) {
-      blocks.push(
-        <ol key={`ol-${blocks.length}`}>
-          {orderedItems.map((item) => (
-            <li key={item.key}>{inlineMarkdown(item.text)}</li>
-          ))}
-        </ol>,
-      );
-      orderedItems = [];
+    blocks.push(
+      <ul key={`ul-${blocks.length}`}>
+        {listItems.map((item) => (
+          <li key={item.key}>{inlineMarkdown(item.text)}</li>
+        ))}
+      </ul>,
+    );
+    listItems = [];
+  }
+
+  function flushOrderedList() {
+    if (orderedItems.length === 0) {
+      return;
     }
+    blocks.push(
+      <ol key={`ol-${blocks.length}`}>
+        {orderedItems.map((item) => (
+          <li key={item.key}>{inlineMarkdown(item.text)}</li>
+        ))}
+      </ol>,
+    );
+    orderedItems = [];
+  }
+
+  function flushLists() {
+    flushUnorderedList();
+    flushOrderedList();
   }
 
   for (const line of text.split(/\r?\n/)) {
@@ -61,7 +71,7 @@ function markdownBlocks(text: string) {
 
     if (!line.trim()) {
       flushParagraph();
-      flushList();
+      flushLists();
       continue;
     }
     if (heading) {
@@ -71,7 +81,7 @@ function markdownBlocks(text: string) {
         continue;
       }
       flushParagraph();
-      flushList();
+      flushLists();
       const HeadingTag = `h${headingLevel.length + 3}` as 'h4' | 'h5' | 'h6';
       blocks.push(
         <HeadingTag key={`h-${blocks.length}`}>{inlineMarkdown(headingText)}</HeadingTag>,
@@ -84,7 +94,7 @@ function markdownBlocks(text: string) {
         continue;
       }
       flushParagraph();
-      flushList();
+      flushOrderedList();
       listItems.push({ key: itemKey, text: item });
       itemKey += 1;
       continue;
@@ -95,17 +105,17 @@ function markdownBlocks(text: string) {
         continue;
       }
       flushParagraph();
-      flushList();
+      flushUnorderedList();
       orderedItems.push({ key: itemKey, text: item });
       itemKey += 1;
       continue;
     }
-    flushList();
+    flushLists();
     paragraph.push(line);
   }
 
   flushParagraph();
-  flushList();
+  flushLists();
 
   return blocks.length ? blocks : <p>{text}</p>;
 }
