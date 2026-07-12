@@ -19,8 +19,9 @@ export function MarkdownContent({
 function markdownBlocks(text: string) {
   const blocks: ReactNode[] = [];
   const paragraph: string[] = [];
-  let listItems: string[] = [];
-  let orderedItems: string[] = [];
+  let listItems: { readonly key: number; readonly text: string }[] = [];
+  let orderedItems: { readonly key: number; readonly text: string }[] = [];
+  let itemKey = 0;
 
   function flushParagraph() {
     if (paragraph.length === 0) {
@@ -35,7 +36,7 @@ function markdownBlocks(text: string) {
       blocks.push(
         <ul key={`ul-${blocks.length}`}>
           {listItems.map((item) => (
-            <li key={item}>{inlineMarkdown(item)}</li>
+            <li key={item.key}>{inlineMarkdown(item.text)}</li>
           ))}
         </ul>,
       );
@@ -45,7 +46,7 @@ function markdownBlocks(text: string) {
       blocks.push(
         <ol key={`ol-${blocks.length}`}>
           {orderedItems.map((item) => (
-            <li key={item}>{inlineMarkdown(item)}</li>
+            <li key={item.key}>{inlineMarkdown(item.text)}</li>
           ))}
         </ol>,
       );
@@ -84,7 +85,8 @@ function markdownBlocks(text: string) {
       }
       flushParagraph();
       flushList();
-      listItems.push(item);
+      listItems.push({ key: itemKey, text: item });
+      itemKey += 1;
       continue;
     }
     if (ordered) {
@@ -94,7 +96,8 @@ function markdownBlocks(text: string) {
       }
       flushParagraph();
       flushList();
-      orderedItems.push(item);
+      orderedItems.push({ key: itemKey, text: item });
+      itemKey += 1;
       continue;
     }
     flushList();
@@ -124,7 +127,7 @@ function inlineMarkdown(text: string) {
       nodes.push(<code key={`code-${match.index}`}>{match[3]}</code>);
     } else if (match[4] && match[5]) {
       nodes.push(
-        <a href={match[5]} key={`link-${match.index}`} rel="noreferrer" target="_blank">
+        <a href={match[5]} key={`link-${match.index}`} rel="noreferrer noopener" target="_blank">
           {match[4]}
         </a>,
       );
