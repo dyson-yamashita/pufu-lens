@@ -26,7 +26,8 @@ const report = {
     },
     {
       id: 'progress',
-      markdown: '- 仕様更新とレポート UI の情報が増えており、判断材料は蓄積されつつあります。',
+      markdown:
+        '- **仕様更新**とレポート UI の情報が増えています。\n- [判断材料](https://example.com/progress)は蓄積されつつあります。',
       sources: [
         {
           canonical_uri: 'https://example.com/spec',
@@ -94,6 +95,14 @@ test('scenario: member opens private report detail from list and sees sections',
   await expect(page.getByTestId('report-document')).toContainText(report.summary);
   await expect(page.getByTestId('pufu-report-score')).toContainText('プ譜エディターを試す人');
   await expect(page.getByTestId('report-section-progress')).toContainText('判断材料');
+  await expect(page.getByTestId('report-section-progress').locator('ul')).toHaveCount(1);
+  await expect(page.getByTestId('report-section-progress').locator('ul > li')).toHaveCount(2);
+  await expect(
+    page.getByTestId('report-section-progress').locator('.report-markdown strong'),
+  ).toHaveText('仕様更新');
+  await expect(
+    page.getByTestId('report-section-progress').getByRole('link', { name: '判断材料' }),
+  ).toHaveAttribute('href', 'https://example.com/progress');
   await expect(page.getByTestId('report-source-doc-a')).toContainText('web');
   await expect(page.getByRole('link', { name: 'Spec Update' })).toHaveAttribute(
     'href',
@@ -177,6 +186,14 @@ test('scenario: member reads private report sections on mobile @mobile', async (
   await expect(page.getByTestId('report-document')).toBeVisible();
   await expect(page.getByTestId('report-section-activity')).toBeVisible();
   await expect(page.getByTestId('report-section-progress')).toBeVisible();
+  await expect(page.getByTestId('report-section-progress').locator('ul')).toHaveCount(1);
+  await expect(page.getByTestId('report-section-progress').locator('ul > li')).toHaveCount(2);
+  await expect(
+    page.getByTestId('report-section-progress').locator('.report-markdown strong'),
+  ).toHaveText('仕様更新');
+  await expect(
+    page.getByTestId('report-section-progress').getByRole('link', { name: '判断材料' }),
+  ).toHaveAttribute('href', 'https://example.com/progress');
   await expect(page.getByTestId('report-section-risks')).toBeVisible();
   await expect(page.getByTestId('pufu-report-score')).toContainText('プ譜エディターを試す人');
   await expect(page.getByTestId('pufu-report-viewer')).toBeVisible();
@@ -235,6 +252,13 @@ test('scenario: public user reads report with shared private rendering and no qu
   await expect(page.getByTestId('pufu-report-viewer')).toBeVisible();
   await expect(page.getByTestId('pufu-report-score')).toBeVisible();
   await expect(page.getByTestId('public-report-section-progress')).toContainText('判断材料');
+  await expect(page.getByTestId('public-report-section-progress').locator('ul')).toHaveCount(1);
+  await expect(page.getByTestId('public-report-section-progress').locator('ul > li')).toHaveCount(
+    2,
+  );
+  await expect(
+    page.getByTestId('public-report-section-progress').locator('.report-markdown strong'),
+  ).toHaveText('仕様更新');
   await expect(page.getByTestId('public-report-source-doc-a')).toContainText('web');
   await expect(page.getByTestId('public-report-source-doc-a').getByRole('link')).toHaveAttribute(
     'href',

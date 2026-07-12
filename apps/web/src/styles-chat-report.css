@@ -355,39 +355,37 @@
   white-space: pre-wrap;
 }
 
-.chat-markdown {
+.chat-markdown,
+.report-markdown {
   display: grid;
   gap: 8px;
   white-space: normal;
 }
 
-.chat-markdown p,
-.chat-markdown ul,
-.chat-markdown ol,
-.chat-markdown h4,
-.chat-markdown h5,
-.chat-markdown h6 {
+.chat-markdown :is(p, ul, ol, h4, h5, h6),
+.report-markdown :is(p, ul, ol, h4, h5, h6) {
   margin: 0;
 }
 
-.chat-markdown ul,
-.chat-markdown ol {
+.chat-markdown :is(ul, ol),
+.report-markdown :is(ul, ol) {
   padding-left: 20px;
 }
 
-.chat-markdown li + li {
+.chat-markdown li + li,
+.report-markdown li + li {
   margin-top: 4px;
 }
 
-.chat-markdown h4,
-.chat-markdown h5,
-.chat-markdown h6 {
+.chat-markdown :is(h4, h5, h6),
+.report-markdown :is(h4, h5, h6) {
   color: var(--text);
   font-size: 15px;
   line-height: 1.4;
 }
 
-.chat-markdown code {
+.chat-markdown code,
+.report-markdown code {
   background: var(--chat-code-bg);
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -396,10 +394,16 @@
   padding: 1px 4px;
 }
 
-.chat-markdown a {
+.chat-markdown a,
+.report-markdown a {
   color: var(--primary);
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+.report-markdown {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
 .chat-message-user {
