@@ -8,6 +8,7 @@ import { ensureIngestionQueueLeaseColumn } from './ingestion-queue-lease.ts';
 import { requiredEnv } from './lib/cli.ts';
 import {
   type DrainRemainingState,
+  drainLimitErrorMessage,
   hasDrainRemainingWork,
   hasGraphStep,
   shouldContinueDrainAfterBatch,
@@ -371,6 +372,7 @@ async function runDrainWorkflow(input: {
           scope,
           stopReason: 'max_runtime',
         });
+        throwIfDrainLimitReachedWithRemainingWork(input.steps, remaining, 'max_runtime');
         return;
       }
 
@@ -442,7 +444,19 @@ async function runDrainWorkflow(input: {
       scope,
       stopReason: 'max_batches',
     });
+    throwIfDrainLimitReachedWithRemainingWork(input.steps, remaining, 'max_batches');
   });
+}
+
+function throwIfDrainLimitReachedWithRemainingWork(
+  steps: WorkflowStep[],
+  remaining: DrainRemainingState,
+  stopReason: Extract<DrainStopReason, 'max_batches' | 'max_runtime'>,
+): void {
+  const message = drainLimitErrorMessage(steps, remaining, stopReason);
+  if (message) {
+    throw new Error(message);
+  }
 }
 
 async function runDrainBatch(input: {
@@ -561,6 +575,16 @@ async function countParsedRawRemaining(
     WHERE rd.project_id = ${projectId}
       AND rd.ingest_status = 'parsed'
       AND rd.parsed_uri IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.raw_documents newer
+        WHERE newer.project_id = rd.project_id
+          AND newer.source_type = rd.source_type
+          AND newer.logical_source_id = rd.logical_source_id
+          AND newer.ingest_status IN ('parsed', 'indexed')
+          AND newer.parsed_uri IS NOT NULL
+          AND (newer.created_at, newer.id) > (rd.created_at, rd.id)
+      )
       AND (${scope.sourceType ?? null}::text IS NULL OR rd.source_type = ${scope.sourceType ?? null})
       AND (
         ${scope.dataSourceId ?? null}::uuid IS NULL

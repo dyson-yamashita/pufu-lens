@@ -1,12 +1,32 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  drainLimitErrorMessage,
   hasDrainRemainingWork,
   hasGraphStep,
   shouldContinueDrainAfterBatch,
   shouldCountParsedRaw,
   summarizeDrainRemaining,
 } from './ingest-workflow-drain.ts';
+
+test('drainLimitErrorMessage reports safe limit context only for selected remaining work', () => {
+  assert.equal(
+    drainLimitErrorMessage(
+      ['parse', 'chunk', 'graph'],
+      { parseQueue: 0, parsedRaw: 1 },
+      'max_runtime',
+    ),
+    'Ingest drain reached max_runtime with remaining work: steps=parse,chunk,graph, parseQueue=0, parsedRaw=1.',
+  );
+  assert.equal(
+    drainLimitErrorMessage(['parse'], { parseQueue: 0, parsedRaw: 1 }, 'max_batches'),
+    undefined,
+  );
+  assert.equal(
+    drainLimitErrorMessage(['chunk'], { parseQueue: 0, parsedRaw: 0 }, 'max_batches'),
+    undefined,
+  );
+});
 
 test('hasDrainRemainingWork uses parseQueue for parse and parsedRaw for downstream steps', () => {
   assert.equal(hasDrainRemainingWork(['parse'], { parseQueue: 2, parsedRaw: 0 }), true);

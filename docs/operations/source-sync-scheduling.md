@@ -50,6 +50,7 @@ ORDER BY next_run_at;
 ## 障害・再試行
 
 - collect / ingest失敗時は `retry_count` と `last_failed_at` を更新し、15分、1時間、6時間の順で再試行した後、通常の日次周期へ戻る。
+- ingest drain が `max_runtime` / `max_batches` に達し、最新版の実処理対象が残っている場合も失敗として同じ再試行経路へ進む。旧版rawが最新版に置き換わっているだけの場合は残件に数えない。
 - `last_error` は `collect` / `ingest` とexit codeだけを含む安全な要約とする。provider response、raw本文、token、secret、メール本文や宛先を保存しない。
 - heartbeat失敗またはlease喪失時は実行中childを停止し、旧workerは成功・失敗を確定しない。lease期限後の別workerによる再claimに任せる。
 - disabled schedule / disabled source はclaimされない。意図的な停止かを管理画面で確認してから再有効化する。

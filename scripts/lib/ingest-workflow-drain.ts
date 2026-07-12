@@ -24,6 +24,17 @@ export function hasGraphStep(steps: readonly DrainWorkflowStep[]): boolean {
   return steps.includes('graph');
 }
 
+export function drainLimitErrorMessage(
+  steps: readonly DrainWorkflowStep[],
+  remaining: DrainRemainingState,
+  stopReason: 'max_batches' | 'max_runtime',
+): string | undefined {
+  if (!hasDrainRemainingWork(steps, remaining)) {
+    return undefined;
+  }
+  return `Ingest drain reached ${stopReason} with remaining work: steps=${steps.join(',')}, parseQueue=${remaining.parseQueue}, parsedRaw=${remaining.parsedRaw}.`;
+}
+
 export function shouldContinueDrainAfterBatch(input: {
   batchProgress: number;
   remaining: DrainRemainingState;
