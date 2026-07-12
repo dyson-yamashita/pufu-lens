@@ -1,10 +1,36 @@
 import assert from 'node:assert/strict';
 import { PDFDocument } from 'pdf-lib';
-import { renderReportPdf, safeReportPdfLines } from './report-pdf.ts';
+import {
+  renderReportPdf,
+  reportPdfImageDataUrlFromRequest,
+  safeReportPdfLines,
+} from './report-pdf.ts';
 import type { PrivateReportJsonV1 } from './report-schema.ts';
 
 const pufuEditorPng =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+assert.equal(
+  await reportPdfImageDataUrlFromRequest(
+    new Request('https://example.test/report.pdf', {
+      body: JSON.stringify({ pufuImageDataUrl: pufuEditorPng }),
+      method: 'POST',
+    }),
+  ),
+  pufuEditorPng,
+);
+assert.equal(
+  await reportPdfImageDataUrlFromRequest(
+    new Request('https://example.test/report.pdf', { body: 'not-json', method: 'POST' }),
+  ),
+  undefined,
+);
+assert.equal(
+  await reportPdfImageDataUrlFromRequest(
+    new Request('https://example.test/report.pdf', { method: 'POST' }),
+  ),
+  undefined,
+);
 
 const standardReport: PrivateReportJsonV1 = {
   generated_at: '2026-06-30T00:00:00.000Z',

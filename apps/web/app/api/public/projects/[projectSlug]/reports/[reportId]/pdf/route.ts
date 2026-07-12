@@ -1,4 +1,5 @@
 import { handlePublicReportPdfPost } from '../../../../../../../../src/public-report-api';
+import { reportPdfImageDataUrlFromRequest } from '../../../../../../../../src/report-pdf';
 
 /**
  * Handles public report PDF requests.
@@ -13,10 +14,9 @@ export async function POST(
   }: { readonly params: Promise<{ readonly projectSlug: string; readonly reportId: string }> },
 ) {
   const { projectSlug, reportId } = await params;
-  const body = (await request.json()) as { readonly pufuImageDataUrl?: unknown };
   return handlePublicReportPdfPost({
     projectSlug,
-    pufuImageDataUrl: typeof body.pufuImageDataUrl === 'string' ? body.pufuImageDataUrl : undefined,
+    pufuImageDataUrl: await reportPdfImageDataUrlFromRequest(request),
     reportId,
   });
 }

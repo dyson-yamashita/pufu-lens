@@ -19,6 +19,15 @@ export interface ReportPdfFile {
   readonly fileName: string;
 }
 
+export async function reportPdfImageDataUrlFromRequest(
+  request: Request,
+): Promise<string | undefined> {
+  const body = (await request.json().catch(() => ({}))) as {
+    readonly pufuImageDataUrl?: unknown;
+  };
+  return typeof body.pufuImageDataUrl === 'string' ? body.pufuImageDataUrl : undefined;
+}
+
 let cachedFontBytes: Uint8Array | undefined;
 
 /**
@@ -405,8 +414,10 @@ function drawTextInBox(
   const maxLines = Math.max(1, Math.floor(height / lineHeight));
   lines.slice(0, maxLines).forEach((line, index) => {
     let value = line;
-    if (index === maxLines - 1 && lines.length > maxLines)
-      value = `${line.slice(0, Math.max(0, line.length - 1))}…`;
+    if (index === maxLines - 1 && lines.length > maxLines) {
+      const characters = [...line];
+      value = `${characters.slice(0, Math.max(0, characters.length - 1)).join('')}…`;
+    }
     context.page.drawText(value, {
       color,
       font: context.font,
@@ -457,7 +468,8 @@ function drawCallout(context: PdfContext, text: string): void {
 function drawBodyLines(context: PdfContext, lines: readonly string[]): void {
   for (const rawLine of lines) {
     const isListItem = /^\s*[-*]\s+/.test(rawLine);
-    const line = redactPdfText(rawLine);
+    const contentLine = isListItem ? rawLine.replace(/^\s*[-*]\s+/, '') : rawLine;
+    const line = redactPdfText(contentLine);
     if (!line) {
       context.y -= 7;
       continue;

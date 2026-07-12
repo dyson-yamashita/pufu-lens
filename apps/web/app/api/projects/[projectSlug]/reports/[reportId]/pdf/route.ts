@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server';
 import { AuthRequiredError, requireSessionUserId } from '../../../../../../../src/auth-session';
 import { ProjectAccessDeniedError } from '../../../../../../../src/chat';
 import { getPrivateReport, ReportNotFoundError } from '../../../../../../../src/report';
-import { renderReportPdf } from '../../../../../../../src/report-pdf';
+import {
+  renderReportPdf,
+  reportPdfImageDataUrlFromRequest,
+} from '../../../../../../../src/report-pdf';
 import {
   createReportFetchContext,
   createReportPdfDownloadResponse,
@@ -39,11 +42,9 @@ export async function POST(
     if (response.status === 'db_outside_business_hours') {
       return reportOutsideBusinessHoursResponse();
     }
-    const body = (await request.json()) as { readonly pufuImageDataUrl?: unknown };
     const pdf = await renderReportPdf({
       projectSlug,
-      pufuImageDataUrl:
-        typeof body.pufuImageDataUrl === 'string' ? body.pufuImageDataUrl : undefined,
+      pufuImageDataUrl: await reportPdfImageDataUrlFromRequest(request),
       report: response.report,
     });
     return createReportPdfDownloadResponse(pdf);
