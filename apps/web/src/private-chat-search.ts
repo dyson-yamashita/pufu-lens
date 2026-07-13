@@ -351,13 +351,17 @@ export async function runPrivateChatRetryingStep(
 ): Promise<PrivateChatSearchWorkflowState> {
   let mergedVectorSources = [...state.mergedVectorSources];
   const toolCalls = [...state.toolCalls];
-  for (const retryQuery of resolvePrivateChatRetryQueries(state)) {
-    const retrySources = await repository.vectorSearch({
-      embedding: deterministicVector(retryQuery, PRIVATE_CHAT_VECTOR_DIMENSIONS),
-      limit: PRIMARY_VECTOR_LIMIT,
-      projectId: state.projectId,
-      query: retryQuery,
-    });
+  const retrySourceGroups = await Promise.all(
+    resolvePrivateChatRetryQueries(state).map((retryQuery) =>
+      repository.vectorSearch({
+        embedding: deterministicVector(retryQuery, PRIVATE_CHAT_VECTOR_DIMENSIONS),
+        limit: PRIMARY_VECTOR_LIMIT,
+        projectId: state.projectId,
+        query: retryQuery,
+      }),
+    ),
+  );
+  for (const retrySources of retrySourceGroups) {
     toolCalls.push({ name: 'vector-search', resultCount: retrySources.length });
     mergedVectorSources = mergeChatSourcesDeterministically(mergedVectorSources, retrySources);
   }

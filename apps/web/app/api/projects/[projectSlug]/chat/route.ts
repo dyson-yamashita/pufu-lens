@@ -17,6 +17,7 @@ import {
   encodePrivateChatStreamEvent,
 } from '../../../../../src/private-chat-stream';
 import {
+  isPrivateChatWorkflowAbortError,
   logPrivateChatWorkflowFailure,
   PRIVATE_CHAT_STREAM_USER_ERROR_MESSAGE,
   runPrivateChatSearchViaMastraWorkflow,
@@ -126,6 +127,9 @@ export async function POST(
             );
             controller.close();
           } catch (error) {
+            if (isPrivateChatWorkflowAbortError(error)) {
+              return;
+            }
             logPrivateChatWorkflowFailure(error);
             controller.enqueue(
               encoder.encode(

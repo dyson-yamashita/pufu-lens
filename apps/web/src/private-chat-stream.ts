@@ -88,42 +88,47 @@ export async function consumePrivateChatNdjsonStream(
   const encoder = new TextEncoder();
   const maxBufferBytes = options?.maxBufferBytes ?? MAX_PRIVATE_CHAT_NDJSON_STREAM_BUFFER_BYTES;
   let buffer = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      if (encoder.encode(buffer).byteLength > maxBufferBytes) {
+        throw new Error(PRIVATE_CHAT_NDJSON_STREAM_ERROR_MESSAGE);
+      }
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        const event = parsePrivateChatStreamLine(line);
+        if (!event) {
+          continue;
+        }
+        if (event.type === 'progress') {
+          onProgress?.(event);
+          continue;
+        }
+        if (event.type === 'result') {
+          return event.response;
+        }
+        throw new Error(event.message);
+      }
     }
-    buffer += decoder.decode(value, { stream: true });
+    buffer += decoder.decode();
     if (encoder.encode(buffer).byteLength > maxBufferBytes) {
       throw new Error(PRIVATE_CHAT_NDJSON_STREAM_ERROR_MESSAGE);
     }
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-    for (const line of lines) {
-      const event = parsePrivateChatStreamLine(line);
-      if (!event) {
-        continue;
-      }
-      if (event.type === 'progress') {
-        onProgress?.(event);
-        continue;
-      }
-      if (event.type === 'result') {
-        return event.response;
-      }
-      throw new Error(event.message);
+    const trailing = parsePrivateChatStreamLine(buffer);
+    if (trailing?.type === 'result') {
+      return trailing.response;
     }
+    if (trailing?.type === 'error') {
+      throw new Error(trailing.message);
+    }
+    throw new Error('Chat stream ended without a result.');
+  } finally {
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
   }
-  buffer += decoder.decode();
-  if (encoder.encode(buffer).byteLength > maxBufferBytes) {
-    throw new Error(PRIVATE_CHAT_NDJSON_STREAM_ERROR_MESSAGE);
-  }
-  const trailing = parsePrivateChatStreamLine(buffer);
-  if (trailing?.type === 'result') {
-    return trailing.response;
-  }
-  if (trailing?.type === 'error') {
-    throw new Error(trailing.message);
-  }
-  throw new Error('Chat stream ended without a result.');
 }

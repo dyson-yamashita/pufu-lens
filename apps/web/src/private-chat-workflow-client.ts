@@ -198,30 +198,35 @@ export async function consumeMastraWorkflowStream(
   let buffer = '';
   let finalResponse: ChatResponse | null = null;
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      const parsed = parseMastraWorkflowStreamBuffer({
+        buffer,
+        maxBufferBytes: options?.maxBufferBytes,
+      });
+      buffer = parsed.remainder;
+      const chunkResponse = processMastraWorkflowRecords(parsed.records, onRecord);
+      if (chunkResponse) {
+        finalResponse = chunkResponse;
+      }
     }
-    buffer += decoder.decode(value, { stream: true });
-    const parsed = parseMastraWorkflowStreamBuffer({
-      buffer,
-      maxBufferBytes: options?.maxBufferBytes,
-    });
-    buffer = parsed.remainder;
-    const chunkResponse = processMastraWorkflowRecords(parsed.records, onRecord);
-    if (chunkResponse) {
-      finalResponse = chunkResponse;
-    }
-  }
 
-  buffer += decoder.decode();
-  finalResponse = finalizeMastraWorkflowStreamBuffer({
-    buffer,
-    finalResponse,
-    maxBufferBytes: options?.maxBufferBytes,
-    onRecord,
-  });
+    buffer += decoder.decode();
+    finalResponse = finalizeMastraWorkflowStreamBuffer({
+      buffer,
+      finalResponse,
+      maxBufferBytes: options?.maxBufferBytes,
+      onRecord,
+    });
+  } finally {
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
 
   if (!finalResponse) {
     throw new PrivateChatWorkflowInvocationError(502, 'missing_chat_response');
@@ -250,6 +255,7 @@ export async function runPrivateChatSearchViaMastraWorkflow(input: {
     signal: input.signal,
   });
   if (!createRunResponse.ok) {
+    await createRunResponse.body?.cancel().catch(() => undefined);
     throw new PrivateChatWorkflowInvocationError(createRunResponse.status, 'create_run_http_error');
   }
   const createRunBody = (await createRunResponse.json().catch(() => ({}))) as { runId?: string };
@@ -273,6 +279,7 @@ export async function runPrivateChatSearchViaMastraWorkflow(input: {
     signal: input.signal,
   });
   if (!streamResponse.ok) {
+    await streamResponse.body?.cancel().catch(() => undefined);
     throw new PrivateChatWorkflowInvocationError(streamResponse.status, 'stream_http_error');
   }
   if (!streamResponse.body) {
@@ -300,6 +307,9 @@ export class PrivateChatWorkflowInvocationError extends Error {
 }
 
 export function privateChatWorkflowSafeLogMessage(error: unknown): string {
+  if (isPrivateChatWorkflowAbortError(error)) {
+    return '';
+  }
   if (error instanceof PrivateChatWorkflowInvocationError) {
     return `Private chat workflow failed: ${error.reason} (HTTP ${error.status})`;
   }
@@ -307,5 +317,12 @@ export function privateChatWorkflowSafeLogMessage(error: unknown): string {
 }
 
 export function logPrivateChatWorkflowFailure(error: unknown): void {
-  console.error(privateChatWorkflowSafeLogMessage(error));
+  const message = privateChatWorkflowSafeLogMessage(error);
+  if (message) {
+    console.error(message);
+  }
+}
+
+export function isPrivateChatWorkflowAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
 }

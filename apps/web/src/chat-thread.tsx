@@ -240,11 +240,9 @@ function PendingThinking({
           <span>.</span>
         </span>
       </div>
-      {progressLabel ? (
-        <p aria-live="polite" className="chat-thinking-stage" data-testid={`${testId}-stage`}>
-          {progressLabel}
-        </p>
-      ) : null}
+      <p aria-live="polite" className="chat-thinking-stage" data-testid={`${testId}-stage`}>
+        {progressLabel ?? ''}
+      </p>
     </div>
   );
 }

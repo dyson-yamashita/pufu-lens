@@ -14,6 +14,8 @@ import {
   mergeChatToolCallsDeterministically,
   privateChatSearchStageLabel,
   resolvePrivateChatRetryQueries,
+  runPrivateChatPreparingStep,
+  runPrivateChatRetryingStep,
   runPrivateChatSearchRetrieval,
   shouldRunPrivateChatRetryStep,
   stripPrivateChatRequestNoise,
@@ -27,6 +29,7 @@ import {
 } from './private-chat-stream.ts';
 import {
   consumeMastraWorkflowStreamText,
+  isPrivateChatWorkflowAbortError,
   MASTRA_WORKFLOW_RECORD_SEPARATOR,
   MAX_MASTRA_WORKFLOW_STREAM_BUFFER_BYTES,
   mapMastraWorkflowRecordToUiStage,
@@ -164,6 +167,30 @@ test('runPrivateChatSearchRetrieval retries with expanded queries and runs timel
   assert.ok(stages.includes('retrying'));
   assert.ok(stages.includes('timeline'));
   assert.equal(inferChatEditingMetadata('障害対応の経緯と時系列を教えて').inferredMode, 'timeline');
+});
+
+test('runPrivateChatRetryingStep searches variants concurrently and merges in plan order', async () => {
+  const state = runPrivateChatPreparingStep({
+    graphName: 'graph-a',
+    projectId: 'project-a',
+    question: 'pufu-editorでのエラー対応実績教えてください',
+  });
+  let activeSearches = 0;
+  let maxActiveSearches = 0;
+  const result = await runPrivateChatRetryingStep(state, {
+    async vectorSearch({ query }: { query: string }) {
+      activeSearches += 1;
+      maxActiveSearches = Math.max(maxActiveSearches, activeSearches);
+      await new Promise<void>((resolve) => setTimeout(resolve, query.includes('fix') ? 5 : 10));
+      activeSearches -= 1;
+      return [{ ...sampleSource, documentId: `doc-${query}` }];
+    },
+  } as never);
+  assert.ok(maxActiveSearches > 1);
+  assert.deepEqual(
+    result.mergedVectorSources.map((source) => source.documentId),
+    state.plan.retryQueries.map((query) => `doc-${query}`),
+  );
 });
 
 test('runPrivateChatSearchRetrieval runs one simplified retry when neutral primary search returns zero', async () => {
@@ -309,14 +336,15 @@ test('consumePrivateChatNdjsonStream applies progress events and returns the fin
     }),
   ].join('');
   const progressLabels: string[] = [];
-  const response = await consumePrivateChatNdjsonStream(
-    new Response(body, { headers: { 'content-type': 'application/x-ndjson' } }),
-    (event) => {
-      progressLabels.push(event.label);
-    },
-  );
+  const streamResponse = new Response(body, {
+    headers: { 'content-type': 'application/x-ndjson' },
+  });
+  const response = await consumePrivateChatNdjsonStream(streamResponse, (event) => {
+    progressLabels.push(event.label);
+  });
   assert.deepEqual(progressLabels, ['関連資料を検索しています']);
   assert.equal(response.answer, 'stream answer');
+  assert.equal(streamResponse.body?.locked, false);
 });
 
 test('consumePrivateChatNdjsonStream rejects an oversized line with a generic error', async () => {
@@ -447,11 +475,23 @@ test('workflow stream errors surface a generic Japanese message to callers', () 
 
 test('workflow HTTP failures never retain or log the upstream response body', async () => {
   const secretBody = 'UPSTREAM_SECRET_BODY oauth_token=secret';
+  let responseBodyCanceled = false;
   let caught: unknown;
   try {
     await runPrivateChatSearchViaMastraWorkflow({
       env: { MASTRA_SERVER_URL: 'http://127.0.0.1:4111' },
-      fetchImpl: async () => new Response(secretBody, { status: 502 }),
+      fetchImpl: async () =>
+        new Response(
+          new ReadableStream({
+            cancel() {
+              responseBodyCanceled = true;
+            },
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode(secretBody));
+            },
+          }),
+          { status: 502 },
+        ),
       graphName: 'graph-a',
       history: [],
       projectId: 'project-a',
@@ -467,6 +507,14 @@ test('workflow HTTP failures never retain or log the upstream response body', as
   assert.match(safeLog, /HTTP 502/);
   assert.doesNotMatch(safeLog, /UPSTREAM_SECRET_BODY|oauth_token|secret/);
   assert.doesNotMatch(JSON.stringify(caught), /UPSTREAM_SECRET_BODY|oauth_token|secret/);
+  assert.equal(responseBodyCanceled, true);
+});
+
+test('workflow aborts are recognized and omitted from safe failure logs', () => {
+  const abortError = new Error('request aborted');
+  abortError.name = 'AbortError';
+  assert.equal(isPrivateChatWorkflowAbortError(abortError), true);
+  assert.equal(privateChatWorkflowSafeLogMessage(abortError), '');
 });
 
 test('mergeHybridChatResponse deduplicates workflow and agent sources', () => {
