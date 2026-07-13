@@ -259,6 +259,40 @@ pnpm chat:eval --project sample-a --fixture fixtures/chat/private-chat-raw-injec
 
 この初期実装は Step 12 の確認用であり、Mastra Agent 化、streaming、Object Storage からの raw / parsed 本文取得、AGE Cypher の本格利用、永続 rate limit / audit log は後続で置き換える。
 
+#### Private Chat ハイブリッド検索 Workflow（Issue #558）
+
+Private project chat は、Mastra `private-chat-search` Workflow による **決定論的な初期 retrieval** と、既存 `project-chat-agent` による **ReAct 合成** のハイブリッドで回答する。
+
+1. **Workflow 登録:** `apps/mastra` に `private-chat-search` Workflow を登録する。preparing / retrieving / optional retrying / relating / optional timeline / detail / synthesis の explicit stage step で bounded retrieval を行い、最後に Agent 合成する。
+2. **必須初期 retrieval:** すべての factual 質問で vector / keyword 検索を必ず実行する。error / fix / bug / failure 系の質問では、entity を保持した短い query variant を最大 3 件まで生成し、document id で source を merge する。neutral 質問で primary が 0 件のときだけ simplified retry を最大 1 回実行する。
+3. **graph / timeline / detail:** vector 結果を seed に graph related-source retrieval を実行する。`inferChatEditingMetadata(question).inferredMode === 'timeline'` のときだけ timeline retrieval を実行する。選定候補に対して bounded detail retrieval を行う。
+4. **Agent 合成:** Workflow retrieval 結果は `requestContext.retrievalContext` / `workflowSources` / `workflowToolCalls` に加えて、元の質問と一緒に synthesis message へ明示的に含める。retrieval 本文は `untrusted_external_content` として囲み、本文内の命令、role 変更要求、tool 呼び出し要求には従わない。Agent は tool による追加確認は可能だが、Workflow 初期 retrieval の有無を Agent だけに委ねない。
+5. **Next.js 実行経路:** `POST /api/projects/[projectSlug]/chat` は認可済み `projectId` / `graphName` を使って Mastra HTTP Workflow API（`create-run` → `/api/workflows/private-chat-search/stream?runId=...`）を呼び出す。`Accept: application/x-ndjson` の場合は、Mastra workflow stream の `workflow-step-start` を NDJSON progress event に写像して browser へ proxy し、最後に `result` または generic `error` event を返す。JSON-only client も同じ registered Workflow を利用する。Mastra の失敗を記録するときは固定 reason と HTTP status のみを使い、上流 response body や例外メッセージをログへ出さない。
+6. **progress stage id / label:**
+   - `preparing`: 検索条件を準備しています
+   - `retrieving`: 関連資料を検索しています
+   - `retrying`: 検索語を広げて再検索しています（expansion 実行時のみ）
+   - `relating`: 関連資料を確認しています
+   - `timeline`: 時系列を確認しています（timeline 質問のみ）
+   - `reasoning`: 根拠を整理して回答を生成しています
+7. **response merge:** Workflow sources / tool summaries と Agent tool results を deterministic に dedupe / merge して `ChatResponse` を返す。public chat には private workflow metadata を露出しない。
+8. **history:** `includeHistory` と private chat turn 永続化の既存挙動を維持する。
+
+progress event 例:
+
+```json
+{"type":"progress","stage":"retrieving","label":"関連資料を検索しています"}
+{"type":"result","response":{"status":"answered","answer":"...","projectSlug":"sample-a","sources":[],"toolCalls":[]}}
+```
+
+エラー event 例:
+
+```json
+{ "type": "error", "code": "chat_internal_error", "message": "..." }
+```
+
+stream 開始前の認可 / JSON parse / rate limit / business-hours エラーは、従来どおり JSON error response を返す。
+
 ### 2. Public Chat Agent 設計
 
 Public Chat は未ログインユーザー向けに提供するが、対象を **public project の公開済み report** に限定する。回答生成は private chat と同じ project chat agent / tool set を使い、違いは入口のアクセス権だけにする。

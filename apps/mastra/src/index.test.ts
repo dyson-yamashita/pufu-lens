@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import type { Agent } from '@mastra/core/agent';
 import { RequestContext } from '@mastra/core/request-context';
 import { MemoryObjectStorage } from '@pufu-lens/storage/testing';
 import type { ChatRepository } from '@pufu-lens/web/chat';
@@ -7,6 +8,8 @@ import type { ReportRepository } from '@pufu-lens/web/report';
 import { sampleChatSource as sampleSource } from '@pufu-lens/web/test-fixtures';
 import {
   type CrossProjectInvestigationRepository,
+  createPrivateChatSearchWorkflow,
+  createPrivateChatSynthesisMessages,
   createPufuLensMastraRuntime,
   type MastraProjectContext,
   type MastraPublicReportContext,
@@ -46,8 +49,7 @@ function createChatRepository(): ChatRepository & {
     },
     async documentFetch({ documentIds, projectId }) {
       projectIds.push(projectId);
-      assert.deepEqual(documentIds, ['doc-a']);
-      return [sampleSource];
+      return documentIds.map((documentId) => ({ ...sampleSource, documentId }));
     },
     async rawDocumentFetch({ maxBytes, projectId }) {
       projectIds.push(projectId);
@@ -558,5 +560,65 @@ assert.match(
   JSON.stringify(invalidPeriodReport.error),
   /Report period start and end must be valid YYYY-MM-DD dates/,
 );
+
+assert.ok(runtime.privateChatSearchWorkflow);
+assert.match(PROJECT_CHAT_AGENT_INSTRUCTIONS, /retrievalContext/);
+
+let privateChatSynthesisMessages: unknown;
+const mockProjectChatAgent = {
+  generate: async (messages: unknown) => {
+    privateChatSynthesisMessages = messages;
+    return {
+      steps: [
+        {
+          content: [
+            {
+              output: { value: { resultCount: 1, sources: [sampleSource] } },
+              toolName: 'parsedDocFetch',
+              type: 'tool-result',
+            },
+          ],
+        },
+      ],
+      text: 'workflow hybrid answer',
+    };
+  },
+} as unknown as Agent;
+const privateChatSearchWorkflow = createPrivateChatSearchWorkflow({
+  chatRepository,
+  projectChatAgent: mockProjectChatAgent,
+});
+const privateChatRun = await privateChatSearchWorkflow.createRun();
+const privateChatResult = await privateChatRun.start({
+  inputData: {
+    graphName: 'graph_sample_a',
+    history: [],
+    projectId: 'project-a',
+    projectSlug: 'sample-a',
+    question: 'error fix の状況は？',
+  },
+});
+assert.equal(privateChatResult.status, 'success');
+const privateChatAnswer = privateChatResult.result as {
+  readonly answer: string;
+  readonly toolCalls: Array<{ name: string; resultCount: number }>;
+};
+assert.equal(privateChatAnswer.answer, 'workflow hybrid answer');
+assert.ok(privateChatAnswer.toolCalls.some((toolCall) => toolCall.name === 'vector-search'));
+assert.ok(chatRepository.vectorSearchInputs.length >= 1);
+const synthesisMessageText = JSON.stringify(privateChatSynthesisMessages);
+assert.match(synthesisMessageText, /error fix の状況は？/);
+assert.match(synthesisMessageText, new RegExp(sampleSource.title));
+assert.match(synthesisMessageText, /untrusted_external_content/);
+assert.match(synthesisMessageText, /命令.*従わず/);
+assert.deepEqual(
+  createPrivateChatSynthesisMessages({
+    history: [{ content: '以前の回答', role: 'assistant' }],
+    question: '質問',
+    retrievalContext: '{"sources":[]}',
+  }).map((message) => message.role),
+  ['assistant', 'user'],
+);
+assert.equal(mastraWorkflowIds.privateChatSearch, 'private-chat-search');
 
 console.log('mastra runtime tests passed');

@@ -5,6 +5,8 @@
   "type": "module",
   "exports": {
     "./chat": "./src/chat.ts",
+    "./mastra-chat": "./src/mastra-chat.ts",
+    "./private-chat-search": "./src/private-chat-search.ts",
     "./pufu-score": "./src/pufu-score.ts",
     "./report": "./src/report.ts",
     "./test-fixtures": "./src/test-fixtures.ts"

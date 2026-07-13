@@ -16,6 +16,7 @@ import {
   createCrossProjectResearchAgent,
   createCrossProjectResearchTools,
   createGenerateReportWorkflow,
+  createPrivateChatSearchWorkflow,
   createProjectChatAgent,
   createProjectChatTools,
   createPublicReportChatAgent,
@@ -56,6 +57,10 @@ const generateReportWorkflow = createGenerateReportWorkflow({
   repository: reportRepository,
   storage,
 });
+const privateChatSearchWorkflow = createPrivateChatSearchWorkflow({
+  chatRepository,
+  projectChatAgent,
+});
 
 export const mastra = new Mastra({
   agents: { crossProjectResearchAgent, projectChatAgent, publicReportChatAgent },
@@ -65,7 +70,7 @@ export const mastra = new Mastra({
     externals: ['@google-cloud/storage'],
   },
   server: { apiRoutes: [sourceSyncDispatcherRoute] },
-  workflows: { generateReportWorkflow },
+  workflows: { generateReportWorkflow, privateChatSearchWorkflow },
 });
 
 function createReportProvider(): ReportGenerationProvider {
