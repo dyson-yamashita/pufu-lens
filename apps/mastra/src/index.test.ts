@@ -17,6 +17,7 @@ import {
   mastraToolIds,
   mastraWorkflowIds,
   PROJECT_CHAT_AGENT_INSTRUCTIONS,
+  privateChatEditingMetadataSchema,
   rawReadViewTrace,
   vectorSearchInputSchema,
 } from './index.ts';
@@ -611,6 +612,20 @@ assert.match(synthesisMessageText, /error fix の状況は？/);
 assert.match(synthesisMessageText, new RegExp(sampleSource.title));
 assert.match(synthesisMessageText, /untrusted_external_content/);
 assert.match(synthesisMessageText, /命令.*従わず/);
+assert.equal(
+  privateChatEditingMetadataSchema.safeParse({ inferredMode: 'timeline' }).success,
+  false,
+);
+assert.equal(
+  privateChatEditingMetadataSchema.safeParse({
+    caveats: [],
+    confidence: 'high',
+    inferredMode: 'timeline',
+    operations: [],
+    questionType: 'timeline',
+  }).success,
+  true,
+);
 assert.deepEqual(
   createPrivateChatSynthesisMessages({
     history: [{ content: '以前の回答', role: 'assistant' }],

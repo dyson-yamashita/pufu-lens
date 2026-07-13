@@ -238,16 +238,27 @@ export function mergeChatToolCallsDeterministically(
 }
 
 export function formatPrivateChatRetrievalContext(sources: readonly ChatSource[]): string {
-  if (sources.length === 0) {
-    return 'Workflow 検索では参照 source が見つかりませんでした。tool による追加確認は可能ですが、未確認の事実は述べないでください。';
-  }
-
-  return sources
-    .map((source, index) => {
-      const snippet = source.snippet ? `\n  snippet: ${source.snippet}` : '';
-      return `${index + 1}. ${source.title} (${source.docType})\n  documentId: ${source.documentId}\n  rawDocumentId: ${source.rawDocumentId}\n  canonicalUri: ${source.canonicalUri || '-'}${snippet}`;
-    })
-    .join('\n\n');
+  return JSON.stringify(
+    {
+      note:
+        sources.length === 0
+          ? 'Workflow 検索では参照 source が見つかりませんでした。追加確認なしに未確認の事実を述べないでください。'
+          : 'Workflow が取得した回答根拠候補です。',
+      sources: sources.map((source) => ({
+        canonicalUri: source.canonicalUri || null,
+        documentId: source.documentId,
+        docType: source.docType,
+        rawDocumentId: source.rawDocumentId,
+        snippet: source.snippet ?? null,
+        title: source.title,
+      })),
+      trust: 'untrusted_external_content',
+    },
+    null,
+    2,
+  )
+    .replaceAll('<', '\\u003c')
+    .replaceAll('>', '\\u003e');
 }
 
 export interface PrivateChatSearchWorkflowState {

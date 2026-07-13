@@ -26,6 +26,10 @@ export type PrivateChatStreamEvent =
   | PrivateChatStreamResultEvent
   | PrivateChatStreamErrorEvent;
 
+export const MAX_PRIVATE_CHAT_NDJSON_STREAM_BUFFER_BYTES = 256 * 1024;
+export const PRIVATE_CHAT_NDJSON_STREAM_ERROR_MESSAGE =
+  'チャットの処理中にエラーが発生しました。時間をおいて再度お試しください。';
+
 export function createPrivateChatSearchProgressEvent(
   stage: PrivateChatSearchStageId,
 ): PrivateChatSearchProgressEvent {
@@ -74,12 +78,15 @@ export function clientAcceptsPrivateChatStream(request: Request): boolean {
 export async function consumePrivateChatNdjsonStream(
   response: Response,
   onProgress?: (event: PrivateChatSearchProgressEvent) => void,
+  options?: { readonly maxBufferBytes?: number },
 ): Promise<ChatResponse> {
   if (!response.body) {
     throw new Error('Chat stream response has no body.');
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  const maxBufferBytes = options?.maxBufferBytes ?? MAX_PRIVATE_CHAT_NDJSON_STREAM_BUFFER_BYTES;
   let buffer = '';
   while (true) {
     const { done, value } = await reader.read();
@@ -87,6 +94,9 @@ export async function consumePrivateChatNdjsonStream(
       break;
     }
     buffer += decoder.decode(value, { stream: true });
+    if (encoder.encode(buffer).byteLength > maxBufferBytes) {
+      throw new Error(PRIVATE_CHAT_NDJSON_STREAM_ERROR_MESSAGE);
+    }
     const lines = buffer.split('\n');
     buffer = lines.pop() ?? '';
     for (const line of lines) {
@@ -103,6 +113,10 @@ export async function consumePrivateChatNdjsonStream(
       }
       throw new Error(event.message);
     }
+  }
+  buffer += decoder.decode();
+  if (encoder.encode(buffer).byteLength > maxBufferBytes) {
+    throw new Error(PRIVATE_CHAT_NDJSON_STREAM_ERROR_MESSAGE);
   }
   const trailing = parsePrivateChatStreamLine(buffer);
   if (trailing?.type === 'result') {
