@@ -5,8 +5,20 @@ import { parsePublicGraphRequestBody, runPublicGraphApi } from './public-graph-a
 
 function createRepository(): GraphViewerRepository {
   return {
-    async executePreset() {
-      throw new Error('not used');
+    async executePreset({ cypher, graphName, preset }) {
+      assert.equal(graphName, 'graph_sample_a');
+      assert.equal(preset.id, 'recent-relations');
+      assert.match(cypher, /LIMIT 50$/);
+      return [
+        {
+          relation:
+            '{"id":"3","label":"AUTHORED","start_id":"1","end_id":"2","properties":{}}::edge',
+          source:
+            '{"id":"1","label":"Actor","properties":{"displayName":"Ada","graphNodeId":"actor:ada"}}::vertex',
+          target:
+            '{"id":"2","label":"Document","properties":{"documentId":"doc-a","graphNodeId":"document:spec","title":"Spec"}}::vertex',
+        },
+      ];
     },
     async fetchDocumentChunks() {
       throw new Error('not used');
@@ -61,6 +73,43 @@ test('runPublicGraphApi returns 404 when public project is not found', async () 
   }
   assert.equal(result.status, 404);
   assert.equal(result.error.code, 'public_project_not_found');
+});
+
+test('runPublicGraphApi returns 200 for an accessible public project', async () => {
+  const result = await runPublicGraphApi(
+    { limit: 50, projectSlug: 'sample-a', queryId: 'recent-relations' },
+    { repository: createRepository() },
+  );
+  assert.equal(result.status, 200);
+  if (result.status !== 200) {
+    return;
+  }
+  assert.equal(result.body.graphName, 'graph_sample_a');
+  assert.equal(result.body.limit, 50);
+});
+
+test('runPublicGraphApi returns 400 for unknown queryId', async () => {
+  const result = await runPublicGraphApi(
+    { projectSlug: 'sample-a', queryId: 'unknown-preset' },
+    { repository: createRepository() },
+  );
+  if (result.status === 200) {
+    assert.fail('expected unknown preset to fail');
+  }
+  assert.equal(result.status, 400);
+  assert.equal(result.error.code, 'unknown_query_id');
+});
+
+test('runPublicGraphApi returns 400 for invalid limit', async () => {
+  const result = await runPublicGraphApi(
+    { limit: 0, projectSlug: 'sample-a', queryId: 'recent-relations' },
+    { repository: createRepository() },
+  );
+  if (result.status === 200) {
+    assert.fail('expected invalid limit to fail');
+  }
+  assert.equal(result.status, 400);
+  assert.equal(result.error.code, 'invalid_limit');
 });
 
 console.log('web public graph api tests passed');
