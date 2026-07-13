@@ -299,6 +299,31 @@ test('runPrivateChatDetailStep keeps richer fetched sources for duplicate docume
   assert.ok(!result.retrievalContext.includes(originalSource.snippet));
 });
 
+test('runPrivateChatDetailStep excludes blank document IDs from detail fetch', async () => {
+  const fetchedDocumentIds: Array<readonly string[]> = [];
+  const state = {
+    ...runPrivateChatPreparingStep({
+      graphName: 'graph-a',
+      projectId: 'project-a',
+      question: 'プロジェクト概要',
+    }),
+    mergedVectorSources: [
+      { ...sampleSource, documentId: '', rawDocumentId: 'raw-empty' },
+      { ...sampleSource, documentId: '   ', rawDocumentId: 'raw-blank' },
+      { ...sampleSource, documentId: 'doc-valid' },
+    ],
+  };
+
+  await runPrivateChatDetailStep(state, {
+    async documentFetch({ documentIds }: { documentIds: readonly string[] }) {
+      fetchedDocumentIds.push(documentIds);
+      return [];
+    },
+  } as never);
+
+  assert.deepEqual(fetchedDocumentIds, [['doc-valid']]);
+});
+
 test('runPrivateChatSearchRetrieval runs one simplified retry when neutral primary search returns zero', async () => {
   const vectorSearchInputs: string[] = [];
   const stages: string[] = [];
@@ -457,6 +482,15 @@ test('consumePrivateChatNdjsonStream rejects an oversized line with a generic er
   await assert.rejects(
     consumePrivateChatNdjsonStream(new Response('x'.repeat(17)), undefined, {
       maxBufferBytes: 16,
+    }),
+    (error: Error) => error.message === PRIVATE_CHAT_NDJSON_STREAM_ERROR_MESSAGE,
+  );
+});
+
+test('consumePrivateChatNdjsonStream enforces the buffer limit in UTF-8 bytes', async () => {
+  await assert.rejects(
+    consumePrivateChatNdjsonStream(new Response('ああ'), undefined, {
+      maxBufferBytes: 5,
     }),
     (error: Error) => error.message === PRIVATE_CHAT_NDJSON_STREAM_ERROR_MESSAGE,
   );

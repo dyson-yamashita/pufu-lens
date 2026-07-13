@@ -85,21 +85,26 @@ export async function consumePrivateChatNdjsonStream(
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
   const maxBufferBytes = options?.maxBufferBytes ?? MAX_PRIVATE_CHAT_NDJSON_STREAM_BUFFER_BYTES;
   let buffer = '';
+  let bufferByteLength = 0;
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) {
         break;
       }
-      buffer += decoder.decode(value, { stream: true });
-      if (encoder.encode(buffer).byteLength > maxBufferBytes) {
+      bufferByteLength += value.byteLength;
+      if (bufferByteLength > maxBufferBytes) {
         throw new Error(PRIVATE_CHAT_NDJSON_STREAM_ERROR_MESSAGE);
       }
+      buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? '';
+      const lastNewlineByteIndex = value.lastIndexOf(0x0a);
+      if (lastNewlineByteIndex >= 0) {
+        bufferByteLength = value.byteLength - lastNewlineByteIndex - 1;
+      }
       for (const line of lines) {
         const event = parsePrivateChatStreamLine(line);
         if (!event) {
@@ -116,9 +121,6 @@ export async function consumePrivateChatNdjsonStream(
       }
     }
     buffer += decoder.decode();
-    if (encoder.encode(buffer).byteLength > maxBufferBytes) {
-      throw new Error(PRIVATE_CHAT_NDJSON_STREAM_ERROR_MESSAGE);
-    }
     const trailing = parsePrivateChatStreamLine(buffer);
     if (trailing?.type === 'result') {
       return trailing.response;

@@ -657,7 +657,8 @@ export async function runPrivateChatDetailStep(
     state.timelineSources,
   )
     .slice(0, DETAIL_DOCUMENT_LIMIT)
-    .map((source) => source.documentId);
+    .map((source) => source.documentId)
+    .filter((documentId) => documentId.trim().length > 0);
 
   const detailSources =
     detailDocumentIds.length > 0
