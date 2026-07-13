@@ -1,3 +1,5 @@
+import { listGraphPresets } from '../../../../../src/graph-viewer';
+import { GraphViewerPanel } from '../../../../../src/graph-viewer-client';
 import { PublicReportDocument } from '../../../../../src/report-client';
 import { AppShell, PageHeader } from '../../../../../src/ui';
 
@@ -8,11 +10,23 @@ export default async function PublicReportPage({
 }) {
   const { projectSlug, reportId } = await params;
   const projectName = publicProjectName(projectSlug);
+  const presets = listGraphPresets();
+  const initialPreset = presets[0];
+  if (!initialPreset) {
+    throw new Error('Graph preset is not configured.');
+  }
 
   return (
     <AppShell active="reports" project={publicProjectSummary(projectSlug, projectName)}>
       <PageHeader title="Public Report" subtitle={`${projectName} / ${reportId}`} />
       <PublicReportDocument projectSlug={projectSlug} reportId={reportId} />
+      <GraphViewerPanel
+        graphApiPath={`/api/public/projects/${projectSlug}/graph`}
+        initialPresetId={initialPreset.id}
+        loadDocumentChunks={false}
+        presets={presets}
+        projectSlug={projectSlug}
+      />
     </AppShell>
   );
 }

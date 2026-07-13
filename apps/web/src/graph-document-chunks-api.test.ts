@@ -32,6 +32,9 @@ function createRepository(): GraphViewerRepository {
         ? { graphName: 'graph_sample_a', id: 'project-a', name: 'Sample A', slug: 'sample-a' }
         : undefined;
     },
+    async lookupPublicProject() {
+      throw new Error('not used');
+    },
   };
 }
 

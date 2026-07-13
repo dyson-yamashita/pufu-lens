@@ -203,7 +203,7 @@ Evidence Panel には次をタブで表示する。
 
 Report Document は文書本文として読みやすい幅を保つ。本文カラムは最大 `880px` を目安にし、表やメトリクスがあるセクションだけ 12 カラム幅へ拡張できる。Report Context にはアウトライン、出典、関連レポート、共有操作を置く。 `custom_layout` を持つレポートでは、標準の Sections 表示に代えて template snapshot の row / columns / title / fixed text / image placeholder / slider judgement / classification result / copyright を同じ Report Document 内に描画する。private と public の表示差分はアクセス制御と非公開 source 表示の扱いに限定し、custom layout の構造と判定結果は同じ JSON snapshot を使う。
 
-公開レポートページ `/reports/public/[projectSlug]/[reportId]` では、未ログインユーザー向けの Public Chat を任意表示できる。Public Chat は公開済み report の内容だけに回答範囲を限定し、UI 上も「公開レポートに関する質問のみ」と分かるラベルを置く。Project Shell の Global Nav や private Evidence Panel は表示しない。
+公開レポートページ `/reports/public/[projectSlug]/[reportId]` では、未ログインユーザー向けの Public Chat を任意表示できる。Public Chat は公開済み report の内容だけに回答範囲を限定し、UI 上も「公開レポートに関する質問のみ」と分かるラベルを置く。Project Shell の Global Nav や private Evidence Panel は表示しない。公開ページにも Graph Viewer を表示するが、Document ノード選択時の chunk 一覧と chunk 詳細は公開 UI では表示しない。
 
 ### 5.5 データソース管理
 

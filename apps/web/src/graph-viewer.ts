@@ -74,6 +74,7 @@ export interface GraphViewerRepository {
     documentIds: readonly string[];
     projectId: string;
   }): Promise<ReadonlyMap<string, readonly GraphViewerDocumentChunk[]>>;
+  lookupPublicProject(input: { projectSlug: string }): Promise<GraphProjectAccess | undefined>;
   lookupProjectMember(input: {
     projectSlug: string;
     userId: string;
@@ -188,6 +189,54 @@ export async function runGraphPresetQuery(
   const project = await options.repository.lookupProjectMember({
     projectSlug: input.projectSlug,
     userId: input.userId,
+  });
+  if (!project) {
+    throw new GraphAccessDeniedError(input.projectSlug);
+  }
+
+  const cypher = preset.cypher(limit);
+  const rows = await options.repository.executePreset({
+    cypher,
+    graphName: project.graphName,
+    preset,
+  });
+  const normalized = normalizeGraphRows(rows, {
+    maxEdges: Math.min(preset.maxEdges, limit),
+    maxNodes: Math.min(preset.maxNodes, Math.max(limit * 2, 1)),
+  });
+
+  return {
+    ...normalized,
+    graphName: project.graphName,
+    limit,
+    preset: {
+      defaultLimit: preset.defaultLimit,
+      description: preset.description,
+      id: preset.id,
+      label: preset.label,
+      maxLimit: preset.maxLimit,
+      preview: cypher,
+    },
+    rawRows: rows.map(safeRawRow),
+    rowCount: rows.length,
+  };
+}
+
+/**
+ * Runs a graph preset query for a public project without requiring member authentication.
+ *
+ * @param input - Query parameters including the project, preset ID, and optional limit.
+ * @param options - Repository used to resolve public project access and execute the preset.
+ * @returns The normalized graph result, including preset metadata, raw rows, and the applied limit.
+ */
+export async function runPublicGraphPresetQuery(
+  input: { limit?: number; projectSlug: string; queryId: string },
+  options: { repository: GraphViewerRepository },
+): Promise<GraphQueryResult> {
+  const preset = getGraphPreset(input.queryId);
+  const limit = normalizeGraphLimit(input.limit ?? preset.defaultLimit, preset.maxLimit);
+  const project = await options.repository.lookupPublicProject({
+    projectSlug: input.projectSlug,
   });
   if (!project) {
     throw new GraphAccessDeniedError(input.projectSlug);
@@ -347,6 +396,25 @@ export function createPostgresGraphViewerRepository(
         id: access.id,
         name: access.name,
         slug: access.slug,
+      };
+    },
+    async lookupPublicProject({ projectSlug }) {
+      const rows = (await sql`
+        SELECT id::text, slug, name, graph_name AS "graphName"
+        FROM public.projects
+        WHERE slug = ${projectSlug}
+          AND visibility = 'public'
+        LIMIT 1
+      `) as readonly Record<string, unknown>[];
+      const row = rows[0];
+      if (!row) {
+        return undefined;
+      }
+      return {
+        graphName: validateGraphName(requireString(row.graphName, 'project graphName')),
+        id: requireString(row.id, 'project id'),
+        name: requireString(row.name, 'project name'),
+        slug: requireString(row.slug, 'project slug'),
       };
     },
   };

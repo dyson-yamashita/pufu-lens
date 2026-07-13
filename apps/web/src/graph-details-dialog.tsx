@@ -32,11 +32,13 @@ type DragState = {
  * @param wrapperElement - The fullscreen graph wrapper used for positioning and clamping.
  */
 export function GraphDetailsDialog({
+  loadDocumentChunks = true,
   onClose,
   projectSlug,
   selection,
   wrapperElement,
 }: {
+  readonly loadDocumentChunks?: boolean;
   readonly onClose: () => void;
   readonly projectSlug: string;
   readonly selection: GraphDetailsSelection;
@@ -176,7 +178,11 @@ export function GraphDetailsDialog({
           <p className="mono">{selection.type}</p>
         </div>
         <div className="graph-details-floating-scroll">
-          <PropertyList item={selection.item} projectSlug={projectSlug} />
+          <PropertyList
+            item={selection.item}
+            loadDocumentChunks={loadDocumentChunks}
+            projectSlug={projectSlug}
+          />
         </div>
       </div>
     </div>

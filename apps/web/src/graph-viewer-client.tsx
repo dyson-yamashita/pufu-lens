@@ -42,11 +42,15 @@ const GRAPH_LAYOUT_OPTIONS: readonly { readonly id: GraphLayoutId; readonly labe
  * @param projectSlug - The project identifier used to load graph data.
  */
 export function GraphViewerPanel({
+  graphApiPath,
   initialPresetId,
+  loadDocumentChunks = true,
   presets,
   projectSlug,
 }: {
+  readonly graphApiPath?: string;
   readonly initialPresetId: GraphPresetId;
+  readonly loadDocumentChunks?: boolean;
   readonly presets: readonly GraphPresetSummary[];
   readonly projectSlug: string;
 }) {
@@ -73,7 +77,7 @@ export function GraphViewerPanel({
     setSelection(undefined);
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/projects/${projectSlug}/graph`, {
+      const response = await fetch(graphApiPath ?? `/api/projects/${projectSlug}/graph`, {
         body: JSON.stringify({ limit, queryId: selectedPreset.id }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
@@ -89,7 +93,7 @@ export function GraphViewerPanel({
     } finally {
       setIsLoading(false);
     }
-  }, [limit, projectSlug, selectedPreset]);
+  }, [graphApiPath, limit, projectSlug, selectedPreset]);
 
   useEffect(() => {
     void runQuery();
@@ -187,6 +191,7 @@ export function GraphViewerPanel({
         <GraphCanvas
           edges={result?.edges ?? []}
           layoutId={layoutId}
+          loadDocumentChunks={loadDocumentChunks}
           nodes={result?.nodes ?? []}
           onMaximizedChange={setIsGraphMaximized}
           onSelect={setSelection}
@@ -204,7 +209,7 @@ export function GraphViewerPanel({
         {selection ? (
           <PropertyList
             item={selection.item}
-            loadDocumentChunks={!isGraphMaximized}
+            loadDocumentChunks={loadDocumentChunks && !isGraphMaximized}
             projectSlug={projectSlug}
           />
         ) : (
@@ -247,6 +252,7 @@ export function GraphViewerPanel({
 function GraphCanvas({
   edges,
   layoutId,
+  loadDocumentChunks,
   nodes,
   onMaximizedChange,
   onSelect,
@@ -254,6 +260,7 @@ function GraphCanvas({
 }: {
   readonly edges: readonly GraphViewerEdge[];
   readonly layoutId: GraphLayoutId;
+  readonly loadDocumentChunks: boolean;
   readonly nodes: readonly GraphViewerNode[];
   readonly onMaximizedChange: (isMaximized: boolean) => void;
   readonly onSelect: (selection: GraphSelection | undefined) => void;
@@ -562,6 +569,7 @@ function GraphCanvas({
           </div>
           {floatingSelection ? (
             <GraphDetailsDialog
+              loadDocumentChunks={loadDocumentChunks}
               onClose={closeFloatingDetails}
               projectSlug={projectSlug}
               selection={floatingSelection}
