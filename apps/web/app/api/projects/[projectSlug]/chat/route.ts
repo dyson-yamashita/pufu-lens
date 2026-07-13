@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getRequiredAdminSql } from '../../../../../src/admin-sql';
 import { AuthRequiredError, requireSessionUserId } from '../../../../../src/auth-session';
 import {
+  type ChatResponse,
   createMemoryRateLimiter,
   createPostgresChatRepository,
   isOutsideBusinessHoursFromEnv,
@@ -11,11 +12,16 @@ import {
   privateChatUnavailableResponse,
 } from '../../../../../src/chat';
 import {
-  createMastraProjectChatBody,
-  mastraFetchHeaders,
-  mastraGenerateToChatResponse,
-  mastraProjectChatGenerateUrl,
-} from '../../../../../src/mastra-chat';
+  clientAcceptsPrivateChatStream,
+  createPrivateChatSearchProgressEvent,
+  encodePrivateChatStreamEvent,
+} from '../../../../../src/private-chat-stream';
+import {
+  isPrivateChatWorkflowAbortError,
+  logPrivateChatWorkflowFailure,
+  PRIVATE_CHAT_STREAM_USER_ERROR_MESSAGE,
+  runPrivateChatSearchViaMastraWorkflow,
+} from '../../../../../src/private-chat-workflow-client';
 import { parsePositiveEnvInt } from '../../../../../src/request-client';
 
 const rateLimiter = createMemoryRateLimiter({ limit: 20, windowMs: 60_000 });
@@ -49,6 +55,8 @@ export async function POST(
     );
   }
 
+  const wantsStream = clientAcceptsPrivateChatStream(request);
+
   try {
     const userId = await requireSessionUserId();
     if (isOutsideBusinessHoursFromEnv(process.env)) {
@@ -77,49 +85,91 @@ export async function POST(
           userId,
         })
       : [];
-    const mastraUrl = mastraProjectChatGenerateUrl();
-    const mastraResponse = await fetch(mastraUrl, {
-      body: JSON.stringify(
-        createMastraProjectChatBody({
-          graphName: project.graphName,
-          history: privateChatHistoryToMastraMessages(history),
-          projectId: project.id,
-          question,
-        }),
-      ),
-      headers: await mastraFetchHeaders({ url: mastraUrl }),
-      method: 'POST',
-      signal: request.signal,
-    });
-    if (!mastraResponse.ok) {
-      const errorText = await mastraResponse.text().catch(() => '');
-      throw new Error(
-        `Mastra project chat agent failed: HTTP ${mastraResponse.status} - ${errorText}`,
-      );
+    const mastraHistory = privateChatHistoryToMastraMessages(history);
+
+    if (wantsStream) {
+      const stream = new ReadableStream<Uint8Array>({
+        start: async (controller) => {
+          const encoder = new TextEncoder();
+          const writeProgress = (
+            stage: Parameters<typeof createPrivateChatSearchProgressEvent>[0],
+          ) => {
+            controller.enqueue(
+              encoder.encode(
+                encodePrivateChatStreamEvent(createPrivateChatSearchProgressEvent(stage)),
+              ),
+            );
+          };
+          try {
+            const chatResponse = await runPrivateChatSearchViaMastraWorkflow({
+              graphName: project.graphName,
+              history: mastraHistory,
+              onStage: writeProgress,
+              projectId: project.id,
+              projectSlug,
+              question,
+              signal: request.signal,
+            });
+            await persistPrivateChatTurn({
+              chatResponse,
+              projectId: project.id,
+              question,
+              repository,
+              userId,
+            });
+            controller.enqueue(
+              encoder.encode(
+                encodePrivateChatStreamEvent({
+                  response: chatResponse,
+                  type: 'result',
+                }),
+              ),
+            );
+            controller.close();
+          } catch (error) {
+            if (isPrivateChatWorkflowAbortError(error)) {
+              return;
+            }
+            logPrivateChatWorkflowFailure(error);
+            controller.enqueue(
+              encoder.encode(
+                encodePrivateChatStreamEvent({
+                  code: mapPrivateChatStreamErrorCode(error),
+                  message: PRIVATE_CHAT_STREAM_USER_ERROR_MESSAGE,
+                  type: 'error',
+                }),
+              ),
+            );
+            controller.close();
+          }
+        },
+      });
+      return new Response(stream, {
+        headers: {
+          'cache-control': 'no-cache',
+          'content-type': 'application/x-ndjson; charset=utf-8',
+        },
+      });
     }
-    const mastraBody = (await mastraResponse.json()) as unknown;
-    const chatResponse = mastraGenerateToChatResponse({
-      mastraResponse: mastraBody,
+
+    const chatResponse = await runPrivateChatSearchViaMastraWorkflow({
+      graphName: project.graphName,
+      history: mastraHistory,
+      projectId: project.id,
       projectSlug,
       question,
+      signal: request.signal,
     });
-    if (chatResponse.status === 'answered') {
-      try {
-        await repository.savePrivateChatTurn({
-          answer: chatResponse.answer,
-          editing: chatResponse.editing,
-          projectId: project.id,
-          question,
-          sources: chatResponse.sources,
-          toolCalls: chatResponse.toolCalls,
-          userId,
-        });
-      } catch (saveError) {
-        console.error('Failed to persist private chat turn:', saveError);
-      }
-    }
+    await persistPrivateChatTurn({
+      chatResponse,
+      projectId: project.id,
+      question,
+      repository,
+      userId,
+    });
     return NextResponse.json(chatResponse);
   } catch (error) {
+    logPrivateChatWorkflowFailure(error);
     const message = error instanceof Error ? error.message : String(error);
     if (error instanceof AuthRequiredError) {
       return chatErrorResponse('auth_required', message, 401);
@@ -127,8 +177,43 @@ export async function POST(
     if (error instanceof ProjectAccessDeniedError) {
       return chatErrorResponse('project_access_denied', message, 403);
     }
-    return chatErrorResponse('chat_internal_error', message, 500);
+    return chatErrorResponse('chat_internal_error', PRIVATE_CHAT_STREAM_USER_ERROR_MESSAGE, 500);
   }
+}
+
+async function persistPrivateChatTurn(input: {
+  readonly chatResponse: ChatResponse;
+  readonly projectId: string;
+  readonly question: string;
+  readonly repository: ReturnType<typeof createPostgresChatRepository>;
+  readonly userId: string;
+}): Promise<void> {
+  if (input.chatResponse.status !== 'answered') {
+    return;
+  }
+  try {
+    await input.repository.savePrivateChatTurn({
+      answer: input.chatResponse.answer,
+      editing: input.chatResponse.editing,
+      projectId: input.projectId,
+      question: input.question,
+      sources: input.chatResponse.sources,
+      toolCalls: input.chatResponse.toolCalls,
+      userId: input.userId,
+    });
+  } catch (saveError) {
+    console.error('Failed to persist private chat turn:', saveError);
+  }
+}
+
+function mapPrivateChatStreamErrorCode(error: unknown): string {
+  if (error instanceof AuthRequiredError) {
+    return 'auth_required';
+  }
+  if (error instanceof ProjectAccessDeniedError) {
+    return 'project_access_denied';
+  }
+  return 'chat_internal_error';
 }
 
 function chatErrorResponse(code: string, message: string, status: number) {

@@ -28,7 +28,9 @@ import {
   PrivateChatThread,
   PublicChatThread,
   replacePendingAssistant,
+  updatePendingAssistantProgress,
 } from './chat-thread';
+import { consumePrivateChatNdjsonStream } from './private-chat-stream';
 import { useSpeechInput } from './speech-input';
 
 const CHAT_HISTORY_TIME_FORMATTER = new Intl.DateTimeFormat('ja-JP', {
@@ -155,10 +157,35 @@ export function ChatPanel({
     try {
       const result = await fetch(`/api/projects/${projectSlug}/chat`, {
         body: JSON.stringify({ includeHistory, question: trimmedQuestion }),
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          accept: 'application/x-ndjson',
+          'content-type': 'application/json',
+        },
         method: 'POST',
       });
-      const isJson = result.headers.get('content-type')?.includes('application/json') ?? false;
+      const contentType = result.headers.get('content-type') ?? '';
+      if (contentType.includes('application/x-ndjson')) {
+        if (!result.ok) {
+          throw new Error(`Chat API failed: HTTP ${result.status}`);
+        }
+        const body = await consumePrivateChatNdjsonStream(result, (event) => {
+          setMessages((current) => updatePendingAssistantProgress(current, pendingId, event.label));
+        });
+        if (!isChatResponseBody(body)) {
+          throw new Error('Chat API returned an invalid response.');
+        }
+        setMessages((current) =>
+          replacePendingAssistant(current, pendingId, {
+            id: createMessageId('assistant'),
+            role: 'assistant',
+            response: body,
+            status: 'complete',
+          }),
+        );
+        return;
+      }
+
+      const isJson = contentType.includes('application/json');
       const body = isJson ? ((await result.json()) as ChatResponse | ChatErrorResponse) : null;
       if (!result.ok) {
         if (isDbOutsideBusinessHoursResponse(body)) {

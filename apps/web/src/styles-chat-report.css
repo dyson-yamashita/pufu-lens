@@ -427,6 +427,19 @@
   font-style: italic;
 }
 
+.chat-thinking-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chat-thinking-stage {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0;
+}
+
 .chat-thinking {
   align-items: baseline;
   display: inline-flex;

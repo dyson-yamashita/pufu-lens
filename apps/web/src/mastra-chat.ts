@@ -13,6 +13,8 @@ import type {
 import { inferChatEditingMetadata, inferPublicChatEditingMetadata } from './chat.ts';
 import type { ProjectLookupResult, PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 
+type FetchHeadersInit = Record<string, string> | Headers;
+
 /**
  * The canonical public project/report chat path proxies to the private Project Chat Agent
  * after the public access gate passes. The legacy public report agent remains available only
@@ -24,7 +26,7 @@ export const LEGACY_PUBLIC_REPORT_CHAT_AGENT_ID = 'public-report-chat-agent';
 
 type MastraChatEnv = Record<string, string | undefined>;
 type MastraIdTokenClient = {
-  readonly getRequestHeaders: (url?: string) => Promise<HeadersInit>;
+  readonly getRequestHeaders: (url?: string) => Promise<FetchHeadersInit>;
 };
 type MastraIdTokenClientFactory = (audience: string) => Promise<MastraIdTokenClient>;
 
@@ -126,12 +128,22 @@ export function createMastraProjectChatBody(input: {
   readonly history?: readonly MastraChatHistoryMessage[];
   readonly projectId: string;
   readonly question: string;
+  readonly retrievalContext?: string;
+  readonly workflowSources?: readonly ChatSource[];
+  readonly workflowToolCalls?: readonly ChatToolCall[];
 }) {
   const editing = inferChatEditingMetadata(input.question);
   const history = input.history ?? [];
   return {
     messages: [...history, { content: input.question, role: 'user' as const }],
-    requestContext: { editing, graphName: input.graphName ?? null, projectId: input.projectId },
+    requestContext: {
+      editing,
+      graphName: input.graphName ?? null,
+      projectId: input.projectId,
+      ...(input.retrievalContext ? { retrievalContext: input.retrievalContext } : {}),
+      ...(input.workflowSources ? { workflowSources: input.workflowSources } : {}),
+      ...(input.workflowToolCalls ? { workflowToolCalls: input.workflowToolCalls } : {}),
+    },
   };
 }
 
@@ -207,6 +219,31 @@ export function mastraGenerateToChatResponse(input: {
       })
       .filter((toolCall): toolCall is ChatToolCall => Boolean(toolCall)),
   };
+}
+
+export function mergeHybridChatResponse(input: {
+  readonly agentResponse: ChatResponse;
+  readonly workflowEditing?: ChatEditingMetadata;
+  readonly workflowSources: readonly ChatSource[];
+  readonly workflowToolCalls: readonly ChatToolCall[];
+}): ChatResponse {
+  return {
+    ...input.agentResponse,
+    editing: input.agentResponse.editing ?? input.workflowEditing,
+    sources: uniqueSources([...input.workflowSources, ...input.agentResponse.sources]).slice(0, 5),
+    toolCalls: mergeHybridToolCalls(input.workflowToolCalls, input.agentResponse.toolCalls),
+  };
+}
+
+function mergeHybridToolCalls(
+  workflowToolCalls: readonly ChatToolCall[],
+  agentToolCalls: readonly ChatToolCall[],
+): ChatToolCall[] {
+  const merged = new Map<ChatToolName, number>();
+  for (const toolCall of [...workflowToolCalls, ...agentToolCalls]) {
+    merged.set(toolCall.name, (merged.get(toolCall.name) ?? 0) + toolCall.resultCount);
+  }
+  return [...merged.entries()].map(([name, resultCount]) => ({ name, resultCount }));
 }
 
 export function mastraGenerateToPublicChatResponse(input: {

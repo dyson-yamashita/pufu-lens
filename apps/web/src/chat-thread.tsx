@@ -9,6 +9,12 @@ import type {
   PublicChatResponse,
   PublicChatSource,
 } from './chat';
+import {
+  appendPendingAssistant,
+  createMessageId,
+  replacePendingAssistant,
+  updatePendingAssistantProgress,
+} from './chat-thread-message-state';
 import { MarkdownContent } from './markdown-content';
 
 export type ChatThreadUserMessage = {
@@ -19,6 +25,7 @@ export type ChatThreadUserMessage = {
 
 export type ChatThreadPendingAssistantMessage = {
   readonly id: string;
+  readonly progressLabel?: string;
   readonly role: 'assistant';
   readonly status: 'pending';
 };
@@ -43,38 +50,18 @@ export type ChatThreadMessage<T> =
   | ChatThreadErrorAssistantMessage
   | ChatThreadCompleteAssistantMessage<T>;
 
-export function createMessageId(prefix: string): string {
-  const randomId =
-    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : Math.random().toString(36).slice(2, 15);
-  return `${prefix}-${randomId}`;
-}
+export {
+  appendPendingAssistant,
+  createMessageId,
+  replacePendingAssistant,
+  updatePendingAssistantProgress,
+};
 
 export function appendUserMessage<T>(
   messages: readonly ChatThreadMessage<T>[],
   text: string,
 ): ChatThreadMessage<T>[] {
   return [...messages, { id: createMessageId('user'), role: 'user', text }];
-}
-
-export function appendPendingAssistant<T>(messages: readonly ChatThreadMessage<T>[]): {
-  messages: ChatThreadMessage<T>[];
-  pendingId: string;
-} {
-  const pendingId = createMessageId('assistant');
-  return {
-    messages: [...messages, { id: pendingId, role: 'assistant', status: 'pending' }],
-    pendingId,
-  };
-}
-
-export function replacePendingAssistant<T>(
-  messages: readonly ChatThreadMessage<T>[],
-  pendingId: string,
-  replacement: ChatThreadErrorAssistantMessage | ChatThreadCompleteAssistantMessage<T>,
-): ChatThreadMessage<T>[] {
-  return messages.map((message) => (message.id === pendingId ? replacement : message));
 }
 
 export function mapPrivateChatHistoryToThreadMessages(
@@ -197,7 +184,10 @@ function ChatThreadMessageItem({
         className="chat-message chat-message-assistant chat-message-pending"
         data-testid={`chat-message-${index}`}
       >
-        <PendingThinking testId={`chat-assistant-message-${index}`} />
+        <PendingThinking
+          progressLabel={message.progressLabel}
+          testId={`chat-assistant-message-${index}`}
+        />
       </article>
     );
   }
@@ -233,15 +223,26 @@ function ChatThreadMessageItem({
   );
 }
 
-function PendingThinking({ testId }: { readonly testId: string }) {
+function PendingThinking({
+  progressLabel,
+  testId,
+}: {
+  readonly progressLabel?: string;
+  readonly testId: string;
+}) {
   return (
-    <div className="chat-message-text chat-thinking" data-testid={testId} role="status">
-      <span>Thinking</span>
-      <span aria-hidden="true" className="chat-thinking-dots">
-        <span>.</span>
-        <span>.</span>
-        <span>.</span>
-      </span>
+    <div className="chat-thinking-block">
+      <div className="chat-message-text chat-thinking" data-testid={testId} role="status">
+        <span>Thinking</span>
+        <span aria-hidden="true" className="chat-thinking-dots">
+          <span>.</span>
+          <span>.</span>
+          <span>.</span>
+        </span>
+      </div>
+      <p aria-live="polite" className="chat-thinking-stage" data-testid={`${testId}-stage`}>
+        {progressLabel ?? ''}
+      </p>
     </div>
   );
 }

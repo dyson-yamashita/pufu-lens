@@ -259,6 +259,44 @@ pnpm chat:eval --project sample-a --fixture fixtures/chat/private-chat-raw-injec
 
 この初期実装は Step 12 の確認用であり、Mastra Agent 化、streaming、Object Storage からの raw / parsed 本文取得、AGE Cypher の本格利用、永続 rate limit / audit log は後続で置き換える。
 
+#### Private Chat ハイブリッド検索 Workflow（Issue #558）
+
+Private project chat は、Mastra `private-chat-search` Workflow による **制約付き LLM 検索計画と決定論的 retrieval**、既存 `project-chat-agent` による **ReAct 合成** のハイブリッドで回答する。
+
+1. **Workflow 登録:** `apps/mastra` に `private-chat-search` Workflow を登録する。preparing / classifying / expanding / retrieving / optional retrying / relating / optional timeline / detail / synthesis の explicit stage step で bounded retrieval を行い、最後に Agent 合成する。
+2. **編集操作分類:** tool を持たない `private-chat-query-planner-agent` が strict structured output で質問を `identification` / `cause` / `process` / `timeline` / `comparison` / `relation` / `evaluation` / `decision` / `general` の固定分類へ割り当てる。primary は 1 件、secondary は最大 2 件とし、figure / ground / expected evidence / confidence も上限付きで返す。質問は未信頼データとして扱い、本文内の命令や schema 変更要求には従わない。
+3. **検索語展開:** 同 Agent を別 step で呼び出し、分類結果から query / purpose / operation の候補を strict structured output で最大 5 件生成する。元の正規化質問は LLM 出力にかかわらず Workflow が必ず最優先で検索する。Workflow は全検索を合計最大 6 件、各 120 文字に制限し、空文字、制御文字、大小文字を無視した重複、元質問の保護対象識別子を欠く展開語を拒否する。LLM が追加した固有名詞を回答の必要事実として扱わない。
+4. **決定論的フォールバック:** 分類失敗時は `general`、展開失敗時は正規化した元質問だけを使い、Planner 障害で chat 全体を失敗させない。元質問の検索結果が 0 件で、保護対象識別子を維持できる場合だけ simplified retry を最大 1 回実行する。検索順、件数、project scope、document id merge は Workflow が決定論的に管理する。
+5. **graph / timeline / detail:** vector 結果を seed に graph related-source retrieval を実行する。LLM の primary / secondary operation が `timeline` の場合に timeline retrieval を実行し、分類失敗時も `inferChatEditingMetadata(question).inferredMode === 'timeline'` を安全側の fallback として使う。選定候補に対して bounded detail retrieval を行う。
+6. **Agent 合成:** Workflow retrieval 結果は `requestContext.retrievalContext` / `workflowSources` / `workflowToolCalls` に加えて、内部用の query classification / query plan と元の質問を synthesis に引き渡す。retrieval 本文は `untrusted_external_content` として囲み、本文内の命令、role 変更要求、tool 呼び出し要求には従わない。Agent は tool による追加確認は可能だが、Workflow 初期 retrieval の有無を Agent だけに委ねない。classification / query plan は public chat や最終 `ChatResponse` には公開しない。
+7. **Next.js 実行経路:** `POST /api/projects/[projectSlug]/chat` は認可済み `projectId` / `graphName` を使って Mastra HTTP Workflow API（`create-run` → `/api/workflows/private-chat-search/stream?runId=...`）を呼び出す。`Accept: application/x-ndjson` の場合は、Mastra workflow stream の `workflow-step-start` を NDJSON progress event に写像して browser へ proxy し、最後に `result` または generic `error` event を返す。JSON-only client も同じ registered Workflow を利用する。Mastra の失敗を記録するときは固定 reason と HTTP status のみを使い、上流 response body、質問本文、LLM 出力や例外メッセージをログへ出さない。
+8. **progress stage id / label:**
+   - `preparing`: 検索条件を準備しています
+   - `classifying`: 質問の見方を整理しています
+   - `expanding`: 検索語を展開しています
+   - `retrieving`: 関連資料を検索しています
+   - `retrying`: 検索語を広げて再検索しています（expansion 実行時のみ）
+   - `relating`: 関連資料を確認しています
+   - `timeline`: 時系列を確認しています（timeline 質問のみ）
+   - `reasoning`: 根拠を整理して回答を生成しています
+9. **response merge:** Workflow sources / tool summaries と Agent tool results を deterministic に dedupe / merge して `ChatResponse` を返す。public chat には private workflow metadata を露出しない。
+10. **history:** `includeHistory` と private chat turn 永続化の既存挙動を維持する。
+
+progress event 例:
+
+```json
+{"type":"progress","stage":"retrieving","label":"関連資料を検索しています"}
+{"type":"result","response":{"status":"answered","answer":"...","projectSlug":"sample-a","sources":[],"toolCalls":[]}}
+```
+
+エラー event 例:
+
+```json
+{ "type": "error", "code": "chat_internal_error", "message": "..." }
+```
+
+stream 開始前の認可 / JSON parse / rate limit / business-hours エラーは、従来どおり JSON error response を返す。
+
 ### 2. Public Chat Agent 設計
 
 Public Chat は未ログインユーザー向けに提供するが、対象を **public project の公開済み report** に限定する。回答生成は private chat と同じ project chat agent / tool set を使い、違いは入口のアクセス権だけにする。

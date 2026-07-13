@@ -16,6 +16,8 @@ import {
   createCrossProjectResearchAgent,
   createCrossProjectResearchTools,
   createGenerateReportWorkflow,
+  createPrivateChatQueryPlannerAgent,
+  createPrivateChatSearchWorkflow,
   createProjectChatAgent,
   createProjectChatTools,
   createPublicReportChatAgent,
@@ -48,6 +50,7 @@ const crossProjectResearchAgent = createCrossProjectResearchAgent({
 });
 const projectChatTools = createProjectChatTools(chatRepository);
 const projectChatAgent = createProjectChatAgent({ tools: projectChatTools });
+const privateChatQueryPlannerAgent = createPrivateChatQueryPlannerAgent();
 const publicReportChatTools = createPublicReportChatTools();
 const publicReportChatAgent = createPublicReportChatAgent({ tools: publicReportChatTools });
 const generateReportWorkflow = createGenerateReportWorkflow({
@@ -56,16 +59,25 @@ const generateReportWorkflow = createGenerateReportWorkflow({
   repository: reportRepository,
   storage,
 });
+const privateChatSearchWorkflow = createPrivateChatSearchWorkflow({
+  chatRepository,
+  projectChatAgent,
+  queryPlannerAgent: privateChatQueryPlannerAgent,
+});
 
 export const mastra = new Mastra({
-  agents: { crossProjectResearchAgent, projectChatAgent, publicReportChatAgent },
+  agents: {
+    crossProjectResearchAgent,
+    projectChatAgent,
+    publicReportChatAgent,
+  },
   bundler: {
     // @google-cloud/storage is reachable from @pufu-lens/storage's GcsObjectStorage.
     // It must be installed at runtime rather than bundled by the Mastra rollup analyzer.
     externals: ['@google-cloud/storage'],
   },
   server: { apiRoutes: [sourceSyncDispatcherRoute] },
-  workflows: { generateReportWorkflow },
+  workflows: { generateReportWorkflow, privateChatSearchWorkflow },
 });
 
 function createReportProvider(): ReportGenerationProvider {

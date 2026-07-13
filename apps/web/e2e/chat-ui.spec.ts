@@ -195,6 +195,12 @@ test('scenario: member sends private chat and reads persisted history from fixtu
 
     await page.getByTestId('chat-question-input').fill(question);
     await page.getByTestId('chat-submit-button').click();
+    const stage = page.getByTestId('chat-assistant-message-1-stage');
+    await expect(stage).toBeVisible();
+    await expect(stage).toHaveText('質問の見方を整理しています');
+    await expect(stage).toHaveText('検索語を展開しています');
+    await expect(stage).toHaveText('関連資料を検索しています');
+    await expect(stage).toHaveAttribute('aria-live', 'polite');
     await expect(page.getByTestId('chat-assistant-message-1')).toContainText(answer);
     await expect(page.getByTestId('chat-message-tool-calls-1')).toContainText('vector-search');
 
@@ -267,48 +273,67 @@ async function textareaClientHeight(input: Locator): Promise<number> {
 async function startMastraChatStub(): Promise<Server> {
   const server = createServer(async (request, response) => {
     try {
-      if (request.method !== 'POST' || request.url !== '/api/agents/project-chat-agent/generate') {
-        response.writeHead(404, { 'content-type': 'application/json' });
-        response.end(JSON.stringify({ error: 'not_found' }));
+      const url = request.url ?? '';
+      if (request.method === 'POST' && url === '/api/workflows/private-chat-search/create-run') {
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ runId: 'e2e-private-chat-run' }));
         return;
       }
 
-      const body = await readJsonBody(request);
-      const messages = Array.isArray(body.messages) ? body.messages : [];
-      const latest = messages.findLast(isUserMessage);
-      const question = typeof latest?.content === 'string' ? latest.content : '';
-
-      response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(
-        JSON.stringify({
-          steps: [
+      if (
+        request.method === 'POST' &&
+        url.startsWith('/api/workflows/private-chat-search/stream?runId=')
+      ) {
+        const body = await readJsonBody(request);
+        const question =
+          typeof body.inputData === 'object' &&
+          body.inputData !== null &&
+          'question' in body.inputData &&
+          typeof body.inputData.question === 'string'
+            ? body.inputData.question
+            : '';
+        const chatResponse = {
+          answer: `E2E private chat persisted answer for: ${question}`,
+          projectSlug: 'local-dev',
+          sources: [
             {
-              content: [
-                {
-                  output: {
-                    value: {
-                      resultCount: 1,
-                      sources: [
-                        {
-                          canonicalUri: 'https://example.test/e2e/private-chat',
-                          docType: 'web',
-                          documentId: 'e2e-private-chat-doc',
-                          rawDocumentId: 'e2e-private-chat-raw',
-                          snippet: 'E2E private chat source snippet',
-                          title: 'E2E private chat source',
-                        },
-                      ],
-                    },
-                  },
-                  toolName: 'vectorSearch',
-                  type: 'tool-result',
-                },
-              ],
+              canonicalUri: 'https://example.test/e2e/private-chat',
+              docType: 'web',
+              documentId: 'e2e-private-chat-doc',
+              rawDocumentId: 'e2e-private-chat-raw',
+              snippet: 'E2E private chat source snippet',
+              title: 'E2E private chat source',
             },
           ],
-          text: `E2E private chat persisted answer for: ${question}`,
-        }),
-      );
+          status: 'answered',
+          toolCalls: [{ name: 'vector-search', resultCount: 1 }],
+        };
+        response.writeHead(200, { 'content-type': 'application/octet-stream' });
+        response.write(
+          `${JSON.stringify({ payload: { id: 'private-chat-classifying' }, type: 'workflow-step-start' })}\x1e`,
+        );
+        // Keep transient stages visible long enough for the browser assertion to
+        // observe each streamed workflow transition on slower CI runners.
+        await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
+        response.write(
+          `${JSON.stringify({ payload: { id: 'private-chat-expanding' }, type: 'workflow-step-start' })}\x1e`,
+        );
+        await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
+        response.write(
+          `${JSON.stringify({ payload: { id: 'private-chat-retrieving' }, type: 'workflow-step-start' })}\x1e`,
+        );
+        await new Promise<void>((resolve) => setTimeout(resolve, 500));
+        response.end(
+          JSON.stringify({
+            payload: { id: 'private-chat-synthesis', output: chatResponse },
+            type: 'workflow-step-result',
+          }),
+        );
+        return;
+      }
+
+      response.writeHead(404, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ error: 'not_found' }));
     } catch (error) {
       console.error('Mastra stub error:', error);
       response.writeHead(500, { 'content-type': 'application/json' });
@@ -323,12 +348,6 @@ async function startMastraChatStub(): Promise<Server> {
       resolve(server);
     });
   });
-}
-
-function isUserMessage(
-  value: unknown,
-): value is { readonly content?: unknown; readonly role: string } {
-  return typeof value === 'object' && value !== null && 'role' in value && value.role === 'user';
 }
 
 async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
