@@ -14,6 +14,7 @@ import {
   mergeChatToolCallsDeterministically,
   privateChatSearchStageLabel,
   resolvePrivateChatRetryQueries,
+  runPrivateChatDetailStep,
   runPrivateChatPreparingStep,
   runPrivateChatRetryingStep,
   runPrivateChatSearchRetrieval,
@@ -193,6 +194,29 @@ test('runPrivateChatRetryingStep searches variants concurrently and merges in pl
   );
 });
 
+test('runPrivateChatDetailStep keeps richer fetched sources for duplicate document IDs', async () => {
+  const originalSource = { ...sampleSource, documentId: 'doc-a', snippet: '検索結果の概要' };
+  const detailSource = { ...sampleSource, documentId: 'doc-a', snippet: '取得した詳細情報' };
+  const state = {
+    ...runPrivateChatPreparingStep({
+      graphName: 'graph-a',
+      projectId: 'project-a',
+      question: 'プロジェクト概要',
+    }),
+    mergedVectorSources: [originalSource],
+  };
+
+  const result = await runPrivateChatDetailStep(state, {
+    async documentFetch() {
+      return [detailSource];
+    },
+  } as never);
+
+  assert.equal(result.sources[0]?.snippet, detailSource.snippet);
+  assert.ok(result.retrievalContext.includes(detailSource.snippet));
+  assert.ok(!result.retrievalContext.includes(originalSource.snippet));
+});
+
 test('runPrivateChatSearchRetrieval runs one simplified retry when neutral primary search returns zero', async () => {
   const vectorSearchInputs: string[] = [];
   const stages: string[] = [];
@@ -368,7 +392,8 @@ test('parseMastraWorkflowStreamBuffer parses record separator chunks and enforce
       parseMastraWorkflowStreamBuffer({
         buffer: 'x'.repeat(MAX_MASTRA_WORKFLOW_STREAM_BUFFER_BYTES + 1),
       }),
-    /buffer exceeded/,
+    (error: Error & { reason?: string; status?: number }) =>
+      error.reason === 'malformed_or_oversized_stream' && error.status === 502,
   );
 });
 

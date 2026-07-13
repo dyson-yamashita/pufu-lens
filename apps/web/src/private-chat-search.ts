@@ -431,10 +431,10 @@ export async function runPrivateChatDetailStep(
       : [];
 
   const sources = mergeChatSourcesDeterministically(
+    detailSources,
     state.editing.inferredMode === 'timeline' ? state.timelineSources : [],
     state.mergedVectorSources,
     state.graphSources,
-    detailSources,
   ).slice(0, MAX_MERGED_SOURCES);
 
   return {

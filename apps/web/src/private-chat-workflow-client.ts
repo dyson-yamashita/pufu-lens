@@ -73,7 +73,7 @@ export function parseMastraWorkflowStreamBuffer(input: {
 }): { readonly records: readonly MastraWorkflowStreamRecord[]; readonly remainder: string } {
   const maxBufferBytes = input.maxBufferBytes ?? MAX_MASTRA_WORKFLOW_STREAM_BUFFER_BYTES;
   if (Buffer.byteLength(input.buffer, 'utf8') > maxBufferBytes) {
-    throw new Error('Mastra workflow stream buffer exceeded the configured bound.');
+    throw new PrivateChatWorkflowInvocationError(502, 'malformed_or_oversized_stream');
   }
 
   const parts = input.buffer.split(MASTRA_WORKFLOW_RECORD_SEPARATOR);
