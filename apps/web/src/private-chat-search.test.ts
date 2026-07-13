@@ -136,6 +136,16 @@ test('classification uses bounded fixed operations and timeline selection has a 
   );
 });
 
+test('protected anchor extraction stays bounded on long repeated input', () => {
+  const repeatedDigits = '0'.repeat(100_000);
+  assert.deepEqual(extractPrivateChatProtectedAnchors(`${repeatedDigits} pufu-editor PR #559`), [
+    'pufu-editor',
+    'PR',
+    '#559',
+  ]);
+  assert.deepEqual(extractPrivateChatProtectedAnchors(`prefix-${repeatedDigits}`), []);
+});
+
 test('stripPrivateChatRequestNoise removes request phrases while preserving entity tokens', () => {
   assert.equal(
     stripPrivateChatRequestNoise('pufu-editorでのエラー対応実績教えてください'),

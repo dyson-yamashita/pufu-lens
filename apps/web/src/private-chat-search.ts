@@ -155,20 +155,119 @@ export function normalizePrivateChatSearchQuery(value: string): string {
   return truncateByCodePoint(normalizeWhitespace(value), MAX_PRIVATE_CHAT_SEARCH_QUERY_LENGTH);
 }
 
-export function extractPrivateChatProtectedAnchors(question: string): string[] {
-  const matches = question.match(
-    /(?:[A-Za-z0-9]+(?:[-_.:/#][A-Za-z0-9]+)+|#[0-9]+|\b[A-Z]{2,}[A-Z0-9]*\b)/gu,
-  );
-  const seen = new Set<string>();
-  const anchors: string[] = [];
-  for (const match of matches ?? []) {
-    const normalized = match.toLowerCase();
-    if (!seen.has(normalized)) {
-      seen.add(normalized);
-      anchors.push(match);
+function isAsciiDigit(code: number): boolean {
+  return code >= 48 && code <= 57;
+}
+
+function isAsciiUppercase(code: number): boolean {
+  return code >= 65 && code <= 90;
+}
+
+function isAsciiLowercase(code: number): boolean {
+  return code >= 97 && code <= 122;
+}
+
+function isAsciiAlphanumeric(code: number): boolean {
+  return isAsciiDigit(code) || isAsciiUppercase(code) || isAsciiLowercase(code);
+}
+
+function isPrivateChatAnchorSeparator(code: number): boolean {
+  return code === 35 || code === 45 || code === 46 || code === 47 || code === 58 || code === 95;
+}
+
+function isPrivateChatAnchorCharacter(code: number): boolean {
+  return isAsciiAlphanumeric(code) || isPrivateChatAnchorSeparator(code);
+}
+
+function isPrivateChatHashAnchor(token: string): boolean {
+  if (token.length < 2 || token.charCodeAt(0) !== 35) {
+    return false;
+  }
+  for (let index = 1; index < token.length; index += 1) {
+    if (!isAsciiDigit(token.charCodeAt(index))) {
+      return false;
     }
   }
-  return anchors.slice(0, 8);
+  return true;
+}
+
+function isPrivateChatStructuredAnchor(token: string): boolean {
+  if (
+    token.length < 3 ||
+    !isAsciiAlphanumeric(token.charCodeAt(0)) ||
+    !isAsciiAlphanumeric(token.charCodeAt(token.length - 1))
+  ) {
+    return false;
+  }
+  let hasSeparator = false;
+  let previousWasSeparator = false;
+  for (let index = 0; index < token.length; index += 1) {
+    const code = token.charCodeAt(index);
+    if (isAsciiAlphanumeric(code)) {
+      previousWasSeparator = false;
+      continue;
+    }
+    if (!isPrivateChatAnchorSeparator(code) || previousWasSeparator) {
+      return false;
+    }
+    hasSeparator = true;
+    previousWasSeparator = true;
+  }
+  return hasSeparator;
+}
+
+function isPrivateChatUppercaseAnchor(token: string): boolean {
+  if (token.length < 2) {
+    return false;
+  }
+  let uppercaseCount = 0;
+  for (let index = 0; index < token.length; index += 1) {
+    const code = token.charCodeAt(index);
+    if (isAsciiUppercase(code)) {
+      uppercaseCount += 1;
+      continue;
+    }
+    if (!isAsciiDigit(code)) {
+      return false;
+    }
+  }
+  return uppercaseCount >= 2;
+}
+
+export function extractPrivateChatProtectedAnchors(question: string): string[] {
+  const seen = new Set<string>();
+  const anchors: string[] = [];
+  let tokenStart = -1;
+  for (let index = 0; index <= question.length; index += 1) {
+    const isTokenCharacter =
+      index < question.length && isPrivateChatAnchorCharacter(question.charCodeAt(index));
+    if (isTokenCharacter) {
+      tokenStart = tokenStart < 0 ? index : tokenStart;
+      continue;
+    }
+    if (tokenStart < 0) {
+      continue;
+    }
+    const tokenLength = index - tokenStart;
+    if (tokenLength <= 60) {
+      const token = question.slice(tokenStart, index);
+      const normalized = token.toLowerCase();
+      if (
+        !seen.has(normalized) &&
+        (isPrivateChatHashAnchor(token) ||
+          isPrivateChatStructuredAnchor(token) ||
+          isPrivateChatUppercaseAnchor(token))
+      ) {
+        seen.add(normalized);
+        anchors.push(token);
+      }
+    }
+    tokenStart = -1;
+    if (anchors.length >= 8) {
+      break;
+    }
+  }
+  return anchors;
 }
 
 function boundedUniqueStrings(
