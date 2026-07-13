@@ -312,11 +312,13 @@ async function startMastraChatStub(): Promise<Server> {
         response.write(
           `${JSON.stringify({ payload: { id: 'private-chat-classifying' }, type: 'workflow-step-start' })}\x1e`,
         );
-        await new Promise<void>((resolve) => setTimeout(resolve, 300));
+        // Keep transient stages visible long enough for the browser assertion to
+        // observe each streamed workflow transition on slower CI runners.
+        await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
         response.write(
           `${JSON.stringify({ payload: { id: 'private-chat-expanding' }, type: 'workflow-step-start' })}\x1e`,
         );
-        await new Promise<void>((resolve) => setTimeout(resolve, 300));
+        await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
         response.write(
           `${JSON.stringify({ payload: { id: 'private-chat-retrieving' }, type: 'workflow-step-start' })}\x1e`,
         );
