@@ -197,6 +197,8 @@ test('scenario: member sends private chat and reads persisted history from fixtu
     await page.getByTestId('chat-submit-button').click();
     const stage = page.getByTestId('chat-assistant-message-1-stage');
     await expect(stage).toBeVisible();
+    await expect(stage).toHaveText('質問の見方を整理しています');
+    await expect(stage).toHaveText('検索語を展開しています');
     await expect(stage).toHaveText('関連資料を検索しています');
     await expect(stage).toHaveAttribute('aria-live', 'polite');
     await expect(page.getByTestId('chat-assistant-message-1')).toContainText(answer);
@@ -307,6 +309,14 @@ async function startMastraChatStub(): Promise<Server> {
           toolCalls: [{ name: 'vector-search', resultCount: 1 }],
         };
         response.writeHead(200, { 'content-type': 'application/octet-stream' });
+        response.write(
+          `${JSON.stringify({ payload: { id: 'private-chat-classifying' }, type: 'workflow-step-start' })}\x1e`,
+        );
+        await new Promise<void>((resolve) => setTimeout(resolve, 300));
+        response.write(
+          `${JSON.stringify({ payload: { id: 'private-chat-expanding' }, type: 'workflow-step-start' })}\x1e`,
+        );
+        await new Promise<void>((resolve) => setTimeout(resolve, 300));
         response.write(
           `${JSON.stringify({ payload: { id: 'private-chat-retrieving' }, type: 'workflow-step-start' })}\x1e`,
         );

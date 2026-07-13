@@ -7,8 +7,14 @@ import {
 } from './chat.ts';
 import { mergeHybridChatResponse } from './mastra-chat.ts';
 import {
+  applyPrivateChatQueryExpansion,
+  applyPrivateChatQuestionClassification,
+  applyPrivateChatWorkflowQueryExpansion,
   buildPrivateChatSearchQueryPlan,
+  createFallbackPrivateChatQuestionClassification,
+  extractPrivateChatProtectedAnchors,
   formatPrivateChatRetrievalContext,
+  MAX_PRIVATE_CHAT_SEARCH_QUERY_LENGTH,
   MAX_PRIVATE_CHAT_SEARCH_QUERY_VARIANTS,
   mergeChatSourcesDeterministically,
   mergeChatToolCallsDeterministically,
@@ -19,6 +25,7 @@ import {
   runPrivateChatRetryingStep,
   runPrivateChatSearchRetrieval,
   shouldRunPrivateChatRetryStep,
+  shouldRunPrivateChatTimelineStep,
   stripPrivateChatRequestNoise,
 } from './private-chat-search.ts';
 import {
@@ -43,33 +50,90 @@ import {
 } from './private-chat-workflow-client.ts';
 import { sampleChatSource as sampleSource } from './test-fixtures.ts';
 
-test('buildPrivateChatSearchQueryPlan shortens error-related questions into bounded variants', () => {
-  const plan = buildPrivateChatSearchQueryPlan('pufu-editorでのエラー対応実績教えてください');
-  assert.ok(plan.primaryQuery.length < 'pufu-editorでのエラー対応実績教えてください'.length);
-  assert.ok(plan.primaryQuery.includes('pufu-editor'));
-  assert.ok(plan.primaryQuery.includes('エラー') || plan.primaryQuery.includes('error'));
-  assert.ok(plan.retryQueries.length >= 1);
-  assert.ok(plan.retryQueries.length <= MAX_PRIVATE_CHAT_SEARCH_QUERY_VARIANTS - 1);
-  for (const query of [plan.primaryQuery, ...plan.retryQueries]) {
-    assert.ok(!query.includes('教えてください'));
-    assert.ok(!query.includes('対応実績'));
-  }
-  assert.ok(
-    plan.retryQueries.some(
-      (query) =>
-        query.includes('修正') ||
-        query.includes('fix') ||
-        query.includes('bug') ||
-        query.includes('failure'),
-    ),
+test('buildPrivateChatSearchQueryPlan keeps the normalized original query as the primary search', () => {
+  const question = '  pufu-editorでのエラー対応実績を教えてください  ';
+  const plan = buildPrivateChatSearchQueryPlan(question);
+  assert.equal(plan.primaryQuery, 'pufu-editorでのエラー対応実績を教えてください');
+  assert.deepEqual(plan.expandedQueries, []);
+  assert.deepEqual(plan.protectedAnchors, ['pufu-editor']);
+});
+
+test('buildPrivateChatSearchQueryPlan bounds a long original query and enables generic zero-result retry', () => {
+  const longQuestion = `対象 ${'あ'.repeat(MAX_PRIVATE_CHAT_SEARCH_QUERY_LENGTH + 20)}`;
+  assert.equal(
+    Array.from(buildPrivateChatSearchQueryPlan(longQuestion).primaryQuery).length,
+    MAX_PRIVATE_CHAT_SEARCH_QUERY_LENGTH,
+  );
+  const plan = buildPrivateChatSearchQueryPlan('プロジェクト概要を教えて');
+  assert.equal(plan.primaryQuery, 'プロジェクト概要を教えて');
+  assert.deepEqual(plan.expandedQueries, []);
+  assert.equal(plan.simplifiedRetryQuery, 'プロジェクト概要');
+  assert.equal(
+    buildPrivateChatSearchQueryPlan('対応の詳細について pufu-editor #559').simplifiedRetryQuery,
+    null,
   );
 });
 
-test('buildPrivateChatSearchQueryPlan keeps neutral questions short and enables simplified retry', () => {
-  const plan = buildPrivateChatSearchQueryPlan('プロジェクト概要を教えて');
-  assert.equal(plan.primaryQuery, 'プロジェクト概要');
-  assert.deepEqual(plan.retryQueries, []);
-  assert.equal(plan.simplifiedRetryQuery, null);
+test('applyPrivateChatQueryExpansion validates anchors, length, controls, dedupe, and count', () => {
+  const validCandidates = Array.from(
+    { length: MAX_PRIVATE_CHAT_SEARCH_QUERY_VARIANTS + 2 },
+    (_, index) => ({
+      operation: 'process' as const,
+      purpose: `観点 ${index}`,
+      query: `pufu-editor 対応過程 ${index}`,
+    }),
+  );
+  const plan = applyPrivateChatQueryExpansion('pufu-editorの対応を教えて', {
+    queries: [
+      { operation: 'cause', purpose: '対象欠落', query: '原因 修正' },
+      {
+        operation: 'cause',
+        purpose: '長すぎる',
+        query: `pufu-editor ${'a'.repeat(MAX_PRIVATE_CHAT_SEARCH_QUERY_LENGTH)}`,
+      },
+      { operation: 'cause', purpose: '制御文字', query: 'pufu-editor\n原因' },
+      ...validCandidates,
+      { operation: 'process', purpose: '重複', query: 'PUFU-EDITOR 対応過程 0' },
+    ],
+  });
+  assert.equal(plan.primaryQuery, 'pufu-editorの対応を教えて');
+  assert.equal(plan.expandedQueries.length, MAX_PRIVATE_CHAT_SEARCH_QUERY_VARIANTS - 1);
+  assert.ok(plan.expandedQueries.every(({ query }) => query.includes('pufu-editor')));
+});
+
+test('classification uses bounded fixed operations and timeline selection has a deterministic fallback', () => {
+  const fallback = createFallbackPrivateChatQuestionClassification('pufu-editorの経緯');
+  assert.equal(fallback.primaryOperation, 'general');
+  assert.deepEqual(extractPrivateChatProtectedAnchors('pufu-editor PR #559'), [
+    'pufu-editor',
+    'PR',
+    '#559',
+  ]);
+  const initial = runPrivateChatPreparingStep({
+    graphName: 'graph-a',
+    projectId: 'project-a',
+    question: '最近の判断理由は？',
+  });
+  const classified = applyPrivateChatQuestionClassification(initial, {
+    confidence: 'high',
+    expectedEvidence: ['decision log'],
+    figure: ['判断'],
+    ground: ['project'],
+    primaryOperation: 'decision',
+    secondaryOperations: ['timeline', 'timeline', 'decision'],
+  });
+  assert.deepEqual(classified.classification.secondaryOperations, ['timeline']);
+  assert.equal(shouldRunPrivateChatTimelineStep(classified), true);
+  assert.equal(
+    shouldRunPrivateChatTimelineStep(
+      runPrivateChatPreparingStep({
+        graphName: 'graph-a',
+        projectId: 'project-a',
+        question: '障害対応の経緯と時系列を教えて',
+      }),
+    ),
+    true,
+  );
 });
 
 test('stripPrivateChatRequestNoise removes request phrases while preserving entity tokens', () => {
@@ -132,7 +196,7 @@ test('runPrivateChatSearchRetrieval always performs vector search and graph quer
   assert.equal(timelineSearchCalls.length, 0);
 });
 
-test('runPrivateChatSearchRetrieval retries with expanded queries and runs timeline for timeline mode', async () => {
+test('runPrivateChatSearchRetrieval runs timeline for deterministic timeline fallback', async () => {
   const stages: string[] = [];
   const vectorSearchInputs: string[] = [];
   const timelineSearchCalls: number[] = [];
@@ -163,19 +227,27 @@ test('runPrivateChatSearchRetrieval retries with expanded queries and runs timel
     repository: repository as never,
   });
 
-  assert.ok(vectorSearchInputs.length >= 2);
+  assert.equal(vectorSearchInputs.length, 1);
   assert.equal(timelineSearchCalls.length, 1);
-  assert.ok(stages.includes('retrying'));
+  assert.ok(!stages.includes('retrying'));
   assert.ok(stages.includes('timeline'));
   assert.equal(inferChatEditingMetadata('障害対応の経緯と時系列を教えて').inferredMode, 'timeline');
 });
 
 test('runPrivateChatRetryingStep searches variants concurrently and merges in plan order', async () => {
-  const state = runPrivateChatPreparingStep({
-    graphName: 'graph-a',
-    projectId: 'project-a',
-    question: 'pufu-editorでのエラー対応実績教えてください',
-  });
+  const state = applyPrivateChatWorkflowQueryExpansion(
+    runPrivateChatPreparingStep({
+      graphName: 'graph-a',
+      projectId: 'project-a',
+      question: 'pufu-editorでのエラー対応実績教えてください',
+    }),
+    {
+      queries: [
+        { operation: 'cause', purpose: '原因', query: 'pufu-editor エラー 原因' },
+        { operation: 'process', purpose: '修正', query: 'pufu-editor fix' },
+      ],
+    },
+  );
   let activeSearches = 0;
   let maxActiveSearches = 0;
   const result = await runPrivateChatRetryingStep(state, {
@@ -190,7 +262,7 @@ test('runPrivateChatRetryingStep searches variants concurrently and merges in pl
   assert.ok(maxActiveSearches > 1);
   assert.deepEqual(
     result.mergedVectorSources.map((source) => source.documentId),
-    state.plan.retryQueries.map((query) => `doc-${query}`),
+    state.plan.expandedQueries.map(({ query }) => `doc-${query}`),
   );
 });
 
@@ -407,6 +479,8 @@ test('consumeMastraWorkflowStreamText maps workflow steps to UI stages and extra
   };
   const streamText = [
     { payload: { id: 'private-chat-preparing' }, type: 'workflow-step-start' },
+    { payload: { id: 'private-chat-classifying' }, type: 'workflow-step-start' },
+    { payload: { id: 'private-chat-expanding' }, type: 'workflow-step-start' },
     { payload: { id: 'private-chat-retrieving' }, type: 'workflow-step-start' },
     {
       payload: { id: 'private-chat-synthesis', output: chatResponse },
@@ -422,7 +496,9 @@ test('consumeMastraWorkflowStreamText maps workflow steps to UI stages and extra
       stages.push(stage);
     }
   });
-  assert.deepEqual(stages, ['preparing', 'retrieving']);
+  assert.deepEqual(stages, ['preparing', 'classifying', 'expanding', 'retrieving']);
+  assert.equal(privateChatSearchStageLabel('classifying'), '質問の見方を整理しています');
+  assert.equal(privateChatSearchStageLabel('expanding'), '検索語を展開しています');
   assert.equal(response.answer, 'workflow answer');
 });
 

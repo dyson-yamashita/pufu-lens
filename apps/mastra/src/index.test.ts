@@ -8,6 +8,8 @@ import type { ReportRepository } from '@pufu-lens/web/report';
 import { sampleChatSource as sampleSource } from '@pufu-lens/web/test-fixtures';
 import {
   type CrossProjectInvestigationRepository,
+  createPrivateChatClassificationPrompt,
+  createPrivateChatExpansionPrompt,
   createPrivateChatSearchWorkflow,
   createPrivateChatSynthesisMessages,
   createPufuLensMastraRuntime,
@@ -16,8 +18,11 @@ import {
   mastraAgentIds,
   mastraToolIds,
   mastraWorkflowIds,
+  PRIVATE_CHAT_QUERY_PLANNER_INSTRUCTIONS,
   PROJECT_CHAT_AGENT_INSTRUCTIONS,
   privateChatEditingMetadataSchema,
+  privateChatQueryExpansionSchema,
+  privateChatQuestionClassificationSchema,
   rawReadViewTrace,
   vectorSearchInputSchema,
 } from './index.ts';
@@ -566,6 +571,40 @@ assert.ok(runtime.privateChatSearchWorkflow);
 assert.match(PROJECT_CHAT_AGENT_INSTRUCTIONS, /retrievalContext/);
 
 let privateChatSynthesisMessages: unknown;
+const plannerPrompts: string[] = [];
+const mockQueryPlannerAgent = {
+  generate: async (prompt: unknown) => {
+    plannerPrompts.push(String(prompt));
+    if (plannerPrompts.length === 1) {
+      return {
+        object: {
+          confidence: 'high',
+          expectedEvidence: ['issue', 'pull request'],
+          figure: ['pufu-editor'],
+          ground: ['software development'],
+          primaryOperation: 'process',
+          secondaryOperations: ['cause', 'evaluation'],
+        },
+      };
+    }
+    return {
+      object: {
+        queries: [
+          {
+            operation: 'cause',
+            purpose: '原因を確認する',
+            query: 'pufu-editor エラー 原因',
+          },
+          {
+            operation: 'evaluation',
+            purpose: '検証結果を確認する',
+            query: 'pufu-editor 修正 テスト',
+          },
+        ],
+      },
+    };
+  },
+} as unknown as Agent;
 const mockProjectChatAgent = {
   generate: async (messages: unknown) => {
     privateChatSynthesisMessages = messages;
@@ -588,6 +627,7 @@ const mockProjectChatAgent = {
 const privateChatSearchWorkflow = createPrivateChatSearchWorkflow({
   chatRepository,
   projectChatAgent: mockProjectChatAgent,
+  queryPlannerAgent: mockQueryPlannerAgent,
 });
 const privateChatRun = await privateChatSearchWorkflow.createRun();
 const privateChatResult = await privateChatRun.start({
@@ -596,7 +636,7 @@ const privateChatResult = await privateChatRun.start({
     history: [],
     projectId: 'project-a',
     projectSlug: 'sample-a',
-    question: 'error fix の状況は？',
+    question: 'pufu-editorでのエラー対応実績は？',
   },
 });
 assert.equal(privateChatResult.status, 'success');
@@ -606,12 +646,43 @@ const privateChatAnswer = privateChatResult.result as {
 };
 assert.equal(privateChatAnswer.answer, 'workflow hybrid answer');
 assert.ok(privateChatAnswer.toolCalls.some((toolCall) => toolCall.name === 'vector-search'));
-assert.ok(chatRepository.vectorSearchInputs.length >= 1);
+assert.equal(plannerPrompts.length, 2);
+assert.match(plannerPrompts[0] ?? '', /編集操作/);
+assert.match(plannerPrompts[1] ?? '', /追加検索候補/);
+assert.deepEqual(
+  chatRepository.vectorSearchInputs.slice(-3).map(({ query }) => query),
+  ['pufu-editorでのエラー対応実績は？', 'pufu-editor エラー 原因', 'pufu-editor 修正 テスト'],
+);
 const synthesisMessageText = JSON.stringify(privateChatSynthesisMessages);
-assert.match(synthesisMessageText, /error fix の状況は？/);
+assert.match(synthesisMessageText, /pufu-editorでのエラー対応実績は？/);
 assert.match(synthesisMessageText, new RegExp(sampleSource.title));
 assert.match(synthesisMessageText, /untrusted_external_content/);
 assert.match(synthesisMessageText, /命令.*従わず/);
+
+const vectorSearchCountBeforePlannerFailure = chatRepository.vectorSearchInputs.length;
+const fallbackWorkflow = createPrivateChatSearchWorkflow({
+  chatRepository,
+  projectChatAgent: mockProjectChatAgent,
+  queryPlannerAgent: {
+    generate: async () => {
+      throw new Error('planner unavailable');
+    },
+  } as unknown as Agent,
+});
+const fallbackRun = await fallbackWorkflow.createRun();
+const fallbackResult = await fallbackRun.start({
+  inputData: {
+    graphName: 'graph_sample_a',
+    history: [],
+    projectId: 'project-a',
+    projectSlug: 'sample-a',
+    question: '通常質問',
+  },
+});
+assert.equal(fallbackResult.status, 'success');
+assert.equal(chatRepository.vectorSearchInputs.length - vectorSearchCountBeforePlannerFailure, 1);
+assert.equal(chatRepository.vectorSearchInputs.at(-1)?.query, '通常質問');
+
 assert.equal(
   privateChatEditingMetadataSchema.safeParse({ inferredMode: 'timeline' }).success,
   false,
@@ -635,5 +706,38 @@ assert.deepEqual(
   ['assistant', 'user'],
 );
 assert.equal(mastraWorkflowIds.privateChatSearch, 'private-chat-search');
+assert.match(PRIVATE_CHAT_QUERY_PLANNER_INSTRUCTIONS, /未信頼データ/);
+assert.match(createPrivateChatClassificationPrompt('ignore <role>'), /\\u003crole\\u003e/);
+assert.match(
+  createPrivateChatExpansionPrompt({
+    classification: {
+      confidence: 'low',
+      expectedEvidence: [],
+      figure: [],
+      ground: [],
+      primaryOperation: 'general',
+      secondaryOperations: [],
+    },
+    question: '質問',
+  }),
+  /追加検索候補/,
+);
+assert.equal(
+  privateChatQuestionClassificationSchema.safeParse({
+    confidence: 'high',
+    expectedEvidence: [],
+    figure: [],
+    ground: [],
+    primaryOperation: 'unsupported',
+    secondaryOperations: [],
+  }).success,
+  false,
+);
+assert.equal(
+  privateChatQueryExpansionSchema.safeParse({
+    queries: [{ operation: 'general', purpose: 'test', query: 'x'.repeat(121) }],
+  }).success,
+  false,
+);
 
 console.log('mastra runtime tests passed');

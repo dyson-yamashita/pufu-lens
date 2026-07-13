@@ -10,6 +10,8 @@ import {
 
 export const PRIVATE_CHAT_SEARCH_STAGE_DEFINITIONS = {
   preparing: { id: 'preparing', label: '検索条件を準備しています' },
+  classifying: { id: 'classifying', label: '質問の見方を整理しています' },
+  expanding: { id: 'expanding', label: '検索語を展開しています' },
   retrieving: { id: 'retrieving', label: '関連資料を検索しています' },
   retrying: { id: 'retrying', label: '検索語を広げて再検索しています' },
   relating: { id: 'relating', label: '関連資料を確認しています' },
@@ -39,24 +41,23 @@ const GRAPH_LIMIT = 5;
 const TIMELINE_LIMIT = 5;
 const DETAIL_DOCUMENT_LIMIT = 5;
 const MAX_MERGED_SOURCES = 5;
-export const MAX_PRIVATE_CHAT_SEARCH_QUERY_VARIANTS = 3;
+export const MAX_PRIVATE_CHAT_SEARCH_QUERY_VARIANTS = 6;
+export const MAX_PRIVATE_CHAT_SEARCH_QUERY_LENGTH = 120;
 
-const QUERY_EXPANSION_TRIGGERS = [
-  'error',
-  'fix',
-  'bug',
-  'failure',
-  'fail',
-  'exception',
-  'エラー',
-  '修正',
-  '不具合',
-  '失敗',
-  '障害',
-  'バグ',
+export const PRIVATE_CHAT_EDITING_OPERATIONS = [
+  'identification',
+  'cause',
+  'process',
+  'timeline',
+  'comparison',
+  'relation',
+  'evaluation',
+  'decision',
+  'general',
 ] as const;
 
-const QUERY_EXPANSION_SUFFIXES = ['error', 'fix', 'failure', 'エラー', '修正', '不具合'] as const;
+export type PrivateChatEditingOperation = (typeof PRIVATE_CHAT_EDITING_OPERATIONS)[number];
+export type PrivateChatPlanningConfidence = 'high' | 'low' | 'medium';
 
 const REQUEST_NOISE_PHRASES = [
   '教えてください',
@@ -72,15 +73,39 @@ const REQUEST_NOISE_PHRASES = [
 ] as const;
 
 export interface PrivateChatSearchQueryPlan {
+  readonly expandedQueries: readonly PrivateChatExpandedQueryCandidate[];
   readonly primaryQuery: string;
-  readonly retryQueries: readonly string[];
+  readonly protectedAnchors: readonly string[];
   readonly simplifiedRetryQuery: string | null;
+}
+
+export interface PrivateChatQuestionClassification {
+  readonly confidence: PrivateChatPlanningConfidence;
+  readonly expectedEvidence: readonly string[];
+  readonly figure: readonly string[];
+  readonly ground: readonly string[];
+  readonly primaryOperation: PrivateChatEditingOperation;
+  readonly secondaryOperations: readonly PrivateChatEditingOperation[];
+}
+
+export interface PrivateChatExpandedQueryCandidate {
+  readonly operation: PrivateChatEditingOperation;
+  readonly purpose: string;
+  readonly query: string;
+}
+
+export interface PrivateChatQueryExpansion {
+  readonly queries: readonly PrivateChatExpandedQueryCandidate[];
 }
 
 export function mapWorkflowStepIdToUiStage(stepId: string): PrivateChatSearchStageId | null {
   switch (stepId) {
     case 'private-chat-preparing':
       return 'preparing';
+    case 'private-chat-classifying':
+      return 'classifying';
+    case 'private-chat-expanding':
+      return 'expanding';
     case 'private-chat-retrieving':
       return 'retrieving';
     case 'private-chat-retrying':
@@ -108,99 +133,189 @@ export function stripPrivateChatRequestNoise(question: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
-function extractEntityToken(stripped: string): string | null {
-  const tokens = stripped.split(/\s+/).filter(Boolean);
-  const entity = tokens.find((token) => /[a-z0-9][-_.][a-z0-9]/i.test(token));
-  return entity ?? null;
+function truncateByCodePoint(value: string, maxLength: number): string {
+  return Array.from(value).slice(0, maxLength).join('');
 }
 
-function detectErrorTrigger(text: string): string | null {
-  const lower = text.toLowerCase();
-  for (const trigger of QUERY_EXPANSION_TRIGGERS) {
-    if (lower.includes(trigger.toLowerCase())) {
-      return trigger;
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/gu, ' ').trim();
+}
+
+function containsControlCharacter(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (codePoint < 32 || codePoint === 127) {
+      return true;
     }
   }
-  return null;
+  return false;
 }
 
-function buildShortErrorVariants(entity: string, trigger: string): string[] {
-  const variants = [`${entity} ${trigger}`.trim()];
-  for (const suffix of QUERY_EXPANSION_SUFFIXES) {
-    if (variants.length >= MAX_PRIVATE_CHAT_SEARCH_QUERY_VARIANTS) {
-      break;
+export function normalizePrivateChatSearchQuery(value: string): string {
+  return truncateByCodePoint(normalizeWhitespace(value), MAX_PRIVATE_CHAT_SEARCH_QUERY_LENGTH);
+}
+
+export function extractPrivateChatProtectedAnchors(question: string): string[] {
+  const matches = question.match(
+    /(?:[A-Za-z0-9]+(?:[-_.:/#][A-Za-z0-9]+)+|#[0-9]+|\b[A-Z]{2,}[A-Z0-9]*\b)/gu,
+  );
+  const seen = new Set<string>();
+  const anchors: string[] = [];
+  for (const match of matches ?? []) {
+    const normalized = match.toLowerCase();
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      anchors.push(match);
     }
-    if (
-      trigger.toLowerCase() === suffix.toLowerCase() ||
-      variants.some((variant) => variant.toLowerCase().includes(suffix.toLowerCase()))
-    ) {
+  }
+  return anchors.slice(0, 8);
+}
+
+function boundedUniqueStrings(
+  values: readonly string[],
+  options: { readonly maxItems: number; readonly maxLength: number },
+): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const normalized = truncateByCodePoint(normalizeWhitespace(value), options.maxLength);
+    const key = normalized.toLowerCase();
+    if (!normalized || seen.has(key)) {
       continue;
     }
-    const candidate = `${entity} ${suffix}`.trim();
-    if (!variants.includes(candidate)) {
-      variants.push(candidate);
+    seen.add(key);
+    result.push(normalized);
+    if (result.length >= options.maxItems) {
+      break;
     }
   }
-  return variants.slice(0, MAX_PRIVATE_CHAT_SEARCH_QUERY_VARIANTS);
+  return result;
 }
 
-function buildSimplifiedRetryQuery(stripped: string): string | null {
+function isPrivateChatEditingOperation(value: string): value is PrivateChatEditingOperation {
+  return (PRIVATE_CHAT_EDITING_OPERATIONS as readonly string[]).includes(value);
+}
+
+export function createFallbackPrivateChatQuestionClassification(
+  question: string,
+): PrivateChatQuestionClassification {
+  return {
+    confidence: 'low',
+    expectedEvidence: [],
+    figure: extractPrivateChatProtectedAnchors(question),
+    ground: [],
+    primaryOperation: 'general',
+    secondaryOperations: [],
+  };
+}
+
+export function sanitizePrivateChatQuestionClassification(
+  question: string,
+  classification: PrivateChatQuestionClassification,
+): PrivateChatQuestionClassification {
+  const primaryOperation = isPrivateChatEditingOperation(classification.primaryOperation)
+    ? classification.primaryOperation
+    : 'general';
+  const secondaryOperations = classification.secondaryOperations
+    .filter(isPrivateChatEditingOperation)
+    .filter(
+      (operation, index, values) =>
+        operation !== primaryOperation && values.indexOf(operation) === index,
+    )
+    .slice(0, 2);
+  const confidence = ['high', 'medium', 'low'].includes(classification.confidence)
+    ? classification.confidence
+    : 'low';
+  return {
+    confidence,
+    expectedEvidence: boundedUniqueStrings(classification.expectedEvidence, {
+      maxItems: 6,
+      maxLength: 60,
+    }),
+    figure: boundedUniqueStrings(
+      [...extractPrivateChatProtectedAnchors(question), ...classification.figure],
+      { maxItems: 6, maxLength: 60 },
+    ),
+    ground: boundedUniqueStrings(classification.ground, { maxItems: 6, maxLength: 60 }),
+    primaryOperation,
+    secondaryOperations,
+  };
+}
+
+function buildSimplifiedRetryQuery(stripped: string, primaryQuery: string): string | null {
   const normalized = stripped.replace(/の/g, ' ').replace(/\s+/g, ' ').trim();
   const tokens = normalized.split(/\s+/).filter(Boolean);
   if (tokens.length <= 1) {
-    return null;
+    return stripped && stripped !== primaryQuery ? stripped : null;
   }
   const simplified = tokens.slice(0, 2).join(' ').trim();
-  return simplified && simplified !== stripped && simplified !== normalized ? simplified : null;
+  return simplified && simplified !== stripped ? simplified : null;
 }
 
 /**
- * Builds bounded shorter search query variants for hybrid retrieval.
+ * Builds a safe original-query-only plan. LLM expansion is applied separately and remains optional.
  */
 export function buildPrivateChatSearchQueryPlan(question: string): PrivateChatSearchQueryPlan {
-  const stripped = stripPrivateChatRequestNoise(question) || question.trim();
-  if (!stripped) {
-    return { primaryQuery: '', retryQueries: [], simplifiedRetryQuery: null };
-  }
-
-  const trigger = detectErrorTrigger(stripped);
-  const entity = extractEntityToken(stripped);
-  if (trigger && entity) {
-    const variants = buildShortErrorVariants(entity, trigger);
-    return {
-      primaryQuery: variants[0] ?? `${entity} ${trigger}`.trim(),
-      retryQueries: variants.slice(1),
-      simplifiedRetryQuery: null,
-    };
-  }
-
-  if (trigger) {
-    const tokens = stripped
-      .split(/\s+/)
-      .filter(
-        (token) =>
-          !QUERY_EXPANSION_TRIGGERS.some((item) => item.toLowerCase() === token.toLowerCase()),
-      );
-    const head = tokens.slice(0, 2).join(' ').trim() || stripped;
-    const variants = buildShortErrorVariants(head, trigger);
-    return {
-      primaryQuery: variants[0] ?? stripped,
-      retryQueries: variants.slice(1),
-      simplifiedRetryQuery: null,
-    };
-  }
-
+  const primaryQuery = normalizePrivateChatSearchQuery(question);
+  const stripped = stripPrivateChatRequestNoise(primaryQuery) || primaryQuery;
+  const protectedAnchors = extractPrivateChatProtectedAnchors(primaryQuery);
+  const simplifiedRetryQuery = buildSimplifiedRetryQuery(stripped, primaryQuery);
+  const anchorSafeSimplifiedRetry =
+    simplifiedRetryQuery &&
+    protectedAnchors.every((anchor) =>
+      simplifiedRetryQuery.toLowerCase().includes(anchor.toLowerCase()),
+    )
+      ? simplifiedRetryQuery
+      : null;
   return {
-    primaryQuery: stripped,
-    retryQueries: [],
-    simplifiedRetryQuery: buildSimplifiedRetryQuery(stripped),
+    expandedQueries: [],
+    primaryQuery,
+    protectedAnchors,
+    simplifiedRetryQuery: anchorSafeSimplifiedRetry,
   };
+}
+
+export function applyPrivateChatQueryExpansion(
+  question: string,
+  expansion: PrivateChatQueryExpansion,
+): PrivateChatSearchQueryPlan {
+  const fallback = buildPrivateChatSearchQueryPlan(question);
+  const accepted: PrivateChatExpandedQueryCandidate[] = [];
+  const seen = new Set([fallback.primaryQuery.toLowerCase()]);
+  for (const candidate of expansion.queries) {
+    if (accepted.length >= MAX_PRIVATE_CHAT_SEARCH_QUERY_VARIANTS - 1) {
+      break;
+    }
+    if (containsControlCharacter(candidate.query) || containsControlCharacter(candidate.purpose)) {
+      continue;
+    }
+    const query = normalizeWhitespace(candidate.query);
+    if (!query || Array.from(query).length > MAX_PRIVATE_CHAT_SEARCH_QUERY_LENGTH) {
+      continue;
+    }
+    const key = query.toLowerCase();
+    if (seen.has(key) || !isPrivateChatEditingOperation(candidate.operation)) {
+      continue;
+    }
+    if (!fallback.protectedAnchors.every((anchor) => key.includes(anchor.toLowerCase()))) {
+      continue;
+    }
+    const purpose = truncateByCodePoint(normalizeWhitespace(candidate.purpose), 80);
+    if (!purpose) {
+      continue;
+    }
+    seen.add(key);
+    accepted.push({ operation: candidate.operation, purpose, query });
+  }
+  return { ...fallback, expandedQueries: accepted };
 }
 
 /** @deprecated Use buildPrivateChatSearchQueryPlan for new code. */
 export function buildPrivateChatSearchQueries(question: string): string[] {
   const plan = buildPrivateChatSearchQueryPlan(question);
-  return [plan.primaryQuery, ...plan.retryQueries].filter(Boolean);
+  return [plan.primaryQuery, ...plan.expandedQueries.map((candidate) => candidate.query)].filter(
+    Boolean,
+  );
 }
 
 export function privateChatSearchStageLabel(stage: PrivateChatSearchStageId): string {
@@ -262,6 +377,7 @@ export function formatPrivateChatRetrievalContext(sources: readonly ChatSource[]
 }
 
 export interface PrivateChatSearchWorkflowState {
+  readonly classification: PrivateChatQuestionClassification;
   readonly detailSources: readonly ChatSource[];
   readonly editing: ChatEditingMetadata;
   readonly graphName: string | null;
@@ -284,6 +400,7 @@ export function runPrivateChatPreparingStep(input: {
   const editing = inferChatEditingMetadata(input.question);
   const plan = buildPrivateChatSearchQueryPlan(input.question);
   return {
+    classification: createFallbackPrivateChatQuestionClassification(input.question),
     detailSources: [],
     editing,
     graphName: input.graphName,
@@ -299,10 +416,27 @@ export function runPrivateChatPreparingStep(input: {
   };
 }
 
+export function applyPrivateChatQuestionClassification(
+  state: PrivateChatSearchWorkflowState,
+  classification: PrivateChatQuestionClassification,
+): PrivateChatSearchWorkflowState {
+  return {
+    ...state,
+    classification: sanitizePrivateChatQuestionClassification(state.question, classification),
+  };
+}
+
+export function applyPrivateChatWorkflowQueryExpansion(
+  state: PrivateChatSearchWorkflowState,
+  expansion: PrivateChatQueryExpansion,
+): PrivateChatSearchWorkflowState {
+  return { ...state, plan: applyPrivateChatQueryExpansion(state.question, expansion) };
+}
+
 export function resolvePrivateChatRetryQueries(
   state: Pick<PrivateChatSearchWorkflowState, 'mergedVectorSources' | 'plan'>,
 ): readonly string[] {
-  const retryQueries = [...state.plan.retryQueries];
+  const retryQueries = state.plan.expandedQueries.map((candidate) => candidate.query);
   if (
     retryQueries.length === 0 &&
     state.plan.simplifiedRetryQuery &&
@@ -321,9 +455,13 @@ export function shouldRunPrivateChatRetryStep(
 }
 
 export function shouldRunPrivateChatTimelineStep(
-  state: Pick<PrivateChatSearchWorkflowState, 'editing'>,
+  state: Pick<PrivateChatSearchWorkflowState, 'classification' | 'editing'>,
 ): boolean {
-  return state.editing.inferredMode === 'timeline';
+  return (
+    state.classification.primaryOperation === 'timeline' ||
+    state.classification.secondaryOperations.includes('timeline') ||
+    state.editing.inferredMode === 'timeline'
+  );
 }
 
 export async function runPrivateChatRetrievingStep(

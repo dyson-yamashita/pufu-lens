@@ -12,6 +12,10 @@ import {
 } from '@pufu-lens/web/chat';
 import { mastraGenerateToChatResponse, mergeHybridChatResponse } from '@pufu-lens/web/mastra-chat';
 import {
+  applyPrivateChatQuestionClassification,
+  applyPrivateChatWorkflowQueryExpansion,
+  type PrivateChatQueryExpansion,
+  type PrivateChatQuestionClassification,
   type PrivateChatSearchWorkflowState,
   runPrivateChatDetailStep,
   runPrivateChatPreparingStep,
@@ -36,6 +40,23 @@ import {
 } from '@pufu-lens/web/report';
 import { z } from 'zod';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
+import {
+  createPrivateChatClassificationPrompt,
+  createPrivateChatExpansionPrompt,
+  createPrivateChatQueryPlannerAgent,
+  privateChatEditingOperationSchema,
+  privateChatQueryExpansionSchema,
+  privateChatQuestionClassificationSchema,
+} from './private-chat-query-planner.ts';
+
+export {
+  createPrivateChatClassificationPrompt,
+  createPrivateChatExpansionPrompt,
+  createPrivateChatQueryPlannerAgent,
+  PRIVATE_CHAT_QUERY_PLANNER_INSTRUCTIONS,
+  privateChatQueryExpansionSchema,
+  privateChatQuestionClassificationSchema,
+} from './private-chat-query-planner.ts';
 
 export const mastraAppName = 'pufu-lens-mastra';
 
@@ -856,6 +877,7 @@ const privateChatWorkflowOutputSchema = z.object({
 export function createPrivateChatSearchWorkflow(input: {
   readonly chatRepository: ChatRepository;
   readonly projectChatAgent: Agent;
+  readonly queryPlannerAgent: Agent;
 }) {
   const inputSchema = z.object({
     graphName: z.string().nullable(),
@@ -864,27 +886,43 @@ export function createPrivateChatSearchWorkflow(input: {
     projectSlug: z.string().min(1),
     question: z.string().min(1),
   });
-  const queryPlanSchema = z.object({
-    primaryQuery: z.string(),
-    retryQueries: z.array(z.string()),
-    simplifiedRetryQuery: z.string().nullable(),
-  });
-  const workflowPassStateSchema = z.object({
-    detailSources: z.array(chatSourceSchema),
-    editing: privateChatEditingMetadataSchema,
-    graphName: z.string().nullable(),
-    graphSources: z.array(chatSourceSchema),
-    history: z.array(privateChatHistoryMessageSchema),
-    mergedVectorSources: z.array(chatSourceSchema),
-    plan: queryPlanSchema,
-    projectId: z.string().min(1),
-    projectSlug: z.string().min(1),
-    question: z.string().min(1),
-    retrievalContext: z.string(),
-    sources: z.array(chatSourceSchema),
-    timelineSources: z.array(chatSourceSchema),
-    toolCalls: z.array(privateChatToolCallSchema),
-  });
+  const queryPlanSchema = z
+    .object({
+      expandedQueries: z
+        .array(
+          z
+            .object({
+              operation: privateChatEditingOperationSchema,
+              purpose: z.string().min(1).max(80),
+              query: z.string().min(1).max(120),
+            })
+            .strict(),
+        )
+        .max(5),
+      primaryQuery: z.string().max(120),
+      protectedAnchors: z.array(z.string().min(1).max(120)).max(8),
+      simplifiedRetryQuery: z.string().min(1).max(120).nullable(),
+    })
+    .strict();
+  const workflowPassStateSchema = z
+    .object({
+      classification: privateChatQuestionClassificationSchema,
+      detailSources: z.array(chatSourceSchema),
+      editing: privateChatEditingMetadataSchema,
+      graphName: z.string().nullable(),
+      graphSources: z.array(chatSourceSchema),
+      history: z.array(privateChatHistoryMessageSchema),
+      mergedVectorSources: z.array(chatSourceSchema),
+      plan: queryPlanSchema,
+      projectId: z.string().min(1),
+      projectSlug: z.string().min(1),
+      question: z.string().min(1),
+      retrievalContext: z.string(),
+      sources: z.array(chatSourceSchema),
+      timelineSources: z.array(chatSourceSchema),
+      toolCalls: z.array(privateChatToolCallSchema),
+    })
+    .strict();
   const retryBranchOutputSchema = z.object({
     'private-chat-retry-pass': workflowPassStateSchema.optional(),
     'private-chat-retrying': workflowPassStateSchema.optional(),
@@ -908,6 +946,49 @@ export function createPrivateChatSearchWorkflow(input: {
       history: inputData.history,
       projectSlug: inputData.projectSlug,
     }),
+  });
+
+  const classifyingStep = createStep({
+    id: 'private-chat-classifying',
+    inputSchema: workflowPassStateSchema,
+    outputSchema: workflowPassStateSchema,
+    execute: async ({ inputData }) => {
+      try {
+        const result = await input.queryPlannerAgent.generate(
+          createPrivateChatClassificationPrompt(inputData.question),
+          { structuredOutput: { schema: privateChatQuestionClassificationSchema } },
+        );
+        return applyPrivateChatQuestionClassification(
+          inputData as PrivateChatSearchWorkflowState,
+          result.object as PrivateChatQuestionClassification,
+        );
+      } catch {
+        return inputData;
+      }
+    },
+  });
+
+  const expandingStep = createStep({
+    id: 'private-chat-expanding',
+    inputSchema: workflowPassStateSchema,
+    outputSchema: workflowPassStateSchema,
+    execute: async ({ inputData }) => {
+      try {
+        const result = await input.queryPlannerAgent.generate(
+          createPrivateChatExpansionPrompt({
+            classification: inputData.classification,
+            question: inputData.question,
+          }),
+          { structuredOutput: { schema: privateChatQueryExpansionSchema } },
+        );
+        return applyPrivateChatWorkflowQueryExpansion(
+          inputData as PrivateChatSearchWorkflowState,
+          result.object as PrivateChatQueryExpansion,
+        );
+      } catch {
+        return inputData;
+      }
+    },
   });
 
   const retrievingStep = createStep({
@@ -1003,6 +1084,8 @@ export function createPrivateChatSearchWorkflow(input: {
       requestContext.set('projectId', inputData.projectId);
       requestContext.set('graphName', inputData.graphName);
       requestContext.set('editing', editing);
+      requestContext.set('queryClassification', inputData.classification);
+      requestContext.set('queryPlan', inputData.plan);
       requestContext.set('retrievalContext', inputData.retrievalContext);
       requestContext.set('workflowSources', inputData.sources);
       requestContext.set('workflowToolCalls', inputData.toolCalls);
@@ -1036,6 +1119,8 @@ export function createPrivateChatSearchWorkflow(input: {
     outputSchema: privateChatWorkflowOutputSchema,
   })
     .then(preparingStep)
+    .then(classifyingStep)
+    .then(expandingStep)
     .then(retrievingStep)
     .branch([
       [async ({ inputData }) => shouldRunPrivateChatRetryStep(inputData), retryingStep],
@@ -1083,6 +1168,7 @@ export function createPufuLensMastraRuntime(
     : undefined;
   const projectChatTools = createProjectChatTools(dependencies.chatRepository);
   const projectChatAgent = createProjectChatAgent({ tools: projectChatTools });
+  const privateChatQueryPlannerAgent = createPrivateChatQueryPlannerAgent();
   const publicReportChatTools = createPublicReportChatTools();
   const publicReportChatAgent = createPublicReportChatAgent({ tools: publicReportChatTools });
   const generateReportWorkflow = createGenerateReportWorkflow({
@@ -1094,6 +1180,7 @@ export function createPufuLensMastraRuntime(
   const privateChatSearchWorkflow = createPrivateChatSearchWorkflow({
     chatRepository: dependencies.chatRepository,
     projectChatAgent,
+    queryPlannerAgent: privateChatQueryPlannerAgent,
   });
   const mastra = new Mastra({
     agents: {
