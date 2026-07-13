@@ -184,8 +184,6 @@ export async function runGraphPresetQuery(
   input: { limit?: number; projectSlug: string; queryId: string; userId: string },
   options: { repository: GraphViewerRepository },
 ): Promise<GraphQueryResult> {
-  const preset = getGraphPreset(input.queryId);
-  const limit = normalizeGraphLimit(input.limit ?? preset.defaultLimit, preset.maxLimit);
   const project = await options.repository.lookupProjectMember({
     projectSlug: input.projectSlug,
     userId: input.userId,
@@ -194,32 +192,10 @@ export async function runGraphPresetQuery(
     throw new GraphAccessDeniedError(input.projectSlug);
   }
 
-  const cypher = preset.cypher(limit);
-  const rows = await options.repository.executePreset({
-    cypher,
-    graphName: project.graphName,
-    preset,
-  });
-  const normalized = normalizeGraphRows(rows, {
-    maxEdges: Math.min(preset.maxEdges, limit),
-    maxNodes: Math.min(preset.maxNodes, Math.max(limit * 2, 1)),
-  });
-
-  return {
-    ...normalized,
-    graphName: project.graphName,
-    limit,
-    preset: {
-      defaultLimit: preset.defaultLimit,
-      description: preset.description,
-      id: preset.id,
-      label: preset.label,
-      maxLimit: preset.maxLimit,
-      preview: cypher,
-    },
-    rawRows: rows.map(safeRawRow),
-    rowCount: rows.length,
-  };
+  return executeGraphPresetForProject(
+    { limit: input.limit, queryId: input.queryId },
+    { graphName: project.graphName, repository: options.repository },
+  );
 }
 
 /**
@@ -230,11 +206,9 @@ export async function runGraphPresetQuery(
  * @returns The normalized graph result, including preset metadata, raw rows, and the applied limit.
  */
 export async function runPublicGraphPresetQuery(
-  input: { limit?: number; projectSlug: string; queryId: string },
+  input: { limit?: unknown; projectSlug: string; queryId: string },
   options: { repository: GraphViewerRepository },
 ): Promise<GraphQueryResult> {
-  const preset = getGraphPreset(input.queryId);
-  const limit = normalizeGraphLimit(input.limit ?? preset.defaultLimit, preset.maxLimit);
   const project = await options.repository.lookupPublicProject({
     projectSlug: input.projectSlug,
   });
@@ -242,10 +216,25 @@ export async function runPublicGraphPresetQuery(
     throw new GraphAccessDeniedError(input.projectSlug);
   }
 
+  return executeGraphPresetForProject(
+    { limit: input.limit, queryId: input.queryId },
+    { graphName: project.graphName, repository: options.repository },
+  );
+}
+
+async function executeGraphPresetForProject(
+  input: { limit?: unknown; queryId: string },
+  options: {
+    graphName: string;
+    repository: Pick<GraphViewerRepository, 'executePreset'>;
+  },
+): Promise<GraphQueryResult> {
+  const preset = getGraphPreset(input.queryId);
+  const limit = normalizeGraphLimit(input.limit ?? preset.defaultLimit, preset.maxLimit);
   const cypher = preset.cypher(limit);
   const rows = await options.repository.executePreset({
     cypher,
-    graphName: project.graphName,
+    graphName: options.graphName,
     preset,
   });
   const normalized = normalizeGraphRows(rows, {
@@ -255,7 +244,7 @@ export async function runPublicGraphPresetQuery(
 
   return {
     ...normalized,
-    graphName: project.graphName,
+    graphName: options.graphName,
     limit,
     preset: {
       defaultLimit: preset.defaultLimit,
@@ -399,19 +388,27 @@ export function createPostgresGraphViewerRepository(
       };
     },
     async lookupPublicProject({ projectSlug }) {
-      const rows = (await sql`
+      const rows: readonly unknown[] = await sql`
         SELECT id::text, slug, name, graph_name AS "graphName"
         FROM public.projects
         WHERE slug = ${projectSlug}
           AND visibility = 'public'
         LIMIT 1
-      `) as readonly Record<string, unknown>[];
+      `;
       const row = rows[0];
-      if (!row) {
+      if (!isRecord(row)) {
+        return undefined;
+      }
+      const graphNameValue = row.graphName;
+      if (typeof graphNameValue !== 'string') {
+        return undefined;
+      }
+      const graphName = graphNameValue.trim();
+      if (!graphName) {
         return undefined;
       }
       return {
-        graphName: validateGraphName(requireString(row.graphName, 'project graphName')),
+        graphName: validateGraphName(graphName),
         id: requireString(row.id, 'project id'),
         name: requireString(row.name, 'project name'),
         slug: requireString(row.slug, 'project slug'),

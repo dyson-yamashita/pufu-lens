@@ -1,12 +1,10 @@
 import { NextResponse } from 'next/server';
+import { createPostgresGraphViewerRepository } from '../../../../../../src/graph-viewer';
 import {
-  createPostgresGraphViewerRepository,
-  GraphAccessDeniedError,
-  GraphLimitError,
-  GraphPresetNotFoundError,
-  normalizeGraphLimit,
-  runPublicGraphPresetQuery,
-} from '../../../../../../src/graph-viewer';
+  type PublicGraphRequestBodyParseResult,
+  parsePublicGraphRequestBody,
+  runPublicGraphApi,
+} from '../../../../../../src/public-graph-api';
 
 /**
  * Runs a graph preset query for a public project.
@@ -20,51 +18,33 @@ export async function POST(
   { params }: { readonly params: Promise<{ readonly projectSlug: string }> },
 ) {
   const { projectSlug } = await params;
-  let limit: number | undefined;
-  let queryId = '';
+  let parsedBody: PublicGraphRequestBodyParseResult;
   try {
-    const body = (await request.json()) as unknown;
-    if (!body || typeof body !== 'object' || Array.isArray(body)) {
-      return publicGraphErrorResponse('invalid_json', 'Invalid JSON body.', 400);
-    }
-    const typedBody = body as { limit?: unknown; queryId?: unknown };
-    queryId = typeof typedBody.queryId === 'string' ? typedBody.queryId.trim() : '';
-    if ('limit' in typedBody) {
-      limit = normalizeGraphLimit(typedBody.limit);
-    }
-    if ('cypher' in typedBody) {
-      return publicGraphErrorResponse(
-        'cypher_not_allowed',
-        'Cypher body field is not allowed.',
-        400,
-      );
-    }
-  } catch (error) {
-    if (error instanceof GraphLimitError) {
-      return publicGraphErrorResponse('invalid_limit', error.message, 400);
-    }
+    parsedBody = parsePublicGraphRequestBody(await request.json());
+  } catch {
     return publicGraphErrorResponse('invalid_json', 'Invalid JSON body.', 400);
   }
-  if (!queryId) {
+  if (!parsedBody.ok) {
+    return publicGraphErrorResponse(
+      parsedBody.error.code,
+      parsedBody.error.message,
+      parsedBody.status,
+    );
+  }
+  if (!parsedBody.queryId) {
     return publicGraphErrorResponse('invalid_request', 'queryId is required.', 400);
   }
 
   try {
-    const response = await runPublicGraphPresetQuery(
-      { limit, projectSlug, queryId },
+    const result = await runPublicGraphApi(
+      { limit: parsedBody.limit, projectSlug, queryId: parsedBody.queryId },
       { repository: createPostgresGraphViewerRepository() },
     );
-    return NextResponse.json(response);
+    if (result.status === 200) {
+      return NextResponse.json(result.body);
+    }
+    return publicGraphErrorResponse(result.error.code, result.error.message, result.status);
   } catch (error) {
-    if (error instanceof GraphAccessDeniedError) {
-      return publicGraphErrorResponse('public_project_not_found', error.message, 404);
-    }
-    if (error instanceof GraphPresetNotFoundError) {
-      return publicGraphErrorResponse('unknown_query_id', error.message, 400);
-    }
-    if (error instanceof GraphLimitError) {
-      return publicGraphErrorResponse('invalid_limit', error.message, 400);
-    }
     console.error('Public Graph API Error:', error);
     return publicGraphErrorResponse(
       'public_graph_internal_error',

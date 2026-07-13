@@ -197,6 +197,15 @@ assert.equal(publicResult.graphName, 'graph_sample_a');
 assert.equal(publicResult.limit, 50);
 assert.equal(publicResult.nodes.length, 2);
 
+await assert.rejects(
+  () =>
+    runPublicGraphPresetQuery(
+      { projectSlug: 'missing-public', queryId: 'recent-relations' },
+      { repository: createRepository() },
+    ),
+  GraphAccessDeniedError,
+);
+
 const documentNode = {
   id: 'doc-node',
   label: 'Document',
