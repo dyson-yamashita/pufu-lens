@@ -2,6 +2,7 @@ import type { ReportDocumentRecord } from './report-repository.ts';
 import { normalizeReportWhitespace, truncateReportText } from './report-text.ts';
 
 export const REPORT_CANDIDATE_LIMIT = 200;
+export const REPORT_MATERIAL_GROUP_LIMIT = 40;
 export const REPORT_REPRESENTATIVE_LIMIT = 30;
 
 export type ReportEditorialRole = 'context' | 'decision' | 'progress' | 'risk';
@@ -76,10 +77,11 @@ function materialGroup(
   role: ReportEditorialRole,
   documents: readonly ReportDocumentRecord[],
 ): ReportMaterialGroup {
+  const boundedDocuments = documents.slice(0, REPORT_MATERIAL_GROUP_LIMIT);
   return {
-    documentCount: documents.length,
-    documentIds: documents.map((document) => document.documentId),
-    markdown: documents.map(materialLine).join('\n'),
+    documentCount: boundedDocuments.length,
+    documentIds: boundedDocuments.map((document) => document.documentId),
+    markdown: boundedDocuments.map(materialLine).join('\n'),
     role,
     title: ROLE_TITLES[role],
   };
@@ -135,10 +137,6 @@ function selectRepresentativeDocuments(
     for (const bucket of roleBuckets) {
       select(bucket[index]);
     }
-  }
-
-  for (const { document } of classified) {
-    select(document);
   }
 
   return classified

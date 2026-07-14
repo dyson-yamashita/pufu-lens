@@ -109,7 +109,7 @@ export function createGeminiReportProvider(input: {
                     `Project: ${projectSlug}`,
                     `Period: ${period.start} to ${period.end}`,
                     `Total candidate documents: ${totalDocumentCount ?? documents.length}`,
-                    `Representative documents: ${JSON.stringify(documents)}`,
+                    `Representative documents: ${JSON.stringify(toGeminiPromptDocuments(documents))}`,
                     `Editorial material groups: ${JSON.stringify(materialGroups ?? [])}`,
                   ].join('\n'),
                 },
@@ -453,4 +453,24 @@ function sourceFromDocument(document: ReportDocumentRecord) {
     snippet: truncateReportText(document.summary || document.title, 220),
     title: document.title,
   };
+}
+
+function toGeminiPromptDocuments(
+  documents: readonly ReportDocumentRecord[],
+): readonly {
+  readonly canonicalUri: string;
+  readonly docType: string;
+  readonly documentId: string;
+  readonly occurredAt: string | null;
+  readonly summary: string;
+  readonly title: string;
+}[] {
+  return documents.map(({ canonicalUri, docType, documentId, occurredAt, summary, title }) => ({
+    canonicalUri,
+    docType,
+    documentId,
+    occurredAt,
+    summary,
+    title,
+  }));
 }

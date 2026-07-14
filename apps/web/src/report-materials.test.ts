@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
-import { editReportMaterials, REPORT_REPRESENTATIVE_LIMIT } from './report-materials.ts';
+import {
+  editReportMaterials,
+  REPORT_MATERIAL_GROUP_LIMIT,
+  REPORT_REPRESENTATIVE_LIMIT,
+} from './report-materials.ts';
 import type { ReportDocumentRecord } from './report-repository.ts';
 
 function document(index: number, input: Partial<ReportDocumentRecord> = {}): ReportDocumentRecord {
@@ -64,3 +68,14 @@ assert.deepEqual(
   new Set(edited.materialGroups.flatMap((group) => group.documentIds)),
   new Set(largeInput.map((item) => item.documentId)),
 );
+
+const overflowContextInput = Array.from({ length: REPORT_MATERIAL_GROUP_LIMIT + 12 }, (_, index) =>
+  document(index),
+);
+const overflowContextEdited = editReportMaterials(overflowContextInput);
+const contextGroup = overflowContextEdited.materialGroups.find((group) => group.role === 'context');
+assert.ok(contextGroup);
+assert.equal(contextGroup.documentCount, REPORT_MATERIAL_GROUP_LIMIT);
+assert.equal(contextGroup.documentIds.length, REPORT_MATERIAL_GROUP_LIMIT);
+assert.equal(contextGroup.markdown.split('\n').length, REPORT_MATERIAL_GROUP_LIMIT);
+assert.equal(overflowContextEdited.totalDocumentCount, overflowContextInput.length);

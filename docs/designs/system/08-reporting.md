@@ -84,7 +84,7 @@ Private report 生成は、対象期間の document を新しい順に最大 200
 - 進捗・成果
 - 背景・文脈
 
-provider へ直接渡す代表 document は最大 30 件とする。代表選定は新しさだけに寄せず、各編集テーマ、doc type、最古の dated document を時系列 anchor として先に確保し、残りを編集テーマから round-robin で選ぶ。これにより、31 件目以降も編集素材として Gemini / extractive provider の全体文脈と件数に参加させながら、直接根拠、`pufu_sources`、raw read の件数を bounded に保つ。
+provider へ直接渡す代表 document は最大 30 件とする。代表選定は新しさだけに寄せず、各編集テーマ、doc type、最古の dated document を時系列 anchor として先に確保し、残りを編集テーマから round-robin で選ぶ。これにより、31 件目以降も編集素材として Gemini / extractive provider の全体文脈と件数に参加させながら、直接根拠、`pufu_sources`、raw read の件数を bounded に保つ。編集素材は編集テーマごとに最大 40 件まで markdown 化し、provider プロンプトの token 増大を抑える。
 
 Raw Read View の取得対象は代表 document だけとし、候補 200 件すべてを raw 補完しない。編集素材には `rawDocumentId`、private raw locator、storage URI を含めず、private report JSON に保存する `pufu_sources` も代表 document だけから組み立てる。候補上限 200 件を超えた古い document はその生成回の対象外とし、必要なら report period を分割して生成する。
 
