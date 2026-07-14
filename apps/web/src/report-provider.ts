@@ -455,9 +455,7 @@ function sourceFromDocument(document: ReportDocumentRecord) {
   };
 }
 
-function toGeminiPromptDocuments(
-  documents: readonly ReportDocumentRecord[],
-): readonly {
+function toGeminiPromptDocuments(documents: readonly ReportDocumentRecord[]): readonly {
   readonly canonicalUri: string;
   readonly docType: string;
   readonly documentId: string;
