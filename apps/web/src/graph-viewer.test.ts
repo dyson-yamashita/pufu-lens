@@ -150,6 +150,10 @@ assert.throws(
   () => parseEligibleDocumentGraphNodeIdRows(['invalid']),
   /Invalid eligible document row/,
 );
+assert.throws(
+  () => parseEligibleDocumentGraphNodeIdRows([{ graph_node_id: '   ' }]),
+  /Invalid document graph_node_id/,
+);
 
 const recentPreset = getGraphPreset('recent-relations');
 assert.match(buildPresetCypher(recentPreset), /LIMIT 500$/);
@@ -287,6 +291,45 @@ const periodResult = await runGraphPresetQuery(
 assert.equal(periodResult.documentCount, 1);
 assert.equal(periodResult.periodStart, '2026-01-01');
 assert.equal(periodResult.periodEnd, '2026-01-31');
+
+let executePresetCalls = 0;
+const noEligibleDocumentsRepository: GraphViewerRepository = {
+  ...createRepository(100),
+  async executePreset() {
+    executePresetCalls += 1;
+    assert.fail('executePreset should not be called when eligible document IDs are empty');
+  },
+  async selectEligibleDocumentGraphNodeIds({ periodEnd, periodStart }) {
+    assert.equal(periodStart, '2026-01-01');
+    assert.equal(periodEnd, '2026-01-31');
+    return [];
+  },
+};
+
+const noEligibleResult = await runGraphPresetQuery(
+  {
+    limit: 100,
+    periodEnd: '2026-01-31',
+    periodStart: '2026-01-01',
+    projectSlug: 'sample-a',
+    queryId: 'recent-relations',
+    userId: 'user-a',
+  },
+  { repository: noEligibleDocumentsRepository },
+);
+assert.equal(executePresetCalls, 0);
+assert.equal(noEligibleResult.documentCount, 0);
+assert.equal(noEligibleResult.rowCount, 0);
+assert.equal(noEligibleResult.nodes.length, 0);
+assert.equal(noEligibleResult.edges.length, 0);
+assert.equal(noEligibleResult.rawRows.length, 0);
+assert.equal(noEligibleResult.truncated, false);
+assert.equal(noEligibleResult.graphName, 'graph_sample_a');
+assert.equal(noEligibleResult.limit, 100);
+assert.equal(noEligibleResult.periodStart, '2026-01-01');
+assert.equal(noEligibleResult.periodEnd, '2026-01-31');
+assert.match(noEligibleResult.preset.preview, /LIMIT 500$/);
+assert.equal(noEligibleResult.preset.preview, periodResult.preset.preview);
 
 await assert.rejects(
   () =>

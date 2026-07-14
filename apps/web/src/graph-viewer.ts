@@ -299,43 +299,71 @@ async function executeGraphPresetForProject(
 ): Promise<GraphQueryResult> {
   const preset = getGraphPreset(input.queryId);
   const limit = normalizeGraphLimit(input.limit ?? preset.defaultLimit, preset.maxLimit);
+  const cypher = buildPresetCypher(preset);
   const documentGraphNodeIds = await options.repository.selectEligibleDocumentGraphNodeIds({
     limit,
     periodEnd: input.period.periodEnd,
     periodStart: input.period.periodStart,
     projectId: options.projectId,
   });
+  if (documentGraphNodeIds.length === 0) {
+    return buildGraphQueryResult({
+      cypher,
+      graphName: options.graphName,
+      limit,
+      period: input.period,
+      preset,
+      rows: [],
+    });
+  }
+
   const parameters = { [GRAPH_PRESET_DOCUMENT_IDS_PARAM]: documentGraphNodeIds };
-  const cypher = buildPresetCypher(preset);
   const rows = await options.repository.executePreset({
     cypher,
     graphName: options.graphName,
     parameters,
     preset,
   });
-  const normalized = normalizeGraphRows(rows, {
-    maxEdges: preset.maxEdges,
-    maxNodes: preset.maxNodes,
+  return buildGraphQueryResult({
+    cypher,
+    graphName: options.graphName,
+    limit,
+    period: input.period,
+    preset,
+    rows,
   });
-  const documentCount = countGraphDocumentNodes(normalized.nodes);
+}
+
+function buildGraphQueryResult(input: {
+  cypher: string;
+  graphName: string;
+  limit: number;
+  period: GraphPeriodFilter;
+  preset: GraphPreset;
+  rows: readonly Record<string, unknown>[];
+}): GraphQueryResult {
+  const normalized = normalizeGraphRows(input.rows, {
+    maxEdges: input.preset.maxEdges,
+    maxNodes: input.preset.maxNodes,
+  });
 
   return {
     ...normalized,
-    documentCount,
-    graphName: options.graphName,
-    limit,
+    documentCount: countGraphDocumentNodes(normalized.nodes),
+    graphName: input.graphName,
+    limit: input.limit,
     ...(input.period.periodStart ? { periodStart: input.period.periodStart } : {}),
     ...(input.period.periodEnd ? { periodEnd: input.period.periodEnd } : {}),
     preset: {
-      defaultLimit: preset.defaultLimit,
-      description: preset.description,
-      id: preset.id,
-      label: preset.label,
-      maxLimit: preset.maxLimit,
-      preview: cypher,
+      defaultLimit: input.preset.defaultLimit,
+      description: input.preset.description,
+      id: input.preset.id,
+      label: input.preset.label,
+      maxLimit: input.preset.maxLimit,
+      preview: input.cypher,
     },
-    rawRows: rows.map(safeRawRow),
-    rowCount: rows.length,
+    rawRows: input.rows.map(safeRawRow),
+    rowCount: input.rows.length,
   };
 }
 
@@ -496,10 +524,12 @@ export function createPostgresGraphViewerRepository(
           SELECT graph_node_id
           FROM public.documents
           WHERE project_id = ${projectId}
+            AND graph_node_id IS NOT NULL
+            AND btrim(graph_node_id) <> ''
             AND (${periodStart ?? null}::date IS NULL OR occurred_at >= ${periodStart ?? null}::date)
             AND (
               ${periodEnd ?? null}::date IS NULL
-              OR occurred_at < (${periodEnd ?? null}::date + INTERVAL '1 day')
+              OR occurred_at < (${periodEnd ?? null}::date + 1)
             )
           ORDER BY occurred_at DESC NULLS LAST, updated_at DESC, id ASC
           LIMIT ${limit}
@@ -927,7 +957,11 @@ function parseEligibleDocumentGraphNodeIdRow(row: unknown): string {
   if (!isRecord(row)) {
     throw new Error('Invalid eligible document row.');
   }
-  return requireString(row.graph_node_id, 'document graph_node_id');
+  const graphNodeId = requireString(row.graph_node_id, 'document graph_node_id');
+  if (graphNodeId.trim() === '') {
+    throw new Error('Invalid document graph_node_id.');
+  }
+  return graphNodeId;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
