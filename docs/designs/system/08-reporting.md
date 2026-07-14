@@ -75,6 +75,19 @@ Private report 生成では、まず parsed / graph / vector から context bund
 | Public 公開          | raw 補完あり生成でも **公開可能**。表示処理は private report と同じ                    |
 | Public artifact 保存 | 互換・検証用に redaction / policy validation 済み artifact を保存可能                  |
 
+#### 参照ドキュメントが多い場合の編集素材化
+
+Private report 生成は、対象期間の document を新しい順に最大 200 件まで候補として読み出す。候補が 30 件以下の場合は従来どおり全件を provider の直接根拠として使う。30 件を超える場合は、候補全件を title / summary の明示的なキーワード規則で次の編集テーマに分類し、各 document ID、doc type、発生日時、短い本文を持つ bounded な編集素材を組み立てる。
+
+- 判断・決定
+- 課題・リスク
+- 進捗・成果
+- 背景・文脈
+
+provider へ直接渡す代表 document は最大 30 件とする。代表選定は新しさだけに寄せず、各編集テーマ、doc type、最古の dated document を時系列 anchor として先に確保し、残りを編集テーマから round-robin で選ぶ。これにより、31 件目以降も編集素材として Gemini / extractive provider の全体文脈と件数に参加させながら、直接根拠、`pufu_sources`、raw read の件数を bounded に保つ。
+
+Raw Read View の取得対象は代表 document だけとし、候補 200 件すべてを raw 補完しない。編集素材には `rawDocumentId`、private raw locator、storage URI を含めず、private report JSON に保存する `pufu_sources` も代表 document だけから組み立てる。候補上限 200 件を超えた古い document はその生成回の対象外とし、必要なら report period を分割して生成する。
+
 public project の report を raw 補完付きで生成しても公開できる。互換・検証用 public artifact に保存できるのは次に限定する。
 
 - redaction / policy validation 済み summary と section markdown

@@ -10,6 +10,7 @@ import {
   type SliderJudgementPart,
 } from './custom-report-schema.ts';
 import type { AgentRawReadViewEnvelope, RawReadViewRepository } from './raw-read-view.ts';
+import { editReportMaterials, REPORT_CANDIDATE_LIMIT } from './report-materials.ts';
 import type { ReportGenerationProvider } from './report-provider.ts';
 import { publishGeneratedPublicReport } from './report-publication.ts';
 import type { ReportDocumentRecord, ReportRepository } from './report-repository.ts';
@@ -60,20 +61,25 @@ export async function runGenerateReport(input: {
     throw new Error(`Project not found: ${input.projectSlug}`);
   }
 
-  const documents = await input.options.repository.listRecentDocuments({
-    limit: 30,
+  const candidateDocuments = await input.options.repository.listRecentDocuments({
+    limit: REPORT_CANDIDATE_LIMIT,
     period,
     projectId: project.id,
   });
+  const editedMaterials = editReportMaterials(candidateDocuments);
+  const hasOverflow =
+    editedMaterials.totalDocumentCount > editedMaterials.representativeDocuments.length;
   const providerDocuments = await supplementDocumentsWithRawReadViews({
-    documents,
+    documents: editedMaterials.representativeDocuments,
     projectId: project.id,
     rawReadViewRepository: input.options.rawReadViewRepository,
   });
   const generated = await input.options.provider.generate({
     documents: providerDocuments,
+    ...(hasOverflow ? { materialGroups: editedMaterials.materialGroups } : {}),
     period,
     projectSlug: project.slug,
+    totalDocumentCount: editedMaterials.totalDocumentCount,
   });
   const reportId = randomUUID();
   const customTemplate = input.options.customTemplateId
@@ -96,7 +102,7 @@ export async function runGenerateReport(input: {
     generated_at: now.toISOString(),
     period,
     project_id: project.id,
-    pufu_sources: documents.map(pufuSourceFromDocument),
+    pufu_sources: editedMaterials.representativeDocuments.map(pufuSourceFromDocument),
     report_id: reportId,
     schema_version: 'v1',
     sections: generated.sections,

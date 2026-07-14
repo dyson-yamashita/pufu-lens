@@ -27,6 +27,14 @@ export {
   runGenerateReport,
 } from './report-generation.ts';
 export {
+  type EditedReportMaterials,
+  editReportMaterials,
+  REPORT_CANDIDATE_LIMIT,
+  REPORT_REPRESENTATIVE_LIMIT,
+  type ReportEditorialRole,
+  type ReportMaterialGroup,
+} from './report-materials.ts';
+export {
   createExtractiveReportProvider,
   createGeminiReportProvider,
   type ReportGenerationProvider,
