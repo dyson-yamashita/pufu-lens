@@ -144,7 +144,7 @@ export const GRAPH_PRESETS: readonly GraphPreset[] = [
       'WHERE doc.graphNodeId IN $documentGraphNodeIds',
       'MATCH (doc)-[relation]-(neighbor)',
       'WHERE neighbor:Actor OR neighbor:Topic',
-      'OR (neighbor:Document AND neighbor.graphNodeId IN $documentGraphNodeIds)',
+      'OR (neighbor:Document AND neighbor.graphNodeId IN $documentGraphNodeIds AND doc.graphNodeId <= neighbor.graphNodeId)',
       'RETURN doc AS source, relation, neighbor AS target',
     ].join(' '),
     defaultLimit: GRAPH_DEFAULT_LIMIT,
@@ -190,16 +190,14 @@ export function buildPresetCypher(preset: GraphPreset): string {
  * @returns The available preset summaries with preview queries generated from each preset's default limit.
  */
 export function listGraphPresets(): readonly GraphPresetSummary[] {
-  return GRAPH_PRESETS.map(
-    ({ cypherBody, defaultLimit, description, id, label, maxLimit, maxEdges }) => ({
-      defaultLimit,
-      description,
-      id,
-      label,
-      maxLimit,
-      preview: `${cypherBody} LIMIT ${maxEdges}`,
-    }),
-  );
+  return GRAPH_PRESETS.map((preset) => ({
+    defaultLimit: preset.defaultLimit,
+    description: preset.description,
+    id: preset.id,
+    label: preset.label,
+    maxLimit: preset.maxLimit,
+    preview: buildPresetCypher(preset),
+  }));
 }
 
 /**

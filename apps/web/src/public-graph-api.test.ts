@@ -59,6 +59,29 @@ test('parsePublicGraphRequestBody accepts queryId, limit, and period bounds', ()
   );
 });
 
+test('parsePublicGraphRequestBody trims valid period strings', () => {
+  assert.deepEqual(
+    parsePublicGraphRequestBody({
+      periodEnd: ' 2026-01-31 ',
+      periodStart: ' 2026-01-01 ',
+      queryId: 'recent-relations',
+    }),
+    {
+      ok: true,
+      periodEnd: '2026-01-31',
+      periodStart: '2026-01-01',
+      queryId: 'recent-relations',
+    },
+  );
+});
+
+test('parsePublicGraphRequestBody omits blank period bounds', () => {
+  assert.deepEqual(parsePublicGraphRequestBody({ queryId: 'recent-relations' }), {
+    ok: true,
+    queryId: 'recent-relations',
+  });
+});
+
 test('parsePublicGraphRequestBody rejects invalid JSON bodies', () => {
   const result = parsePublicGraphRequestBody([]);
   assert.equal(result.ok, false);

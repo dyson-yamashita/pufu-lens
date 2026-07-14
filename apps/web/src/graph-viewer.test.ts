@@ -157,6 +157,7 @@ assert.throws(
 
 const recentPreset = getGraphPreset('recent-relations');
 assert.match(buildPresetCypher(recentPreset), /LIMIT 500$/);
+assert.match(recentPreset.cypherBody, /doc\.graphNodeId <= neighbor\.graphNodeId/u);
 
 function createRepository(expectedLimit = 200): GraphViewerRepository {
   return {
@@ -376,6 +377,7 @@ await assert.rejects(
 const presetSummary = listGraphPresets().find((preset) => preset.id === 'recent-relations');
 assert.match(presetSummary?.preview ?? '', /\$documentGraphNodeIds/u);
 assert.match(presetSummary?.preview ?? '', /LIMIT 500$/);
+assert.equal(presetSummary?.preview, buildPresetCypher(recentPreset));
 
 await assert.rejects(
   () =>

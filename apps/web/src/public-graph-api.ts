@@ -13,8 +13,8 @@ export type PublicGraphRequestBodyParseResult =
   | {
       readonly limit?: unknown;
       readonly ok: true;
-      readonly periodEnd?: unknown;
-      readonly periodStart?: unknown;
+      readonly periodEnd?: string;
+      readonly periodStart?: string;
       readonly queryId: string;
     }
   | {
@@ -55,8 +55,9 @@ export function parsePublicGraphRequestBody(body: unknown): PublicGraphRequestBo
   const limit = 'limit' in body ? body.limit : undefined;
   const periodStart = 'periodStart' in body ? body.periodStart : undefined;
   const periodEnd = 'periodEnd' in body ? body.periodEnd : undefined;
+  let period: ReturnType<typeof normalizeGraphPeriodFilter>;
   try {
-    normalizeGraphPeriodFilter({ periodEnd, periodStart });
+    period = normalizeGraphPeriodFilter({ periodEnd, periodStart });
   } catch (error) {
     if (error instanceof GraphPeriodError) {
       return {
@@ -67,7 +68,13 @@ export function parsePublicGraphRequestBody(body: unknown): PublicGraphRequestBo
     }
     throw error;
   }
-  return { limit, ok: true, periodEnd, periodStart, queryId };
+  return {
+    ok: true,
+    queryId,
+    ...('limit' in body ? { limit } : {}),
+    ...(period.periodStart ? { periodStart: period.periodStart } : {}),
+    ...(period.periodEnd ? { periodEnd: period.periodEnd } : {}),
+  };
 }
 
 /**
