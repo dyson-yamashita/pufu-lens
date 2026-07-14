@@ -5,10 +5,12 @@ import { parsePublicGraphRequestBody, runPublicGraphApi } from './public-graph-a
 
 function createRepository(): GraphViewerRepository {
   return {
-    async executePreset({ cypher, graphName, preset }) {
+    async executePreset({ cypher, graphName, parameters, preset }) {
       assert.equal(graphName, 'graph_sample_a');
       assert.equal(preset.id, 'recent-relations');
-      assert.match(cypher, /LIMIT 50$/);
+      assert.match(cypher, /\$documentGraphNodeIds/u);
+      assert.match(cypher, /LIMIT 500$/);
+      assert.deepEqual(parameters.documentGraphNodeIds, ['document:spec']);
       return [
         {
           relation:
@@ -31,15 +33,30 @@ function createRepository(): GraphViewerRepository {
         ? { graphName: 'graph_sample_a', id: 'project-a', name: 'Sample A', slug: 'sample-a' }
         : undefined;
     },
+    async selectEligibleDocumentGraphNodeIds({ limit, projectId }) {
+      assert.equal(projectId, 'project-a');
+      assert.equal(limit, 50);
+      return ['document:spec'];
+    },
   };
 }
 
-test('parsePublicGraphRequestBody accepts queryId and limit', () => {
-  assert.deepEqual(parsePublicGraphRequestBody({ limit: 50, queryId: 'recent-relations' }), {
-    limit: 50,
-    ok: true,
-    queryId: 'recent-relations',
-  });
+test('parsePublicGraphRequestBody accepts queryId, limit, and period bounds', () => {
+  assert.deepEqual(
+    parsePublicGraphRequestBody({
+      limit: 50,
+      periodEnd: '2026-01-31',
+      periodStart: '2026-01-01',
+      queryId: 'recent-relations',
+    }),
+    {
+      limit: 50,
+      ok: true,
+      periodEnd: '2026-01-31',
+      periodStart: '2026-01-01',
+      queryId: 'recent-relations',
+    },
+  );
 });
 
 test('parsePublicGraphRequestBody rejects invalid JSON bodies', () => {
@@ -61,6 +78,19 @@ test('parsePublicGraphRequestBody rejects cypher field', () => {
     return;
   }
   assert.equal(result.error.code, 'cypher_not_allowed');
+});
+
+test('parsePublicGraphRequestBody rejects invalid period bounds', () => {
+  const result = parsePublicGraphRequestBody({
+    periodEnd: '2026-01-01',
+    periodStart: '2026-02-01',
+    queryId: 'recent-relations',
+  });
+  assert.equal(result.ok, false);
+  if (result.ok) {
+    return;
+  }
+  assert.equal(result.error.code, 'invalid_period');
 });
 
 test('runPublicGraphApi returns 404 when public project is not found', async () => {
@@ -86,6 +116,7 @@ test('runPublicGraphApi returns 200 for an accessible public project', async () 
   }
   assert.equal(result.body.graphName, 'graph_sample_a');
   assert.equal(result.body.limit, 50);
+  assert.equal(result.body.documentCount, 1);
 });
 
 test('runPublicGraphApi returns 400 for unknown queryId', async () => {

@@ -90,6 +90,13 @@ body.graph-fallback-fullscreen-active {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.graph-control-period-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
 .graph-preset-detail pre,
 .json-preview {
   background: var(--surface-2);
@@ -325,7 +332,8 @@ body.graph-fallback-fullscreen-active {
 }
 
 @media (max-width: 1023px) {
-  .graph-control-grid {
+  .graph-control-grid,
+  .graph-control-period-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 

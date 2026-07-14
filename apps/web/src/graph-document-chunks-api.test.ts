@@ -35,6 +35,9 @@ function createRepository(): GraphViewerRepository {
     async lookupPublicProject() {
       throw new Error('not used');
     },
+    async selectEligibleDocumentGraphNodeIds() {
+      throw new Error('not used');
+    },
   };
 }
 

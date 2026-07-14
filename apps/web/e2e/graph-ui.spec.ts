@@ -5,7 +5,15 @@ const memberGraphCredentials = {
   password: process.env.PUFU_LENS_E2E_CHAT_PASSWORD,
 };
 
+type GraphRequestBody = {
+  limit?: number;
+  periodEnd?: string;
+  periodStart?: string;
+  queryId?: string;
+};
+
 const publicGraphQueryResult = {
+  documentCount: 1,
   edges: [],
   graphName: 'graph_sample_a',
   limit: 100,
@@ -31,6 +39,7 @@ const publicGraphQueryResult = {
 };
 
 const privateGraphQueryResult = {
+  documentCount: 1,
   edges: [],
   graphName: 'graph_local_dev',
   limit: 100,
@@ -65,6 +74,7 @@ test('scenario: public project side menu exposes Graph and marks it active on th
 test('scenario: public graph page renders GraphViewerPanel via the public Graph API', async ({
   page,
 }) => {
+  const graphRequestBodies: GraphRequestBody[] = [];
   let graphApiPath: string | undefined;
   let privateGraphApiCalls = 0;
   page.on('request', (request) => {
@@ -74,6 +84,8 @@ test('scenario: public graph page renders GraphViewerPanel via the public Graph 
   });
   await page.route('**/api/public/projects/sample-a/graph', async (route) => {
     graphApiPath = new URL(route.request().url()).pathname;
+    const requestBody = route.request().postDataJSON() as GraphRequestBody;
+    graphRequestBodies.push(requestBody);
     await route.fulfill({
       body: JSON.stringify(publicGraphQueryResult),
       contentType: 'application/json',
@@ -84,7 +96,35 @@ test('scenario: public graph page renders GraphViewerPanel via the public Graph 
   await page.goto('/projects/sample-a/graph');
 
   await expect(page.getByTestId('graph-viewer-panel')).toBeVisible();
-  await expect(page.getByTestId('graph-result-count')).toHaveText('1 rows');
+  await expect(page.locator('label[for="graph-limit-select"]')).toContainText('Documents');
+  await expect(page.getByTestId('graph-period-start-input')).toBeVisible();
+  await expect(page.getByTestId('graph-period-end-input')).toBeVisible();
+  await expect(page.getByTestId('graph-period-start-input')).toHaveValue('');
+  await expect(page.getByTestId('graph-period-end-input')).toHaveValue('');
+
+  await expect.poll(() => graphRequestBodies.length).toBeGreaterThan(0);
+  const initialBody = graphRequestBodies[0];
+  expect(initialBody?.periodStart).toBeUndefined();
+  expect(initialBody?.periodEnd).toBeUndefined();
+  expect(typeof initialBody?.limit).toBe('number');
+  expect(typeof initialBody?.queryId).toBe('string');
+
+  await page.getByTestId('graph-period-start-input').fill('2026-01-01');
+  await page.getByTestId('graph-period-end-input').fill('2026-01-31');
+
+  await expect
+    .poll(() =>
+      graphRequestBodies.find(
+        (body) =>
+          body.periodStart === '2026-01-01' &&
+          body.periodEnd === '2026-01-31' &&
+          typeof body.limit === 'number' &&
+          typeof body.queryId === 'string',
+      ),
+    )
+    .toBeTruthy();
+
+  await expect(page.getByTestId('graph-result-count')).toHaveText('1 document');
   await expect.poll(() => graphApiPath).toBe('/api/public/projects/sample-a/graph');
   expect(privateGraphApiCalls).toBe(0);
 });
@@ -136,7 +176,7 @@ test('scenario: authenticated project member uses private graph API on member pr
   await page.goto('/projects/local-dev/graph');
 
   await expect(page.getByTestId('graph-viewer-panel')).toBeVisible();
-  await expect(page.getByTestId('graph-result-count')).toHaveText('1 rows');
+  await expect(page.getByTestId('graph-result-count')).toHaveText('1 document');
   await expect.poll(() => privateGraphApiPath).toBe('/api/projects/local-dev/graph');
   expect(publicGraphApiCalls).toBe(0);
 });

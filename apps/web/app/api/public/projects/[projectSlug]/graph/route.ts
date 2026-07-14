@@ -37,7 +37,13 @@ export async function POST(
 
   try {
     const result = await runPublicGraphApi(
-      { limit: parsedBody.limit, projectSlug, queryId: parsedBody.queryId },
+      {
+        limit: parsedBody.limit,
+        periodEnd: parsedBody.periodEnd,
+        periodStart: parsedBody.periodStart,
+        projectSlug,
+        queryId: parsedBody.queryId,
+      },
       { repository: createPostgresGraphViewerRepository() },
     );
     if (result.status === 200) {

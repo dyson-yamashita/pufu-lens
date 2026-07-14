@@ -63,6 +63,8 @@ export function GraphViewerPanel({
       presets.find((preset) => preset.id === initialPresetId)?.defaultLimit ??
       GRAPH_VIEWER_DEFAULT_LIMIT,
   );
+  const [periodStart, setPeriodStart] = useState('');
+  const [periodEnd, setPeriodEnd] = useState('');
   const [layoutId, setLayoutId] = useState<GraphLayoutId>('force');
   const [isGraphMaximized, setIsGraphMaximized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -77,8 +79,22 @@ export function GraphViewerPanel({
     setSelection(undefined);
     setIsLoading(true);
     try {
+      const requestBody: {
+        limit: number;
+        periodEnd?: string;
+        periodStart?: string;
+        queryId: GraphPresetId;
+      } = { limit, queryId: selectedPreset.id };
+      const trimmedPeriodStart = periodStart.trim();
+      const trimmedPeriodEnd = periodEnd.trim();
+      if (trimmedPeriodStart) {
+        requestBody.periodStart = trimmedPeriodStart;
+      }
+      if (trimmedPeriodEnd) {
+        requestBody.periodEnd = trimmedPeriodEnd;
+      }
       const response = await fetch(graphApiPath ?? `/api/projects/${projectSlug}/graph`, {
-        body: JSON.stringify({ limit, queryId: selectedPreset.id }),
+        body: JSON.stringify(requestBody),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
       });
@@ -93,7 +109,7 @@ export function GraphViewerPanel({
     } finally {
       setIsLoading(false);
     }
-  }, [graphApiPath, limit, projectSlug, selectedPreset]);
+  }, [graphApiPath, limit, periodEnd, periodStart, projectSlug, selectedPreset]);
 
   useEffect(() => {
     void runQuery();
@@ -110,7 +126,7 @@ export function GraphViewerPanel({
           {isLoading ? <span className="status-badge status-held">Running</span> : null}
           {result ? (
             <span className="status-badge status-healthy" data-testid="graph-result-count">
-              {result.rowCount} rows
+              {formatGraphDocumentCount(result.documentCount)}
             </span>
           ) : null}
         </div>
@@ -137,7 +153,7 @@ export function GraphViewerPanel({
         </label>
         <div className="graph-control-grid">
           <label className="form-field" htmlFor="graph-limit-select">
-            <span>Rows</span>
+            <span>Documents</span>
             <select
               data-testid="graph-limit-select"
               disabled={isLoading}
@@ -166,6 +182,30 @@ export function GraphViewerPanel({
                 </option>
               ))}
             </select>
+          </label>
+        </div>
+        <div className="graph-control-period-grid">
+          <label className="form-field" htmlFor="graph-period-start-input">
+            <span>Start</span>
+            <input
+              data-testid="graph-period-start-input"
+              disabled={isLoading}
+              id="graph-period-start-input"
+              onChange={(event) => setPeriodStart(event.target.value)}
+              type="date"
+              value={periodStart}
+            />
+          </label>
+          <label className="form-field" htmlFor="graph-period-end-input">
+            <span>End</span>
+            <input
+              data-testid="graph-period-end-input"
+              disabled={isLoading}
+              id="graph-period-end-input"
+              onChange={(event) => setPeriodEnd(event.target.value)}
+              type="date"
+              value={periodEnd}
+            />
           </label>
         </div>
         {selectedPreset ? (
@@ -634,6 +674,16 @@ function buildGraphLayoutOptions(
     numIter: 2000,
     padding,
   };
+}
+
+/**
+ * Formats the graph document count badge label.
+ *
+ * @param count - The number of Document nodes in the normalized graph
+ * @returns A singular or plural English label for the badge
+ */
+function formatGraphDocumentCount(count: number): string {
+  return count === 1 ? '1 document' : `${count} documents`;
 }
 
 /**

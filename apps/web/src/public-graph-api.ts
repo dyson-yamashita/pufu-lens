@@ -1,14 +1,22 @@
 import {
   GraphAccessDeniedError,
   GraphLimitError,
+  GraphPeriodError,
   GraphPresetNotFoundError,
   type GraphQueryResult,
   type GraphViewerRepository,
+  normalizeGraphPeriodFilter,
   runPublicGraphPresetQuery,
 } from './graph-viewer.ts';
 
 export type PublicGraphRequestBodyParseResult =
-  | { readonly limit?: unknown; readonly ok: true; readonly queryId: string }
+  | {
+      readonly limit?: unknown;
+      readonly ok: true;
+      readonly periodEnd?: unknown;
+      readonly periodStart?: unknown;
+      readonly queryId: string;
+    }
   | {
       readonly error: { readonly code: string; readonly message: string };
       readonly ok: false;
@@ -45,18 +53,38 @@ export function parsePublicGraphRequestBody(body: unknown): PublicGraphRequestBo
   }
   const queryId = typeof body.queryId === 'string' ? body.queryId.trim() : '';
   const limit = 'limit' in body ? body.limit : undefined;
-  return { limit, ok: true, queryId };
+  const periodStart = 'periodStart' in body ? body.periodStart : undefined;
+  const periodEnd = 'periodEnd' in body ? body.periodEnd : undefined;
+  try {
+    normalizeGraphPeriodFilter({ periodEnd, periodStart });
+  } catch (error) {
+    if (error instanceof GraphPeriodError) {
+      return {
+        error: { code: 'invalid_period', message: error.message },
+        ok: false,
+        status: 400,
+      };
+    }
+    throw error;
+  }
+  return { limit, ok: true, periodEnd, periodStart, queryId };
 }
 
 /**
  * Runs a public graph preset query and maps domain errors to API responses.
  *
- * @param input - The project slug, preset ID, and optional limit
+ * @param input - The project slug, preset ID, optional document limit, and optional period bounds
  * @param options - Repository used to resolve public project access and execute the preset
  * @returns A success payload with graph data or an error payload with an HTTP status
  */
 export async function runPublicGraphApi(
-  input: { limit?: unknown; projectSlug: string; queryId: string },
+  input: {
+    limit?: unknown;
+    periodEnd?: unknown;
+    periodStart?: unknown;
+    projectSlug: string;
+    queryId: string;
+  },
   options: { repository: GraphViewerRepository },
 ): Promise<PublicGraphApiResult> {
   try {
@@ -78,6 +106,12 @@ export async function runPublicGraphApi(
     if (error instanceof GraphLimitError) {
       return {
         error: { code: 'invalid_limit', message: error.message },
+        status: 400,
+      };
+    }
+    if (error instanceof GraphPeriodError) {
+      return {
+        error: { code: 'invalid_period', message: error.message },
         status: 400,
       };
     }
