@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation';
 import { auth } from '../../../../auth';
-import type { ProjectSummary } from '../../../../src/admin-data';
-import { getProjectMembership } from '../../../../src/admin-db';
+import { getAdminProject, getProjectMembership } from '../../../../src/admin-db';
 import { listGraphPresets } from '../../../../src/graph-viewer';
 import { GraphViewerPanel } from '../../../../src/graph-viewer-client';
 import { AppShell, PageHeader } from '../../../../src/ui';
@@ -12,23 +11,44 @@ export default async function ProjectGraphPage({
   readonly params: Promise<{ readonly projectSlug: string }>;
 }) {
   const { projectSlug } = await params;
-  const session = await auth();
+  const [project, session] = await Promise.all([getAdminProject(projectSlug), auth()]);
   const userId = session?.user?.id;
-  if (!userId) {
+  let isMember = false;
+  if (userId) {
+    try {
+      await getProjectMembership(projectSlug, userId);
+      isMember = true;
+    } catch {
+      if (project.visibility !== 'public') {
+        redirect('/projects');
+      }
+    }
+  } else if (project.visibility !== 'public') {
     redirect('/login');
-  }
-  let project: ProjectSummary;
-  try {
-    const membership = await getProjectMembership(projectSlug, userId);
-    project = membership.project;
-  } catch {
-    redirect('/projects');
   }
 
   const presets = listGraphPresets();
   const initialPreset = presets[0];
   if (!initialPreset) {
     throw new Error('Graph preset is not configured.');
+  }
+
+  if (!isMember) {
+    return (
+      <AppShell active="graph" project={project}>
+        <PageHeader
+          title={`${project.name} Graph`}
+          subtitle="公開 project の graph を public API で確認します。"
+        />
+        <GraphViewerPanel
+          graphApiPath={`/api/public/projects/${project.slug}/graph`}
+          initialPresetId={initialPreset.id}
+          loadDocumentChunks={false}
+          presets={presets}
+          projectSlug={project.slug}
+        />
+      </AppShell>
+    );
   }
 
   return (

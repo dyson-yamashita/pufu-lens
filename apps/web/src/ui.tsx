@@ -125,17 +125,15 @@ export async function AppShell({
             <FileText size={18} />
             Reports
           </Link>
-          {session?.user?.id ? (
-            <Link
-              aria-current={active === 'graph' ? 'page' : undefined}
-              className={navClass(active === 'graph')}
-              href={`/projects/${projectSlug}/graph`}
-              data-testid="global-nav-graph"
-            >
-              <Network size={18} />
-              Graph
-            </Link>
-          ) : null}
+          <Link
+            aria-current={active === 'graph' ? 'page' : undefined}
+            className={navClass(active === 'graph')}
+            href={`/projects/${projectSlug}/graph`}
+            data-testid="global-nav-graph"
+          >
+            <Network size={18} />
+            Graph
+          </Link>
           {canShowAdminNav ? (
             <>
               <Link
