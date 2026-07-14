@@ -561,6 +561,12 @@ assert.equal(
   mastraGenerateReportWorkflowStartUrl({ MASTRA_API_URL: 'https://mastra.example.com/api' }),
   'https://mastra.example.com/api/workflows/generate-report/start-async',
 );
+assert.equal(
+  mastraGenerateReportWorkflowStartUrl({
+    MASTRA_SERVER_URL: `https://mastra.example.com${'/'.repeat(200)}`,
+  }),
+  'https://mastra.example.com/api/workflows/generate-report/start-async',
+);
 assert.deepEqual(
   createMastraProjectChatBody({
     graphName: 'graph_sample_a',

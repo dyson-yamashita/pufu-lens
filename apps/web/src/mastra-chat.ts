@@ -98,8 +98,17 @@ export function mastraPublicReportChatGenerateUrl(env: MastraChatEnv = process.e
 
 function mastraAgentGenerateUrl(agentId: string, env: MastraChatEnv): string {
   const rawBase = env.MASTRA_SERVER_URL ?? env.MASTRA_API_URL ?? 'http://localhost:4111';
-  const base = stripTerminalApiSuffix(stripTrailingSlashes(rawBase));
-  return `${base}/api/agents/${agentId}/generate`;
+  return `${normalizeMastraUrl(rawBase)}/api/agents/${agentId}/generate`;
+}
+
+/**
+ * Normalizes a Mastra server base URL by removing trailing slashes and a terminal `/api` suffix.
+ *
+ * @param rawBase - The configured Mastra server or API base URL
+ * @returns A linear-time normalized base URL suitable for appending Mastra paths
+ */
+export function normalizeMastraUrl(rawBase: string): string {
+  return stripTerminalApiSuffix(stripTrailingSlashes(rawBase));
 }
 
 function stripTrailingSlashes(value: string): string {
