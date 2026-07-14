@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test';
 
+const memberGraphCredentials = {
+  email: process.env.PUFU_LENS_E2E_CHAT_EMAIL,
+  password: process.env.PUFU_LENS_E2E_CHAT_PASSWORD,
+};
+
 const publicGraphQueryResult = {
   edges: [],
   graphName: 'graph_sample_a',
@@ -21,6 +26,24 @@ const publicGraphQueryResult = {
     preview: 'MATCH preview',
   },
   rawRows: [{ document_id: 'doc-public-1' }],
+  rowCount: 1,
+  truncated: false,
+};
+
+const privateGraphQueryResult = {
+  edges: [],
+  graphName: 'graph_local_dev',
+  limit: 100,
+  nodes: [
+    {
+      id: 'doc-member-1',
+      label: 'Local Dev Doc',
+      labels: ['Document'],
+      properties: { title: 'Local Dev Doc' },
+    },
+  ],
+  preset: publicGraphQueryResult.preset,
+  rawRows: [{ document_id: 'doc-member-1' }],
   rowCount: 1,
   truncated: false,
 };
@@ -78,4 +101,42 @@ test('scenario: unknown project graph route redirects to projects list', async (
 
   await expect(page).toHaveURL(/\/projects$/);
   await expect(page.getByTestId('graph-viewer-panel')).toHaveCount(0);
+});
+
+test('scenario: authenticated project member uses private graph API on member project graph', async ({
+  page,
+}) => {
+  test.skip(
+    !process.env.DATABASE_URL || !memberGraphCredentials.email || !memberGraphCredentials.password,
+    'DATABASE_URL, PUFU_LENS_E2E_CHAT_EMAIL, and PUFU_LENS_E2E_CHAT_PASSWORD are required.',
+  );
+
+  let privateGraphApiPath: string | undefined;
+  let publicGraphApiCalls = 0;
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/public/projects/local-dev/graph') {
+      publicGraphApiCalls += 1;
+    }
+  });
+  await page.route('**/api/projects/local-dev/graph', async (route) => {
+    privateGraphApiPath = new URL(route.request().url()).pathname;
+    await route.fulfill({
+      body: JSON.stringify(privateGraphQueryResult),
+      contentType: 'application/json',
+      status: 200,
+    });
+  });
+
+  await page.goto('/login');
+  await page.getByTestId('credentials-email-input').fill(memberGraphCredentials.email ?? '');
+  await page.getByTestId('credentials-password-input').fill(memberGraphCredentials.password ?? '');
+  await page.getByTestId('credentials-login-button').click();
+  await expect(page).toHaveURL(/\/projects$/);
+
+  await page.goto('/projects/local-dev/graph');
+
+  await expect(page.getByTestId('graph-viewer-panel')).toBeVisible();
+  await expect(page.getByTestId('graph-result-count')).toHaveText('1 rows');
+  await expect.poll(() => privateGraphApiPath).toBe('/api/projects/local-dev/graph');
+  expect(publicGraphApiCalls).toBe(0);
 });

@@ -541,6 +541,23 @@ export async function getProjectMembership(
   };
 }
 
+/**
+ * Returns whether the user has project member access without loading membership lists.
+ */
+export async function hasProjectMemberAccess(slug: string, userId: string): Promise<boolean> {
+  const sql = getOptionalAdminSql();
+  if (!sql) {
+    if (isFixtureFallbackEnabled()) {
+      getFallbackProject(slug);
+      return true;
+    }
+    throw new Error('DATABASE_URL is required for project members.');
+  }
+
+  const access = await lookupProjectMemberAccess(sql, { projectSlug: slug, userId });
+  return access !== undefined;
+}
+
 function fallbackProjectMembership(slug: string, userId: string): ProjectMembershipSummary {
   const project = getFallbackProject(slug);
   const member: ProjectMemberSummary = {

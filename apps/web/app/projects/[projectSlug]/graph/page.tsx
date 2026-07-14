@@ -2,8 +2,7 @@ import { redirect } from 'next/navigation';
 import { auth } from '../../../../auth';
 import {
   getAdminProject,
-  getProjectMembership,
-  ProjectMembershipDeniedError,
+  hasProjectMemberAccess,
   ProjectNotFoundError,
 } from '../../../../src/admin-db';
 import { listGraphPresets } from '../../../../src/graph-viewer';
@@ -32,16 +31,9 @@ export default async function ProjectGraphPage({
   const userId = session?.user?.id;
   let isMember = false;
   if (userId) {
-    try {
-      await getProjectMembership(projectSlug, userId);
-      isMember = true;
-    } catch (error) {
-      if (!(error instanceof ProjectMembershipDeniedError)) {
-        throw error;
-      }
-      if (project.visibility !== 'public') {
-        redirect('/projects');
-      }
+    isMember = await hasProjectMemberAccess(projectSlug, userId);
+    if (!isMember && project.visibility !== 'public') {
+      redirect('/projects');
     }
   } else if (project.visibility !== 'public') {
     redirect('/login');
