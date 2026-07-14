@@ -21,6 +21,12 @@ assert.deepEqual(
   smallInput.map((item) => item.documentId),
 );
 
+const nullableSummary = document(3, { summary: null as never });
+assert.doesNotMatch(
+  editReportMaterials([nullableSummary]).materialGroups[0]?.markdown ?? '',
+  /undefined|null/,
+);
+
 const largeInput = Array.from({ length: 40 }, (_, index) => document(index));
 largeInput[31] = document(31, {
   docType: 'issue',

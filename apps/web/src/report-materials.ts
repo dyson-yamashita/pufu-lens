@@ -1,4 +1,5 @@
 import type { ReportDocumentRecord } from './report-repository.ts';
+import { normalizeReportWhitespace, truncateReportText } from './report-text.ts';
 
 export const REPORT_CANDIDATE_LIMIT = 200;
 export const REPORT_REPRESENTATIVE_LIMIT = 30;
@@ -60,7 +61,9 @@ export function editReportMaterials(
 }
 
 function editorialRole(document: ReportDocumentRecord): ReportEditorialRole {
-  const text = `${document.title}\n${document.summary}`;
+  const text = `${normalizeReportWhitespace(document.title)}\n${normalizeReportWhitespace(
+    document.summary,
+  )}`;
   for (const role of ROLE_ORDER) {
     if (role !== 'context' && ROLE_PATTERNS[role].test(text)) {
       return role;
@@ -84,8 +87,8 @@ function materialGroup(
 
 function materialLine(document: ReportDocumentRecord): string {
   const occurredAt = document.occurredAt ? `, ${document.occurredAt}` : '';
-  const title = truncate(normalizeWhitespace(document.title), 120);
-  const summary = truncate(normalizeWhitespace(document.summary) || title, 220);
+  const title = truncateReportText(normalizeReportWhitespace(document.title), 120);
+  const summary = truncateReportText(normalizeReportWhitespace(document.summary) || title, 220);
   return `- [${document.documentId}] (${document.docType}${occurredAt}) ${title}: ${summary}`;
 }
 
@@ -141,12 +144,4 @@ function selectRepresentativeDocuments(
   return classified
     .map((candidate) => candidate.document)
     .filter((document) => selectedIds.has(document.documentId));
-}
-
-function normalizeWhitespace(value: string | null | undefined): string {
-  return (value || '').replace(/\s+/g, ' ').trim();
-}
-
-function truncate(value: string, maxLength: number): string {
-  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`;
 }

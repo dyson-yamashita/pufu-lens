@@ -5,6 +5,7 @@ import {
   type ReportPeriod,
   validateGeneratedReport,
 } from './report-schema.ts';
+import { normalizeReportWhitespace, truncateReportText } from './report-text.ts';
 
 export interface ReportGenerationProvider {
   generate(input: {
@@ -292,7 +293,7 @@ function activityPhraseFromDocument(document: ReportDocumentRecord): string {
   if (/議論|検討|すり合わせ|合意|相談/i.test(text)) {
     return '方針や進め方に関する議論';
   }
-  return truncate(meaningfulDocumentText(document), 80);
+  return truncateReportText(meaningfulDocumentText(document), 80);
 }
 
 function progressItemsFromDocument(document: ReportDocumentRecord): string[] {
@@ -301,7 +302,7 @@ function progressItemsFromDocument(document: ReportDocumentRecord): string[] {
     return [`${document.title} について情報が追加されました。`];
   }
   const items = uniqueNonEmpty(
-    sentenceFragments(text).map((item) => sentenceLike(truncate(item, 150))),
+    sentenceFragments(text).map((item) => sentenceLike(truncateReportText(item, 150))),
   )
     .slice(0, 3)
     .filter(Boolean);
@@ -350,7 +351,7 @@ function sentenceFragments(text: string): string[] {
 }
 
 function cleanDocumentText(value: string): string {
-  return normalizeWhitespace(value)
+  return normalizeReportWhitespace(value)
     .replace(/投稿|ログイン|会員登録/g, ' ')
     .replace(/\b\d+\s+[^\s。、「」]{1,32}\s+\d{4}年\d{1,2}月\d{1,2}日\s+\d{1,2}:\d{2}\b/g, ' ')
     .replace(/\s+/g, ' ')
@@ -362,8 +363,8 @@ function isBoilerplateFragment(value: string): boolean {
 }
 
 function meaningfulDocumentText(document: ReportDocumentRecord): string {
-  const summary = normalizeWhitespace(document.summary);
-  const title = normalizeWhitespace(document.title);
+  const summary = normalizeReportWhitespace(document.summary);
+  const title = normalizeReportWhitespace(document.title);
   if (summary && summary !== title) {
     return summary;
   }
@@ -371,7 +372,7 @@ function meaningfulDocumentText(document: ReportDocumentRecord): string {
 }
 
 function documentText(document: ReportDocumentRecord): string {
-  return `${document.title}\n${normalizeWhitespace(document.summary)}`;
+  return `${document.title}\n${normalizeReportWhitespace(document.summary)}`;
 }
 
 function sentenceLike(value: string): string {
@@ -421,11 +422,7 @@ function isTrailingPunctuation(char: string): boolean {
 }
 
 function uniqueNonEmpty(values: readonly string[]): string[] {
-  return [...new Set(values.map(normalizeWhitespace).filter(Boolean))];
-}
-
-function normalizeWhitespace(value: string | null | undefined): string {
-  return (value || '').replace(/\s+/g, ' ').trim();
+  return [...new Set(values.map(normalizeReportWhitespace).filter(Boolean))];
 }
 
 function joinJapanese(values: readonly string[]): string {
@@ -453,11 +450,7 @@ function sourceFromDocument(document: ReportDocumentRecord) {
     canonical_uri: document.canonicalUri,
     doc_type: document.docType,
     document_id: document.documentId,
-    snippet: truncate(document.summary || document.title, 220),
+    snippet: truncateReportText(document.summary || document.title, 220),
     title: document.title,
   };
-}
-
-function truncate(value: string, maxLength: number): string {
-  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`;
 }

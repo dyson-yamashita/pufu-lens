@@ -23,6 +23,7 @@ import {
   resolveReportPeriod,
   validatePrivateReportJson,
 } from './report-schema.ts';
+import { normalizeReportWhitespace, truncateReportText } from './report-text.ts';
 
 export interface RunGenerateReportOptions {
   readonly generatedBy?: string;
@@ -423,7 +424,7 @@ function pufuSourceFromDocument(document: ReportDocumentRecord): PrivateReportPu
     doc_type: document.docType,
     document_id: document.documentId,
     occurred_at: document.occurredAt,
-    snippet: truncate(document.summary || document.title, 220),
+    snippet: truncateReportText(document.summary || document.title, 220),
     title: document.title,
   };
 }
@@ -468,7 +469,9 @@ function rawReadViewSummary(view: AgentRawReadViewEnvelope): string {
   const sectionLines = sections
     .map((section) => {
       const text =
-        typeof section.text === 'string' ? truncate(cleanWhitespace(section.text), 360) : '';
+        typeof section.text === 'string'
+          ? truncateReportText(normalizeReportWhitespace(section.text), 360)
+          : '';
       const label = typeof section.label === 'string' && section.label ? section.label : 'section';
       return text ? `- ${label}: ${text}` : '';
     })
@@ -477,12 +480,4 @@ function rawReadViewSummary(view: AgentRawReadViewEnvelope): string {
   return sectionLines.length > 0
     ? ['Raw read view supplement (untrusted source text, redacted):', ...sectionLines].join('\n')
     : '';
-}
-
-function cleanWhitespace(value: string): string {
-  return value.replace(/\s+/g, ' ').trim();
-}
-
-function truncate(value: string, maxLength: number): string {
-  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`;
 }
