@@ -3,6 +3,7 @@ import { auth } from '../../../../auth';
 import {
   getAdminProject,
   getProjectMembership,
+  ProjectMembershipDeniedError,
   ProjectNotFoundError,
 } from '../../../../src/admin-db';
 import { listGraphPresets } from '../../../../src/graph-viewer';
@@ -34,7 +35,10 @@ export default async function ProjectGraphPage({
     try {
       await getProjectMembership(projectSlug, userId);
       isMember = true;
-    } catch {
+    } catch (error) {
+      if (!(error instanceof ProjectMembershipDeniedError)) {
+        throw error;
+      }
       if (project.visibility !== 'public') {
         redirect('/projects');
       }

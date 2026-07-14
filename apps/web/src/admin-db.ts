@@ -115,6 +115,13 @@ export class ProjectNotFoundError extends Error {
   }
 }
 
+export class ProjectMembershipDeniedError extends Error {
+  constructor(slug: string) {
+    super(`Member access denied for project slug: ${slug}`);
+    this.name = 'ProjectMembershipDeniedError';
+  }
+}
+
 type AdminConfig = Record<string, unknown> & {
   readonly folderId?: unknown;
   readonly query?: unknown;
@@ -516,7 +523,7 @@ export async function getProjectMembership(
 
   const access = await lookupProjectMemberAccess(sql, { projectSlug: slug, userId });
   if (!access) {
-    throw new Error(`Member access denied for project slug: ${slug}`);
+    throw new ProjectMembershipDeniedError(slug);
   }
   const canManageMembers = access.appRole === 'admin' || access.projectRole === 'admin';
 
