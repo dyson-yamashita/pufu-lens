@@ -268,6 +268,12 @@ test('scenario: public user reads report with shared private rendering and no qu
 
   await expect(page.getByTestId('public-chat-panel')).toHaveCount(0);
   await expect(page.getByTestId('public-chat-question-input')).toHaveCount(0);
+  await expect(page.getByTestId('graph-viewer-panel')).toHaveCount(0);
+  await expect(page.getByTestId('global-nav-graph')).toBeVisible();
+  await expect(page.getByTestId('global-nav-graph')).toHaveAttribute(
+    'href',
+    '/projects/sample-a/graph',
+  );
 });
 
 test('scenario: public report gate hides private project reports', async ({ page }) => {

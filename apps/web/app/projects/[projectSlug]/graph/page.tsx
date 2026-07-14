@@ -1,7 +1,10 @@
 import { redirect } from 'next/navigation';
 import { auth } from '../../../../auth';
-import type { ProjectSummary } from '../../../../src/admin-data';
-import { getProjectMembership } from '../../../../src/admin-db';
+import {
+  getAdminProject,
+  hasProjectMemberAccess,
+  ProjectNotFoundError,
+} from '../../../../src/admin-db';
 import { listGraphPresets } from '../../../../src/graph-viewer';
 import { GraphViewerPanel } from '../../../../src/graph-viewer-client';
 import { AppShell, PageHeader } from '../../../../src/ui';
@@ -12,23 +15,52 @@ export default async function ProjectGraphPage({
   readonly params: Promise<{ readonly projectSlug: string }>;
 }) {
   const { projectSlug } = await params;
-  const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) {
-    redirect('/login');
+  const [projectResult, session] = await Promise.all([
+    getAdminProject(projectSlug)
+      .then((project) => ({ project }))
+      .catch((error: unknown) => ({ error })),
+    auth(),
+  ]);
+  if ('error' in projectResult) {
+    if (projectResult.error instanceof ProjectNotFoundError) {
+      redirect('/projects');
+    }
+    throw projectResult.error;
   }
-  let project: ProjectSummary;
-  try {
-    const membership = await getProjectMembership(projectSlug, userId);
-    project = membership.project;
-  } catch {
-    redirect('/projects');
+  const { project } = projectResult;
+  const userId = session?.user?.id;
+  let isMember = false;
+  if (userId) {
+    isMember = await hasProjectMemberAccess(projectSlug, userId);
+    if (!isMember && project.visibility !== 'public') {
+      redirect('/projects');
+    }
+  } else if (project.visibility !== 'public') {
+    redirect('/login');
   }
 
   const presets = listGraphPresets();
   const initialPreset = presets[0];
   if (!initialPreset) {
     throw new Error('Graph preset is not configured.');
+  }
+
+  if (!isMember) {
+    return (
+      <AppShell active="graph" project={project}>
+        <PageHeader
+          title={`${project.name} Graph`}
+          subtitle="公開 project の graph を public API で確認します。"
+        />
+        <GraphViewerPanel
+          graphApiPath={`/api/public/projects/${project.slug}/graph`}
+          initialPresetId={initialPreset.id}
+          loadDocumentChunks={false}
+          presets={presets}
+          projectSlug={project.slug}
+        />
+      </AppShell>
+    );
   }
 
   return (

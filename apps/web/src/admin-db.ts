@@ -115,6 +115,13 @@ export class ProjectNotFoundError extends Error {
   }
 }
 
+export class ProjectMembershipDeniedError extends Error {
+  constructor(slug: string) {
+    super(`Member access denied for project slug: ${slug}`);
+    this.name = 'ProjectMembershipDeniedError';
+  }
+}
+
 type AdminConfig = Record<string, unknown> & {
   readonly folderId?: unknown;
   readonly query?: unknown;
@@ -516,7 +523,7 @@ export async function getProjectMembership(
 
   const access = await lookupProjectMemberAccess(sql, { projectSlug: slug, userId });
   if (!access) {
-    throw new Error(`Member access denied for project slug: ${slug}`);
+    throw new ProjectMembershipDeniedError(slug);
   }
   const canManageMembers = access.appRole === 'admin' || access.projectRole === 'admin';
 
@@ -532,6 +539,23 @@ export async function getProjectMembership(
     project,
     users: userRows.map(memberFromRow),
   };
+}
+
+/**
+ * Returns whether the user has project member access without loading membership lists.
+ */
+export async function hasProjectMemberAccess(slug: string, userId: string): Promise<boolean> {
+  const sql = getOptionalAdminSql();
+  if (!sql) {
+    if (isFixtureFallbackEnabled()) {
+      getFallbackProject(slug);
+      return true;
+    }
+    throw new Error('DATABASE_URL is required for project members.');
+  }
+
+  const access = await lookupProjectMemberAccess(sql, { projectSlug: slug, userId });
+  return access !== undefined;
 }
 
 function fallbackProjectMembership(slug: string, userId: string): ProjectMembershipSummary {
