@@ -74,6 +74,7 @@ export interface GraphViewerRepository {
     documentIds: readonly string[];
     projectId: string;
   }): Promise<ReadonlyMap<string, readonly GraphViewerDocumentChunk[]>>;
+  lookupPublicProject(input: { projectSlug: string }): Promise<GraphProjectAccess | undefined>;
   lookupProjectMember(input: {
     projectSlug: string;
     userId: string;
@@ -183,8 +184,6 @@ export async function runGraphPresetQuery(
   input: { limit?: number; projectSlug: string; queryId: string; userId: string },
   options: { repository: GraphViewerRepository },
 ): Promise<GraphQueryResult> {
-  const preset = getGraphPreset(input.queryId);
-  const limit = normalizeGraphLimit(input.limit ?? preset.defaultLimit, preset.maxLimit);
   const project = await options.repository.lookupProjectMember({
     projectSlug: input.projectSlug,
     userId: input.userId,
@@ -193,10 +192,49 @@ export async function runGraphPresetQuery(
     throw new GraphAccessDeniedError(input.projectSlug);
   }
 
+  return executeGraphPresetForProject(
+    { limit: input.limit, queryId: input.queryId },
+    { graphName: project.graphName, repository: options.repository },
+  );
+}
+
+/**
+ * Runs a graph preset query for a public project without requiring member authentication.
+ *
+ * @param input - Query parameters including the project, preset ID, and optional limit.
+ * @param options - Repository used to resolve public project access and execute the preset.
+ * @returns The normalized graph result, including preset metadata, raw rows, and the applied limit.
+ */
+export async function runPublicGraphPresetQuery(
+  input: { limit?: unknown; projectSlug: string; queryId: string },
+  options: { repository: GraphViewerRepository },
+): Promise<GraphQueryResult> {
+  const project = await options.repository.lookupPublicProject({
+    projectSlug: input.projectSlug,
+  });
+  if (!project) {
+    throw new GraphAccessDeniedError(input.projectSlug);
+  }
+
+  return executeGraphPresetForProject(
+    { limit: input.limit, queryId: input.queryId },
+    { graphName: project.graphName, repository: options.repository },
+  );
+}
+
+async function executeGraphPresetForProject(
+  input: { limit?: unknown; queryId: string },
+  options: {
+    graphName: string;
+    repository: Pick<GraphViewerRepository, 'executePreset'>;
+  },
+): Promise<GraphQueryResult> {
+  const preset = getGraphPreset(input.queryId);
+  const limit = normalizeGraphLimit(input.limit ?? preset.defaultLimit, preset.maxLimit);
   const cypher = preset.cypher(limit);
   const rows = await options.repository.executePreset({
     cypher,
-    graphName: project.graphName,
+    graphName: options.graphName,
     preset,
   });
   const normalized = normalizeGraphRows(rows, {
@@ -206,7 +244,7 @@ export async function runGraphPresetQuery(
 
   return {
     ...normalized,
-    graphName: project.graphName,
+    graphName: options.graphName,
     limit,
     preset: {
       defaultLimit: preset.defaultLimit,
@@ -347,6 +385,33 @@ export function createPostgresGraphViewerRepository(
         id: access.id,
         name: access.name,
         slug: access.slug,
+      };
+    },
+    async lookupPublicProject({ projectSlug }) {
+      const rows: readonly unknown[] = await sql`
+        SELECT id::text, slug, name, graph_name AS "graphName"
+        FROM public.projects
+        WHERE slug = ${projectSlug}
+          AND visibility = 'public'
+        LIMIT 1
+      `;
+      const row = rows[0];
+      if (!isRecord(row)) {
+        return undefined;
+      }
+      const graphNameValue = row.graphName;
+      if (typeof graphNameValue !== 'string') {
+        return undefined;
+      }
+      const graphName = graphNameValue.trim();
+      if (!graphName) {
+        return undefined;
+      }
+      return {
+        graphName: validateGraphName(graphName),
+        id: requireString(row.id, 'project id'),
+        name: requireString(row.name, 'project name'),
+        slug: requireString(row.slug, 'project slug'),
       };
     },
   };

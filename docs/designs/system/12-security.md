@@ -49,6 +49,7 @@ API は以下の認可をかける：
 - 公開レポートは通常の `/api/projects/[projectSlug]/...` とは別に、未ログイン用の `/api/public/projects/[projectSlug]/reports/[reportId]` を用意する。公開ページの正規 URL は `/reports/public/[projectSlug]/[reportId]` とする。
 - `/api/public/projects/[projectSlug]/reports/[reportId]` は API entrypoint で `projectSlug` と `reportId` を storage-safe pattern に validate し、DB 上の `projects.visibility = 'public'` と `reports.is_public = true` を確認できた場合だけ private report JSON を返す。`visibility = 'private'`、`is_public = false`、存在しない、または project が無効な場合は同じ `404` を返し、非公開レポートの存在有無を漏らさない。
 - `/api/public/projects/[projectSlug]/reports/[reportId]/chat` は公開済みレポートに紐づく public chat だけを提供する。public chat は同じ project の private chat と同じ project chat agent を使うが、入口で `projects.visibility = 'public'` と `reports.is_public = true` を要求する。
+- `/api/public/projects/[projectSlug]/graph` は public project の graph node / edge / property 表示だけを提供する。入口で `projects.visibility = 'public'` を要求し、request body から Cypher 文字列や graph name は受け取らない。公開ページでは document chunk 一覧と chunk 詳細を表示しない。
 - private レポートの閲覧と signed URL 発行は DB 依存 API として扱う。`/api/projects/[projectSlug]/reports/[reportId]` または `/api/projects/[projectSlug]/reports/[reportId]/signed-url` で必ず `project_members` 認可後に返し、業務時間外はチャットと同様に `db_outside_business_hours` を返す。public report / public chat も DB 依存の公開可否確認を行うため、業務時間外は同じく利用不可にする。
 
 ### 3. 公開レポートの保護

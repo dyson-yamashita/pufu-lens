@@ -11,6 +11,7 @@ import {
   normalizeGraphLimit,
   normalizeGraphRows,
   runGraphPresetQuery,
+  runPublicGraphPresetQuery,
 } from './graph-viewer.ts';
 
 const actor = {
@@ -130,12 +131,12 @@ const limited = normalizeGraphRows(
 assert.equal(limited.nodes.length, 1);
 assert.equal(limited.truncated, true);
 
-function createRepository(): GraphViewerRepository {
+function createRepository(expectedLimit = 200): GraphViewerRepository {
   return {
     async executePreset({ cypher, graphName, preset }) {
       assert.equal(graphName, 'graph_sample_a');
       assert.equal(preset.id, 'recent-relations');
-      assert.match(cypher, /LIMIT 200$/);
+      assert.match(cypher, new RegExp(`LIMIT ${expectedLimit}$`, 'u'));
       return [
         {
           relation: `${JSON.stringify(edge)}::edge`,
@@ -168,6 +169,11 @@ function createRepository(): GraphViewerRepository {
         ? { graphName: 'graph_sample_a', id: 'project-a', name: 'Sample A', slug: 'sample-a' }
         : undefined;
     },
+    async lookupPublicProject({ projectSlug }) {
+      return projectSlug === 'sample-a'
+        ? { graphName: 'graph_sample_a', id: 'project-a', name: 'Sample A', slug: 'sample-a' }
+        : undefined;
+    },
   };
 }
 
@@ -182,6 +188,23 @@ assert.equal(result.nodes.length, 2);
 assert.equal('chunks' in (result.nodes[1] ?? {}), false);
 assert.equal(result.edges.length, 1);
 assert.equal(result.rawRows.length, 1);
+
+const publicResult = await runPublicGraphPresetQuery(
+  { limit: 50, projectSlug: 'sample-a', queryId: 'recent-relations' },
+  { repository: createRepository(50) },
+);
+assert.equal(publicResult.graphName, 'graph_sample_a');
+assert.equal(publicResult.limit, 50);
+assert.equal(publicResult.nodes.length, 2);
+
+await assert.rejects(
+  () =>
+    runPublicGraphPresetQuery(
+      { projectSlug: 'missing-public', queryId: 'recent-relations' },
+      { repository: createRepository() },
+    ),
+  GraphAccessDeniedError,
+);
 
 const documentNode = {
   id: 'doc-node',
