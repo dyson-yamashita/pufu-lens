@@ -1,4 +1,4 @@
-import { mastraFetchHeaders } from './mastra-chat.ts';
+import { mastraFetchHeaders, normalizeMastraUrl } from './mastra-chat.ts';
 import type { ReportPeriod } from './report.ts';
 
 const GENERATE_REPORT_WORKFLOW_ID = 'generate-report';
@@ -12,8 +12,7 @@ type MastraWorkflowExecutionResult = {
 
 export function mastraGenerateReportWorkflowStartUrl(env: MastraWorkflowEnv = process.env): string {
   const rawBase = env.MASTRA_SERVER_URL ?? env.MASTRA_API_URL ?? 'http://localhost:4111';
-  const base = rawBase.replace(/\/+$/, '').replace(/\/api$/, '');
-  return `${base}/api/workflows/${GENERATE_REPORT_WORKFLOW_ID}/start-async`;
+  return `${normalizeMastraUrl(rawBase)}/api/workflows/${GENERATE_REPORT_WORKFLOW_ID}/start-async`;
 }
 
 /**
