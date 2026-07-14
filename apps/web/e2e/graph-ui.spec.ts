@@ -72,3 +72,10 @@ test('scenario: unauthenticated visitor cannot open private project graph', asyn
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByTestId('graph-viewer-panel')).toHaveCount(0);
 });
+
+test('scenario: unknown project graph route redirects to projects list', async ({ page }) => {
+  await page.goto('/projects/unknown-project-slug/graph');
+
+  await expect(page).toHaveURL(/\/projects$/);
+  await expect(page.getByTestId('graph-viewer-panel')).toHaveCount(0);
+});

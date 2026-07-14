@@ -1,6 +1,10 @@
 import { redirect } from 'next/navigation';
 import { auth } from '../../../../auth';
-import { getAdminProject, getProjectMembership } from '../../../../src/admin-db';
+import {
+  getAdminProject,
+  getProjectMembership,
+  ProjectNotFoundError,
+} from '../../../../src/admin-db';
 import { listGraphPresets } from '../../../../src/graph-viewer';
 import { GraphViewerPanel } from '../../../../src/graph-viewer-client';
 import { AppShell, PageHeader } from '../../../../src/ui';
@@ -11,7 +15,19 @@ export default async function ProjectGraphPage({
   readonly params: Promise<{ readonly projectSlug: string }>;
 }) {
   const { projectSlug } = await params;
-  const [project, session] = await Promise.all([getAdminProject(projectSlug), auth()]);
+  const [projectResult, session] = await Promise.all([
+    getAdminProject(projectSlug)
+      .then((project) => ({ project }))
+      .catch((error: unknown) => ({ error })),
+    auth(),
+  ]);
+  if ('error' in projectResult) {
+    if (projectResult.error instanceof ProjectNotFoundError) {
+      redirect('/projects');
+    }
+    throw projectResult.error;
+  }
+  const { project } = projectResult;
   const userId = session?.user?.id;
   let isMember = false;
   if (userId) {
