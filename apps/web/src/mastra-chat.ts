@@ -98,8 +98,23 @@ export function mastraPublicReportChatGenerateUrl(env: MastraChatEnv = process.e
 
 function mastraAgentGenerateUrl(agentId: string, env: MastraChatEnv): string {
   const rawBase = env.MASTRA_SERVER_URL ?? env.MASTRA_API_URL ?? 'http://localhost:4111';
-  const base = rawBase.replace(/\/+$/, '').replace(/\/api$/, '');
+  const base = stripTerminalApiSuffix(stripTrailingSlashes(rawBase));
   return `${base}/api/agents/${agentId}/generate`;
+}
+
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') {
+    end -= 1;
+  }
+  return value.slice(0, end);
+}
+
+function stripTerminalApiSuffix(value: string): string {
+  if (value.endsWith('/api')) {
+    return value.slice(0, -4);
+  }
+  return value;
 }
 
 export async function mastraFetchHeaders(input: {
