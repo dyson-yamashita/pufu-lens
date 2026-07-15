@@ -25,19 +25,20 @@ Firebase App Hosting / Cloud Run / Jobs ─ Service Account / Workload Identity 
 
 ### 2. 認証・認可
 
-| 対象                                              | 方式                                                        |
-| ------------------------------------------------- | ----------------------------------------------------------- |
-| Browser → Next.js                                 | Firebase App Hosting 上の Auth.js セッション                |
-| Admin → Google / GitHub 連携                      | OAuth / GitHub App installation                             |
-| Firebase App Hosting → Cloud Run                  | OIDC（App Hosting backend service account）                 |
-| Firebase App Hosting → GCE VM                     | VPC access + DB パスワード                                  |
-| Cloud Run → Cloud Run                             | OIDC（Service Account）                                     |
-| Cloud Run → GCE VM                                | VPC 内部通信 + DB パスワード                                |
-| Cloud Scheduler → Cloud Run                       | OIDC                                                        |
-| Firebase App Hosting / Cloud Run → Google API     | 管理者 OAuth token（Secret Manager 経由）                   |
-| Firebase App Hosting / Cloud Run → GitHub         | GitHub App installation token / PAT                         |
-| Firebase App Hosting / Cloud Run → Secret Manager | Service Account / Workload Identity                         |
-| Firebase App Hosting / Cloud Run → GCS            | Service Account / Workload Identity（バケットスコープ IAM） |
+| 対象                                               | 方式                                                        |
+| -------------------------------------------------- | ----------------------------------------------------------- |
+| Browser → Next.js                                  | Firebase App Hosting 上の Auth.js セッション                |
+| Admin → Google / GitHub 連携                       | OAuth / GitHub App installation                             |
+| Firebase App Hosting → Cloud Run                   | OIDC（App Hosting backend service account）                 |
+| Firebase App Hosting → GCE VM                      | VPC access + DB パスワード                                  |
+| Cloud Run → Cloud Run                              | OIDC（Service Account）                                     |
+| Cloud Run → GCE VM                                 | VPC 内部通信 + DB パスワード                                |
+| Cloud Scheduler → Cloud Run                        | OIDC                                                        |
+| Firebase App Hosting / Cloud Run → Google API      | 管理者 OAuth token（Secret Manager 経由）                   |
+| Firebase App Hosting / Cloud Run → GitHub          | GitHub App installation token / PAT                         |
+| Firebase App Hosting / Cloud Run → Secret Manager  | Service Account / Workload Identity                         |
+| Firebase App Hosting / Cloud Run → GCS             | Service Account / Workload Identity（バケットスコープ IAM） |
+| PostgreSQL VM → Secret Manager / Artifact Registry | 専用 Service Account（secret / repository スコープ IAM）    |
 
 API は以下の認可をかける：
 
