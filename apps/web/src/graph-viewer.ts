@@ -96,7 +96,7 @@ export interface GraphViewerRepository {
   }): Promise<GraphProjectAccess | undefined>;
 }
 
-export const GRAPH_DEFAULT_LIMIT = 100;
+export const GRAPH_DEFAULT_LIMIT = 50;
 export const GRAPH_MAX_LIMIT = 500;
 export const GRAPH_MIN_LIMIT = 1;
 

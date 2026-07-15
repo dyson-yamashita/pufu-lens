@@ -156,6 +156,7 @@ assert.throws(
 );
 
 const recentPreset = getGraphPreset('recent-relations');
+assert.equal(recentPreset.defaultLimit, 50);
 assert.match(buildPresetCypher(recentPreset), /LIMIT 500$/);
 assert.match(recentPreset.cypherBody, /doc\.graphNodeId <= neighbor\.graphNodeId/u);
 
@@ -375,6 +376,7 @@ await assert.rejects(
 );
 
 const presetSummary = listGraphPresets().find((preset) => preset.id === 'recent-relations');
+assert.equal(presetSummary?.defaultLimit, 50);
 assert.match(presetSummary?.preview ?? '', /\$documentGraphNodeIds/u);
 assert.match(presetSummary?.preview ?? '', /'Actor' IN labels\(neighbor\)/u);
 assert.match(presetSummary?.preview ?? '', /'Topic' IN labels\(neighbor\)/u);
