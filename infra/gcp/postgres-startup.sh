@@ -84,8 +84,8 @@ SECRET_RESPONSE=$(curl --fail --silent --show-error \
 unset ACCESS_TOKEN
 
 ENCODED_PASSWORD=$(printf '%s' "$SECRET_RESPONSE" |
-  tr -d '\n' |
-  sed -n 's/.*"data"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+  tr '{},' '\n' |
+  sed -n 's/^[[:space:]]*"data"[[:space:]]*:[[:space:]]*"\([^"]*\)"[[:space:]]*$/\1/p')
 unset SECRET_RESPONSE
 
 if [[ -z "$ENCODED_PASSWORD" ]]; then
