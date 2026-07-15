@@ -3,6 +3,8 @@ import {
   clampFloatingPanelPosition,
   defaultFloatingPanelPosition,
   graphDetailsModalSelection,
+  graphViewportPadding,
+  resizeGraphViewport,
 } from './graph-viewer-interactions.ts';
 
 const selection = { id: 'node-1' };
@@ -10,6 +12,25 @@ const selection = { id: 'node-1' };
 assert.equal(graphDetailsModalSelection(false, selection), undefined);
 assert.equal(graphDetailsModalSelection(true, undefined), undefined);
 assert.equal(graphDetailsModalSelection(true, selection), selection);
+
+assert.equal(graphViewportPadding(0), 56);
+assert.equal(graphViewportPadding(400), 40);
+assert.equal(graphViewportPadding(1200), 60);
+assert.equal(graphViewportPadding(2000), 72);
+
+const viewportCalls: unknown[][] = [];
+resizeGraphViewport(
+  {
+    fit(elements, padding) {
+      viewportCalls.push(['fit', elements, padding]);
+    },
+    resize() {
+      viewportCalls.push(['resize']);
+    },
+  },
+  1200,
+);
+assert.deepEqual(viewportCalls, [['resize'], ['fit', undefined, 60]]);
 
 assert.deepEqual(
   clampFloatingPanelPosition(

@@ -10,6 +10,31 @@ export type FloatingPanelPosition = {
   readonly y: number;
 };
 
+type GraphViewport = {
+  fit(elements: undefined, padding: number): unknown;
+  resize(): unknown;
+};
+
+/**
+ * Calculates responsive viewport padding without changing graph model positions.
+ *
+ * @param containerWidth - Current graph container width in CSS pixels.
+ */
+export function graphViewportPadding(containerWidth: number): number {
+  return Math.max(40, Math.min(72, Math.round(containerWidth * 0.05) || 56));
+}
+
+/**
+ * Resizes and refits a graph viewport while preserving its current model positions.
+ *
+ * @param viewport - The Cytoscape-compatible viewport to update.
+ * @param containerWidth - Current graph container width in CSS pixels.
+ */
+export function resizeGraphViewport(viewport: GraphViewport, containerWidth: number): void {
+  viewport.resize();
+  viewport.fit(undefined, graphViewportPadding(containerWidth));
+}
+
 /**
  * Returns the selection that should be shown in the fullscreen-only floating Details dialog.
  *

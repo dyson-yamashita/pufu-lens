@@ -17,7 +17,11 @@ import type {
   GraphViewerEdge,
   GraphViewerNode,
 } from './graph-viewer';
-import { graphDetailsModalSelection } from './graph-viewer-interactions';
+import {
+  graphDetailsModalSelection,
+  graphViewportPadding,
+  resizeGraphViewport,
+} from './graph-viewer-interactions';
 import { buildTimelinePositions } from './graph-viewer-layout';
 
 type GraphSelection =
@@ -26,7 +30,7 @@ type GraphSelection =
 
 type GraphLayoutId = 'force' | 'grid' | 'timeline';
 
-const GRAPH_VIEWER_DEFAULT_LIMIT = 100;
+const GRAPH_VIEWER_DEFAULT_LIMIT = 50;
 const GRAPH_LIMIT_OPTIONS = [50, 100, 200, 500] as const;
 const GRAPH_LAYOUT_OPTIONS: readonly { readonly id: GraphLayoutId; readonly label: string }[] = [
   { id: 'force', label: 'Force' },
@@ -131,7 +135,7 @@ export function GraphViewerPanel({
           ) : null}
         </div>
         <label className="form-field" htmlFor="graph-preset-select">
-          <span>Preset</span>
+          <span>Preset: </span>
           <select
             data-testid="graph-preset-select"
             disabled={isLoading}
@@ -153,7 +157,7 @@ export function GraphViewerPanel({
         </label>
         <div className="graph-control-grid">
           <label className="form-field" htmlFor="graph-limit-select">
-            <span>Documents</span>
+            <span>Document count: </span>
             <select
               data-testid="graph-limit-select"
               disabled={isLoading}
@@ -169,7 +173,7 @@ export function GraphViewerPanel({
             </select>
           </label>
           <label className="form-field" htmlFor="graph-layout-select">
-            <span>Layout</span>
+            <span>Layout: </span>
             <select
               data-testid="graph-layout-select"
               id="graph-layout-select"
@@ -186,7 +190,7 @@ export function GraphViewerPanel({
         </div>
         <div className="graph-control-period-grid">
           <label className="form-field" htmlFor="graph-period-start-input">
-            <span>Start</span>
+            <span>Start: </span>
             <input
               data-testid="graph-period-start-input"
               disabled={isLoading}
@@ -197,7 +201,7 @@ export function GraphViewerPanel({
             />
           </label>
           <label className="form-field" htmlFor="graph-period-end-input">
-            <span>End</span>
+            <span>End: </span>
             <input
               data-testid="graph-period-end-input"
               disabled={isLoading}
@@ -315,7 +319,6 @@ function GraphCanvas({
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
   const [isFallbackFullscreen, setIsFallbackFullscreen] = useState(false);
   const [floatingSelection, setFloatingSelection] = useState<GraphSelection | undefined>();
-  const [containerWidth, setContainerWidth] = useState(0);
   const isMaximized = isNativeFullscreen || isFallbackFullscreen;
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const edgesById = useMemo(() => new Map(edges.map((edge) => [edge.id, edge])), [edges]);
@@ -343,7 +346,7 @@ function GraphCanvas({
     window.setTimeout(() => {
       const cy = cytoscapeRef.current;
       if (cy) {
-        cy.resize();
+        resizeGraphViewport(cy, cy.container()?.clientWidth ?? cy.width());
       }
     }, 0);
   }, []);
@@ -477,13 +480,10 @@ function GraphCanvas({
     if (!container) {
       return;
     }
-    const observer = new ResizeObserver(([entry]) => {
-      setContainerWidth(Math.round(entry?.contentRect.width ?? container.clientWidth));
-    });
+    const observer = new ResizeObserver(resizeGraph);
     observer.observe(container);
-    setContainerWidth(container.clientWidth);
     return () => observer.disconnect();
-  }, [containerElement]);
+  }, [containerElement, resizeGraph]);
 
   useEffect(() => {
     const container = containerElement;
@@ -508,7 +508,7 @@ function GraphCanvas({
             data: { id: edge.id, label: edge.label, source: edge.source, target: edge.target },
           })),
       ],
-      layout: buildGraphLayoutOptions('force', nodes, edges),
+      layout: { name: 'null' },
       maxZoom: 4,
       minZoom: 0.08,
       style: buildGraphStyles(graphTheme),
@@ -539,10 +539,8 @@ function GraphCanvas({
     if (!container || !cy) {
       return;
     }
-    cy.layout(
-      buildGraphLayoutOptions(layoutId, nodes, edges, containerWidth || container.clientWidth),
-    ).run();
-  }, [containerElement, containerWidth, edges, layoutId, nodes]);
+    cy.layout(buildGraphLayoutOptions(layoutId, nodes, edges, container.clientWidth)).run();
+  }, [containerElement, edges, layoutId, nodes]);
 
   return (
     <div
@@ -642,7 +640,7 @@ function buildGraphLayoutOptions(
   containerWidth = 0,
   fit = true,
 ) {
-  const padding = Math.max(40, Math.min(72, Math.round(containerWidth * 0.05) || 56));
+  const padding = graphViewportPadding(containerWidth);
   if (layoutId === 'grid') {
     return {
       name: 'grid',

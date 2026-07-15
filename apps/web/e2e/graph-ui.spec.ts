@@ -16,7 +16,7 @@ const publicGraphQueryResult = {
   documentCount: 1,
   edges: [],
   graphName: 'graph_sample_a',
-  limit: 100,
+  limit: 50,
   nodes: [
     {
       id: 'doc-public-1',
@@ -26,7 +26,7 @@ const publicGraphQueryResult = {
     },
   ],
   preset: {
-    defaultLimit: 100,
+    defaultLimit: 50,
     description: 'Actor に紐づく Document を表示します。',
     id: 'actor-documents',
     label: 'Actor Documents',
@@ -42,7 +42,7 @@ const privateGraphQueryResult = {
   documentCount: 1,
   edges: [],
   graphName: 'graph_local_dev',
-  limit: 100,
+  limit: 50,
   nodes: [
     {
       id: 'doc-member-1',
@@ -96,7 +96,11 @@ test('scenario: public graph page renders GraphViewerPanel via the public Graph 
   await page.goto('/projects/sample-a/graph');
 
   await expect(page.getByTestId('graph-viewer-panel')).toBeVisible();
-  await expect(page.locator('label[for="graph-limit-select"]')).toContainText('Documents');
+  await expect(page.locator('label[for="graph-preset-select"]')).toContainText('Preset:');
+  await expect(page.locator('label[for="graph-limit-select"]')).toContainText('Document count:');
+  await expect(page.locator('label[for="graph-layout-select"]')).toContainText('Layout:');
+  await expect(page.locator('label[for="graph-period-start-input"]')).toContainText('Start:');
+  await expect(page.locator('label[for="graph-period-end-input"]')).toContainText('End:');
   await expect(page.getByTestId('graph-period-start-input')).toBeVisible();
   await expect(page.getByTestId('graph-period-end-input')).toBeVisible();
   await expect(page.getByTestId('graph-period-start-input')).toHaveValue('');
@@ -106,7 +110,7 @@ test('scenario: public graph page renders GraphViewerPanel via the public Graph 
   const initialBody = graphRequestBodies[0];
   expect(initialBody?.periodStart).toBeUndefined();
   expect(initialBody?.periodEnd).toBeUndefined();
-  expect(typeof initialBody?.limit).toBe('number');
+  expect(initialBody?.limit).toBe(50);
   expect(typeof initialBody?.queryId).toBe('string');
 
   await page.getByTestId('graph-period-start-input').fill('2026-01-01');
