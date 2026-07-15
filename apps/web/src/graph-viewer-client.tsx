@@ -508,7 +508,7 @@ function GraphCanvas({
             data: { id: edge.id, label: edge.label, source: edge.source, target: edge.target },
           })),
       ],
-      layout: buildGraphLayoutOptions('force', nodes, edges),
+      layout: { name: 'null' },
       maxZoom: 4,
       minZoom: 0.08,
       style: buildGraphStyles(graphTheme),
