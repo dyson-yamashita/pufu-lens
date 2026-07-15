@@ -21,6 +21,7 @@ REPO=pufu-lens              # Artifact Registry repository
 BUCKET=<project>-prod       # GCS バケット（実 prefix はプロジェクト命名規約に従う）
 RUNTIME_SA=mastra-runtime@${PROJECT_ID}.iam.gserviceaccount.com
 SCHED_SA=scheduler-oidc@${PROJECT_ID}.iam.gserviceaccount.com
+POSTGRES_VM_SA=postgres-vm@${PROJECT_ID}.iam.gserviceaccount.com
 gcloud config set project "$PROJECT_ID"
 ```
 
@@ -54,9 +55,11 @@ gcloud services enable \
 ```bash
 gcloud iam service-accounts create mastra-runtime --display-name "Mastra runtime (Cloud Run/Jobs)"
 gcloud iam service-accounts create scheduler-oidc --display-name "Cloud Scheduler OIDC"
+gcloud iam service-accounts create postgres-vm --display-name "PostgreSQL VM"
 ```
 
 `mastra-runtime` を Cloud Run / Jobs / App Hosting backend の共通実行 SA として使う。
+`postgres-vm` は PostgreSQL VM 専用とし、Artifact Registry の image 読み取りと `POSTGRES_PASSWORD` secret の参照だけを許可する。
 
 ## Phase 3 — Artifact Registry + GCS
 
@@ -71,7 +74,7 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 
 ## Phase 4 — Secret Manager（実値は stdin 注入、絶対に echo しない）
 
-必要な secret はデプロイ範囲で決まる。最小は `DATABASE_URL`（Phase 6 で確定）/ `AUTH_SECRET` / `GEMINI_API_KEY`。
+必要な secret はデプロイ範囲で決まる。最小は `POSTGRES_PASSWORD` / `DATABASE_URL`（Phase 6 で確定）/ `AUTH_SECRET` / `GEMINI_API_KEY`。
 Gemini は Google AI API key 方式（`GOOGLE_GENAI_USE_VERTEXAI=false`）。OAuth ログインや Slack 通知を使う場合のみ対応 secret を足す。
 
 ```bash
@@ -105,39 +108,50 @@ gcloud compute networks subnets update default --region "$REGION" --enable-priva
 # 1) イメージ build（Cloud Build）
 gcloud builds submit infra/docker/postgres \
   --tag "${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/postgres-ai:latest"
-# 2) VM 作成（永続データディスク + host network コンテナ + 内部IP のみ）
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
+
+# 2) PostgreSQL password を作成し、VM 専用 SA だけに参照を許可
+PGPASS=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
+printf '%s' "$PGPASS" | gcloud secrets create POSTGRES_PASSWORD --data-file=-
+gcloud secrets add-iam-policy-binding POSTGRES_PASSWORD \
+  --member="serviceAccount:${POSTGRES_VM_SA}" \
+  --role="roles/secretmanager.secretAccessor"
+gcloud artifacts repositories add-iam-policy-binding "$REPO" \
+  --location "$REGION" \
+  --member="serviceAccount:${POSTGRES_VM_SA}" \
   --role="roles/artifactregistry.reader"
-gcloud compute instances create-with-container pg-ai \
+
+# 3) COS VM 作成（永続データディスク + host network コンテナ + 内部IP のみ）
+gcloud compute instances create pg-ai \
   --zone "$ZONE" --machine-type e2-medium \
+  --image-family cos-stable --image-project cos-cloud \
   --boot-disk-size 20GB --boot-disk-type pd-balanced \
-  --create-disk=name=pg-ai-data,size=50GB,type=pd-ssd,auto-delete=no \
-  --container-image "${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/postgres-ai:latest" \
-  --container-mount-disk=mount-path=/var/lib/postgresql/data,name=pg-ai-data \
-  --container-env=POSTGRES_USER=pufu,POSTGRES_DB=pufu_lens,POSTGRES_PASSWORD=$PGPASS,PGDATA=/var/lib/postgresql/data/pgdata \
+  --create-disk=name=pg-ai-data,device-name=pg-ai-data,size=50GB,type=pd-ssd,auto-delete=no \
+  --service-account "$POSTGRES_VM_SA" --scopes cloud-platform \
+  --metadata="postgres-image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/postgres-ai:latest,postgres-password-secret=POSTGRES_PASSWORD,postgres-data-disk=pg-ai-data" \
+  --metadata-from-file=startup-script=infra/gcp/postgres-startup.sh \
   --network default --no-address --tags pg-ai
 ```
 
 注意点:
 
-- `POSTGRES_PASSWORD` はシェル変数 `$PGPASS` を生成して渡し、表示しない。VM 作成後に内部 IP を取得し、`DATABASE_URL` を Secret Manager に stdin で格納する。
+- `POSTGRES_PASSWORD` はシェル変数 `$PGPASS` から stdin で Secret Manager に作成し、値を表示しない。VM metadata には secret 名だけを渡す。VM 作成後に内部 IP を取得し、`DATABASE_URL` を Secret Manager に stdin で格納する。
 - DB 名は `pufu_lens` 固定（`init.sql` が参照）。
-- `create-with-container` は init script を自動実行しないので、コンテナ起動後に IAP SSH 経由で `infra/docker/postgres/init.sql` を流し込む。`init.sql` は全テーブル + AGE graph + `schema_migrations` stamp を作るため、適用後は migration head 相当になる。
+- `infra/gcp/postgres-startup.sh` は起動のたびに永続ディスクの EXT4 初期化（未初期化時のみ）/ mount、COS host firewall、Artifact Registry 認証、Secret Manager 参照、`docker run --restart=always --network=host` を冪等に構成する。`cloud-platform` scope と Private Google Access の両方が必要。
+- 起動スクリプトは DB init SQL を実行しないので、コンテナ起動後に IAP SSH 経由で `infra/docker/postgres/init.sql` を流し込む。`init.sql` は全テーブル + AGE graph + `schema_migrations` stamp を作るため、適用後は migration head 相当になる。
 
 ```bash
-PGPASS=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
 INTERNAL_IP=$(gcloud compute instances describe pg-ai --zone "$ZONE" --format='get(networkInterfaces[0].networkIP)')
 DATABASE_URL="postgresql://pufu:${PGPASS}@${INTERNAL_IP}:5432/pufu_lens"
 printf '%s' "$DATABASE_URL" | gcloud secrets create DATABASE_URL --data-file=-
 
-until gcloud compute ssh pg-ai --zone "$ZONE" --tunnel-through-iap --command "docker ps -q --filter status=running" >/dev/null 2>&1; do
+until gcloud compute ssh pg-ai --zone "$ZONE" --tunnel-through-iap \
+  --command 'test -n "$(docker ps -q --filter name=^/pufu-lens-postgres$ --filter status=running)"' >/dev/null 2>&1; do
   echo "Waiting for container to start..."
   sleep 10
 done
 
 gcloud compute ssh pg-ai --zone "$ZONE" --tunnel-through-iap \
-  --command 'CID=$(docker ps -q --filter status=running); docker exec -i "$CID" psql -v ON_ERROR_STOP=1 -U pufu -d pufu_lens' \
+  --command 'docker exec -i pufu-lens-postgres psql -v ON_ERROR_STOP=1 -U pufu -d pufu_lens' \
   < infra/docker/postgres/init.sql
 ```
 
@@ -217,7 +231,7 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 ## Critical Gotchas（再発防止）
 
 1. **App Hosting の Next.js アダプタの CVE ゲートは `package.json` の version 文字列を `semver.satisfies` にそのまま渡す**。`"next": "^16.2.x"`（キャレット）は誤って vulnerable 判定 → ブロック。**キャレット無しの厳密版に固定**する。
-2. **`--no-address` VM はサブネットの Private Google Access が必須**（無効だと konlet / image pull が失敗）。
+2. **`--no-address` VM はサブネットの Private Google Access が必須**（無効だと起動スクリプトから Secret Manager / Artifact Registry に到達できない）。VM 専用 SA には `cloud-platform` scope、secret 単位の accessor、repository 単位の reader を付ける。
 3. **App Hosting backend に custom SA を使う場合**、その SA に App Hosting ソースバケット閲覧権 + `roles/firebaseapphosting.computeRunner` を付与し、secret には `firebase apphosting:secrets:grantaccess` を実行。
 4. **Cloud Build = Compute default SA** 構成では `roles/cloudbuild.builds.builder` を付与。
 5. **Mastra / Jobs は `--source .`(buildpacks) では pnpm workspace を解決できない** → 専用 Dockerfile + Artifact Registry。

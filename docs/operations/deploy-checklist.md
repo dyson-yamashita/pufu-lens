@@ -19,6 +19,8 @@ API key、DB password は記録しない。
 - [ ] Artifact Registry repository を作成した。
 - [ ] GCS bucket を作成した。
 - [ ] PostgreSQL VM / VPC / firewall / connector を作成した。
+- [ ] PostgreSQL VM に専用 service account、`cloud-platform` scope、Artifact Registry reader、`POSTGRES_PASSWORD` secret accessor を設定した。
+- [ ] PostgreSQL VM を `infra/gcp/postgres-startup.sh` で作成し、`gce-container-declaration` metadata に依存していないことを確認した。
 - [ ] Cloud Run / Cloud Run Jobs / Firebase App Hosting の service account を確認した。
 - [ ] Admin UI から Cloud Run Job を起動する App Hosting runtime service account に、対象 Job resource の `run.jobs.run` / `run.jobs.runWithOverrides` 権限を付与した（正準の IAM 要件は `docs/deployment/gcp-cloud-build.md` の IAM 節を参照）。
 - [ ] Secret Manager に runtime secret を作成した。
@@ -30,6 +32,7 @@ API key、DB password は記録しない。
 
 ## Secret 記録
 
+- `POSTGRES_PASSWORD`: PostgreSQL VM 専用。`postgres-vm` service account だけに accessor を付与し、実値は記録しない。
 - `DATABASE_URL`: PostgreSQL 接続。実値は記録しない。
 - `AUTH_SECRET`: Auth.js。実値は記録しない。
 - `AUTH_URL`: Auth.js callback URL の origin。例: `https://app.example.com`。
@@ -76,6 +79,8 @@ pnpm db:migrate
 pnpm report:backfill-project-manifests -- --dry-run
 pnpm infra:check --env staging
 pnpm deploy:smoke --env staging
+bash -n infra/gcp/postgres-startup.sh
+gcloud compute instances list --filter="metadata.items.key:gce-container-declaration"
 ```
 
 - `deploy:dry-run`: `pnpm db:migrate --check` と、`curate-workflow`、`ingest-workflow`、`generate-report`、`source-sync-dispatcher` の `WORKFLOW_ID` / `WORKFLOW_INPUT_JSON` entrypoint 計画をローカル dry-run で検査する。PGroonga migration を含む DB 変更では、dry-run 前に PostgreSQL イメージ更新 → `pnpm db:migrate` の順序を deploy checklist の DB Migration 記録へ残す。
@@ -93,6 +98,9 @@ pnpm deploy:smoke --env staging
 - GCS prefix 作成:
 - Secret Manager 参照:
 - PostgreSQL VPC 内接続:
+- PostgreSQL startup script log（secret 値を含まないこと）: `gcloud compute instances get-serial-port-output pg-ai --zone "$ZONE" | grep startup-script`
+- PostgreSQL container: `docker ps --filter name=^/pufu-lens-postgres$` と `docker logs pufu-lens-postgres`
+- `gce-container-declaration` metadata 検査（対象 VM が 0 件であること）:
 - public report manifest 解決:
 - secret / token / PII のログ漏れ確認:
 

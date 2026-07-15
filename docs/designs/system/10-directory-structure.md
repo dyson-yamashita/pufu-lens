@@ -107,6 +107,8 @@ project-root/
 │   │   └── postgres/
 │   │       ├── Dockerfile
 │   │       └── init.sql           # fresh DB 用スキーマ + schema_migrations baseline stamp
+│   ├── gcp/
+│   │   └── postgres-startup.sh    # COS VM の disk / secret / PostgreSQL container 起動
 │   └── scheduler/
 │       ├── curate-hourly.json
 │       ├── ingest-daily.json
