@@ -10,6 +10,7 @@ import {
   type SliderJudgementPart,
 } from './custom-report-schema.ts';
 import type { AgentRawReadViewEnvelope, RawReadViewRepository } from './raw-read-view.ts';
+import { editReportMaterials, REPORT_CANDIDATE_LIMIT } from './report-materials.ts';
 import type { ReportGenerationProvider } from './report-provider.ts';
 import { publishGeneratedPublicReport } from './report-publication.ts';
 import type { ReportDocumentRecord, ReportRepository } from './report-repository.ts';
@@ -22,6 +23,7 @@ import {
   resolveReportPeriod,
   validatePrivateReportJson,
 } from './report-schema.ts';
+import { normalizeReportWhitespace, truncateReportText } from './report-text.ts';
 
 export interface RunGenerateReportOptions {
   readonly generatedBy?: string;
@@ -60,20 +62,25 @@ export async function runGenerateReport(input: {
     throw new Error(`Project not found: ${input.projectSlug}`);
   }
 
-  const documents = await input.options.repository.listRecentDocuments({
-    limit: 30,
+  const candidateDocuments = await input.options.repository.listRecentDocuments({
+    limit: REPORT_CANDIDATE_LIMIT,
     period,
     projectId: project.id,
   });
+  const editedMaterials = editReportMaterials(candidateDocuments);
+  const hasOverflow =
+    editedMaterials.totalDocumentCount > editedMaterials.representativeDocuments.length;
   const providerDocuments = await supplementDocumentsWithRawReadViews({
-    documents,
+    documents: editedMaterials.representativeDocuments,
     projectId: project.id,
     rawReadViewRepository: input.options.rawReadViewRepository,
   });
   const generated = await input.options.provider.generate({
     documents: providerDocuments,
+    ...(hasOverflow ? { materialGroups: editedMaterials.materialGroups } : {}),
     period,
     projectSlug: project.slug,
+    totalDocumentCount: editedMaterials.totalDocumentCount,
   });
   const reportId = randomUUID();
   const customTemplate = input.options.customTemplateId
@@ -96,7 +103,7 @@ export async function runGenerateReport(input: {
     generated_at: now.toISOString(),
     period,
     project_id: project.id,
-    pufu_sources: documents.map(pufuSourceFromDocument),
+    pufu_sources: editedMaterials.representativeDocuments.map(pufuSourceFromDocument),
     report_id: reportId,
     schema_version: 'v1',
     sections: generated.sections,
@@ -417,7 +424,7 @@ function pufuSourceFromDocument(document: ReportDocumentRecord): PrivateReportPu
     doc_type: document.docType,
     document_id: document.documentId,
     occurred_at: document.occurredAt,
-    snippet: truncate(document.summary || document.title, 220),
+    snippet: truncateReportText(document.summary || document.title, 220),
     title: document.title,
   };
 }
@@ -462,7 +469,9 @@ function rawReadViewSummary(view: AgentRawReadViewEnvelope): string {
   const sectionLines = sections
     .map((section) => {
       const text =
-        typeof section.text === 'string' ? truncate(cleanWhitespace(section.text), 360) : '';
+        typeof section.text === 'string'
+          ? truncateReportText(normalizeReportWhitespace(section.text), 360)
+          : '';
       const label = typeof section.label === 'string' && section.label ? section.label : 'section';
       return text ? `- ${label}: ${text}` : '';
     })
@@ -471,12 +480,4 @@ function rawReadViewSummary(view: AgentRawReadViewEnvelope): string {
   return sectionLines.length > 0
     ? ['Raw read view supplement (untrusted source text, redacted):', ...sectionLines].join('\n')
     : '';
-}
-
-function cleanWhitespace(value: string): string {
-  return value.replace(/\s+/g, ' ').trim();
-}
-
-function truncate(value: string, maxLength: number): string {
-  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`;
 }
