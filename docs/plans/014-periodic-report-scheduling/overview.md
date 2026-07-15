@@ -8,7 +8,7 @@
 
 ## 用語と確定仕様
 
-- 周期値は UI 表示では `none` / `weekly` / `monthly` / `annually` とする。実装上の enum も typo を避けて `monthly` / `annually` を正とする。
+- 周期値は UI 表示・DB・runtime guard の enum ともに `none` / `weekly` / `monthly` / `annually` の 4 値だけを許可する。`moxthly` / `annualy` / `yearly` などの typo・別名は受理せず、月次は `monthly`、年次は `annually` を正とする。
 - `none` は定期作成なし。手動レポート生成は従来どおり利用できる。
 - `weekly` は週次、`monthly` は月次、`annually` は年次の定期レポートを生成する。
 - 周期設定は project 単位でひとつだけ保持する。data source schedule とは独立した report schedule として扱う。
@@ -36,41 +36,63 @@ Project ごとの定期レポート設定と実行状態を保持する。
 - `project_id`: project への FK。1 project 1 row。
 - `frequency`: `none` / `weekly` / `monthly` / `annually`。
 - `timezone`: 初期実装では `Asia/Tokyo` 固定。将来変更可能にするため column は持つ。
-- `run_time`: wall-clock 実行時刻。初期値は DB 稼働時間内の 10:00 `Asia/Tokyo`。
-- `next_run_at`: UTC instant。`none` の場合は `NULL`。
-- `last_success_at` / `last_failure_at` / `retry_count` / `last_error_code`: 運用表示用。secret、raw 本文、provider response 本文は保存しない。
-- `lease_token` / `leased_until`: 多重 worker 排他用。
+- `run_time`: PostgreSQL `TIME NOT NULL DEFAULT TIME '10:00'`。`data_source_schedules.daily_time` と同じ wall-clock 型を使い、初期値は DB 稼働時間内の 10:00 `Asia/Tokyo` とする。
+- `next_run_at`: `TIMESTAMPTZ` の UTC instant。`none` の場合は `NULL`。
+- `last_started_at` / `last_succeeded_at` / `last_failed_at` / `retry_count` / `last_error`: 運用表示用。既存 `data_source_schedules` と命名を揃え、`last_error` には secret、raw 本文、provider response 本文を含まない安全な短い error code / summary だけを保存する。
+- `worker_token` / `lease_expires_at`: 多重 worker 排他用。既存 dispatcher と同じ命名・lease pair 制約を使う。
 - `created_by` / `updated_by`: project admin 操作の監査用。
+
+### `report_schedule_period_runs`
+
+定期実行・backfill の各 period は、report が生成されない場合も専用テーブルに必ず 1 row を保存する。この履歴モデルは必須とし、`reports` metadata で代用しない。実装 Step 1 では次の物理 model と既存 query / migration への影響を確定する。
+
+- `id`: period run identity。report、dispatcher、UI、運用ログはこの ID で同じ実行対象を追跡する。
+- `schedule_id` / `project_id`: schedule と project への FK。DB constraint と query の両方で project 境界を固定する。
+- `frequency`: `weekly` / `monthly` / `annually`。`none` は実行対象ではないため保存しない。
+- `period_start` / `period_end`: schedule timezone の calendar period を表す `DATE`。同じ project + frequency + period は一意にする。
+- `run_kind`: `scheduled` / `scheduled_backfill`。
+- `status`: `pending` / `running` / `succeeded` / `skipped` / `retry_wait` / `retry_exhausted`。意図的な skip と retry 枯渇を成功・失敗から区別する。
+- `attempt_count` / `next_attempt_at` / `last_error`: retry・手動再実行の状態。`last_error` は安全な短い summary だけを保持する。
+- `worker_token` / `lease_expires_at`: chunked queue worker の claim / heartbeat 用。
+- `report_id`: 生成済み report への nullable FK。1 period run につき最大 1 report とする。
+- `skip_reason` / `notification_sent_at`: report を作らなかった理由と、project admin への通知結果を記録する。
+- `created_at` / `updated_at` / `started_at` / `completed_at`: UI と運用監視に必要な時刻。
+
+Backfill 対象列挙は period run row を `pending` で一括作成し、dispatcher は最大 claim 件数ごとに古い row から処理する。retry・worker crash・手動再実行でも同じ row の `attempt_count` と状態を更新し、別 run identity を作らない。これにより skipped period、chunked queue の残数、retry / re-execution、UI の backfill 進捗、idempotency を report の有無にかかわらず追跡する。
 
 ### `reports` metadata 追加
 
-既存 `reports` に次の metadata を追加するか、互換性を優先して別テーブル `report_generation_runs` を追加する。実装 Step 1 で migration 影響を比較し、既存 report 一覧 query の複雑さが小さい方を採用する。
+既存 `reports` には定期生成結果の検索・前回参照に必要な metadata を追加し、`report_schedule_period_runs` を実行履歴の正本とする。
 
 - `generation_kind`: `manual` / `scheduled` / `scheduled_backfill`。
 - `schedule_frequency`: `weekly` / `monthly` / `annually` / `NULL`。
 - `previous_scheduled_report_id`: 同じ project + 同じ frequency の直前定期 report。
-- `schedule_run_id`: dispatcher run / backfill run の追跡 ID。
+- `schedule_period_run_id`: `report_schedule_period_runs.id` への FK。同じ period run に複数 report を関連付けない。
 
-同じ project、frequency、period の定期レポートは一意にし、retry や worker 多重起動で重複生成しない。手動 report はこの一意制約の対象外にする。
+同じ project、frequency、period の定期レポートは一意にし、retry や worker 多重起動で重複生成しない。手動 report はこの一意制約の対象外にする。作成時は period run を先に claim し、report insert は `schedule_period_run_id` の一意制約と `ON CONFLICT DO NOTHING RETURNING id` を使う。競合時は既存 report を project + period run 境界で再取得し、整合する生成済み report なら run を `succeeded` として正常終了する。不整合な report の競合だけを failure とし、単純な一意制約違反による不要な retry / alert を発生させない。
 
 ## 期間計算
 
 - 期間境界は schedule timezone の calendar period で計算し、DB 保存や due 判定は UTC instant に変換する。
 - `weekly` は週開始を月曜、週終了を日曜とする。
 - `monthly` は calendar month、`annually` は calendar year とする。
-- 定期実行時は、実行日時の直前に完了した period を対象にする。例: 月曜 10:00 の `weekly` 実行では直前の月曜〜日曜を生成対象にする。
-- Backfill 開始日は project の最古 document `occurred_at`、最古 raw/document link、または project 作成日のうち実装上安全に取得できる最も古い日時を採用する。データがない period は生成しないか、空レポートを許容するかを Step 2 の受け入れ条件で確定する。初期方針は「候補 document が 0 件の period は skipped として履歴に残し、report は作らない」。
+- 通常定期実行の対象 period は dispatcher の現在時刻から逆算せず、永続化済み `next_run_at` が表す calendar slot から決定する。例: 月曜 10:00 の `weekly` slot は直前の月曜〜日曜を表す。
+- Dispatcher は due slot ごとに `report_schedule_period_runs` を `ON CONFLICT DO NOTHING` で永続化してから `next_run_at` を 1 period 進める。停止期間が複数 slot にまたがる場合も、1 run の上限内で古い slot から順に row を作り、次回 dispatcher が残りを継続する。
+- 通常実行と backfill は、同じ project + frequency について最古の未完了 period run から処理する。後続 period が存在しても `retry_wait` / `retry_exhausted` の period を暗黙に飛ばさない。
+- Backfill 開始日は project の最古 document `occurred_at`、最古 raw/document link、または project 作成日のうち実装上安全に取得できる最も古い日時を採用する。初期方針は「候補 document が 0 件の period は `skipped` として `skip_reason` を履歴に残し、report は作らない」。意図的に skip する場合は project admin へ通知し、`notification_sent_at` を記録する。
 
 ## 前回定期レポート参照と差分生成
 
 Report workflow の input に `previousScheduledReportId` と `scheduleFrequency` を追加する。workflow は DB で project 境界を検証して前回 report metadata を読み、Object Storage から前回 report JSON を取得する。
 
-Provider に渡す前回 report context は bounded にする。
+Provider に渡す前回 report context は次の上限と共通 builder で bounded にする。文字数は Unicode code point 数で数え、全体は最大 16,000 文字かつ対象 Bedrock model の tokenizer で最大 6,000 token とする。
 
-- 前回 summary。
-- 前回 sections の見出しと要約。
-- 前回の主要な `pufu_sources` の title / doc type / occurred_at / redaction 済み snippet。
-- 前回から継続している課題・リスクの抽出結果。
+- 前回 summary: 最大 2,000 文字、1 件。
+- 前回から継続している課題・リスク: 最大 10 件、各 400 文字。
+- 前回 sections の見出しと要約: 最大 10 件、見出し各 120 文字、要約各 600 文字。
+- 前回の主要な `pufu_sources`: 最大 20 件、title 各 160 文字、redaction 済み snippet 各 400 文字。doc type / occurred_at を併記する。
+
+選択順は summary、継続課題、sections、sources の優先順位とする。同種内は report JSON の配列順を正とし、sources だけは `occurred_at DESC, source id ASC` で固定する。まず PII / private locator を除去し、各 field を上限の code point 境界で切って末尾に `…` を付ける。その後 provider 呼び出し直前に文字数と token 数を検証し、全体上限を超える場合は低優先の sources、sections、継続課題の各末尾から順に item を除外する。それでも超える場合は summary を token 境界で縮める。同じ入力は常に同じ context になることを unit test で固定し、予算内に収まらない payload を provider へ送信しない。
 
 新しい report JSON には、通常の `sections` に加えて optional field として差分情報を保存する。
 
@@ -94,7 +116,7 @@ Public report 表示でも private report JSON を同じように描画するた
 `/projects/[projectSlug]/reports` のヘッダー周辺に「定期レポート設定」カードまたは popover を追加する。
 
 - 現在の周期: `none` / `weekly` / `monthly` / `annually`。
-- 次回実行予定、前回成功、前回失敗、backfill 状態。
+- 次回実行予定、前回成功、前回失敗、period run の pending / running / skipped / retry exhausted と backfill 残数。
 - 周期変更 selector と保存 button。
 - `none` 以外への初回設定時は「完了済み過去期間を非同期で作成する」ことを説明する。
 - 既存定期レポートがある状態で周期変更する場合は「変更時の即時作成は行わず、次回定期実行から反映する」ことを説明する。
@@ -105,33 +127,37 @@ Public report 表示でも private report JSON を同じように描画するた
 ## Dispatcher / Job 方針
 
 - Cloud Scheduler は 5 分ごとなど固定間隔で report schedule dispatcher を起動する。
-- Dispatcher は due な `project_report_schedules` を `FOR UPDATE SKIP LOCKED` で claim し、lease token と期限で多重実行を防ぐ。
-- 1 run の最大 claim 件数と最大実行時間を設定し、長い backfill は chunked queue として複数 run に分割する。
-- 失敗時は 15 分、1 時間、6 時間の順に retry し、その後は次の通常周期へ戻す。ただし重複 period の一意制約により retry は idempotent にする。
+- Dispatcher は due な `project_report_schedules` と処理対象の `report_schedule_period_runs` を `FOR UPDATE SKIP LOCKED` で claim し、`worker_token` と `lease_expires_at` で多重実行を防ぐ。
+- 1 run の最大 materialize / claim 件数と最大実行時間を設定し、長い backfill と dispatcher 停止後の catch-up は複数 run に分割する。各 run は最古の未完了 period から処理する。
+- 失敗時は同じ period run を 15 分、1 時間、6 時間の順に retry する。上限到達後は `retry_exhausted` にして project admin へ通知し、手動の re-enqueue または理由付き `skipped` への変更が行われるまで後続 period を先に生成しない。通常周期へ暗黙に戻して未生成 period を飛ばさない。
+- retry / worker 多重起動で report insert が競合した場合は、整合する既存 report を取得して成功扱いにする。`ON CONFLICT` で競合を吸収した事実は debug metric に残しても warning / failure alert にはしない。
 - ローカル検証用に `pnpm report-schedule:dispatch --once` 相当の one-shot CLI を用意し、本番と同じ DB lease / retry / period 計算を使う。
 - 通常の `pnpm dev` や `docker compose up` では自動起動しない。
 
 ## Step 構成
 
-| Step | status    | 内容                                                                  | 完了条件                                                                                             |
-| ---- | --------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| 1    | `planned` | schedule / run metadata の DB model と migration を追加する。         | fresh / 既存 DB migration、runtime guard、period 一意制約、project 境界 query が検証済みになる。     |
-| 2    | `planned` | 期間計算、前回定期 report 解決、backfill 対象列挙を実装する。         | weekly / monthly / annually の完了済み period、初回 backfill、周期変更時の非 backfill が検証済み。   |
-| 3    | `planned` | report workflow に前回参照と差分生成 context を追加する。             | 前回 report を bounded context として参照し、change / increments / decrements が JSON に保存される。 |
-| 4    | `planned` | report schedule dispatcher、内部 API、local one-shot CLI を実装する。 | due claim、lease、retry、idempotency、backfill 分割、secret 非露出が確認できる。                     |
-| 5    | `planned` | レポート一覧 UI で周期設定と実行状態を管理できるようにする。          | admin は周期を保存でき、member は読み取りのみ。初回/backfill/変更時挙動の説明と状態が表示される。    |
-| 6    | `planned` | レポート一覧・詳細表示、E2E、運用ドキュメントを整備する。             | 定期/手動の区別、差分表示、public 境界、dispatcher 運用、障害時確認手順が検証・文書化される。        |
+| Step | status    | 内容                                                                          | 完了条件                                                                                                                                  |
+| ---- | --------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | `planned` | schedule / period run / report metadata の DB model と migration を追加する。 | fresh / 既存 DB migration、runtime guard、period run・report の一意制約、project 境界 query、report なしの skipped 履歴が検証済みになる。 |
+| 2    | `planned` | 期間計算、前回定期 report 解決、通常 / backfill 対象列挙を実装する。          | weekly / monthly / annually の完了済み period、停止後 catch-up、最古未完了優先、初回 backfill、周期変更時の非 backfill が検証済み。       |
+| 3    | `planned` | report workflow に前回参照と差分生成 context を追加する。                     | 前回 report を明示的な件数・文字数・token 予算内で決定的に参照し、change / increments / decrements が JSON に保存される。                 |
+| 4    | `planned` | report schedule dispatcher、内部 API、local one-shot CLI を実装する。         | due claim、lease、retry、idempotency、backfill 分割、secret 非露出が確認できる。                                                          |
+| 5    | `planned` | レポート一覧 UI で周期設定と実行状態を管理できるようにする。                  | admin は周期を保存でき、member は読み取りのみ。初回/backfill/変更時挙動の説明と状態が表示される。                                         |
+| 6    | `planned` | レポート一覧・詳細表示、E2E、運用ドキュメントを整備する。                     | 定期/手動の区別、差分表示、public 境界、dispatcher 運用、障害時確認手順が検証・文書化される。                                             |
 
 ## テスト計画
 
-- `project_report_schedules` と report metadata の migration / schema drift test。
+- `project_report_schedules`、`report_schedule_period_runs`、report metadata の migration / schema drift test。
 - `frequency` enum の runtime guard と typo 値拒否 test。
 - weekly / monthly / annually の period 計算 unit test。timezone と DST 影響を含める。
 - 初回設定時の backfill 対象列挙 test。現在進行中 period を含めないことを確認する。
 - 周期変更時に即時 backfill / 初回作成をしない regression test。
-- 同一 project + frequency + period の定期 report 重複拒否 test。
+- report が生成されない skipped period、chunked backfill の残数、retry / manual re-enqueue 状態を period run に保持する test。
+- dispatcher の停止・遅延後も `next_run_at` 由来の全 due period を古い順に materialize し、未完了 period を飛ばさない test。
+- retry exhausted が後続 period の生成を止め、理由付き skip または re-enqueue で再開する test。
+- 同一 project + frequency + period の period run / 定期 report 重複拒否と、整合する既存 report の競合を成功扱いにする test。
 - 前回定期 report 解決 test。手動 report、異なる frequency、project 越境 report を参照しないことを確認する。
-- 前回 report JSON の bounded context 化と private locator / secret / PII 非保存 test。
+- 前回 report JSON の件数・文字数・token 予算、選択順、決定的 truncation と private locator / secret / PII 非保存 test。
 - dispatcher の claim、lease 切れ、retry、idempotency、backfill 分割 test。
 - project admin / member / non-member の UI・server action 認可 test。
 - report 一覧・詳細・public report 表示の regression test。
