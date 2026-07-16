@@ -253,7 +253,6 @@ pnpm chat:eval --project sample-a --fixture fixtures/chat/private-chat-raw-injec
 
 この fixture は raw section 内の embedded instruction、token / API key / email 文字列が回答、source、tool call summary に漏れないことを確認するための smoke である。Mastra Studio / Playground では同じ質問を投げ、`raw-document-fetch` の tool call がある場合でも trace は `trace` object のみで確認する。
 
-- 業務時間外: `PUFU_LENS_CHAT_ENFORCE_BUSINESS_HOURS=true` の場合、API は `db_outside_business_hours` を返し、UI は入力欄を disabled にする
 - rate limit: process 内 memory bucket で user + project 単位に制限する
 - 評価: `pnpm chat:eval --fixture fixtures/chat/private-chat-eval.json` で running web server に対して source / tool call を確認する
 
@@ -295,7 +294,7 @@ progress event 例:
 { "type": "error", "code": "chat_internal_error", "message": "..." }
 ```
 
-stream 開始前の認可 / JSON parse / rate limit / business-hours エラーは、従来どおり JSON error response を返す。
+stream 開始前の認可 / JSON parse / rate limit エラーは、従来どおり JSON error response を返す。
 
 ### 2. Public Chat Agent 設計
 
@@ -338,17 +337,9 @@ Next.js -> Mastra Server /api/agents/project-chat-agent/generate
 
 Next.js は path の `projectSlug` と `reportId` を storage-safe pattern で validate し、DB で対象 project が public かつ対象 report が public であることを確認してから、server side で解決した `projectId` を Mastra に渡す。ブラウザから送られた `projectId`、`storageUri`、`sourceUri`、`artifactVersion` は信用しない。
 
-### 3. 業務時間外の扱い
+### 3. DB 可用性
 
-PostgreSQL は GCE VM（e2-medium）上で業務時間のみ起動する。Private Chat Agent は `vector-search`、`graph-query`、`document-fetch` などで DB / AGE / pgvector / PGroonga に依存するため、業務時間外はチャットを実行しない。
-
-Next.js の Private Chat API は Mastra Server へ proxy する前に DB 利用可能時間を確認し、業務時間外の場合は `503 Service Unavailable` と共通エラー `db_outside_business_hours` を返す。チャット UI は入力欄を disabled にし、次のメッセージを表示する。
-
-```text
-現在は営業時間外のため、チャットとレポート閲覧を利用できません。
-```
-
-Public Chat API も DB で public project / public report のアクセス権を確認し、private chat と同じ project chat agent を使うため、業務時間外は利用不可にする。ただし Gemini provider、Mastra Server、Object Storage が利用できない場合は通常の service unavailable を返す。
+PostgreSQL は GCE VM（e2-medium）上で常時稼働させる。Private / Public Chat API は時刻による利用制限を設けず、認可・公開範囲・rate limit を確認した後に DB / AGE / pgvector / PGroonga を利用する。DB、Gemini provider、Mastra Server、Object Storage の障害は通常の service error として扱い、営業時間専用の応答や UI の入力固定は設けない。
 
 ### 4. フロントエンド
 

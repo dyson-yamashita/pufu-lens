@@ -1,9 +1,5 @@
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
-import {
-  type BusinessHoursConfig,
-  isWithinBusinessHours,
-  ProjectAccessDeniedError,
-} from './chat.ts';
+import { ProjectAccessDeniedError } from './chat.ts';
 import {
   digestJson,
   isProjectPublic,
@@ -81,7 +77,6 @@ export {
 export { createReportStorageFromEnv } from './report-storage.ts';
 
 export interface ReportAccessOptions {
-  readonly businessHours?: BusinessHoursConfig;
   readonly now?: Date;
   readonly repository: ReportRepository;
   readonly storage?: ObjectStorage;
@@ -91,24 +86,17 @@ export interface PublishReportOptions extends ReportAccessOptions {
   readonly storage: ObjectStorage;
 }
 
-const DEFAULT_BUSINESS_HOURS: BusinessHoursConfig = {
-  enabled: false,
-  endHour: 18,
-  startHour: 9,
-  timeZone: 'Asia/Tokyo',
-};
-
+/**
+ * Lists reports available to an authorized project member.
+ *
+ * @param input - The project, user, and report repository access details
+ * @returns The available reports and an `ok` status
+ */
 export async function listPrivateReports(input: {
   readonly options: ReportAccessOptions;
   readonly projectSlug: string;
   readonly userId: string;
-}): Promise<
-  | { readonly reports: readonly ReportListItem[]; readonly status: 'ok' }
-  | { readonly reports: readonly []; readonly status: 'db_outside_business_hours' }
-> {
-  if (!isReportDbAvailable(input.options)) {
-    return { reports: [], status: 'db_outside_business_hours' };
-  }
+}): Promise<{ readonly reports: readonly ReportListItem[]; readonly status: 'ok' }> {
   const project = await lookupMemberOrThrow(input);
   return {
     reports: await input.options.repository.listReports({ projectId: project.id }),
@@ -116,18 +104,17 @@ export async function listPrivateReports(input: {
   };
 }
 
+/**
+ * Retrieves a private report for an authorized project member.
+ *
+ * @returns The validated private report and an `ok` status.
+ */
 export async function getPrivateReport(input: {
   readonly options: ReportAccessOptions & { readonly storage: ObjectStorage };
   readonly projectSlug: string;
   readonly reportId: string;
   readonly userId: string;
-}): Promise<
-  | { readonly report: PrivateReportJsonV1; readonly status: 'ok' }
-  | { readonly report: null; readonly status: 'db_outside_business_hours' }
-> {
-  if (!isReportDbAvailable(input.options)) {
-    return { report: null, status: 'db_outside_business_hours' };
-  }
+}): Promise<{ readonly report: PrivateReportJsonV1; readonly status: 'ok' }> {
   const project = await lookupMemberOrThrow(input);
   const metadata = await input.options.repository.readReportMetadata({
     projectId: project.id,
@@ -144,15 +131,18 @@ export async function getPrivateReport(input: {
   return { report, status: 'ok' };
 }
 
+/**
+ * Deletes a private report and revokes its public artifact when applicable.
+ *
+ * @throws `ReportNotFoundError` if the report does not exist
+ * @returns An object with an `ok` status
+ */
 export async function deletePrivateReport(input: {
   readonly options: ReportAccessOptions & { readonly storage: ObjectStorage };
   readonly projectSlug: string;
   readonly reportId: string;
   readonly userId: string;
 }): Promise<{ readonly status: 'ok' }> {
-  if (!isReportDbAvailable(input.options)) {
-    throw new Error('Cannot delete report outside DB business hours.');
-  }
   const project = await lookupMemberOrThrow(input);
   const metadata = await input.options.repository.readReportMetadata({
     projectId: project.id,
@@ -184,6 +174,13 @@ export async function deletePrivateReport(input: {
   return { status: 'ok' };
 }
 
+/**
+ * Publishes a private report as a public report.
+ *
+ * @param input - The report, project, user, storage, and repository details.
+ * @returns The public manifest and report.
+ * @throws `ReportNotFoundError` if the report metadata does not exist.
+ */
 export async function publishPublicReport(input: {
   readonly now?: Date;
   readonly options: PublishReportOptions;
@@ -195,9 +192,6 @@ export async function publishPublicReport(input: {
   readonly publicReport: PublicReportJsonV1;
   readonly status: 'ok';
 }> {
-  if (!isReportDbAvailable(input.options)) {
-    throw new Error('Cannot publish report outside DB business hours.');
-  }
   const project = await lookupMemberOrThrow(input);
   const metadata = await input.options.repository.readReportMetadata({
     projectId: project.id,
@@ -229,6 +223,13 @@ export async function publishPublicReport(input: {
   return { manifest, publicReport, status: 'ok' };
 }
 
+/**
+ * Revokes public access to a report and records the revocation manifest.
+ *
+ * @param now - Optional timestamp to use for the revocation.
+ * @throws `ReportNotFoundError` if the report does not exist.
+ * @returns The revoked report manifest and an `ok` status.
+ */
 export async function revokePublicReport(input: {
   readonly now?: Date;
   readonly options: PublishReportOptions;
@@ -236,9 +237,6 @@ export async function revokePublicReport(input: {
   readonly reportId: string;
   readonly userId: string;
 }): Promise<{ readonly manifest: PublicReportManifestV1; readonly status: 'ok' }> {
-  if (!isReportDbAvailable(input.options)) {
-    throw new Error('Cannot revoke report outside DB business hours.');
-  }
   const project = await lookupMemberOrThrow(input);
   const metadata = await input.options.repository.readReportMetadata({
     projectId: project.id,
@@ -283,17 +281,18 @@ export async function revokePublicReport(input: {
   return { manifest: revokedManifest, status: 'ok' };
 }
 
+/**
+ * Retrieves a publicly accessible report.
+ *
+ * @param input - The project, report, repository, and storage used to locate the report
+ * @returns The validated report with an `ok` status
+ * @throws PublicReportNotFoundError If the report is unavailable or its identifiers do not match
+ */
 export async function getPublicReport(input: {
   readonly options: ReportAccessOptions & { readonly storage: ObjectStorage };
   readonly projectSlug: string;
   readonly reportId: string;
-}): Promise<
-  | { readonly report: PrivateReportJsonV1; readonly status: 'ok' }
-  | { readonly report: null; readonly status: 'db_outside_business_hours' }
-> {
-  if (!isReportDbAvailable(input.options)) {
-    return { report: null, status: 'db_outside_business_hours' };
-  }
+}): Promise<{ readonly report: PrivateReportJsonV1; readonly status: 'ok' }> {
   const { metadata, project } = await assertPublicReportAccess({
     projectSlug: input.projectSlug,
     reportId: input.reportId,
@@ -379,6 +378,13 @@ export class PublicReportNotFoundError extends Error {
   }
 }
 
+/**
+ * Retrieves the project accessible to a user.
+ *
+ * @param input - The project slug, user ID, and repository options used for access lookup
+ * @returns The accessible project
+ * @throws ProjectAccessDeniedError if the user has no access to the project
+ */
 async function lookupMemberOrThrow(input: {
   readonly options: ReportAccessOptions;
   readonly projectSlug: string;
@@ -392,11 +398,4 @@ async function lookupMemberOrThrow(input: {
     throw new ProjectAccessDeniedError(input.projectSlug);
   }
   return project;
-}
-
-function isReportDbAvailable(options: ReportAccessOptions): boolean {
-  return isWithinBusinessHours(
-    options.now ?? new Date(),
-    options.businessHours ?? DEFAULT_BUSINESS_HOURS,
-  );
 }

@@ -1,5 +1,4 @@
 import postgres from 'postgres';
-import { businessHoursFromEnv } from '../apps/web/src/chat.ts';
 import {
   createPostgresReportRepository,
   createReportStorageFromEnv,
@@ -9,13 +8,15 @@ import {
 } from '../apps/web/src/report.ts';
 import { requiredEnv } from './lib/cli.ts';
 
+/**
+ * Runs the report publishing or revocation flow and outputs its result.
+ */
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   try {
     const now = reportNowFromEnv(process.env) ?? new Date();
     const sharedOptions = {
-      businessHours: businessHoursFromEnv(process.env),
       now,
       repository: createPostgresReportRepository(sql),
       storage: createReportStorageFromEnv(),

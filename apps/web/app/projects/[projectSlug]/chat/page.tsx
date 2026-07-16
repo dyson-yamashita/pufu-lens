@@ -1,10 +1,15 @@
 import { redirect } from 'next/navigation';
 import { auth } from '../../../../auth';
 import { getAdminProject, getProjectMembership } from '../../../../src/admin-db';
-import { businessHoursFromEnv, chatNowFromEnv, isWithinBusinessHours } from '../../../../src/chat';
 import { ChatPanel, PublicProjectChatPanel } from '../../../../src/chat-client';
 import { AppShell, PageHeader } from '../../../../src/ui';
 
+/**
+ * Renders the project chat page for authenticated members and public visitors.
+ *
+ * @param params - Route parameters containing the project slug.
+ * @returns The project chat page with member or public chat access.
+ */
 export default async function ProjectChatPage({
   params,
 }: {
@@ -37,19 +42,10 @@ export default async function ProjectChatPage({
       </AppShell>
     );
   }
-  const businessHours = businessHoursFromEnv(process.env);
-  let available = false;
-  try {
-    available = isWithinBusinessHours(chatNowFromEnv(process.env) ?? new Date(), businessHours);
-  } catch (error) {
-    console.error('Failed to parse PUFU_LENS_CHAT_NOW, falling back to current time:', error);
-    available = isWithinBusinessHours(new Date(), businessHours);
-  }
-
   return (
     <AppShell active="chat" project={project}>
       <PageHeader title={`${project.name} Chat`} />
-      <ChatPanel disabled={!available} projectName={project.name} projectSlug={project.slug} />
+      <ChatPanel projectName={project.name} projectSlug={project.slug} />
     </AppShell>
   );
 }

@@ -3,12 +3,16 @@ import { getRequiredAdminSql } from '../../../../../../src/admin-sql';
 import { AuthRequiredError, requireSessionUserId } from '../../../../../../src/auth-session';
 import {
   createPostgresChatRepository,
-  DB_OUTSIDE_BUSINESS_HOURS_CODE,
-  isOutsideBusinessHoursFromEnv,
   type PrivateChatHistoryListResponse,
   ProjectAccessDeniedError,
 } from '../../../../../../src/chat';
 
+/**
+ * Retrieves private chat history items for an authenticated user within a project.
+ *
+ * @param params - Route parameters containing the project slug
+ * @returns A JSON response containing the chat history items or a structured error
+ */
 export async function GET(
   _request: Request,
   { params }: { readonly params: Promise<{ readonly projectSlug: string }> },
@@ -17,13 +21,6 @@ export async function GET(
 
   try {
     const userId = await requireSessionUserId();
-    if (isOutsideBusinessHoursFromEnv(process.env)) {
-      return chatHistoryErrorResponse(
-        DB_OUTSIDE_BUSINESS_HOURS_CODE,
-        DB_OUTSIDE_BUSINESS_HOURS_CODE,
-        503,
-      );
-    }
     const repository = createPostgresChatRepository(getRequiredAdminSql());
     const project = await repository.lookupProjectMember({ projectSlug, userId });
     if (!project) {

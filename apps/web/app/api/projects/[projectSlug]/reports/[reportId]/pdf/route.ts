@@ -9,8 +9,6 @@ import {
 import {
   createReportFetchContext,
   createReportPdfDownloadResponse,
-  isOutsideReportBusinessHours,
-  reportOutsideBusinessHoursResponse,
 } from '../../../../../../../src/report-pdf-api';
 
 /**
@@ -30,18 +28,12 @@ export async function POST(
   try {
     const userId = await requireSessionUserId();
     const context = createReportFetchContext();
-    if (isOutsideReportBusinessHours(context)) {
-      return reportOutsideBusinessHoursResponse();
-    }
     const response = await getPrivateReport({
       options: context.options,
       projectSlug,
       reportId,
       userId,
     });
-    if (response.status === 'db_outside_business_hours') {
-      return reportOutsideBusinessHoursResponse();
-    }
     const pdf = await renderReportPdf({
       projectSlug,
       pufuImageDataUrl: await reportPdfImageDataUrlFromRequest(request),

@@ -51,13 +51,13 @@ API は以下の認可をかける：
 - `/api/public/projects/[projectSlug]/reports/[reportId]` は API entrypoint で `projectSlug` と `reportId` を storage-safe pattern に validate し、DB 上の `projects.visibility = 'public'` と `reports.is_public = true` を確認できた場合だけ private report JSON を返す。`visibility = 'private'`、`is_public = false`、存在しない、または project が無効な場合は同じ `404` を返し、非公開レポートの存在有無を漏らさない。
 - `/api/public/projects/[projectSlug]/reports/[reportId]/chat` は公開済みレポートに紐づく public chat だけを提供する。public chat は同じ project の private chat と同じ project chat agent を使うが、入口で `projects.visibility = 'public'` と `reports.is_public = true` を要求する。
 - `/api/public/projects/[projectSlug]/graph` は public project の graph node / edge / property 表示だけを提供する。入口で `projects.visibility = 'public'` を要求し、request body から Cypher 文字列や graph name は受け取らない。公開 Graph ページ `/projects/[projectSlug]/graph` では document chunk 一覧と chunk 詳細を表示しない。
-- private レポートの閲覧と signed URL 発行は DB 依存 API として扱う。`/api/projects/[projectSlug]/reports/[reportId]` または `/api/projects/[projectSlug]/reports/[reportId]/signed-url` で必ず `project_members` 認可後に返し、業務時間外はチャットと同様に `db_outside_business_hours` を返す。public report / public chat も DB 依存の公開可否確認を行うため、業務時間外は同じく利用不可にする。
+- private レポートの閲覧と signed URL 発行は DB 依存 API として扱う。`/api/projects/[projectSlug]/reports/[reportId]` または `/api/projects/[projectSlug]/reports/[reportId]/signed-url` で必ず `project_members` 認可後に返す。public report / public chat も DB で公開可否を確認し、時刻による利用制限は設けない。
 
 ### 3. 公開レポートの保護
 
 - Object Storage（GCS）バケットは Private
 - `projects.visibility = 'public'` かつ `reports.is_public = true` のレポートは Next.js の公開ページ `/reports/public/[projectSlug]/[reportId]` から `/api/public/projects/[projectSlug]/reports/[reportId]` 経由で private report JSON を取得・描画
-- `is_public = false` のレポートは `/api/projects/[projectSlug]/reports/[reportId]` で DB による認可チェック後にサーバから JSON を返す、または短時間の signed URL を発行する。DB 停止中は利用不可にする
+- `is_public = false` のレポートは `/api/projects/[projectSlug]/reports/[reportId]` で DB による認可チェック後にサーバから JSON を返す、または短時間の signed URL を発行する
 - public chat は private chat と同じ処理を使う。private project では public chat を許可せず、public project でも対象 report が `is_public = true` の場合だけ入口を開く。public response の sources は web 由来だけに制限し、Gmail / Drive / GitHub などの private source metadata を返さない
 - レート制限を Cloud Armor または Hono middleware で実装する。public chat は信頼プロキシが付与した `x-forwarded-for` を右端から走査し、private / local IP と無効値を除いた最初の有効値（なければ `x-real-ip`、最後に anonymous bucket）+ report id 単位で 1 時間 / 1 日 / 質問長の上限を設け、クライアントが任意に付与できる左端値は信用しない。private chat は user + project 単位で public より緩い上限にする。Mastra 側で使う rate limit 用 header は OIDC 検証済みの Next.js から来たものだけを信頼する
 - App Hosting の runtime env と secret は `apphosting.yaml` で参照し、secret 値をリポジトリに含めない。

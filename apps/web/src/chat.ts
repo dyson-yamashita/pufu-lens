@@ -60,8 +60,6 @@ export type ChatEditingQuestionType =
   | 'timeline'
   | 'unknown';
 
-export const DB_OUTSIDE_BUSINESS_HOURS_CODE = 'db_outside_business_hours';
-
 export interface ChatEditingMetadata {
   readonly caveats: readonly string[];
   readonly confidence: 'high' | 'low' | 'medium';
@@ -75,7 +73,7 @@ export interface ChatResponse {
   readonly editing?: ChatEditingMetadata;
   readonly projectSlug: string;
   readonly sources: readonly ChatSource[];
-  readonly status: 'answered' | typeof DB_OUTSIDE_BUSINESS_HOURS_CODE | 'rate_limited';
+  readonly status: 'answered' | 'rate_limited';
   readonly toolCalls: readonly ChatToolCall[];
 }
 
@@ -159,15 +157,6 @@ export interface PublicChatResponse {
   readonly toolCalls: readonly PublicChatToolCall[];
 }
 
-export interface PublicProjectChatUnavailableResponse {
-  readonly answer: typeof DB_OUTSIDE_BUSINESS_HOURS_CODE;
-  readonly projectSlug: string;
-  readonly reportId: string;
-  readonly sources: readonly [];
-  readonly status: typeof DB_OUTSIDE_BUSINESS_HOURS_CODE;
-  readonly toolCalls: readonly [];
-}
-
 export class ProjectAccessDeniedError extends Error {
   readonly projectSlug: string;
 
@@ -179,7 +168,6 @@ export class ProjectAccessDeniedError extends Error {
 }
 
 export interface ChatRequest {
-  readonly now?: Date;
   readonly projectSlug: string;
   readonly question: string;
   readonly userId: string;
@@ -247,17 +235,9 @@ export interface ChatProvider {
 }
 
 export interface RunPrivateChatOptions {
-  readonly businessHours?: BusinessHoursConfig;
   readonly provider: ChatProvider;
   readonly rateLimiter?: ChatRateLimiter;
   readonly repository: ChatRepository;
-}
-
-export interface BusinessHoursConfig {
-  readonly enabled: boolean;
-  readonly endHour: number;
-  readonly startHour: number;
-  readonly timeZone: string;
 }
 
 export interface ChatRateLimiter {
@@ -568,35 +548,25 @@ export interface RunPublicChatOptions {
   readonly report: PublicReportJsonV1;
 }
 
-const DEFAULT_BUSINESS_HOURS: BusinessHoursConfig = {
-  enabled: false,
-  endHour: 18,
-  startHour: 9,
-  timeZone: 'Asia/Tokyo',
-};
 const VECTOR_SEARCH_MIN_CANDIDATE_LIMIT = 50;
 const VECTOR_SEARCH_MAX_CANDIDATE_LIMIT = 200;
 const HYBRID_KEYWORD_QUERY_INPUT_MAX = 1024;
 const HYBRID_KEYWORD_QUERY_OUTPUT_MAX = 512;
 
 /**
- * Runs the private chat workflow for a project member.
+ * Runs the private chat workflow for an authorized project member.
  *
- * Returns an unavailable response outside business hours, a rate-limited response when the limiter rejects the request, or an answered response with retrieved sources and the generated answer.
+ * Retrieves relevant project sources and generates an answer using the configured chat provider.
  *
  * @param request - The private chat request
- * @param options - The chat runtime dependencies and policy settings
- * @returns The private chat response
+ * @param options - The chat runtime dependencies
+ * @returns A rate-limited response or an answered response with retrieved sources
  * @throws ProjectAccessDeniedError If the user does not have access to the project
  */
 export async function runPrivateChat(
   request: ChatRequest,
   options: RunPrivateChatOptions,
 ): Promise<ChatResponse> {
-  const businessHours = options.businessHours ?? DEFAULT_BUSINESS_HOURS;
-  if (!isWithinBusinessHours(request.now ?? new Date(), businessHours)) {
-    return privateChatUnavailableResponse(request.projectSlug);
-  }
   if (options.rateLimiter && !options.rateLimiter.check(request)) {
     return {
       answer: 'rate limit exceeded',
@@ -942,6 +912,12 @@ export function createMemoryRateLimiter(input: {
   };
 }
 
+/**
+ * Creates an in-memory rate limiter keyed by client IP and report ID.
+ *
+ * @param input - Rate-limit window, request limit, clock, and cleanup configuration
+ * @returns A public chat rate limiter
+ */
 export function createPublicChatMemoryRateLimiter(input: {
   readonly cleanupIntervalMs?: number;
   readonly cleanupThreshold?: number;
@@ -976,31 +952,13 @@ export function createPublicChatMemoryRateLimiter(input: {
   };
 }
 
-export function businessHoursFromEnv(env: NodeJS.ProcessEnv): BusinessHoursConfig {
-  return {
-    enabled: env.PUFU_LENS_CHAT_ENFORCE_BUSINESS_HOURS === 'true',
-    endHour: Number.parseInt(env.PUFU_LENS_BUSINESS_END_HOUR ?? '18', 10),
-    startHour: Number.parseInt(env.PUFU_LENS_BUSINESS_START_HOUR ?? '9', 10),
-    timeZone: env.PUFU_LENS_BUSINESS_TIME_ZONE ?? 'Asia/Tokyo',
-  };
-}
-
-export function chatNowFromEnv(env?: NodeJS.ProcessEnv): Date | undefined {
-  const value = env?.PUFU_LENS_CHAT_NOW?.trim();
-  if (!value) {
-    return undefined;
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    throw new Error('PUFU_LENS_CHAT_NOW must be an ISO 8601 datetime.');
-  }
-  return date;
-}
-
-export function isOutsideBusinessHoursFromEnv(env: NodeJS.ProcessEnv): boolean {
-  return !isWithinBusinessHours(chatNowFromEnv(env) ?? new Date(), businessHoursFromEnv(env));
-}
-
+/**
+ * Truncates private chat history content to the specified maximum length.
+ *
+ * @param content - The content to truncate
+ * @param maxLength - The maximum number of characters to retain
+ * @returns The original content when within the limit, or truncated content ending with an ellipsis
+ */
 export function trimPrivateChatHistoryContent(
   content: string,
   maxLength = PRIVATE_CHAT_HISTORY_CONTENT_MAX,
@@ -1039,27 +997,16 @@ export function privateChatHistoryToMastraMessages(
   return messages;
 }
 
+/**
+ * Orders private chat history items from oldest to newest for UI display.
+ *
+ * @param itemsNewestFirst - Chat history items ordered from newest to oldest
+ * @returns The items ordered from oldest to newest
+ */
 export function privateChatHistoryItemsForUiDisplay(
   itemsNewestFirst: readonly PrivateChatHistoryItem[],
 ): readonly PrivateChatHistoryItem[] {
   return [...itemsNewestFirst].reverse();
-}
-
-export function isWithinBusinessHours(date: Date, config: BusinessHoursConfig): boolean {
-  if (!config.enabled) {
-    return true;
-  }
-  const parts = new Intl.DateTimeFormat('en-US', {
-    hour: 'numeric',
-    hourCycle: 'h23',
-    timeZone: config.timeZone,
-    weekday: 'short',
-  }).formatToParts(date);
-  const weekday = parts.find((part) => part.type === 'weekday')?.value;
-  const hour = Number.parseInt(parts.find((part) => part.type === 'hour')?.value ?? '0', 10);
-  return (
-    weekday !== 'Sat' && weekday !== 'Sun' && hour >= config.startHour && hour < config.endHour
-  );
 }
 
 /**
@@ -1532,6 +1479,12 @@ async function readPrivateChatHistoryRows<Row>(
   }
 }
 
+/**
+ * Determines whether an error indicates that the private chat history table is missing.
+ *
+ * @param error - The value to inspect
+ * @returns `true` if the error has PostgreSQL code `42P01` and references `private_chat_messages`, `false` otherwise.
+ */
 export function isMissingPrivateChatHistoryTableError(error: unknown): boolean {
   if (!isRecord(error)) {
     return false;
@@ -1543,27 +1496,12 @@ export function isMissingPrivateChatHistoryTableError(error: unknown): boolean {
   );
 }
 
-export function isDbOutsideBusinessHoursError(body: ChatErrorResponse | null): boolean {
-  if (!body?.error || typeof body.error === 'string') {
-    return body?.error === DB_OUTSIDE_BUSINESS_HOURS_CODE;
-  }
-  return (
-    body.error.code === DB_OUTSIDE_BUSINESS_HOURS_CODE ||
-    body.error.message === DB_OUTSIDE_BUSINESS_HOURS_CODE
-  );
-}
-
-export function isDbOutsideBusinessHoursResponse(value: unknown): boolean {
-  if (isDbOutsideBusinessHoursError(isChatErrorResponseBody(value) ? value : null)) {
-    return true;
-  }
-  return (
-    isRecord(value) &&
-    (value.status === DB_OUTSIDE_BUSINESS_HOURS_CODE ||
-      value.answer === DB_OUTSIDE_BUSINESS_HOURS_CODE)
-  );
-}
-
+/**
+ * Determines whether a value has the shape of a chat error response.
+ *
+ * @param value - The value to check
+ * @returns `true` if the value is a chat error response, `false` otherwise.
+ */
 export function isChatErrorResponseBody(value: unknown): value is ChatErrorResponse {
   return isRecord(value) && 'error' in value;
 }
@@ -1574,23 +1512,35 @@ export function isPrivateChatHistoryListResponse(
   return isRecord(value) && Array.isArray(value.items);
 }
 
+/**
+ * Determines whether a value has the shape of a chat response.
+ *
+ * @param value - The value to inspect
+ * @returns `true` if the value has a string `status` property, `false` otherwise
+ */
 export function isChatResponseBody(value: unknown): value is ChatResponse {
   return isRecord(value) && typeof value.status === 'string';
 }
 
-export function isPublicChatResponseBody(
-  value: unknown,
-): value is PublicChatResponse | PublicProjectChatUnavailableResponse {
+/**
+ * Determines whether a value has the shape of a public chat response.
+ *
+ * @param value - The value to check
+ * @returns `true` if the value is an object with a string `status`, `false` otherwise.
+ */
+export function isPublicChatResponseBody(value: unknown): value is PublicChatResponse {
   return isRecord(value) && typeof value.status === 'string';
 }
 
+/**
+ * Extracts a user-facing error message from a chat response.
+ *
+ * @param body - The response body containing error or answer details
+ * @param status - The HTTP status used as a fallback message
+ * @returns The error message, answer, or `HTTP ${status}` when no message is available
+ */
 export function chatErrorMessage(
-  body:
-    | ChatResponse
-    | PublicChatResponse
-    | PublicProjectChatUnavailableResponse
-    | ChatErrorResponse
-    | null,
+  body: ChatResponse | PublicChatResponse | ChatErrorResponse | null,
   status: number,
 ): string {
   if (isChatErrorResponseBody(body) && body.error) {
@@ -1604,16 +1554,12 @@ export function chatErrorMessage(
   return `HTTP ${status}`;
 }
 
-export function privateChatUnavailableResponse(projectSlug: string): ChatResponse {
-  return {
-    answer: DB_OUTSIDE_BUSINESS_HOURS_CODE,
-    projectSlug,
-    sources: [],
-    status: DB_OUTSIDE_BUSINESS_HOURS_CODE,
-    toolCalls: [],
-  };
-}
-
+/**
+ * Creates a public chat response from the supplied answer, metadata, sources, and tool calls.
+ *
+ * @param input - The response fields to include
+ * @returns A normalized public chat response
+ */
 function publicChatResponse(input: {
   readonly answer: string;
   readonly editing?: ChatEditingMetadata;

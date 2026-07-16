@@ -1,11 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getRequiredAdminSql } from '../../../../../../src/admin-sql';
 import { AuthRequiredError, requireSessionUserId } from '../../../../../../src/auth-session';
-import {
-  businessHoursFromEnv,
-  isWithinBusinessHours,
-  ProjectAccessDeniedError,
-} from '../../../../../../src/chat';
+import { ProjectAccessDeniedError } from '../../../../../../src/chat';
 import {
   createPostgresReportRepository,
   createReportStorageFromEnv,
@@ -18,6 +14,11 @@ import {
   revokePublicReport,
 } from '../../../../../../src/report';
 
+/**
+ * Retrieves a private report for the authenticated user.
+ *
+ * @returns A JSON response containing the report or an appropriate error response.
+ */
 export async function GET(
   _request: Request,
   {
@@ -28,18 +29,8 @@ export async function GET(
 
   try {
     const userId = await requireSessionUserId();
-    const businessHours = businessHoursFromEnv(process.env);
-    const now = reportNowFromEnv(process.env) ?? new Date();
-    if (!isWithinBusinessHours(now, businessHours)) {
-      return NextResponse.json(
-        { report: null, status: 'db_outside_business_hours' },
-        { status: 503 },
-      );
-    }
     const response = await getPrivateReport({
       options: {
-        businessHours,
-        now,
         repository: createPostgresReportRepository(getRequiredAdminSql()),
         storage: createReportStorageFromEnv(),
       },
@@ -47,9 +38,7 @@ export async function GET(
       reportId,
       userId,
     });
-    return NextResponse.json(response, {
-      status: response.status === 'db_outside_business_hours' ? 503 : 200,
-    });
+    return NextResponse.json(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (error instanceof AuthRequiredError) {
@@ -66,6 +55,12 @@ export async function GET(
   }
 }
 
+/**
+ * Updates a report's public visibility.
+ *
+ * @param request - Request containing a JSON body with an `isPublic` boolean.
+ * @returns The updated report or a structured error response.
+ */
 export async function PATCH(
   request: Request,
   {
@@ -88,16 +83,8 @@ export async function PATCH(
 
   try {
     const userId = await requireSessionUserId();
-    const businessHours = businessHoursFromEnv(process.env);
     const now = reportNowFromEnv(process.env) ?? new Date();
-    if (!isWithinBusinessHours(now, businessHours)) {
-      return NextResponse.json(
-        { report: null, status: 'db_outside_business_hours' },
-        { status: 503 },
-      );
-    }
     const options = {
-      businessHours,
       now,
       repository: createPostgresReportRepository(getRequiredAdminSql()),
       storage: createReportStorageFromEnv(),
@@ -126,6 +113,11 @@ function reportErrorResponse(code: string, message: string, status: number) {
   return NextResponse.json({ error: { code, message } }, { status });
 }
 
+/**
+ * Deletes a private report for the authenticated user.
+ *
+ * @returns The deletion result or a JSON error response.
+ */
 export async function DELETE(
   _request: Request,
   {
@@ -136,17 +128,9 @@ export async function DELETE(
 
   try {
     const userId = await requireSessionUserId();
-    const businessHours = businessHoursFromEnv(process.env);
     const now = reportNowFromEnv(process.env) ?? new Date();
-    if (!isWithinBusinessHours(now, businessHours)) {
-      return NextResponse.json(
-        { report: null, status: 'db_outside_business_hours' },
-        { status: 503 },
-      );
-    }
     const response = await deletePrivateReport({
       options: {
-        businessHours,
         now,
         repository: createPostgresReportRepository(getRequiredAdminSql()),
         storage: createReportStorageFromEnv(),
