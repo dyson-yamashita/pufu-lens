@@ -40,8 +40,11 @@ export function resolveScheduledReportPeriod(
     const end = new Date(Date.UTC(localSlot.getUTCFullYear(), localSlot.getUTCMonth(), 0));
     return { end: formatLocalDate(end), start: formatLocalDate(start) };
   }
-  const year = localSlot.getUTCFullYear() - 1;
-  return { end: `${year}-12-31`, start: `${year}-01-01` };
+  if (frequency === 'annually') {
+    const year = localSlot.getUTCFullYear() - 1;
+    return { end: `${year}-12-31`, start: `${year}-01-01` };
+  }
+  return assertNever(frequency);
 }
 
 export function resolveNextScheduledReportRunAt(input: {
@@ -155,6 +158,10 @@ export function shouldEnqueueInitialReportBackfill(input: {
     input.nextFrequency !== 'none' &&
     !input.hasScheduledReportForFrequency
   );
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unsupported report schedule frequency: ${String(value)}`);
 }
 
 function advanceScheduleSlot(slot: Date, frequency: ScheduledReportFrequency): Date {
