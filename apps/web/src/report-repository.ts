@@ -3,13 +3,34 @@ import { isProjectVisibility, type ProjectVisibility } from './admin-data.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
 import { type CustomReportLayoutV1, parseCustomReportLayout } from './custom-report-schema.ts';
 import { jsonParameter } from './postgres-json.ts';
+import { isScheduledReportFrequency, type ScheduledReportFrequency } from './report-schedules.ts';
 import type { PreparedReportChunk, PrivateReportJsonV1, ReportPeriod } from './report-schema.ts';
+
+export type ReportGenerationKind = 'manual' | 'scheduled' | 'scheduled_backfill';
+
+export type ReportGenerationMetadata =
+  | {
+      readonly generationKind: 'manual';
+      readonly previousScheduledReportId?: never;
+      readonly scheduleFrequency?: never;
+      readonly schedulePeriodRunId?: never;
+    }
+  | {
+      readonly generationKind: 'scheduled' | 'scheduled_backfill';
+      readonly previousScheduledReportId?: string | null;
+      readonly scheduleFrequency: ScheduledReportFrequency;
+      readonly schedulePeriodRunId: string;
+    };
 
 export interface ReportListItem {
   readonly createdAt: string;
+  readonly generationKind: ReportGenerationKind;
   readonly id: string;
   readonly isPublic: boolean;
   readonly period: ReportPeriod;
+  readonly previousScheduledReportId: string | null;
+  readonly scheduleFrequency: ScheduledReportFrequency | null;
+  readonly schedulePeriodRunId: string | null;
   readonly schemaVersion: string;
   readonly storageUri: string;
   readonly summary: string;
@@ -31,6 +52,7 @@ export interface ReportRepository {
     readonly customTemplateRun?: ReportTemplateRunInsert;
     readonly chunks: readonly PreparedReportChunk[];
     readonly generatedBy: string;
+    readonly generationMetadata?: ReportGenerationMetadata;
     readonly projectId: string;
     readonly report: PrivateReportJsonV1;
     readonly storageUri: string;
@@ -157,10 +179,14 @@ export function parseReportMetadataRow(value: unknown): ReportMetadataRow {
   }
   const {
     created_at,
+    generation_kind,
     id,
     is_public,
     period_end,
     period_start,
+    previous_scheduled_report_id,
+    schedule_frequency,
+    schedule_period_run_id,
     schema_version,
     storage_uri,
     summary,
@@ -193,12 +219,34 @@ export function parseReportMetadataRow(value: unknown): ReportMetadataRow {
   if (!isNullableDateLike(created_at)) {
     throw new Error('Invalid report metadata field: created_at');
   }
+  if (!isReportGenerationKind(generation_kind)) {
+    throw new Error('Invalid report metadata field: generation_kind');
+  }
+  if (schedule_frequency !== null && !isScheduledReportFrequency(schedule_frequency)) {
+    throw new Error('Invalid report metadata field: schedule_frequency');
+  }
+  if (!isNullableIdentifier(previous_scheduled_report_id)) {
+    throw new Error('Invalid report metadata field: previous_scheduled_report_id');
+  }
+  if (!isNullableIdentifier(schedule_period_run_id)) {
+    throw new Error('Invalid report metadata field: schedule_period_run_id');
+  }
+  validateReportGenerationFields({
+    generationKind: generation_kind,
+    previousScheduledReportId: previous_scheduled_report_id,
+    scheduleFrequency: schedule_frequency,
+    schedulePeriodRunId: schedule_period_run_id,
+  });
   return {
     created_at,
+    generation_kind,
     id,
     is_public,
     period_end,
     period_start,
+    previous_scheduled_report_id,
+    schedule_frequency,
+    schedule_period_run_id,
     schema_version,
     storage_uri,
     summary,
@@ -263,7 +311,16 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
       `) as readonly unknown[];
       return rows.map((row) => documentFromRow(parseReportDocumentRow(row)));
     },
-    async insertReport({ chunks, customTemplateRun, generatedBy, projectId, report, storageUri }) {
+    async insertReport({
+      chunks,
+      customTemplateRun,
+      generatedBy,
+      generationMetadata,
+      projectId,
+      report,
+      storageUri,
+    }) {
+      const generation = normalizeReportGenerationMetadata(generationMetadata);
       await sql.begin(async (transaction) => {
         await transaction`
           INSERT INTO public.reports (
@@ -275,7 +332,11 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
             schema_version,
             period,
             is_public,
-            generated_by
+            generated_by,
+            generation_kind,
+            schedule_frequency,
+            previous_scheduled_report_id,
+            schedule_period_run_id
           )
           VALUES (
             ${report.report_id},
@@ -286,7 +347,11 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
             ${report.schema_version},
             daterange(${report.period.start}::date, ${report.period.end}::date, '[]'),
             false,
-            ${generatedBy}
+            ${generatedBy},
+            ${generation.generationKind},
+            ${generation.scheduleFrequency},
+            ${generation.previousScheduledReportId},
+            ${generation.schedulePeriodRunId}
           )
         `;
         if (customTemplateRun) {
@@ -355,6 +420,10 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
           lower(period)::text AS period_start,
           (upper(period) - 1)::text AS period_end,
           is_public,
+          generation_kind,
+          schedule_frequency,
+          previous_scheduled_report_id::text,
+          schedule_period_run_id::text,
           created_at
         FROM public.reports
         WHERE project_id = ${projectId}
@@ -373,6 +442,10 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
           lower(period)::text AS period_start,
           (upper(period) - 1)::text AS period_end,
           is_public,
+          generation_kind,
+          schedule_frequency,
+          previous_scheduled_report_id::text,
+          schedule_period_run_id::text,
           created_at
         FROM public.reports
         WHERE project_id = ${projectId}
@@ -420,9 +493,13 @@ function documentFromRow(row: ReportDocumentRow): ReportDocumentRecord {
 function reportFromRow(row: ReportMetadataRow): ReportListItem {
   return {
     createdAt: formatNullableDate(row.created_at) ?? '',
+    generationKind: row.generation_kind,
     id: row.id,
     isPublic: row.is_public,
     period: { end: row.period_end, start: row.period_start },
+    previousScheduledReportId: row.previous_scheduled_report_id,
+    scheduleFrequency: row.schedule_frequency,
+    schedulePeriodRunId: row.schedule_period_run_id,
     schemaVersion: row.schema_version,
     storageUri: row.storage_uri,
     summary: row.summary,
@@ -461,14 +538,80 @@ interface ReportDocumentRow {
 
 interface ReportMetadataRow {
   readonly created_at: Date | string | null;
+  readonly generation_kind: ReportGenerationKind;
   readonly id: string;
   readonly is_public: boolean;
   readonly period_end: string;
   readonly period_start: string;
+  readonly previous_scheduled_report_id: string | null;
+  readonly schedule_frequency: ScheduledReportFrequency | null;
+  readonly schedule_period_run_id: string | null;
   readonly schema_version: string;
   readonly storage_uri: string;
   readonly summary: string;
   readonly title: string;
+}
+
+export function isReportGenerationKind(value: unknown): value is ReportGenerationKind {
+  return value === 'manual' || value === 'scheduled' || value === 'scheduled_backfill';
+}
+
+function normalizeReportGenerationMetadata(
+  value: ReportGenerationMetadata | undefined,
+): NormalizedReportGenerationMetadata {
+  if (!value || value.generationKind === 'manual') {
+    return {
+      generationKind: 'manual',
+      previousScheduledReportId: null,
+      scheduleFrequency: null,
+      schedulePeriodRunId: null,
+    };
+  }
+  const normalized: NormalizedReportGenerationMetadata = {
+    generationKind: value.generationKind,
+    previousScheduledReportId: value.previousScheduledReportId ?? null,
+    scheduleFrequency: value.scheduleFrequency,
+    schedulePeriodRunId: value.schedulePeriodRunId,
+  };
+  validateReportGenerationFields(normalized);
+  return normalized;
+}
+
+function validateReportGenerationFields(value: NormalizedReportGenerationMetadata): void {
+  if (value.generationKind === 'manual') {
+    if (
+      value.scheduleFrequency !== null ||
+      value.previousScheduledReportId !== null ||
+      value.schedulePeriodRunId !== null
+    ) {
+      throw new Error('Manual report metadata cannot include schedule fields.');
+    }
+    return;
+  }
+  if (!isScheduledReportFrequency(value.scheduleFrequency)) {
+    throw new Error('Scheduled report metadata requires a valid schedule frequency.');
+  }
+  if (typeof value.schedulePeriodRunId !== 'string' || value.schedulePeriodRunId.length === 0) {
+    throw new Error('Scheduled report metadata requires a period run id.');
+  }
+  if (
+    value.previousScheduledReportId !== null &&
+    (typeof value.previousScheduledReportId !== 'string' ||
+      value.previousScheduledReportId.length === 0)
+  ) {
+    throw new Error('Scheduled report metadata has an invalid previous report id.');
+  }
+}
+
+function isNullableIdentifier(value: unknown): value is string | null {
+  return value === null || (typeof value === 'string' && value.length > 0);
+}
+
+interface NormalizedReportGenerationMetadata {
+  readonly generationKind: ReportGenerationKind;
+  readonly previousScheduledReportId: string | null;
+  readonly scheduleFrequency: ScheduledReportFrequency | null;
+  readonly schedulePeriodRunId: string | null;
 }
 
 interface CustomTemplateSummaryRow {
