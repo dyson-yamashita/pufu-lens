@@ -40,9 +40,9 @@ const publicChatQuestionMaxLength = parsePositiveEnvInt(
 );
 
 /**
- * Fetches a public report in JSON format.
+ * Retrieves a public report in JSON format.
  *
- * @returns The public report response, or an error response when the report is unavailable or an unexpected error occurs.
+ * @returns A JSON response containing the public report, a not-found error, or an internal error.
  */
 export async function handlePublicReportGet(input: {
   readonly projectSlug: string;
@@ -73,9 +73,9 @@ export async function handlePublicReportGet(input: {
 }
 
 /**
- * Returns a downloadable PDF for a public report.
+ * Creates a downloadable PDF for a public report.
  *
- * @param input - The public report locator.
+ * @param input - The public report locator and optional image data used in the PDF.
  * @returns A PDF download response, a 404 response when the report is not found, or a 500 response on unexpected errors.
  */
 export async function handlePublicReportPdfPost(input: {
@@ -118,10 +118,11 @@ export async function handlePublicReportPdfPost(input: {
 }
 
 /**
- * Processes a public chat request for a report.
+ * Processes a chat question against a public report.
  *
+ * @param request - The incoming request containing the chat question.
  * @param input - The public project and report locator.
- * @returns A JSON response containing the chat answer and public sources, or an error response for invalid input, access failures, rate limits, or internal errors.
+ * @returns A JSON response containing the answer, public sources, and tool calls, or an error response.
  */
 export async function handlePublicChatPost(
   request: NextRequest,

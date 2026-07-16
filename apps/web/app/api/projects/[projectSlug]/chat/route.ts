@@ -28,6 +28,13 @@ const privateChatQuestionMaxLength = parsePositiveEnvInt(
   2000,
 );
 
+/**
+ * Handles a private chat request for a project.
+ *
+ * @param request - The incoming chat request.
+ * @param params - Route parameters containing the project slug.
+ * @returns An HTTP response containing the chat result or a streaming response.
+ */
 export async function POST(
   request: Request,
   { params }: { readonly params: Promise<{ readonly projectSlug: string }> },

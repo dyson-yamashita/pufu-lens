@@ -8,6 +8,9 @@ import {
 } from '../apps/web/src/report.ts';
 import { requiredEnv } from './lib/cli.ts';
 
+/**
+ * Runs the report publishing or revocation flow and outputs its result.
+ */
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });

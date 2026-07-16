@@ -4,6 +4,12 @@ import { getAdminProject, getProjectMembership } from '../../../../src/admin-db'
 import { ChatPanel, PublicProjectChatPanel } from '../../../../src/chat-client';
 import { AppShell, PageHeader } from '../../../../src/ui';
 
+/**
+ * Renders the project chat page for authenticated members and public visitors.
+ *
+ * @param params - Route parameters containing the project slug.
+ * @returns The project chat page with member or public chat access.
+ */
 export default async function ProjectChatPage({
   params,
 }: {

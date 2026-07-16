@@ -3,6 +3,11 @@ import { getRequiredAdminSql } from '../../../../../src/admin-sql';
 import { AuthRequiredError, requireSessionUserId } from '../../../../../src/auth-session';
 import { createPostgresReportRepository, listPrivateReports } from '../../../../../src/report';
 
+/**
+ * Lists private reports for an authenticated user and project.
+ *
+ * @returns A JSON response containing the private reports or an error response.
+ */
 export async function GET(
   _request: Request,
   { params }: { readonly params: Promise<{ readonly projectSlug: string }> },

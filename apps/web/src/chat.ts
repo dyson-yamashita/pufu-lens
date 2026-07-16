@@ -554,13 +554,13 @@ const HYBRID_KEYWORD_QUERY_INPUT_MAX = 1024;
 const HYBRID_KEYWORD_QUERY_OUTPUT_MAX = 512;
 
 /**
- * Runs the private chat workflow for a project member.
+ * Runs the private chat workflow for an authorized project member.
  *
- * Returns a rate-limited response when the limiter rejects the request, or an answered response with retrieved sources and the generated answer.
+ * Retrieves relevant project sources and generates an answer using the configured chat provider.
  *
  * @param request - The private chat request
- * @param options - The chat runtime dependencies and policy settings
- * @returns The private chat response
+ * @param options - The chat runtime dependencies
+ * @returns A rate-limited response or an answered response with retrieved sources
  * @throws ProjectAccessDeniedError If the user does not have access to the project
  */
 export async function runPrivateChat(
@@ -912,6 +912,12 @@ export function createMemoryRateLimiter(input: {
   };
 }
 
+/**
+ * Creates an in-memory rate limiter keyed by client IP and report ID.
+ *
+ * @param input - Rate-limit window, request limit, clock, and cleanup configuration
+ * @returns A public chat rate limiter
+ */
 export function createPublicChatMemoryRateLimiter(input: {
   readonly cleanupIntervalMs?: number;
   readonly cleanupThreshold?: number;
@@ -946,6 +952,13 @@ export function createPublicChatMemoryRateLimiter(input: {
   };
 }
 
+/**
+ * Truncates private chat history content to the specified maximum length.
+ *
+ * @param content - The content to truncate
+ * @param maxLength - The maximum number of characters to retain
+ * @returns The original content when within the limit, or truncated content ending with an ellipsis
+ */
 export function trimPrivateChatHistoryContent(
   content: string,
   maxLength = PRIVATE_CHAT_HISTORY_CONTENT_MAX,
@@ -984,6 +997,12 @@ export function privateChatHistoryToMastraMessages(
   return messages;
 }
 
+/**
+ * Orders private chat history items from oldest to newest for UI display.
+ *
+ * @param itemsNewestFirst - Chat history items ordered from newest to oldest
+ * @returns The items ordered from oldest to newest
+ */
 export function privateChatHistoryItemsForUiDisplay(
   itemsNewestFirst: readonly PrivateChatHistoryItem[],
 ): readonly PrivateChatHistoryItem[] {
@@ -1460,6 +1479,12 @@ async function readPrivateChatHistoryRows<Row>(
   }
 }
 
+/**
+ * Determines whether an error indicates that the private chat history table is missing.
+ *
+ * @param error - The value to inspect
+ * @returns `true` if the error has PostgreSQL code `42P01` and references `private_chat_messages`, `false` otherwise.
+ */
 export function isMissingPrivateChatHistoryTableError(error: unknown): boolean {
   if (!isRecord(error)) {
     return false;
@@ -1471,6 +1496,12 @@ export function isMissingPrivateChatHistoryTableError(error: unknown): boolean {
   );
 }
 
+/**
+ * Determines whether a value has the shape of a chat error response.
+ *
+ * @param value - The value to check
+ * @returns `true` if the value is a chat error response, `false` otherwise.
+ */
 export function isChatErrorResponseBody(value: unknown): value is ChatErrorResponse {
   return isRecord(value) && 'error' in value;
 }
@@ -1481,14 +1512,33 @@ export function isPrivateChatHistoryListResponse(
   return isRecord(value) && Array.isArray(value.items);
 }
 
+/**
+ * Determines whether a value has the shape of a chat response.
+ *
+ * @param value - The value to inspect
+ * @returns `true` if the value has a string `status` property, `false` otherwise
+ */
 export function isChatResponseBody(value: unknown): value is ChatResponse {
   return isRecord(value) && typeof value.status === 'string';
 }
 
+/**
+ * Determines whether a value has the shape of a public chat response.
+ *
+ * @param value - The value to check
+ * @returns `true` if the value is an object with a string `status`, `false` otherwise.
+ */
 export function isPublicChatResponseBody(value: unknown): value is PublicChatResponse {
   return isRecord(value) && typeof value.status === 'string';
 }
 
+/**
+ * Extracts a user-facing error message from a chat response.
+ *
+ * @param body - The response body containing error or answer details
+ * @param status - The HTTP status used as a fallback message
+ * @returns The error message, answer, or `HTTP ${status}` when no message is available
+ */
 export function chatErrorMessage(
   body: ChatResponse | PublicChatResponse | ChatErrorResponse | null,
   status: number,
@@ -1504,6 +1554,12 @@ export function chatErrorMessage(
   return `HTTP ${status}`;
 }
 
+/**
+ * Creates a public chat response from the supplied answer, metadata, sources, and tool calls.
+ *
+ * @param input - The response fields to include
+ * @returns A normalized public chat response
+ */
 function publicChatResponse(input: {
   readonly answer: string;
   readonly editing?: ChatEditingMetadata;

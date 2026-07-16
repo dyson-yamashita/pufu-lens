@@ -282,6 +282,11 @@ export function ReportDocument({
     }
   }
 
+  /**
+   * Confirms and deletes the current report, then navigates to the reports list.
+   *
+   * Displays an error message when deletion fails.
+   */
   async function handleDelete() {
     if (!window.confirm('レポートが削除されますがよろしいですか')) {
       return;
@@ -513,6 +518,12 @@ function reportErrorStatus(body: ReportApiError, status: number): string {
   return body.error?.code ?? body.error?.message ?? `http_${status}`;
 }
 
+/**
+ * Maps a PDF download error code to a user-facing Japanese message.
+ *
+ * @param code - The error code to translate
+ * @returns The corresponding user-facing error message
+ */
 function mapPdfDownloadErrorMessage(code: string): string {
   switch (code) {
     case 'auth_required':

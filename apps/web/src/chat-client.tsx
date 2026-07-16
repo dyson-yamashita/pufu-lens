@@ -36,10 +36,22 @@ const CHAT_HISTORY_TIME_FORMATTER = new Intl.DateTimeFormat('ja-JP', {
   month: '2-digit',
 });
 
+/**
+ * Creates an introductory message inviting questions about a project.
+ *
+ * @param projectName - The project name to include in the message
+ * @returns A Japanese project-specific introductory message with an example question
+ */
 function projectChatIntroMessage(projectName: string): string {
   return `プロジェクト ${projectName}  についてご質問ください。\n\n例： ${projectName}  について教えてください。`;
 }
 
+/**
+ * Renders a private project chat panel with conversation history and voice input.
+ *
+ * @param projectName - The project name shown in the chat introduction
+ * @param projectSlug - The project identifier used for chat and history requests
+ */
 export function ChatPanel({
   projectName,
   projectSlug,
@@ -406,6 +418,12 @@ function chatHistoryAnswerPreview(answer: string): string {
   return normalized.length > 80 ? `${normalized.slice(0, 79)}...` : normalized;
 }
 
+/**
+ * Provides a public chat interface for asking questions about a project.
+ *
+ * @param projectName - The project name displayed in the chat introduction
+ * @param projectSlug - The project identifier used to submit questions
+ */
 export function PublicProjectChatPanel({
   projectName,
   projectSlug,

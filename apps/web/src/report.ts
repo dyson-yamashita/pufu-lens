@@ -86,6 +86,12 @@ export interface PublishReportOptions extends ReportAccessOptions {
   readonly storage: ObjectStorage;
 }
 
+/**
+ * Lists reports available to an authorized project member.
+ *
+ * @param input - The project, user, and report repository access details
+ * @returns The available reports and an `ok` status
+ */
 export async function listPrivateReports(input: {
   readonly options: ReportAccessOptions;
   readonly projectSlug: string;
@@ -98,6 +104,11 @@ export async function listPrivateReports(input: {
   };
 }
 
+/**
+ * Retrieves a private report for an authorized project member.
+ *
+ * @returns The validated private report and an `ok` status.
+ */
 export async function getPrivateReport(input: {
   readonly options: ReportAccessOptions & { readonly storage: ObjectStorage };
   readonly projectSlug: string;
@@ -120,6 +131,12 @@ export async function getPrivateReport(input: {
   return { report, status: 'ok' };
 }
 
+/**
+ * Deletes a private report and revokes its public artifact when applicable.
+ *
+ * @throws `ReportNotFoundError` if the report does not exist
+ * @returns An object with an `ok` status
+ */
 export async function deletePrivateReport(input: {
   readonly options: ReportAccessOptions & { readonly storage: ObjectStorage };
   readonly projectSlug: string;
@@ -157,6 +174,13 @@ export async function deletePrivateReport(input: {
   return { status: 'ok' };
 }
 
+/**
+ * Publishes a private report as a public report.
+ *
+ * @param input - The report, project, user, storage, and repository details.
+ * @returns The public manifest and report.
+ * @throws `ReportNotFoundError` if the report metadata does not exist.
+ */
 export async function publishPublicReport(input: {
   readonly now?: Date;
   readonly options: PublishReportOptions;
@@ -199,6 +223,13 @@ export async function publishPublicReport(input: {
   return { manifest, publicReport, status: 'ok' };
 }
 
+/**
+ * Revokes public access to a report and records the revocation manifest.
+ *
+ * @param now - Optional timestamp to use for the revocation.
+ * @throws `ReportNotFoundError` if the report does not exist.
+ * @returns The revoked report manifest and an `ok` status.
+ */
 export async function revokePublicReport(input: {
   readonly now?: Date;
   readonly options: PublishReportOptions;
@@ -250,6 +281,13 @@ export async function revokePublicReport(input: {
   return { manifest: revokedManifest, status: 'ok' };
 }
 
+/**
+ * Retrieves a publicly accessible report.
+ *
+ * @param input - The project, report, repository, and storage used to locate the report
+ * @returns The validated report with an `ok` status
+ * @throws PublicReportNotFoundError If the report is unavailable or its identifiers do not match
+ */
 export async function getPublicReport(input: {
   readonly options: ReportAccessOptions & { readonly storage: ObjectStorage };
   readonly projectSlug: string;
@@ -340,6 +378,13 @@ export class PublicReportNotFoundError extends Error {
   }
 }
 
+/**
+ * Retrieves the project accessible to a user.
+ *
+ * @param input - The project slug, user ID, and repository options used for access lookup
+ * @returns The accessible project
+ * @throws ProjectAccessDeniedError if the user has no access to the project
+ */
 async function lookupMemberOrThrow(input: {
   readonly options: ReportAccessOptions;
   readonly projectSlug: string;

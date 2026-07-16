@@ -14,6 +14,11 @@ import {
   revokePublicReport,
 } from '../../../../../../src/report';
 
+/**
+ * Retrieves a private report for the authenticated user.
+ *
+ * @returns A JSON response containing the report or an appropriate error response.
+ */
 export async function GET(
   _request: Request,
   {
@@ -50,6 +55,12 @@ export async function GET(
   }
 }
 
+/**
+ * Updates a report's public visibility.
+ *
+ * @param request - Request containing a JSON body with an `isPublic` boolean.
+ * @returns The updated report or a structured error response.
+ */
 export async function PATCH(
   request: Request,
   {
@@ -102,6 +113,11 @@ function reportErrorResponse(code: string, message: string, status: number) {
   return NextResponse.json({ error: { code, message } }, { status });
 }
 
+/**
+ * Deletes a private report for the authenticated user.
+ *
+ * @returns The deletion result or a JSON error response.
+ */
 export async function DELETE(
   _request: Request,
   {

@@ -7,6 +7,12 @@ import {
   ProjectAccessDeniedError,
 } from '../../../../../../src/chat';
 
+/**
+ * Retrieves private chat history items for an authenticated user within a project.
+ *
+ * @param params - Route parameters containing the project slug
+ * @returns A JSON response containing the chat history items or a structured error
+ */
 export async function GET(
   _request: Request,
   { params }: { readonly params: Promise<{ readonly projectSlug: string }> },
