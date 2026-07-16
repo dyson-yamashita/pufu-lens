@@ -136,14 +136,14 @@ Public report 表示でも private report JSON を同じように描画するた
 
 ## Step 構成
 
-| Step | status    | 内容                                                                          | 完了条件                                                                                                                                  |
-| ---- | --------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | `planned` | schedule / period run / report metadata の DB model と migration を追加する。 | fresh / 既存 DB migration、runtime guard、period run・report の一意制約、project 境界 query、report なしの skipped 履歴が検証済みになる。 |
-| 2    | `planned` | 期間計算、前回定期 report 解決、通常 / backfill 対象列挙を実装する。          | weekly / monthly / annually の完了済み period、停止後 catch-up、最古未完了優先、初回 backfill、周期変更時の非 backfill が検証済み。       |
-| 3    | `planned` | report workflow に前回参照と差分生成 context を追加する。                     | 前回 report を明示的な件数・文字数・token 予算内で決定的に参照し、change / increments / decrements が JSON に保存される。                 |
-| 4    | `planned` | report schedule dispatcher、内部 API、local one-shot CLI を実装する。         | due claim、lease、retry、idempotency、backfill 分割、secret 非露出が確認できる。                                                          |
-| 5    | `planned` | レポート一覧 UI で周期設定と実行状態を管理できるようにする。                  | admin は周期を保存でき、member は読み取りのみ。初回/backfill/変更時挙動の説明と状態が表示される。                                         |
-| 6    | `planned` | レポート一覧・詳細表示、E2E、運用ドキュメントを整備する。                     | 定期/手動の区別、差分表示、public 境界、dispatcher 運用、障害時確認手順が検証・文書化される。                                             |
+| Step | status      | 内容                                                                          | 完了条件                                                                                                                                        |
+| ---- | ----------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | `completed` | schedule / period run / report metadata の DB model と migration を追加する。 | Issue #579。fresh / 既存 DB migration、runtime guard、period run・report の一意制約、project 境界 query、report なしの skipped 履歴を検証済み。 |
+| 2    | `planned`   | 期間計算、前回定期 report 解決、通常 / backfill 対象列挙を実装する。          | weekly / monthly / annually の完了済み period、停止後 catch-up、最古未完了優先、初回 backfill、周期変更時の非 backfill が検証済み。             |
+| 3    | `planned`   | report workflow に前回参照と差分生成 context を追加する。                     | 前回 report を明示的な件数・文字数・token 予算内で決定的に参照し、change / increments / decrements が JSON に保存される。                       |
+| 4    | `planned`   | report schedule dispatcher、内部 API、local one-shot CLI を実装する。         | due claim、lease、retry、idempotency、backfill 分割、secret 非露出が確認できる。                                                                |
+| 5    | `planned`   | レポート一覧 UI で周期設定と実行状態を管理できるようにする。                  | admin は周期を保存でき、member は読み取りのみ。初回/backfill/変更時挙動の説明と状態が表示される。                                               |
+| 6    | `planned`   | レポート一覧・詳細表示、E2E、運用ドキュメントを整備する。                     | 定期/手動の区別、差分表示、public 境界、dispatcher 運用、障害時確認手順が検証・文書化される。                                                   |
 
 ## テスト計画
 

@@ -7,10 +7,12 @@ import { createPufuScoreFromReport } from './pufu-score.ts';
 import {
   createExtractiveReportProvider,
   createGeminiReportProvider,
+  createPostgresReportRepository,
   deletePrivateReport,
   getPrivateReport,
   getPublicReport,
   getPublicReportArtifacts,
+  isReportGenerationKind,
   isSafePublicReportLocator,
   listPrivateReports,
   PublicReportNotFoundError,
@@ -18,6 +20,7 @@ import {
   parseReportMetadataRow,
   parseReportProjectLookupRow,
   publishPublicReport,
+  type ReportGenerationMetadata,
   ReportNotFoundError,
   type ReportRepository,
   type ReportTemplateRunInsert,
@@ -186,9 +189,13 @@ function createRepository(): ReportRepository & {
         .filter(([, report]) => report.projectId === projectId)
         .map(([id, report]) => ({
           createdAt: '2026-06-04T00:00:00.000Z',
+          generationKind: 'manual' as const,
           id,
           isPublic: report.isPublic,
           period: { end: '2026-06-07', start: '2026-06-01' },
+          previousScheduledReportId: null,
+          scheduleFrequency: null,
+          schedulePeriodRunId: null,
           schemaVersion: 'v1',
           storageUri: report.storageUri,
           summary: 'summary',
@@ -200,9 +207,13 @@ function createRepository(): ReportRepository & {
       return report && report.projectId === projectId
         ? {
             createdAt: '2026-06-04T00:00:00.000Z',
+            generationKind: 'manual' as const,
             id: reportId,
             isPublic: report.isPublic,
             period: { end: '2026-06-07', start: '2026-06-01' },
+            previousScheduledReportId: null,
+            scheduleFrequency: null,
+            schedulePeriodRunId: null,
             schemaVersion: 'v1',
             storageUri: report.storageUri,
             summary: 'summary',
@@ -1334,10 +1345,14 @@ assert.throws(
 
 const validReportMetadataRow = {
   created_at: '2026-06-04T00:00:00.000Z',
+  generation_kind: 'manual',
   id: 'report-a',
   is_public: false,
   period_end: '2026-06-07',
   period_start: '2026-06-01',
+  previous_scheduled_report_id: null,
+  schedule_frequency: null,
+  schedule_period_run_id: null,
   schema_version: 'v1',
   storage_uri: 'sample-a/reports/private/report-a.json',
   summary: 'summary',
@@ -1345,6 +1360,26 @@ const validReportMetadataRow = {
 };
 
 assert.deepEqual(parseReportMetadataRow(validReportMetadataRow), validReportMetadataRow);
+assert.equal(isReportGenerationKind('manual'), true);
+assert.equal(isReportGenerationKind('scheduled'), true);
+assert.equal(isReportGenerationKind('scheduled_backfill'), true);
+assert.equal(isReportGenerationKind('automatic'), false);
+assert.deepEqual(
+  parseReportMetadataRow({
+    ...validReportMetadataRow,
+    generation_kind: 'scheduled_backfill',
+    previous_scheduled_report_id: 'report-previous',
+    schedule_frequency: 'monthly',
+    schedule_period_run_id: 'period-run-a',
+  }),
+  {
+    ...validReportMetadataRow,
+    generation_kind: 'scheduled_backfill',
+    previous_scheduled_report_id: 'report-previous',
+    schedule_frequency: 'monthly',
+    schedule_period_run_id: 'period-run-a',
+  },
+);
 assert.throws(() => parseReportMetadataRow(null), /Invalid report metadata row/);
 assert.throws(
   () => parseReportMetadataRow({ ...validReportMetadataRow, is_public: 'false' }),
@@ -1357,6 +1392,56 @@ assert.throws(
 assert.throws(
   () => parseReportMetadataRow({ ...validReportMetadataRow, storage_uri: 123 }),
   /Invalid report metadata field: storage_uri/,
+);
+assert.throws(
+  () =>
+    parseReportMetadataRow({
+      ...validReportMetadataRow,
+      generation_kind: 'manual',
+      schedule_frequency: 'weekly',
+    }),
+  /Manual report metadata cannot include schedule fields/,
+);
+assert.throws(
+  () =>
+    parseReportMetadataRow({
+      ...validReportMetadataRow,
+      generation_kind: 'scheduled',
+      schedule_frequency: 'yearly',
+      schedule_period_run_id: 'period-run-a',
+    }),
+  /schedule_frequency/,
+);
+assert.throws(
+  () =>
+    parseReportMetadataRow({
+      ...validReportMetadataRow,
+      generation_kind: 'scheduled',
+      schedule_frequency: 'weekly',
+    }),
+  /period run id/,
+);
+
+const sqlMustNotReceiveInvalidMetadata = {
+  begin() {
+    assert.fail('invalid generation metadata reached the SQL transaction');
+  },
+} as unknown as Parameters<typeof createPostgresReportRepository>[0];
+const postgresRepository = createPostgresReportRepository(sqlMustNotReceiveInvalidMetadata);
+await assert.rejects(
+  () =>
+    postgresRepository.insertReport({
+      chunks: [],
+      generatedBy: 'report.test',
+      generationMetadata: {
+        generationKind: 'manual',
+        scheduleFrequency: 'weekly',
+      } as unknown as ReportGenerationMetadata,
+      projectId: 'project-a',
+      report: generated.report,
+      storageUri: 'sample-a/reports/private/invalid-metadata.json',
+    }),
+  /Manual report metadata cannot include schedule fields/,
 );
 
 const malformedGeminiProvider = createGeminiReportProvider({

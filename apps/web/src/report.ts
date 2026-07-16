@@ -51,6 +51,7 @@ export {
 } from './report-public-artifacts.ts';
 export {
   createPostgresReportRepository,
+  isReportGenerationKind,
   type ProjectLookupResult,
   parseReportDocumentRow,
   parseReportMetadataRow,
@@ -58,10 +59,29 @@ export {
   type ReportCustomTemplate,
   type ReportCustomTemplateSummary,
   type ReportDocumentRecord,
+  type ReportGenerationKind,
+  type ReportGenerationMetadata,
   type ReportListItem,
   type ReportRepository,
   type ReportTemplateRunInsert,
 } from './report-repository.ts';
+export {
+  isReportScheduleFrequency,
+  isReportScheduleRunKind,
+  isReportScheduleRunStatus,
+  isScheduledReportFrequency,
+  listReportSchedulePeriodRuns,
+  type ProjectReportSchedule,
+  parseProjectReportScheduleRow,
+  parseReportSchedulePeriodRunRow,
+  type ReportScheduleFrequency,
+  type ReportSchedulePeriodRun,
+  type ReportScheduleRunKind,
+  type ReportScheduleRunStatus,
+  readProjectReportSchedule,
+  readReportSchedulePeriodRun,
+  type ScheduledReportFrequency,
+} from './report-schedules.ts';
 export {
   type PreparedReportChunk,
   type PrivateReportJsonV1,
