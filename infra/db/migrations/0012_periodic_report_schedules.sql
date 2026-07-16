@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS public.report_schedule_period_runs (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   started_at TIMESTAMPTZ,
   completed_at TIMESTAMPTZ,
-  CONSTRAINT report_schedule_period_runs_id_project_key UNIQUE (id, project_id),
+  CONSTRAINT report_schedule_period_runs_id_project_frequency_key UNIQUE (id, project_id, frequency),
   CONSTRAINT report_schedule_period_runs_project_period_key
     UNIQUE (project_id, frequency, period_start, period_end),
   CONSTRAINT report_schedule_period_runs_schedule_scope_fkey
@@ -135,6 +135,19 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conrelid = 'public.reports'::regclass
+      AND conname = 'reports_project_schedule_frequency_id_key'
+  ) THEN
+    ALTER TABLE public.reports
+      ADD CONSTRAINT reports_project_schedule_frequency_id_key
+      UNIQUE (project_id, schedule_frequency, id);
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.reports'::regclass
       AND conname = 'reports_schedule_frequency_check'
   ) THEN
     ALTER TABLE public.reports
@@ -176,8 +189,8 @@ BEGIN
   ) THEN
     ALTER TABLE public.reports
       ADD CONSTRAINT reports_previous_scheduled_scope_fkey
-      FOREIGN KEY (project_id, previous_scheduled_report_id)
-      REFERENCES public.reports(project_id, id)
+      FOREIGN KEY (project_id, schedule_frequency, previous_scheduled_report_id)
+      REFERENCES public.reports(project_id, schedule_frequency, id)
       ON DELETE SET NULL (previous_scheduled_report_id);
   END IF;
 END $$;
@@ -191,8 +204,8 @@ BEGIN
   ) THEN
     ALTER TABLE public.reports
       ADD CONSTRAINT reports_schedule_period_run_scope_fkey
-      FOREIGN KEY (schedule_period_run_id, project_id)
-      REFERENCES public.report_schedule_period_runs(id, project_id);
+      FOREIGN KEY (schedule_period_run_id, project_id, schedule_frequency)
+      REFERENCES public.report_schedule_period_runs(id, project_id, frequency);
   END IF;
 END $$;
 
@@ -217,7 +230,7 @@ BEGIN
   ) THEN
     ALTER TABLE public.reports
       ADD CONSTRAINT reports_schedule_run_scope_key
-      UNIQUE (id, schedule_period_run_id, project_id);
+      UNIQUE (id, schedule_period_run_id, project_id, schedule_frequency);
   END IF;
 END $$;
 
@@ -230,11 +243,7 @@ BEGIN
   ) THEN
     ALTER TABLE public.report_schedule_period_runs
       ADD CONSTRAINT report_schedule_period_runs_report_scope_fkey
-      FOREIGN KEY (report_id, id, project_id)
-      REFERENCES public.reports(id, schedule_period_run_id, project_id);
+      FOREIGN KEY (report_id, id, project_id, frequency)
+      REFERENCES public.reports(id, schedule_period_run_id, project_id, schedule_frequency);
   END IF;
 END $$;
-
-CREATE INDEX IF NOT EXISTS reports_scheduled_previous_idx
-  ON public.reports (project_id, schedule_frequency, (lower(period)) DESC, id)
-  WHERE generation_kind IN ('scheduled', 'scheduled_backfill');

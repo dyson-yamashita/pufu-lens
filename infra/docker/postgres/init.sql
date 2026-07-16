@@ -457,7 +457,7 @@ CREATE TABLE public.report_schedule_period_runs (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   started_at TIMESTAMPTZ,
   completed_at TIMESTAMPTZ,
-  CONSTRAINT report_schedule_period_runs_id_project_key UNIQUE (id, project_id),
+  CONSTRAINT report_schedule_period_runs_id_project_frequency_key UNIQUE (id, project_id, frequency),
   CONSTRAINT report_schedule_period_runs_project_period_key
     UNIQUE (project_id, frequency, period_start, period_end),
   CONSTRAINT report_schedule_period_runs_schedule_scope_fkey
@@ -531,25 +531,25 @@ CREATE TABLE public.reports (
       AND schedule_period_run_id IS NOT NULL
     )
   ),
+  CONSTRAINT reports_project_schedule_frequency_id_key
+    UNIQUE (project_id, schedule_frequency, id),
   CONSTRAINT reports_previous_scheduled_scope_fkey
-    FOREIGN KEY (project_id, previous_scheduled_report_id)
-    REFERENCES public.reports(project_id, id)
+    FOREIGN KEY (project_id, schedule_frequency, previous_scheduled_report_id)
+    REFERENCES public.reports(project_id, schedule_frequency, id)
     ON DELETE SET NULL (previous_scheduled_report_id),
   CONSTRAINT reports_schedule_period_run_scope_fkey
-    FOREIGN KEY (schedule_period_run_id, project_id)
-    REFERENCES public.report_schedule_period_runs(id, project_id),
+    FOREIGN KEY (schedule_period_run_id, project_id, schedule_frequency)
+    REFERENCES public.report_schedule_period_runs(id, project_id, frequency),
   CONSTRAINT reports_schedule_period_run_key UNIQUE (schedule_period_run_id),
-  CONSTRAINT reports_schedule_run_scope_key UNIQUE (id, schedule_period_run_id, project_id)
+  CONSTRAINT reports_schedule_run_scope_key
+    UNIQUE (id, schedule_period_run_id, project_id, schedule_frequency)
 );
 CREATE INDEX reports_project_created_idx ON public.reports (project_id, created_at DESC);
-CREATE INDEX reports_scheduled_previous_idx
-  ON public.reports (project_id, schedule_frequency, (lower(period)) DESC, id)
-  WHERE generation_kind IN ('scheduled', 'scheduled_backfill');
 
 ALTER TABLE public.report_schedule_period_runs
   ADD CONSTRAINT report_schedule_period_runs_report_scope_fkey
-  FOREIGN KEY (report_id, id, project_id)
-  REFERENCES public.reports(id, schedule_period_run_id, project_id);
+  FOREIGN KEY (report_id, id, project_id, frequency)
+  REFERENCES public.reports(id, schedule_period_run_id, project_id, schedule_frequency);
 
 CREATE TABLE public.custom_report_assets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

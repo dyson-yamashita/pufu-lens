@@ -7,6 +7,7 @@ import { createPufuScoreFromReport } from './pufu-score.ts';
 import {
   createExtractiveReportProvider,
   createGeminiReportProvider,
+  createPostgresReportRepository,
   deletePrivateReport,
   getPrivateReport,
   getPublicReport,
@@ -19,6 +20,7 @@ import {
   parseReportMetadataRow,
   parseReportProjectLookupRow,
   publishPublicReport,
+  type ReportGenerationMetadata,
   ReportNotFoundError,
   type ReportRepository,
   type ReportTemplateRunInsert,
@@ -1418,6 +1420,28 @@ assert.throws(
       schedule_frequency: 'weekly',
     }),
   /period run id/,
+);
+
+const sqlMustNotReceiveInvalidMetadata = {
+  begin() {
+    assert.fail('invalid generation metadata reached the SQL transaction');
+  },
+} as unknown as Parameters<typeof createPostgresReportRepository>[0];
+const postgresRepository = createPostgresReportRepository(sqlMustNotReceiveInvalidMetadata);
+await assert.rejects(
+  () =>
+    postgresRepository.insertReport({
+      chunks: [],
+      generatedBy: 'report.test',
+      generationMetadata: {
+        generationKind: 'manual',
+        scheduleFrequency: 'weekly',
+      } as unknown as ReportGenerationMetadata,
+      projectId: 'project-a',
+      report: generated.report,
+      storageUri: 'sample-a/reports/private/invalid-metadata.json',
+    }),
+  /Manual report metadata cannot include schedule fields/,
 );
 
 const malformedGeminiProvider = createGeminiReportProvider({

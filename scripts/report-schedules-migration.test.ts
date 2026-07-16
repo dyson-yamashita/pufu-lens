@@ -34,10 +34,16 @@ test('0012 constrains scheduled report metadata to one tenant-scoped period run'
   );
   assert.match(migration, /reports_schedule_metadata_check/);
   assert.match(migration, /reports_schedule_period_run_key UNIQUE \(schedule_period_run_id\)/);
-  assert.match(migration, /FOREIGN KEY \(schedule_period_run_id, project_id\)/);
-  assert.match(migration, /FOREIGN KEY \(project_id, previous_scheduled_report_id\)/);
-  assert.match(migration, /FOREIGN KEY \(report_id, id, project_id\)/);
-  assert.match(migration, /REFERENCES public\.reports\(id, schedule_period_run_id, project_id\)/);
+  assert.match(migration, /FOREIGN KEY \(schedule_period_run_id, project_id, schedule_frequency\)/);
+  assert.match(
+    migration,
+    /FOREIGN KEY \(project_id, schedule_frequency, previous_scheduled_report_id\)/,
+  );
+  assert.match(migration, /FOREIGN KEY \(report_id, id, project_id, frequency\)/);
+  assert.match(
+    migration,
+    /REFERENCES public\.reports\(id, schedule_period_run_id, project_id, schedule_frequency\)/,
+  );
 });
 
 test('0012 and fresh schema share periodic report constraints and migration version', async () => {
@@ -53,12 +59,14 @@ test('0012 and fresh schema share periodic report constraints and migration vers
     'project_report_schedules_next_run_check',
     'project_report_schedules_lease_pair_check',
     'report_schedule_period_runs_project_period_key',
+    'report_schedule_period_runs_id_project_frequency_key',
     'report_schedule_period_runs_schedule_scope_fkey',
     'report_schedule_period_runs_skipped_check',
     'report_schedule_period_runs_succeeded_check',
     'report_schedule_period_runs_report_scope_fkey',
     'reports_generation_kind_check',
     'reports_schedule_metadata_check',
+    'reports_project_schedule_frequency_id_key',
     'reports_previous_scheduled_scope_fkey',
     'reports_schedule_period_run_scope_fkey',
     'reports_schedule_period_run_key',

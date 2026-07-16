@@ -222,7 +222,7 @@ const generateReportWorkflow = createWorkflow({
 | 定期実行設定・period 履歴              | PostgreSQL `project_report_schedules` / `report_schedule_period_runs` | report が生成されない skipped period を含む実行履歴の正本 |
 | 検索用埋め込み                         | pgvector `report_chunks`                                              | 過去レポートの意味検索                                    |
 
-`reports.generation_kind` は `manual` / `scheduled` / `scheduled_backfill` を区別する。定期生成では `schedule_frequency`、同じ project の `previous_scheduled_report_id`、一意な `schedule_period_run_id` を保持し、手動生成ではこれらを `NULL` にする。`report_schedule_period_runs` は report の有無にかかわらず period 履歴の正本であり、`reports` metadata だけで retry・skip・通知状態を代用しない。Step 1 では schema、runtime guard、project-scoped repository までを実装し、期間列挙、差分生成、dispatcher、UI は後続 Step で追加する。
+`reports.generation_kind` は `manual` / `scheduled` / `scheduled_backfill` を区別する。定期生成では `schedule_frequency`、同じ project・frequency の `previous_scheduled_report_id`、一意な `schedule_period_run_id` を保持し、手動生成ではこれらを `NULL` にする。period run と report の相互参照も project・frequency の一致を DB 制約で保証する。`report_schedule_period_runs` は report の有無にかかわらず period 履歴の正本であり、`reports` metadata だけで retry・skip・通知状態を代用しない。Step 1 では schema、runtime guard、project-scoped repository までを実装し、期間列挙、差分生成、dispatcher、UI は後続 Step で追加する。
 
 Web は以下のエンドポイントで JSON を取得する：
 

@@ -29,6 +29,9 @@ const scheduledReportId = '10000000-0000-0000-0000-000000000441';
 const crossProjectId = '10000000-0000-0000-0000-000000000442';
 const crossProjectReportId = '10000000-0000-0000-0000-000000000443';
 const crossBoundaryPeriodRunId = '10000000-0000-0000-0000-000000000444';
+const frequencyMismatchReportId = '10000000-0000-0000-0000-000000000445';
+const monthlyPeriodRunId = '10000000-0000-0000-0000-000000000446';
+const previousFrequencyMismatchReportId = '10000000-0000-0000-0000-000000000447';
 
 await main();
 
@@ -383,6 +386,50 @@ async function assertReportScheduleRoundTrip() {
         projectId: crossProjectId,
         report: { ...scheduledReport, project_id: crossProjectId, report_id: crossProjectReportId },
         storageUri: 'issue-579/reports/private/cross-project.json',
+      }),
+    databaseErrorCode('23503'),
+  );
+
+  await assert.rejects(
+    () =>
+      repository.insertReport({
+        chunks: [],
+        generatedBy: 'postgres-roundtrip.test',
+        generationMetadata: {
+          generationKind: 'scheduled',
+          scheduleFrequency: 'monthly',
+          schedulePeriodRunId: crossBoundaryPeriodRunId,
+        },
+        projectId,
+        report: { ...scheduledReport, report_id: frequencyMismatchReportId },
+        storageUri: 'issue-579/reports/private/frequency-mismatch.json',
+      }),
+    databaseErrorCode('23503'),
+  );
+
+  await sql`
+    INSERT INTO public.report_schedule_period_runs (
+      id, schedule_id, project_id, frequency, period_start, period_end, run_kind, status
+    )
+    VALUES (
+      ${monthlyPeriodRunId}, ${scheduleId}, ${projectId}, 'monthly',
+      '2026-07-01', '2026-07-31', 'scheduled', 'pending'
+    )
+  `;
+  await assert.rejects(
+    () =>
+      repository.insertReport({
+        chunks: [],
+        generatedBy: 'postgres-roundtrip.test',
+        generationMetadata: {
+          generationKind: 'scheduled',
+          previousScheduledReportId: scheduledReportId,
+          scheduleFrequency: 'monthly',
+          schedulePeriodRunId: monthlyPeriodRunId,
+        },
+        projectId,
+        report: { ...scheduledReport, report_id: previousFrequencyMismatchReportId },
+        storageUri: 'issue-579/reports/private/previous-frequency-mismatch.json',
       }),
     databaseErrorCode('23503'),
   );

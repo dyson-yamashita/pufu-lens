@@ -559,7 +559,7 @@ export function isReportGenerationKind(value: unknown): value is ReportGeneratio
 function normalizeReportGenerationMetadata(
   value: ReportGenerationMetadata | undefined,
 ): NormalizedReportGenerationMetadata {
-  if (!value || value.generationKind === 'manual') {
+  if (value === undefined) {
     return {
       generationKind: 'manual',
       previousScheduledReportId: null,
@@ -567,11 +567,21 @@ function normalizeReportGenerationMetadata(
       schedulePeriodRunId: null,
     };
   }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid report generation metadata.');
+  }
+  const generationKind = Reflect.get(value, 'generationKind');
+  if (!isReportGenerationKind(generationKind)) {
+    throw new Error('Invalid report generation kind.');
+  }
   const normalized: NormalizedReportGenerationMetadata = {
-    generationKind: value.generationKind,
-    previousScheduledReportId: value.previousScheduledReportId ?? null,
-    scheduleFrequency: value.scheduleFrequency,
-    schedulePeriodRunId: value.schedulePeriodRunId,
+    generationKind,
+    previousScheduledReportId: (Reflect.get(value, 'previousScheduledReportId') ?? null) as
+      | string
+      | null,
+    scheduleFrequency: (Reflect.get(value, 'scheduleFrequency') ??
+      null) as ScheduledReportFrequency | null,
+    schedulePeriodRunId: (Reflect.get(value, 'schedulePeriodRunId') ?? null) as string | null,
   };
   validateReportGenerationFields(normalized);
   return normalized;
