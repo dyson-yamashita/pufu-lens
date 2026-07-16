@@ -11,7 +11,6 @@ import { formatReportSummaryPreview } from './report-summary';
 
 type ReportApiError = {
   readonly error?: { readonly code?: string; readonly message?: string };
-  readonly status?: string;
 };
 
 type ReportGenerateAction = (formData: FormData) => Promise<void>;
@@ -293,7 +292,7 @@ export function ReportDocument({
       const response = await fetch(`/api/projects/${projectSlug}/reports/${reportId}`, {
         method: 'DELETE',
       });
-      const body = (await response.json()) as ReportApiError & { readonly status?: string };
+      const body = (await response.json()) as ReportApiError;
       if (!response.ok) {
         throw new Error(reportErrorStatus(body, response.status));
       }
@@ -523,8 +522,6 @@ function mapPdfDownloadErrorMessage(code: string): string {
     case 'report_not_found':
     case 'public_report_not_found':
       return 'レポートが見つかりません。';
-    case 'db_outside_business_hours':
-      return '現在は業務時間外のため PDF を取得できません。';
     case 'report_pdf_internal_error':
     case 'public_report_pdf_internal_error':
     case 'public_report_internal_error':
@@ -557,11 +554,7 @@ async function downloadReportPdf(input: {
     let message = `http_${response.status}`;
     try {
       const body = (await response.json()) as ReportApiError;
-      if (body.status === 'db_outside_business_hours') {
-        message = mapPdfDownloadErrorMessage('db_outside_business_hours');
-      } else {
-        message = mapPdfDownloadErrorMessage(reportErrorStatus(body, response.status));
-      }
+      message = mapPdfDownloadErrorMessage(reportErrorStatus(body, response.status));
     } catch {
       // Keep the HTTP status fallback when the error body is not JSON.
     }

@@ -137,37 +137,6 @@ test('scenario: public project chat input grows with content up to four rows @mo
   await assertChatInputAutosizes(page.getByTestId('public-project-chat-question-input'));
 });
 
-test('scenario: public project chat locks input outside database business hours', async ({
-  page,
-}) => {
-  await page.route('**/api/public/projects/sample-a/chat', async (route) => {
-    await route.fulfill({
-      body: JSON.stringify({
-        answer: 'db_outside_business_hours',
-        projectSlug: 'sample-a',
-        reportId: 'report-a',
-        sources: [],
-        status: 'db_outside_business_hours',
-        toolCalls: [],
-      }),
-      contentType: 'application/json',
-      status: 503,
-    });
-  });
-
-  await page.goto('/projects/sample-a/chat');
-
-  await page.getByTestId('public-project-chat-question-input').fill('営業時間外ですか');
-  await page.getByTestId('public-project-chat-submit-button').click();
-
-  await expect(page.getByTestId('public-project-chat-disabled-notice')).toHaveText(
-    'db_outside_business_hours',
-  );
-  await expect(page.getByTestId('public-project-chat-question-input')).toBeDisabled();
-  await expect(page.getByTestId('public-project-chat-submit-button')).toBeDisabled();
-  await expect(page.getByTestId('public-project-chat-mic-button')).toBeDisabled();
-});
-
 test('scenario: member sends private chat and reads persisted history from fixture DB', async ({
   page,
 }) => {

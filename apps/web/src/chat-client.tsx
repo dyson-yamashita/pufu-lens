@@ -6,17 +6,13 @@ import {
   type ChatErrorResponse,
   type ChatResponse,
   chatErrorMessage,
-  DB_OUTSIDE_BUSINESS_HOURS_CODE,
   isChatErrorResponseBody,
   isChatResponseBody,
-  isDbOutsideBusinessHoursError,
-  isDbOutsideBusinessHoursResponse,
   isPrivateChatHistoryListResponse,
   isPublicChatResponseBody,
   type PrivateChatHistoryItem,
   type PrivateChatHistoryListResponse,
   type PublicChatResponse,
-  type PublicProjectChatUnavailableResponse,
 } from './chat';
 import { ChatQuestionTextarea } from './chat-question-input';
 import {
@@ -45,11 +41,9 @@ function projectChatIntroMessage(projectName: string): string {
 }
 
 export function ChatPanel({
-  disabled,
   projectName,
   projectSlug,
 }: {
-  readonly disabled: boolean;
   readonly projectName: string;
   readonly projectSlug: string;
 }) {
@@ -60,10 +54,8 @@ export function ChatPanel({
   const [pending, setPending] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [unavailable, setUnavailable] = useState(false);
   const historyDialogRef = useRef<HTMLDialogElement>(null);
   const historyRequestSeqRef = useRef(0);
-  const chatDisabled = disabled || unavailable;
   const closeHistoryDialog = useCallback(() => {
     historyDialogRef.current?.close();
   }, []);
@@ -75,20 +67,16 @@ export function ChatPanel({
     setSelectedHistoryId(null);
     setHistoryError(null);
     setHistoryLoading(false);
-    setUnavailable(false);
     closeHistoryDialog();
     void projectSlug;
   }, [closeHistoryDialog, projectSlug]);
   const speechInput = useSpeechInput({
-    disabled: chatDisabled || pending,
+    disabled: pending,
     setValue: setQuestion,
     value: question,
   });
 
   const loadHistory = useCallback(async () => {
-    if (chatDisabled) {
-      return;
-    }
     const requestSeq = ++historyRequestSeqRef.current;
     setHistoryLoading(true);
     setHistoryError(null);
@@ -100,10 +88,6 @@ export function ChatPanel({
         : null;
       if (!result.ok) {
         const errorBody = isChatErrorResponseBody(body) ? body : null;
-        if (isDbOutsideBusinessHoursError(errorBody)) {
-          setUnavailable(true);
-          return;
-        }
         throw new Error(chatErrorMessage(errorBody, result.status));
       }
       if (!isPrivateChatHistoryListResponse(body)) {
@@ -122,26 +106,23 @@ export function ChatPanel({
         setHistoryLoading(false);
       }
     }
-  }, [chatDisabled, projectSlug]);
+  }, [projectSlug]);
 
   useEffect(() => {
     void loadHistory();
   }, [loadHistory]);
 
   const openHistoryDialog = useCallback(() => {
-    if (chatDisabled) {
-      return;
-    }
     void loadHistory();
     if (!historyDialogRef.current?.open) {
       historyDialogRef.current?.showModal();
     }
-  }, [chatDisabled, loadHistory]);
+  }, [loadHistory]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedQuestion = question.trim();
-    if (!trimmedQuestion || chatDisabled || pending) {
+    if (!trimmedQuestion || pending) {
       return;
     }
 
@@ -188,10 +169,6 @@ export function ChatPanel({
       const isJson = contentType.includes('application/json');
       const body = isJson ? ((await result.json()) as ChatResponse | ChatErrorResponse) : null;
       if (!result.ok) {
-        if (isDbOutsideBusinessHoursResponse(body)) {
-          setUnavailable(true);
-          throw new Error(DB_OUTSIDE_BUSINESS_HOURS_CODE);
-        }
         throw new Error(chatErrorMessage(body, result.status));
       }
       if (!isChatResponseBody(body)) {
@@ -245,7 +222,7 @@ export function ChatPanel({
             aria-label="Open chat history"
             className="chat-icon-button chat-action-button"
             data-testid="chat-history-open-button"
-            disabled={chatDisabled || pending}
+            disabled={pending}
             onClick={openHistoryDialog}
             title="Open chat history"
             type="button"
@@ -288,7 +265,7 @@ export function ChatPanel({
               aria-label="Refresh chat history"
               className="chat-icon-button"
               data-testid="chat-history-refresh-button"
-              disabled={chatDisabled || pending || historyLoading}
+              disabled={pending || historyLoading}
               onClick={() => {
                 void loadHistory();
               }}
@@ -338,7 +315,7 @@ export function ChatPanel({
         <label htmlFor="chat-question">Question</label>
         <div className="chat-input-row">
           <ChatQuestionTextarea
-            disabled={chatDisabled || pending}
+            disabled={pending}
             id="chat-question"
             onChange={setQuestion}
             testId="chat-question-input"
@@ -350,7 +327,7 @@ export function ChatPanel({
               aria-pressed={speechInput.listening}
               className={`chat-icon-button${speechInput.listening ? ' chat-icon-button-active' : ''}`}
               data-testid="chat-mic-button"
-              disabled={chatDisabled || pending || !speechInput.supported}
+              disabled={pending || !speechInput.supported}
               onClick={speechInput.toggle}
               title={speechInput.supported ? 'Voice input' : 'Voice input is not supported'}
               type="button"
@@ -361,7 +338,7 @@ export function ChatPanel({
               aria-label="Send"
               className="chat-icon-button chat-send-button"
               data-testid="chat-submit-button"
-              disabled={chatDisabled || pending || !question.trim()}
+              disabled={pending || !question.trim()}
               title="Send"
               type="submit"
             >
@@ -370,11 +347,6 @@ export function ChatPanel({
           </div>
         </div>
       </form>
-      {chatDisabled ? (
-        <p className="notice" data-testid="chat-disabled-notice">
-          db_outside_business_hours
-        </p>
-      ) : null}
     </section>
   );
 }
@@ -444,9 +416,8 @@ export function PublicProjectChatPanel({
   const [question, setQuestion] = useState('');
   const [messages, setMessages] = useState<ChatThreadMessage<PublicChatResponse>[]>([]);
   const [pending, setPending] = useState(false);
-  const [unavailable, setUnavailable] = useState(false);
   const speechInput = useSpeechInput({
-    disabled: pending || unavailable,
+    disabled: pending,
     setValue: setQuestion,
     value: question,
   });
@@ -454,7 +425,7 @@ export function PublicProjectChatPanel({
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedQuestion = question.trim();
-    if (!trimmedQuestion || pending || unavailable) {
+    if (!trimmedQuestion || pending) {
       return;
     }
 
@@ -472,23 +443,13 @@ export function PublicProjectChatPanel({
       });
       const isJson = result.headers.get('content-type')?.includes('application/json') ?? false;
       const body = isJson
-        ? ((await result.json()) as
-            | PublicChatResponse
-            | PublicProjectChatUnavailableResponse
-            | ChatErrorResponse)
+        ? ((await result.json()) as PublicChatResponse | ChatErrorResponse)
         : null;
       if (!result.ok) {
-        if (isDbOutsideBusinessHoursResponse(body)) {
-          setUnavailable(true);
-        }
         throw new Error(chatErrorMessage(body, result.status));
       }
       if (!isPublicChatResponseBody(body)) {
         throw new Error('Public Chat API returned an invalid response.');
-      }
-      if (body.status === DB_OUTSIDE_BUSINESS_HOURS_CODE) {
-        setUnavailable(true);
-        throw new Error(DB_OUTSIDE_BUSINESS_HOURS_CODE);
       }
       setMessages((current) =>
         replacePendingAssistant(current, pendingId, {
@@ -529,7 +490,7 @@ export function PublicProjectChatPanel({
         <label htmlFor="public-project-chat-question">Question</label>
         <div className="chat-input-row">
           <ChatQuestionTextarea
-            disabled={pending || unavailable}
+            disabled={pending}
             id="public-project-chat-question"
             onChange={setQuestion}
             testId="public-project-chat-question-input"
@@ -541,7 +502,7 @@ export function PublicProjectChatPanel({
               aria-pressed={speechInput.listening}
               className={`chat-icon-button${speechInput.listening ? ' chat-icon-button-active' : ''}`}
               data-testid="public-project-chat-mic-button"
-              disabled={pending || unavailable || !speechInput.supported}
+              disabled={pending || !speechInput.supported}
               onClick={speechInput.toggle}
               title={speechInput.supported ? 'Voice input' : 'Voice input is not supported'}
               type="button"
@@ -552,7 +513,7 @@ export function PublicProjectChatPanel({
               aria-label="Send"
               className="chat-icon-button chat-send-button"
               data-testid="public-project-chat-submit-button"
-              disabled={pending || unavailable || !question.trim()}
+              disabled={pending || !question.trim()}
               title="Send"
               type="submit"
             >
@@ -561,11 +522,6 @@ export function PublicProjectChatPanel({
           </div>
         </div>
       </form>
-      {unavailable ? (
-        <p className="notice" data-testid="public-project-chat-disabled-notice">
-          db_outside_business_hours
-        </p>
-      ) : null}
     </section>
   );
 }

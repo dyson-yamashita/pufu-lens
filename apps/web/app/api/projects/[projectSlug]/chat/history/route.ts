@@ -3,8 +3,6 @@ import { getRequiredAdminSql } from '../../../../../../src/admin-sql';
 import { AuthRequiredError, requireSessionUserId } from '../../../../../../src/auth-session';
 import {
   createPostgresChatRepository,
-  DB_OUTSIDE_BUSINESS_HOURS_CODE,
-  isOutsideBusinessHoursFromEnv,
   type PrivateChatHistoryListResponse,
   ProjectAccessDeniedError,
 } from '../../../../../../src/chat';
@@ -17,13 +15,6 @@ export async function GET(
 
   try {
     const userId = await requireSessionUserId();
-    if (isOutsideBusinessHoursFromEnv(process.env)) {
-      return chatHistoryErrorResponse(
-        DB_OUTSIDE_BUSINESS_HOURS_CODE,
-        DB_OUTSIDE_BUSINESS_HOURS_CODE,
-        503,
-      );
-    }
     const repository = createPostgresChatRepository(getRequiredAdminSql());
     const project = await repository.lookupProjectMember({ projectSlug, userId });
     if (!project) {

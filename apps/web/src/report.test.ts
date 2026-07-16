@@ -1158,17 +1158,6 @@ await assert.rejects(
   ReportNotFoundError,
 );
 
-const outsideHours = await listPrivateReports({
-  options: {
-    businessHours: { enabled: true, endHour: 18, startHour: 9, timeZone: 'Asia/Tokyo' },
-    now: new Date('2026-06-07T12:00:00+09:00'),
-    repository,
-  },
-  projectSlug: 'sample-a',
-  userId: 'user-a',
-});
-assert.equal(outsideHours.status, 'db_outside_business_hours');
-
 await assert.rejects(
   () =>
     listPrivateReports({

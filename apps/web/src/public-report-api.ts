@@ -2,10 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { getVisiblePublicProject } from './admin-db';
 import { getRequiredAdminSql } from './admin-sql';
 import {
-  businessHoursFromEnv,
-  chatNowFromEnv,
   createPublicChatMemoryRateLimiter,
-  isWithinBusinessHours,
   type PublicChatResponse,
   publicChatToolCallsFromPrivate,
 } from './chat';
@@ -26,12 +23,7 @@ import {
   validatePrivateReportJson,
 } from './report';
 import { renderReportPdf } from './report-pdf';
-import {
-  createReportFetchContext,
-  createReportPdfDownloadResponse,
-  isOutsideReportBusinessHours,
-  reportOutsideBusinessHoursResponse,
-} from './report-pdf-api';
+import { createReportFetchContext, createReportPdfDownloadResponse } from './report-pdf-api';
 import { parsePositiveEnvInt, trustedClientIp } from './request-client';
 
 const hourlyRateLimiter = createPublicChatMemoryRateLimiter({
@@ -62,17 +54,12 @@ export async function handlePublicReportGet(input: {
 
   try {
     const context = createReportFetchContext();
-    if (isOutsideReportBusinessHours(context)) {
-      return reportOutsideBusinessHoursResponse();
-    }
     const response = await getPublicReport({
       options: context.options,
       projectSlug: input.projectSlug,
       reportId: input.reportId,
     });
-    return NextResponse.json(response, {
-      status: response.status === 'db_outside_business_hours' ? 503 : 200,
-    });
+    return NextResponse.json(response);
   } catch (error) {
     if (error instanceof PublicReportNotFoundError) {
       return publicReportNotFound();
@@ -89,7 +76,7 @@ export async function handlePublicReportGet(input: {
  * Returns a downloadable PDF for a public report.
  *
  * @param input - The public report locator.
- * @returns A PDF download response, a 404 response when the report is not found, a 503 response when the report is unavailable outside business hours, or a 500 response on unexpected errors.
+ * @returns A PDF download response, a 404 response when the report is not found, or a 500 response on unexpected errors.
  */
 export async function handlePublicReportPdfPost(input: {
   readonly pufuImageDataUrl?: string;
@@ -102,17 +89,11 @@ export async function handlePublicReportPdfPost(input: {
 
   try {
     const context = createReportFetchContext();
-    if (isOutsideReportBusinessHours(context)) {
-      return reportOutsideBusinessHoursResponse();
-    }
     const response = await getPublicReport({
       options: context.options,
       projectSlug: input.projectSlug,
       reportId: input.reportId,
     });
-    if (response.status === 'db_outside_business_hours') {
-      return reportOutsideBusinessHoursResponse();
-    }
     const pdf = await renderReportPdf({
       projectSlug: input.projectSlug,
       pufuImageDataUrl: input.pufuImageDataUrl,
@@ -175,20 +156,6 @@ export async function handlePublicChatPost(
   }
 
   try {
-    const businessHours = businessHoursFromEnv(process.env);
-    if (!isWithinBusinessHours(chatNowFromEnv(process.env) ?? new Date(), businessHours)) {
-      return NextResponse.json(
-        {
-          answer: 'db_outside_business_hours',
-          projectSlug: input.projectSlug,
-          reportId: input.reportId,
-          sources: [],
-          status: 'db_outside_business_hours',
-          toolCalls: [],
-        },
-        { status: 503 },
-      );
-    }
     const repository = createPostgresReportRepository(getRequiredAdminSql());
     const { metadata, project } = await assertPublicReportAccess({
       projectSlug: input.projectSlug,

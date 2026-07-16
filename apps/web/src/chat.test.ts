@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import {
   type ChatRepository,
-  chatNowFromEnv,
   createExtractiveChatProvider,
   createExtractivePublicChatProvider,
   createGeminiChatProvider,
@@ -9,17 +8,12 @@ import {
   createMemoryRateLimiter,
   createPostgresChatRepository,
   createPublicChatMemoryRateLimiter,
-  DB_OUTSIDE_BUSINESS_HOURS_CODE,
   deterministicVector,
   graphQuerySearchPatterns,
   hybridSearchCandidateLimit,
   inferChatEditingMetadata,
   inferPublicChatEditingMetadata,
-  isDbOutsideBusinessHoursError,
-  isDbOutsideBusinessHoursResponse,
   isMissingPrivateChatHistoryTableError,
-  isOutsideBusinessHoursFromEnv,
-  isWithinBusinessHours,
   normalizeHybridKeywordQuery,
   PRIVATE_CHAT_CONTEXT_TURN_LIMIT,
   PRIVATE_CHAT_HISTORY_CONTENT_MAX,
@@ -509,21 +503,6 @@ await assert.rejects(
   ProjectAccessDeniedError,
 );
 
-const outsideBusinessHours = await runPrivateChat(
-  {
-    now: new Date('2026-06-07T12:00:00+09:00'),
-    projectSlug: 'sample-a',
-    question: '週末は?',
-    userId: 'user-a',
-  },
-  {
-    businessHours: { enabled: true, endHour: 18, startHour: 9, timeZone: 'Asia/Tokyo' },
-    provider: createExtractiveChatProvider(),
-    repository: createRepository(),
-  },
-);
-assert.equal(outsideBusinessHours.status, 'db_outside_business_hours');
-
 const limiter = createMemoryRateLimiter({ limit: 1, windowMs: 60_000 });
 await runPrivateChat(
   { projectSlug: 'sample-a', question: '1 回目', userId: 'user-a' },
@@ -781,48 +760,6 @@ assert.equal(
   }),
   false,
 );
-assert.equal(isDbOutsideBusinessHoursError({ error: DB_OUTSIDE_BUSINESS_HOURS_CODE }), true);
-assert.equal(
-  isDbOutsideBusinessHoursError({
-    error: { code: DB_OUTSIDE_BUSINESS_HOURS_CODE, message: DB_OUTSIDE_BUSINESS_HOURS_CODE },
-  }),
-  true,
-);
-assert.equal(isDbOutsideBusinessHoursError({ error: { code: 'chat_internal_error' } }), false);
-assert.equal(
-  isDbOutsideBusinessHoursResponse({
-    answer: DB_OUTSIDE_BUSINESS_HOURS_CODE,
-    projectSlug: 'sample-a',
-    sources: [],
-    status: DB_OUTSIDE_BUSINESS_HOURS_CODE,
-    toolCalls: [],
-  }),
-  true,
-);
-assert.equal(isDbOutsideBusinessHoursResponse({ error: DB_OUTSIDE_BUSINESS_HOURS_CODE }), true);
-assert.equal(isDbOutsideBusinessHoursResponse('db_outside_business_hours'), false);
-assert.equal(
-  isOutsideBusinessHoursFromEnv({
-    ...process.env,
-    PUFU_LENS_BUSINESS_END_HOUR: '18',
-    PUFU_LENS_BUSINESS_START_HOUR: '9',
-    PUFU_LENS_BUSINESS_TIME_ZONE: 'Asia/Tokyo',
-    PUFU_LENS_CHAT_ENFORCE_BUSINESS_HOURS: 'true',
-    PUFU_LENS_CHAT_NOW: '2026-06-01T23:00:00.000Z',
-  }),
-  true,
-);
-assert.equal(
-  isOutsideBusinessHoursFromEnv({
-    ...process.env,
-    PUFU_LENS_BUSINESS_END_HOUR: '18',
-    PUFU_LENS_BUSINESS_START_HOUR: '9',
-    PUFU_LENS_BUSINESS_TIME_ZONE: 'Asia/Tokyo',
-    PUFU_LENS_CHAT_ENFORCE_BUSINESS_HOURS: 'true',
-    PUFU_LENS_CHAT_NOW: '2026-06-01T01:00:00.000Z',
-  }),
-  false,
-);
 assert.deepEqual(
   createMastraGenerateReportWorkflowBody({
     generatedBy: 'admin-ui',
@@ -1032,29 +969,6 @@ assert.equal(expiringLimiter.check({ projectSlug: 'sample-a', userId: 'user-a' }
 clock = 11;
 assert.equal(expiringLimiter.check({ projectSlug: 'sample-b', userId: 'user-b' }), true);
 assert.equal(expiringLimiter.check({ projectSlug: 'sample-a', userId: 'user-a' }), true);
-
-const tokyoBusinessHours = { enabled: true, endHour: 18, startHour: 9, timeZone: 'Asia/Tokyo' };
-assert.equal(
-  isWithinBusinessHours(new Date('2026-06-04T00:00:00+09:00'), tokyoBusinessHours),
-  false,
-);
-assert.equal(
-  isWithinBusinessHours(new Date('2026-06-04T09:00:00+09:00'), tokyoBusinessHours),
-  true,
-);
-assert.equal(
-  chatNowFromEnv({
-    ...process.env,
-    PUFU_LENS_CHAT_NOW: '2026-06-04T09:00:00+09:00',
-  })?.toISOString(),
-  '2026-06-04T00:00:00.000Z',
-);
-assert.equal(chatNowFromEnv(), undefined);
-assert.equal(chatNowFromEnv({ ...process.env, PUFU_LENS_CHAT_NOW: '   ' }), undefined);
-assert.throws(
-  () => chatNowFromEnv({ ...process.env, PUFU_LENS_CHAT_NOW: 'invalid-date' }),
-  /PUFU_LENS_CHAT_NOW must be an ISO 8601 datetime/,
-);
 
 assert.ok(
   graphQuerySearchPatterns(

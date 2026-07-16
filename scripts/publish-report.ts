@@ -1,5 +1,4 @@
 import postgres from 'postgres';
-import { businessHoursFromEnv } from '../apps/web/src/chat.ts';
 import {
   createPostgresReportRepository,
   createReportStorageFromEnv,
@@ -15,7 +14,6 @@ async function main(): Promise<void> {
   try {
     const now = reportNowFromEnv(process.env) ?? new Date();
     const sharedOptions = {
-      businessHours: businessHoursFromEnv(process.env),
       now,
       repository: createPostgresReportRepository(sql),
       storage: createReportStorageFromEnv(),

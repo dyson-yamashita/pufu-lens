@@ -8,7 +8,7 @@ Report API、Public Report API、signed URL の共通契約は [API デザイン
 
 レポートは **JSON ファイル** として生成し、Object Storage に保存する。Web からは `/api/projects/[projectSlug]/reports/[reportId]` API 経由で JSON を取得し、Next.js 側で描画する（HTML レンダリングはフロント側責務）。
 
-PostgreSQL は業務時間のみ起動するため、DB 依存の report / chat 入口は業務時間外に利用不可にする。public report / public chat も表示・回答生成の処理は private report / private chat と同じ経路を使い、違いはアクセス権だけに限定する。public 入口は `projects.visibility = 'public'` かつ `reports.is_public = true` のときだけ未ログインで許可し、private project では public report / public chat のいずれも許可しない。
+PostgreSQL は常時稼働させ、DB 依存の report / chat 入口に時刻による利用制限を設けない。public report / public chat も表示・回答生成の処理は private report / private chat と同じ経路を使い、違いはアクセス権だけに限定する。public 入口は `projects.visibility = 'public'` かつ `reports.is_public = true` のときだけ未ログインで許可し、private project では public report / public chat のいずれも許可しない。
 
 Private report JSON スキーマ（`schema_version: "v1"`）：
 
@@ -212,21 +212,21 @@ const generateReportWorkflow = createWorkflow({
 
 ### 3. 配信方針
 
-| 配置                                   | 配置先                               | 理由                                                 |
-| -------------------------------------- | ------------------------------------ | ---------------------------------------------------- |
-| レポート本体 JSON                      | Object Storage（local volume / GCS） | 大きな本文をリレーショナル DB に置かない             |
-| Public report JSON                     | Object Storage（local volume / GCS） | 旧互換・検証用の redaction 済み artifact             |
-| 公開レポート閲覧用 metadata / manifest | Object Storage（local volume / GCS） | 旧互換・検証用の公開 artifact metadata               |
-| Public Chat 用 context bundle          | Object Storage（local volume / GCS） | 旧互換・検証用の public context artifact             |
-| メタデータ・要約                       | PostgreSQL `reports`                 | 業務時間内の private report 一覧、全文検索、管理操作 |
-| 検索用埋め込み                         | pgvector `report_chunks`             | 過去レポートの意味検索                               |
+| 配置                                   | 配置先                               | 理由                                     |
+| -------------------------------------- | ------------------------------------ | ---------------------------------------- |
+| レポート本体 JSON                      | Object Storage（local volume / GCS） | 大きな本文をリレーショナル DB に置かない |
+| Public report JSON                     | Object Storage（local volume / GCS） | 旧互換・検証用の redaction 済み artifact |
+| 公開レポート閲覧用 metadata / manifest | Object Storage（local volume / GCS） | 旧互換・検証用の公開 artifact metadata   |
+| Public Chat 用 context bundle          | Object Storage（local volume / GCS） | 旧互換・検証用の public context artifact |
+| メタデータ・要約                       | PostgreSQL `reports`                 | private report 一覧、全文検索、管理操作  |
+| 検索用埋め込み                         | pgvector `report_chunks`             | 過去レポートの意味検索                   |
 
 Web は以下のエンドポイントで JSON を取得する：
 
-- `GET /api/projects/[projectSlug]/reports` → private report を含む project member 向け一覧（DB 依存。業務時間外は `db_outside_business_hours`）
-- `GET /api/projects/[projectSlug]/reports/[reportId]` → private report JSON 本体（DB で project member 認可後、Object Storage から取得。業務時間外は `db_outside_business_hours`）
+- `GET /api/projects/[projectSlug]/reports` → private report を含む project member 向け一覧（DB 依存）
+- `GET /api/projects/[projectSlug]/reports/[reportId]` → private report JSON 本体（DB で project member 認可後、Object Storage から取得）
 - `GET /api/projects/[projectSlug]/reports/[reportId]/signed-url` → private report 向けに短時間 signed URL を発行（DB 依存。オプション）
-- `GET /api/public/projects/[projectSlug]/reports/[reportId]` → public project かつ公開済み report の private report JSON 本体（DB で公開可否を判定。業務時間外は `db_outside_business_hours`）
+- `GET /api/public/projects/[projectSlug]/reports/[reportId]` → public project かつ公開済み report の private report JSON 本体（DB で公開可否を判定）
 - `POST /api/public/projects/[projectSlug]/reports/[reportId]/chat` → public project かつ公開済み report を確認したうえで private chat と同じ project chat agent を使う public chat（DB 依存、厳しめの rate limit）
 - `GET /api/public/reports/[reportId]` / `POST /api/public/reports/[reportId]/chat` → 旧互換 alias。`projectSlug` を解決できない場合は `404` とし、正規入口は project-scoped path とする
 

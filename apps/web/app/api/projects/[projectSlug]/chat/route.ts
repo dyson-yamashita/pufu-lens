@@ -5,11 +5,9 @@ import {
   type ChatResponse,
   createMemoryRateLimiter,
   createPostgresChatRepository,
-  isOutsideBusinessHoursFromEnv,
   ProjectAccessDeniedError,
   parsePrivateChatRequestBody,
   privateChatHistoryToMastraMessages,
-  privateChatUnavailableResponse,
 } from '../../../../../src/chat';
 import {
   clientAcceptsPrivateChatStream,
@@ -59,9 +57,6 @@ export async function POST(
 
   try {
     const userId = await requireSessionUserId();
-    if (isOutsideBusinessHoursFromEnv(process.env)) {
-      return NextResponse.json(privateChatUnavailableResponse(projectSlug), { status: 503 });
-    }
     if (!rateLimiter.check({ projectSlug, userId })) {
       return NextResponse.json(
         {
