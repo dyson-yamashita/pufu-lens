@@ -13,6 +13,7 @@ import {
   createPrivateChatSearchWorkflow,
   createPrivateChatSynthesisMessages,
   createPufuLensMastraRuntime,
+  generateReportWorkflowInputSchema,
   type MastraProjectContext,
   type MastraPublicReportContext,
   mastraAgentIds,
@@ -565,6 +566,31 @@ assert.equal(invalidPeriodReport.status, 'failed');
 assert.match(
   JSON.stringify(invalidPeriodReport.error),
   /Report period start and end must be valid YYYY-MM-DD dates/,
+);
+
+assert.throws(
+  () =>
+    generateReportWorkflowInputSchema.parse({
+      previousScheduledReportId: 'report-prev',
+      projectSlug: 'sample-a',
+    }),
+  /scheduleFrequency/,
+);
+assert.throws(
+  () =>
+    generateReportWorkflowInputSchema.parse({
+      projectSlug: 'sample-a',
+      scheduleFrequency: 'weekly',
+    }),
+  /previousScheduledReportId/,
+);
+assert.deepEqual(
+  generateReportWorkflowInputSchema.parse({
+    previousScheduledReportId: 'report-prev',
+    projectSlug: 'sample-a',
+    scheduleFrequency: 'weekly',
+  }).scheduleFrequency,
+  'weekly',
 );
 
 assert.ok(runtime.privateChatSearchWorkflow);

@@ -31,9 +31,26 @@ export {
   type ReportMaterialGroup,
 } from './report-materials.ts';
 export {
+  buildPreviousReportProviderContext,
+  countProviderTokensConservative,
+  extractContinuedRisks,
+  type PreviousReportProviderContext,
+  serializePreviousReportContext,
+} from './report-previous-context.ts';
+export {
+  loadTrustedPreviousScheduledReport,
+  PreviousScheduledReportNotFoundError,
+  validatePairedScheduleInputs,
+} from './report-previous-report.ts';
+export {
+  buildGeminiReportPrompt,
+  countGeminiProviderTokens,
   createExtractiveReportProvider,
   createGeminiReportProvider,
+  createGeminiReportProviderWithExtractiveFallback,
+  type GeneratedReportContent,
   type ReportGenerationProvider,
+  resolveProviderCountTokens,
 } from './report-provider.ts';
 export {
   isProjectPublic,
@@ -49,6 +66,7 @@ export {
   validatePublicReportJson,
   writePublicProjectManifest,
 } from './report-public-artifacts.ts';
+export { buildTrustedReportRecurrence, hasProviderRecurrenceDelta } from './report-recurrence.ts';
 export {
   createPostgresReportRepository,
   isReportGenerationKind,
@@ -65,6 +83,7 @@ export {
   type ReportRepository,
   type ReportTemplateRunInsert,
 } from './report-repository.ts';
+export { PartialScheduleInputError } from './report-schedule-input.ts';
 export {
   type BackfillScheduledReportPeriodEnumeration,
   type DueScheduledReportPeriod,
@@ -103,15 +122,19 @@ export {
   type ScheduledReportFrequency,
 } from './report-schedules.ts';
 export {
+  assertProviderRecurrenceDeltaShape,
   type PreparedReportChunk,
   type PrivateReportJsonV1,
   type PrivateReportPufuSource,
+  type PrivateReportRecurrenceV1,
   type PrivateReportSection,
   type PrivateReportSource,
+  type ProviderRecurrenceDelta,
   type ReportPeriod,
   type ReportPeriodKind,
   reportNowFromEnv,
   resolveReportPeriod,
+  validateGeneratedReport,
   validatePrivateReportJson,
 } from './report-schema.ts';
 export { createReportStorageFromEnv } from './report-storage.ts';

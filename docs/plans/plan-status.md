@@ -31,7 +31,7 @@
 | `docs/plans/012-public-private-result-parity/overview.md`  | `completed`  | 2026-07-04 | Issue #425 で追加。Step 1 として public chat の Mastra request context を private chat と揃えた。Issue #429 で Step 2 の public chat source redaction 維持と private tool call summary の公開方針を実装。Step 3 で現行 public chat の正規経路と legacy public-report-chat-agent の互換・検証用責務を整理。Issue #435 で Step 4 の report detail / PDF parity regression を追加し、plan 全体を完了。 |
 
 | `docs/plans/013-incremental-source-sync-scheduling/overview.md` | `completed` | 2026-07-11 | Issue #512 / PR #513 で Step 1、Issue #516 / PR #517 で Step 2、Issue #518 / PR #519 で Step 3、Issue #520 / PR #521 で Step 4 を完了。Issue #514 / PR #515 で local one-shot dispatcher の実行要件を追加。Issue #522 で Step 5 の E2E、運用検証、設計書・runbook 整備を完了。 |
-| `docs/plans/014-periodic-report-scheduling/overview.md` | `active` | 2026-07-16 | Issue #579 / PR #580 で Step 1、Issue #581 で Step 2 の期間計算、前回定期 report 解決、通常 / backfill 対象列挙を完了。Step 3 以降は planned。 |
+| `docs/plans/014-periodic-report-scheduling/overview.md` | `active` | 2026-07-17 | Issue #579 / PR #580 で Step 1、Issue #581 / PR #582 で Step 2 を完了。Issue #583 で Step 3 の project-scoped 前回 report 検証、bounded context、差分 JSON 生成を完了。Step 4 以降は planned。 |
 
 ## 運用ルール
 

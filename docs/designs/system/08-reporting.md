@@ -21,6 +21,14 @@ Private report JSON スキーマ（`schema_version: "v1"`）：
   "period": { "start": "2026-05-25", "end": "2026-05-31" },
   "generated_at": "2026-05-31T17:00:00+09:00",
   "summary": "今週の概要...",
+  "recurrence": {
+    "frequency": "weekly",
+    "previous_report_id": "...",
+    "change_summary": "前回からの主要な変化...",
+    "increments": ["増えた活動・成果..."],
+    "decrements": ["減った活動・解消した課題..."],
+    "continued_items": ["継続中の課題..."]
+  },
   "pufu_sources": [
     {
       "document_id": "...",
@@ -59,6 +67,8 @@ Private report JSON スキーマ（`schema_version: "v1"`）：
   ]
 }
 ```
+
+`recurrence` は同じ project・frequency の前回 `scheduled` / `scheduled_backfill` report を参照した生成だけが持つ optional field である。`frequency` と `previous_report_id` は provider 応答を信用せず、project-scoped metadata の検証結果から組み立てる。差分本文は normalize / redaction 後に `change_summary` を最大 2,000 code point、各 list を最大 10 件・各 400 code point に制限して保存する。手動生成では `recurrence` を付けない。現時点では public artifact へこの field を転記せず、一覧・詳細 UI での表示は定期レポート計画の後続 Step とする。
 
 プ譜ビューは `sections.markdown` の本文をそのまま流し込まず、private report に保存した `pufu_sources`（生成時に参照した data source の title / snippet / doc_type / canonical_uri）を第一入力にして ProjectScoreModel を組み立てる。過去 artifact など `pufu_sources` がない private report では、`sections[].sources` または activity section の source 行を後方互換の入力として扱う。public report でも同じ private report JSON を描画するため、プ譜表示結果は member 向け report と一致する。
 
@@ -224,7 +234,9 @@ const generateReportWorkflow = createWorkflow({
 
 `reports.generation_kind` は `manual` / `scheduled` / `scheduled_backfill` を区別する。定期生成では `schedule_frequency`、同じ project・frequency の `previous_scheduled_report_id`、一意な `schedule_period_run_id` を保持し、手動生成ではこれらを `NULL` にする。period run と report の相互参照も project・frequency の一致を DB 制約で保証する。`report_schedule_period_runs` は report の有無にかかわらず period 履歴の正本であり、`reports` metadata だけで retry・skip・通知状態を代用しない。
 
-定期レポートの calendar 計算は `Asia/Tokyo` の wall clock を正とする。`weekly` は月曜、`monthly` は月初、`annually` は1月1日の次回 slot を UTC instant として保存し、通常対象は永続化済み `next_run_at` から古い順に bounded に列挙する。backfill は利用可能データ開始日を含む period から開始し、現在進行中 period を除外して continuation cursor 付きで bounded に列挙する。前回 report は同じ project・frequency かつ対象 period より前に完了した `scheduled` / `scheduled_backfill` だけを選び、手動 report、異周期、project 越境 report は除外する。最古未完了 period run は `succeeded` / `skipped` 以外を period start 昇順で解決し、後続 period を先に処理しない。差分生成、dispatcher、UI は後続 Step で追加する。
+定期レポートの calendar 計算は `Asia/Tokyo` の wall clock を正とする。`weekly` は月曜、`monthly` は月初、`annually` は1月1日の次回 slot を UTC instant として保存し、通常対象は永続化済み `next_run_at` から古い順に bounded に列挙する。backfill は利用可能データ開始日を含む period から開始し、現在進行中 period を除外して continuation cursor 付きで bounded に列挙する。前回 report は同じ project・frequency かつ対象 period より前に完了した `scheduled` / `scheduled_backfill` だけを選び、手動 report、異周期、project 越境 report は除外する。最古未完了 period run は `succeeded` / `skipped` 以外を period start 昇順で解決し、後続 period を先に処理しない。
+
+差分生成 workflow は `previousScheduledReportId` と `scheduleFrequency` を両方指定するか両方省略する。指定時は project-scoped metadata、生成種別、frequency、前後 period、private JSON の report / project / period 一致を再検証してから前回 context を作る。context は summary、継続課題、section 要約、主要 source だけを redaction 済みで含め、最大 16,000 code point かつ 6,000 provider token に制限する。Gemini は `countTokens` を使用し、利用不能時と extractive provider は UTF-8 byte 数を token 数とみなす安全側の fallback を使う。全体超過時は source、section、継続課題、summary の順に低優先データを決定的に縮小し、最終予算を満たさない payload は provider へ送らない。dispatcher と UI は後続 Step で追加する。
 
 Web は以下のエンドポイントで JSON を取得する：
 
