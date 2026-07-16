@@ -440,6 +440,15 @@ async function assertReportScheduleRoundTrip() {
   assert.equal(oldestIncomplete?.id, crossBoundaryPeriodRunId);
   assert.equal(oldestIncomplete?.periodStart, '2026-07-13');
 
+  assert.equal(
+    await readOldestIncompleteReportSchedulePeriodRun(sql, {
+      frequency: 'weekly',
+      projectId: crossProjectId,
+      scheduleId,
+    }),
+    null,
+  );
+
   await assert.rejects(
     () =>
       repository.insertReport({

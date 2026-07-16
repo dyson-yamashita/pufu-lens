@@ -237,6 +237,76 @@ test('initial backfill is limited to first activation without same-frequency rep
   );
 });
 
+test('runTime accepts HH:mm and HH:mm:00 but rejects nonzero seconds', () => {
+  assert.equal(
+    resolveNextScheduledReportRunAt({
+      asOf: '2026-07-19T23:00:00Z',
+      frequency: 'weekly',
+      runTime: '10:00:00',
+    }),
+    '2026-07-20T01:00:00.000Z',
+  );
+  assert.throws(
+    () =>
+      resolveNextScheduledReportRunAt({
+        asOf: '2026-07-19T23:00:00Z',
+        frequency: 'weekly',
+        runTime: '10:00:30',
+      }),
+    /seconds must be zero/,
+  );
+  assert.throws(
+    () =>
+      resolveNextScheduledReportRunAt({
+        asOf: '2026-07-19T23:00:00Z',
+        frequency: 'weekly',
+        runTime: '25:00',
+      }),
+    /HH:mm or HH:mm:00/,
+  );
+});
+
+test('instant strings require an explicit UTC offset or Z designator', () => {
+  assert.deepEqual(resolveScheduledReportPeriod('2026-07-20T01:00:00+00:00', 'weekly'), {
+    end: '2026-07-19',
+    start: '2026-07-13',
+  });
+  assert.throws(
+    () => resolveScheduledReportPeriod('2026-07-20T01:00:00', 'weekly'),
+    /explicit UTC offset or Z designator/,
+  );
+  assert.throws(
+    () =>
+      enumerateDueScheduledReportPeriods({
+        asOf: '2026-07-20T01:00:00',
+        frequency: 'weekly',
+        limit: 1,
+        nextRunAt: '2026-07-20T01:00:00Z',
+      }),
+    /asOf must include an explicit UTC offset or Z designator/,
+  );
+  const asOf = new Date('2026-07-20T01:00:00Z');
+  const asOfValue = asOf.valueOf();
+  assert.deepEqual(
+    enumerateDueScheduledReportPeriods({
+      asOf,
+      frequency: 'weekly',
+      limit: 1,
+      nextRunAt: '2026-07-20T01:00:00Z',
+    }).periods[0],
+    {
+      end: '2026-07-19',
+      scheduledFor: '2026-07-20T01:00:00.000Z',
+      start: '2026-07-13',
+    },
+  );
+  assert.equal(asOf.valueOf(), asOfValue);
+  assert.throws(
+    () => resolveScheduledReportPeriod('not-a-dateZ', 'weekly'),
+    /scheduledFor must be a valid instant/,
+  );
+});
+
 test('enumeration rejects non-canonical boundaries and unbounded limits', () => {
   assert.throws(() => resolveScheduledReportPeriod('2026-07-21T01:00:00Z', 'weekly'), /Monday/);
   assert.throws(

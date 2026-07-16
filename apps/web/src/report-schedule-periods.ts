@@ -246,15 +246,30 @@ function requireEnumerationLimit(value: number): number {
 }
 
 function requireRunTime(value: string): readonly [number, number] {
-  const match = value.match(/^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/);
-  if (!match) throw new Error('runTime must use HH:mm or HH:mm:ss.');
+  const match = value.match(/^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/);
+  if (!match) throw new Error('runTime must use HH:mm or HH:mm:00.');
+  if (match[3] !== undefined && match[3] !== '00') {
+    throw new Error('runTime seconds must be zero; use HH:mm or HH:mm:00.');
+  }
   return [Number(match[1]), Number(match[2])];
 }
 
 function requireInstant(value: Date | string, field: string): Date {
-  const date = value instanceof Date ? new Date(value.valueOf()) : new Date(value);
+  if (value instanceof Date) {
+    const date = new Date(value.valueOf());
+    if (Number.isNaN(date.valueOf())) throw new Error(`${field} must be a valid instant.`);
+    return date;
+  }
+  if (!hasExplicitTimezone(value)) {
+    throw new Error(`${field} must include an explicit UTC offset or Z designator.`);
+  }
+  const date = new Date(value);
   if (Number.isNaN(date.valueOf())) throw new Error(`${field} must be a valid instant.`);
   return date;
+}
+
+function hasExplicitTimezone(value: string): boolean {
+  return /[zZ]$/.test(value) || /[+-]\d{2}:\d{2}$/.test(value);
 }
 
 function requireDate(value: string, field: string): string {
