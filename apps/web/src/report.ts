@@ -66,6 +66,25 @@ export {
   type ReportTemplateRunInsert,
 } from './report-repository.ts';
 export {
+  type BackfillScheduledReportPeriodEnumeration,
+  type DueScheduledReportPeriod,
+  type DueScheduledReportPeriodEnumeration,
+  enumerateBackfillScheduledReportPeriods,
+  enumerateDueScheduledReportPeriods,
+  MAX_REPORT_PERIOD_ENUMERATION,
+  resolveNextScheduledReportRunAt,
+  resolveScheduledReportPeriod,
+  type ScheduledReportPeriod,
+  shouldEnqueueInitialReportBackfill,
+} from './report-schedule-periods.ts';
+export {
+  hasScheduledReportForFrequency,
+  type PreviousScheduledReport,
+  parsePreviousScheduledReportRow,
+  readPreviousScheduledReport,
+  readProjectReportAvailableFrom,
+} from './report-schedule-planning.ts';
+export {
   isReportScheduleFrequency,
   isReportScheduleRunKind,
   isReportScheduleRunStatus,
@@ -78,6 +97,7 @@ export {
   type ReportSchedulePeriodRun,
   type ReportScheduleRunKind,
   type ReportScheduleRunStatus,
+  readOldestIncompleteReportSchedulePeriodRun,
   readProjectReportSchedule,
   readReportSchedulePeriodRun,
   type ScheduledReportFrequency,
