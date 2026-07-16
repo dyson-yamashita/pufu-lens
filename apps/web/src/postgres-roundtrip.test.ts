@@ -4,7 +4,13 @@ import { createPostgresChatRepository } from './chat.ts';
 import { CUSTOM_REPORT_LAYOUT_SCHEMA_VERSION } from './custom-report-schema.ts';
 import { createPostgresReportRepository } from './report-repository.ts';
 import {
+  hasScheduledReportForFrequency,
+  readPreviousScheduledReport,
+  readProjectReportAvailableFrom,
+} from './report-schedule-planning.ts';
+import {
   listReportSchedulePeriodRuns,
+  readOldestIncompleteReportSchedulePeriodRun,
   readProjectReportSchedule,
   readReportSchedulePeriodRun,
 } from './report-schedules.ts';
@@ -362,6 +368,59 @@ async function assertReportScheduleRoundTrip() {
   assert.equal(metadata?.generationKind, 'scheduled');
   assert.equal(metadata?.scheduleFrequency, 'weekly');
   assert.equal(metadata?.schedulePeriodRunId, generatedPeriodRunId);
+  assert.equal(await hasScheduledReportForFrequency(sql, { frequency: 'weekly', projectId }), true);
+  assert.equal(
+    await hasScheduledReportForFrequency(sql, { frequency: 'monthly', projectId }),
+    false,
+  );
+  assert.equal(
+    await hasScheduledReportForFrequency(sql, {
+      frequency: 'weekly',
+      projectId: crossProjectId,
+    }),
+    false,
+  );
+  assert.deepEqual(
+    await readPreviousScheduledReport(sql, {
+      beforePeriodStart: '2026-07-13',
+      frequency: 'weekly',
+      projectId,
+    }),
+    {
+      id: scheduledReportId,
+      periodEnd: '2026-07-12',
+      periodStart: '2026-07-06',
+      storageUri: 'issue-579/reports/private/scheduled.json',
+    },
+  );
+  assert.equal(
+    await readPreviousScheduledReport(sql, {
+      beforePeriodStart: '2026-07-06',
+      frequency: 'weekly',
+      projectId,
+    }),
+    null,
+  );
+  assert.equal(
+    await readPreviousScheduledReport(sql, {
+      beforePeriodStart: '2026-08-01',
+      frequency: 'monthly',
+      projectId,
+    }),
+    null,
+  );
+  assert.equal(
+    await readPreviousScheduledReport(sql, {
+      beforePeriodStart: '2026-07-13',
+      frequency: 'weekly',
+      projectId: crossProjectId,
+    }),
+    null,
+  );
+  assert.match(
+    (await readProjectReportAvailableFrom(sql, { projectId })) ?? '',
+    /^\d{4}-\d{2}-\d{2}$/,
+  );
 
   await sql`
     INSERT INTO public.report_schedule_period_runs (
@@ -372,6 +431,23 @@ async function assertReportScheduleRoundTrip() {
       '2026-07-13', '2026-07-19', 'scheduled', 'pending'
     )
   `;
+
+  const oldestIncomplete = await readOldestIncompleteReportSchedulePeriodRun(sql, {
+    frequency: 'weekly',
+    projectId,
+    scheduleId,
+  });
+  assert.equal(oldestIncomplete?.id, crossBoundaryPeriodRunId);
+  assert.equal(oldestIncomplete?.periodStart, '2026-07-13');
+
+  assert.equal(
+    await readOldestIncompleteReportSchedulePeriodRun(sql, {
+      frequency: 'weekly',
+      projectId: crossProjectId,
+      scheduleId,
+    }),
+    null,
+  );
 
   await assert.rejects(
     () =>

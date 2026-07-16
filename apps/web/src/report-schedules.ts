@@ -256,6 +256,31 @@ export async function listReportSchedulePeriodRuns(
   return rows.map((row) => parseReportSchedulePeriodRunRow(row));
 }
 
+export async function readOldestIncompleteReportSchedulePeriodRun(
+  sql: SqlExecutor,
+  input: {
+    readonly frequency: ScheduledReportFrequency;
+    readonly projectId: string;
+    readonly scheduleId: string;
+  },
+): Promise<ReportSchedulePeriodRun | null> {
+  const rows = (await sql`
+    ${periodRunSelectColumns(sql)}
+    FROM public.report_schedule_period_runs AS period_run
+    JOIN public.project_report_schedules AS schedule
+      ON schedule.id = period_run.schedule_id
+     AND schedule.project_id = period_run.project_id
+    WHERE period_run.project_id = ${input.projectId}
+      AND period_run.schedule_id = ${input.scheduleId}
+      AND period_run.frequency = ${input.frequency}
+      AND period_run.status NOT IN ('succeeded', 'skipped')
+      AND schedule.project_id = ${input.projectId}
+    ORDER BY period_run.period_start ASC, period_run.id
+    LIMIT 1
+  `) as readonly unknown[];
+  return rows[0] ? parseReportSchedulePeriodRunRow(rows[0]) : null;
+}
+
 function periodRunSelectColumns(sql: SqlExecutor): ReturnType<SqlExecutor> {
   return sql`
     SELECT
