@@ -130,6 +130,15 @@ test('period-run rows preserve report-less skipped history', () => {
   assert.equal(skipped.skipReason, 'no_documents');
   assert.equal(skipped.completedAt, '2026-07-16T01:05:00.000Z');
   assert.equal(skipped.notificationSentAt, '2026-07-16T01:06:00.000Z');
+
+  const succeeded = parseReportSchedulePeriodRunRow({
+    ...validPeriodRunRow,
+    completedAt: '2026-07-16T01:05:00Z',
+    reportId: 'report-1',
+    status: 'succeeded',
+  });
+  assert.equal(succeeded.status, 'succeeded');
+  assert.equal(succeeded.reportId, 'report-1');
 });
 
 test('period-run rows reject invalid state and period combinations', () => {
@@ -144,6 +153,14 @@ test('period-run rows reject invalid state and period combinations', () => {
   assert.throws(
     () => parseReportSchedulePeriodRunRow({ ...validPeriodRunRow, status: 'retry_wait' }),
     /nextAttemptAt/,
+  );
+  assert.throws(
+    () => parseReportSchedulePeriodRunRow({ ...validPeriodRunRow, status: 'succeeded' }),
+    /requires reportId and completedAt/,
+  );
+  assert.throws(
+    () => parseReportSchedulePeriodRunRow({ ...validPeriodRunRow, reportId: 'report-1' }),
+    /only allowed for succeeded runs/,
   );
   assert.throws(
     () =>

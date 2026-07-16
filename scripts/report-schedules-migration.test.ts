@@ -21,6 +21,8 @@ test('0012 creates tenant-scoped report schedules and period-run history', async
   assert.match(migration, /FOREIGN KEY \(schedule_id, project_id\)/);
   assert.match(migration, /status <> 'skipped'/);
   assert.match(migration, /report_id IS NULL AND skip_reason IS NOT NULL/);
+  assert.match(migration, /report_schedule_period_runs_succeeded_check/);
+  assert.match(migration, /status = 'succeeded' AND report_id IS NOT NULL/);
 });
 
 test('0012 constrains scheduled report metadata to one tenant-scoped period run', async () => {
@@ -53,6 +55,7 @@ test('0012 and fresh schema share periodic report constraints and migration vers
     'report_schedule_period_runs_project_period_key',
     'report_schedule_period_runs_schedule_scope_fkey',
     'report_schedule_period_runs_skipped_check',
+    'report_schedule_period_runs_succeeded_check',
     'report_schedule_period_runs_report_scope_fkey',
     'reports_generation_kind_check',
     'reports_schedule_metadata_check',

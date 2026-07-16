@@ -141,6 +141,16 @@ export function parseReportSchedulePeriodRunRow(value: unknown): ReportScheduleP
   if (status === 'skipped' && (reportId !== null || skipReason === null || completedAt === null)) {
     throw new Error('Invalid report schedule period run row: skipped state is incomplete.');
   }
+  if (status === 'succeeded' && (reportId === null || completedAt === null)) {
+    throw new Error(
+      'Invalid report schedule period run row: succeeded state requires reportId and completedAt.',
+    );
+  }
+  if (status !== 'succeeded' && reportId !== null) {
+    throw new Error(
+      'Invalid report schedule period run row: reportId is only allowed for succeeded runs.',
+    );
+  }
   if (status === 'retry_wait' && nextAttemptAt === null) {
     throw new Error('Invalid report schedule period run row: retry_wait requires nextAttemptAt.');
   }

@@ -53,6 +53,12 @@ async function resetFixtureRows() {
   await sql`DELETE FROM public.private_chat_messages WHERE project_id = ${projectId} OR user_id IN (${userId}, ${chatUserId})`;
   await sql`DELETE FROM public.report_template_runs WHERE project_id = ${projectId} OR report_id = ${reportId}`;
   await sql`DELETE FROM public.report_chunks WHERE project_id = ${projectId} OR report_id = ${reportId}`;
+  await sql`
+    UPDATE public.report_schedule_period_runs
+    SET status = 'pending', report_id = NULL, completed_at = NULL
+    WHERE project_id IN (${projectId}, ${crossProjectId})
+      AND report_id IS NOT NULL
+  `;
   await sql`DELETE FROM public.reports WHERE project_id IN (${projectId}, ${crossProjectId}) OR id IN (${reportId}, ${scheduledReportId}, ${crossProjectReportId})`;
   await sql`DELETE FROM public.report_schedule_period_runs WHERE project_id IN (${projectId}, ${crossProjectId})`;
   await sql`DELETE FROM public.project_report_schedules WHERE project_id IN (${projectId}, ${crossProjectId})`;
@@ -335,6 +341,14 @@ async function assertReportScheduleRoundTrip() {
     report: scheduledReport,
     storageUri: 'issue-579/reports/private/scheduled.json',
   });
+  await assert.rejects(
+    () => sql`
+      UPDATE public.report_schedule_period_runs
+      SET status = 'succeeded'
+      WHERE id = ${generatedPeriodRunId} AND project_id = ${projectId}
+    `,
+    databaseErrorCode('23514'),
+  );
   await sql`
     UPDATE public.report_schedule_period_runs
     SET status = 'succeeded', report_id = ${scheduledReportId}, completed_at = now()

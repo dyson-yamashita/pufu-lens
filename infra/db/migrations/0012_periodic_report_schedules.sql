@@ -92,6 +92,10 @@ CREATE TABLE IF NOT EXISTS public.report_schedule_period_runs (
     status <> 'skipped'
     OR (report_id IS NULL AND skip_reason IS NOT NULL AND completed_at IS NOT NULL)
   ),
+  CONSTRAINT report_schedule_period_runs_succeeded_check CHECK (
+    (status = 'succeeded' AND report_id IS NOT NULL AND completed_at IS NOT NULL)
+    OR (status <> 'succeeded' AND report_id IS NULL)
+  ),
   CONSTRAINT report_schedule_period_runs_retry_wait_check CHECK (
     status <> 'retry_wait' OR next_attempt_at IS NOT NULL
   ),
@@ -227,8 +231,7 @@ BEGIN
     ALTER TABLE public.report_schedule_period_runs
       ADD CONSTRAINT report_schedule_period_runs_report_scope_fkey
       FOREIGN KEY (report_id, id, project_id)
-      REFERENCES public.reports(id, schedule_period_run_id, project_id)
-      ON DELETE SET NULL (report_id);
+      REFERENCES public.reports(id, schedule_period_run_id, project_id);
   END IF;
 END $$;
 
