@@ -4,10 +4,19 @@ import { createPostgresChatRepository } from './chat.ts';
 import { CUSTOM_REPORT_LAYOUT_SCHEMA_VERSION } from './custom-report-schema.ts';
 import { createPostgresReportRepository } from './report-repository.ts';
 import {
+  enumerateBackfillScheduledReportPeriods,
+  resolveNextScheduledReportRunAt,
+} from './report-schedule-periods.ts';
+import {
   hasScheduledReportForFrequency,
   readPreviousScheduledReport,
   readProjectReportAvailableFrom,
 } from './report-schedule-planning.ts';
+import {
+  ReportScheduleSaveBlockedError,
+  readProjectReportScheduleSettings,
+  saveProjectReportSchedule,
+} from './report-schedule-settings.ts';
 import {
   listReportSchedulePeriodRuns,
   readOldestIncompleteReportSchedulePeriodRun,
@@ -38,6 +47,8 @@ const crossBoundaryPeriodRunId = '10000000-0000-0000-0000-000000000444';
 const frequencyMismatchReportId = '10000000-0000-0000-0000-000000000445';
 const monthlyPeriodRunId = '10000000-0000-0000-0000-000000000446';
 const previousFrequencyMismatchReportId = '10000000-0000-0000-0000-000000000447';
+const settingsScheduleAsOf = new Date('2026-07-20T05:00:00.000Z');
+const settingsProjectCreatedAt = '2026-06-15T01:00:00.000Z';
 
 await main();
 
@@ -47,6 +58,7 @@ async function main() {
     await seedProjectFixture();
     await assertPrivateChatJsonbRoundTrip();
     await assertReportJsonbRoundTrip();
+    await assertReportScheduleSettingsRoundTrip();
     await assertReportScheduleRoundTrip();
     console.log('web postgres round-trip tests passed');
   } finally {
@@ -252,6 +264,134 @@ async function assertReportJsonbRoundTrip() {
   assert.equal(metadata?.generationKind, 'manual');
   assert.equal(metadata?.scheduleFrequency, null);
   assert.equal(metadata?.schedulePeriodRunId, null);
+}
+
+async function assertReportScheduleSettingsRoundTrip() {
+  await sql`
+    UPDATE public.projects
+    SET created_at = ${settingsProjectCreatedAt}
+    WHERE id = ${projectId}
+  `;
+  assert.equal(await readProjectReportSchedule(sql, { projectId }), null);
+
+  const activated = await saveProjectReportSchedule(sql, {
+    asOf: settingsScheduleAsOf,
+    frequency: 'weekly',
+    projectId,
+    updatedBy: userId,
+  });
+  assert.equal(activated.frequency, 'weekly');
+  assert.equal(
+    activated.nextRunAt,
+    resolveNextScheduledReportRunAt({
+      asOf: settingsScheduleAsOf.toISOString(),
+      frequency: 'weekly',
+      runTime: activated.runTime,
+    }),
+  );
+
+  const availableFrom = await readProjectReportAvailableFrom(sql, { projectId });
+  assert.equal(availableFrom, '2026-06-15');
+  const expectedBackfill = enumerateBackfillScheduledReportPeriods({
+    asOf: settingsScheduleAsOf.toISOString(),
+    availableFrom: availableFrom ?? '2026-06-15',
+    frequency: 'weekly',
+    limit: 500,
+  });
+  assert.equal(expectedBackfill.hasMore, false);
+
+  const backfillRuns = (
+    await listReportSchedulePeriodRuns(sql, {
+      limit: 100,
+      projectId,
+      scheduleId: activated.id,
+    })
+  ).filter((run) => run.runKind === 'scheduled_backfill');
+  assert.equal(backfillRuns.length, expectedBackfill.periods.length);
+  assert.ok(backfillRuns.length > 0);
+  assert.deepEqual(
+    backfillRuns.map((run) => ({ end: run.periodEnd, start: run.periodStart })).sort(comparePeriod),
+    expectedBackfill.periods
+      .map((period) => ({ end: period.end, start: period.start }))
+      .sort(comparePeriod),
+  );
+  for (const run of backfillRuns) {
+    assert.equal(run.status, 'pending');
+    assert.equal(run.frequency, 'weekly');
+    assert.equal(run.projectId, projectId);
+  }
+  const settingsView = await readProjectReportScheduleSettings(sql, { projectId });
+  assert.equal(settingsView.periodRunSummary.backfillRemaining, backfillRuns.length);
+  assert.ok(
+    !backfillRuns.some((run) => run.periodStart === '2026-07-20'),
+    'current in-progress weekly period must not be backfilled',
+  );
+
+  const backfillCount = backfillRuns.length;
+  await sql`
+    UPDATE public.project_report_schedules AS schedule
+    SET
+      worker_token = 'settings-test-worker',
+      lease_expires_at = '2026-07-20T06:00:00.000Z'
+    WHERE schedule.project_id = ${projectId}
+      AND schedule.id = ${activated.id}
+  `;
+  await assert.rejects(
+    () =>
+      saveProjectReportSchedule(sql, {
+        asOf: settingsScheduleAsOf,
+        frequency: 'monthly',
+        projectId,
+        updatedBy: userId,
+      }),
+    (error) => error instanceof ReportScheduleSaveBlockedError,
+  );
+  const leased = await readProjectReportSchedule(sql, { projectId });
+  assert.equal(leased?.frequency, 'weekly');
+  assert.equal(leased?.nextRunAt, activated.nextRunAt);
+  assert.equal(leased?.workerToken, 'settings-test-worker');
+
+  await sql`
+    UPDATE public.project_report_schedules AS schedule
+    SET
+      worker_token = NULL,
+      lease_expires_at = NULL
+    WHERE schedule.project_id = ${projectId}
+      AND schedule.id = ${activated.id}
+  `;
+
+  const disabled = await saveProjectReportSchedule(sql, {
+    asOf: settingsScheduleAsOf,
+    frequency: 'none',
+    projectId,
+    updatedBy: userId,
+  });
+  assert.equal(disabled.frequency, 'none');
+  assert.equal(disabled.nextRunAt, null);
+  const runsAfterDisable = await listReportSchedulePeriodRuns(sql, {
+    limit: 100,
+    projectId,
+    scheduleId: disabled.id,
+  });
+  assert.equal(
+    runsAfterDisable.filter((run) => run.runKind === 'scheduled_backfill').length,
+    backfillCount,
+  );
+
+  await cleanupReportScheduleSettingsFixture();
+  assert.equal(await readProjectReportSchedule(sql, { projectId }), null);
+}
+
+async function cleanupReportScheduleSettingsFixture() {
+  await sql`DELETE FROM public.report_schedule_period_runs WHERE project_id = ${projectId}`;
+  await sql`DELETE FROM public.project_report_schedules WHERE project_id = ${projectId}`;
+}
+
+function comparePeriod(
+  left: { readonly end: string; readonly start: string },
+  right: { readonly end: string; readonly start: string },
+): number {
+  return left.start.localeCompare(right.start) || left.end.localeCompare(right.end);
 }
 
 async function assertReportScheduleRoundTrip() {

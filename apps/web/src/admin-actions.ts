@@ -28,6 +28,7 @@ import {
   updateProjectVisibility as updateProjectVisibilityAction,
 } from './admin-project-actions.ts';
 import { generatePrivateReport as generatePrivateReportAction } from './admin-report-actions.ts';
+import { updateProjectReportSchedule as updateProjectReportScheduleAction } from './admin-report-schedule-actions.ts';
 import { updateDataSourceSchedule as updateDataSourceScheduleAction } from './admin-source-schedule-actions.ts';
 
 export async function createProject(formData: FormData): Promise<void> {
@@ -119,6 +120,10 @@ export async function ingestDataSource(formData: FormData): Promise<void> {
 
 export async function generatePrivateReport(formData: FormData): Promise<void> {
   await generatePrivateReportAction(formData);
+}
+
+export async function updateProjectReportSchedule(formData: FormData): Promise<void> {
+  await updateProjectReportScheduleAction(formData);
 }
 
 export async function approveParserVersion(formData: FormData): Promise<void> {
