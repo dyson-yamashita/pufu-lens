@@ -26,6 +26,21 @@ test('heartbeat and completion use worker-token compare-and-set', () => {
   assert.match(source, /started_at \+ \$\{MAX_LEASE_MINUTES\}/);
 });
 
+test('period run claim resets started_at on every reclaim', () => {
+  assert.match(source, /started_at = now\(\)/);
+  assert.doesNotMatch(source, /started_at = COALESCE\(period_run\.started_at, now\(\)\)/);
+});
+
+test('delayed retry claim refreshes heartbeat ceiling from a new started_at', () => {
+  assert.match(source, /period_run\.status = 'retry_wait'/);
+  assert.match(source, /period_run\.next_attempt_at <= now\(\)/);
+  assert.match(source, /started_at = now\(\)/);
+  assert.match(
+    source,
+    /lease_expires_at = LEAST\(\s*now\(\) \+ \$\{LEASE_MINUTES\} \* interval '1 minute',\s*started_at \+ \$\{MAX_LEASE_MINUTES\} \* interval '1 minute'\s*\)/s,
+  );
+});
+
 test('period run retry sequence is 15 minutes, one hour, six hours, then retry exhausted', () => {
   assert.match(source, /WHEN 0 THEN now\(\) \+ interval '15 minutes'/);
   assert.match(source, /WHEN 1 THEN now\(\) \+ interval '1 hour'/);

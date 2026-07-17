@@ -1,6 +1,10 @@
 import { registerApiRoute } from '@mastra/core/server';
 import { GoogleAuth } from 'google-auth-library';
 
+const ACCESS_TOKEN_TIMEOUT_MS = 10_000;
+const JOB_START_FETCH_TIMEOUT_MS = 30_000;
+const DISPATCHER_JOB_FETCH_TIMEOUT_ERROR = 'dispatcher job fetch timed out';
+
 type DispatcherJobConfig = {
   readonly jobName: string;
   readonly projectId: string;
@@ -17,8 +21,7 @@ export const reportScheduleDispatcherRoute = registerApiRoute(
         parseDispatcherRequest(await readJsonBody(context.req.raw));
         const config = dispatcherJobConfig(process.env);
         const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
-        const token = await auth.getAccessToken();
-        if (!token) throw new Error('cloud access token unavailable');
+        const token = await getCloudAccessTokenWithTimeout(auth);
         const execution = await startDispatcherJob(config, token, fetch);
         return context.json({ accepted: true, execution }, 202);
       } catch (error) {
@@ -68,25 +71,76 @@ export function dispatcherJobRunUrl(config: DispatcherJobConfig): string {
   )}/locations/${encodeURIComponent(config.region)}/jobs/${encodeURIComponent(config.jobName)}:run`;
 }
 
+export async function getCloudAccessTokenWithTimeout(
+  auth: GoogleAuth,
+  timeoutMs: number = ACCESS_TOKEN_TIMEOUT_MS,
+): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const tokenPromise = auth.getAccessToken();
+  void tokenPromise.catch(() => undefined);
+  try {
+    const token = await Promise.race([
+      tokenPromise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('cloud access token timed out')), timeoutMs);
+      }),
+    ]);
+    if (!token) throw new Error('cloud access token unavailable');
+    return token;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 export async function startDispatcherJob(
   config: DispatcherJobConfig,
   token: string,
   fetcher: typeof fetch,
+  options?: { readonly signal?: AbortSignal; readonly timeoutMs?: number },
 ): Promise<string | null> {
-  const response = await fetcher(dispatcherJobRunUrl(config), {
-    body: JSON.stringify({
-      overrides: {
-        containerOverrides: [{ env: [{ name: 'WORKFLOW_INPUT_JSON', value: '{}' }] }],
-      },
-    }),
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    method: 'POST',
+  const timeoutMs = options?.timeoutMs ?? JOB_START_FETCH_TIMEOUT_MS;
+  const controller = new AbortController();
+  let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+  let externalAbortHandler: (() => void) | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutTimer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(DISPATCHER_JOB_FETCH_TIMEOUT_ERROR));
+    }, timeoutMs);
   });
-  if (!response.ok) throw new Error(`Cloud Run Jobs API returned HTTP ${response.status}`);
-  const body: unknown = await response.json().catch(() => ({}));
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
-  const name = Reflect.get(body, 'name');
-  return typeof name === 'string' ? name : null;
+  try {
+    if (options?.signal) {
+      if (options.signal.aborted) {
+        controller.abort();
+      } else {
+        externalAbortHandler = () => controller.abort();
+        options.signal.addEventListener('abort', externalAbortHandler, { once: true });
+      }
+    }
+    const fetchPromise = fetcher(dispatcherJobRunUrl(config), {
+      body: JSON.stringify({
+        overrides: {
+          containerOverrides: [{ env: [{ name: 'WORKFLOW_INPUT_JSON', value: '{}' }] }],
+        },
+      }),
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      method: 'POST',
+      signal: controller.signal,
+    }).then(async (response) => {
+      if (!response.ok) throw new Error(`Cloud Run Jobs API returned HTTP ${response.status}`);
+      const body: unknown = await response.json().catch(() => ({}));
+      if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+      const name = Reflect.get(body, 'name');
+      return typeof name === 'string' ? name : null;
+    });
+    void fetchPromise.catch(() => undefined);
+    return await Promise.race([fetchPromise, timeoutPromise]);
+  } finally {
+    if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
+    if (options?.signal && externalAbortHandler) {
+      options.signal.removeEventListener('abort', externalAbortHandler);
+    }
+  }
 }
 
 function dispatcherJobConfig(env: NodeJS.ProcessEnv): DispatcherJobConfig {

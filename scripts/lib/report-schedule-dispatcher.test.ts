@@ -347,3 +347,27 @@ test('runtime budget aborts an active period run and marks it failed for retry',
     succeeded: 0,
   });
 });
+
+test('non-cooperative runner is abandoned when runtime hard deadline elapses', async () => {
+  const repo = repository();
+  const result = await dispatchReportSchedules({
+    heartbeatIntervalMs: 600_000,
+    maxRuntimeMs: 50,
+    repository: repo,
+    runner: {
+      async run() {
+        return new Promise(() => {});
+      },
+    },
+    workerToken: 'worker-a',
+  });
+  assert.deepEqual(repo.failed, [REPORT_SCHEDULE_RUNTIME_EXCEEDED_ERROR]);
+  assert.deepEqual(result, {
+    claimed: 1,
+    failed: 1,
+    leaseLost: 0,
+    materialized: 2,
+    skipped: 0,
+    succeeded: 0,
+  });
+});

@@ -32,6 +32,7 @@ import {
   validatePublicReportJson,
 } from './report.ts';
 import { safeReportPdfLines } from './report-pdf.ts';
+import { publishGeneratedPublicReport } from './report-publication.ts';
 import { type PrivateReportJsonV1, validatePrivateReportJson } from './report-schema.ts';
 
 function pufuScoreTexts(score: ReturnType<typeof createPufuScoreFromReport>): readonly string[] {
@@ -1572,7 +1573,92 @@ await assert.rejects(
   assert.equal(conflictGenerated.storageUri, 'sample-a/reports/private/existing-report-id.json');
   assert.equal(deletedUris.length, 1);
   assert.notEqual(deletedUris[0], 'sample-a/reports/private/existing-report-id.json');
-  assert.equal(publishCalls, 0);
+  assert.equal(publishCalls, 1);
+}
+
+{
+  let insertCalls = 0;
+  let publishCalls = 0;
+  const existingReport: PrivateReportJsonV1 = {
+    generated_at: '2026-06-04T00:00:00.000Z',
+    period: { end: '2026-06-07', start: '2026-06-01' },
+    project_id: 'project-a',
+    report_id: 'existing-report-id',
+    schema_version: 'v1',
+    sections: generated.report.sections,
+    summary: 'existing summary',
+    title: 'existing title',
+  };
+  const retryStorage = new MemoryObjectStorage();
+  await retryStorage.put(
+    'sample-a/reports/private/existing-report-id.json',
+    `${JSON.stringify(existingReport)}\n`,
+  );
+  const retryRepository = {
+    ...repository,
+    async insertReport() {
+      insertCalls += 1;
+      if (insertCalls === 1) {
+        return {
+          reportId: 'new-report-id',
+          status: 'inserted' as const,
+          storageUri: 'sample-a/reports/private/new-report-id.json',
+        };
+      }
+      return {
+        reportId: 'existing-report-id',
+        status: 'conflict' as const,
+        storageUri: 'sample-a/reports/private/existing-report-id.json',
+      };
+    },
+    async lookupProject() {
+      return {
+        graphName: 'graph_sample_a',
+        id: 'project-a',
+        slug: 'sample-a',
+        visibility: 'public' as const,
+      };
+    },
+    async setReportPublicState() {
+      publishCalls += 1;
+      if (publishCalls === 1) {
+        throw new Error('publish failed before completion');
+      }
+    },
+  };
+  await assert.rejects(
+    () =>
+      runGenerateReport({
+        options: {
+          generationKind: 'scheduled',
+          now: new Date('2026-06-04T12:00:00.000Z'),
+          period: { end: '2026-06-07', start: '2026-06-01' },
+          provider: createExtractiveReportProvider(),
+          repository: retryRepository,
+          scheduleFrequency: 'weekly',
+          schedulePeriodRunId: 'period-run-a',
+          storage: retryStorage,
+        },
+        projectSlug: 'sample-a',
+      }),
+    /publish failed before completion/,
+  );
+  const retryGenerated = await runGenerateReport({
+    options: {
+      generationKind: 'scheduled',
+      now: new Date('2026-06-04T12:00:00.000Z'),
+      period: { end: '2026-06-07', start: '2026-06-01' },
+      provider: createExtractiveReportProvider(),
+      repository: retryRepository,
+      scheduleFrequency: 'weekly',
+      schedulePeriodRunId: 'period-run-a',
+      storage: retryStorage,
+    },
+    projectSlug: 'sample-a',
+  });
+  assert.equal(retryGenerated.report.report_id, 'existing-report-id');
+  assert.equal(insertCalls, 2);
+  assert.equal(publishCalls, 2);
 }
 
 const malformedGeminiProvider = createGeminiReportProvider({
@@ -1610,5 +1696,183 @@ await assert.rejects(
     }),
   /Gemini report response is not a valid JSON object/,
 );
+
+{
+  let providerSignal: AbortSignal | undefined;
+  const signalAwareProvider = createExtractiveReportProvider();
+  const originalGenerate = signalAwareProvider.generate.bind(signalAwareProvider);
+  signalAwareProvider.generate = async (input) => {
+    providerSignal = input.signal;
+    return originalGenerate(input);
+  };
+  const controller = new AbortController();
+  await runGenerateReport({
+    options: {
+      now: new Date('2026-06-04T12:00:00.000Z'),
+      period,
+      provider: signalAwareProvider,
+      repository,
+      signal: controller.signal,
+      storage,
+    },
+    projectSlug: 'sample-a',
+  });
+  assert.equal(providerSignal, controller.signal);
+}
+
+{
+  let storagePutCalls = 0;
+  const controller = new AbortController();
+  const delayingProvider: import('./report-provider.ts').ReportGenerationProvider = {
+    async generate(input) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 100);
+        timer.unref();
+      });
+      return createExtractiveReportProvider().generate(input);
+    },
+  };
+  const generation = runGenerateReport({
+    options: {
+      now: new Date('2026-06-04T12:00:00.000Z'),
+      period,
+      provider: delayingProvider,
+      repository,
+      signal: controller.signal,
+      storage: Object.assign(Object.create(Object.getPrototypeOf(storage)), storage, {
+        async put(uri: string, body: string | Buffer) {
+          storagePutCalls += 1;
+          return storage.put(uri, body);
+        },
+      }) as typeof storage,
+    },
+    projectSlug: 'sample-a',
+  });
+  controller.abort();
+  await assert.rejects(generation, /report generation aborted/);
+  assert.equal(storagePutCalls, 0);
+}
+
+{
+  let fetchSignal: AbortSignal | undefined;
+  const geminiProvider = createGeminiReportProvider({
+    apiKey: 'test-key',
+    fetchImpl: async (_url, init) => {
+      fetchSignal = init?.signal ?? undefined;
+      return new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      sections: [
+                        { id: 'activity', markdown: '概況', title: '概況' },
+                        { id: 'progress', markdown: '- 進捗', title: '進行状況' },
+                        { id: 'risks', markdown: '- 課題', title: '課題・次のアクション' },
+                      ],
+                      summary: 'summary',
+                      title: 'title',
+                    }),
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    },
+    model: 'gemini-test',
+  });
+  const controller = new AbortController();
+  await geminiProvider.generate({
+    documents: [],
+    period,
+    projectSlug: 'sample-a',
+    signal: controller.signal,
+  });
+  assert.equal(fetchSignal, controller.signal);
+}
+
+{
+  let insertReportCalls = 0;
+  const controller = new AbortController();
+  const abortAfterPutStorage = Object.assign(
+    Object.create(Object.getPrototypeOf(storage)),
+    storage,
+    {
+      async put(uri: string, body: string | Buffer) {
+        const result = await storage.put(uri, body);
+        controller.abort();
+        return result;
+      },
+    },
+  ) as typeof storage;
+  const trackingRepository = {
+    ...repository,
+    async insertReport(
+      args: Parameters<Extract<typeof repository.insertReport, (...args: never) => unknown>>[0],
+    ) {
+      insertReportCalls += 1;
+      return repository.insertReport(args);
+    },
+  };
+  await assert.rejects(
+    () =>
+      runGenerateReport({
+        options: {
+          now: new Date('2026-06-04T12:00:00.000Z'),
+          period,
+          provider: createExtractiveReportProvider(),
+          repository: trackingRepository,
+          signal: controller.signal,
+          storage: abortAfterPutStorage,
+        },
+        projectSlug: 'sample-a',
+      }),
+    /report generation aborted/,
+  );
+  assert.equal(insertReportCalls, 0);
+}
+
+{
+  let publicStateCalls = 0;
+  const controller = new AbortController();
+  const publicationStorage = Object.assign(Object.create(Object.getPrototypeOf(storage)), storage, {
+    async put(uri: string, body: string | Buffer) {
+      const result = await storage.put(uri, body);
+      if (uri.includes('/reports/public/') && uri.endsWith('/report.json')) {
+        controller.abort();
+      }
+      return result;
+    },
+  }) as typeof storage;
+  const publicationRepository = {
+    ...repository,
+    async setReportPublicState() {
+      publicStateCalls += 1;
+    },
+  };
+  await assert.rejects(
+    () =>
+      publishGeneratedPublicReport({
+        project: {
+          graphName: 'graph_sample_a',
+          id: 'project-a',
+          slug: 'sample-a',
+          visibility: 'public',
+        },
+        publishedAt: '2026-06-04T12:00:00.000Z',
+        report: generated.report,
+        repository: publicationRepository,
+        signal: controller.signal,
+        storage: publicationStorage,
+      }),
+    /report generation aborted/,
+  );
+  assert.equal(publicStateCalls, 0);
+}
 
 console.log('web report tests passed');

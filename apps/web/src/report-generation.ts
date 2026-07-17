@@ -47,6 +47,7 @@ export interface RunGenerateReportOptions {
   readonly repository: ReportRepository;
   readonly scheduleFrequency?: ScheduledReportFrequency;
   readonly schedulePeriodRunId?: string;
+  readonly signal?: AbortSignal;
   readonly storage: ObjectStorage;
 }
 
@@ -65,12 +66,15 @@ export async function runGenerateReport(input: {
   readonly options: RunGenerateReportOptions;
   readonly projectSlug: string;
 }): Promise<GenerateReportResult> {
+  const signal = input.options.signal;
+  throwIfReportGenerationAborted(signal);
   const now = input.options.now ?? new Date();
   const period =
     input.options.period ?? resolveReportPeriod(now, input.options.periodKind ?? 'weekly');
   const project = await input.options.repository.lookupProject({
     projectSlug: input.projectSlug,
   });
+  throwIfReportGenerationAborted(signal);
   if (!project) {
     throw new Error(`Project not found: ${input.projectSlug}`);
   }
@@ -92,6 +96,7 @@ export async function runGenerateReport(input: {
         storage: input.options.storage,
       })
     : undefined;
+  throwIfReportGenerationAborted(signal);
   const previousReportContext =
     scheduleInputs?.previousScheduledReportId && previousReport
       ? await buildPreviousReportProviderContext({
@@ -101,12 +106,14 @@ export async function runGenerateReport(input: {
           previousReportId: scheduleInputs.previousScheduledReportId,
         })
       : undefined;
+  throwIfReportGenerationAborted(signal);
 
   const candidateDocuments = await input.options.repository.listRecentDocuments({
     limit: REPORT_CANDIDATE_LIMIT,
     period,
     projectId: project.id,
   });
+  throwIfReportGenerationAborted(signal);
   const editedMaterials = editReportMaterials(candidateDocuments);
   const hasOverflow =
     editedMaterials.totalDocumentCount > editedMaterials.representativeDocuments.length;
@@ -114,15 +121,19 @@ export async function runGenerateReport(input: {
     documents: editedMaterials.representativeDocuments,
     projectId: project.id,
     rawReadViewRepository: input.options.rawReadViewRepository,
+    signal,
   });
+  throwIfReportGenerationAborted(signal);
   const generated = await input.options.provider.generate({
     documents: providerDocuments,
     ...(hasOverflow ? { materialGroups: editedMaterials.materialGroups } : {}),
     period,
     ...(previousReportContext ? { previousReportContext } : {}),
     projectSlug: project.slug,
+    ...(signal ? { signal } : {}),
     totalDocumentCount: editedMaterials.totalDocumentCount,
   });
+  throwIfReportGenerationAborted(signal);
   if (previousReportContext && !hasProviderRecurrenceDelta(generated)) {
     throw new Error(
       'Report provider must return recurrence delta when previous context is supplied.',
@@ -136,6 +147,7 @@ export async function runGenerateReport(input: {
         templateId: input.options.customTemplateId,
       })
     : undefined;
+  throwIfReportGenerationAborted(signal);
   const customSnapshot = customTemplate
     ? buildCustomReportSnapshot({
         layout: customTemplate.layout,
@@ -168,10 +180,12 @@ export async function runGenerateReport(input: {
   validatePrivateReportJson(report);
 
   const storageUri = `${project.slug}/reports/private/${reportId}.json`;
+  throwIfReportGenerationAborted(signal);
   const put = await input.options.storage.put(storageUri, `${JSON.stringify(report, null, 2)}\n`, {
     cacheControl: 'private, max-age=3600',
     contentType: 'application/json; charset=utf-8',
   });
+  throwIfReportGenerationAborted(signal);
   const generationMetadata = buildReportGenerationMetadata({
     generationKind: input.options.generationKind,
     scheduleFrequency: scheduleInputs?.scheduleFrequency,
@@ -197,11 +211,14 @@ export async function runGenerateReport(input: {
     report,
     storageUri: put.uri,
   });
+  throwIfReportGenerationAborted(signal);
   if (insertResult?.status === 'conflict') {
     if (input.options.storage.delete) {
       await input.options.storage.delete(put.uri).catch(() => undefined);
+      throwIfReportGenerationAborted(signal);
     }
     const existingText = await input.options.storage.getText(insertResult.storageUri);
+    throwIfReportGenerationAborted(signal);
     const parsed: unknown = JSON.parse(existingText);
     validatePrivateReportJson(parsed);
     const existingReport = parsed as PrivateReportJsonV1;
@@ -214,18 +231,31 @@ export async function runGenerateReport(input: {
     if (existingReport.period.start !== period.start || existingReport.period.end !== period.end) {
       throw new Error('Conflicting scheduled report period does not match stored report JSON.');
     }
+    throwIfReportGenerationAborted(signal);
+    if (project.visibility === 'public') {
+      await publishGeneratedPublicReport({
+        project,
+        publishedAt: now.toISOString(),
+        report: existingReport,
+        repository: input.options.repository,
+        ...(signal ? { signal } : {}),
+        storage: input.options.storage,
+      });
+    }
     return {
       report: existingReport,
       reportUrl: `/projects/${project.slug}/reports/${existingReport.report_id}`,
       storageUri: insertResult.storageUri,
     };
   }
+  throwIfReportGenerationAborted(signal);
   if (project.visibility === 'public') {
     await publishGeneratedPublicReport({
       project,
       publishedAt: now.toISOString(),
       report,
       repository: input.options.repository,
+      ...(signal ? { signal } : {}),
       storage: input.options.storage,
     });
   }
@@ -235,6 +265,19 @@ export async function runGenerateReport(input: {
     reportUrl: `/projects/${project.slug}/reports/${report.report_id}`,
     storageUri: put.uri,
   };
+}
+
+export class ReportGenerationAbortedError extends Error {
+  constructor() {
+    super('report generation aborted');
+    this.name = 'ReportGenerationAbortedError';
+  }
+}
+
+function throwIfReportGenerationAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw new ReportGenerationAbortedError();
+  }
 }
 
 function resolveScheduledDispatchOptions(options: RunGenerateReportOptions):
@@ -559,6 +602,7 @@ async function supplementDocumentsWithRawReadViews(input: {
   readonly documents: readonly ReportDocumentRecord[];
   readonly projectId: string;
   readonly rawReadViewRepository?: Pick<RawReadViewRepository, 'fetchRawReadView'>;
+  readonly signal?: AbortSignal;
 }): Promise<readonly ReportDocumentRecord[]> {
   if (!input.rawReadViewRepository) {
     return input.documents;
@@ -566,6 +610,7 @@ async function supplementDocumentsWithRawReadViews(input: {
   const rawReadViewRepository = input.rawReadViewRepository;
   return Promise.all(
     input.documents.map(async (document) => {
+      throwIfReportGenerationAborted(input.signal);
       if (!document.rawDocumentId) {
         return document;
       }
@@ -578,6 +623,7 @@ async function supplementDocumentsWithRawReadViews(input: {
           rawDocumentId: document.rawDocumentId,
         })
         .catch(() => undefined);
+      throwIfReportGenerationAborted(input.signal);
       const rawSummary = view ? rawReadViewSummary(view) : '';
       if (!rawSummary) {
         return document;

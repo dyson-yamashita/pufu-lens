@@ -179,7 +179,7 @@ export function createPostgresReportScheduleDispatcherRepository(
             status = 'running',
             worker_token = ${workerToken},
             lease_expires_at = now() + ${LEASE_MINUTES} * interval '1 minute',
-            started_at = COALESCE(period_run.started_at, now()),
+            started_at = now(),
             updated_at = now()
           FROM candidates, public.project_report_schedules AS schedule, public.projects AS project
           WHERE period_run.id = candidates.id
@@ -490,6 +490,7 @@ async function runScheduledReport(input: {
       repository: input.reportRepository,
       scheduleFrequency: input.target.frequency,
       schedulePeriodRunId: input.target.periodRunId,
+      signal: input.signal,
       storage: input.storage,
     },
     projectSlug: input.target.projectSlug,

@@ -127,7 +127,14 @@ export async function dispatchReportSchedules(input: {
     heartbeat.unref();
 
     try {
-      const outcome = await input.runner.run(target, abortController.signal);
+      const runnerPromise = input.runner.run(target, abortController.signal);
+      void runnerPromise.catch(() => undefined);
+      const outcome = await raceWithDeadline({
+        deadline,
+        exceededMessage: REPORT_SCHEDULE_RUNTIME_EXCEEDED_ERROR,
+        now,
+        promise: runnerPromise,
+      });
       if (leaseLostDuringRun) {
         leaseLost += 1;
         continue;
@@ -165,9 +172,10 @@ export async function dispatchReportSchedules(input: {
         leaseLost += 1;
         continue;
       }
-      const safeError = runtimeExceededDuringRun
-        ? REPORT_SCHEDULE_RUNTIME_EXCEEDED_ERROR
-        : safeReportScheduleError(error);
+      const safeError =
+        runtimeExceededDuringRun || isRuntimeExceededError(error)
+          ? REPORT_SCHEDULE_RUNTIME_EXCEEDED_ERROR
+          : safeReportScheduleError(error);
       console.error(
         JSON.stringify({
           error: safeError,
@@ -190,6 +198,28 @@ export async function dispatchReportSchedules(input: {
   }
 
   return { claimed, failed, leaseLost, materialized, skipped, succeeded };
+}
+
+async function raceWithDeadline<T>(input: {
+  readonly deadline: number;
+  readonly exceededMessage: string;
+  readonly now: () => number;
+  readonly promise: Promise<T>;
+}): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadlinePromise = new Promise<never>((_, reject) => {
+    const remaining = Math.min(MAX_TIMER_DELAY_MS, Math.max(0, input.deadline - input.now()));
+    timer = setTimeout(() => reject(new Error(input.exceededMessage)), remaining);
+  });
+  try {
+    return await Promise.race([input.promise, deadlinePromise]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+function isRuntimeExceededError(error: unknown): boolean {
+  return error instanceof Error && error.message === REPORT_SCHEDULE_RUNTIME_EXCEEDED_ERROR;
 }
 
 export function safeReportScheduleError(error: unknown): string {

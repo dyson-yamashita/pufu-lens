@@ -2,7 +2,7 @@
 
 ## API デザイン
 
-この章は Browser / public / internal / CLI / server action の入口を一覧する。現状（2026-06-11）は、管理操作の多くが Next.js server action と Node CLI で実装されており、REST API として未実装の項目もある。表の `実装状況` を正とし、未実装 API を現在形で扱わない。
+この章は Browser / public / internal / CLI / server action の入口を一覧する。現状（2026-07-17）は、管理操作の多くが Next.js server action と Node CLI で実装されており、REST API として未実装の項目もある。表の `実装状況` を正とし、未実装 API を現在形で扱わない。
 
 ### 1. 共通ルール
 
