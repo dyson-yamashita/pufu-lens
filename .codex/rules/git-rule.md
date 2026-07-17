@@ -61,6 +61,7 @@ AI エージェントは上記に従って branch を作成する。
 - plan 外の変更作業に着手するときも、作業開始前に対応する GitHub Issue を作成する。
 - plan 外の変更作業が完了したら、対応 Issue に紐づく PR を作成する。
 - plan 外の変更作業用ブランチも、作成前に `main` を最新化し、対応 Issue 番号を含むブランチ命名ルールに従う。
+- PR 作成前に `.codex/skills/pre-pr-review` スキルでセルフレビューを実行し、Critical / Major 相当の指摘を解消してから PR を作成する。
 - PR 作成後はレビュー支援ツールが起動する前提で、少なくとも 5 分間はレビューコメントの有無を適切な間隔（例: 1〜2 分おき）で定期確認する。
 - PR 作成後の確認中にレビューコメントや requested changes が付いた場合は、作業範囲内で対応し、必要な検証を実行してから追加 commit / push する。
 - PR レビューコメントで指摘を受けて対応した場合は、対応完了後に該当レビューコメントへ返信し、対応内容と必要に応じて検証結果を日本語で簡潔に記載する。
@@ -74,3 +75,9 @@ AI エージェントは上記に従って branch を作成する。
 4. 不要な生成物や `node_modules` が含まれていないこと
 5. 関連テストまたは検証結果
 6. 認可 SQL、SQL row cast、app 間相対 import、script helper 重複、god file への責務追加がないこと
+
+## 6. pre-push hook
+
+- `pnpm install` 時の `prepare` script が `core.hooksPath` を `.githooks` に設定し、push 前に `.githooks/pre-push` が `pnpm format:check` / `pnpm lint` / `pnpm typecheck` を強制する。
+- チェック失敗時は push が中断される。修正してから再 push する。
+- 緊急回避（CI 修正の push 等）に限り `PUFU_LENS_SKIP_PREPUSH=1 git push` でスキップできる。常用しない。

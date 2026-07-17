@@ -1,0 +1,21 @@
+#!/bin/sh
+# pre-push: push 前に format / lint / typecheck を強制する。
+# CI での往復を減らすため、軽量チェックはローカルで落とす。
+# 緊急回避（CI 修正の push 等）は PUFU_LENS_SKIP_PREPUSH=1 git push を使う。
+set -e
+
+if [ "${PUFU_LENS_SKIP_PREPUSH:-0}" = "1" ]; then
+  echo "pre-push: PUFU_LENS_SKIP_PREPUSH=1 のためチェックをスキップします"
+  exit 0
+fi
+
+echo "pre-push: pnpm format:check を実行します"
+pnpm format:check
+
+echo "pre-push: pnpm lint を実行します"
+pnpm lint
+
+echo "pre-push: pnpm typecheck を実行します"
+pnpm typecheck
+
+echo "pre-push: 全チェックを通過しました"
