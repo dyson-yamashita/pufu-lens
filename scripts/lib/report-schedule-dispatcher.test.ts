@@ -5,6 +5,7 @@ import {
   REPORT_SCHEDULE_RUNTIME_EXCEEDED_ERROR,
   type ReportScheduleDispatcherRepository,
   ReportScheduleGenerationError,
+  type ReportScheduleRunOutcome,
   type ReportScheduleRunTarget,
   safeReportScheduleError,
 } from './report-schedule-dispatcher.ts';
@@ -51,18 +52,30 @@ function repository(
       this.failed.push(error);
       return true;
     },
-    async markSkipped({ periodRunId, workerToken }) {
+    async markSkipped({ periodRunId, skipReason, workerToken }) {
       assert.equal(workerToken, 'worker-a');
-      this.skipped.push(periodRunId);
+      assert.ok(skipReason.length > 0);
+      this.skipped.push(`${periodRunId}:${skipReason}`);
       return true;
     },
     async markSucceeded({ periodRunId, reportId, workerToken }) {
       assert.equal(workerToken, 'worker-a');
+      assert.ok(reportId.length > 0);
       this.succeeded.push(`${periodRunId}:${reportId}`);
       return true;
     },
   };
 }
+
+test('ReportScheduleRunOutcome requires branch-specific properties', () => {
+  const reportOutcome = { reportId: 'report-a', type: 'report' } satisfies ReportScheduleRunOutcome;
+  const skippedOutcome = {
+    skipReason: 'no_documents',
+    type: 'skipped',
+  } satisfies ReportScheduleRunOutcome;
+  assert.equal(reportOutcome.reportId, 'report-a');
+  assert.equal(skippedOutcome.skipReason, 'no_documents');
+});
 
 test('materialize limit bounds catch-up work per dispatcher run', async () => {
   let materializeCalls = 0;
@@ -146,7 +159,7 @@ test('no candidate documents are marked skipped without provider invocation', as
     },
     workerToken: 'worker-a',
   });
-  assert.deepEqual(repo.skipped, ['period-a']);
+  assert.deepEqual(repo.skipped, ['period-a:no_documents']);
   assert.deepEqual(result, {
     claimed: 1,
     failed: 0,

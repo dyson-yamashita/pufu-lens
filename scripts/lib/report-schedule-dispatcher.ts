@@ -22,11 +22,9 @@ export interface ReportScheduleRunTarget {
   readonly scheduleId: string;
 }
 
-export interface ReportScheduleRunOutcome {
-  readonly reportId?: string;
-  readonly skipReason?: string;
-  readonly type: 'report' | 'skipped';
-}
+export type ReportScheduleRunOutcome =
+  | { readonly reportId: string; readonly type: 'report' }
+  | { readonly skipReason: string; readonly type: 'skipped' };
 
 export interface ReportScheduleDispatcherRepository {
   claimRunnable(input: {
@@ -141,12 +139,12 @@ export async function dispatchReportSchedules(input: {
         outcome.type === 'skipped'
           ? await input.repository.markSkipped({
               periodRunId: target.periodRunId,
-              skipReason: outcome.skipReason ?? 'skipped',
+              skipReason: outcome.skipReason,
               workerToken,
             })
           : await input.repository.markSucceeded({
               periodRunId: target.periodRunId,
-              reportId: outcome.reportId ?? '',
+              reportId: outcome.reportId,
               workerToken,
             });
       if (!updated) {
