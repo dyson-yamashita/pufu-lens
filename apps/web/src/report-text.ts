@@ -7,11 +7,14 @@ export function countCodePoints(value: string): number {
 }
 
 export function truncateCodePoints(value: string, maxCodePoints: number): string {
+  if (maxCodePoints <= 0) {
+    return '';
+  }
   const codePoints = [...value];
   if (codePoints.length <= maxCodePoints) {
     return value;
   }
-  if (maxCodePoints <= 1) {
+  if (maxCodePoints === 1) {
     return '…';
   }
   return `${codePoints.slice(0, maxCodePoints - 1).join('')}…`;

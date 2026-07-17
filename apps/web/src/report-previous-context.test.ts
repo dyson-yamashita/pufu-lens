@@ -58,6 +58,21 @@ assert.deepEqual(extractContinuedRisks(baseReport()), [
   'Needs follow-up',
 ]);
 
+assert.deepEqual(
+  extractContinuedRisks(
+    baseReport({
+      sections: [
+        {
+          id: 'risks',
+          markdown: '* Star bullet risk\n+ Plus bullet risk\n-NoSpace risk',
+          title: '課題・次のアクション',
+        },
+      ],
+    }),
+  ),
+  ['Star bullet risk', 'Plus bullet risk'],
+);
+
 const built = await buildPreviousReportProviderContext({
   frequency: 'weekly',
   previousReport: baseReport(),

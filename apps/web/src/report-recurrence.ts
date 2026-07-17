@@ -36,8 +36,11 @@ export function buildTrustedReportRecurrence(input: {
 }
 
 export function hasProviderRecurrenceDelta(
-  value: Partial<ProviderRecurrenceDelta>,
+  value: Partial<ProviderRecurrenceDelta> | null | undefined,
 ): value is ProviderRecurrenceDelta {
+  if (value == null) {
+    return false;
+  }
   return (
     typeof value.change_summary === 'string' &&
     Array.isArray(value.increments) &&

@@ -47,7 +47,7 @@ export interface PreviousReportProviderContext {
 }
 
 export function countProviderTokensConservative(text: string): number {
-  return Buffer.byteLength(text, 'utf8');
+  return new TextEncoder().encode(text).length;
 }
 
 /**
@@ -117,10 +117,11 @@ export function extractContinuedRisks(report: PrivateReportJsonV1): readonly str
   }
   for (const line of risksSection.markdown.split('\n')) {
     const trimmed = line.trim();
-    if (!trimmed.startsWith('-')) {
+    const bulletMatch = trimmed.match(/^([-+*])\s+(.+)$/);
+    if (!bulletMatch?.[2]) {
       continue;
     }
-    const bullet = trimmed.replace(/^-\s*/, '').trim();
+    const bullet = bulletMatch[2].trim();
     if (bullet) {
       values.push(bullet);
     }
