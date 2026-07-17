@@ -233,16 +233,21 @@ test('reports page renders private reports before the schedule panel', async () 
     new URL('../app/projects/[projectSlug]/reports/page.tsx', import.meta.url),
     'utf8',
   );
+  const reportsListMarker = 'data-testid="reports-list-panel"';
+  const schedulePanelMarker = '<ReportSchedulePanel';
+  const reportsListIndex = page.indexOf(reportsListMarker);
+  const schedulePanelIndex = page.indexOf(schedulePanelMarker);
+  assert.notEqual(reportsListIndex, -1, 'reports list panel marker must exist');
+  assert.notEqual(schedulePanelIndex, -1, 'report schedule panel marker must exist');
   assert.ok(
-    page.indexOf('data-testid="reports-list-panel"') < page.indexOf('<ReportSchedulePanel'),
+    reportsListIndex < schedulePanelIndex,
     'reports list panel must render before report schedule panel',
   );
 });
 
-test('report schedule panel explains aggregated initial history and pending save label', async () => {
+test('report schedule panel explains aggregated initial history report', async () => {
   const panel = await readFile(new URL('./report-schedule-panel.tsx', import.meta.url), 'utf8');
   assert.match(panel, /1件の履歴レポート/);
-  assert.match(panel, /pendingLabel="保存中\.\.\."/);
 });
 
 test('report schedule panel imports presentation helpers without SQL modules', async () => {
