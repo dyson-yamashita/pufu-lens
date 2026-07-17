@@ -33,6 +33,7 @@
 
 - ファイル検索は `rg` / `rg --files` を優先する。
 - 手動編集は `apply_patch` を使う。
+- 新規追加または契約を変更する公開 API、React component、hook、server action、route / use-case / repository entrypoint には、`.codex/rules/format-rule.md` に従って docstring / JSDoc を記載・更新する。
 - 認可、SQL row 取得、app/package 境界、server action の責務に触れる場合は、`.codex/rules/architecture-rule.md` との整合を確認する。
 - UI、画面遷移、レイアウト、コンポーネント方針を変更する場合は、`docs/designs/ui/ui-design.md` との整合を確認する。
 - Google Workspace データ、個人情報、OAuth token、secret を扱う変更では、収集範囲、PII マスク、ログ出力、コスト影響を確認する。
