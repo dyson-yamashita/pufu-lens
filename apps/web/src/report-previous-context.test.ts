@@ -97,6 +97,9 @@ const built = await buildPreviousReportProviderContext({
 
 assert.equal(built.previousReportId, 'previous-report-a');
 assert.equal(built.frequency, 'weekly');
+assert.ok(!('previousReportId' in built.payload));
+assert.ok(!built.serialized.includes('previous_report_id'));
+assert.ok(!built.serialized.includes('previous-report-a'));
 assert.equal(built.payload.sources[0]?.title, 'PR A');
 assert.equal(built.payload.sources[1]?.title, 'Issue B');
 assert.equal(built.payload.sources[0]?.docType, 'pull_request');
@@ -182,7 +185,6 @@ assert.equal(
   serializePreviousReportContext({
     continuedRisks: ['risk'],
     frequency: 'weekly',
-    previousReportId: 'previous-report-a',
     sections: [{ summary: 'section', title: 'Section' }],
     sources: [
       {
@@ -197,7 +199,6 @@ assert.equal(
   JSON.stringify({
     continued_risks: ['risk'],
     frequency: 'weekly',
-    previous_report_id: 'previous-report-a',
     sections: [{ summary: 'section', title: 'Section' }],
     sources: [
       {

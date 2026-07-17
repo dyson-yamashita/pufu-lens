@@ -104,8 +104,31 @@ export function createExtractiveReportProvider(): ReportGenerationProvider {
   };
 }
 
+export const GEMINI_COUNT_TOKENS_TIMEOUT_MS = 10_000;
+
+export function resolveGeminiCountTokensEndpoint(input: {
+  readonly countTokensEndpoint?: string;
+  readonly customGenerationEndpoint?: string;
+  readonly model: string;
+}): string {
+  if (input.countTokensEndpoint) {
+    return input.countTokensEndpoint;
+  }
+  if (input.customGenerationEndpoint) {
+    const converted = input.customGenerationEndpoint.replace(/:generateContent$/, ':countTokens');
+    return converted !== input.customGenerationEndpoint
+      ? converted
+      : input.customGenerationEndpoint;
+  }
+  return `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    input.model,
+  )}:countTokens`;
+}
+
 export function createGeminiReportProvider(input: {
   readonly apiKey: string;
+  readonly countTokensEndpoint?: string;
+  readonly countTokensTimeoutMs?: number;
   readonly endpoint?: string;
   readonly fetchImpl?: typeof fetch;
   readonly model: string;
@@ -117,17 +140,25 @@ export function createGeminiReportProvider(input: {
     throw new Error('GEMINI_CHAT_MODEL is required for Gemini report generation.');
   }
   const fetchImpl = input.fetchImpl ?? fetch;
+  const customGenerationEndpoint = input.endpoint;
   const endpoint =
-    input.endpoint ??
+    customGenerationEndpoint ??
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
       input.model,
     )}:generateContent`;
+  const resolvedCountTokensEndpoint = resolveGeminiCountTokensEndpoint({
+    countTokensEndpoint: input.countTokensEndpoint,
+    customGenerationEndpoint,
+    model: input.model,
+  });
   const countProviderTokens = async (text: string): Promise<number> =>
     countGeminiProviderTokens({
       apiKey: input.apiKey,
+      endpoint: resolvedCountTokensEndpoint,
       fetchImpl,
       model: input.model,
       text,
+      timeoutMs: input.countTokensTimeoutMs,
     });
   return {
     countTokens: countProviderTokens,
@@ -238,33 +269,48 @@ export function buildGeminiReportPrompt(input: {
 
 export async function countGeminiProviderTokens(input: {
   readonly apiKey: string;
+  readonly endpoint?: string;
   readonly fetchImpl?: typeof fetch;
   readonly model: string;
   readonly text: string;
+  readonly timeoutMs?: number;
 }): Promise<number> {
   const fetchImpl = input.fetchImpl ?? fetch;
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-    input.model,
-  )}:countTokens`;
-  const response = await fetchImpl(`${endpoint}?key=${encodeURIComponent(input.apiKey)}`, {
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: input.text }] }],
-    }),
-    headers: { 'content-type': 'application/json' },
-    method: 'POST',
-  });
-  if (!response.ok) {
-    throw new Error(`Gemini countTokens request failed: HTTP ${response.status}`);
+  const endpoint =
+    input.endpoint ??
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      input.model,
+    )}:countTokens`;
+  const timeoutMs = input.timeoutMs ?? GEMINI_COUNT_TOKENS_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetchImpl(`${endpoint}?key=${encodeURIComponent(input.apiKey)}`, {
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: input.text }] }],
+      }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Gemini countTokens request failed: HTTP ${response.status}`);
+    }
+    const body = (await response.json()) as { totalTokens?: number } | null;
+    if (!body || typeof body.totalTokens !== 'number') {
+      throw new Error('Gemini countTokens response did not include totalTokens.');
+    }
+    return body.totalTokens;
+  } finally {
+    clearTimeout(timer);
   }
-  const body = (await response.json()) as { totalTokens?: number } | null;
-  if (!body || typeof body.totalTokens !== 'number') {
-    throw new Error('Gemini countTokens response did not include totalTokens.');
-  }
-  return body.totalTokens;
 }
 
 export function createGeminiReportProviderWithExtractiveFallback(input: {
   readonly apiKey: string;
+  readonly countTokensEndpoint?: string;
+  readonly countTokensTimeoutMs?: number;
+  readonly endpoint?: string;
   readonly fetchImpl?: typeof fetch;
   readonly model: string;
   readonly onCountTokensFailure?: (message: string) => void;
@@ -273,6 +319,9 @@ export function createGeminiReportProviderWithExtractiveFallback(input: {
   const fallbackProvider = createExtractiveReportProvider();
   const geminiProvider = createGeminiReportProvider({
     apiKey: input.apiKey,
+    countTokensEndpoint: input.countTokensEndpoint,
+    countTokensTimeoutMs: input.countTokensTimeoutMs,
+    endpoint: input.endpoint,
     fetchImpl: input.fetchImpl,
     model: input.model,
   });

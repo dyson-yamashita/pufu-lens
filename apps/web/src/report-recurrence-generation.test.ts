@@ -20,6 +20,8 @@ import {
   createExtractiveReportProvider,
   createGeminiReportProvider,
   createGeminiReportProviderWithExtractiveFallback,
+  GEMINI_COUNT_TOKENS_TIMEOUT_MS,
+  resolveGeminiCountTokensEndpoint,
   resolveProviderCountTokens,
 } from './report-provider.ts';
 import { buildTrustedReportRecurrence } from './report-recurrence.ts';
@@ -247,6 +249,46 @@ await assert.rejects(
       projectId: 'project-a',
       repository,
       scheduleFrequency: 'monthly',
+      storage,
+    }),
+  PreviousScheduledReportNotFoundError,
+);
+
+const tamperedProjectStorageUri = 'sample-a/reports/private/tampered-project-report.json';
+await storage.put(
+  tamperedProjectStorageUri,
+  `${JSON.stringify({ ...previousReportJson, project_id: 'project-b' }, null, 2)}\n`,
+);
+const tamperedProjectRepository: ReportRepository = {
+  ...repository,
+  async readReportMetadata({ projectId, reportId }) {
+    if (projectId === 'project-a' && reportId === 'tampered-project-report') {
+      return {
+        createdAt: '2026-05-31T00:00:00.000Z',
+        generationKind: 'scheduled',
+        id: 'tampered-project-report',
+        isPublic: false,
+        period: { end: '2026-05-31', start: '2026-05-25' },
+        previousScheduledReportId: null,
+        scheduleFrequency: 'weekly',
+        schedulePeriodRunId: 'run-tampered',
+        schemaVersion: 'v1',
+        storageUri: tamperedProjectStorageUri,
+        summary: 'tampered',
+        title: 'tampered',
+      };
+    }
+    return repository.readReportMetadata({ projectId, reportId });
+  },
+};
+await assert.rejects(
+  () =>
+    loadTrustedPreviousScheduledReport({
+      newPeriod,
+      previousScheduledReportId: 'tampered-project-report',
+      projectId: 'project-a',
+      repository: tamperedProjectRepository,
+      scheduleFrequency: 'weekly',
       storage,
     }),
   PreviousScheduledReportNotFoundError,
@@ -549,6 +591,72 @@ await countGeminiProviderTokens({
 });
 assert.equal(countTokensCalls, 1);
 
+assert.equal(
+  resolveGeminiCountTokensEndpoint({
+    customGenerationEndpoint: 'https://proxy.example/v1beta/models/gemini-test:generateContent',
+    model: 'gemini-test',
+  }),
+  'https://proxy.example/v1beta/models/gemini-test:countTokens',
+);
+assert.equal(
+  resolveGeminiCountTokensEndpoint({
+    countTokensEndpoint: 'https://custom-count.example/tokens',
+    customGenerationEndpoint: 'https://proxy.example/v1beta/models/gemini-test:generateContent',
+    model: 'gemini-test',
+  }),
+  'https://custom-count.example/tokens',
+);
+assert.equal(
+  resolveGeminiCountTokensEndpoint({
+    customGenerationEndpoint: 'https://opaque.example/llm',
+    model: 'gemini-test',
+  }),
+  'https://opaque.example/llm',
+);
+assert.match(
+  resolveGeminiCountTokensEndpoint({ model: 'gemini-test' }),
+  /generativelanguage\.googleapis\.com.*countTokens$/,
+);
+
+const countTokensRequestUrls: string[] = [];
+const customEndpointProvider = createGeminiReportProvider({
+  apiKey: 'test-key',
+  endpoint: 'https://proxy.example/v1beta/models/gemini-test:generateContent',
+  fetchImpl: async (url) => {
+    countTokensRequestUrls.push(String(url));
+    return new Response(JSON.stringify({ totalTokens: 11 }), { status: 200 });
+  },
+  model: 'gemini-test',
+});
+assert.equal(await customEndpointProvider.countTokens?.('hello'), 11);
+assert.equal(countTokensRequestUrls.length, 1);
+assert.ok(
+  countTokensRequestUrls[0]?.includes(
+    'https://proxy.example/v1beta/models/gemini-test:countTokens',
+  ),
+);
+
+let abortObserved = false;
+await assert.rejects(
+  () =>
+    countGeminiProviderTokens({
+      apiKey: 'test-key',
+      fetchImpl: async (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            abortObserved = true;
+            reject(new DOMException('Aborted', 'AbortError'));
+          });
+        }),
+      model: 'gemini-test',
+      text: 'hello',
+      timeoutMs: 50,
+    }),
+  /Aborted|abort/i,
+);
+assert.equal(abortObserved, true);
+assert.equal(GEMINI_COUNT_TOKENS_TIMEOUT_MS, 10_000);
+
 let geminiGenerateCalls = 0;
 let geminiCountCalls = 0;
 const geminiProvider = createGeminiReportProvider({
@@ -627,15 +735,53 @@ assert.ok(providerCountCallsDuringGeneration <= PREVIOUS_REPORT_CONTEXT_TRIM_MAX
 assert.equal(await resolveProviderCountTokens(createExtractiveReportProvider())('abc'), 3);
 
 const countTokenWarnings: string[] = [];
+const generateFailures: string[] = [];
+let fallbackGenerateCalls = 0;
+let fallbackCountTokensCalls = 0;
 const fallbackProvider = createGeminiReportProviderWithExtractiveFallback({
   apiKey: 'test-key',
-  fetchImpl: async () => new Response('error', { status: 500 }),
+  fetchImpl: async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('countTokens')) {
+      fallbackCountTokensCalls += 1;
+    } else {
+      fallbackGenerateCalls += 1;
+    }
+    return new Response('error', { status: 500 });
+  },
   model: 'gemini-test',
   onCountTokensFailure: (message) => {
     countTokenWarnings.push(message);
   },
+  onGenerateFailure: (message) => {
+    generateFailures.push(message);
+  },
 });
 assert.equal(await fallbackProvider.countTokens?.('abc'), 3);
 assert.equal(countTokenWarnings.length, 1);
+assert.equal(fallbackCountTokensCalls, 1);
+
+const fallbackGenerated = await fallbackProvider.generate({
+  documents: [
+    {
+      canonicalUri: 'https://example.com/issues/42',
+      docType: 'issue',
+      documentId: 'doc-issue',
+      occurredAt: '2026-06-03T00:00:00.000Z',
+      summary: 'Login failure risk',
+      title: 'Issue #42 Login failure',
+    },
+  ],
+  period: newPeriod,
+  projectSlug: 'sample-a',
+});
+assert.equal(fallbackGenerateCalls, 1);
+assert.equal(generateFailures.length, 1);
+assert.match(generateFailures[0] ?? '', /HTTP 500/);
+assert.equal(
+  fallbackGenerated.title,
+  `プロジェクト状況レポート ${newPeriod.start} - ${newPeriod.end}`,
+);
+assert.ok(fallbackGenerated.sections.some((section) => section.id === 'activity'));
 
 console.log('report-recurrence-generation.test.ts: ok');

@@ -768,8 +768,8 @@ export const generateReportWorkflowInputSchema = z
     nowIso: z.string().datetime().optional(),
     period: z
       .object({
-        end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        end: z.iso.date(),
+        start: z.iso.date(),
       })
       .optional(),
     periodKind: z.literal('weekly').optional(),

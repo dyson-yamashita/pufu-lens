@@ -33,7 +33,6 @@ export interface PreviousReportContextSection {
 export interface PreviousReportContextPayload {
   readonly continuedRisks: readonly string[];
   readonly frequency: ScheduledReportFrequency;
-  readonly previousReportId: string;
   readonly sections: readonly PreviousReportContextSection[];
   readonly sources: readonly PreviousReportContextSource[];
   readonly summary: string;
@@ -62,7 +61,6 @@ export async function buildPreviousReportProviderContext(input: {
   const payload = buildInitialPreviousReportContextPayload({
     frequency: input.frequency,
     previousReport: input.previousReport,
-    previousReportId: input.previousReportId,
   });
   const countTokens = input.countTokens ?? (async (text) => countProviderTokensConservative(text));
   const { payload: trimmed } = await trimPreviousReportContextPayload(payload, countTokens);
@@ -86,7 +84,6 @@ export function serializePreviousReportContext(payload: PreviousReportContextPay
   return JSON.stringify({
     continued_risks: payload.continuedRisks,
     frequency: payload.frequency,
-    previous_report_id: payload.previousReportId,
     sections: payload.sections.map((section) => ({
       summary: section.summary,
       title: section.title,
@@ -127,7 +124,6 @@ export function extractContinuedRisks(report: PrivateReportJsonV1): readonly str
 function buildInitialPreviousReportContextPayload(input: {
   readonly frequency: ScheduledReportFrequency;
   readonly previousReport: PrivateReportJsonV1;
-  readonly previousReportId: string;
 }): PreviousReportContextPayload {
   return {
     continuedRisks: extractContinuedRisks(input.previousReport)
@@ -139,7 +135,6 @@ function buildInitialPreviousReportContextPayload(input: {
         ),
       ),
     frequency: input.frequency,
-    previousReportId: input.previousReportId,
     sections: input.previousReport.sections
       .slice(0, PREVIOUS_REPORT_SECTION_MAX_ITEMS)
       .map((section) => ({
@@ -286,7 +281,6 @@ function clonePayload(payload: PreviousReportContextPayload): PreviousReportCont
   return {
     continuedRisks: [...payload.continuedRisks],
     frequency: payload.frequency,
-    previousReportId: payload.previousReportId,
     sections: payload.sections.map((section) => ({ ...section })),
     sources: payload.sources.map((source) => ({ ...source })),
     summary: payload.summary,
