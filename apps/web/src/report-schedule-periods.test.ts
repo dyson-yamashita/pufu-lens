@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  enumerateBackfillScheduledReportPeriods,
   enumerateDueScheduledReportPeriods,
+  resolveInitialAggregateBackfillPeriod,
   resolveNextScheduledReportRunAt,
   resolveScheduledReportPeriod,
   shouldEnqueueInitialReportBackfill,
@@ -145,60 +145,41 @@ test('monthly and annual due enumeration advances canonical calendar slots', () 
   );
 });
 
-test('backfill enumeration starts at available data and excludes the active period', () => {
-  const first = enumerateBackfillScheduledReportPeriods({
-    asOf: '2026-07-16T03:00:00Z',
-    availableFrom: '2026-06-03',
-    frequency: 'weekly',
-    limit: 2,
-  });
-  assert.deepEqual(first, {
-    hasMore: true,
-    nextPeriodStart: '2026-06-15',
-    periods: [
-      { end: '2026-06-07', start: '2026-06-01' },
-      { end: '2026-06-14', start: '2026-06-08' },
-    ],
-  });
-  const remaining = enumerateBackfillScheduledReportPeriods({
-    asOf: '2026-07-16T03:00:00Z',
-    availableFrom: '2026-06-03',
-    frequency: 'weekly',
-    limit: 10,
-    periodStartCursor: first.nextPeriodStart ?? undefined,
-  });
-  assert.deepEqual(remaining.periods.at(-1), { end: '2026-07-12', start: '2026-07-06' });
-  assert.equal(
-    remaining.periods.some((period) => period.start === '2026-07-13'),
-    false,
+test('initial aggregate backfill spans completed history and excludes the active period', () => {
+  assert.deepEqual(
+    resolveInitialAggregateBackfillPeriod({
+      asOf: '2026-07-16T03:00:00Z',
+      availableFrom: '2026-06-03',
+      frequency: 'weekly',
+    }),
+    { end: '2026-07-12', start: '2026-06-01' },
   );
-  assert.equal(remaining.hasMore, false);
+  assert.equal(
+    resolveInitialAggregateBackfillPeriod({
+      asOf: '2026-07-16T03:00:00Z',
+      availableFrom: '2026-07-14',
+      frequency: 'weekly',
+    }),
+    null,
+  );
 });
 
-test('monthly and annual backfill handle leap years and completed periods only', () => {
+test('monthly and annual aggregate backfill handle leap years and completed periods only', () => {
   assert.deepEqual(
-    enumerateBackfillScheduledReportPeriods({
+    resolveInitialAggregateBackfillPeriod({
       asOf: '2024-03-15T01:00:00Z',
       availableFrom: '2024-01-20',
       frequency: 'monthly',
-      limit: 10,
-    }).periods,
-    [
-      { end: '2024-01-31', start: '2024-01-01' },
-      { end: '2024-02-29', start: '2024-02-01' },
-    ],
+    }),
+    { end: '2024-02-29', start: '2024-01-01' },
   );
   assert.deepEqual(
-    enumerateBackfillScheduledReportPeriods({
+    resolveInitialAggregateBackfillPeriod({
       asOf: '2026-07-16T01:00:00Z',
       availableFrom: '2024-08-01',
       frequency: 'annually',
-      limit: 10,
-    }).periods,
-    [
-      { end: '2024-12-31', start: '2024-01-01' },
-      { end: '2025-12-31', start: '2025-01-01' },
-    ],
+    }),
+    { end: '2025-12-31', start: '2024-01-01' },
   );
 });
 
@@ -309,17 +290,6 @@ test('instant strings require an explicit UTC offset or Z designator', () => {
 
 test('enumeration rejects non-canonical boundaries and unbounded limits', () => {
   assert.throws(() => resolveScheduledReportPeriod('2026-07-21T01:00:00Z', 'weekly'), /Monday/);
-  assert.throws(
-    () =>
-      enumerateBackfillScheduledReportPeriods({
-        asOf: '2026-07-16T01:00:00Z',
-        availableFrom: '2026-06-03',
-        frequency: 'weekly',
-        limit: 10,
-        periodStartCursor: '2026-06-16',
-      }),
-    /canonical/,
-  );
   assert.throws(
     () =>
       enumerateDueScheduledReportPeriods({

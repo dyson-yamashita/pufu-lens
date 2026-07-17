@@ -88,12 +88,11 @@ export {
 } from './report-repository.ts';
 export { PartialScheduleInputError } from './report-schedule-input.ts';
 export {
-  type BackfillScheduledReportPeriodEnumeration,
   type DueScheduledReportPeriod,
   type DueScheduledReportPeriodEnumeration,
-  enumerateBackfillScheduledReportPeriods,
   enumerateDueScheduledReportPeriods,
   MAX_REPORT_PERIOD_ENUMERATION,
+  resolveInitialAggregateBackfillPeriod,
   resolveNextScheduledReportRunAt,
   resolveScheduledReportPeriod,
   type ScheduledReportPeriod,

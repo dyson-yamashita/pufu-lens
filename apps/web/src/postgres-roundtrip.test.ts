@@ -4,7 +4,7 @@ import { createPostgresChatRepository } from './chat.ts';
 import { CUSTOM_REPORT_LAYOUT_SCHEMA_VERSION } from './custom-report-schema.ts';
 import { createPostgresReportRepository } from './report-repository.ts';
 import {
-  enumerateBackfillScheduledReportPeriods,
+  resolveInitialAggregateBackfillPeriod,
   resolveNextScheduledReportRunAt,
 } from './report-schedule-periods.ts';
 import {
@@ -295,13 +295,12 @@ async function assertReportScheduleSettingsRoundTrip() {
 
     const availableFrom = await readProjectReportAvailableFrom(sql, { projectId });
     assert.equal(availableFrom, '2026-06-15');
-    const expectedBackfill = enumerateBackfillScheduledReportPeriods({
+    const expectedBackfill = resolveInitialAggregateBackfillPeriod({
       asOf: settingsScheduleAsOf.toISOString(),
       availableFrom: availableFrom ?? '2026-06-15',
       frequency: 'weekly',
-      limit: 500,
     });
-    assert.equal(expectedBackfill.hasMore, false);
+    assert.ok(expectedBackfill);
 
     const backfillRuns = (
       await listReportSchedulePeriodRuns(sql, {
@@ -310,15 +309,10 @@ async function assertReportScheduleSettingsRoundTrip() {
         scheduleId: activated.id,
       })
     ).filter((run) => run.runKind === 'scheduled_backfill');
-    assert.equal(backfillRuns.length, expectedBackfill.periods.length);
-    assert.ok(backfillRuns.length > 0);
+    assert.equal(backfillRuns.length, 1);
     assert.deepEqual(
-      backfillRuns
-        .map((run) => ({ end: run.periodEnd, start: run.periodStart }))
-        .sort(comparePeriod),
-      expectedBackfill.periods
-        .map((period) => ({ end: period.end, start: period.start }))
-        .sort(comparePeriod),
+      { end: backfillRuns[0]?.periodEnd, start: backfillRuns[0]?.periodStart },
+      expectedBackfill,
     );
     for (const run of backfillRuns) {
       assert.equal(run.status, 'pending');
@@ -326,13 +320,13 @@ async function assertReportScheduleSettingsRoundTrip() {
       assert.equal(run.projectId, projectId);
     }
     const settingsView = await readProjectReportScheduleSettings(sql, { projectId });
-    assert.equal(settingsView.periodRunSummary.backfillRemaining, backfillRuns.length);
+    assert.equal(settingsView.periodRunSummary.backfillRemaining, 1);
     assert.ok(
       !backfillRuns.some((run) => run.periodStart === '2026-07-20'),
       'current in-progress weekly period must not be backfilled',
     );
 
-    const backfillCount = backfillRuns.length;
+    const backfillCount = 1;
     await sql`
       UPDATE public.project_report_schedules AS schedule
       SET
@@ -466,13 +460,6 @@ async function restoreProjectCreatedAt(
 async function cleanupReportScheduleSettingsFixture() {
   await sql`DELETE FROM public.report_schedule_period_runs WHERE project_id = ${projectId} OR id = ${legacyWeeklyBackfillPeriodRunId}`;
   await sql`DELETE FROM public.project_report_schedules WHERE project_id = ${projectId}`;
-}
-
-function comparePeriod(
-  left: { readonly end: string; readonly start: string },
-  right: { readonly end: string; readonly start: string },
-): number {
-  return left.start.localeCompare(right.start) || left.end.localeCompare(right.end);
 }
 
 async function assertReportScheduleRoundTrip() {

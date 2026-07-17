@@ -71,7 +71,7 @@ test('activation notes explain first activation and active-to-active changes', (
       frequency: 'weekly',
       previousFrequency: 'none',
     }) ?? '',
-    /backfill/,
+    /1件の履歴レポート/,
   );
   assert.match(
     describeReportScheduleActivation({
@@ -160,7 +160,9 @@ test('report schedule settings repository scopes reads and writes by project', a
   );
   assert.match(source, /'scheduled_backfill'/);
   assert.match(source, /shouldEnqueueInitialReportBackfill/);
-  assert.match(source, /enumerateBackfillScheduledReportPeriods/);
+  assert.match(source, /resolveInitialAggregateBackfillPeriod/);
+  assert.doesNotMatch(source, /enumerateBackfillScheduledReportPeriods/);
+  assert.doesNotMatch(source, /while \(hasMore\)/);
   assert.match(source, /run_kind = 'scheduled_backfill'/);
   assert.match(source, /status NOT IN \('succeeded', 'skipped'\)/);
   assert.match(source, /"backfillRemaining"/);
@@ -224,6 +226,23 @@ test('active dispatcher leases block schedule saves instead of being cleared', (
       ),
     ReportScheduleSaveBlockedError,
   );
+});
+
+test('reports page renders private reports before the schedule panel', async () => {
+  const page = await readFile(
+    new URL('../app/projects/[projectSlug]/reports/page.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.ok(
+    page.indexOf('data-testid="reports-list-panel"') < page.indexOf('<ReportSchedulePanel'),
+    'reports list panel must render before report schedule panel',
+  );
+});
+
+test('report schedule panel explains aggregated initial history and pending save label', async () => {
+  const panel = await readFile(new URL('./report-schedule-panel.tsx', import.meta.url), 'utf8');
+  assert.match(panel, /1件の履歴レポート/);
+  assert.match(panel, /pendingLabel="保存中\.\.\."/);
 });
 
 test('report schedule panel imports presentation helpers without SQL modules', async () => {

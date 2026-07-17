@@ -114,14 +114,6 @@ export default async function ReportsPage({
         title={`${project.name} Reports`}
         subtitle="生成済み private report の履歴、保存先、schema version を確認します。"
       />
-      {scheduleSettings ? (
-        <ReportSchedulePanel
-          canManage={Boolean(adminAccess)}
-          projectSlug={project.slug}
-          settings={scheduleSettings}
-          updateAction={updateProjectReportSchedule}
-        />
-      ) : null}
       <section className="panel report-list-panel" data-testid="reports-list-panel">
         <div className="panel-heading">
           <div>
@@ -137,6 +129,14 @@ export default async function ReportsPage({
         </div>
         <ReportsList projectSlug={project.slug} />
       </section>
+      {scheduleSettings ? (
+        <ReportSchedulePanel
+          canManage={Boolean(adminAccess)}
+          projectSlug={project.slug}
+          settings={scheduleSettings}
+          updateAction={updateProjectReportSchedule}
+        />
+      ) : null}
     </AppShell>
   );
 }

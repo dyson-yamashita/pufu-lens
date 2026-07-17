@@ -46,9 +46,8 @@ export function ReportSchedulePanel({
         data-testid="report-schedule-timezone-note"
       >
         定期実行は {settings.timezone} の {settings.runTime || DEFAULT_REPORT_SCHEDULE_RUN_TIME}{' '}
-        を基準にします。初回の有効化で同周期の定期レポートがまだない場合のみ、完了済み過去期間の
-        backfill を非同期で enqueue します。同じ周期の再保存や周期変更では即時 backfill
-        は行わず、次回 定期実行のみ更新します。
+        を基準にします。初回の有効化で同周期の定期レポートがまだない場合のみ、完了済み過去期間を1件の履歴レポートとして非同期で生成します。同じ周期の再保存や周期変更では即時の履歴生成は行わず、次回
+        定期実行のみ更新します。
       </p>
       {canManage ? (
         <ActionForm
@@ -74,6 +73,7 @@ export function ReportSchedulePanel({
           </label>
           <PendingSubmitButton
             className="primary-button"
+            pendingLabel="保存中..."
             testId="report-schedule-save-button"
             title="Save report schedule"
           >

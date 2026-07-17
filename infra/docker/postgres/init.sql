@@ -745,5 +745,6 @@ VALUES
   ('0009_normalize_jsonb_string_storage'),
   ('0010_source_version_model'),
   ('0011_data_source_schedules'),
-  ('0012_periodic_report_schedules')
+  ('0012_periodic_report_schedules'),
+  ('0013_consolidate_initial_report_backfill')
 ON CONFLICT (version) DO NOTHING;

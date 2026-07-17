@@ -7,6 +7,10 @@ const migrationPath = join(
   import.meta.dirname,
   '../infra/db/migrations/0012_periodic_report_schedules.sql',
 );
+const backfillMigrationPath = join(
+  import.meta.dirname,
+  '../infra/db/migrations/0013_consolidate_initial_report_backfill.sql',
+);
 const initPath = join(import.meta.dirname, '../infra/docker/postgres/init.sql');
 
 test('0012 creates tenant-scoped report schedules and period-run history', async () => {
@@ -75,4 +79,33 @@ test('0012 and fresh schema share periodic report constraints and migration vers
     assert.ok(init.includes(name), `${name} is missing from fresh schema`);
   }
   assert.match(init, /'0012_periodic_report_schedules'/);
+});
+
+test('0013 consolidates only untouched multi-row scheduled_backfill groups', async () => {
+  const migration = await readFile(backfillMigrationPath, 'utf8');
+
+  assert.match(migration, /0013_consolidate_initial_report_backfill/);
+  assert.match(
+    migration,
+    /LOCK TABLE public\.report_schedule_period_runs IN SHARE ROW EXCLUSIVE MODE/,
+  );
+  assert.match(migration, /run_kind = 'scheduled_backfill'/);
+  assert.match(migration, /HAVING count\(\*\) > 1/);
+  assert.match(migration, /period_run\.status = 'pending'/);
+  assert.match(migration, /period_run\.attempt_count = 0/);
+  assert.match(migration, /period_run\.next_attempt_at IS NULL/);
+  assert.match(migration, /period_run\.worker_token IS NULL/);
+  assert.match(migration, /period_run\.report_id IS NULL/);
+  assert.match(migration, /min\(period_run\.period_start\)/);
+  assert.match(migration, /max\(period_run\.period_end\)/);
+  assert.match(migration, /DELETE FROM public\.report_schedule_period_runs/);
+  assert.match(migration, /INSERT INTO public\.report_schedule_period_runs/);
+  assert.doesNotMatch(migration, /^\s*BEGIN\s*;/m);
+  assert.doesNotMatch(migration, /^\s*COMMIT\s*;/m);
+});
+
+test('0013 and fresh schema share migration version seed without schema drift', async () => {
+  const init = await readFile(initPath, 'utf8');
+
+  assert.match(init, /'0013_consolidate_initial_report_backfill'/);
 });
