@@ -3,7 +3,7 @@
 ## 定期実行（Cloud Scheduler）
 
 Internal Scheduler / Job API の共通契約は [API デザイン](05-api-design.md) も参照する。
-ローカル・本番の確認、障害・再試行、機密情報非露出の運用手順は [Source Sync Scheduling 運用手順](../../operations/source-sync-scheduling.md) にまとめる。
+ローカル・本番の確認、障害・再試行、機密情報非露出の運用手順は [Source Sync Scheduling 運用手順](../../operations/source-sync-scheduling.md) と [定期レポート Scheduling 運用手順](../../operations/report-scheduling.md) にまとめる。
 
 Cloud Scheduler は Cloud Run Job の `:run` API を直接叩かず、Mastra Server の内部管理 API を呼び出す。Mastra Server は受け取った JSON を検証し、Cloud Run Jobs API の overrides（環境変数または args）として各 Job に渡す。
 

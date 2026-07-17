@@ -50,6 +50,19 @@ const report = {
   title: 'プロジェクト状況レポート 2026-06-01 - 2026-06-07',
 };
 
+const scheduledReport = {
+  ...report,
+  recurrence: {
+    change_summary: '前回から仕様整理が進み、未解決の運用課題が継続しています。',
+    continued_items: ['公開範囲の確認を継続する'],
+    decrements: ['未整理の仕様項目が 2 件減少した'],
+    frequency: 'weekly',
+    increments: ['レポート UI の判断材料が追加された'],
+    previous_report_id: 'report-previous',
+  },
+  report_id: 'report-scheduled',
+};
+
 test('scenario: member opens private report detail from list and sees sections', async ({
   page,
 }) => {
@@ -59,13 +72,44 @@ test('scenario: member opens private report detail from list and sees sections',
         reports: [
           {
             createdAt: '2026-06-04T09:00:00.000Z',
+            generationKind: 'manual',
             id: 'report-a',
             isPublic: false,
             period: report.period,
             schemaVersion: 'v1',
+            scheduleFrequency: null,
+            schedulePeriodRunId: null,
             storageUri: 'file:///tmp/sample-a/reports/private/report-a.json',
             summary: report.summary,
             title: report.title,
+          },
+          {
+            createdAt: '2026-06-11T09:00:00.000Z',
+            generationKind: 'scheduled',
+            id: 'report-scheduled',
+            isPublic: false,
+            period: scheduledReport.period,
+            previousScheduledReportId: 'report-a',
+            schemaVersion: 'v1',
+            scheduleFrequency: 'weekly',
+            schedulePeriodRunId: 'run-scheduled',
+            storageUri: 'file:///tmp/sample-a/reports/private/report-scheduled.json',
+            summary: scheduledReport.summary,
+            title: scheduledReport.title,
+          },
+          {
+            createdAt: '2026-06-12T09:00:00.000Z',
+            generationKind: 'scheduled_backfill',
+            id: 'report-backfill',
+            isPublic: false,
+            period: scheduledReport.period,
+            previousScheduledReportId: null,
+            schemaVersion: 'v1',
+            scheduleFrequency: 'monthly',
+            schedulePeriodRunId: 'run-backfill',
+            storageUri: 'file:///tmp/sample-a/reports/private/report-backfill.json',
+            summary: scheduledReport.summary,
+            title: `${scheduledReport.title} backfill`,
           },
         ],
         status: 'ok',
@@ -86,11 +130,15 @@ test('scenario: member opens private report detail from list and sees sections',
   await expect(page.getByTestId('global-nav-reports')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('reports-generate-button')).toBeEnabled();
   await expect(page.getByTestId('reports-table')).toContainText(report.title);
-
-  await expect(page.getByRole('link', { name: report.title })).toHaveAttribute(
-    'href',
-    '/projects/sample-a/reports/report-a',
+  await expect(page.getByTestId('report-generation-report-a')).toHaveText('手動');
+  await expect(page.getByTestId('report-generation-report-scheduled')).toHaveText('定期（週次）');
+  await expect(page.getByTestId('report-generation-report-backfill')).toHaveText(
+    '定期 backfill（月次）',
   );
+
+  await expect(
+    page.getByTestId('report-row-report-a').getByRole('link', { name: report.title, exact: true }),
+  ).toHaveAttribute('href', '/projects/sample-a/reports/report-a');
   await page.goto('/projects/sample-a/reports/report-a');
   await expect(page.getByTestId('report-document')).toContainText(report.summary);
   await expect(page.getByTestId('pufu-report-score')).toContainText('プ譜エディターを試す人');
@@ -108,6 +156,7 @@ test('scenario: member opens private report detail from list and sees sections',
     'href',
     'https://example.com/spec',
   );
+  await expect(page.getByTestId('report-recurrence')).toHaveCount(0);
 });
 
 test('scenario: member scrolls private reports table on mobile with summary preview @mobile', async ({
@@ -123,10 +172,13 @@ test('scenario: member scrolls private reports table on mobile with summary prev
         reports: [
           {
             createdAt: '2026-06-04T09:00:00.000Z',
+            generationKind: 'manual',
             id: 'report-a',
             isPublic: false,
             period: report.period,
             schemaVersion: 'v1',
+            scheduleFrequency: null,
+            schedulePeriodRunId: null,
             storageUri: 'file:///tmp/sample-a/reports/private/report-a.json',
             summary: longSummary,
             title: report.title,
@@ -147,6 +199,40 @@ test('scenario: member scrolls private reports table on mobile with summary prev
   await expect(page.getByTestId('reports-table')).not.toContainText(longSummary);
   await expect(page.getByTestId('reports-generate-button')).toBeInViewport();
   await expect(tableFrame).toBeInViewport();
+});
+
+test('scenario: member reads scheduled report recurrence on mobile @mobile', async ({ page }) => {
+  await page.setViewportSize({ height: 900, width: 390 });
+  await page.route('**/api/projects/sample-a/reports/report-scheduled', async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({ report: scheduledReport, status: 'ok' }),
+      contentType: 'application/json',
+      status: 200,
+    });
+  });
+
+  await page.goto('/projects/sample-a/reports/report-scheduled');
+
+  const recurrence = page.getByTestId('report-recurrence');
+  await expect(recurrence).toBeVisible();
+  await expect(page.getByTestId('report-recurrence-frequency')).toHaveText('週次');
+  await expect(page.getByTestId('report-recurrence-summary')).toHaveText(
+    scheduledReport.recurrence.change_summary,
+  );
+  await expect(page.getByTestId('report-recurrence-increments')).toContainText(
+    scheduledReport.recurrence.increments[0],
+  );
+  await expect(page.getByTestId('report-recurrence-decrements')).toContainText(
+    scheduledReport.recurrence.decrements[0],
+  );
+  await expect(page.getByTestId('report-recurrence-continued_items')).toContainText(
+    scheduledReport.recurrence.continued_items[0],
+  );
+  await expect(recurrence).toBeInViewport();
+  await expect(recurrence.locator('.report-recurrence-groups')).toHaveCSS(
+    'grid-template-columns',
+    /^\d+(?:\.\d+)?px$/,
+  );
 });
 
 test('scenario: private report pufu score stays inside viewport when side menu is open', async ({
@@ -238,7 +324,7 @@ test('scenario: public user reads report with shared private rendering and no qu
 }) => {
   await page.route('**/api/public/projects/sample-a/reports/report-a*', async (route) => {
     await route.fulfill({
-      body: JSON.stringify({ report, status: 'ok' }),
+      body: JSON.stringify({ report: scheduledReport, status: 'ok' }),
       contentType: 'application/json',
       status: 200,
     });
@@ -249,6 +335,11 @@ test('scenario: public user reads report with shared private rendering and no qu
   await expect(page.getByTestId('global-nav-reports')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('heading', { name: 'Public Report' })).toBeVisible();
   await expect(page.getByTestId('public-report-document')).toContainText(report.summary);
+  await expect(page.getByTestId('public-report-recurrence')).toBeVisible();
+  await expect(page.getByTestId('public-report-recurrence-frequency')).toHaveText('週次');
+  await expect(page.getByTestId('public-report-recurrence-summary')).toHaveText(
+    scheduledReport.recurrence.change_summary,
+  );
   await expect(page.getByTestId('pufu-report-viewer')).toBeVisible();
   await expect(page.getByTestId('pufu-report-score')).toBeVisible();
   await expect(page.getByTestId('public-report-section-progress')).toContainText('判断材料');

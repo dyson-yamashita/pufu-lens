@@ -68,7 +68,7 @@ Private report JSON スキーマ（`schema_version: "v1"`）：
 }
 ```
 
-`recurrence` は同じ project・frequency の前回 `scheduled` / `scheduled_backfill` report を参照した生成だけが持つ optional field である。`frequency` と `previous_report_id` は provider 応答を信用せず、project-scoped metadata の検証結果から組み立てる。差分本文は normalize / redaction 後に `change_summary` を最大 2,000 code point、各 list を最大 10 件・各 400 code point に制限して保存する。手動生成では `recurrence` を付けない。現時点では public artifact へこの field を転記せず、一覧・詳細 UI での表示は定期レポート計画の後続 Step とする。
+`recurrence` は同じ project・frequency の前回 `scheduled` / `scheduled_backfill` report を参照した生成だけが持つ optional field である。`frequency` と `previous_report_id` は provider 応答を信用せず、project-scoped metadata の検証結果から組み立てる。差分本文は normalize / redaction 後に `change_summary` を最大 2,000 code point、各 list を最大 10 件・各 400 code point に制限して保存する。手動生成では `recurrence` を付けない。private report 一覧は metadata から手動 / 定期 / backfill と周期を表示し、private / public report 詳細は取得済み JSON に `recurrence` がある場合だけ共通の差分パネルを描画する。public artifact にはこの field を転記しない。
 
 プ譜ビューは `sections.markdown` の本文をそのまま流し込まず、private report に保存した `pufu_sources`（生成時に参照した data source の title / snippet / doc_type / canonical_uri）を第一入力にして ProjectScoreModel を組み立てる。過去 artifact など `pufu_sources` がない private report では、`sections[].sources` または activity section の source 行を後方互換の入力として扱う。public report でも同じ private report JSON を描画するため、プ譜表示結果は member 向け report と一致する。
 

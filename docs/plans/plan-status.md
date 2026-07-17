@@ -31,7 +31,7 @@
 | `docs/plans/012-public-private-result-parity/overview.md`  | `completed`  | 2026-07-04 | Issue #425 で追加。Step 1 として public chat の Mastra request context を private chat と揃えた。Issue #429 で Step 2 の public chat source redaction 維持と private tool call summary の公開方針を実装。Step 3 で現行 public chat の正規経路と legacy public-report-chat-agent の互換・検証用責務を整理。Issue #435 で Step 4 の report detail / PDF parity regression を追加し、plan 全体を完了。 |
 
 | `docs/plans/013-incremental-source-sync-scheduling/overview.md` | `completed` | 2026-07-11 | Issue #512 / PR #513 で Step 1、Issue #516 / PR #517 で Step 2、Issue #518 / PR #519 で Step 3、Issue #520 / PR #521 で Step 4 を完了。Issue #514 / PR #515 で local one-shot dispatcher の実行要件を追加。Issue #522 で Step 5 の E2E、運用検証、設計書・runbook 整備を完了。 |
-| `docs/plans/014-periodic-report-scheduling/overview.md` | `active` | 2026-07-17 | Issue #579 / PR #580 で Step 1、Issue #581 / PR #582 で Step 2、Issue #583 / PR #584 で Step 3、Issue #585 / PR #586 で Step 4、Issue #587 で Step 5 の周期設定・実行状態 UI を完了。Step 6 は planned。 |
+| `docs/plans/014-periodic-report-scheduling/overview.md` | `completed` | 2026-07-17 | Issue #579 / PR #580 で Step 1、Issue #581 / PR #582 で Step 2、Issue #583 / PR #584 で Step 3、Issue #585 / PR #586 で Step 4、Issue #587 / PR #588 で Step 5、Issue #592 で Step 6 の一覧・差分 UI、E2E、運用手順を完了。 |
 
 ## 運用ルール
 
