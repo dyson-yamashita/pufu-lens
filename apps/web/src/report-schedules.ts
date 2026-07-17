@@ -1,17 +1,22 @@
 import type postgres from 'postgres';
+import {
+  REPORT_SCHEDULE_TIMEZONE,
+  type ReportScheduleFrequency,
+  type ReportSchedulePeriodRun,
+  type ReportScheduleRunKind,
+  type ReportScheduleRunStatus,
+  type ScheduledReportFrequency,
+} from './report-schedule-contract.ts';
 
-export const REPORT_SCHEDULE_TIMEZONE = 'Asia/Tokyo';
-
-export type ReportScheduleFrequency = 'annually' | 'monthly' | 'none' | 'weekly';
-export type ScheduledReportFrequency = Exclude<ReportScheduleFrequency, 'none'>;
-export type ReportScheduleRunKind = 'scheduled' | 'scheduled_backfill';
-export type ReportScheduleRunStatus =
-  | 'pending'
-  | 'retry_exhausted'
-  | 'retry_wait'
-  | 'running'
-  | 'skipped'
-  | 'succeeded';
+export {
+  DEFAULT_REPORT_SCHEDULE_RUN_TIME,
+  REPORT_SCHEDULE_TIMEZONE,
+  type ReportScheduleFrequency,
+  type ReportSchedulePeriodRun,
+  type ReportScheduleRunKind,
+  type ReportScheduleRunStatus,
+  type ScheduledReportFrequency,
+} from './report-schedule-contract.ts';
 
 export interface ProjectReportSchedule {
   readonly createdAt: string;
@@ -30,29 +35,6 @@ export interface ProjectReportSchedule {
   readonly timezone: typeof REPORT_SCHEDULE_TIMEZONE;
   readonly updatedAt: string;
   readonly updatedBy: string | null;
-  readonly workerToken: string | null;
-}
-
-export interface ReportSchedulePeriodRun {
-  readonly attemptCount: number;
-  readonly completedAt: string | null;
-  readonly createdAt: string;
-  readonly frequency: ScheduledReportFrequency;
-  readonly id: string;
-  readonly lastError: string | null;
-  readonly leaseExpiresAt: string | null;
-  readonly nextAttemptAt: string | null;
-  readonly notificationSentAt: string | null;
-  readonly periodEnd: string;
-  readonly periodStart: string;
-  readonly projectId: string;
-  readonly reportId: string | null;
-  readonly runKind: ReportScheduleRunKind;
-  readonly scheduleId: string;
-  readonly skipReason: string | null;
-  readonly startedAt: string | null;
-  readonly status: ReportScheduleRunStatus;
-  readonly updatedAt: string;
   readonly workerToken: string | null;
 }
 

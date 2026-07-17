@@ -13,6 +13,8 @@ GitHub / Drive / Gmail の data source は作成 transaction 内で毎日 10:00 
 
 定期 report schedule も project ごとの DB row を正とし、Cloud Scheduler resource を project ごとに作らない。`weekly` / `monthly` / `annually` の次回 slot は 10:00 `Asia/Tokyo` の calendar 境界から UTC instant を計算する。停止後の catch-up は保存済み `next_run_at` から古い slot 順に bounded に列挙し、初回 backfill は完了済み period だけを continuation cursor 付きで列挙する。`scripts/report-schedule-dispatcher.ts` は due slot の materialize、最古の未完了 period run の claim、report 生成、lease / heartbeat、15 分・1 時間・6 時間の retry を one-shot で実行する。`scripts/workflow-job.ts` は `report-schedule-dispatcher` を受け付ける。
 
+Web のレポート一覧では project admin が `none` / `weekly` / `monthly` / `annually` を保存し、一般 member は同じ設定と実行状態を読み取り専用で確認する。変更 transaction は project row を先に lock し、schedule row が未作成の場合を含めて同時保存を直列化する。dispatcher の非期限切れ lease がある間は設定変更を拒否し、materialize 中の worker が新しい `next_run_at` を古い slot で上書きしないようにする。`none` は `next_run_at = NULL`、有効周期は保存時点から次の calendar slot を再計算する。
+
 PostgreSQL VM は常時稼働させる。DB 依存の `curate-workflow`、`ingest-workflow`、`generate-report`、`source-sync-dispatcher`、`report-schedule-dispatcher` は時刻による DB 起動制御を前提にせず、各 schedule の due 判定と既存の lease / retry 契約に従って実行する。
 
 入力受け渡しの契約：

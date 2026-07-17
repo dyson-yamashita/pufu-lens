@@ -1,20 +1,21 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { generatePrivateReport } from '../../../../src/admin-actions';
+import { generatePrivateReport, updateProjectReportSchedule } from '../../../../src/admin-actions';
 import {
   getAdminProject,
   getProjectMembership,
   getVisiblePublicProject,
 } from '../../../../src/admin-db';
+import { resolveReportSchedulePageAccess } from '../../../../src/admin-report-schedule-runtime';
 import { getOptionalAdminSql } from '../../../../src/admin-sql';
 import { AuthRequiredError, requireSessionUserId } from '../../../../src/auth-session';
-import { lookupProjectAdminAccess } from '../../../../src/authz';
 import {
   createPostgresReportRepository,
   reportNowFromEnv,
   resolveReportPeriod,
 } from '../../../../src/report';
 import { ReportGenerateForm, ReportsList } from '../../../../src/report-client';
+import { ReportSchedulePanel } from '../../../../src/report-schedule-panel';
 import { formatReportSummaryPreview } from '../../../../src/report-summary';
 import { AppShell, PageHeader } from '../../../../src/ui';
 
@@ -97,8 +98,9 @@ export default async function ReportsPage({
 
   const defaultPeriod = resolveReportPeriod(reportNowFromEnv(process.env) ?? new Date(), 'weekly');
   const sql = getOptionalAdminSql();
-  const adminAccess =
-    sql && userId ? await lookupProjectAdminAccess(sql, { projectSlug, userId }) : undefined;
+  const { adminAccess, scheduleSettings } = sql
+    ? await resolveReportSchedulePageAccess(sql, { projectSlug, userId })
+    : { adminAccess: undefined, scheduleSettings: null };
   const customTemplates =
     sql && adminAccess
       ? ((await createPostgresReportRepository(sql).listActiveCustomReportTemplates?.({
@@ -112,6 +114,14 @@ export default async function ReportsPage({
         title={`${project.name} Reports`}
         subtitle="生成済み private report の履歴、保存先、schema version を確認します。"
       />
+      {scheduleSettings ? (
+        <ReportSchedulePanel
+          canManage={Boolean(adminAccess)}
+          projectSlug={project.slug}
+          settings={scheduleSettings}
+          updateAction={updateProjectReportSchedule}
+        />
+      ) : null}
       <section className="panel report-list-panel" data-testid="reports-list-panel">
         <div className="panel-heading">
           <div>
