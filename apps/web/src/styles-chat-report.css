@@ -624,6 +624,19 @@
   gap: 16px;
 }
 
+.report-generation-badge {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+
 .report-schedule-panel {
   display: grid;
   gap: 16px;
@@ -673,7 +686,8 @@
 }
 
 .report-document-header,
-.report-section {
+.report-section,
+.report-recurrence-panel {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -696,6 +710,52 @@
 .report-section {
   display: grid;
   gap: 14px;
+}
+
+.report-recurrence-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.report-recurrence-panel :is(h3, h4, p, ul) {
+  margin: 0;
+}
+
+.report-recurrence-heading {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.report-recurrence-heading > div {
+  display: grid;
+  gap: 6px;
+}
+
+.report-recurrence-groups {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.report-recurrence-groups section {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.report-recurrence-groups h4 {
+  font-size: 14px;
+}
+
+.report-recurrence-groups ul {
+  overflow-wrap: anywhere;
+  padding-left: 20px;
 }
 
 .pufu-report-panel {
@@ -727,6 +787,15 @@
 }
 
 @media (max-width: 640px) {
+  .report-recurrence-heading {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .report-recurrence-groups {
+    grid-template-columns: 1fr;
+  }
+
   .pufu-report-panel {
     padding: 16px;
   }

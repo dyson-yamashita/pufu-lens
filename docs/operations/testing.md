@@ -9,7 +9,7 @@
 
 DB 接続を伴う migration / schema 検証は CI の `db-check` job で `pnpm db:migrate --check` と `pnpm db:schema-drift` として分離する。`scripts:test` には実 DB 接続を追加しない。
 
-Source sync の差分取り込みと定期実行は、collector、chunk置換、dispatcher、Mastra内部APIの決定的なunit / integration testを組み合わせて確認する。実providerや本番credentialをテストから呼ばない。ローカル・stagingの運用確認と障害時の判断は [Source Sync Scheduling 運用手順](source-sync-scheduling.md) に従う。
+Source sync の差分取り込みと定期実行、および定期レポート生成は、collector、chunk置換、dispatcher、Mastra内部API、report UI の決定的なunit / integration / E2E testを組み合わせて確認する。実providerや本番credentialをテストから呼ばない。ローカル・stagingの運用確認と障害時の判断は [Source Sync Scheduling 運用手順](source-sync-scheduling.md) と [定期レポート Scheduling 運用手順](report-scheduling.md) に従う。
 
 ## Turbo cache
 

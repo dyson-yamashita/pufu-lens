@@ -7,6 +7,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { CustomReportLayoutRenderer, StandardReportSections } from './custom-report-renderer';
 import { ActionForm, PendingSubmitButton } from './form-buttons';
 import type { PrivateReportJsonV1, ReportListItem, ReportPeriod } from './report';
+import { reportGenerationLabel } from './report-generation-presentation';
+import { ReportRecurrencePanel } from './report-recurrence-panel';
 import { formatReportSummaryPreview } from './report-summary';
 
 type ReportApiError = {
@@ -99,6 +101,11 @@ export function ReportGenerateForm({
   );
 }
 
+/**
+ * Lists the private reports available to a project member.
+ *
+ * @param projectSlug - The project identifier used to load and link reports
+ */
 export function ReportsList({ projectSlug }: { readonly projectSlug: string }) {
   const abortControllerRef = useRef<AbortController | undefined>(undefined);
   const fetchIdRef = useRef(0);
@@ -185,6 +192,7 @@ export function ReportsList({ projectSlug }: { readonly projectSlug: string }) {
         <thead>
           <tr>
             <th>Title</th>
+            <th>Generation</th>
             <th>Period</th>
             <th>Schema</th>
             <th>Created</th>
@@ -198,6 +206,11 @@ export function ReportsList({ projectSlug }: { readonly projectSlug: string }) {
                 <small className="block-muted">
                   {formatReportSummaryPreview(report.summary ?? '')}
                 </small>
+              </td>
+              <td data-testid={`report-generation-${report.id}`}>
+                <span className="report-generation-badge">
+                  {reportGenerationLabel(report.generationKind, report.scheduleFrequency)}
+                </span>
               </td>
               <td className="mono">
                 {report.period.start} / {report.period.end}
@@ -355,6 +368,7 @@ export function ReportDocument({
           </p>
         ) : null}
       </header>
+      {report.recurrence ? <ReportRecurrencePanel recurrence={report.recurrence} /> : null}
       {report.custom_layout ? (
         <CustomReportLayoutRenderer report={report} snapshot={report.custom_layout} />
       ) : (
@@ -498,6 +512,9 @@ export function PublicReportDocument({
           </p>
         ) : null}
       </header>
+      {report.recurrence ? (
+        <ReportRecurrencePanel publicView recurrence={report.recurrence} />
+      ) : null}
       {report.custom_layout ? (
         <CustomReportLayoutRenderer report={report} snapshot={report.custom_layout} />
       ) : (

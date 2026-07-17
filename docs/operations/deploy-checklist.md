@@ -166,3 +166,4 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 - `infra:check` は GCP identifier と Secret Manager の secret 名だけを検査し、secret の実値は出力しない。
 - scheduler OIDC service accountがMastra Cloud Run service resourceの`roles/run.invoker`、Mastra runtime service accountがdispatcher Job resourceの`run.jobs.run` / `run.jobs.runWithOverrides`（`roles/run.jobsExecutorWithOverrides`または同等custom role）を持つことを確認する。Deploy Cloud Build SAの`iam.serviceAccounts.actAs`だけではruntime呼び出し権限にならない。
 - ローカルではローカル専用DB/Storage/credentialsを設定し、source sync は `pnpm schedule:dispatch --once`、定期 report は `pnpm report-schedule:dispatch --once` を明示実行する。`pnpm dev`や`docker compose up`からは自動起動しない。
+- 定期 report dispatcher の状態確認、retry / lease / skipped の切り分けは [定期レポート Scheduling 運用手順](report-scheduling.md) に従う。
