@@ -19,21 +19,25 @@ export async function publishGeneratedPublicReport(input: {
   readonly publishedAt: string;
   readonly report: PrivateReportJsonV1;
   readonly repository: ReportRepository;
+  readonly signal?: AbortSignal;
   readonly storage: ObjectStorage;
 }): Promise<{
   readonly manifest: PublicReportManifestV1;
   readonly publicReport: PublicReportJsonV1;
 }> {
+  throwIfPublicationAborted(input.signal);
   await writePublicProjectManifest({
     projectSlug: input.project.slug,
     publishedAt: input.project.visibility === 'public' ? input.publishedAt : null,
     storage: input.storage,
     visibility: input.project.visibility,
   });
+  throwIfPublicationAborted(input.signal);
   const publicReport = buildPublicReport(input.report, input.publishedAt);
   const contextBundle = buildPublicContextBundle(publicReport);
   const artifactVersion = buildArtifactVersion(publicReport, input.publishedAt);
   const baseUri = `${input.project.slug}/reports/public/${input.report.report_id}/${artifactVersion}`;
+  throwIfPublicationAborted(input.signal);
   const reportPut = await input.storage.put(
     `${baseUri}/report.json`,
     `${JSON.stringify(publicReport, null, 2)}\n`,
@@ -42,6 +46,7 @@ export async function publishGeneratedPublicReport(input: {
       contentType: 'application/json; charset=utf-8',
     },
   );
+  throwIfPublicationAborted(input.signal);
   const contextPut = await input.storage.put(
     `${baseUri}/context-bundle.json`,
     `${JSON.stringify(contextBundle, null, 2)}\n`,
@@ -50,6 +55,7 @@ export async function publishGeneratedPublicReport(input: {
       contentType: 'application/json; charset=utf-8',
     },
   );
+  throwIfPublicationAborted(input.signal);
   const manifest: PublicReportManifestV1 = {
     artifact_version: artifactVersion,
     etag: digestJson(publicReport),
@@ -63,6 +69,7 @@ export async function publishGeneratedPublicReport(input: {
   };
   validatePublicReportJson(publicReport);
   validatePublicReportManifest(manifest, input.project.slug, input.report.report_id);
+  throwIfPublicationAborted(input.signal);
   await input.storage.put(
     publicReportManifestPath(input.project.slug, input.report.report_id),
     `${JSON.stringify(manifest, null, 2)}\n`,
@@ -71,10 +78,18 @@ export async function publishGeneratedPublicReport(input: {
       contentType: 'application/json; charset=utf-8',
     },
   );
+  throwIfPublicationAborted(input.signal);
   await input.repository.setReportPublicState?.({
     isPublic: true,
     projectId: input.project.id,
     reportId: input.report.report_id,
   });
+  throwIfPublicationAborted(input.signal);
   return { manifest, publicReport };
+}
+
+function throwIfPublicationAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw new Error('report generation aborted');
+  }
 }

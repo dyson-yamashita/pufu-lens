@@ -6,6 +6,7 @@ const WORKFLOW_IDS = [
   'curate-workflow',
   'generate-report',
   'ingest-workflow',
+  'report-schedule-dispatcher',
   'source-sync-dispatcher',
 ] as const;
 const SOURCE_TYPES = ['drive', 'github', 'gmail', 'web'] as const;
@@ -61,6 +62,13 @@ function buildJobPlan(workflowId: WorkflowId, input: WorkflowInput): JobPlan {
   if (workflowId === 'source-sync-dispatcher') {
     return {
       args: [join(repoRoot, 'scripts/source-sync-dispatcher.ts'), '--once'],
+      input,
+      workflowId,
+    };
+  }
+  if (workflowId === 'report-schedule-dispatcher') {
+    return {
+      args: [join(repoRoot, 'scripts/report-schedule-dispatcher.ts'), '--once'],
       input,
       workflowId,
     };

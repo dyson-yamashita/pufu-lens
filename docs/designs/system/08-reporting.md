@@ -236,7 +236,7 @@ const generateReportWorkflow = createWorkflow({
 
 定期レポートの calendar 計算は `Asia/Tokyo` の wall clock を正とする。`weekly` は月曜、`monthly` は月初、`annually` は1月1日の次回 slot を UTC instant として保存し、通常対象は永続化済み `next_run_at` から古い順に bounded に列挙する。backfill は利用可能データ開始日を含む period から開始し、現在進行中 period を除外して continuation cursor 付きで bounded に列挙する。前回 report は同じ project・frequency かつ対象 period より前に完了した `scheduled` / `scheduled_backfill` だけを選び、手動 report、異周期、project 越境 report は除外する。最古未完了 period run は `succeeded` / `skipped` 以外を period start 昇順で解決し、後続 period を先に処理しない。
 
-差分生成 workflow は `previousScheduledReportId` と `scheduleFrequency` を両方指定するか両方省略する。指定時は project-scoped metadata、生成種別、frequency、前後 period、private JSON の report / project / period 一致を再検証してから前回 context を作る。context は summary、継続課題、section 要約、主要 source だけを redaction 済みで含め、最大 16,000 code point かつ 6,000 provider token に制限する。Gemini は `countTokens` を使用し、利用不能時と extractive provider は UTF-8 byte 数を token 数とみなす安全側の fallback を使う。全体超過時は source、section、継続課題、summary の順に低優先データを決定的に縮小し、最終予算を満たさない payload は provider へ送らない。dispatcher と UI は後続 Step で追加する。
+差分生成 workflow は `previousScheduledReportId` と `scheduleFrequency` を両方指定するか両方省略する。指定時は project-scoped metadata、生成種別、frequency、前後 period、private JSON の report / project / period 一致を再検証してから前回 context を作る。context は summary、継続課題、section 要約、主要 source だけを redaction 済みで含め、最大 16,000 code point かつ 6,000 provider token に制限する。Gemini は `countTokens` を使用し、利用不能時と extractive provider は UTF-8 byte 数を token 数とみなす安全側の fallback を使う。全体超過時は source、section、継続課題、summary の順に低優先データを決定的に縮小し、最終予算を満たさない payload は provider へ送らない。dispatcher は実装済みで、周期設定と実行状態の UI は後続 Step で追加する。
 
 Web は以下のエンドポイントで JSON を取得する：
 

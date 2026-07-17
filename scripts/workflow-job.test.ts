@@ -83,3 +83,17 @@ test('source-sync-dispatcher job plan does not require a project input', async (
   assert.ok(planned?.argv?.some((value) => value.endsWith('source-sync-dispatcher.ts')));
   assert.ok(planned?.argv?.includes('--once'));
 });
+
+test('report-schedule-dispatcher job plan does not require a project input', async () => {
+  const result = await runWorkflowJob({
+    DRY_RUN: 'true',
+    WORKFLOW_ID: 'report-schedule-dispatcher',
+    WORKFLOW_INPUT_JSON: '{}',
+  });
+  assert.equal(result.exitCode, 0);
+  const planned = result.events.find((event) => event.event === 'job_planned') as
+    | { argv?: string[] }
+    | undefined;
+  assert.ok(planned?.argv?.some((value) => value.endsWith('report-schedule-dispatcher.ts')));
+  assert.ok(planned?.argv?.includes('--once'));
+});

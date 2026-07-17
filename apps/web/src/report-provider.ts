@@ -24,6 +24,7 @@ export interface ReportGenerationProvider {
     readonly period: ReportPeriod;
     readonly previousReportContext?: PreviousReportProviderContext;
     readonly projectSlug: string;
+    readonly signal?: AbortSignal;
     readonly totalDocumentCount?: number;
   }): Promise<GeneratedReportContent>;
 }
@@ -168,6 +169,7 @@ export function createGeminiReportProvider(input: {
       period,
       previousReportContext,
       projectSlug,
+      signal,
       totalDocumentCount,
     }) {
       const response = await fetchImpl(`${endpoint}?key=${encodeURIComponent(input.apiKey)}`, {
@@ -197,6 +199,7 @@ export function createGeminiReportProvider(input: {
         }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
+        ...(signal ? { signal } : {}),
       });
       if (!response.ok) {
         throw new Error(`Gemini report request failed: HTTP ${response.status}`);

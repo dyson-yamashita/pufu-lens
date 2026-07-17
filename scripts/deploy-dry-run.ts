@@ -26,6 +26,10 @@ const samples = [
     input: {},
     workflowId: 'source-sync-dispatcher',
   },
+  {
+    input: {},
+    workflowId: 'report-schedule-dispatcher',
+  },
 ] as const;
 
 async function main(): Promise<void> {

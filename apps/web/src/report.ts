@@ -68,9 +68,11 @@ export {
 } from './report-public-artifacts.ts';
 export { buildTrustedReportRecurrence, hasProviderRecurrenceDelta } from './report-recurrence.ts';
 export {
+  type ConflictingScheduledReportRow,
   createPostgresReportRepository,
   isReportGenerationKind,
   type ProjectLookupResult,
+  parseConflictingScheduledReportRow,
   parseReportDocumentRow,
   parseReportMetadataRow,
   parseReportProjectLookupRow,
@@ -79,6 +81,7 @@ export {
   type ReportDocumentRecord,
   type ReportGenerationKind,
   type ReportGenerationMetadata,
+  type ReportInsertResult,
   type ReportListItem,
   type ReportRepository,
   type ReportTemplateRunInsert,
