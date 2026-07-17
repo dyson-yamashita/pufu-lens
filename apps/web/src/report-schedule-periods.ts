@@ -18,10 +18,36 @@ export interface DueScheduledReportPeriodEnumeration {
   readonly periods: readonly DueScheduledReportPeriod[];
 }
 
-export interface BackfillScheduledReportPeriodEnumeration {
-  readonly hasMore: boolean;
-  readonly nextPeriodStart: string | null;
-  readonly periods: readonly ScheduledReportPeriod[];
+/**
+ * Resolves the single aggregated initial backfill period for first schedule activation.
+ *
+ * Returns one period from the oldest available canonical period start through the day
+ * before the current in-progress period. When available data exists only inside the
+ * current period, there is no completed history to backfill.
+ *
+ * @param input - The reference time, data availability date, and schedule frequency.
+ * @returns The aggregated historical period, or `null` when no completed periods exist.
+ */
+export function resolveInitialAggregateBackfillPeriod(input: {
+  readonly asOf: Date | string;
+  readonly availableFrom: string;
+  readonly frequency: ScheduledReportFrequency;
+}): ScheduledReportPeriod | null {
+  const firstPeriodStart = periodContainingDate(
+    requireDate(input.availableFrom, 'availableFrom'),
+    input.frequency,
+  ).start;
+  const currentPeriodStart = periodContainingDate(
+    formatLocalDate(tokyoLocalDateTime(requireInstant(input.asOf, 'asOf'))),
+    input.frequency,
+  ).start;
+  if (firstPeriodStart >= currentPeriodStart) {
+    return null;
+  }
+  const lastCompletedPeriodEnd = formatLocalDate(
+    addLocalDays(localDateFromString(currentPeriodStart), -1),
+  );
+  return { end: lastCompletedPeriodEnd, start: firstPeriodStart };
 }
 
 export function resolveScheduledReportPeriod(
@@ -111,43 +137,6 @@ export function enumerateDueScheduledReportPeriods(input: {
   };
 }
 
-export function enumerateBackfillScheduledReportPeriods(input: {
-  readonly asOf: Date | string;
-  readonly availableFrom: string;
-  readonly frequency: ScheduledReportFrequency;
-  readonly limit: number;
-  readonly periodStartCursor?: string;
-}): BackfillScheduledReportPeriodEnumeration {
-  const limit = requireEnumerationLimit(input.limit);
-  const firstPeriodStart = periodContainingDate(
-    requireDate(input.availableFrom, 'availableFrom'),
-    input.frequency,
-  ).start;
-  const currentPeriodStart = periodContainingDate(
-    formatLocalDate(tokyoLocalDateTime(requireInstant(input.asOf, 'asOf'))),
-    input.frequency,
-  ).start;
-  let periodStart = input.periodStartCursor
-    ? requireCanonicalPeriodStart(input.periodStartCursor, input.frequency)
-    : firstPeriodStart;
-  if (periodStart < firstPeriodStart) {
-    throw new Error('periodStartCursor cannot precede the first backfill period.');
-  }
-
-  const periods: ScheduledReportPeriod[] = [];
-  while (periodStart < currentPeriodStart && periods.length < limit) {
-    const period = periodStartingAt(periodStart, input.frequency);
-    periods.push(period);
-    periodStart = nextPeriodStart(periodStart, input.frequency);
-  }
-  const hasMore = periodStart < currentPeriodStart;
-  return {
-    hasMore,
-    nextPeriodStart: hasMore ? periodStart : null,
-    periods,
-  };
-}
-
 export function shouldEnqueueInitialReportBackfill(input: {
   readonly hasScheduledReportForFrequency: boolean;
   readonly nextFrequency: ReportScheduleFrequency;
@@ -193,37 +182,6 @@ function periodContainingDate(
   }
   const year = localDate.getUTCFullYear();
   return { end: `${year}-12-31`, start: `${year}-01-01` };
-}
-
-function periodStartingAt(
-  periodStart: string,
-  frequency: ScheduledReportFrequency,
-): ScheduledReportPeriod {
-  const start = localDateFromString(periodStart);
-  if (frequency === 'weekly') {
-    return { end: formatLocalDate(addLocalDays(start, 6)), start: periodStart };
-  }
-  if (frequency === 'monthly') {
-    const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0));
-    return { end: formatLocalDate(end), start: periodStart };
-  }
-  return { end: `${start.getUTCFullYear()}-12-31`, start: periodStart };
-}
-
-function nextPeriodStart(periodStart: string, frequency: ScheduledReportFrequency): string {
-  const start = localDateFromString(periodStart);
-  if (frequency === 'weekly') start.setUTCDate(start.getUTCDate() + 7);
-  else if (frequency === 'monthly') start.setUTCMonth(start.getUTCMonth() + 1);
-  else start.setUTCFullYear(start.getUTCFullYear() + 1);
-  return formatLocalDate(start);
-}
-
-function requireCanonicalPeriodStart(value: string, frequency: ScheduledReportFrequency): string {
-  const date = requireDate(value, 'periodStartCursor');
-  if (periodContainingDate(date, frequency).start !== date) {
-    throw new Error('periodStartCursor must be a canonical period boundary.');
-  }
-  return date;
 }
 
 function requireCanonicalScheduleSlot(localSlot: Date, frequency: ScheduledReportFrequency): void {

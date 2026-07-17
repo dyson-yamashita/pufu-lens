@@ -63,6 +63,27 @@ const scheduledReport = {
   report_id: 'report-scheduled',
 };
 
+test('scenario: member sees pending save label while report schedule form submits', async ({
+  page,
+}) => {
+  await page.goto('/dev/e2e/report-schedule-panel');
+
+  await expect(page.getByTestId('report-schedule-panel')).toBeVisible();
+  await expect(page.getByTestId('report-schedule-timezone-note')).toContainText(
+    '1件の履歴レポート',
+  );
+
+  const saveButton = page.getByTestId('report-schedule-save-button');
+  await expect(saveButton).toHaveText('保存');
+  await page.getByTestId('report-schedule-frequency-input').selectOption('weekly');
+  await saveButton.click();
+
+  await expect(saveButton).toHaveText('保存中...');
+  await expect(saveButton).toBeDisabled();
+  await expect(saveButton).toHaveAttribute('aria-busy', 'true');
+  await expect(saveButton).toHaveText('保存', { timeout: 10_000 });
+});
+
 test('scenario: member opens private report detail from list and sees sections', async ({
   page,
 }) => {

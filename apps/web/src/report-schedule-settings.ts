@@ -1,7 +1,6 @@
 import type postgres from 'postgres';
 import {
-  enumerateBackfillScheduledReportPeriods,
-  MAX_REPORT_PERIOD_ENUMERATION,
+  resolveInitialAggregateBackfillPeriod,
   resolveNextScheduledReportRunAt,
   shouldEnqueueInitialReportBackfill,
 } from './report-schedule-periods.ts';
@@ -435,9 +434,9 @@ async function upsertProjectReportScheduleRow(
 }
 
 /**
- * Enqueues pending backfill runs for available scheduled report periods.
+ * Enqueues one aggregated pending backfill run for completed historical periods.
  *
- * @param input - The schedule, project, frequency, and reference time used to create backfill runs.
+ * @param input - The schedule, project, frequency, and reference time used to create the backfill run.
  */
 async function enqueueInitialBackfillPeriodRuns(
   sql: SqlExecutor,
@@ -453,45 +452,36 @@ async function enqueueInitialBackfillPeriodRuns(
     return;
   }
 
-  let periodStartCursor: string | undefined;
-  let hasMore = true;
-  while (hasMore) {
-    const enumeration = enumerateBackfillScheduledReportPeriods({
-      asOf: input.asOf.toISOString(),
-      availableFrom,
-      frequency: input.frequency,
-      limit: MAX_REPORT_PERIOD_ENUMERATION,
-      periodStartCursor,
-    });
-    for (const period of enumeration.periods) {
-      await sql`
-        INSERT INTO public.report_schedule_period_runs (
-          schedule_id,
-          project_id,
-          frequency,
-          period_start,
-          period_end,
-          run_kind,
-          status
-        )
-        VALUES (
-          ${input.scheduleId},
-          ${input.projectId},
-          ${input.frequency},
-          ${period.start}::date,
-          ${period.end}::date,
-          'scheduled_backfill',
-          'pending'
-        )
-        ON CONFLICT (project_id, frequency, period_start, period_end) DO NOTHING
-      `;
-    }
-    hasMore = enumeration.hasMore;
-    periodStartCursor = enumeration.nextPeriodStart ?? undefined;
-    if (!hasMore || !periodStartCursor) {
-      break;
-    }
+  const period = resolveInitialAggregateBackfillPeriod({
+    asOf: input.asOf.toISOString(),
+    availableFrom,
+    frequency: input.frequency,
+  });
+  if (!period) {
+    return;
   }
+
+  await sql`
+    INSERT INTO public.report_schedule_period_runs (
+      schedule_id,
+      project_id,
+      frequency,
+      period_start,
+      period_end,
+      run_kind,
+      status
+    )
+    VALUES (
+      ${input.scheduleId},
+      ${input.projectId},
+      ${input.frequency},
+      ${period.start}::date,
+      ${period.end}::date,
+      'scheduled_backfill',
+      'pending'
+    )
+    ON CONFLICT (project_id, frequency, period_start, period_end) DO NOTHING
+  `;
 }
 
 /**
@@ -567,7 +557,7 @@ export function describeReportScheduleActivation(input: {
     (input.previousFrequency === null || input.previousFrequency === 'none') &&
     input.frequency !== 'none';
   if (isFirstActivation) {
-    return '初回の有効化では、完了済みの過去期間を非同期で backfill します。現在進行中の期間は対象外です。';
+    return '初回の有効化では、完了済みの過去期間を1件の履歴レポートとして非同期で生成します。現在進行中の期間は対象外です。';
   }
   if (
     input.previousFrequency !== null &&

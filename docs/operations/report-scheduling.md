@@ -87,8 +87,26 @@ LIMIT 200;
 - document が無い period は `skipped` とし、provider を呼ばない。
 - heartbeat 失敗、lease 喪失、45 分の runtime 超過では旧 worker が後続 worker の状態を上書きしない。`leaseLost` と `report_schedule_lease_lost` event を確認し、期限切れを待つ。
 - 同じ `schedule_period_run_id` の report insert は冪等である。再実行時に整合する report が既にあれば成功扱いになる。
-- 初回 backfill は完了済み period だけを bounded に登録する。大量 backfill では 1 回あたりの上限を外さず、Cloud Scheduler の継続起動で順に処理する。provider quota と生成コストを事前に確認する。
+- 初回 backfill は、利用可能な最古データの属する period から現在進行中 period の前日までを1件の履歴 report として登録する。通常実行の catch-up は従来どおり calendar period ごとに bounded で処理する。provider quota と生成コストを事前に確認する。
 - raw 本文、provider response、OAuth token、secret、API key、メール本文・宛先を DB error、Cloud log、Issue、PR、chat に貼らない。
+
+### 旧初回 backfill queue の移行
+
+`0013_consolidate_initial_report_backfill.sql` は、旧実装が作成した複数の `scheduled_backfill` row のうち、すべてが未着手の `pending` である project・frequency だけを1件にまとめる。一部でも attempt、lease、retry、report、skip、通知または開始・完了履歴があるグループは変更しない。migration 前後には以下の metadata だけを確認し、変更対象が1件の広い期間になっていること、変更対象外の状態が維持されていることを確認する。
+
+```sql
+SELECT project_id,
+       frequency,
+       run_kind,
+       status,
+       min(period_start) AS period_start,
+       max(period_end) AS period_end,
+       count(*) AS run_count
+FROM report_schedule_period_runs
+WHERE run_kind = 'scheduled_backfill'
+GROUP BY project_id, frequency, run_kind, status
+ORDER BY project_id, frequency, status;
+```
 
 ## 本番確認
 
