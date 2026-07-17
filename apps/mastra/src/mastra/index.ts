@@ -4,7 +4,7 @@ import { createPostgresChatRepository } from '@pufu-lens/web/chat';
 import type { ReportRepository } from '@pufu-lens/web/report';
 import {
   createExtractiveReportProvider,
-  createGeminiReportProvider,
+  createGeminiReportProviderWithExtractiveFallback,
   createPostgresReportRepository,
   createReportStorageFromEnv,
   type ReportGenerationProvider,
@@ -81,27 +81,25 @@ export const mastra = new Mastra({
 });
 
 function createReportProvider(): ReportGenerationProvider {
-  const fallbackProvider = createExtractiveReportProvider();
   if (process.env.GEMINI_API_KEY && process.env.GEMINI_CHAT_MODEL) {
-    const geminiProvider = createGeminiReportProvider({
+    return createGeminiReportProviderWithExtractiveFallback({
       apiKey: process.env.GEMINI_API_KEY,
       model: process.env.GEMINI_CHAT_MODEL,
-    });
-    return {
-      async generate(input) {
-        try {
-          return await geminiProvider.generate(input);
-        } catch (error) {
-          console.warn(
-            'Gemini report generation failed in Mastra workflow; falling back to extractive provider.',
-            error instanceof Error ? error.message : String(error),
-          );
-          return fallbackProvider.generate(input);
-        }
+      onCountTokensFailure: (message) => {
+        console.warn(
+          'Gemini report countTokens failed in Mastra workflow; using conservative UTF-8 byte fallback.',
+          message,
+        );
       },
-    };
+      onGenerateFailure: (message) => {
+        console.warn(
+          'Gemini report generation failed in Mastra workflow; falling back to extractive provider.',
+          message,
+        );
+      },
+    });
   }
-  return fallbackProvider;
+  return createExtractiveReportProvider();
 }
 
 function createPostgresCrossProjectInvestigationRepository(

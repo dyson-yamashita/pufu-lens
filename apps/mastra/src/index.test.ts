@@ -13,6 +13,7 @@ import {
   createPrivateChatSearchWorkflow,
   createPrivateChatSynthesisMessages,
   createPufuLensMastraRuntime,
+  generateReportWorkflowInputSchema,
   type MastraProjectContext,
   type MastraPublicReportContext,
   mastraAgentIds,
@@ -555,16 +556,48 @@ assert.deepEqual(reportRepository.recentDocumentPeriods.at(-1), {
 assert.ok(await storage.exists(reportResult.storageUri));
 
 const invalidPeriodRun = await runtime.generateReportWorkflow.createRun();
-const invalidPeriodReport = await invalidPeriodRun.start({
-  inputData: {
-    period: { end: '2026-03-01', start: '2026-02-31' },
+await assert.rejects(
+  () =>
+    invalidPeriodRun.start({
+      inputData: {
+        period: { end: '2026-03-01', start: '2026-02-31' },
+        projectSlug: 'sample-a',
+      },
+    }),
+  /Invalid ISO date|Report period start and end must be valid YYYY-MM-DD dates/,
+);
+
+assert.throws(
+  () =>
+    generateReportWorkflowInputSchema.parse({
+      period: { end: '2026-03-01', start: '2026-02-31' },
+      projectSlug: 'sample-a',
+    }),
+  /Invalid ISO date/,
+);
+assert.throws(
+  () =>
+    generateReportWorkflowInputSchema.parse({
+      previousScheduledReportId: 'report-prev',
+      projectSlug: 'sample-a',
+    }),
+  /scheduleFrequency/,
+);
+assert.throws(
+  () =>
+    generateReportWorkflowInputSchema.parse({
+      projectSlug: 'sample-a',
+      scheduleFrequency: 'weekly',
+    }),
+  /previousScheduledReportId/,
+);
+assert.deepEqual(
+  generateReportWorkflowInputSchema.parse({
+    previousScheduledReportId: 'report-prev',
     projectSlug: 'sample-a',
-  },
-});
-assert.equal(invalidPeriodReport.status, 'failed');
-assert.match(
-  JSON.stringify(invalidPeriodReport.error),
-  /Report period start and end must be valid YYYY-MM-DD dates/,
+    scheduleFrequency: 'weekly',
+  }).scheduleFrequency,
+  'weekly',
 );
 
 assert.ok(runtime.privateChatSearchWorkflow);

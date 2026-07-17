@@ -1,5 +1,7 @@
 import { mastraFetchHeaders, normalizeMastraUrl } from './mastra-chat.ts';
 import type { ReportPeriod } from './report.ts';
+import { validatePairedScheduleInputs } from './report-schedule-input.ts';
+import type { ScheduledReportFrequency } from './report-schedules.ts';
 
 const GENERATE_REPORT_WORKFLOW_ID = 'generate-report';
 
@@ -22,18 +24,30 @@ export function mastraGenerateReportWorkflowStartUrl(env: MastraWorkflowEnv = pr
  * @returns An object containing `inputData` for the workflow start request.
  */
 export function createMastraGenerateReportWorkflowBody(input: {
-  readonly generatedBy?: string;
   readonly customTemplateId?: string;
+  readonly generatedBy?: string;
   readonly nowIso?: string;
   readonly period?: ReportPeriod;
+  readonly previousScheduledReportId?: string;
   readonly projectSlug: string;
+  readonly scheduleFrequency?: ScheduledReportFrequency;
 }) {
+  const scheduleInputs = validatePairedScheduleInputs({
+    previousScheduledReportId: input.previousScheduledReportId,
+    scheduleFrequency: input.scheduleFrequency,
+  });
   return {
     inputData: {
       ...(input.generatedBy ? { generatedBy: input.generatedBy } : {}),
       ...(input.customTemplateId ? { customTemplateId: input.customTemplateId } : {}),
       ...(input.nowIso ? { nowIso: input.nowIso } : {}),
       ...(input.period ? { period: input.period } : {}),
+      ...(scheduleInputs
+        ? {
+            previousScheduledReportId: scheduleInputs.previousScheduledReportId,
+            scheduleFrequency: scheduleInputs.scheduleFrequency,
+          }
+        : {}),
       projectSlug: input.projectSlug,
     },
   };
@@ -50,24 +64,28 @@ export function createMastraGenerateReportWorkflowBody(input: {
  * @throws If the workflow request fails or the workflow reports a non-success status.
  */
 export async function runMastraGenerateReportWorkflow(input: {
+  readonly customTemplateId?: string;
   readonly env?: MastraWorkflowEnv;
   readonly fetchImpl?: typeof fetch;
   readonly generatedBy?: string;
-  readonly customTemplateId?: string;
   readonly nowIso?: string;
   readonly period?: ReportPeriod;
+  readonly previousScheduledReportId?: string;
   readonly projectSlug: string;
+  readonly scheduleFrequency?: ScheduledReportFrequency;
 }): Promise<void> {
   const env = input.env ?? process.env;
   const url = mastraGenerateReportWorkflowStartUrl(env);
   const response = await (input.fetchImpl ?? fetch)(url, {
     body: JSON.stringify(
       createMastraGenerateReportWorkflowBody({
-        generatedBy: input.generatedBy,
         customTemplateId: input.customTemplateId,
+        generatedBy: input.generatedBy,
         nowIso: input.nowIso,
         period: input.period,
+        previousScheduledReportId: input.previousScheduledReportId,
         projectSlug: input.projectSlug,
+        scheduleFrequency: input.scheduleFrequency,
       }),
     ),
     headers: await mastraFetchHeaders({ env, url }),

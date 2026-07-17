@@ -11,9 +11,14 @@ import {
 } from './custom-report-schema.ts';
 import type { AgentRawReadViewEnvelope, RawReadViewRepository } from './raw-read-view.ts';
 import { editReportMaterials, REPORT_CANDIDATE_LIMIT } from './report-materials.ts';
-import type { ReportGenerationProvider } from './report-provider.ts';
+import { buildPreviousReportProviderContext } from './report-previous-context.ts';
+import { loadTrustedPreviousScheduledReport } from './report-previous-report.ts';
+import { type ReportGenerationProvider, resolveProviderCountTokens } from './report-provider.ts';
 import { publishGeneratedPublicReport } from './report-publication.ts';
+import { buildTrustedReportRecurrence, hasProviderRecurrenceDelta } from './report-recurrence.ts';
 import type { ReportDocumentRecord, ReportRepository } from './report-repository.ts';
+import { validatePairedScheduleInputs } from './report-schedule-input.ts';
+import type { ScheduledReportFrequency } from './report-schedules.ts';
 import {
   type PreparedReportChunk,
   type PrivateReportJsonV1,
@@ -26,14 +31,16 @@ import {
 import { normalizeReportWhitespace, truncateReportText } from './report-text.ts';
 
 export interface RunGenerateReportOptions {
+  readonly customTemplateId?: string;
   readonly generatedBy?: string;
   readonly now?: Date;
   readonly period?: ReportPeriod;
   readonly periodKind?: ReportPeriodKind;
-  readonly customTemplateId?: string;
+  readonly previousScheduledReportId?: string;
   readonly provider: ReportGenerationProvider;
   readonly rawReadViewRepository?: Pick<RawReadViewRepository, 'fetchRawReadView'>;
   readonly repository: ReportRepository;
+  readonly scheduleFrequency?: ScheduledReportFrequency;
   readonly storage: ObjectStorage;
 }
 
@@ -62,6 +69,30 @@ export async function runGenerateReport(input: {
     throw new Error(`Project not found: ${input.projectSlug}`);
   }
 
+  const scheduleInputs = validatePairedScheduleInputs({
+    previousScheduledReportId: input.options.previousScheduledReportId,
+    scheduleFrequency: input.options.scheduleFrequency,
+  });
+  const previousReport = scheduleInputs
+    ? await loadTrustedPreviousScheduledReport({
+        newPeriod: period,
+        previousScheduledReportId: scheduleInputs.previousScheduledReportId,
+        projectId: project.id,
+        repository: input.options.repository,
+        scheduleFrequency: scheduleInputs.scheduleFrequency,
+        storage: input.options.storage,
+      })
+    : undefined;
+  const previousReportContext =
+    scheduleInputs && previousReport
+      ? await buildPreviousReportProviderContext({
+          countTokens: resolveProviderCountTokens(input.options.provider),
+          frequency: scheduleInputs.scheduleFrequency,
+          previousReport,
+          previousReportId: scheduleInputs.previousScheduledReportId,
+        })
+      : undefined;
+
   const candidateDocuments = await input.options.repository.listRecentDocuments({
     limit: REPORT_CANDIDATE_LIMIT,
     period,
@@ -79,9 +110,15 @@ export async function runGenerateReport(input: {
     documents: providerDocuments,
     ...(hasOverflow ? { materialGroups: editedMaterials.materialGroups } : {}),
     period,
+    ...(previousReportContext ? { previousReportContext } : {}),
     projectSlug: project.slug,
     totalDocumentCount: editedMaterials.totalDocumentCount,
   });
+  if (previousReportContext && !hasProviderRecurrenceDelta(generated)) {
+    throw new Error(
+      'Report provider must return recurrence delta when previous context is supplied.',
+    );
+  }
   const reportId = randomUUID();
   const customTemplate = input.options.customTemplateId
     ? await readCustomTemplateOrThrow({
@@ -104,6 +141,15 @@ export async function runGenerateReport(input: {
     period,
     project_id: project.id,
     pufu_sources: editedMaterials.representativeDocuments.map(pufuSourceFromDocument),
+    ...(previousReportContext && hasProviderRecurrenceDelta(generated)
+      ? {
+          recurrence: buildTrustedReportRecurrence({
+            delta: generated,
+            frequency: previousReportContext.frequency,
+            previousReportId: previousReportContext.previousReportId,
+          }),
+        }
+      : {}),
     report_id: reportId,
     schema_version: 'v1',
     sections: generated.sections,

@@ -85,7 +85,7 @@ Backfill 対象列挙は period run row を `pending` で一括作成し、dispa
 
 Report workflow の input に `previousScheduledReportId` と `scheduleFrequency` を追加する。workflow は DB で project 境界を検証して前回 report metadata を読み、Object Storage から前回 report JSON を取得する。
 
-Provider に渡す前回 report context は次の上限と共通 builder で bounded にする。文字数は Unicode code point 数で数え、全体は最大 16,000 文字かつ対象 Bedrock model の tokenizer で最大 6,000 token とする。
+Provider に渡す前回 report context は次の上限と共通 builder で bounded にする。文字数は Unicode code point 数で数え、全体は最大 16,000 文字かつ選択した provider の tokenizer で最大 6,000 token とする。Gemini provider は `countTokens` を使い、count API が利用不能な場合と extractive provider は UTF-8 byte 数を token 数とみなす安全側の fallback を使う。
 
 - 前回 summary: 最大 2,000 文字、1 件。
 - 前回から継続している課題・リスク: 最大 10 件、各 400 文字。
@@ -140,7 +140,7 @@ Public report 表示でも private report JSON を同じように描画するた
 | ---- | ----------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1    | `completed` | schedule / period run / report metadata の DB model と migration を追加する。 | Issue #579。fresh / 既存 DB migration、runtime guard、period run・report の一意制約、project 境界 query、report なしの skipped 履歴を検証済み。         |
 | 2    | `completed` | 期間計算、前回定期 report 解決、通常 / backfill 対象列挙を実装する。          | Issue #581。完了済み period、bounded catch-up / backfill、次回 slot、最古未完了優先、初回 backfill 判定、同一 project・frequency の前回参照を検証済み。 |
-| 3    | `planned`   | report workflow に前回参照と差分生成 context を追加する。                     | 前回 report を明示的な件数・文字数・token 予算内で決定的に参照し、change / increments / decrements が JSON に保存される。                               |
+| 3    | `completed` | report workflow に前回参照と差分生成 context を追加する。Issue #583。         | project / frequency / period を再検証し、bounded・redaction 済み context と change / increments / decrements / continued items の保存を検証済み。       |
 | 4    | `planned`   | report schedule dispatcher、内部 API、local one-shot CLI を実装する。         | due claim、lease、retry、idempotency、backfill 分割、secret 非露出が確認できる。                                                                        |
 | 5    | `planned`   | レポート一覧 UI で周期設定と実行状態を管理できるようにする。                  | admin は周期を保存でき、member は読み取りのみ。初回/backfill/変更時挙動の説明と状態が表示される。                                                       |
 | 6    | `planned`   | レポート一覧・詳細表示、E2E、運用ドキュメントを整備する。                     | 定期/手動の区別、差分表示、public 境界、dispatcher 運用、障害時確認手順が検証・文書化される。                                                           |

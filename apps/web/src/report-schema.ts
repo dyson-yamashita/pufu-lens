@@ -2,6 +2,7 @@ import {
   type CustomReportSnapshotV1,
   validateCustomReportSnapshot,
 } from './custom-report-schema.ts';
+import { isScheduledReportFrequency, type ScheduledReportFrequency } from './report-schedules.ts';
 
 export type ReportPeriodKind = 'weekly';
 
@@ -32,12 +33,22 @@ export interface PrivateReportSection {
   readonly title: string;
 }
 
+export interface PrivateReportRecurrenceV1 {
+  readonly change_summary: string;
+  readonly continued_items: readonly string[];
+  readonly decrements: readonly string[];
+  readonly frequency: ScheduledReportFrequency;
+  readonly increments: readonly string[];
+  readonly previous_report_id: string;
+}
+
 export interface PrivateReportJsonV1 {
   readonly custom_layout?: CustomReportSnapshotV1;
   readonly generated_at: string;
   readonly period: ReportPeriod;
   readonly project_id: string;
   readonly pufu_sources?: readonly PrivateReportPufuSource[];
+  readonly recurrence?: PrivateReportRecurrenceV1;
   readonly report_id: string;
   readonly schema_version: 'v1';
   readonly sections: readonly PrivateReportSection[];
@@ -58,6 +69,17 @@ const PRIVATE_REPORT_SECTION_IDS = new Set<PrivateReportSection['id']>([
   'progress',
   'risks',
 ]);
+
+export const RECURRENCE_CHANGE_SUMMARY_MAX_CODE_POINTS = 2_000;
+export const RECURRENCE_LIST_MAX_ITEMS = 10;
+export const RECURRENCE_LIST_ITEM_MAX_CODE_POINTS = 400;
+
+export interface ProviderRecurrenceDelta {
+  readonly change_summary: string;
+  readonly continued_items: readonly string[];
+  readonly decrements: readonly string[];
+  readonly increments: readonly string[];
+}
 
 export function reportNowFromEnv(env?: NodeJS.ProcessEnv): Date | undefined {
   const value = env?.PUFU_LENS_REPORT_NOW?.trim();
@@ -127,6 +149,9 @@ export function validatePrivateReportJson(value: unknown): asserts value is Priv
   if (value.custom_layout !== undefined) {
     validateCustomReportSnapshot(value.custom_layout);
   }
+  if (value.recurrence !== undefined) {
+    validatePrivateReportRecurrence(value.recurrence);
+  }
   for (const section of value.sections) {
     if (!isRecord(section) || typeof section.id !== 'string' || typeof section.title !== 'string') {
       throw new Error('Report section must include id and title.');
@@ -160,16 +185,105 @@ export function validatePrivateReportJson(value: unknown): asserts value is Priv
 }
 
 export function validateGeneratedReport(
-  value: Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'>,
+  value: Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'> &
+    Partial<ProviderRecurrenceDelta>,
+  options?: { readonly requireRecurrence?: boolean },
 ): void {
+  if (options?.requireRecurrence) {
+    assertProviderRecurrenceDeltaShape(value);
+  } else if (hasProviderRecurrenceFields(value)) {
+    assertProviderRecurrenceDeltaShape(value);
+  }
+  const { sections, summary, title } = value;
   validatePrivateReportJson({
     generated_at: new Date().toISOString(),
     period: { end: '2026-01-04', start: '2025-12-29' },
     project_id: '00000000-0000-0000-0000-000000000000',
     report_id: '00000000-0000-0000-0000-000000000000',
     schema_version: 'v1',
-    ...value,
+    sections,
+    summary,
+    title,
   });
+}
+
+export function assertProviderRecurrenceDeltaShape(
+  value: unknown,
+): asserts value is ProviderRecurrenceDelta {
+  if (!isRecord(value)) {
+    throw new Error('Provider recurrence delta must be an object.');
+  }
+  if (typeof value.change_summary !== 'string' || value.change_summary.length === 0) {
+    throw new Error('Provider recurrence change_summary must be a non-empty string.');
+  }
+  for (const field of ['increments', 'decrements', 'continued_items'] as const) {
+    const list = value[field];
+    if (!Array.isArray(list)) {
+      throw new Error(`Provider recurrence ${field} must be an array.`);
+    }
+    for (const item of list) {
+      if (typeof item !== 'string') {
+        throw new Error(`Provider recurrence ${field} items must be strings.`);
+      }
+    }
+  }
+}
+
+export function validatePrivateReportRecurrence(
+  value: unknown,
+): asserts value is PrivateReportRecurrenceV1 {
+  if (!isRecord(value)) {
+    throw new Error('Report recurrence must be an object.');
+  }
+  if (!isScheduledReportFrequency(value.frequency)) {
+    throw new Error('Report recurrence frequency is invalid.');
+  }
+  if (typeof value.previous_report_id !== 'string' || value.previous_report_id.length === 0) {
+    throw new Error('Report recurrence previous_report_id must be a non-empty string.');
+  }
+  if (typeof value.change_summary !== 'string') {
+    throw new Error('Report recurrence change_summary must be a string.');
+  }
+  validateRecurrenceString(
+    value.change_summary,
+    'change_summary',
+    RECURRENCE_CHANGE_SUMMARY_MAX_CODE_POINTS,
+  );
+  for (const field of ['increments', 'decrements', 'continued_items'] as const) {
+    const list = value[field];
+    if (!Array.isArray(list)) {
+      throw new Error(`Report recurrence ${field} must be an array.`);
+    }
+    if (list.length > RECURRENCE_LIST_MAX_ITEMS) {
+      throw new Error(`Report recurrence ${field} exceeds item limit.`);
+    }
+    for (const item of list) {
+      if (typeof item !== 'string') {
+        throw new Error(`Report recurrence ${field} items must be strings.`);
+      }
+      validateRecurrenceString(item, field, RECURRENCE_LIST_ITEM_MAX_CODE_POINTS);
+    }
+  }
+}
+
+function validateRecurrenceString(value: string, field: string, maxCodePoints: number): void {
+  if (value.length === 0) {
+    throw new Error(`Report recurrence ${field} must be a non-empty string.`);
+  }
+  if ([...value].length > maxCodePoints) {
+    throw new Error(`Report recurrence ${field} exceeds code point limit.`);
+  }
+}
+
+function hasProviderRecurrenceFields(
+  value: Partial<ProviderRecurrenceDelta>,
+): value is Partial<ProviderRecurrenceDelta> & Pick<ProviderRecurrenceDelta, 'change_summary'> {
+  return (
+    value.change_summary !== undefined ||
+    value.increments !== undefined ||
+    value.decrements !== undefined ||
+    value.continued_items !== undefined
+  );
 }
 
 function formatDate(date: Date): string {

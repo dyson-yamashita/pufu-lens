@@ -107,7 +107,9 @@ export interface ProjectChatAgentInput {
 export interface GenerateReportWorkflowInput {
   readonly now?: Date;
   readonly periodKind?: ReportPeriodKind;
+  readonly previousScheduledReportId?: string;
   readonly projectSlug: string;
+  readonly scheduleFrequency?: 'annually' | 'monthly' | 'weekly';
 }
 
 export interface CrossProjectSummary {
@@ -759,6 +761,35 @@ export function createPublicReportChatAgent(input: {
   });
 }
 
+export const generateReportWorkflowInputSchema = z
+  .object({
+    customTemplateId: z.string().min(1).optional(),
+    generatedBy: z.string().min(1).optional(),
+    nowIso: z.string().datetime().optional(),
+    period: z
+      .object({
+        end: z.iso.date(),
+        start: z.iso.date(),
+      })
+      .optional(),
+    periodKind: z.literal('weekly').optional(),
+    previousScheduledReportId: z.string().min(1).optional(),
+    projectSlug: z.string().min(1),
+    scheduleFrequency: z.enum(['weekly', 'monthly', 'annually']).optional(),
+  })
+  .superRefine((data, context) => {
+    const hasId = data.previousScheduledReportId !== undefined;
+    const hasFrequency = data.scheduleFrequency !== undefined;
+    if (hasId !== hasFrequency) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'previousScheduledReportId and scheduleFrequency must both be provided or both be omitted.',
+        path: hasId ? ['scheduleFrequency'] : ['previousScheduledReportId'],
+      });
+    }
+  });
+
 /**
  * Creates the report generation workflow.
  *
@@ -766,18 +797,7 @@ export function createPublicReportChatAgent(input: {
  * @returns The configured workflow for generating a report JSON payload.
  */
 export function createGenerateReportWorkflow(options: RunGenerateReportOptions) {
-  const periodSchema = z.object({
-    end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  });
-  const inputSchema = z.object({
-    generatedBy: z.string().min(1).optional(),
-    customTemplateId: z.string().min(1).optional(),
-    nowIso: z.string().datetime().optional(),
-    period: periodSchema.optional(),
-    periodKind: z.literal('weekly').optional(),
-    projectSlug: z.string().min(1),
-  });
+  const inputSchema = generateReportWorkflowInputSchema;
   const outputSchema = z.object({
     reportId: z.string(),
     reportUrl: z.string(),
@@ -797,6 +817,12 @@ export function createGenerateReportWorkflow(options: RunGenerateReportOptions) 
           now: inputData.nowIso ? new Date(inputData.nowIso) : options.now,
           ...(inputData.period ? { period: validateReportPeriod(inputData.period) } : {}),
           periodKind: inputData.periodKind ?? options.periodKind,
+          ...(inputData.previousScheduledReportId && inputData.scheduleFrequency
+            ? {
+                previousScheduledReportId: inputData.previousScheduledReportId,
+                scheduleFrequency: inputData.scheduleFrequency,
+              }
+            : {}),
         },
         projectSlug: inputData.projectSlug,
       });
