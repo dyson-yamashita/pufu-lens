@@ -35,6 +35,7 @@
     "report-schedule:dispatch": "pnpm --filter @pufu-lens/storage build && node --experimental-strip-types scripts/report-schedule-dispatcher.ts",
     "schedule:dispatch": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node --experimental-strip-types scripts/source-sync-dispatcher.ts",
     "lint": "biome ci . && markdownlint-cli2",
+    "prepare": "git config core.hooksPath .githooks || exit 0",
     "db:migrate": "node --experimental-strip-types scripts/db-migrate.ts",
     "db:migration:new": "node --experimental-strip-types scripts/create-db-migration.ts",
     "db:schema-drift": "node --experimental-strip-types scripts/check-schema-drift.ts",
