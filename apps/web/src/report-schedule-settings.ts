@@ -10,6 +10,11 @@ import {
   readProjectReportAvailableFrom,
 } from './report-schedule-planning.ts';
 import {
+  DEFAULT_REPORT_SCHEDULE_RUN_TIME,
+  type ProjectReportScheduleSettingsView,
+  type ReportSchedulePeriodRunSummary,
+} from './report-schedule-presentation.ts';
+import {
   isReportScheduleFrequency,
   isScheduledReportFrequency,
   listReportSchedulePeriodRuns,
@@ -18,38 +23,20 @@ import {
   REPORT_SCHEDULE_TIMEZONE,
   type ReportScheduleFrequency,
   type ReportSchedulePeriodRun,
-  type ReportScheduleRunStatus,
   readProjectReportSchedule,
   type ScheduledReportFrequency,
 } from './report-schedules.ts';
 
-export const DEFAULT_REPORT_SCHEDULE_RUN_TIME = '10:00';
+export {
+  DEFAULT_REPORT_SCHEDULE_RUN_TIME,
+  formatReportScheduleTimestamp,
+  type ProjectReportScheduleSettingsView,
+  type ReportSchedulePeriodRunSummary,
+  reportScheduleFrequencyLabel,
+  reportSchedulePeriodRunStatusLabel,
+} from './report-schedule-presentation.ts';
+
 export const REPORT_SCHEDULE_RECENT_RUN_LIMIT = 8;
-
-export interface ReportSchedulePeriodRunSummary {
-  readonly backfillRemaining: number;
-  readonly pending: number;
-  readonly retryExhausted: number;
-  readonly retryWait: number;
-  readonly running: number;
-  readonly skipped: number;
-  readonly succeeded: number;
-}
-
-export interface ProjectReportScheduleSettingsView {
-  readonly frequency: ReportScheduleFrequency;
-  readonly lastError: string | null;
-  readonly lastFailedAt: string | null;
-  readonly lastStartedAt: string | null;
-  readonly lastSucceededAt: string | null;
-  readonly nextRunAt: string | null;
-  readonly periodRunSummary: ReportSchedulePeriodRunSummary;
-  readonly recentPeriodRuns: readonly ReportSchedulePeriodRun[];
-  readonly retryCount: number;
-  readonly runTime: string;
-  readonly scheduleId: string | null;
-  readonly timezone: typeof REPORT_SCHEDULE_TIMEZONE;
-}
 
 type SqlExecutor = postgres.Sql | postgres.TransactionSql;
 
@@ -218,6 +205,7 @@ export async function readProjectReportScheduleSettings(
   }
   const [periodRunSummary, recentPeriodRuns] = await Promise.all([
     readReportSchedulePeriodRunSummary(sql, {
+      frequency: schedule.frequency,
       projectId: input.projectId,
       scheduleId: schedule.id,
     }),
@@ -514,7 +502,11 @@ async function enqueueInitialBackfillPeriodRuns(
  */
 export async function readReportSchedulePeriodRunSummary(
   sql: SqlExecutor,
-  input: { readonly projectId: string; readonly scheduleId: string },
+  input: {
+    readonly frequency: ReportScheduleFrequency;
+    readonly projectId: string;
+    readonly scheduleId: string;
+  },
 ): Promise<ReportSchedulePeriodRunSummary> {
   const rows = (await sql`
     SELECT
@@ -534,6 +526,7 @@ export async function readReportSchedulePeriodRunSummary(
      AND schedule.project_id = period_run.project_id
     WHERE period_run.project_id = ${input.projectId}
       AND period_run.schedule_id = ${input.scheduleId}
+      AND period_run.frequency = ${input.frequency}
       AND schedule.project_id = ${input.projectId}
   `) as readonly unknown[];
   return rows[0] ? parseReportSchedulePeriodRunSummaryRow(rows[0]) : EMPTY_PERIOD_RUN_SUMMARY;
@@ -558,67 +551,6 @@ export function parseReportSchedulePeriodRunSummaryRow(
     skipped: requireNonNegativeInteger(row.skipped, 'skipped'),
     succeeded: requireNonNegativeInteger(row.succeeded, 'succeeded'),
   };
-}
-
-/**
- * Formats a report schedule timestamp for display.
- *
- * @param value - The timestamp to format, or `null` for an unset value
- * @returns The formatted timestamp in the report schedule timezone, or `未設定` when no value is provided
- */
-export function formatReportScheduleTimestamp(value: string | null): string {
-  if (!value) {
-    return '未設定';
-  }
-  return new Intl.DateTimeFormat('ja-JP', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: REPORT_SCHEDULE_TIMEZONE,
-  }).format(new Date(value));
-}
-
-/**
- * Converts a report schedule frequency to its Japanese display label.
- *
- * @param frequency - The report schedule frequency to label
- * @returns The Japanese label for the frequency
- */
-export function reportScheduleFrequencyLabel(frequency: ReportScheduleFrequency): string {
-  switch (frequency) {
-    case 'weekly':
-      return '週次';
-    case 'monthly':
-      return '月次';
-    case 'annually':
-      return '年次';
-    default:
-      return 'なし';
-  }
-}
-
-/**
- * Resolves a period run status to its display label.
- *
- * @param status - The period run status to label
- * @returns The status label, or the provided status for unrecognized values
- */
-export function reportSchedulePeriodRunStatusLabel(status: ReportScheduleRunStatus): string {
-  switch (status) {
-    case 'pending':
-      return 'pending';
-    case 'running':
-      return 'running';
-    case 'retry_wait':
-      return 'retry_wait';
-    case 'retry_exhausted':
-      return 'retry_exhausted';
-    case 'skipped':
-      return 'skipped';
-    case 'succeeded':
-      return 'succeeded';
-    default:
-      return status;
-  }
 }
 
 /**

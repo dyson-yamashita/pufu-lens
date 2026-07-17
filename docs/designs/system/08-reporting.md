@@ -238,7 +238,7 @@ const generateReportWorkflow = createWorkflow({
 
 差分生成 workflow は `previousScheduledReportId` と `scheduleFrequency` を両方指定するか両方省略する。指定時は project-scoped metadata、生成種別、frequency、前後 period、private JSON の report / project / period 一致を再検証してから前回 context を作る。context は summary、継続課題、section 要約、主要 source だけを redaction 済みで含め、最大 16,000 code point かつ 6,000 provider token に制限する。Gemini は `countTokens` を使用し、利用不能時と extractive provider は UTF-8 byte 数を token 数とみなす安全側の fallback を使う。全体超過時は source、section、継続課題、summary の順に低優先データを決定的に縮小し、最終予算を満たさない payload は provider へ送らない。
 
-project member のレポート一覧は project-scoped query で `project_report_schedules` と直近の `report_schedule_period_runs` を読み、周期、次回実行、成功・失敗、retry、status 集計、backfill 残数を表示する。project admin だけが server action から周期を変更でき、一般 member は読み取り専用、非 member には schedule 情報を返さない。初回有効化時は、同じ project・frequency の定期 report が存在しない場合に限り、完了済み period の `scheduled_backfill` row を同じ transaction で冪等に登録する。同一周期の再保存と有効周期間の変更では即時 backfill を登録しない。
+project member のレポート一覧は project-scoped query で `project_report_schedules` と直近の `report_schedule_period_runs` を読み、周期、次回実行、成功・失敗、retry、現在の schedule frequency に限定した status 集計と backfill 残数を表示する。project admin だけが server action から周期を変更でき、一般 member は読み取り専用、非 member には schedule 情報を返さない。初回有効化時は、同じ project・frequency の定期 report が存在しない場合に限り、完了済み period の `scheduled_backfill` row を同じ transaction で冪等に登録する。同一周期の再保存と有効周期間の変更では即時 backfill を登録しない。
 
 Web は以下のエンドポイントで JSON を取得する：
 

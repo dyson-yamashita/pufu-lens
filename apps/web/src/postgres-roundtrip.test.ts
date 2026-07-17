@@ -47,6 +47,7 @@ const crossBoundaryPeriodRunId = '10000000-0000-0000-0000-000000000444';
 const frequencyMismatchReportId = '10000000-0000-0000-0000-000000000445';
 const monthlyPeriodRunId = '10000000-0000-0000-0000-000000000446';
 const previousFrequencyMismatchReportId = '10000000-0000-0000-0000-000000000447';
+const legacyWeeklyBackfillPeriodRunId = '10000000-0000-0000-0000-000000000448';
 const settingsScheduleAsOf = new Date('2026-07-20T05:00:00.000Z');
 const settingsProjectCreatedAt = '2026-06-15T01:00:00.000Z';
 
@@ -267,123 +268,203 @@ async function assertReportJsonbRoundTrip() {
 }
 
 async function assertReportScheduleSettingsRoundTrip() {
-  await sql`
-    UPDATE public.projects
-    SET created_at = ${settingsProjectCreatedAt}
-    WHERE id = ${projectId}
-  `;
-  assert.equal(await readProjectReportSchedule(sql, { projectId }), null);
+  const originalProjectCreatedAt = await readProjectCreatedAt(projectId);
+  try {
+    await sql`
+      UPDATE public.projects
+      SET created_at = ${settingsProjectCreatedAt}
+      WHERE id = ${projectId}
+    `;
+    assert.equal(await readProjectReportSchedule(sql, { projectId }), null);
 
-  const activated = await saveProjectReportSchedule(sql, {
-    asOf: settingsScheduleAsOf,
-    frequency: 'weekly',
-    projectId,
-    updatedBy: userId,
-  });
-  assert.equal(activated.frequency, 'weekly');
-  assert.equal(
-    activated.nextRunAt,
-    resolveNextScheduledReportRunAt({
-      asOf: settingsScheduleAsOf.toISOString(),
+    const activated = await saveProjectReportSchedule(sql, {
+      asOf: settingsScheduleAsOf,
       frequency: 'weekly',
-      runTime: activated.runTime,
-    }),
-  );
+      projectId,
+      updatedBy: userId,
+    });
+    assert.equal(activated.frequency, 'weekly');
+    assert.equal(
+      activated.nextRunAt,
+      resolveNextScheduledReportRunAt({
+        asOf: settingsScheduleAsOf.toISOString(),
+        frequency: 'weekly',
+        runTime: activated.runTime,
+      }),
+    );
 
-  const availableFrom = await readProjectReportAvailableFrom(sql, { projectId });
-  assert.equal(availableFrom, '2026-06-15');
-  const expectedBackfill = enumerateBackfillScheduledReportPeriods({
-    asOf: settingsScheduleAsOf.toISOString(),
-    availableFrom: availableFrom ?? '2026-06-15',
-    frequency: 'weekly',
-    limit: 500,
-  });
-  assert.equal(expectedBackfill.hasMore, false);
+    const availableFrom = await readProjectReportAvailableFrom(sql, { projectId });
+    assert.equal(availableFrom, '2026-06-15');
+    const expectedBackfill = enumerateBackfillScheduledReportPeriods({
+      asOf: settingsScheduleAsOf.toISOString(),
+      availableFrom: availableFrom ?? '2026-06-15',
+      frequency: 'weekly',
+      limit: 500,
+    });
+    assert.equal(expectedBackfill.hasMore, false);
 
-  const backfillRuns = (
-    await listReportSchedulePeriodRuns(sql, {
+    const backfillRuns = (
+      await listReportSchedulePeriodRuns(sql, {
+        limit: 100,
+        projectId,
+        scheduleId: activated.id,
+      })
+    ).filter((run) => run.runKind === 'scheduled_backfill');
+    assert.equal(backfillRuns.length, expectedBackfill.periods.length);
+    assert.ok(backfillRuns.length > 0);
+    assert.deepEqual(
+      backfillRuns
+        .map((run) => ({ end: run.periodEnd, start: run.periodStart }))
+        .sort(comparePeriod),
+      expectedBackfill.periods
+        .map((period) => ({ end: period.end, start: period.start }))
+        .sort(comparePeriod),
+    );
+    for (const run of backfillRuns) {
+      assert.equal(run.status, 'pending');
+      assert.equal(run.frequency, 'weekly');
+      assert.equal(run.projectId, projectId);
+    }
+    const settingsView = await readProjectReportScheduleSettings(sql, { projectId });
+    assert.equal(settingsView.periodRunSummary.backfillRemaining, backfillRuns.length);
+    assert.ok(
+      !backfillRuns.some((run) => run.periodStart === '2026-07-20'),
+      'current in-progress weekly period must not be backfilled',
+    );
+
+    const backfillCount = backfillRuns.length;
+    await sql`
+      UPDATE public.project_report_schedules AS schedule
+      SET
+        worker_token = 'settings-test-worker',
+        lease_expires_at = '2026-07-20T06:00:00.000Z'
+      WHERE schedule.project_id = ${projectId}
+        AND schedule.id = ${activated.id}
+    `;
+    await assert.rejects(
+      () =>
+        saveProjectReportSchedule(sql, {
+          asOf: settingsScheduleAsOf,
+          frequency: 'monthly',
+          projectId,
+          updatedBy: userId,
+        }),
+      (error) => error instanceof ReportScheduleSaveBlockedError,
+    );
+    const leased = await readProjectReportSchedule(sql, { projectId });
+    assert.equal(leased?.frequency, 'weekly');
+    assert.equal(leased?.nextRunAt, activated.nextRunAt);
+    assert.equal(leased?.workerToken, 'settings-test-worker');
+
+    await sql`
+      UPDATE public.project_report_schedules AS schedule
+      SET
+        worker_token = NULL,
+        lease_expires_at = NULL
+      WHERE schedule.project_id = ${projectId}
+        AND schedule.id = ${activated.id}
+    `;
+
+    const weeklyResave = await saveProjectReportSchedule(sql, {
+      asOf: settingsScheduleAsOf,
+      frequency: 'weekly',
+      projectId,
+      updatedBy: userId,
+    });
+    assert.equal(weeklyResave.frequency, 'weekly');
+    const backfillRunsAfterWeeklyResave = (
+      await listReportSchedulePeriodRuns(sql, {
+        limit: 100,
+        projectId,
+        scheduleId: weeklyResave.id,
+      })
+    ).filter((run) => run.runKind === 'scheduled_backfill');
+    assert.equal(backfillRunsAfterWeeklyResave.length, backfillCount);
+
+    await sql`
+      INSERT INTO public.report_schedule_period_runs (
+        id, schedule_id, project_id, frequency, period_start, period_end, run_kind, status
+      )
+      VALUES (
+        ${legacyWeeklyBackfillPeriodRunId}, ${weeklyResave.id}, ${projectId}, 'weekly',
+        '2026-05-25', '2026-05-31', 'scheduled_backfill', 'pending'
+      )
+      ON CONFLICT (project_id, frequency, period_start, period_end) DO NOTHING
+    `;
+    const monthly = await saveProjectReportSchedule(sql, {
+      asOf: settingsScheduleAsOf,
+      frequency: 'monthly',
+      projectId,
+      updatedBy: userId,
+    });
+    assert.equal(monthly.frequency, 'monthly');
+    const backfillRunsAfterMonthly = (
+      await listReportSchedulePeriodRuns(sql, {
+        limit: 100,
+        projectId,
+        scheduleId: monthly.id,
+      })
+    ).filter((run) => run.runKind === 'scheduled_backfill');
+    assert.equal(backfillRunsAfterMonthly.length, backfillCount + 1);
+    const monthlySettingsView = await readProjectReportScheduleSettings(sql, { projectId });
+    assert.equal(monthlySettingsView.periodRunSummary.pending, 0);
+    assert.equal(monthlySettingsView.periodRunSummary.backfillRemaining, 0);
+
+    const disabled = await saveProjectReportSchedule(sql, {
+      asOf: settingsScheduleAsOf,
+      frequency: 'none',
+      projectId,
+      updatedBy: userId,
+    });
+    assert.equal(disabled.frequency, 'none');
+    assert.equal(disabled.nextRunAt, null);
+    const runsAfterDisable = await listReportSchedulePeriodRuns(sql, {
       limit: 100,
       projectId,
-      scheduleId: activated.id,
-    })
-  ).filter((run) => run.runKind === 'scheduled_backfill');
-  assert.equal(backfillRuns.length, expectedBackfill.periods.length);
-  assert.ok(backfillRuns.length > 0);
-  assert.deepEqual(
-    backfillRuns.map((run) => ({ end: run.periodEnd, start: run.periodStart })).sort(comparePeriod),
-    expectedBackfill.periods
-      .map((period) => ({ end: period.end, start: period.start }))
-      .sort(comparePeriod),
-  );
-  for (const run of backfillRuns) {
-    assert.equal(run.status, 'pending');
-    assert.equal(run.frequency, 'weekly');
-    assert.equal(run.projectId, projectId);
+      scheduleId: disabled.id,
+    });
+    assert.equal(
+      runsAfterDisable.filter((run) => run.runKind === 'scheduled_backfill').length,
+      backfillCount + 1,
+    );
+
+    await cleanupReportScheduleSettingsFixture();
+    assert.equal(await readProjectReportSchedule(sql, { projectId }), null);
+  } finally {
+    await restoreProjectCreatedAt(projectId, originalProjectCreatedAt);
   }
-  const settingsView = await readProjectReportScheduleSettings(sql, { projectId });
-  assert.equal(settingsView.periodRunSummary.backfillRemaining, backfillRuns.length);
-  assert.ok(
-    !backfillRuns.some((run) => run.periodStart === '2026-07-20'),
-    'current in-progress weekly period must not be backfilled',
-  );
+}
 
-  const backfillCount = backfillRuns.length;
+async function readProjectCreatedAt(projectIdToRead: string): Promise<string | null> {
+  const rows = (await sql`
+    SELECT created_at::text AS "createdAt"
+    FROM public.projects
+    WHERE id = ${projectIdToRead}
+  `) as readonly unknown[];
+  const row = rows[0];
+  if (!row || typeof row !== 'object' || Array.isArray(row)) {
+    return null;
+  }
+  const createdAt = Reflect.get(row, 'createdAt');
+  return typeof createdAt === 'string' ? createdAt : null;
+}
+
+async function restoreProjectCreatedAt(
+  projectIdToRestore: string,
+  createdAt: string | null,
+): Promise<void> {
+  if (!createdAt) {
+    return;
+  }
   await sql`
-    UPDATE public.project_report_schedules AS schedule
-    SET
-      worker_token = 'settings-test-worker',
-      lease_expires_at = '2026-07-20T06:00:00.000Z'
-    WHERE schedule.project_id = ${projectId}
-      AND schedule.id = ${activated.id}
+    UPDATE public.projects
+    SET created_at = ${createdAt}
+    WHERE id = ${projectIdToRestore}
   `;
-  await assert.rejects(
-    () =>
-      saveProjectReportSchedule(sql, {
-        asOf: settingsScheduleAsOf,
-        frequency: 'monthly',
-        projectId,
-        updatedBy: userId,
-      }),
-    (error) => error instanceof ReportScheduleSaveBlockedError,
-  );
-  const leased = await readProjectReportSchedule(sql, { projectId });
-  assert.equal(leased?.frequency, 'weekly');
-  assert.equal(leased?.nextRunAt, activated.nextRunAt);
-  assert.equal(leased?.workerToken, 'settings-test-worker');
-
-  await sql`
-    UPDATE public.project_report_schedules AS schedule
-    SET
-      worker_token = NULL,
-      lease_expires_at = NULL
-    WHERE schedule.project_id = ${projectId}
-      AND schedule.id = ${activated.id}
-  `;
-
-  const disabled = await saveProjectReportSchedule(sql, {
-    asOf: settingsScheduleAsOf,
-    frequency: 'none',
-    projectId,
-    updatedBy: userId,
-  });
-  assert.equal(disabled.frequency, 'none');
-  assert.equal(disabled.nextRunAt, null);
-  const runsAfterDisable = await listReportSchedulePeriodRuns(sql, {
-    limit: 100,
-    projectId,
-    scheduleId: disabled.id,
-  });
-  assert.equal(
-    runsAfterDisable.filter((run) => run.runKind === 'scheduled_backfill').length,
-    backfillCount,
-  );
-
-  await cleanupReportScheduleSettingsFixture();
-  assert.equal(await readProjectReportSchedule(sql, { projectId }), null);
 }
 
 async function cleanupReportScheduleSettingsFixture() {
-  await sql`DELETE FROM public.report_schedule_period_runs WHERE project_id = ${projectId}`;
+  await sql`DELETE FROM public.report_schedule_period_runs WHERE project_id = ${projectId} OR id = ${legacyWeeklyBackfillPeriodRunId}`;
   await sql`DELETE FROM public.project_report_schedules WHERE project_id = ${projectId}`;
 }
 

@@ -1,14 +1,14 @@
 'use client';
 
 import { ActionForm, PendingSubmitButton } from './form-buttons';
+import type { ReportScheduleFrequency } from './report-schedule-contract.ts';
 import {
   DEFAULT_REPORT_SCHEDULE_RUN_TIME,
   formatReportScheduleTimestamp,
   type ProjectReportScheduleSettingsView,
   reportScheduleFrequencyLabel,
   reportSchedulePeriodRunStatusLabel,
-} from './report-schedule-settings.ts';
-import type { ReportScheduleFrequency } from './report-schedules.ts';
+} from './report-schedule-presentation.ts';
 
 type ReportScheduleUpdateAction = (formData: FormData) => Promise<void>;
 

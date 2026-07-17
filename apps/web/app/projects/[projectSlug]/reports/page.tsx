@@ -6,9 +6,9 @@ import {
   getProjectMembership,
   getVisiblePublicProject,
 } from '../../../../src/admin-db';
+import { resolveReportSchedulePageAccess } from '../../../../src/admin-report-schedule-runtime';
 import { getOptionalAdminSql } from '../../../../src/admin-sql';
 import { AuthRequiredError, requireSessionUserId } from '../../../../src/auth-session';
-import { lookupProjectAdminAccess, lookupProjectMemberAccess } from '../../../../src/authz';
 import {
   createPostgresReportRepository,
   reportNowFromEnv,
@@ -16,7 +16,6 @@ import {
 } from '../../../../src/report';
 import { ReportGenerateForm, ReportsList } from '../../../../src/report-client';
 import { ReportSchedulePanel } from '../../../../src/report-schedule-panel';
-import { readProjectReportScheduleSettings } from '../../../../src/report-schedule-settings';
 import { formatReportSummaryPreview } from '../../../../src/report-summary';
 import { AppShell, PageHeader } from '../../../../src/ui';
 
@@ -99,20 +98,15 @@ export default async function ReportsPage({
 
   const defaultPeriod = resolveReportPeriod(reportNowFromEnv(process.env) ?? new Date(), 'weekly');
   const sql = getOptionalAdminSql();
-  const adminAccess =
-    sql && userId ? await lookupProjectAdminAccess(sql, { projectSlug, userId }) : undefined;
-  const memberAccess =
-    sql && userId ? await lookupProjectMemberAccess(sql, { projectSlug, userId }) : undefined;
+  const { adminAccess, scheduleSettings } = sql
+    ? await resolveReportSchedulePageAccess(sql, { projectSlug, userId })
+    : { adminAccess: undefined, scheduleSettings: null };
   const customTemplates =
     sql && adminAccess
       ? ((await createPostgresReportRepository(sql).listActiveCustomReportTemplates?.({
           projectId: adminAccess.id,
         })) ?? [])
       : [];
-  const scheduleSettings =
-    sql && memberAccess
-      ? await readProjectReportScheduleSettings(sql, { projectId: memberAccess.id })
-      : null;
 
   return (
     <AppShell active="reports" project={project}>

@@ -152,6 +152,7 @@ test('report schedule settings repository scopes reads and writes by project', a
   const source = await readFile(new URL('./report-schedule-settings.ts', import.meta.url), 'utf8');
   assert.match(source, /period_run\.project_id = \$\{input\.projectId\}/);
   assert.match(source, /schedule\.project_id = \$\{input\.projectId\}/);
+  assert.match(source, /period_run\.frequency = \$\{input\.frequency\}/);
   assert.match(source, /ON CONFLICT \(project_id\) DO UPDATE/);
   assert.match(
     source,
@@ -165,26 +166,17 @@ test('report schedule settings repository scopes reads and writes by project', a
   assert.match(source, /"backfillRemaining"/);
 });
 
-test('report schedule actions keep admin save and member read boundaries', async () => {
-  const actions = await readFile(
-    new URL('./admin-report-schedule-actions.ts', import.meta.url),
-    'utf8',
+test('report schedule period run summary filters by current schedule frequency', async () => {
+  const source = await readFile(new URL('./report-schedule-settings.ts', import.meta.url), 'utf8');
+  assert.match(
+    source,
+    /readReportSchedulePeriodRunSummary\(sql, \{\s*frequency: schedule\.frequency,/,
   );
-  const page = await readFile(
-    new URL('../app/projects/[projectSlug]/reports/page.tsx', import.meta.url),
-    'utf8',
+  const summaryBlock = source.slice(
+    source.indexOf('export async function readReportSchedulePeriodRunSummary'),
+    source.indexOf('export function parseReportSchedulePeriodRunSummaryRow'),
   );
-  assert.match(actions, /requireAdminProject/);
-  assert.match(actions, /parseReportScheduleFrequencyInput/);
-  assert.match(actions, /lookupProjectMemberAccess/);
-  assert.match(page, /lookupProjectMemberAccess/);
-  assert.match(page, /lookupProjectAdminAccess/);
-  assert.match(page, /ReportSchedulePanel/);
-  const publicBranch = page.slice(
-    page.indexOf('if (!isMember)'),
-    page.indexOf('const defaultPeriod'),
-  );
-  assert.doesNotMatch(publicBranch, /ReportSchedulePanel/);
+  assert.match(summaryBlock, /period_run\.frequency = \$\{input\.frequency\}/);
 });
 
 test('report schedule save runs schedule transition and backfill enqueue in one transaction', async () => {
@@ -232,6 +224,33 @@ test('active dispatcher leases block schedule saves instead of being cleared', (
       ),
     ReportScheduleSaveBlockedError,
   );
+});
+
+test('report schedule panel imports presentation helpers without SQL modules', async () => {
+  const panel = await readFile(new URL('./report-schedule-panel.tsx', import.meta.url), 'utf8');
+  assert.match(panel, /from '\.\/report-schedule-presentation\.ts'/);
+  assert.match(panel, /from '\.\/report-schedule-contract\.ts'/);
+  assert.doesNotMatch(panel, /from '\.\/report-schedule-settings\.ts'/);
+  assert.doesNotMatch(panel, /from '\.\/report-schedules\.ts'/);
+});
+
+test('updateProjectReportSchedule uses the shared admin save helper', async () => {
+  const actions = await readFile(
+    new URL('./admin-report-schedule-actions.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(actions, /saveProjectReportScheduleForAdmin/);
+  assert.doesNotMatch(actions, /requireAdminProject/);
+});
+
+test('report schedule presentation depends only on the client-safe contract', async () => {
+  const presentation = await readFile(
+    new URL('./report-schedule-presentation.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(presentation, /from '\.\/report-schedule-contract\.ts'/);
+  assert.doesNotMatch(presentation, /from '\.\/report-schedules\.ts'/);
+  assert.doesNotMatch(presentation, /from '\.\/report-schedule-settings\.ts'/);
 });
 
 test('save path locks the project row and schedule state inside the transaction', async () => {

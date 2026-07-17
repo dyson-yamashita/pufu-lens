@@ -4,7 +4,7 @@ import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const testRoot = fileURLToPath(new URL('../src', import.meta.url));
-// postgres-roundtrip.test.ts requires DATABASE_URL and runs via `pnpm test:db`.
+// Database integration tests require DATABASE_URL and run via `pnpm test:db`.
 const excludedTestPaths = new Set(['postgres-roundtrip.test.ts']);
 
 function shouldSkipDirectory(name: string): boolean {

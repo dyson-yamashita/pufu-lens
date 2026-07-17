@@ -1,5 +1,8 @@
 import { auth } from '../auth';
+import { AuthRequiredError } from './auth-errors.ts';
 import { isDevelopmentBypassEnabled } from './runtime-guards';
+
+export { AuthRequiredError } from './auth-errors.ts';
 
 export async function getSessionUserId(): Promise<string | undefined> {
   const session = await auth();
@@ -21,11 +24,4 @@ export async function requireSessionUserId(): Promise<string> {
     }
   }
   throw new AuthRequiredError();
-}
-
-export class AuthRequiredError extends Error {
-  constructor() {
-    super('Authentication is required.');
-    this.name = 'AuthRequiredError';
-  }
 }
