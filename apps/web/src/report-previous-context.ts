@@ -116,12 +116,7 @@ export function extractContinuedRisks(report: PrivateReportJsonV1): readonly str
     }
   }
   for (const line of risksSection.markdown.split('\n')) {
-    const trimmed = line.trim();
-    const bulletMatch = trimmed.match(/^([-+*])\s+(.+)$/);
-    if (!bulletMatch?.[2]) {
-      continue;
-    }
-    const bullet = bulletMatch[2].trim();
+    const bullet = parseMarkdownBulletLine(line.trim());
     if (bullet) {
       values.push(bullet);
     }
@@ -341,4 +336,20 @@ function sanitizePreviousReportOccurredAt(value: string | null): string | null {
 
 function uniqueNonEmpty(values: readonly string[]): string[] {
   return [...new Set(values)];
+}
+
+function parseMarkdownBulletLine(trimmed: string): string | null {
+  if (trimmed.length < 2) {
+    return null;
+  }
+  const marker = trimmed[0];
+  if (marker !== '-' && marker !== '*' && marker !== '+') {
+    return null;
+  }
+  const separator = trimmed[1];
+  if (separator !== ' ' && separator !== '\t') {
+    return null;
+  }
+  const bullet = trimmed.slice(2).trim();
+  return bullet || null;
 }

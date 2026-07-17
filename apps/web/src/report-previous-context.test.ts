@@ -73,6 +73,22 @@ assert.deepEqual(
   ['Star bullet risk', 'Plus bullet risk'],
 );
 
+const longWhitespace = ' '.repeat(100_000);
+assert.deepEqual(
+  extractContinuedRisks(
+    baseReport({
+      sections: [
+        {
+          id: 'risks',
+          markdown: `* ${longWhitespace}\n* ${longWhitespace}Adversarial bullet risk\n+\tTab bullet risk`,
+          title: '課題・次のアクション',
+        },
+      ],
+    }),
+  ),
+  ['Adversarial bullet risk', 'Tab bullet risk'],
+);
+
 const built = await buildPreviousReportProviderContext({
   frequency: 'weekly',
   previousReport: baseReport(),
