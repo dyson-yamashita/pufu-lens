@@ -47,6 +47,19 @@ export interface ReportDocumentRecord {
   readonly title: string;
 }
 
+export type ReportInsertResult =
+  | { readonly reportId: string; readonly status: 'conflict'; readonly storageUri: string }
+  | { readonly reportId: string; readonly status: 'inserted' };
+
+export interface ConflictingScheduledReportRow {
+  readonly generationKind: ReportGenerationKind;
+  readonly id: string;
+  readonly periodEnd: string;
+  readonly periodStart: string;
+  readonly scheduleFrequency: ScheduledReportFrequency;
+  readonly storageUri: string;
+}
+
 export interface ReportRepository {
   insertReport(input: {
     readonly customTemplateRun?: ReportTemplateRunInsert;
@@ -56,7 +69,7 @@ export interface ReportRepository {
     readonly projectId: string;
     readonly report: PrivateReportJsonV1;
     readonly storageUri: string;
-  }): Promise<void>;
+  }): Promise<ReportInsertResult | undefined>;
   listActiveCustomReportTemplates?(input: {
     readonly projectId: string;
   }): Promise<readonly ReportCustomTemplateSummary[]>;
@@ -321,39 +334,109 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
       storageUri,
     }) {
       const generation = normalizeReportGenerationMetadata(generationMetadata);
-      await sql.begin(async (transaction) => {
-        await transaction`
-          INSERT INTO public.reports (
-            id,
-            project_id,
-            title,
-            summary,
-            storage_uri,
-            schema_version,
-            period,
-            is_public,
-            generated_by,
-            generation_kind,
-            schedule_frequency,
-            previous_scheduled_report_id,
-            schedule_period_run_id
-          )
-          VALUES (
-            ${report.report_id},
-            ${projectId},
-            ${report.title},
-            ${report.summary},
-            ${storageUri},
-            ${report.schema_version},
-            daterange(${report.period.start}::date, ${report.period.end}::date, '[]'),
-            false,
-            ${generatedBy},
-            ${generation.generationKind},
-            ${generation.scheduleFrequency},
-            ${generation.previousScheduledReportId},
-            ${generation.schedulePeriodRunId}
-          )
-        `;
+      return sql.begin(async (transaction) => {
+        const insertValues = {
+          generatedBy,
+          generation,
+          projectId,
+          report,
+          storageUri,
+        };
+        if (generation.schedulePeriodRunId) {
+          const insertedRows = (await transaction`
+            INSERT INTO public.reports (
+              id,
+              project_id,
+              title,
+              summary,
+              storage_uri,
+              schema_version,
+              period,
+              is_public,
+              generated_by,
+              generation_kind,
+              schedule_frequency,
+              previous_scheduled_report_id,
+              schedule_period_run_id
+            )
+            VALUES (
+              ${report.report_id},
+              ${projectId},
+              ${report.title},
+              ${report.summary},
+              ${storageUri},
+              ${report.schema_version},
+              daterange(${report.period.start}::date, ${report.period.end}::date, '[]'),
+              false,
+              ${generatedBy},
+              ${generation.generationKind},
+              ${generation.scheduleFrequency},
+              ${generation.previousScheduledReportId},
+              ${generation.schedulePeriodRunId}
+            )
+            ON CONFLICT (schedule_period_run_id) DO NOTHING
+            RETURNING id::text
+          `) as readonly unknown[];
+          if (insertedRows.length === 0) {
+            const existingRows = (await transaction`
+              SELECT
+                report.id::text AS id,
+                report.generation_kind AS "generationKind",
+                report.schedule_frequency AS "scheduleFrequency",
+                lower(report.period)::text AS "periodStart",
+                (upper(report.period) - 1)::text AS "periodEnd",
+                report.storage_uri AS "storageUri"
+              FROM public.reports AS report
+              WHERE report.project_id = ${projectId}
+                AND report.schedule_period_run_id = ${generation.schedulePeriodRunId}
+              LIMIT 1
+            `) as readonly unknown[];
+            const existing = parseConflictingScheduledReportRow(existingRows[0]);
+            validateConflictingScheduledReport(existing, {
+              generationKind: generation.generationKind,
+              period: report.period,
+              scheduleFrequency: generation.scheduleFrequency,
+            });
+            return {
+              reportId: existing.id,
+              status: 'conflict' as const,
+              storageUri: existing.storageUri,
+            };
+          }
+        } else {
+          await transaction`
+            INSERT INTO public.reports (
+              id,
+              project_id,
+              title,
+              summary,
+              storage_uri,
+              schema_version,
+              period,
+              is_public,
+              generated_by,
+              generation_kind,
+              schedule_frequency,
+              previous_scheduled_report_id,
+              schedule_period_run_id
+            )
+            VALUES (
+              ${insertValues.report.report_id},
+              ${insertValues.projectId},
+              ${insertValues.report.title},
+              ${insertValues.report.summary},
+              ${insertValues.storageUri},
+              ${insertValues.report.schema_version},
+              daterange(${insertValues.report.period.start}::date, ${insertValues.report.period.end}::date, '[]'),
+              false,
+              ${insertValues.generatedBy},
+              ${insertValues.generation.generationKind},
+              ${insertValues.generation.scheduleFrequency},
+              ${insertValues.generation.previousScheduledReportId},
+              ${insertValues.generation.schedulePeriodRunId}
+            )
+          `;
+        }
         if (customTemplateRun) {
           await transaction`
             INSERT INTO public.report_template_runs (
@@ -390,6 +473,7 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
             `,
           ),
         );
+        return { reportId: report.report_id, status: 'inserted' as const };
       });
     },
     async listActiveCustomReportTemplates({ projectId }) {
@@ -615,6 +699,63 @@ function validateReportGenerationFields(value: NormalizedReportGenerationMetadat
 
 function isNullableIdentifier(value: unknown): value is string | null {
   return value === null || (typeof value === 'string' && value.length > 0);
+}
+
+function validateConflictingScheduledReport(
+  existing: ConflictingScheduledReportRow,
+  expected: {
+    readonly generationKind: ReportGenerationKind;
+    readonly period: { readonly end: string; readonly start: string };
+    readonly scheduleFrequency: ScheduledReportFrequency | null;
+  },
+): void {
+  if (existing.generationKind !== expected.generationKind) {
+    throw new Error('Conflicting scheduled report generation kind mismatch.');
+  }
+  if (existing.scheduleFrequency !== expected.scheduleFrequency) {
+    throw new Error('Conflicting scheduled report frequency mismatch.');
+  }
+  if (
+    existing.periodStart !== expected.period.start ||
+    existing.periodEnd !== expected.period.end
+  ) {
+    throw new Error('Conflicting scheduled report period mismatch.');
+  }
+}
+
+export function parseConflictingScheduledReportRow(value: unknown): ConflictingScheduledReportRow {
+  if (!isRecord(value)) {
+    throw new Error('Conflicting scheduled report could not be resolved.');
+  }
+  const generationKind = value.generationKind;
+  const scheduleFrequency = value.scheduleFrequency;
+  const periodStart = value.periodStart;
+  const periodEnd = value.periodEnd;
+  const id = value.id;
+  const storageUri = value.storageUri;
+  if (!isReportGenerationKind(generationKind)) {
+    throw new Error('Invalid conflicting scheduled report field: generationKind');
+  }
+  if (!isScheduledReportFrequency(scheduleFrequency)) {
+    throw new Error('Invalid conflicting scheduled report field: scheduleFrequency');
+  }
+  if (typeof periodStart !== 'string' || typeof periodEnd !== 'string') {
+    throw new Error('Invalid conflicting scheduled report field: period');
+  }
+  if (typeof id !== 'string' || id.length === 0) {
+    throw new Error('Invalid conflicting scheduled report field: id');
+  }
+  if (typeof storageUri !== 'string' || storageUri.length === 0) {
+    throw new Error('Invalid conflicting scheduled report field: storageUri');
+  }
+  return {
+    generationKind,
+    id,
+    periodEnd,
+    periodStart,
+    scheduleFrequency,
+    storageUri,
+  };
 }
 
 interface NormalizedReportGenerationMetadata {

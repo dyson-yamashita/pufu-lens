@@ -11,7 +11,7 @@ test('deploy config creates one dispatcher job and one five-minute scheduler', (
   assert.match(deploy, /source-sync-dispatcher/);
   assert.match(
     deploy,
-    /for workflow_id in curate-workflow ingest-workflow generate-report source-sync-dispatcher/,
+    /for workflow_id in curate-workflow ingest-workflow generate-report source-sync-dispatcher report-schedule-dispatcher/,
   );
   assert.match(deploy, /id: deploy-source-sync-scheduler/);
   assert.match(deploy, /--schedule "\*\/5 \* \* \* \*"/);

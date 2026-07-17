@@ -110,6 +110,7 @@ function createRecurrenceRepository(): ReportRepository {
     async deleteReport() {},
     async insertReport({ report, storageUri }) {
       await storage.put(storageUri, `${JSON.stringify(report, null, 2)}\n`);
+      return undefined;
     },
     async listRecentDocuments() {
       return [

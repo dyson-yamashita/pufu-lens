@@ -23,6 +23,7 @@ import {
   createPublicReportChatAgent,
   createPublicReportChatTools,
 } from '../index.ts';
+import { reportScheduleDispatcherRoute } from '../report-schedule-dispatcher-route.ts';
 import { sourceSyncDispatcherRoute } from '../source-sync-dispatcher-route.ts';
 
 if (process.env.GEMINI_API_KEY) {
@@ -76,7 +77,7 @@ export const mastra = new Mastra({
     // It must be installed at runtime rather than bundled by the Mastra rollup analyzer.
     externals: ['@google-cloud/storage'],
   },
-  server: { apiRoutes: [sourceSyncDispatcherRoute] },
+  server: { apiRoutes: [reportScheduleDispatcherRoute, sourceSyncDispatcherRoute] },
   workflows: { generateReportWorkflow, privateChatSearchWorkflow },
 });
 

@@ -115,7 +115,7 @@ gcloud run deploy mastra-server \
 # 5. Ingestion / Report Jobs デプロイ
 #    共通イメージ infra/docker/jobs/Dockerfile（entrypoint scripts/workflow-job.ts）を build し、
 #    各 Job に WORKFLOW_ID を設定する。WORKFLOW_INPUT_JSON は実行時 override で渡す。
-for WF in curate-workflow ingest-workflow generate-report source-sync-dispatcher; do
+for WF in curate-workflow ingest-workflow generate-report source-sync-dispatcher report-schedule-dispatcher; do
   gcloud run jobs deploy "$WF" \
     --image asia-east1-docker.pkg.dev/PROJECT/pufu-lens/workflow-job:latest \
     --region asia-east1 \
@@ -127,7 +127,9 @@ done
 
 # Mastra runtime service accountにはdispatcher Jobのrun.jobs.run / run.jobs.runWithOverrides権限を付与し、
 # scheduler OIDC service accountにはMastra Serverのrun.invokerを付与する。
-# Cloud Schedulerは5分ごとに /internal/schedules/source-sync-dispatcher:run をPOSTする。
+# Cloud Schedulerは5分ごとに source sync / report schedule の各 dispatcher routeへ空objectをPOSTする。
+# /internal/schedules/source-sync-dispatcher:run
+# /internal/schedules/report-schedule-dispatcher:run
 
 # 6. Next.js デプロイ（Firebase App Hosting）
 #    Firebase CLI >= 14.4.0 のローカルソースデプロイを使うと GitHub 連携や push なしで rollout できる。

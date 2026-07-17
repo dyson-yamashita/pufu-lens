@@ -160,6 +160,7 @@ function createReportRepository(): ReportRepository & {
       assert.equal(report.project_id, 'project-a');
       this.generatedByValues.push(generatedBy);
       this.insertedReports += 1;
+      return undefined;
     },
     async listReports() {
       return [];

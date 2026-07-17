@@ -24,6 +24,8 @@ substitutions:
   _DB_MIGRATION_JOB: db-migrate
   _SOURCE_SYNC_DISPATCHER_JOB: source-sync-dispatcher
   _SOURCE_SYNC_SCHEDULER: source-sync-dispatcher
+  _REPORT_SCHEDULE_DISPATCHER_JOB: report-schedule-dispatcher
+  _REPORT_SCHEDULE_SCHEDULER: report-schedule-dispatcher
 
 steps:
   - id: validate-deploy-substitutions
@@ -62,6 +64,11 @@ steps:
 
         if [[ -z "${_SOURCE_SYNC_DISPATCHER_JOB}" || -z "${_SOURCE_SYNC_SCHEDULER}" ]]; then
           echo "_SOURCE_SYNC_DISPATCHER_JOB and _SOURCE_SYNC_SCHEDULER are required." >&2
+          exit 1
+        fi
+
+        if [[ -z "${_REPORT_SCHEDULE_DISPATCHER_JOB}" || -z "${_REPORT_SCHEDULE_SCHEDULER}" ]]; then
+          echo "_REPORT_SCHEDULE_DISPATCHER_JOB and _REPORT_SCHEDULE_SCHEDULER are required." >&2
           exit 1
         fi
 
@@ -207,7 +214,7 @@ steps:
           --vpc-connector "${_VPC_CONNECTOR}" \
           --no-allow-unauthenticated \
           --port 8080 \
-          --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},GEMINI_CHAT_MODEL=gemini-2.5-flash,GEMINI_EMBEDDING_MODEL=gemini-embedding-2,GOOGLE_GENAI_USE_VERTEXAI=false,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},CLOUD_RUN_JOBS_REGION=${_REGION},SOURCE_SYNC_DISPATCHER_JOB_NAME=${_ENV}-${_SOURCE_SYNC_DISPATCHER_JOB}" \
+          --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},GEMINI_CHAT_MODEL=gemini-2.5-flash,GEMINI_EMBEDDING_MODEL=gemini-embedding-2,GOOGLE_GENAI_USE_VERTEXAI=false,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},CLOUD_RUN_JOBS_REGION=${_REGION},SOURCE_SYNC_DISPATCHER_JOB_NAME=${_ENV}-${_SOURCE_SYNC_DISPATCHER_JOB},REPORT_SCHEDULE_DISPATCHER_JOB_NAME=${_ENV}-${_REPORT_SCHEDULE_DISPATCHER_JOB}" \
           --set-secrets "DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_GENERATIVE_AI_API_KEY=GEMINI_API_KEY:latest"
 
         mkdir -p /workspace/.cloudbuild
@@ -226,7 +233,7 @@ steps:
       - |
         set -euo pipefail
 
-        for workflow_id in curate-workflow ingest-workflow generate-report source-sync-dispatcher; do
+        for workflow_id in curate-workflow ingest-workflow generate-report source-sync-dispatcher report-schedule-dispatcher; do
           job_name="${_ENV}-$${workflow_id}"
           job_args=(
             "$${job_name}"
@@ -237,7 +244,7 @@ steps:
             --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},WORKFLOW_ID=$${workflow_id},GEMINI_CHAT_MODEL=gemini-2.5-flash,GEMINI_EMBEDDING_MODEL=gemini-embedding-2,GEMINI_EMBEDDING_DIMENSIONS=1536,GOOGLE_GENAI_USE_VERTEXAI=false"
             --set-secrets "DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,AUTH_SECRET=AUTH_SECRET:latest"
           )
-          if [[ "$${workflow_id}" == "source-sync-dispatcher" ]]; then
+          if [[ "$${workflow_id}" == "source-sync-dispatcher" || "$${workflow_id}" == "report-schedule-dispatcher" ]]; then
             job_args+=(--tasks 1 --max-retries 0 --task-timeout 3300s)
           fi
           if gcloud run jobs describe "$${job_name}" --region "${_REGION}" >/dev/null 2>&1; then
@@ -276,12 +283,42 @@ steps:
           gcloud scheduler jobs create http "$${scheduler_name}" "$${scheduler_args[@]}" --headers "Content-Type=application/json"
         fi
 
+  - id: deploy-report-schedule-scheduler
+    name: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+    waitFor:
+      - deploy-mastra-server
+      - deploy-workflow-jobs
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+
+        service_url="$$(cat /workspace/.cloudbuild/mastra-server-url)"
+        scheduler_name="${_ENV}-${_REPORT_SCHEDULE_SCHEDULER}"
+        scheduler_args=(
+          --location "${_REGION}"
+          --schedule "*/5 * * * *"
+          --time-zone "Etc/UTC"
+          --uri "$${service_url}/internal/schedules/report-schedule-dispatcher:run"
+          --http-method POST
+          --message-body '{}'
+          --oidc-service-account-email "${_SCHEDULER_SERVICE_ACCOUNT}"
+          --oidc-token-audience "$${service_url}"
+        )
+        if gcloud scheduler jobs describe "$${scheduler_name}" --location "${_REGION}" >/dev/null 2>&1; then
+          gcloud scheduler jobs update http "$${scheduler_name}" "$${scheduler_args[@]}" --update-headers "Content-Type=application/json"
+        else
+          gcloud scheduler jobs create http "$${scheduler_name}" "$${scheduler_args[@]}" --headers "Content-Type=application/json"
+        fi
+
   - id: deploy-web-app-hosting
     name: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/firebase-tools:${_FIREBASE_TOOLS_VERSION}
     waitFor:
       - deploy-mastra-server
       - deploy-workflow-jobs
       - deploy-source-sync-scheduler
+      - deploy-report-schedule-scheduler
     entrypoint: bash
     args:
       - -c
@@ -339,6 +376,7 @@ steps:
       - deploy-mastra-server
       - deploy-workflow-jobs
       - deploy-source-sync-scheduler
+      - deploy-report-schedule-scheduler
       - deploy-web-app-hosting
     entrypoint: bash
     args:

@@ -16,7 +16,11 @@ import { loadTrustedPreviousScheduledReport } from './report-previous-report.ts'
 import { type ReportGenerationProvider, resolveProviderCountTokens } from './report-provider.ts';
 import { publishGeneratedPublicReport } from './report-publication.ts';
 import { buildTrustedReportRecurrence, hasProviderRecurrenceDelta } from './report-recurrence.ts';
-import type { ReportDocumentRecord, ReportRepository } from './report-repository.ts';
+import type {
+  ReportDocumentRecord,
+  ReportGenerationMetadata,
+  ReportRepository,
+} from './report-repository.ts';
 import { validatePairedScheduleInputs } from './report-schedule-input.ts';
 import type { ScheduledReportFrequency } from './report-schedules.ts';
 import {
@@ -33,6 +37,7 @@ import { normalizeReportWhitespace, truncateReportText } from './report-text.ts'
 export interface RunGenerateReportOptions {
   readonly customTemplateId?: string;
   readonly generatedBy?: string;
+  readonly generationKind?: 'scheduled' | 'scheduled_backfill';
   readonly now?: Date;
   readonly period?: ReportPeriod;
   readonly periodKind?: ReportPeriodKind;
@@ -41,6 +46,7 @@ export interface RunGenerateReportOptions {
   readonly rawReadViewRepository?: Pick<RawReadViewRepository, 'fetchRawReadView'>;
   readonly repository: ReportRepository;
   readonly scheduleFrequency?: ScheduledReportFrequency;
+  readonly schedulePeriodRunId?: string;
   readonly storage: ObjectStorage;
 }
 
@@ -69,11 +75,14 @@ export async function runGenerateReport(input: {
     throw new Error(`Project not found: ${input.projectSlug}`);
   }
 
-  const scheduleInputs = validatePairedScheduleInputs({
-    previousScheduledReportId: input.options.previousScheduledReportId,
-    scheduleFrequency: input.options.scheduleFrequency,
-  });
-  const previousReport = scheduleInputs
+  const scheduledDispatch = resolveScheduledDispatchOptions(input.options);
+  const scheduleInputs = scheduledDispatch
+    ? scheduledDispatch
+    : validatePairedScheduleInputs({
+        previousScheduledReportId: input.options.previousScheduledReportId,
+        scheduleFrequency: input.options.scheduleFrequency,
+      });
+  const previousReport = scheduleInputs?.previousScheduledReportId
     ? await loadTrustedPreviousScheduledReport({
         newPeriod: period,
         previousScheduledReportId: scheduleInputs.previousScheduledReportId,
@@ -84,7 +93,7 @@ export async function runGenerateReport(input: {
       })
     : undefined;
   const previousReportContext =
-    scheduleInputs && previousReport
+    scheduleInputs?.previousScheduledReportId && previousReport
       ? await buildPreviousReportProviderContext({
           countTokens: resolveProviderCountTokens(input.options.provider),
           frequency: scheduleInputs.scheduleFrequency,
@@ -163,7 +172,13 @@ export async function runGenerateReport(input: {
     cacheControl: 'private, max-age=3600',
     contentType: 'application/json; charset=utf-8',
   });
-  await input.options.repository.insertReport({
+  const generationMetadata = buildReportGenerationMetadata({
+    generationKind: input.options.generationKind,
+    scheduleFrequency: scheduleInputs?.scheduleFrequency,
+    schedulePeriodRunId: input.options.schedulePeriodRunId,
+    previousScheduledReportId: scheduleInputs?.previousScheduledReportId ?? null,
+  });
+  const insertResult = await input.options.repository.insertReport({
     chunks: prepareReportChunks(report),
     ...(customSnapshot
       ? {
@@ -177,10 +192,34 @@ export async function runGenerateReport(input: {
         }
       : {}),
     generatedBy: input.options.generatedBy ?? 'generate-report-job',
+    ...(generationMetadata ? { generationMetadata } : {}),
     projectId: project.id,
     report,
     storageUri: put.uri,
   });
+  if (insertResult?.status === 'conflict') {
+    if (input.options.storage.delete) {
+      await input.options.storage.delete(put.uri).catch(() => undefined);
+    }
+    const existingText = await input.options.storage.getText(insertResult.storageUri);
+    const parsed: unknown = JSON.parse(existingText);
+    validatePrivateReportJson(parsed);
+    const existingReport = parsed as PrivateReportJsonV1;
+    if (existingReport.report_id !== insertResult.reportId) {
+      throw new Error('Conflicting scheduled report id does not match stored report JSON.');
+    }
+    if (existingReport.project_id !== project.id) {
+      throw new Error('Conflicting scheduled report project does not match stored report JSON.');
+    }
+    if (existingReport.period.start !== period.start || existingReport.period.end !== period.end) {
+      throw new Error('Conflicting scheduled report period does not match stored report JSON.');
+    }
+    return {
+      report: existingReport,
+      reportUrl: `/projects/${project.slug}/reports/${existingReport.report_id}`,
+      storageUri: insertResult.storageUri,
+    };
+  }
   if (project.visibility === 'public') {
     await publishGeneratedPublicReport({
       project,
@@ -195,6 +234,47 @@ export async function runGenerateReport(input: {
     report,
     reportUrl: `/projects/${project.slug}/reports/${report.report_id}`,
     storageUri: put.uri,
+  };
+}
+
+function resolveScheduledDispatchOptions(options: RunGenerateReportOptions):
+  | {
+      readonly previousScheduledReportId?: string;
+      readonly scheduleFrequency: ScheduledReportFrequency;
+    }
+  | undefined {
+  const hasPeriodRunId =
+    options.schedulePeriodRunId !== undefined && options.schedulePeriodRunId.length > 0;
+  const hasGenerationKind = options.generationKind !== undefined;
+  if (!hasPeriodRunId && !hasGenerationKind) {
+    return undefined;
+  }
+  if (!hasPeriodRunId || !hasGenerationKind) {
+    throw new Error('Scheduled dispatch requires schedulePeriodRunId and generationKind.');
+  }
+  if (!options.scheduleFrequency) {
+    throw new Error('Scheduled dispatch requires scheduleFrequency.');
+  }
+  return {
+    previousScheduledReportId: options.previousScheduledReportId,
+    scheduleFrequency: options.scheduleFrequency,
+  };
+}
+
+function buildReportGenerationMetadata(input: {
+  readonly generationKind?: 'scheduled' | 'scheduled_backfill';
+  readonly previousScheduledReportId?: string | null;
+  readonly scheduleFrequency?: ScheduledReportFrequency;
+  readonly schedulePeriodRunId?: string;
+}): ReportGenerationMetadata | undefined {
+  if (!input.generationKind || !input.scheduleFrequency || !input.schedulePeriodRunId) {
+    return undefined;
+  }
+  return {
+    generationKind: input.generationKind,
+    previousScheduledReportId: input.previousScheduledReportId ?? null,
+    scheduleFrequency: input.scheduleFrequency,
+    schedulePeriodRunId: input.schedulePeriodRunId,
   };
 }
 

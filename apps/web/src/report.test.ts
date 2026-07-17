@@ -28,11 +28,11 @@ import {
   resolveReportPeriod,
   revokePublicReport,
   runGenerateReport,
-  validatePrivateReportJson,
   validatePublicContextBundle,
   validatePublicReportJson,
 } from './report.ts';
 import { safeReportPdfLines } from './report-pdf.ts';
+import { type PrivateReportJsonV1, validatePrivateReportJson } from './report-schema.ts';
 
 function pufuScoreTexts(score: ReturnType<typeof createPufuScoreFromReport>): readonly string[] {
   return [
@@ -141,6 +141,7 @@ function createRepository(): ReportRepository & {
         storageUri,
         title: report.title,
       });
+      return undefined;
     },
     async readActiveCustomReportTemplate({ projectId, templateId }) {
       if (projectId !== 'project-a' || templateId !== 'template-a') {
@@ -1443,6 +1444,136 @@ await assert.rejects(
     }),
   /Manual report metadata cannot include schedule fields/,
 );
+
+{
+  let insertCalls = 0;
+  const transaction = Object.assign(
+    async (strings: TemplateStringsArray) => {
+      const query = strings.join('');
+      if (query.includes('ON CONFLICT (schedule_period_run_id)')) {
+        insertCalls += 1;
+        return [];
+      }
+      if (query.includes('FROM public.reports AS report')) {
+        return [
+          {
+            generationKind: 'scheduled',
+            id: 'existing-report-id',
+            periodEnd: '2026-06-07',
+            periodStart: '2026-06-01',
+            scheduleFrequency: 'weekly',
+            storageUri: 'sample-a/reports/private/existing-report-id.json',
+          },
+        ];
+      }
+      return [];
+    },
+    { json: (value: unknown) => value },
+  ) as never;
+  const sql = Object.assign(async () => [], {
+    begin: async (callback: (transactionSql: typeof transaction) => Promise<unknown>) =>
+      callback(transaction),
+  }) as never;
+  const conflictRepository = createPostgresReportRepository(sql);
+  const result = await conflictRepository.insertReport({
+    chunks: [],
+    generatedBy: 'report.test',
+    generationMetadata: {
+      generationKind: 'scheduled',
+      scheduleFrequency: 'weekly',
+      schedulePeriodRunId: 'period-run-a',
+    },
+    projectId: 'project-a',
+    report: {
+      ...generated.report,
+      period: { end: '2026-06-07', start: '2026-06-01' },
+      report_id: 'new-report-id',
+    },
+    storageUri: 'sample-a/reports/private/conflict.json',
+  });
+  assert.equal(insertCalls, 1);
+  assert.deepEqual(result, {
+    reportId: 'existing-report-id',
+    status: 'conflict',
+    storageUri: 'sample-a/reports/private/existing-report-id.json',
+  });
+}
+
+{
+  let publishCalls = 0;
+  const deletedUris: string[] = [];
+  const existingReport: PrivateReportJsonV1 = {
+    generated_at: '2026-06-04T00:00:00.000Z',
+    period: { end: '2026-06-07', start: '2026-06-01' },
+    project_id: 'project-a',
+    report_id: 'existing-report-id',
+    schema_version: 'v1',
+    sections: generated.report.sections,
+    summary: 'existing summary',
+    title: 'existing title',
+  };
+  const conflictStorage = {
+    async delete(uri: string) {
+      deletedUris.push(uri);
+    },
+    async getText(uri: string) {
+      if (uri === 'sample-a/reports/private/existing-report-id.json') {
+        return `${JSON.stringify(existingReport)}\n`;
+      }
+      throw new Error('missing object');
+    },
+    async put(uri: string, _body: string) {
+      return { uri };
+    },
+  } as unknown as import('../../../packages/storage/src/object-storage.ts').ObjectStorage;
+  const conflictRepository = {
+    ...repository,
+    async insertReport() {
+      return {
+        reportId: 'existing-report-id',
+        status: 'conflict' as const,
+        storageUri: 'sample-a/reports/private/existing-report-id.json',
+      };
+    },
+    async lookupProject(input: { readonly projectSlug: string }) {
+      if (input.projectSlug === 'sample-b') {
+        return {
+          graphName: 'graph_sample_b',
+          id: 'project-b',
+          slug: 'sample-b',
+          visibility: 'public' as const,
+        };
+      }
+      return {
+        graphName: 'graph_sample_a',
+        id: 'project-a',
+        slug: 'sample-a',
+        visibility: 'public' as const,
+      };
+    },
+    async setReportPublicState() {
+      publishCalls += 1;
+    },
+  };
+  const conflictGenerated = await runGenerateReport({
+    options: {
+      generationKind: 'scheduled',
+      now: new Date('2026-06-04T12:00:00.000Z'),
+      period: { end: '2026-06-07', start: '2026-06-01' },
+      provider: createExtractiveReportProvider(),
+      repository: conflictRepository,
+      scheduleFrequency: 'weekly',
+      schedulePeriodRunId: 'period-run-a',
+      storage: conflictStorage,
+    },
+    projectSlug: 'sample-a',
+  });
+  assert.equal(conflictGenerated.report.report_id, 'existing-report-id');
+  assert.equal(conflictGenerated.storageUri, 'sample-a/reports/private/existing-report-id.json');
+  assert.equal(deletedUris.length, 1);
+  assert.notEqual(deletedUris[0], 'sample-a/reports/private/existing-report-id.json');
+  assert.equal(publishCalls, 0);
+}
 
 const malformedGeminiProvider = createGeminiReportProvider({
   apiKey: 'test-key',

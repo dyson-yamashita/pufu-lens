@@ -31,7 +31,7 @@
 ### Phase 4: 自動化・運用（1 週間）
 
 - レポート自動生成ワークフロー（JSON 出力）
-- Cloud Scheduler 設定（プロジェクトごと）
+- Cloud Scheduler から共有 dispatcher を固定間隔で起動し、project ごとの schedule は DB で管理
 - Slack 通知
 - Secret Manager 統合・本番運用開始
 
