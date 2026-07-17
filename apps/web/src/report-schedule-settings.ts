@@ -63,6 +63,12 @@ const EMPTY_PERIOD_RUN_SUMMARY: ReportSchedulePeriodRunSummary = {
   succeeded: 0,
 };
 
+/**
+ * Validates and returns a report schedule frequency input.
+ *
+ * @param value - The frequency value to validate
+ * @returns The validated report schedule frequency
+ */
 export function parseReportScheduleFrequencyInput(value: string): ReportScheduleFrequency {
   if (!isReportScheduleFrequency(value)) {
     throw new Error('frequency must be one of none, weekly, monthly, or annually.');
@@ -70,6 +76,11 @@ export function parseReportScheduleFrequencyInput(value: string): ReportSchedule
   return value;
 }
 
+/**
+ * Creates the default view for a project without an active report schedule.
+ *
+ * @returns A settings view with unscheduled defaults and no execution history
+ */
 export function createDefaultReportScheduleSettingsView(): ProjectReportScheduleSettingsView {
   return {
     frequency: 'none',
@@ -87,6 +98,12 @@ export function createDefaultReportScheduleSettingsView(): ProjectReportSchedule
   };
 }
 
+/**
+ * Builds the report schedule settings view from schedule and period-run data.
+ *
+ * @param input - The schedule, period-run summary, and recent period runs used to build the view
+ * @returns The populated settings view, or default settings when no schedule exists
+ */
 export function buildReportScheduleSettingsView(input: {
   readonly periodRunSummary: ReportSchedulePeriodRunSummary;
   readonly recentPeriodRuns: readonly ReportSchedulePeriodRun[];
@@ -111,6 +128,12 @@ export function buildReportScheduleSettingsView(input: {
   };
 }
 
+/**
+ * Resolves the next scheduled report run time for a scheduled frequency.
+ *
+ * @param input - The reference time, frequency, and daily run time used to calculate the next run.
+ * @returns The next run timestamp, or `null` when scheduling is disabled.
+ */
 export function resolveReportScheduleNextRunAt(input: {
   readonly asOf: Date | string;
   readonly frequency: ReportScheduleFrequency;
@@ -126,6 +149,12 @@ export function resolveReportScheduleNextRunAt(input: {
   });
 }
 
+/**
+ * Determines whether changing the schedule frequency requires resetting execution state.
+ *
+ * @param input - The current and previous schedule frequencies
+ * @returns `true` if the frequencies differ, `false` otherwise.
+ */
 export function shouldResetReportScheduleExecutionState(input: {
   readonly nextFrequency: ReportScheduleFrequency;
   readonly previousFrequency: ReportScheduleFrequency | null;
@@ -140,6 +169,13 @@ export class ReportScheduleSaveBlockedError extends Error {
   }
 }
 
+/**
+ * Determines whether a report schedule has an active execution lease.
+ *
+ * @param schedule - The schedule lease information, or `null` if no schedule exists
+ * @param asOf - The time against which lease expiration is evaluated
+ * @returns `true` if the schedule has a worker token and its lease expires after `asOf`, `false` otherwise
+ */
 export function hasActiveReportScheduleLease(
   schedule: Pick<ProjectReportSchedule, 'leaseExpiresAt' | 'workerToken'> | null,
   asOf: Date | string = new Date(),
@@ -150,6 +186,13 @@ export function hasActiveReportScheduleLease(
   return new Date(schedule.leaseExpiresAt).valueOf() > new Date(asOf).valueOf();
 }
 
+/**
+ * Ensures that report schedule settings can be saved.
+ *
+ * @param schedule - The current report schedule, if one exists
+ * @param asOf - The time used to determine whether the execution lease is active
+ * @throws ReportScheduleSaveBlockedError if scheduled report execution is in progress
+ */
 export function assertReportScheduleSaveAllowed(
   schedule: ProjectReportSchedule | null,
   asOf: Date | string = new Date(),
@@ -159,6 +202,12 @@ export function assertReportScheduleSaveAllowed(
   }
 }
 
+/**
+ * Reads a project's report schedule settings and period-run information.
+ *
+ * @param input - Identifies the project whose settings should be read
+ * @returns The project's schedule settings view, or default settings when no schedule exists
+ */
 export async function readProjectReportScheduleSettings(
   sql: SqlExecutor,
   input: { readonly projectId: string },
@@ -185,6 +234,12 @@ export async function readProjectReportScheduleSettings(
   });
 }
 
+/**
+ * Saves the project's report schedule and enqueues initial backfill runs when required.
+ *
+ * @param input - The schedule frequency, project identifier, effective time, and updating user.
+ * @returns The saved project report schedule.
+ */
 export async function saveProjectReportSchedule(
   sql: postgres.Sql,
   input: {
@@ -236,6 +291,12 @@ export async function saveProjectReportSchedule(
   });
 }
 
+/**
+ * Locks the project row before saving its report schedule.
+ *
+ * @param input - Identifies the project to lock
+ * @throws If the project does not exist or the returned row does not match the requested project
+ */
 async function lockProjectRowForReportScheduleSave(
   sql: SqlExecutor,
   input: { readonly projectId: string },
@@ -252,6 +313,12 @@ async function lockProjectRowForReportScheduleSave(
   }
 }
 
+/**
+ * Reads and locks the project's report schedule for update.
+ *
+ * @param input - Identifies the project whose schedule should be read
+ * @returns The project report schedule, or `null` if no schedule exists
+ */
 async function readLockedProjectReportSchedule(
   sql: SqlExecutor,
   input: { readonly projectId: string },
@@ -284,6 +351,16 @@ async function readLockedProjectReportSchedule(
   return rows[0] ? parseProjectReportScheduleRow(rows[0]) : null;
 }
 
+/**
+ * Saves a project's report schedule and returns the persisted schedule.
+ *
+ * Execution state is reset when the frequency changes.
+ *
+ * @param sql - Database executor used to persist the schedule
+ * @param input - Schedule frequency, timing, project, and update metadata
+ * @returns The persisted project report schedule
+ * @throws Error if the saved schedule cannot be returned
+ */
 async function upsertProjectReportScheduleRow(
   sql: SqlExecutor,
   input: {
@@ -369,6 +446,11 @@ async function upsertProjectReportScheduleRow(
   return schedule;
 }
 
+/**
+ * Enqueues pending backfill runs for available scheduled report periods.
+ *
+ * @param input - The schedule, project, frequency, and reference time used to create backfill runs.
+ */
 async function enqueueInitialBackfillPeriodRuns(
   sql: SqlExecutor,
   input: {
@@ -424,6 +506,12 @@ async function enqueueInitialBackfillPeriodRuns(
   }
 }
 
+/**
+ * Reads the status counts and remaining scheduled backfill runs for a report schedule.
+ *
+ * @param input - Identifies the project and report schedule.
+ * @returns The period-run summary, or zero counts when no summary row is available.
+ */
 export async function readReportSchedulePeriodRunSummary(
   sql: SqlExecutor,
   input: { readonly projectId: string; readonly scheduleId: string },
@@ -451,6 +539,12 @@ export async function readReportSchedulePeriodRunSummary(
   return rows[0] ? parseReportSchedulePeriodRunSummaryRow(rows[0]) : EMPTY_PERIOD_RUN_SUMMARY;
 }
 
+/**
+ * Parses a database row into a report schedule period-run summary.
+ *
+ * @param value - The row-like value containing period-run counts
+ * @returns The validated period-run summary
+ */
 export function parseReportSchedulePeriodRunSummaryRow(
   value: unknown,
 ): ReportSchedulePeriodRunSummary {
@@ -466,6 +560,12 @@ export function parseReportSchedulePeriodRunSummaryRow(
   };
 }
 
+/**
+ * Formats a report schedule timestamp for display.
+ *
+ * @param value - The timestamp to format, or `null` for an unset value
+ * @returns The formatted timestamp in the report schedule timezone, or `未設定` when no value is provided
+ */
 export function formatReportScheduleTimestamp(value: string | null): string {
   if (!value) {
     return '未設定';
@@ -477,6 +577,12 @@ export function formatReportScheduleTimestamp(value: string | null): string {
   }).format(new Date(value));
 }
 
+/**
+ * Converts a report schedule frequency to its Japanese display label.
+ *
+ * @param frequency - The report schedule frequency to label
+ * @returns The Japanese label for the frequency
+ */
 export function reportScheduleFrequencyLabel(frequency: ReportScheduleFrequency): string {
   switch (frequency) {
     case 'weekly':
@@ -490,6 +596,12 @@ export function reportScheduleFrequencyLabel(frequency: ReportScheduleFrequency)
   }
 }
 
+/**
+ * Resolves a period run status to its display label.
+ *
+ * @param status - The period run status to label
+ * @returns The status label, or the provided status for unrecognized values
+ */
 export function reportSchedulePeriodRunStatusLabel(status: ReportScheduleRunStatus): string {
   switch (status) {
     case 'pending':
@@ -509,6 +621,12 @@ export function reportSchedulePeriodRunStatusLabel(status: ReportScheduleRunStat
   }
 }
 
+/**
+ * Generates a description of the effects of activating or changing a report schedule.
+ *
+ * @param input - The new and previous schedule frequencies
+ * @returns A user-facing description when activation behavior requires explanation, or `null` otherwise
+ */
 export function describeReportScheduleActivation(input: {
   readonly frequency: ReportScheduleFrequency;
   readonly previousFrequency: ReportScheduleFrequency | null;
@@ -530,6 +648,13 @@ export function describeReportScheduleActivation(input: {
   return null;
 }
 
+/**
+ * Validates that a value is a non-null, non-array object.
+ *
+ * @param value - The value to validate
+ * @param kind - The row type used in the validation error message
+ * @returns The value as a record
+ */
 function requireRecord(value: unknown, kind: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`Invalid ${kind} row.`);
@@ -537,6 +662,13 @@ function requireRecord(value: unknown, kind: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+/**
+ * Validates and returns a non-negative integer value.
+ *
+ * @param value - The value to validate
+ * @param field - The field name used in the validation error
+ * @returns The validated integer
+ */
 function requireNonNegativeInteger(value: unknown, field: string): number {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
     throw new Error(`Invalid report schedule settings field: ${field}`);

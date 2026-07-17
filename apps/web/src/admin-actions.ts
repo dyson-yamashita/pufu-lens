@@ -31,6 +31,11 @@ import { generatePrivateReport as generatePrivateReportAction } from './admin-re
 import { updateProjectReportSchedule as updateProjectReportScheduleAction } from './admin-report-schedule-actions.ts';
 import { updateDataSourceSchedule as updateDataSourceScheduleAction } from './admin-source-schedule-actions.ts';
 
+/**
+ * Creates a project from the submitted form data.
+ *
+ * @param formData - Form data containing the project details
+ */
 export async function createProject(formData: FormData): Promise<void> {
   await createProjectAction(formData);
 }
@@ -118,14 +123,29 @@ export async function ingestDataSource(formData: FormData): Promise<void> {
   await ingestDataSourceAction(formData);
 }
 
+/**
+ * Generates a private report from the provided form data.
+ *
+ * @param formData - The form data containing the report generation details
+ */
 export async function generatePrivateReport(formData: FormData): Promise<void> {
   await generatePrivateReportAction(formData);
 }
 
+/**
+ * Updates a project's report delivery schedule.
+ *
+ * @param formData - Form data containing the project's report schedule settings
+ */
 export async function updateProjectReportSchedule(formData: FormData): Promise<void> {
   await updateProjectReportScheduleAction(formData);
 }
 
+/**
+ * Approves a parser version using the submitted form data.
+ *
+ * @param formData - Form data containing the parser version approval details
+ */
 export async function approveParserVersion(formData: FormData): Promise<void> {
   await approveParserVersionAction(formData);
 }

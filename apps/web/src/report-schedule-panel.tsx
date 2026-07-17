@@ -137,6 +137,11 @@ export function ReportSchedulePanel({
   );
 }
 
+/**
+ * Displays the report schedule frequency as read-only information.
+ *
+ * @param frequency - The configured report schedule frequency
+ */
 function MemberReadonly({ frequency }: { readonly frequency: ReportScheduleFrequency }) {
   return (
     <div className="report-schedule-readonly" data-testid="report-schedule-member-readonly">
@@ -151,6 +156,11 @@ function MemberReadonly({ frequency }: { readonly frequency: ReportScheduleFrequ
   );
 }
 
+/**
+ * Displays recent report period runs with their date range, status, run kind, and any error message.
+ *
+ * @param runs - The recent period runs to display
+ */
 function RecentRuns({
   runs,
 }: {
@@ -180,6 +190,13 @@ function RecentRuns({
   );
 }
 
+/**
+ * Renders a labeled detail value for a definition list.
+ *
+ * @param label - The detail label
+ * @param testId - The test identifier for the value element
+ * @param value - The detail value
+ */
 function DetailItem({
   label,
   testId,
