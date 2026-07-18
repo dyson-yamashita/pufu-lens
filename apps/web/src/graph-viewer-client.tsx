@@ -772,7 +772,7 @@ function buildGraphStyles(graphTheme: ReturnType<typeof readGraphTheme>): Styles
         color: graphTheme.text,
         'curve-style': 'bezier',
         'font-size': '10px',
-        label: 'data(label)',
+        label: '',
         'line-color': graphTheme.line,
         'target-arrow-color': graphTheme.line,
         'target-arrow-shape': 'triangle',
@@ -780,6 +780,12 @@ function buildGraphStyles(graphTheme: ReturnType<typeof readGraphTheme>): Styles
         'text-background-opacity': 0.85,
         'text-background-padding': '2px',
         width: '1.5px',
+      },
+    },
+    {
+      selector: 'edge:selected',
+      style: {
+        label: 'data(label)',
       },
     },
     {
