@@ -39,33 +39,21 @@ function dollarQuote(value: string): string {
   return `${tag}${value}${tag}`;
 }
 
-export async function reconcileMergedActorGraphElements(
-  sql: postgres.Sql,
-  input: ActorGraphReconcileInput,
-): Promise<void> {
-  const context = formatActorGraphReconcileContext(input);
-  try {
-    const result = await mergeActorGraphElements(sql, input);
-    if (result.status === 'skipped' && result.reason !== 'secondary actor graph node not found') {
-      console.warn(`AGE actor graph reconcile skipped (${context}): ${result.reason}.`);
-    }
-  } catch (error) {
-    console.warn(
-      `AGE actor graph reconcile failed (${context}): ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-}
-
-function formatActorGraphReconcileContext(input: ActorGraphReconcileInput): string {
-  return [
-    `graph=${input.graphName ?? 'none'}`,
-    `primary=${input.primaryGraphNodeId}`,
-    `secondary=${input.secondaryGraphNodeId}`,
-  ].join(', ');
-}
-
+/**
+ * Reconciles merged actor graph nodes inside the caller's open transaction.
+ *
+ * Safe no-ops return without throwing when the project graph is unset, both actors
+ * share the same graph node id, or the secondary graph node is already absent even if
+ * the primary node is also missing. Unsafe graph states such as a duplicate secondary
+ * node, or a missing or duplicate primary node while secondary exists, reject the
+ * transaction.
+ *
+ * @param tx - Open postgres.js transaction executing AGE cypher via LOAD 'age'.
+ * @param input - Primary and secondary actor graph node ids plus the surviving actor id.
+ * @throws When AGE cypher fails or the graph state is not reconcilable.
+ */
 export async function mergeActorGraphElements(
-  sql: postgres.Sql,
+  tx: postgres.TransactionSql,
   input: ActorGraphReconcileInput,
 ): Promise<ActorGraphReconcileResult> {
   if (!input.graphName) {
@@ -76,88 +64,86 @@ export async function mergeActorGraphElements(
   }
 
   const safeGraphName = validateGraphName(input.graphName);
-  return sql.begin(async (transaction) => {
-    await transaction`LOAD 'age'`;
-    await transaction`SET LOCAL search_path = ag_catalog, "$user", public`;
-    const primaryCount = await countActorGraphNode(
-      transaction,
-      safeGraphName,
-      input.primaryGraphNodeId,
-      'primary actor graph node',
-    );
-    if (primaryCount !== 1) {
-      return {
-        reason: `expected 1 primary actor graph node, found ${primaryCount}`,
-        status: 'skipped',
-      };
-    }
-    const secondaryCount = await countActorGraphNode(
-      transaction,
-      safeGraphName,
-      input.secondaryGraphNodeId,
-      'secondary actor graph node',
-    );
-    if (secondaryCount === 0) {
-      return { reason: 'secondary actor graph node not found', status: 'skipped' };
-    }
-    if (secondaryCount !== 1) {
-      return {
-        reason: `expected 1 secondary actor graph node, found ${secondaryCount}`,
-        status: 'skipped',
-      };
-    }
+  await tx`LOAD 'age'`;
+  await tx`SET LOCAL search_path = ag_catalog, "$user", public`;
+  const secondaryCount = await countActorGraphNode(
+    tx,
+    safeGraphName,
+    input.secondaryGraphNodeId,
+    'secondary actor graph node',
+  );
+  if (secondaryCount === 0) {
+    return { reason: 'secondary actor graph node not found', status: 'skipped' };
+  }
+  if (secondaryCount !== 1) {
+    throw new Error(`expected 1 secondary actor graph node, found ${secondaryCount}`);
+  }
+  const primaryCount = await countActorGraphNode(
+    tx,
+    safeGraphName,
+    input.primaryGraphNodeId,
+    'primary actor graph node',
+  );
+  if (primaryCount !== 1) {
+    throw new Error(`expected 1 primary actor graph node, found ${primaryCount}`);
+  }
 
-    for (const edgeType of ACTOR_EDGE_TYPES) {
-      const outgoingRows = (await transaction.unsafe(
-        `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
-          [
-            'MATCH (primary {graphNodeId: $primaryGraphNodeId})',
-            'MATCH (secondary {graphNodeId: $secondaryGraphNodeId})',
-            `MATCH (secondary)-[relation:${edgeType}]->(target)`,
-            'WHERE target.graphNodeId IS NULL OR target.graphNodeId <> $primaryGraphNodeId',
-            `MERGE (primary)-[merged:${edgeType}]->(target)`,
-            'ON CREATE SET merged += properties(relation), merged.actorId = $primaryActorId',
-            'RETURN count(merged) AS mergedCount',
-          ].join(' '),
-        )}, $1::agtype) AS (value agtype)`,
-        [JSON.stringify(actorGraphParameters(input))],
-      )) as readonly unknown[];
-      parseActorGraphCountRows(outgoingRows, `${edgeType} outgoing merge count`);
-      const incomingRows = (await transaction.unsafe(
-        `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
-          [
-            'MATCH (primary {graphNodeId: $primaryGraphNodeId})',
-            'MATCH (secondary {graphNodeId: $secondaryGraphNodeId})',
-            `MATCH (source)-[relation:${edgeType}]->(secondary)`,
-            'WHERE source.graphNodeId IS NULL OR source.graphNodeId <> $primaryGraphNodeId',
-            `MERGE (source)-[merged:${edgeType}]->(primary)`,
-            'ON CREATE SET merged += properties(relation), merged.actorId = $primaryActorId',
-            'RETURN count(merged) AS mergedCount',
-          ].join(' '),
-        )}, $1::agtype) AS (value agtype)`,
-        [JSON.stringify(actorGraphParameters(input))],
-      )) as readonly unknown[];
-      parseActorGraphCountRows(incomingRows, `${edgeType} incoming merge count`);
-    }
-    const deleteRows = (await transaction.unsafe(
+  for (const edgeType of ACTOR_EDGE_TYPES) {
+    const outgoingRows = (await tx.unsafe(
       `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
         [
+          'MATCH (primary {graphNodeId: $primaryGraphNodeId})',
           'MATCH (secondary {graphNodeId: $secondaryGraphNodeId})',
-          'WITH secondary, count(secondary) AS deletedCount',
-          'DETACH DELETE secondary',
-          'RETURN deletedCount',
+          `MATCH (secondary)-[relation:${edgeType}]->(target)`,
+          'WHERE target.graphNodeId IS NULL OR target.graphNodeId <> $primaryGraphNodeId',
+          `OPTIONAL MATCH (primary)-[existing:${edgeType}]->(target)`,
+          'WITH primary, target, relation, existing',
+          'WHERE existing IS NULL',
+          `CREATE (primary)-[merged:${edgeType}]->(target)`,
+          'SET merged += properties(relation), merged.actorId = $primaryActorId',
+          'RETURN count(merged) AS mergedCount',
         ].join(' '),
       )}, $1::agtype) AS (value agtype)`,
       [JSON.stringify(actorGraphParameters(input))],
     )) as readonly unknown[];
-    const deletedCount = parseActorGraphCountRows(deleteRows, 'secondary actor delete count');
-    if (deletedCount !== 1) {
-      throw new Error(
-        `Actor graph reconcile failed: expected to delete 1 secondary node, deleted ${deletedCount}.`,
-      );
-    }
-    return { deletedCount, status: 'merged' };
-  });
+    parseActorGraphOptionalCountRows(outgoingRows, `${edgeType} outgoing merge count`);
+    const incomingRows = (await tx.unsafe(
+      `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
+        [
+          'MATCH (primary {graphNodeId: $primaryGraphNodeId})',
+          'MATCH (secondary {graphNodeId: $secondaryGraphNodeId})',
+          `MATCH (source)-[relation:${edgeType}]->(secondary)`,
+          'WHERE source.graphNodeId IS NULL OR source.graphNodeId <> $primaryGraphNodeId',
+          `OPTIONAL MATCH (source)-[existing:${edgeType}]->(primary)`,
+          'WITH source, primary, relation, existing',
+          'WHERE existing IS NULL',
+          `CREATE (source)-[merged:${edgeType}]->(primary)`,
+          'SET merged += properties(relation), merged.actorId = $primaryActorId',
+          'RETURN count(merged) AS mergedCount',
+        ].join(' '),
+      )}, $1::agtype) AS (value agtype)`,
+      [JSON.stringify(actorGraphParameters(input))],
+    )) as readonly unknown[];
+    parseActorGraphOptionalCountRows(incomingRows, `${edgeType} incoming merge count`);
+  }
+  const deleteRows = (await tx.unsafe(
+    `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
+      [
+        'MATCH (secondary {graphNodeId: $secondaryGraphNodeId})',
+        'WITH secondary, count(secondary) AS deletedCount',
+        'DETACH DELETE secondary',
+        'RETURN deletedCount',
+      ].join(' '),
+    )}, $1::agtype) AS (value agtype)`,
+    [JSON.stringify(actorGraphParameters(input))],
+  )) as readonly unknown[];
+  const deletedCount = parseActorGraphCountRows(deleteRows, 'secondary actor delete count');
+  if (deletedCount !== 1) {
+    throw new Error(
+      `Actor graph reconcile failed: expected to delete 1 secondary node, deleted ${deletedCount}.`,
+    );
+  }
+  return { deletedCount, status: 'merged' };
 }
 
 type ActorGraphCypherParameters = {
@@ -199,6 +185,13 @@ export function parseActorGraphCountRows(rows: readonly unknown[], label: string
     throw new Error(`Invalid AGE ${label}: row is not an object.`);
   }
   return parseAgeInteger(row.value, label);
+}
+
+function parseActorGraphOptionalCountRows(rows: readonly unknown[], label: string): number {
+  if (rows.length === 0) {
+    return 0;
+  }
+  return parseActorGraphCountRows(rows, label);
 }
 
 function parseAgeInteger(value: unknown, label: string): number {
