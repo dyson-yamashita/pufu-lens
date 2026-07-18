@@ -712,6 +712,27 @@
   gap: 14px;
 }
 
+.report-section-sources {
+  min-width: 0;
+}
+
+.report-section-sources summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.report-section-sources summary:hover {
+  color: var(--text);
+}
+
+.report-section-sources[open] summary {
+  margin-bottom: 8px;
+}
+
 .report-recurrence-panel {
   display: grid;
   gap: 14px;

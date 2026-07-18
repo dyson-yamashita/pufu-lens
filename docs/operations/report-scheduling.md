@@ -77,7 +77,7 @@ LIMIT 200;
 - `retry_wait`: `next_attempt_at` 以降に再試行する。15 分、1 時間、6 時間の順で待機するため、時刻前の再実行を異常と判断しない。
 - `retry_exhausted`: 自動では後続 period を追い越さない。原因を解消しても専用の retry 操作がない間は DB の status / attempt count を手作業で変更せず、Issue に project、frequency、period、safe error と調査結果を記録して復旧機能の追加または承認済み forward fix へエスカレーションする。
 - `skipped`: 対象 period に document が無い場合など、report を生成しない終端状態である。`skip_reason` の安全な要約を確認する。report を作る目的で ad hoc に status を戻さない。
-- `succeeded`: `report_id` を持つ終端状態である。一覧では `scheduled` / `scheduled_backfill` と周期が表示され、前回 report がある場合は詳細に差分が表示される。
+- `succeeded`: `report_id` を持つ終端状態である。レポート一覧では `scheduled` / `scheduled_backfill` のどちらも「定期（周期）」と表示され、直近 period run では内部の `run_kind` を確認できる。前回 report がある場合は詳細に差分が表示される。
 
 同じ project・frequency では最古の `pending` / `running` / `retry_wait` / `retry_exhausted` を先に解決する。後続 period を先に成功・skip 扱いにする DB 更新は禁止する。
 

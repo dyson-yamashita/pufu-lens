@@ -72,6 +72,7 @@ test('scenario: member sees pending save label while report schedule form submit
   await expect(page.getByTestId('report-schedule-timezone-note')).toContainText(
     '1件の履歴レポート',
   );
+  await expect(page.getByTestId('report-schedule-backfill-remaining')).toHaveCount(0);
 
   const saveButton = page.getByTestId('report-schedule-save-button');
   await expect(saveButton).toHaveText('保存');
@@ -153,9 +154,7 @@ test('scenario: member opens private report detail from list and sees sections',
   await expect(page.getByTestId('reports-table')).toContainText(report.title);
   await expect(page.getByTestId('report-generation-report-a')).toHaveText('手動');
   await expect(page.getByTestId('report-generation-report-scheduled')).toHaveText('定期（週次）');
-  await expect(page.getByTestId('report-generation-report-backfill')).toHaveText(
-    '定期 backfill（月次）',
-  );
+  await expect(page.getByTestId('report-generation-report-backfill')).toHaveText('定期（月次）');
 
   await expect(
     page.getByTestId('report-row-report-a').getByRole('link', { name: report.title, exact: true }),
@@ -172,7 +171,14 @@ test('scenario: member opens private report detail from list and sees sections',
   await expect(
     page.getByTestId('report-section-progress').getByRole('link', { name: '判断材料' }),
   ).toHaveAttribute('href', 'https://example.com/progress');
-  await expect(page.getByTestId('report-source-doc-a')).toContainText('web');
+  const progressSources = page.getByTestId('report-section-sources-progress');
+  const progressSourcesToggle = page.getByTestId('report-section-sources-toggle-progress');
+  const progressSource = page.getByTestId('report-source-doc-a');
+  await expect(progressSources).toContainText('Sources (1)');
+  await expect(progressSource).toBeHidden();
+  await progressSourcesToggle.click();
+  await expect(progressSource).toBeVisible();
+  await expect(progressSource).toContainText('web');
   await expect(page.getByRole('link', { name: 'Spec Update' })).toHaveAttribute(
     'href',
     'https://example.com/spec',
@@ -371,8 +377,12 @@ test('scenario: public user reads report with shared private rendering and no qu
   await expect(
     page.getByTestId('public-report-section-progress').locator('.report-markdown strong'),
   ).toHaveText('仕様更新');
-  await expect(page.getByTestId('public-report-source-doc-a')).toContainText('web');
-  await expect(page.getByTestId('public-report-source-doc-a').getByRole('link')).toHaveAttribute(
+  const publicProgressSource = page.getByTestId('public-report-source-doc-a');
+  await expect(publicProgressSource).toBeHidden();
+  await page.getByTestId('public-report-section-sources-toggle-progress').click();
+  await expect(publicProgressSource).toBeVisible();
+  await expect(publicProgressSource).toContainText('web');
+  await expect(publicProgressSource.getByRole('link')).toHaveAttribute(
     'href',
     'https://example.com/spec',
   );

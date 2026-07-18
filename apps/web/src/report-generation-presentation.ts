@@ -6,9 +6,9 @@ type ReportGenerationKind = 'manual' | 'scheduled' | 'scheduled_backfill';
 /**
  * Formats report generation metadata for the private report list.
  *
- * @param generationKind - Whether the report was generated manually, on schedule, or by backfill
+ * @param generationKind - Whether the report was generated manually or through scheduled processing
  * @param scheduleFrequency - The scheduled cadence, or `null` for a manual report
- * @returns A Japanese label describing the generation source and cadence
+ * @returns A Japanese label describing manual or scheduled generation and its cadence
  */
 export function reportGenerationLabel(
   generationKind: ReportGenerationKind,
@@ -21,7 +21,5 @@ export function reportGenerationLabel(
   const frequencyLabel = scheduleFrequency
     ? reportScheduleFrequencyLabel(scheduleFrequency)
     : '周期不明';
-  return generationKind === 'scheduled_backfill'
-    ? `定期 backfill（${frequencyLabel}）`
-    : `定期（${frequencyLabel}）`;
+  return `定期（${frequencyLabel}）`;
 }

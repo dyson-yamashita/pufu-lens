@@ -6,7 +6,7 @@ test('reportGenerationLabel identifies manual reports', () => {
   assert.equal(reportGenerationLabel('manual', null), '手動');
 });
 
-test('reportGenerationLabel identifies scheduled cadence and backfill', () => {
+test('reportGenerationLabel identifies scheduled cadence without exposing backfill', () => {
   assert.equal(reportGenerationLabel('scheduled', 'weekly'), '定期（週次）');
-  assert.equal(reportGenerationLabel('scheduled_backfill', 'annually'), '定期 backfill（年次）');
+  assert.equal(reportGenerationLabel('scheduled_backfill', 'annually'), '定期（年次）');
 });
