@@ -1027,6 +1027,8 @@ assert.equal(normalizeHybridKeywordQuery(undefined), '');
 assert.equal(normalizeHybridKeywordQuery(null), '');
 assert.equal(normalizeHybridKeywordQuery('  Issue\u0007#123  '), 'Issue #123');
 assert.equal(normalizeHybridKeywordQuery('ＰＧｒｏｏｎｇａ'), 'PGroonga');
+assert.equal(normalizeHybridKeywordQuery('Pufu Lens開発'), 'Pufu Lens 開発');
+assert.equal(normalizeHybridKeywordQuery('開発Pufu Lens'), '開発 Pufu Lens');
 assert.equal(normalizeHybridKeywordQuery('a'.repeat(600)).length, 512);
 assert.equal(normalizeHybridKeywordQuery('b'.repeat(2000)).length, 512);
 assert.ok(reciprocalRankFusionScore(1) > reciprocalRankFusionScore(2));
