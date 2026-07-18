@@ -40,49 +40,47 @@ export default async function ProjectsPage() {
           <ProjectCreateDialog action={createProject} />
         </div>
       ) : null}
-      <div className="section-heading project-section-heading">
-        <div>
-          <h2>Public Projects</h2>
-        </div>
-      </div>
-      <section className="project-grid" data-testid="public-project-list">
-        {discoveryPublicProjects.length > 0 ? (
-          discoveryPublicProjects.map((project) => (
-            <article
-              className="project-card project-card-link"
-              data-testid={`public-project-${project.slug}`}
-              key={project.slug}
-            >
-              <div className="project-card-header">
-                <div>
-                  <p className="eyebrow">{project.slug}</p>
-                  <h2>{project.name}</h2>
+      {discoveryPublicProjects.length > 0 ? (
+        <>
+          <div className="section-heading project-section-heading">
+            <div>
+              <h2>Public Projects</h2>
+            </div>
+          </div>
+          <section className="project-grid" data-testid="public-project-list">
+            {discoveryPublicProjects.map((project) => (
+              <article
+                className="project-card project-card-link"
+                data-testid={`public-project-${project.slug}`}
+                key={project.slug}
+              >
+                <div className="project-card-header">
+                  <div>
+                    <p className="eyebrow">{project.slug}</p>
+                    <h2>{project.name}</h2>
+                  </div>
+                  <div className="status-stack">
+                    <StatusBadge status="healthy" />
+                    <span
+                      className="status-badge status-visibility-public"
+                      data-testid={`public-project-visibility-${project.slug}`}
+                    >
+                      public
+                    </span>
+                  </div>
                 </div>
-                <div className="status-stack">
-                  <StatusBadge status="healthy" />
-                  <span
-                    className="status-badge status-visibility-public"
-                    data-testid={`public-project-visibility-${project.slug}`}
-                  >
-                    public
-                  </span>
-                </div>
-              </div>
-              <p>{project.description}</p>
-              <Link
-                aria-label={`${project.name} を開く`}
-                className="project-card-stretched-link"
-                data-testid={`public-project-open-${project.slug}`}
-                href={`/projects/${project.slug}`}
-              />
-            </article>
-          ))
-        ) : (
-          <p className="notice" data-testid="public-project-empty">
-            public project はまだありません。
-          </p>
-        )}
-      </section>
+                <p>{project.description}</p>
+                <Link
+                  aria-label={`${project.name} を開く`}
+                  className="project-card-stretched-link"
+                  data-testid={`public-project-open-${project.slug}`}
+                  href={`/projects/${project.slug}`}
+                />
+              </article>
+            ))}
+          </section>
+        </>
+      ) : null}
       {userId ? (
         <>
           <div className="section-heading project-section-heading">
