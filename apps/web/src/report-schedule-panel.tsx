@@ -41,14 +41,6 @@ export function ReportSchedulePanel({
           <h2>定期レポート設定</h2>
         </div>
       </div>
-      <p
-        className="notice report-schedule-timezone-note"
-        data-testid="report-schedule-timezone-note"
-      >
-        定期実行は {settings.timezone} の {settings.runTime || DEFAULT_REPORT_SCHEDULE_RUN_TIME}{' '}
-        を基準にします。初回の有効化で同周期の定期レポートがまだない場合のみ、完了済み過去期間を1件の履歴レポートとして非同期で生成します。同じ周期の再保存や周期変更では即時の履歴生成は行わず、次回
-        定期実行のみ更新します。
-      </p>
       {canManage ? (
         <ActionForm
           action={updateAction}
@@ -128,6 +120,14 @@ export function ReportSchedulePanel({
           period run はまだありません。
         </p>
       )}
+      <p
+        className="notice report-schedule-timezone-note"
+        data-testid="report-schedule-timezone-note"
+      >
+        定期実行は {settings.timezone} の {settings.runTime || DEFAULT_REPORT_SCHEDULE_RUN_TIME}{' '}
+        を基準にします。初回の有効化で同周期の定期レポートがまだない場合のみ、完了済み過去期間を1件の履歴レポートとして非同期で生成します。同じ周期の再保存や周期変更では即時の履歴生成は行わず、次回
+        定期実行のみ更新します。
+      </p>
     </section>
   );
 }
