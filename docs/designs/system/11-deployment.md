@@ -125,7 +125,8 @@ for WF in curate-workflow ingest-workflow generate-report source-sync-dispatcher
     --set-secrets="DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
 done
 
-# Mastra runtime service accountにはdispatcher Jobのrun.jobs.run / run.jobs.runWithOverrides権限を付与し、
+# Mastra runtime service accountにはsource-sync-dispatcherとreport-schedule-dispatcherの両Jobで
+# run.jobs.run / run.jobs.runWithOverrides権限を付与し、
 # scheduler OIDC service accountにはMastra Serverのrun.invokerを付与する。
 # Cloud Schedulerは5分ごとに source sync / report schedule の各 dispatcher routeへ空objectをPOSTする。
 # /internal/schedules/source-sync-dispatcher:run
