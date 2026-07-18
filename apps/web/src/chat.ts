@@ -1071,7 +1071,7 @@ export function createPostgresChatRepository(
 
       const candidateLimit = hybridSearchCandidateLimit(limit);
       const rows = (await sql`
-        WITH vector_candidates_limit AS (
+        WITH vector_chunk_candidates_limit AS (
           SELECT
             dc.id::text AS chunk_id,
             d.id::text AS document_id,
@@ -1089,6 +1089,19 @@ export function createPostgresChatRepository(
           ORDER BY dc.embedding <=> ${vector}::vector, dc.id
           LIMIT ${candidateLimit}
         ),
+        vector_document_candidates AS (
+          SELECT DISTINCT ON (document_id)
+            chunk_id,
+            document_id,
+            raw_document_id,
+            doc_type,
+            title,
+            canonical_uri,
+            snippet,
+            distance
+          FROM vector_chunk_candidates_limit
+          ORDER BY document_id, distance, chunk_id
+        ),
         vector_candidates AS (
           SELECT
             chunk_id,
@@ -1100,11 +1113,11 @@ export function createPostgresChatRepository(
             snippet,
             row_number() OVER (ORDER BY distance, chunk_id) AS vector_rank,
             NULL::bigint AS keyword_rank
-          FROM vector_candidates_limit
+          FROM vector_document_candidates
         ),
-        keyword_candidates_limit AS (
+        keyword_chunk_candidates_limit AS (
           SELECT
-            dc.id AS chunk_id,
+            dc.id::text AS chunk_id,
             dc.document_id,
             dc.content,
             pgroonga_score(dc.tableoid, dc.ctid) AS keyword_score
@@ -1114,50 +1127,50 @@ export function createPostgresChatRepository(
           ORDER BY pgroonga_score(dc.tableoid, dc.ctid) DESC, dc.id
           LIMIT ${candidateLimit}
         ),
-        keyword_candidates AS (
-          SELECT
-            kcl.chunk_id::text AS chunk_id,
+        keyword_document_candidates AS (
+          SELECT DISTINCT ON (d.id)
+            kcl.chunk_id,
             d.id::text AS document_id,
             d.raw_document_id::text AS raw_document_id,
             d.doc_type,
             coalesce(d.title, 'Untitled') AS title,
             coalesce(d.canonical_uri, '') AS canonical_uri,
             left(coalesce(kcl.content, d.summary, ''), 700) AS snippet,
-            NULL::bigint AS vector_rank,
-            row_number() OVER (ORDER BY kcl.keyword_score DESC, kcl.chunk_id) AS keyword_rank
-          FROM keyword_candidates_limit kcl
+            kcl.keyword_score
+          FROM keyword_chunk_candidates_limit kcl
           JOIN public.documents d ON d.id = kcl.document_id
+          ORDER BY d.id, kcl.keyword_score DESC, kcl.chunk_id
         ),
-        chunk_candidates AS (
+        keyword_candidates AS (
+          SELECT
+            chunk_id,
+            document_id,
+            raw_document_id,
+            doc_type,
+            title,
+            canonical_uri,
+            snippet,
+            NULL::bigint AS vector_rank,
+            row_number() OVER (ORDER BY keyword_score DESC, chunk_id) AS keyword_rank
+          FROM keyword_document_candidates
+        ),
+        document_candidates AS (
           SELECT * FROM vector_candidates
           UNION ALL
           SELECT * FROM keyword_candidates
         ),
-        scored_chunks AS (
+        document_scores AS (
           SELECT
-            cc.chunk_id,
-            cc.document_id,
-            cc.raw_document_id,
-            cc.doc_type,
-            cc.title,
-            cc.canonical_uri,
-            cc.snippet,
-            min(cc.vector_rank) AS vector_rank,
-            min(cc.keyword_rank) AS keyword_rank,
-            COALESCE(1.0 / (${RECIPROCAL_RANK_FUSION_K} + min(cc.vector_rank)), 0.0) +
-              COALESCE(1.0 / (${RECIPROCAL_RANK_FUSION_K} + min(cc.keyword_rank)), 0.0)
+            document_id,
+            min(vector_rank) AS vector_rank,
+            min(keyword_rank) AS keyword_rank,
+            COALESCE(1.0 / (${RECIPROCAL_RANK_FUSION_K} + min(vector_rank)), 0.0) +
+              COALESCE(1.0 / (${RECIPROCAL_RANK_FUSION_K} + min(keyword_rank)), 0.0)
               AS rrf_score
-          FROM chunk_candidates cc
-          GROUP BY
-            cc.chunk_id,
-            cc.document_id,
-            cc.raw_document_id,
-            cc.doc_type,
-            cc.title,
-            cc.canonical_uri,
-            cc.snippet
+          FROM document_candidates
+          GROUP BY document_id
         ),
-        distinct_chunks AS (
+        document_display AS (
           SELECT DISTINCT ON (document_id)
             document_id,
             raw_document_id,
@@ -1165,28 +1178,33 @@ export function createPostgresChatRepository(
             title,
             canonical_uri,
             snippet,
-            vector_rank,
-            keyword_rank,
-            rrf_score
-          FROM scored_chunks
+            chunk_id
+          FROM document_candidates
           ORDER BY
             document_id,
-            rrf_score DESC,
             LEAST(
               COALESCE(vector_rank, 2147483647),
               COALESCE(keyword_rank, 2147483647)
             ),
+            CASE WHEN vector_rank IS NULL THEN 1 ELSE 0 END,
             chunk_id
         )
-        SELECT document_id, raw_document_id, doc_type, title, canonical_uri, snippet
-        FROM distinct_chunks
+        SELECT
+          dd.document_id,
+          dd.raw_document_id,
+          dd.doc_type,
+          dd.title,
+          dd.canonical_uri,
+          dd.snippet
+        FROM document_scores ds
+        JOIN document_display dd USING (document_id)
         ORDER BY
-          rrf_score DESC,
+          ds.rrf_score DESC,
           LEAST(
-            COALESCE(vector_rank, 2147483647),
-            COALESCE(keyword_rank, 2147483647)
+            COALESCE(ds.vector_rank, 2147483647),
+            COALESCE(ds.keyword_rank, 2147483647)
           ),
-          document_id
+          dd.document_id
         LIMIT ${limit}
       `) as readonly unknown[];
       return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));

@@ -42,17 +42,21 @@ pnpm ingest:chunk --project sample-a --limit 3 --embedding-provider gemini --dry
 
 Private Chat の query embedding は Mastra Server が `GEMINI_EMBEDDING_MODEL` / `GEMINI_EMBEDDING_DIMENSIONS=1536` で生成する。pgvector 検索は同じ `document_chunks.embedding_model` の chunk だけを候補にし、異なる model や deterministic provider の vector と cosine 距離を比較しない。PGroonga の keyword 候補は embedding model に依存しないため、再生成中も本文一致の候補として利用できる。
 
-環境内に複数 model が混在している場合は、次の SQL で件数を確認する。
+環境内に複数 model が混在している場合は、次の SQL で件数を確認する。対象 project の再生成は、2 番目の SQL の `mismatched_chunk_count` が **0** になるまで完了扱いにしない。
 
 ```bash
 psql "$DATABASE_URL" -c "SELECT embedding_model, count(*) FROM document_chunks GROUP BY embedding_model ORDER BY embedding_model;"
+psql "$DATABASE_URL" -v project_slug='sample-a' -v target_model="$GEMINI_EMBEDDING_MODEL" -c "SELECT count(*) AS mismatched_chunk_count FROM document_chunks dc JOIN projects p ON p.id = dc.project_id WHERE p.slug = :'project_slug' AND dc.embedding_model IS DISTINCT FROM :'target_model';"
 ```
 
-検索対象 model と異なる chunk は、対象 project ごとに Gemini provider で再実行する。`embedding_model` の変更は既存 chunk set の退避・置換対象になるため、先に `--dry-run` で対象件数を確認し、deploy checklist に実行コマンドと進捗を残す。本番での再生成実行は deploy 承認後に行う。
+検索対象 model と異なる chunk は、対象 project ごとに Gemini provider で再実行する。`embedding_model` の変更は既存 chunk set の退避・置換対象になるため、先に `--dry-run` で対象件数を確認し、deploy checklist に実行コマンドと進捗を残す。本番での再生成実行は deploy 承認後に行う。`--limit` は batch size ではなく、その実行で先頭から読み取る上限なので、全件再生成時は project の最新処理対象 raw document 件数以上を指定する。100 件の例だけで停止せず、不一致件数が残る場合は上限を増やして再実行し、0 件を確認する。
 
 ```bash
 pnpm ingest:chunk --project sample-a --limit 100 --embedding-provider gemini --dry-run
-pnpm ingest:chunk --project sample-a --limit 100 --embedding-provider gemini
+psql "$DATABASE_URL" -v project_slug='sample-a' -c "SELECT count(*) AS latest_embedding_target_count FROM raw_documents rd JOIN projects p ON p.id = rd.project_id WHERE p.slug = :'project_slug' AND rd.ingest_status IN ('parsed', 'indexed') AND rd.parsed_uri IS NOT NULL AND NOT EXISTS (SELECT 1 FROM raw_documents newer WHERE newer.project_id = rd.project_id AND newer.source_type = rd.source_type AND newer.logical_source_id = rd.logical_source_id AND newer.ingest_status IN ('parsed', 'indexed') AND newer.parsed_uri IS NOT NULL AND (newer.created_at, newer.id) > (rd.created_at, rd.id));"
+CHAT_REEMBED_TARGET_LIMIT=1234 # 直前の件数以上へ置き換える
+pnpm ingest:chunk --project sample-a --limit "$CHAT_REEMBED_TARGET_LIMIT" --embedding-provider gemini
+psql "$DATABASE_URL" -v project_slug='sample-a' -v target_model="$GEMINI_EMBEDDING_MODEL" -c "SELECT count(*) AS mismatched_chunk_count FROM document_chunks dc JOIN projects p ON p.id = dc.project_id WHERE p.slug = :'project_slug' AND dc.embedding_model IS DISTINCT FROM :'target_model';"
 ```
 
 ## 確認 SQL
