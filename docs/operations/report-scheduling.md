@@ -111,7 +111,7 @@ ORDER BY project_id, frequency, status;
 ## 本番確認
 
 1. Cloud Scheduler の直近実行が成功し、OIDC service account が Mastra Server の `roles/run.invoker` を持つことを確認する。
-2. Mastra runtime service account が dispatcher Job の `run.jobs.run` と `run.jobs.runWithOverrides` を実行できることを確認する。
+2. Mastra runtime service account が `production-report-schedule-dispatcher` など対象環境の定期 report dispatcher Job resource で `roles/run.jobsExecutorWithOverrides` を持ち、`run.jobs.run` と `run.jobs.runWithOverrides` を実行できることを確認する。source sync dispatcher への付与だけでは代替できない。
 3. Mastra の内部 API `POST /internal/schedules/report-schedule-dispatcher:run` には空の JSON object だけが渡されていることを確認する。project、period、credential を override に入れない。
 4. Cloud Run Job の構造化 log で safe event 名、project ID、period run ID、件数を確認する。本文や worker token は恒久ログへ転記しない。
 5. DB の schedule と period run が上記の状態遷移に従い、private/public の既存アクセス境界が維持されていることを確認する。
@@ -135,6 +135,8 @@ gcloud run jobs get-iam-policy "$DISPATCHER_JOB" \
   --project "$PROJECT_ID" \
   --region "$REGION"
 ```
+
+`pending` が5分を超えて残り、Scheduler の直近実行が HTTP 503、Mastra log が `Cloud Run Jobs API HTTP 403` の場合は、まず上記の Job resource IAM を確認する。binding が無い場合は Mastra runtime service account に `roles/run.jobsExecutorWithOverrides` を付与し、次の自動実行で Scheduler が成功すること、Cloud Run Job execution が作成されること、period run が `pending` から進むことを確認する。
 
 Cloud Scheduler や Job を手動実行する前に、同じ period を処理中の execution と非期限切れ lease が無いことを確認する。障害対応でも schedule、period run、lease、worker token を直接書き換えない。
 
