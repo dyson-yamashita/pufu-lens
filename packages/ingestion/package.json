@@ -3,6 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./embedding": {
+      "types": "./dist/chunk-embedding.d.ts",
+      "import": "./dist/chunk-embedding.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "tsc -p tsconfig.json && node --test \"dist/**/*.test.js\"",

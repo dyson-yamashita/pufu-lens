@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  deterministicVector,
+  type ChatEmbeddingProvider,
   inferChatEditingMetadata,
   PRIVATE_CHAT_VECTOR_DIMENSIONS,
 } from './chat.ts';
@@ -14,6 +14,7 @@ import {
   createFallbackPrivateChatQuestionClassification,
   extractPrivateChatProtectedAnchors,
   formatPrivateChatRetrievalContext,
+  fuseChatSourceRankings,
   MAX_PRIVATE_CHAT_SEARCH_QUERY_LENGTH,
   MAX_PRIVATE_CHAT_SEARCH_QUERY_VARIANTS,
   mergeChatSourcesDeterministically,
@@ -49,6 +50,19 @@ import {
   runPrivateChatSearchViaMastraWorkflow,
 } from './private-chat-workflow-client.ts';
 import { sampleChatSource as sampleSource } from './test-fixtures.ts';
+
+const testEmbeddingProvider: ChatEmbeddingProvider = {
+  dimensions: PRIVATE_CHAT_VECTOR_DIMENSIONS,
+  model: 'gemini-test',
+  async embedTexts(texts) {
+    return texts.map((_, textIndex) =>
+      Array.from(
+        { length: PRIVATE_CHAT_VECTOR_DIMENSIONS },
+        (__, dimensionIndex) => (textIndex + dimensionIndex + 1) / PRIVATE_CHAT_VECTOR_DIMENSIONS,
+      ),
+    );
+  },
+};
 
 test('buildPrivateChatSearchQueryPlan keeps the normalized original query as the primary search', () => {
   const question = '  pufu-editorでのエラー対応実績を教えてください  ';
@@ -195,6 +209,7 @@ test('runPrivateChatSearchRetrieval always performs vector search and graph quer
   };
 
   await runPrivateChatSearchRetrieval({
+    embeddingProvider: testEmbeddingProvider,
     graphName: 'graph-a',
     projectId: 'project-a',
     question: '最近の進捗は？',
@@ -228,6 +243,7 @@ test('runPrivateChatSearchRetrieval runs timeline for deterministic timeline fal
   };
 
   await runPrivateChatSearchRetrieval({
+    embeddingProvider: testEmbeddingProvider,
     graphName: 'graph-a',
     onStage: (stage) => {
       stages.push(stage);
@@ -244,7 +260,7 @@ test('runPrivateChatSearchRetrieval runs timeline for deterministic timeline fal
   assert.equal(inferChatEditingMetadata('障害対応の経緯と時系列を教えて').inferredMode, 'timeline');
 });
 
-test('runPrivateChatRetryingStep searches variants concurrently and merges in plan order', async () => {
+test('runPrivateChatRetryingStep batches embeddings and fuses concurrent variant rankings', async () => {
   const state = applyPrivateChatWorkflowQueryExpansion(
     runPrivateChatPreparingStep({
       graphName: 'graph-a',
@@ -260,16 +276,29 @@ test('runPrivateChatRetryingStep searches variants concurrently and merges in pl
   );
   let activeSearches = 0;
   let maxActiveSearches = 0;
-  const result = await runPrivateChatRetryingStep(state, {
-    async vectorSearch({ query }: { query: string }) {
-      activeSearches += 1;
-      maxActiveSearches = Math.max(maxActiveSearches, activeSearches);
-      await new Promise<void>((resolve) => setTimeout(resolve, query.includes('fix') ? 5 : 10));
-      activeSearches -= 1;
-      return [{ ...sampleSource, documentId: `doc-${query}` }];
+  const embeddingBatches: string[][] = [];
+  const batchingEmbeddingProvider: ChatEmbeddingProvider = {
+    ...testEmbeddingProvider,
+    async embedTexts(texts) {
+      embeddingBatches.push([...texts]);
+      return testEmbeddingProvider.embedTexts(texts);
     },
-  } as never);
+  };
+  const result = await runPrivateChatRetryingStep(
+    state,
+    {
+      async vectorSearch({ query }: { query: string }) {
+        activeSearches += 1;
+        maxActiveSearches = Math.max(maxActiveSearches, activeSearches);
+        await new Promise<void>((resolve) => setTimeout(resolve, query.includes('fix') ? 5 : 10));
+        activeSearches -= 1;
+        return [{ ...sampleSource, documentId: `doc-${query}` }];
+      },
+    } as never,
+    batchingEmbeddingProvider,
+  );
   assert.ok(maxActiveSearches > 1);
+  assert.deepEqual(embeddingBatches, [state.plan.expandedQueries.map(({ query }) => query)]);
   assert.deepEqual(
     result.mergedVectorSources.map((source) => source.documentId),
     state.plan.expandedQueries.map(({ query }) => `doc-${query}`),
@@ -345,6 +374,7 @@ test('runPrivateChatSearchRetrieval runs one simplified retry when neutral prima
   };
 
   await runPrivateChatSearchRetrieval({
+    embeddingProvider: testEmbeddingProvider,
     graphName: 'graph-a',
     onStage: (stage) => {
       stages.push(stage);
@@ -684,10 +714,17 @@ test('mergeHybridChatResponse deduplicates workflow and agent sources', () => {
   ]);
 });
 
-test('deterministicVector remains stable for expanded private chat queries', () => {
-  const primary = deterministicVector('障害 error', PRIVATE_CHAT_VECTOR_DIMENSIONS);
-  const expanded = deterministicVector('障害 error fix', PRIVATE_CHAT_VECTOR_DIMENSIONS);
-  assert.equal(primary.length, PRIVATE_CHAT_VECTOR_DIMENSIONS);
-  assert.equal(expanded.length, PRIVATE_CHAT_VECTOR_DIMENSIONS);
-  assert.notDeepEqual(primary, expanded);
+test('fuseChatSourceRankings promotes consensus while preserving deterministic ties', () => {
+  const docA = { ...sampleSource, documentId: 'doc-a' };
+  const docB = { ...sampleSource, documentId: 'doc-b' };
+  const docC = { ...sampleSource, documentId: 'doc-c' };
+  const fused = fuseChatSourceRankings([
+    { sources: [docA, docB], weight: 2 },
+    { sources: [docB, docC] },
+    { sources: [docB, docA] },
+  ]);
+  assert.deepEqual(
+    fused.map((source) => source.documentId),
+    ['doc-b', 'doc-a', 'doc-c'],
+  );
 });

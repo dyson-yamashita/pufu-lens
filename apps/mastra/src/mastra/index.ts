@@ -11,6 +11,7 @@ import {
 } from '@pufu-lens/web/report';
 import postgres from 'postgres';
 import type { ObjectStorage } from '../../../../packages/storage/src/object-storage.ts';
+import { createChatEmbeddingProvider } from '../chat-embedding-provider.ts';
 import {
   type CrossProjectInvestigationRepository,
   createCrossProjectResearchAgent,
@@ -49,7 +50,8 @@ const crossProjectResearchTools = createCrossProjectResearchTools(
 const crossProjectResearchAgent = createCrossProjectResearchAgent({
   tools: crossProjectResearchTools,
 });
-const projectChatTools = createProjectChatTools(chatRepository);
+const chatEmbeddingProvider = createChatEmbeddingProvider();
+const projectChatTools = createProjectChatTools(chatRepository, chatEmbeddingProvider);
 const projectChatAgent = createProjectChatAgent({ tools: projectChatTools });
 const privateChatQueryPlannerAgent = createPrivateChatQueryPlannerAgent();
 const publicReportChatTools = createPublicReportChatTools();
@@ -62,6 +64,7 @@ const generateReportWorkflow = createGenerateReportWorkflow({
 });
 const privateChatSearchWorkflow = createPrivateChatSearchWorkflow({
   chatRepository,
+  embeddingProvider: chatEmbeddingProvider,
   projectChatAgent,
   queryPlannerAgent: privateChatQueryPlannerAgent,
 });

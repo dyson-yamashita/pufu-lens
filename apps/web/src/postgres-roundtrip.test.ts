@@ -48,6 +48,12 @@ const frequencyMismatchReportId = '10000000-0000-0000-0000-000000000445';
 const monthlyPeriodRunId = '10000000-0000-0000-0000-000000000446';
 const previousFrequencyMismatchReportId = '10000000-0000-0000-0000-000000000447';
 const legacyWeeklyBackfillPeriodRunId = '10000000-0000-0000-0000-000000000448';
+const matchingRawDocumentId = '10000000-0000-0000-0000-000000000449';
+const mismatchedRawDocumentId = '10000000-0000-0000-0000-000000000450';
+const matchingDocumentId = '10000000-0000-0000-0000-000000000451';
+const mismatchedDocumentId = '10000000-0000-0000-0000-000000000452';
+const crossChunkRawDocumentId = '10000000-0000-0000-0000-000000000453';
+const crossChunkDocumentId = '10000000-0000-0000-0000-000000000454';
 const settingsScheduleAsOf = new Date('2026-07-20T05:00:00.000Z');
 const settingsProjectCreatedAt = '2026-06-15T01:00:00.000Z';
 
@@ -57,6 +63,7 @@ async function main() {
   try {
     await resetFixtureRows();
     await seedProjectFixture();
+    await assertChatHybridSearchRoundTrip();
     await assertPrivateChatJsonbRoundTrip();
     await assertReportJsonbRoundTrip();
     await assertReportScheduleSettingsRoundTrip();
@@ -123,6 +130,114 @@ async function seedProjectFixture() {
       (${projectId}, ${userId}, 'admin'),
       (${projectId}, ${chatUserId}, 'member')
   `;
+}
+
+async function assertChatHybridSearchRoundTrip() {
+  await sql`
+    INSERT INTO public.raw_documents (
+      id, project_id, source_type, source_id, logical_source_id, source_version,
+      storage_uri, content_hash, ingest_status
+    )
+    VALUES
+      (
+        ${matchingRawDocumentId}, ${projectId}, 'web', 'rrf-matching', 'rrf-matching',
+        'rrf-matching-v1',
+        'raw/rrf-matching.json', 'rrf-matching-hash', 'indexed'
+      ),
+      (
+        ${mismatchedRawDocumentId}, ${projectId}, 'web', 'rrf-mismatched', 'rrf-mismatched',
+        'rrf-mismatched-v1',
+        'raw/rrf-mismatched.json', 'rrf-mismatched-hash', 'indexed'
+      ),
+      (
+        ${crossChunkRawDocumentId}, ${projectId}, 'web', 'rrf-cross-chunk', 'rrf-cross-chunk',
+        'rrf-cross-chunk-v1',
+        'raw/rrf-cross-chunk.json', 'rrf-cross-chunk-hash', 'indexed'
+      )
+  `;
+  await sql`
+    INSERT INTO public.documents (
+      id, project_id, raw_document_id, doc_type, logical_source_id,
+      title, summary, canonical_uri, graph_node_id
+    )
+    VALUES
+      (
+        ${matchingDocumentId}, ${projectId}, ${matchingRawDocumentId}, 'web_page', 'rrf-matching',
+        'Matching Model', '仕様変更の資料', 'https://example.test/rrf-matching',
+        'document:web:rrf-matching'
+      ),
+      (
+        ${mismatchedDocumentId}, ${projectId}, ${mismatchedRawDocumentId}, 'web_page',
+        'rrf-mismatched',
+        'Mismatched Model', 'wrongmodelkeyword の資料',
+        'https://example.test/rrf-mismatched', 'document:web:rrf-mismatched'
+      ),
+      (
+        ${crossChunkDocumentId}, ${projectId}, ${crossChunkRawDocumentId}, 'web_page',
+        'rrf-cross-chunk',
+        'Cross Chunk Consensus', '別々の chunk が各検索方式で一致する資料',
+        'https://example.test/rrf-cross-chunk', 'document:web:rrf-cross-chunk'
+      )
+  `;
+  const embedding = [1, ...Array.from({ length: 1535 }, () => 0)];
+  const vector = `[${embedding.join(',')}]`;
+  const crossChunkEmbedding = [0.8, 0.6, ...Array.from({ length: 1534 }, () => 0)];
+  const crossChunkVector = `[${crossChunkEmbedding.join(',')}]`;
+  await sql`
+    INSERT INTO public.document_chunks (
+      project_id, document_id, chunk_index, content, content_hash, embedding, embedding_model
+    )
+    VALUES
+      (
+        ${projectId}, ${matchingDocumentId}, 0, '仕様変更の本文', 'rrf-chunk-matching',
+        ${vector}::vector, 'gemini-test'
+      ),
+      (
+        ${projectId}, ${mismatchedDocumentId}, 0, 'wrongmodelkeyword の本文',
+        'rrf-chunk-mismatched', ${vector}::vector, 'deterministic-test'
+      ),
+      (
+        ${projectId}, ${crossChunkDocumentId}, 0, '意味検索だけに近い本文',
+        'rrf-chunk-cross-vector', ${crossChunkVector}::vector, 'gemini-test'
+      ),
+      (
+        ${projectId}, ${crossChunkDocumentId}, 1, 'crosschunkkeyword の本文',
+        'rrf-chunk-cross-keyword', ${vector}::vector, 'deterministic-test'
+      )
+  `;
+
+  const repository = createPostgresChatRepository(sql);
+  const vectorOnly = await repository.vectorSearch({
+    embedding,
+    embeddingModel: 'gemini-test',
+    limit: 5,
+    projectId,
+    query: '',
+  });
+  assert.deepEqual(
+    vectorOnly.map((source) => source.documentId),
+    [matchingDocumentId, crossChunkDocumentId],
+  );
+
+  const hybrid = await repository.vectorSearch({
+    embedding,
+    embeddingModel: 'gemini-test',
+    limit: 5,
+    projectId,
+    query: 'wrongmodelkeyword',
+  });
+  assert.ok(hybrid.some((source) => source.documentId === matchingDocumentId));
+  assert.ok(hybrid.some((source) => source.documentId === mismatchedDocumentId));
+
+  const crossChunkHybrid = await repository.vectorSearch({
+    embedding,
+    embeddingModel: 'gemini-test',
+    limit: 5,
+    projectId,
+    query: 'crosschunkkeyword',
+  });
+  assert.equal(crossChunkHybrid[0]?.documentId, crossChunkDocumentId);
+  assert.match(crossChunkHybrid[0]?.snippet ?? '', /crosschunkkeyword/);
 }
 
 async function assertPrivateChatJsonbRoundTrip() {

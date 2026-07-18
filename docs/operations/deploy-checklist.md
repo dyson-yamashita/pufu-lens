@@ -147,7 +147,7 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 - progress query:
 - retry / resume 条件:
 - graph / embedding smoke:
-- chat hybrid search smoke: 固有名詞 / Issue 番号を含む質問で `vector-search` が keyword 候補を返すこと
+- chat hybrid search smoke: Mastra Server の `GEMINI_EMBEDDING_MODEL` と `document_chunks.embedding_model` の値が一致し、固有名詞 / Issue 番号を含む質問で `vector-search` が vector / keyword 候補を RRF 統合して返すこと
 - 実行後 smoke:
 - 失敗時の判断: restore / forward fix / 再実行 / deploy 停止
 - 記録先: PR、Issue、release note、または環境別運用ログの URL

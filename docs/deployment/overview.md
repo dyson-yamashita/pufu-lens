@@ -49,8 +49,8 @@ Web は provider によって build 方法が異なる。Firebase App Hosting、
 | `GEMINI_API_KEY`               | secret       | Web、Mastra Server、Workflow Jobs、scripts | Google AI API key 方式で使う。Vertex AI 方式を採る provider では provider IAM へ置き換えられる |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | secret alias | Mastra Server                              | `GEMINI_API_KEY` と同じ secret を注入してよい                                                  |
 | `GEMINI_CHAT_MODEL`            | env          | Web、Mastra Server、scripts                | chat / report model 名                                                                         |
-| `GEMINI_EMBEDDING_MODEL`       | env          | ingestion scripts / jobs                   | embedding model 名                                                                             |
-| `GEMINI_EMBEDDING_DIMENSIONS`  | env          | ingestion scripts / jobs                   | embedding 次元。既定値を使う場合は省略できる                                                   |
+| `GEMINI_EMBEDDING_MODEL`       | env          | Mastra Server、ingestion scripts / jobs    | document chunk と chat query で共通利用する embedding model 名                                 |
+| `GEMINI_EMBEDDING_DIMENSIONS`  | env          | Mastra Server、ingestion scripts / jobs    | embedding 次元。chat query と DB の `vector(1536)` に合わせ、既定値を使う場合は省略できる      |
 | `GOOGLE_GENAI_USE_VERTEXAI`    | env          | infra check / LLM runtime                  | Vertex AI 認証へ切り替える provider では `true` を使う                                         |
 
 ### Auth And Connections

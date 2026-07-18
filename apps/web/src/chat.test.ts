@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createDeterministicEmbeddingProvider } from '@pufu-lens/ingestion/embedding';
 import {
   type ChatRepository,
   createExtractiveChatProvider,
@@ -8,7 +9,7 @@ import {
   createMemoryRateLimiter,
   createPostgresChatRepository,
   createPublicChatMemoryRateLimiter,
-  deterministicVector,
+  embedPrivateChatQueries,
   graphQuerySearchPatterns,
   hybridSearchCandidateLimit,
   inferChatEditingMetadata,
@@ -26,6 +27,7 @@ import {
   privateChatHistorySourcesForStorage,
   privateChatHistoryToMastraMessages,
   publicChatToolCallsFromPrivate,
+  reciprocalRankFusionScore,
   runPrivateChat,
   runPublicChat,
   selectGraphRelatedDocumentCandidates,
@@ -55,6 +57,8 @@ import {
   sampleChatSource as sampleSource,
 } from './test-fixtures.ts';
 
+const testEmbeddingProvider = createDeterministicEmbeddingProvider({ model: 'gemini-test' });
+
 function ageDocumentVertex(documentId: string): string {
   return `${JSON.stringify({ properties: { documentId } })}::vertex`;
 }
@@ -82,8 +86,6 @@ assert.deepEqual(parsePrivateChatRequestBody({ includeHistory: false, question: 
 });
 assert.equal(parsePrivateChatRequestBody({ question: '' }).ok, false);
 assert.equal(parsePrivateChatRequestBody({ includeHistory: 'no', question: 'hello' }).ok, false);
-assert.equal(deterministicVector('sample query', 8).length, 8);
-
 assert.deepEqual(
   parseChatSourceRow({
     canonical_uri: 'https://example.com/spec',
@@ -182,7 +184,11 @@ function createRepository(): ChatRepository & {
 const repository = createRepository();
 const response = await runPrivateChat(
   { projectSlug: 'sample-a', question: '停滞要因とリスクは?', userId: 'user-a' },
-  { provider: createExtractiveChatProvider(), repository },
+  {
+    embeddingProvider: testEmbeddingProvider,
+    provider: createExtractiveChatProvider(),
+    repository,
+  },
 );
 
 assert.equal(response.status, 'answered');
@@ -399,6 +405,7 @@ assert.equal(
 const graphBudgetResponse = await runPrivateChat(
   { projectSlug: 'sample-a', question: '関連資料は?', userId: 'user-a' },
   {
+    embeddingProvider: testEmbeddingProvider,
     provider: createExtractiveChatProvider(),
     repository: {
       ...createRepository(),
@@ -435,6 +442,7 @@ assert.deepEqual(
 const timelineBudgetResponse = await runPrivateChat(
   { projectSlug: 'sample-a', question: '意思決定の経緯を時系列で教えて', userId: 'user-a' },
   {
+    embeddingProvider: testEmbeddingProvider,
     provider: createExtractiveChatProvider(),
     repository: {
       ...createRepository(),
@@ -490,7 +498,11 @@ assert.deepEqual(
 
 const adminResponse = await runPrivateChat(
   { projectSlug: 'sample-a', question: 'admin は?', userId: 'admin-a' },
-  { provider: createExtractiveChatProvider(), repository: createRepository() },
+  {
+    embeddingProvider: testEmbeddingProvider,
+    provider: createExtractiveChatProvider(),
+    repository: createRepository(),
+  },
 );
 assert.equal(adminResponse.status, 'answered');
 
@@ -498,7 +510,11 @@ await assert.rejects(
   () =>
     runPrivateChat(
       { projectSlug: 'sample-b', question: '別 project は?', userId: 'user-a' },
-      { provider: createExtractiveChatProvider(), repository: createRepository() },
+      {
+        embeddingProvider: testEmbeddingProvider,
+        provider: createExtractiveChatProvider(),
+        repository: createRepository(),
+      },
     ),
   ProjectAccessDeniedError,
 );
@@ -507,6 +523,7 @@ const limiter = createMemoryRateLimiter({ limit: 1, windowMs: 60_000 });
 await runPrivateChat(
   { projectSlug: 'sample-a', question: '1 回目', userId: 'user-a' },
   {
+    embeddingProvider: testEmbeddingProvider,
     provider: createExtractiveChatProvider(),
     rateLimiter: limiter,
     repository: createRepository(),
@@ -515,6 +532,7 @@ await runPrivateChat(
 const limited = await runPrivateChat(
   { projectSlug: 'sample-a', question: '2 回目', userId: 'user-a' },
   {
+    embeddingProvider: testEmbeddingProvider,
     provider: createExtractiveChatProvider(),
     rateLimiter: limiter,
     repository: createRepository(),
@@ -1011,6 +1029,45 @@ assert.equal(normalizeHybridKeywordQuery('  Issue\u0007#123  '), 'Issue #123');
 assert.equal(normalizeHybridKeywordQuery('ＰＧｒｏｏｎｇａ'), 'PGroonga');
 assert.equal(normalizeHybridKeywordQuery('a'.repeat(600)).length, 512);
 assert.equal(normalizeHybridKeywordQuery('b'.repeat(2000)).length, 512);
+assert.ok(reciprocalRankFusionScore(1) > reciprocalRankFusionScore(2));
+assert.equal(reciprocalRankFusionScore(0), 0);
+assert.equal((await embedPrivateChatQueries(testEmbeddingProvider, ['query']))[0]?.length, 1536);
+await assert.rejects(
+  () => embedPrivateChatQueries({ ...testEmbeddingProvider, dimensions: 768 }, ['query']),
+  /dimensions must be 1536/,
+);
+
+{
+  const sqlTexts: string[] = [];
+  const boundValues: unknown[][] = [];
+  const sql = ((strings: TemplateStringsArray, ...values: unknown[]) => {
+    sqlTexts.push(strings.join('?'));
+    boundValues.push(values);
+    return Promise.resolve([
+      {
+        canonical_uri: 'https://example.test/doc',
+        document_id: 'doc-rrf',
+        doc_type: 'web_page',
+        raw_document_id: 'raw-rrf',
+        snippet: 'RRF source',
+        title: 'RRF Source',
+      },
+    ]);
+  }) as never;
+  const rrfRepository = createPostgresChatRepository(sql);
+  const sources = await rrfRepository.vectorSearch({
+    embedding: Array.from({ length: 1536 }, () => 0),
+    embeddingModel: 'gemini-test',
+    limit: 5,
+    projectId: 'project-a',
+    query: '仕様変更',
+  });
+  assert.equal(sources[0]?.documentId, 'doc-rrf');
+  assert.match(sqlTexts[0] ?? '', /embedding_model/);
+  assert.match(sqlTexts[0] ?? '', /rrf_score/);
+  assert.doesNotMatch(sqlTexts[0] ?? '', /hybrid_score/);
+  assert.ok(boundValues[0]?.includes('gemini-test'));
+}
 
 const failingGeminiProvider = createGeminiChatProvider({
   apiKey: 'test-key',

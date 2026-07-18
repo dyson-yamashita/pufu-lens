@@ -1,11 +1,12 @@
 import {
   type ChatEditingMetadata,
+  type ChatEmbeddingProvider,
   type ChatRepository,
   type ChatSource,
   type ChatToolCall,
-  deterministicVector,
+  embedPrivateChatQueries,
   inferChatEditingMetadata,
-  PRIVATE_CHAT_VECTOR_DIMENSIONS,
+  reciprocalRankFusionScore,
 } from './chat.ts';
 
 export const PRIVATE_CHAT_SEARCH_STAGE_DEFINITIONS = {
@@ -29,6 +30,7 @@ export interface PrivateChatSearchRetrievalResult {
 }
 
 export interface PrivateChatSearchRetrievalInput {
+  readonly embeddingProvider: ChatEmbeddingProvider;
   readonly graphName: string | null;
   readonly onStage?: (stage: PrivateChatSearchStageId) => void;
   readonly projectId: string;
@@ -41,6 +43,7 @@ const GRAPH_LIMIT = 5;
 const TIMELINE_LIMIT = 5;
 const DETAIL_DOCUMENT_LIMIT = 5;
 const MAX_MERGED_SOURCES = 5;
+const PRIMARY_QUERY_RRF_WEIGHT = 2;
 export const MAX_PRIVATE_CHAT_SEARCH_QUERY_VARIANTS = 6;
 export const MAX_PRIVATE_CHAT_SEARCH_QUERY_LENGTH = 120;
 
@@ -439,6 +442,64 @@ export function mergeChatSourcesDeterministically(
   return merged;
 }
 
+/**
+ * Fuses ranked chat source lists without comparing provider-specific raw scores.
+ *
+ * @param rankings - Ranked source lists with optional relative weights
+ * @param limit - Maximum number of fused sources to return
+ * @returns Sources ordered by weighted reciprocal rank with deterministic tie-breaking
+ */
+export function fuseChatSourceRankings(
+  rankings: readonly {
+    readonly sources: readonly ChatSource[];
+    readonly weight?: number;
+  }[],
+  limit = MAX_MERGED_SOURCES,
+): ChatSource[] {
+  const candidates = new Map<
+    string,
+    {
+      firstListIndex: number;
+      firstRank: number;
+      score: number;
+      source: ChatSource;
+    }
+  >();
+  for (const [listIndex, ranking] of rankings.entries()) {
+    const seenInList = new Set<string>();
+    for (const [rankIndex, source] of ranking.sources.entries()) {
+      const key = source.documentId || source.rawDocumentId || source.canonicalUri;
+      if (!key || seenInList.has(key)) {
+        continue;
+      }
+      seenInList.add(key);
+      const rank = rankIndex + 1;
+      const contribution = reciprocalRankFusionScore(rank, ranking.weight ?? 1);
+      const existing = candidates.get(key);
+      if (existing) {
+        existing.score += contribution;
+      } else {
+        candidates.set(key, {
+          firstListIndex: listIndex,
+          firstRank: rank,
+          score: contribution,
+          source,
+        });
+      }
+    }
+  }
+  return [...candidates.entries()]
+    .sort(
+      ([leftKey, left], [rightKey, right]) =>
+        right.score - left.score ||
+        left.firstListIndex - right.firstListIndex ||
+        left.firstRank - right.firstRank ||
+        (leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0),
+    )
+    .slice(0, Math.max(0, limit))
+    .map(([, candidate]) => candidate.source);
+}
+
 export function mergeChatToolCallsDeterministically(
   ...toolCallGroups: readonly (readonly ChatToolCall[])[]
 ): ChatToolCall[] {
@@ -563,12 +624,26 @@ export function shouldRunPrivateChatTimelineStep(
   );
 }
 
+/**
+ * Runs the primary private-chat retrieval with a query vector from the indexed embedding space.
+ *
+ * @param state - Prepared workflow state containing the primary query
+ * @param repository - Project-scoped chat retrieval repository
+ * @param embeddingProvider - Provider matching the indexed document embedding model and dimensions
+ * @returns Workflow state containing the primary ranked sources
+ */
 export async function runPrivateChatRetrievingStep(
   state: PrivateChatSearchWorkflowState,
   repository: ChatRepository,
+  embeddingProvider: ChatEmbeddingProvider,
 ): Promise<PrivateChatSearchWorkflowState> {
+  const [embedding] = await embedPrivateChatQueries(embeddingProvider, [state.plan.primaryQuery]);
+  if (!embedding) {
+    throw new Error('Private chat primary query embedding is unavailable.');
+  }
   const primaryVectorSources = await repository.vectorSearch({
-    embedding: deterministicVector(state.plan.primaryQuery, PRIVATE_CHAT_VECTOR_DIMENSIONS),
+    embedding,
+    embeddingModel: embeddingProvider.model,
     limit: PRIMARY_VECTOR_LIMIT,
     projectId: state.projectId,
     query: state.plan.primaryQuery,
@@ -582,26 +657,44 @@ export async function runPrivateChatRetrievingStep(
   };
 }
 
+/**
+ * Embeds retry queries as one batch and fuses their ranked results with the primary ranking.
+ *
+ * @param state - Workflow state containing primary results and bounded retry queries
+ * @param repository - Project-scoped chat retrieval repository
+ * @param embeddingProvider - Provider matching the indexed document embedding model and dimensions
+ * @returns Workflow state containing weighted RRF results across query variants
+ */
 export async function runPrivateChatRetryingStep(
   state: PrivateChatSearchWorkflowState,
   repository: ChatRepository,
+  embeddingProvider: ChatEmbeddingProvider,
 ): Promise<PrivateChatSearchWorkflowState> {
-  let mergedVectorSources = [...state.mergedVectorSources];
   const toolCalls = [...state.toolCalls];
+  const retryQueries = resolvePrivateChatRetryQueries(state);
+  const retryEmbeddings = await embedPrivateChatQueries(embeddingProvider, retryQueries);
   const retrySourceGroups = await Promise.all(
-    resolvePrivateChatRetryQueries(state).map((retryQuery) =>
-      repository.vectorSearch({
-        embedding: deterministicVector(retryQuery, PRIVATE_CHAT_VECTOR_DIMENSIONS),
+    retryQueries.map((retryQuery, index) => {
+      const embedding = retryEmbeddings[index];
+      if (!embedding) {
+        throw new Error(`Private chat retry query embedding is unavailable at index ${index}.`);
+      }
+      return repository.vectorSearch({
+        embedding,
+        embeddingModel: embeddingProvider.model,
         limit: PRIMARY_VECTOR_LIMIT,
         projectId: state.projectId,
         query: retryQuery,
-      }),
-    ),
+      });
+    }),
   );
   for (const retrySources of retrySourceGroups) {
     toolCalls.push({ name: 'vector-search', resultCount: retrySources.length });
-    mergedVectorSources = mergeChatSourcesDeterministically(mergedVectorSources, retrySources);
   }
+  const mergedVectorSources = fuseChatSourceRankings([
+    { sources: state.mergedVectorSources, weight: PRIMARY_QUERY_RRF_WEIGHT },
+    ...retrySourceGroups.map((sources) => ({ sources })),
+  ]);
   return {
     ...state,
     mergedVectorSources,
@@ -686,6 +779,12 @@ export async function runPrivateChatDetailStep(
   };
 }
 
+/**
+ * Runs bounded private-chat retrieval with model-aligned embeddings and deterministic fusion.
+ *
+ * @param input - Authorized project scope, query embedding provider, repository, and optional progress callback
+ * @returns Editing metadata, untrusted retrieval context, selected sources, and tool summaries
+ */
 export async function runPrivateChatSearchRetrieval(
   input: PrivateChatSearchRetrievalInput,
 ): Promise<PrivateChatSearchRetrievalResult> {
@@ -701,11 +800,11 @@ export async function runPrivateChatSearchRetrieval(
   });
 
   emit('retrieving');
-  state = await runPrivateChatRetrievingStep(state, input.repository);
+  state = await runPrivateChatRetrievingStep(state, input.repository, input.embeddingProvider);
 
   if (shouldRunPrivateChatRetryStep(state)) {
     emit('retrying');
-    state = await runPrivateChatRetryingStep(state, input.repository);
+    state = await runPrivateChatRetryingStep(state, input.repository, input.embeddingProvider);
   }
 
   emit('relating');
