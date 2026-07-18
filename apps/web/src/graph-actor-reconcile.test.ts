@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict';
 import type postgres from 'postgres';
-import {
-  mergeActorGraphElements,
-  parseActorGraphCountRows,
-  reconcileMergedActorGraphElements,
-} from './graph-actor-reconcile.ts';
+import { mergeActorGraphElements, parseActorGraphCountRows } from './graph-actor-reconcile.ts';
 
 assert.equal(parseActorGraphCountRows([{ value: 1 }], 'sample count'), 1);
 assert.equal(parseActorGraphCountRows([{ value: '2' }], 'sample count'), 2);
@@ -25,7 +21,7 @@ const sampleReconcileInput = {
 } as const;
 
 assert.deepEqual(
-  await mergeActorGraphElements(createSqlMock([]).sql, {
+  await mergeActorGraphElements(createTransactionMock([]).tx, {
     ...sampleReconcileInput,
     graphName: null,
   }),
@@ -33,7 +29,7 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
-  await mergeActorGraphElements(createSqlMock([]).sql, {
+  await mergeActorGraphElements(createTransactionMock([]).tx, {
     graphName: 'graph_sample',
     primaryActorId: 'actor:same',
     primaryGraphNodeId: 'actor:same',
@@ -42,30 +38,51 @@ assert.deepEqual(
   { reason: 'primary and secondary graph nodes are identical', status: 'skipped' },
 );
 
+const secondaryAbsentMock = createTransactionMock([[{ value: 0 }]]);
 assert.deepEqual(
-  await mergeActorGraphElements(createSqlMock([[{ value: 0 }]]).sql, {
-    ...sampleReconcileInput,
-    graphName: 'graph_sample',
-  }),
-  { reason: 'expected 1 primary actor graph node, found 0', status: 'skipped' },
-);
-
-assert.deepEqual(
-  await mergeActorGraphElements(createSqlMock([[{ value: 1 }], [{ value: 0 }]]).sql, {
+  await mergeActorGraphElements(secondaryAbsentMock.tx, {
     ...sampleReconcileInput,
     graphName: 'graph_sample',
   }),
   { reason: 'secondary actor graph node not found', status: 'skipped' },
 );
+assert.equal(secondaryAbsentMock.unsafeQueries.length, 1);
 
-const successfulMock = createSqlMock([
+await assert.rejects(
+  () =>
+    mergeActorGraphElements(createTransactionMock([[{ value: 1 }], [{ value: 0 }]]).tx, {
+      ...sampleReconcileInput,
+      graphName: 'graph_sample',
+    }),
+  /expected 1 primary actor graph node, found 0/,
+);
+
+await assert.rejects(
+  () =>
+    mergeActorGraphElements(createTransactionMock([[{ value: 2 }]]).tx, {
+      ...sampleReconcileInput,
+      graphName: 'graph_sample',
+    }),
+  /expected 1 secondary actor graph node, found 2/,
+);
+
+await assert.rejects(
+  () =>
+    mergeActorGraphElements(createTransactionMock([[{ value: 1 }], [{ value: 2 }]]).tx, {
+      ...sampleReconcileInput,
+      graphName: 'graph_sample',
+    }),
+  /expected 1 primary actor graph node, found 2/,
+);
+
+const successfulMock = createTransactionMock([
   [{ value: 1 }],
   [{ value: 1 }],
-  ...Array.from({ length: 16 }, () => [{ value: 0 }]),
+  ...Array.from({ length: 16 }, () => []),
   [{ value: 1 }],
 ]);
 assert.deepEqual(
-  await mergeActorGraphElements(successfulMock.sql, {
+  await mergeActorGraphElements(successfulMock.tx, {
     ...sampleReconcileInput,
     graphName: 'graph_sample',
   }),
@@ -74,19 +91,33 @@ assert.deepEqual(
 assert.equal(successfulMock.unsafeQueries.length, 19);
 assert.ok(successfulMock.unsafeQueries.every((query) => query.sql.includes('$1::agtype')));
 assert.ok(successfulMock.unsafeQueries.every((query) => !query.sql.includes('jsonb::agtype')));
-assert.ok(successfulMock.unsafeQueries.some((query) => query.sql.includes('MERGE (primary)-')));
-assert.ok(successfulMock.unsafeQueries.some((query) => query.sql.includes('MERGE (source)-')));
-assert.ok(successfulMock.unsafeQueries.every((query) => !query.sql.includes('CREATE (primary)-')));
-assert.ok(successfulMock.unsafeQueries.every((query) => !query.sql.includes('CREATE (source)-')));
+assert.ok(
+  successfulMock.unsafeQueries.some((query) => query.sql.includes('OPTIONAL MATCH (primary)-')),
+);
+assert.ok(
+  successfulMock.unsafeQueries.some((query) => query.sql.includes('OPTIONAL MATCH (source)-')),
+);
+assert.ok(
+  successfulMock.unsafeQueries.some((query) =>
+    query.sql.includes('CREATE (primary)-[merged:AUTHORED]->(target)'),
+  ),
+);
+assert.ok(
+  successfulMock.unsafeQueries.some((query) =>
+    query.sql.includes('CREATE (source)-[merged:AUTHORED]->(primary)'),
+  ),
+);
+assert.ok(successfulMock.unsafeQueries.every((query) => !query.sql.includes('ON CREATE SET')));
+assert.ok(successfulMock.unsafeQueries.every((query) => !query.sql.includes('ON MATCH')));
+assert.ok(successfulMock.unsafeQueries.every((query) => !query.sql.includes('MERGE (primary)-')));
+assert.ok(successfulMock.unsafeQueries.every((query) => !query.sql.includes('MERGE (source)-')));
 assert.ok(
   successfulMock.unsafeQueries
     .filter(
-      (query) => query.sql.includes('MERGE (primary)-') || query.sql.includes('MERGE (source)-'),
+      (query) => query.sql.includes('CREATE (primary)-') || query.sql.includes('CREATE (source)-'),
     )
     .every((query) =>
-      query.sql.includes(
-        'ON CREATE SET merged += properties(relation), merged.actorId = $primaryActorId',
-      ),
+      query.sql.includes('SET merged += properties(relation), merged.actorId = $primaryActorId'),
     ),
 );
 assert.ok(
@@ -115,12 +146,12 @@ assert.ok(
 await assert.rejects(
   () =>
     mergeActorGraphElements(
-      createSqlMock([
+      createTransactionMock([
         [{ value: 1 }],
         [{ value: 1 }],
-        ...Array.from({ length: 16 }, () => [{ value: 0 }]),
+        ...Array.from({ length: 16 }, () => []),
         [{ value: 0 }],
-      ]).sql,
+      ]).tx,
       {
         ...sampleReconcileInput,
         graphName: 'graph_sample',
@@ -129,62 +160,52 @@ await assert.rejects(
   /Actor graph reconcile failed: expected to delete 1 secondary node, deleted 0/,
 );
 
-const originalWarn = console.warn;
-const warnings: string[] = [];
-console.warn = (message?: unknown): void => {
-  warnings.push(String(message));
-};
-try {
-  await reconcileMergedActorGraphElements(createSqlMock([[{ value: 2 }]]).sql, {
-    ...sampleReconcileInput,
-    graphName: 'graph_sample',
-  });
-  assert.match(warnings.at(-1) ?? '', /expected 1 primary actor graph node, found 2/);
-  assert.match(
-    warnings.at(-1) ?? '',
-    /graph=graph_sample, primary=actor:primary-graph-node, secondary=actor:secondary/,
-  );
-
-  warnings.length = 0;
-  await reconcileMergedActorGraphElements(createThrowingSqlMock().sql, {
-    ...sampleReconcileInput,
-    graphName: 'graph_sample',
-  });
-  assert.match(
-    warnings.at(-1) ?? '',
-    /AGE actor graph reconcile failed \(graph=graph_sample, primary=actor:primary-graph-node, secondary=actor:secondary\): synthetic AGE failure/,
-  );
-} finally {
-  console.warn = originalWarn;
-}
+await assert.rejects(
+  () =>
+    mergeActorGraphElements(createThrowingTransactionMock().tx, {
+      ...sampleReconcileInput,
+      graphName: 'graph_sample',
+    }),
+  /synthetic AGE failure/,
+);
 
 console.log('web graph actor reconcile tests passed');
 
-function createSqlMock(rowsByUnsafeCall: readonly (readonly unknown[])[]) {
+function createTransactionMock(rowsByUnsafeCall: readonly (readonly unknown[])[]) {
   const pendingRows = [...rowsByUnsafeCall];
   const unsafeQueries: Array<{ params: readonly unknown[] | undefined; sql: string }> = [];
-  const transaction = Object.assign(async () => [], {
-    unsafe: async (sql: string, params?: readonly unknown[]) => {
-      unsafeQueries.push({ params, sql });
-      const rows = pendingRows.shift();
-      if (!rows) {
-        throw new Error('Unexpected unsafe query.');
+  const transaction = Object.assign(
+    async (strings: TemplateStringsArray, ...values: readonly unknown[]) => {
+      const query = String.raw({ raw: strings }, ...values);
+      if (query.includes("LOAD 'age'") || query.includes('SET LOCAL search_path')) {
+        return [];
       }
-      return rows;
+      return [];
     },
-  });
-  const sql = {
-    begin: async <T>(callback: (tx: postgres.TransactionSql) => Promise<T>) =>
-      callback(transaction as unknown as postgres.TransactionSql),
-  };
-  return { sql: sql as unknown as postgres.Sql, unsafeQueries };
+    {
+      unsafe: async (sql: string, params?: readonly unknown[]) => {
+        unsafeQueries.push({ params, sql });
+        const rows = pendingRows.shift();
+        if (!rows) {
+          throw new Error('Unexpected unsafe query.');
+        }
+        return rows;
+      },
+    },
+  );
+  return { tx: transaction as unknown as postgres.TransactionSql, unsafeQueries };
 }
 
-function createThrowingSqlMock() {
-  const sql = {
-    begin: async () => {
+function createThrowingTransactionMock() {
+  const transaction = Object.assign(
+    async () => {
       throw new Error('synthetic AGE failure');
     },
-  };
-  return { sql: sql as unknown as postgres.Sql };
+    {
+      unsafe: async () => {
+        throw new Error('synthetic AGE failure');
+      },
+    },
+  );
+  return { tx: transaction as unknown as postgres.TransactionSql };
 }

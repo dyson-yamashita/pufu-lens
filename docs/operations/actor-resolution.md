@@ -29,7 +29,8 @@ pnpm ingest:resolve-actors --project sample-a --limit 10
 - merge 時は `actor_aliases.actor_id` と `email_quotes.sender_actor_id` を代表 Actor に寄せ、判断内容を `actor_merge_decisions` に `decision_type = 'merge'` として保存する。
 - reject した候補は `actor_merge_decisions` に `decision_type = 'reject'` として保存し、同じ Actor ペアを候補として再表示しない。
 - Actor 詳細画面では、その Actor が代表・吸収元・reject 対象として関係した判断履歴を表示する。
-- AGE graph の Actor node / edge は relational merge の commit 後に best-effort で reconcile し、Primary / Secondary の graph node が安全に 1 件ずつ確認できる場合は Secondary の edge を Primary に寄せて Secondary node を削除する。graph 側の欠損・重複・未 materialize などで reconcile できない場合も DB merge は巻き戻さず、後続の graph materialize / reconcile で代表 Actor に寄せる。
+- AGE graph が設定済みの場合、relational 更新と graph reconcile は同じ PostgreSQL transaction で実行する。Secondary graph node が 1 件存在するときは Primary graph node も 1 件であることを確認し、既存の Primary edge を保持しながら不足する edge だけを AGE 1.7 互換構文で移し、Secondary node を削除する。AGE の構文エラーや graph node の欠損・重複で安全に reconcile できない場合は relational 更新も rollback する。
+- graph 未設定、Primary / Secondary が同じ graph node を参照している場合、または Secondary graph node がすでに存在しない場合は安全な no-op とし、relational merge を確定する。
 
 ## 確認 SQL
 

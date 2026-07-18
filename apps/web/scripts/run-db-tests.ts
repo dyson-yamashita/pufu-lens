@@ -10,9 +10,11 @@ if (!databaseUrl) {
   process.exit(1);
 }
 
-const dbTestFiles = ['postgres-roundtrip.test.ts', 'admin-report-schedule-runtime.test.ts'].map(
-  (fileName) => resolve(testRoot, fileName),
-);
+const dbTestFiles = [
+  'postgres-roundtrip.test.ts',
+  'admin-report-schedule-runtime.test.ts',
+  'actor-merge-db.test.ts',
+].map((fileName) => resolve(testRoot, fileName));
 
 async function runTestFile(testFile: string): Promise<number | null> {
   const child = spawn(process.execPath, ['--experimental-strip-types', testFile], {
