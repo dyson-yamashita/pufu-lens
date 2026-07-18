@@ -1,9 +1,63 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 const adminCredentials = {
   email: process.env.PUFU_LENS_E2E_ADMIN_EMAIL,
   password: process.env.PUFU_LENS_E2E_ADMIN_PASSWORD,
 };
+
+async function expectDataSourceCreatePanelLayout(page: Page): Promise<void> {
+  await page.goto('/projects/sample-a/admin/data-sources');
+  const panel = page.getByTestId('data-source-create-panel');
+  const heading = page.getByTestId('data-source-create-heading');
+  const typeInput = page.getByTestId('data-source-type-input');
+  const nameInput = page.getByTestId('data-source-name-input');
+
+  await expect(panel).toBeVisible();
+  await expect(heading).toBeVisible();
+  await expect(typeInput).toBeVisible();
+  await expect(nameInput).toBeVisible();
+
+  const typeBeforeNameInDom = await panel.evaluate((panelElement) => {
+    const type = panelElement.querySelector('[data-testid="data-source-type-input"]');
+    const name = panelElement.querySelector('[data-testid="data-source-name-input"]');
+    if (!(type instanceof HTMLElement) || !(name instanceof HTMLElement)) {
+      return false;
+    }
+    return (type.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+  });
+  expect(typeBeforeNameInDom).toBe(true);
+
+  const [panelBox, headingBox, typeBox, nameBox] = await Promise.all([
+    panel.boundingBox(),
+    heading.boundingBox(),
+    typeInput.boundingBox(),
+    nameInput.boundingBox(),
+  ]);
+  expect(panelBox).not.toBeNull();
+  expect(headingBox).not.toBeNull();
+  expect(typeBox).not.toBeNull();
+  expect(nameBox).not.toBeNull();
+
+  const panelLeft = panelBox?.x ?? 0;
+  const panelRight = (panelBox?.x ?? 0) + (panelBox?.width ?? 0);
+  const headingLeft = headingBox?.x ?? 0;
+  const headingCenter = headingLeft + (headingBox?.width ?? 0) / 2;
+  const panelCenter = panelLeft + (panelBox?.width ?? 0) / 2;
+
+  expect(headingLeft - panelLeft).toBeLessThan(40);
+  expect(headingCenter).toBeLessThan(panelCenter);
+  expect(panelRight - headingLeft).toBeGreaterThan(panelCenter - panelLeft);
+
+  const typeLeft = typeBox?.x ?? 0;
+  const nameLeft = nameBox?.x ?? 0;
+  if (Math.abs(typeLeft - nameLeft) > 8) {
+    expect(typeLeft).toBeLessThan(nameLeft);
+  } else {
+    const typeTop = typeBox?.y ?? 0;
+    const nameTop = nameBox?.y ?? 0;
+    expect(typeTop).toBeLessThanOrEqual(nameTop);
+  }
+}
 
 test('scenario: user can switch theme and keep it after reload', async ({ page }) => {
   await page.context().clearCookies();
@@ -109,6 +163,18 @@ test.describe('authenticated admin operation controls', () => {
     await page.getByTestId('credentials-password-input').fill(adminCredentials.password ?? '');
     await page.getByTestId('credentials-login-button').click();
     await expect(page).toHaveURL(/\/projects$/);
+  });
+
+  test('scenario: data source create panel keeps left-aligned heading and type-before-name order', async ({
+    page,
+  }) => {
+    await expectDataSourceCreatePanelLayout(page);
+  });
+
+  test('scenario: data source create panel keeps left-aligned heading and type-before-name order on mobile @mobile', async ({
+    page,
+  }) => {
+    await expectDataSourceCreatePanelLayout(page);
   });
 
   test('scenario: admin user can inspect stable operation controls', async ({ page }) => {
