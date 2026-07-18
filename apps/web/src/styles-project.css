@@ -50,6 +50,10 @@
   margin-bottom: 16px;
 }
 
+.data-source-create-panel {
+  justify-items: start;
+}
+
 .project-section-heading {
   margin: 24px 0 16px;
 }

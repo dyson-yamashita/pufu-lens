@@ -77,19 +77,18 @@ export default async function DataSourcesPage({
         subtitle="収集対象、設定、queue の状態を source type ごとに確認します。"
       />
       <MetricStrip project={project} />
-      <section className="panel create-project-panel" data-testid="data-source-create-panel">
+      <section
+        className="panel create-project-panel data-source-create-panel"
+        data-testid="data-source-create-panel"
+      >
         <div className="panel-heading">
-          <div>
+          <div data-testid="data-source-create-heading">
             <p className="eyebrow">Source</p>
             <h2>Add Source</h2>
           </div>
         </div>
         <ActionForm action={createDataSource} className="project-create-form">
           <input name="projectSlug" type="hidden" value={project.slug} />
-          <label>
-            <span>Name</span>
-            <input data-testid="data-source-name-input" name="name" required type="text" />
-          </label>
           <label>
             <span>Type</span>
             <select
@@ -107,6 +106,10 @@ export default async function DataSourcesPage({
               <DataSourceTypeOption availability={availability} label="Drive" sourceType="drive" />
               <DataSourceTypeOption availability={availability} label="Gmail" sourceType="gmail" />
             </select>
+          </label>
+          <label>
+            <span>Name</span>
+            <input data-testid="data-source-name-input" name="name" required type="text" />
           </label>
           <label className="project-create-description">
             <span>Scope</span>
