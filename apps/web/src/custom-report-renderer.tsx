@@ -285,34 +285,44 @@ function StandardReportSection({
         </div>
       ) : null}
       {section.sources?.length ? (
-        <div className="source-list">
-          {section.sources.map((source) => (
-            <article
-              className="source-chip"
-              data-testid={`${publicView ? 'public-' : ''}report-source-${source.document_id}`}
-              key={source.document_id}
-            >
-              <strong>{normalizePrivateReportSourceLabel(source.doc_type)}</strong>
-              {isPublicHttpUrl(source.canonical_uri) ? (
-                <a
-                  href={source.canonical_uri}
-                  rel="noreferrer"
-                  target="_blank"
-                  title={source.canonical_uri}
-                >
-                  {privateReportSourceTitle(source)}
-                </a>
-              ) : (
-                <>
-                  <span>{privateReportSourceTitle(source)}</span>
-                  <small>
-                    {publicView ? source.document_id : source.canonical_uri || source.document_id}
-                  </small>
-                </>
-              )}
-            </article>
-          ))}
-        </div>
+        <details
+          className="report-section-sources"
+          data-testid={`${publicView ? 'public-' : ''}report-section-sources-${section.id}`}
+        >
+          <summary
+            data-testid={`${publicView ? 'public-' : ''}report-section-sources-toggle-${section.id}`}
+          >
+            Sources ({section.sources.length})
+          </summary>
+          <div className="source-list">
+            {section.sources.map((source) => (
+              <article
+                className="source-chip"
+                data-testid={`${publicView ? 'public-' : ''}report-source-${source.document_id}`}
+                key={source.document_id}
+              >
+                <strong>{normalizePrivateReportSourceLabel(source.doc_type)}</strong>
+                {isPublicHttpUrl(source.canonical_uri) ? (
+                  <a
+                    href={source.canonical_uri}
+                    rel="noreferrer"
+                    target="_blank"
+                    title={source.canonical_uri}
+                  >
+                    {privateReportSourceTitle(source)}
+                  </a>
+                ) : (
+                  <>
+                    <span>{privateReportSourceTitle(source)}</span>
+                    <small>
+                      {publicView ? source.document_id : source.canonical_uri || source.document_id}
+                    </small>
+                  </>
+                )}
+              </article>
+            ))}
+          </div>
+        </details>
       ) : null}
     </section>
   );

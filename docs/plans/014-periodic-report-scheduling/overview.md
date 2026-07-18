@@ -116,7 +116,7 @@ Public report 表示でも private report JSON を同じように描画するた
 `/projects/[projectSlug]/reports` のヘッダー周辺に「定期レポート設定」カードまたは popover を追加する。
 
 - 現在の周期: `none` / `weekly` / `monthly` / `annually`。
-- 次回実行予定、前回成功、前回失敗、period run の pending / running / skipped / retry exhausted と backfill 残数。
+- 次回実行予定、前回成功、前回失敗、period run の pending / running / skipped / retry exhausted。backfill 残数は pending と重複するため別表示しない。
 - 周期変更 selector と保存 button。
 - `none` 以外への初回設定時は「完了済み過去期間を非同期で作成する」ことを説明する。
 - 既存定期レポートがある状態で周期変更する場合は「変更時の即時作成は行わず、次回定期実行から反映する」ことを説明する。
@@ -136,14 +136,14 @@ Public report 表示でも private report JSON を同じように描画するた
 
 ## Step 構成
 
-| Step | status      | 内容                                                                              | 完了条件                                                                                                                                                |
-| ---- | ----------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | `completed` | schedule / period run / report metadata の DB model と migration を追加する。     | Issue #579。fresh / 既存 DB migration、runtime guard、period run・report の一意制約、project 境界 query、report なしの skipped 履歴を検証済み。         |
-| 2    | `completed` | 期間計算、前回定期 report 解決、通常 / backfill 対象列挙を実装する。              | Issue #581。完了済み period、bounded catch-up / backfill、次回 slot、最古未完了優先、初回 backfill 判定、同一 project・frequency の前回参照を検証済み。 |
-| 3    | `completed` | report workflow に前回参照と差分生成 context を追加する。Issue #583。             | project / frequency / period を再検証し、bounded・redaction 済み context と change / increments / decrements / continued items の保存を検証済み。       |
-| 4    | `completed` | report schedule dispatcher、内部 API、local one-shot CLI を実装する。Issue #585。 | due claim、lease、retry、idempotency、backfill 分割、secret 非露出を unit / query-shape / route / deploy config test で検証済み。                       |
-| 5    | `completed` | レポート一覧 UI で周期設定と実行状態を管理できるようにする。Issue #587。          | admin の周期保存、member の読み取り専用表示、初回 backfill・周期変更説明、実行状態と残数表示を unit / DB round-trip / build で検証済み。                |
-| 6    | `completed` | レポート一覧・詳細表示、E2E、運用ドキュメントを整備する。Issue #592。             | 手動・定期・backfill と周期、private / public の差分表示、manual 非表示、public 404 境界、dispatcher 運用・障害手順を unit / E2E / build で検証済み。   |
+| Step | status      | 内容                                                                              | 完了条件                                                                                                                                                          |
+| ---- | ----------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | `completed` | schedule / period run / report metadata の DB model と migration を追加する。     | Issue #579。fresh / 既存 DB migration、runtime guard、period run・report の一意制約、project 境界 query、report なしの skipped 履歴を検証済み。                   |
+| 2    | `completed` | 期間計算、前回定期 report 解決、通常 / backfill 対象列挙を実装する。              | Issue #581。完了済み period、bounded catch-up / backfill、次回 slot、最古未完了優先、初回 backfill 判定、同一 project・frequency の前回参照を検証済み。           |
+| 3    | `completed` | report workflow に前回参照と差分生成 context を追加する。Issue #583。             | project / frequency / period を再検証し、bounded・redaction 済み context と change / increments / decrements / continued items の保存を検証済み。                 |
+| 4    | `completed` | report schedule dispatcher、内部 API、local one-shot CLI を実装する。Issue #585。 | due claim、lease、retry、idempotency、backfill 分割、secret 非露出を unit / query-shape / route / deploy config test で検証済み。                                 |
+| 5    | `completed` | レポート一覧 UI で周期設定と実行状態を管理できるようにする。Issue #587。          | admin の周期保存、member の読み取り専用表示、初回 backfill・周期変更説明、実行状態表示を unit / DB round-trip / build で検証済み。                                |
+| 6    | `completed` | レポート一覧・詳細表示、E2E、運用ドキュメントを整備する。Issue #592。             | 手動・定期と周期（backfill も定期表示）、private / public の差分表示、manual 非表示、public 404 境界、dispatcher 運用・障害手順を unit / E2E / build で検証済み。 |
 
 ## テスト計画
 

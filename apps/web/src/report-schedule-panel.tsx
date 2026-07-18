@@ -119,11 +119,6 @@ export function ReportSchedulePanel({
           <SummaryItem label="retry_exhausted" value={settings.periodRunSummary.retryExhausted} />
           <SummaryItem label="skipped" value={settings.periodRunSummary.skipped} />
           <SummaryItem label="succeeded" value={settings.periodRunSummary.succeeded} />
-          <SummaryItem
-            label="backfill remaining"
-            testId="report-schedule-backfill-remaining"
-            value={settings.periodRunSummary.backfillRemaining}
-          />
         </ul>
       </div>
       {settings.recentPeriodRuns.length > 0 ? (
