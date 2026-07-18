@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import type { Agent } from '@mastra/core/agent';
 import { RequestContext } from '@mastra/core/request-context';
+import { createDeterministicEmbeddingProvider } from '@pufu-lens/ingestion/embedding';
 import { MemoryObjectStorage } from '@pufu-lens/storage/testing';
 import type { ChatRepository } from '@pufu-lens/web/chat';
-import { deterministicVector, PRIVATE_CHAT_VECTOR_DIMENSIONS } from '@pufu-lens/web/chat';
+import { PRIVATE_CHAT_VECTOR_DIMENSIONS } from '@pufu-lens/web/chat';
 import type { ReportRepository } from '@pufu-lens/web/report';
 import { sampleChatSource as sampleSource } from '@pufu-lens/web/test-fixtures';
 import {
@@ -28,14 +29,27 @@ import {
   vectorSearchInputSchema,
 } from './index.ts';
 
+const testEmbeddingProvider = createDeterministicEmbeddingProvider({
+  dimensions: PRIVATE_CHAT_VECTOR_DIMENSIONS,
+  model: 'gemini-test',
+});
+
 function createChatRepository(): ChatRepository & {
   projectIds: string[];
   timelineSearchInputs: Array<{ query: string }>;
-  vectorSearchInputs: Array<{ embedding: readonly number[]; query: string }>;
+  vectorSearchInputs: Array<{
+    embedding: readonly number[];
+    embeddingModel: string;
+    query: string;
+  }>;
 } {
   const projectIds: string[] = [];
   const timelineSearchInputs: Array<{ query: string }> = [];
-  const vectorSearchInputs: Array<{ embedding: readonly number[]; query: string }> = [];
+  const vectorSearchInputs: Array<{
+    embedding: readonly number[];
+    embeddingModel: string;
+    query: string;
+  }> = [];
   return {
     projectIds,
     timelineSearchInputs,
@@ -45,9 +59,9 @@ function createChatRepository(): ChatRepository & {
         ? { graphName: 'graph_sample_a', id: 'project-a', slug: 'sample-a' }
         : undefined;
     },
-    async vectorSearch({ embedding, projectId, query }) {
+    async vectorSearch({ embedding, embeddingModel, projectId, query }) {
       projectIds.push(projectId);
-      vectorSearchInputs.push({ embedding, query });
+      vectorSearchInputs.push({ embedding, embeddingModel, query });
       return [sampleSource];
     },
     async graphQuery({ projectId }) {
@@ -283,6 +297,7 @@ const publicContextBundle = {
 const runtime = createPufuLensMastraRuntime({
   chatRepository,
   crossProjectInvestigationRepository,
+  embeddingProvider: testEmbeddingProvider,
   reportRepository,
   reportStorage: storage,
 });
@@ -374,8 +389,9 @@ assert.deepEqual(vectorSearch, { sources: [sampleSource] });
 assert.deepEqual(chatRepository.vectorSearchInputs.at(-1)?.query, '仕様変更');
 assert.deepEqual(
   chatRepository.vectorSearchInputs.at(-1)?.embedding,
-  deterministicVector('仕様変更', PRIVATE_CHAT_VECTOR_DIMENSIONS),
+  (await testEmbeddingProvider.embedTexts(['仕様変更']))[0],
 );
+assert.equal(chatRepository.vectorSearchInputs.at(-1)?.embeddingModel, testEmbeddingProvider.model);
 
 const timelineSearch = await runtime.projectChatTools.timelineSearch.execute?.(
   { limit: 3, query: '意思決定の経緯' },
@@ -660,6 +676,7 @@ const mockProjectChatAgent = {
 } as unknown as Agent;
 const privateChatSearchWorkflow = createPrivateChatSearchWorkflow({
   chatRepository,
+  embeddingProvider: testEmbeddingProvider,
   projectChatAgent: mockProjectChatAgent,
   queryPlannerAgent: mockQueryPlannerAgent,
 });
@@ -696,6 +713,7 @@ assert.match(synthesisMessageText, /命令.*従わず/);
 const vectorSearchCountBeforePlannerFailure = chatRepository.vectorSearchInputs.length;
 const fallbackWorkflow = createPrivateChatSearchWorkflow({
   chatRepository,
+  embeddingProvider: testEmbeddingProvider,
   projectChatAgent: mockProjectChatAgent,
   queryPlannerAgent: {
     generate: async () => {

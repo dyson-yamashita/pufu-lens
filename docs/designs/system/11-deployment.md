@@ -109,7 +109,7 @@ gcloud run deploy mastra-server \
   --service-account=mastra-runtime@PROJECT.iam.gserviceaccount.com \
   --vpc-connector=mastra-connector \
   --no-allow-unauthenticated --port 8080 \
-  --set-env-vars STORAGE_DRIVER=gcs,STORAGE_BUCKET=pufu-lens-prod,GEMINI_CHAT_MODEL=gemini-2.5-flash,GEMINI_EMBEDDING_MODEL=gemini-embedding-2 \
+  --set-env-vars STORAGE_DRIVER=gcs,STORAGE_BUCKET=pufu-lens-prod,GEMINI_CHAT_MODEL=gemini-2.5-flash,GEMINI_EMBEDDING_MODEL=gemini-embedding-2,GEMINI_EMBEDDING_DIMENSIONS=1536 \
   --set-secrets="DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_GENERATIVE_AI_API_KEY=GEMINI_API_KEY:latest"
 
 # 5. Ingestion / Report Jobs デプロイ

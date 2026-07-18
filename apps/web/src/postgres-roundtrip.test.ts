@@ -48,6 +48,10 @@ const frequencyMismatchReportId = '10000000-0000-0000-0000-000000000445';
 const monthlyPeriodRunId = '10000000-0000-0000-0000-000000000446';
 const previousFrequencyMismatchReportId = '10000000-0000-0000-0000-000000000447';
 const legacyWeeklyBackfillPeriodRunId = '10000000-0000-0000-0000-000000000448';
+const matchingRawDocumentId = '10000000-0000-0000-0000-000000000449';
+const mismatchedRawDocumentId = '10000000-0000-0000-0000-000000000450';
+const matchingDocumentId = '10000000-0000-0000-0000-000000000451';
+const mismatchedDocumentId = '10000000-0000-0000-0000-000000000452';
 const settingsScheduleAsOf = new Date('2026-07-20T05:00:00.000Z');
 const settingsProjectCreatedAt = '2026-06-15T01:00:00.000Z';
 
@@ -57,6 +61,7 @@ async function main() {
   try {
     await resetFixtureRows();
     await seedProjectFixture();
+    await assertChatHybridSearchRoundTrip();
     await assertPrivateChatJsonbRoundTrip();
     await assertReportJsonbRoundTrip();
     await assertReportScheduleSettingsRoundTrip();
@@ -123,6 +128,83 @@ async function seedProjectFixture() {
       (${projectId}, ${userId}, 'admin'),
       (${projectId}, ${chatUserId}, 'member')
   `;
+}
+
+async function assertChatHybridSearchRoundTrip() {
+  await sql`
+    INSERT INTO public.raw_documents (
+      id, project_id, source_type, source_id, logical_source_id, source_version,
+      storage_uri, content_hash, ingest_status
+    )
+    VALUES
+      (
+        ${matchingRawDocumentId}, ${projectId}, 'web', 'rrf-matching', 'rrf-matching',
+        'rrf-matching-v1',
+        'raw/rrf-matching.json', 'rrf-matching-hash', 'indexed'
+      ),
+      (
+        ${mismatchedRawDocumentId}, ${projectId}, 'web', 'rrf-mismatched', 'rrf-mismatched',
+        'rrf-mismatched-v1',
+        'raw/rrf-mismatched.json', 'rrf-mismatched-hash', 'indexed'
+      )
+  `;
+  await sql`
+    INSERT INTO public.documents (
+      id, project_id, raw_document_id, doc_type, logical_source_id,
+      title, summary, canonical_uri, graph_node_id
+    )
+    VALUES
+      (
+        ${matchingDocumentId}, ${projectId}, ${matchingRawDocumentId}, 'web_page', 'rrf-matching',
+        'Matching Model', '仕様変更の資料', 'https://example.test/rrf-matching',
+        'document:web:rrf-matching'
+      ),
+      (
+        ${mismatchedDocumentId}, ${projectId}, ${mismatchedRawDocumentId}, 'web_page',
+        'rrf-mismatched',
+        'Mismatched Model', 'wrongmodelkeyword の資料',
+        'https://example.test/rrf-mismatched', 'document:web:rrf-mismatched'
+      )
+  `;
+  const embedding = [1, ...Array.from({ length: 1535 }, () => 0)];
+  const vector = `[${embedding.join(',')}]`;
+  await sql`
+    INSERT INTO public.document_chunks (
+      project_id, document_id, chunk_index, content, content_hash, embedding, embedding_model
+    )
+    VALUES
+      (
+        ${projectId}, ${matchingDocumentId}, 0, '仕様変更の本文', 'rrf-chunk-matching',
+        ${vector}::vector, 'gemini-test'
+      ),
+      (
+        ${projectId}, ${mismatchedDocumentId}, 0, 'wrongmodelkeyword の本文',
+        'rrf-chunk-mismatched', ${vector}::vector, 'deterministic-test'
+      )
+  `;
+
+  const repository = createPostgresChatRepository(sql);
+  const vectorOnly = await repository.vectorSearch({
+    embedding,
+    embeddingModel: 'gemini-test',
+    limit: 5,
+    projectId,
+    query: '',
+  });
+  assert.deepEqual(
+    vectorOnly.map((source) => source.documentId),
+    [matchingDocumentId],
+  );
+
+  const hybrid = await repository.vectorSearch({
+    embedding,
+    embeddingModel: 'gemini-test',
+    limit: 5,
+    projectId,
+    query: 'wrongmodelkeyword',
+  });
+  assert.ok(hybrid.some((source) => source.documentId === matchingDocumentId));
+  assert.ok(hybrid.some((source) => source.documentId === mismatchedDocumentId));
 }
 
 async function assertPrivateChatJsonbRoundTrip() {

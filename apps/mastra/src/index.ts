@@ -3,11 +3,10 @@ import { Mastra } from '@mastra/core/mastra';
 import { RequestContext } from '@mastra/core/request-context';
 import { createTool } from '@mastra/core/tools';
 import { createStep, createWorkflow } from '@mastra/core/workflows';
-import type { ChatRepository, ChatToolCall } from '@pufu-lens/web/chat';
+import type { ChatEmbeddingProvider, ChatRepository, ChatToolCall } from '@pufu-lens/web/chat';
 import {
-  deterministicVector,
+  embedPrivateChatQueries,
   inferChatEditingMetadata,
-  PRIVATE_CHAT_VECTOR_DIMENSIONS,
   publicChatSources,
 } from '@pufu-lens/web/chat';
 import { mastraGenerateToChatResponse, mergeHybridChatResponse } from '@pufu-lens/web/mastra-chat';
@@ -167,6 +166,7 @@ export interface CrossProjectInvestigationRepository {
 export interface PufuLensMastraDependencies {
   readonly chatRepository: ChatRepository;
   readonly crossProjectInvestigationRepository?: CrossProjectInvestigationRepository;
+  readonly embeddingProvider: ChatEmbeddingProvider;
   readonly reportProvider?: ReportGenerationProvider;
   readonly reportRepository: ReportRepository;
   readonly reportStorage: ObjectStorage;
@@ -398,7 +398,17 @@ export function createCrossProjectResearchAgent(input: {
   });
 }
 
-export function createProjectChatTools(repository: ChatRepository) {
+/**
+ * Creates project-scoped chat tools using one shared query embedding provider.
+ *
+ * @param repository - Authorized repository whose project scope comes from Mastra request context
+ * @param embeddingProvider - Provider matching the document chunk embedding model and dimensions
+ * @returns Mastra tools for retrieval and bounded document reads
+ */
+export function createProjectChatTools(
+  repository: ChatRepository,
+  embeddingProvider: ChatEmbeddingProvider,
+) {
   const projectIdFromContext = (
     context:
       | {
@@ -591,14 +601,21 @@ export function createProjectChatTools(repository: ChatRepository) {
       inputSchema: vectorSearchInputSchema,
       outputSchema: chatSourceListSchema,
       requestContextSchema: mastraProjectContextSchema,
-      execute: async ({ limit, query }, context) => ({
-        sources: await repository.vectorSearch({
-          embedding: deterministicVector(query, PRIVATE_CHAT_VECTOR_DIMENSIONS),
-          limit,
-          projectId: projectIdFromContext(context),
-          query,
-        }),
-      }),
+      execute: async ({ limit, query }, context) => {
+        const [embedding] = await embedPrivateChatQueries(embeddingProvider, [query]);
+        if (!embedding) {
+          throw new Error('Private chat tool query embedding is unavailable.');
+        }
+        return {
+          sources: await repository.vectorSearch({
+            embedding,
+            embeddingModel: embeddingProvider.model,
+            limit,
+            projectId: projectIdFromContext(context),
+            query,
+          }),
+        };
+      },
     }),
   };
 }
@@ -898,10 +915,14 @@ const privateChatWorkflowOutputSchema = z.object({
 
 /**
  * Creates the private project chat hybrid search workflow.
- * Deterministic retrieval runs in explicit stage steps before Agent synthesis.
+ * Deterministic retrieval and cross-query RRF run in explicit stages before Agent synthesis.
+ *
+ * @param input - Project repository, shared embedding provider, planner, and synthesis agent
+ * @returns A registered Mastra workflow with bounded query expansion and retrieval stages
  */
 export function createPrivateChatSearchWorkflow(input: {
   readonly chatRepository: ChatRepository;
+  readonly embeddingProvider: ChatEmbeddingProvider;
   readonly projectChatAgent: Agent;
   readonly queryPlannerAgent: Agent;
 }) {
@@ -1025,6 +1046,7 @@ export function createPrivateChatSearchWorkflow(input: {
       runPrivateChatRetrievingStep(
         inputData as PrivateChatSearchWorkflowState,
         input.chatRepository,
+        input.embeddingProvider,
       ),
   });
 
@@ -1033,7 +1055,11 @@ export function createPrivateChatSearchWorkflow(input: {
     inputSchema: workflowPassStateSchema,
     outputSchema: workflowPassStateSchema,
     execute: async ({ inputData }) =>
-      runPrivateChatRetryingStep(inputData as PrivateChatSearchWorkflowState, input.chatRepository),
+      runPrivateChatRetryingStep(
+        inputData as PrivateChatSearchWorkflowState,
+        input.chatRepository,
+        input.embeddingProvider,
+      ),
   });
 
   const retryPassStep = createStep({
@@ -1182,6 +1208,12 @@ function isValidReportDate(value: string): boolean {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
+/**
+ * Creates the Pufu Lens Mastra runtime from explicit storage, repository, and provider boundaries.
+ *
+ * @param dependencies - Runtime dependencies including the query provider shared by workflow and tools
+ * @returns Registered agents, tools, and workflows for the Mastra server
+ */
 export function createPufuLensMastraRuntime(
   dependencies: PufuLensMastraDependencies,
 ): PufuLensMastraRuntime {
@@ -1192,7 +1224,10 @@ export function createPufuLensMastraRuntime(
   const crossProjectResearchAgent = crossProjectResearchTools
     ? createCrossProjectResearchAgent({ tools: crossProjectResearchTools })
     : undefined;
-  const projectChatTools = createProjectChatTools(dependencies.chatRepository);
+  const projectChatTools = createProjectChatTools(
+    dependencies.chatRepository,
+    dependencies.embeddingProvider,
+  );
   const projectChatAgent = createProjectChatAgent({ tools: projectChatTools });
   const privateChatQueryPlannerAgent = createPrivateChatQueryPlannerAgent();
   const publicReportChatTools = createPublicReportChatTools();
@@ -1205,6 +1240,7 @@ export function createPufuLensMastraRuntime(
   });
   const privateChatSearchWorkflow = createPrivateChatSearchWorkflow({
     chatRepository: dependencies.chatRepository,
+    embeddingProvider: dependencies.embeddingProvider,
     projectChatAgent,
     queryPlannerAgent: privateChatQueryPlannerAgent,
   });

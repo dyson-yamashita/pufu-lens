@@ -104,6 +104,13 @@ export const PRIVATE_CHAT_CONTEXT_TURN_LIMIT = 6;
 export const PRIVATE_CHAT_HISTORY_UI_LIMIT = 50;
 export const PRIVATE_CHAT_HISTORY_CONTENT_MAX = 4000;
 export const PRIVATE_CHAT_VECTOR_DIMENSIONS = 1536;
+export const RECIPROCAL_RANK_FUSION_K = 60;
+
+export interface ChatEmbeddingProvider {
+  readonly dimensions: number;
+  embedTexts(texts: string[]): Promise<number[][]>;
+  readonly model: string;
+}
 
 export type PrivateChatRequestBodyParseResult =
   | { readonly includeHistory: boolean; readonly ok: true; readonly question: string }
@@ -201,6 +208,7 @@ export interface ChatRepository {
   timelineSearch(input: { limit: number; projectId: string; query: string }): Promise<ChatSource[]>;
   vectorSearch(input: {
     embedding: readonly number[];
+    embeddingModel: string;
     limit: number;
     projectId: string;
     query: string;
@@ -235,6 +243,7 @@ export interface ChatProvider {
 }
 
 export interface RunPrivateChatOptions {
+  readonly embeddingProvider: ChatEmbeddingProvider;
   readonly provider: ChatProvider;
   readonly rateLimiter?: ChatRateLimiter;
   readonly repository: ChatRepository;
@@ -587,9 +596,13 @@ export async function runPrivateChat(
 
   const editing = inferChatEditingMetadata(request.question);
   const shouldPrioritizeTimeline = editing.inferredMode === 'timeline';
-  const embedding = deterministicVector(request.question, PRIVATE_CHAT_VECTOR_DIMENSIONS);
+  const [embedding] = await embedPrivateChatQueries(options.embeddingProvider, [request.question]);
+  if (!embedding) {
+    throw new Error('Private chat query embedding is unavailable.');
+  }
   const vectorSources = await options.repository.vectorSearch({
     embedding,
+    embeddingModel: options.embeddingProvider.model,
     limit: 5,
     projectId: project.id,
     query: request.question,
@@ -1010,10 +1023,10 @@ export function privateChatHistoryItemsForUiDisplay(
 }
 
 /**
- * Creates a Postgres-backed chat repository.
+ * Creates a Postgres-backed chat repository with project-scoped RRF hybrid retrieval.
  *
  * @param options - Optional raw storage used to enable raw read view fetches
- * @returns A chat repository implementation backed by the provided SQL client
+ * @returns A repository that filters vector candidates by embedding model and keeps keyword retrieval model-independent
  */
 export function createPostgresChatRepository(
   sql: postgres.Sql,
@@ -1027,7 +1040,7 @@ export function createPostgresChatRepository(
       const access = await lookupProjectMemberAccess(sql, { projectSlug, userId });
       return access ? { graphName: access.graphName, id: access.id, slug: access.slug } : undefined;
     },
-    async vectorSearch({ embedding, limit, projectId, query }) {
+    async vectorSearch({ embedding, embeddingModel, limit, projectId, query }) {
       const vector = `[${embedding.join(',')}]`;
       const keywordQuery = normalizeHybridKeywordQuery(query);
       if (keywordQuery.length === 0) {
@@ -1044,7 +1057,9 @@ export function createPostgresChatRepository(
             FROM public.document_chunks dc
             JOIN public.documents d ON d.id = dc.document_id
             WHERE dc.project_id = ${projectId}
-            ORDER BY d.id, dc.embedding <=> ${vector}::vector
+              AND dc.embedding_model = ${embeddingModel}
+              AND dc.embedding IS NOT NULL
+            ORDER BY d.id, dc.embedding <=> ${vector}::vector, dc.id
           )
           SELECT document_id, raw_document_id, doc_type, title, canonical_uri, snippet
           FROM distinct_chunks
@@ -1056,7 +1071,7 @@ export function createPostgresChatRepository(
 
       const candidateLimit = hybridSearchCandidateLimit(limit);
       const rows = (await sql`
-        WITH vector_candidates AS (
+        WITH vector_candidates_limit AS (
           SELECT
             dc.id::text AS chunk_id,
             d.id::text AS document_id,
@@ -1065,25 +1080,38 @@ export function createPostgresChatRepository(
             coalesce(d.title, 'Untitled') AS title,
             coalesce(d.canonical_uri, '') AS canonical_uri,
             left(coalesce(dc.content, d.summary, ''), 700) AS snippet,
-            dc.embedding <=> ${vector}::vector AS distance,
-            0.0 AS keyword_score
+            dc.embedding <=> ${vector}::vector AS distance
           FROM public.document_chunks dc
           JOIN public.documents d ON d.id = dc.document_id
           WHERE dc.project_id = ${projectId}
-          ORDER BY dc.embedding <=> ${vector}::vector
+            AND dc.embedding_model = ${embeddingModel}
+            AND dc.embedding IS NOT NULL
+          ORDER BY dc.embedding <=> ${vector}::vector, dc.id
           LIMIT ${candidateLimit}
+        ),
+        vector_candidates AS (
+          SELECT
+            chunk_id,
+            document_id,
+            raw_document_id,
+            doc_type,
+            title,
+            canonical_uri,
+            snippet,
+            row_number() OVER (ORDER BY distance, chunk_id) AS vector_rank,
+            NULL::bigint AS keyword_rank
+          FROM vector_candidates_limit
         ),
         keyword_candidates_limit AS (
           SELECT
             dc.id AS chunk_id,
             dc.document_id,
             dc.content,
-            dc.embedding,
             pgroonga_score(dc.tableoid, dc.ctid) AS keyword_score
           FROM public.document_chunks dc
           WHERE dc.project_id = ${projectId}
             AND dc.content &@~ pgroonga_query_escape(${keywordQuery})
-          ORDER BY pgroonga_score(dc.tableoid, dc.ctid) DESC
+          ORDER BY pgroonga_score(dc.tableoid, dc.ctid) DESC, dc.id
           LIMIT ${candidateLimit}
         ),
         keyword_candidates AS (
@@ -1095,13 +1123,10 @@ export function createPostgresChatRepository(
             coalesce(d.title, 'Untitled') AS title,
             coalesce(d.canonical_uri, '') AS canonical_uri,
             left(coalesce(kcl.content, d.summary, ''), 700) AS snippet,
-            kcl.embedding <=> ${vector}::vector AS distance,
-            kcl.keyword_score
+            NULL::bigint AS vector_rank,
+            row_number() OVER (ORDER BY kcl.keyword_score DESC, kcl.chunk_id) AS keyword_rank
           FROM keyword_candidates_limit kcl
           JOIN public.documents d ON d.id = kcl.document_id
-        ),
-        keyword_score_bounds AS (
-          SELECT COALESCE(MAX(keyword_score), 0) AS max_score FROM keyword_candidates
         ),
         chunk_candidates AS (
           SELECT * FROM vector_candidates
@@ -1117,18 +1142,12 @@ export function createPostgresChatRepository(
             cc.title,
             cc.canonical_uri,
             cc.snippet,
-            min(cc.distance) AS distance,
-            max(cc.keyword_score) AS keyword_score,
-            (
-              0.75 * COALESCE(1.0 / (1.0 + min(cc.distance)), 0.0) +
-              0.25 * CASE
-                WHEN max(cc.keyword_score) > 0 AND bounds.max_score > 0
-                THEN max(cc.keyword_score) / bounds.max_score
-                ELSE 0
-              END
-            ) AS hybrid_score
+            min(cc.vector_rank) AS vector_rank,
+            min(cc.keyword_rank) AS keyword_rank,
+            COALESCE(1.0 / (${RECIPROCAL_RANK_FUSION_K} + min(cc.vector_rank)), 0.0) +
+              COALESCE(1.0 / (${RECIPROCAL_RANK_FUSION_K} + min(cc.keyword_rank)), 0.0)
+              AS rrf_score
           FROM chunk_candidates cc
-          CROSS JOIN keyword_score_bounds bounds
           GROUP BY
             cc.chunk_id,
             cc.document_id,
@@ -1136,8 +1155,7 @@ export function createPostgresChatRepository(
             cc.doc_type,
             cc.title,
             cc.canonical_uri,
-            cc.snippet,
-            bounds.max_score
+            cc.snippet
         ),
         distinct_chunks AS (
           SELECT DISTINCT ON (document_id)
@@ -1147,14 +1165,28 @@ export function createPostgresChatRepository(
             title,
             canonical_uri,
             snippet,
-            distance,
-            hybrid_score
+            vector_rank,
+            keyword_rank,
+            rrf_score
           FROM scored_chunks
-          ORDER BY document_id, hybrid_score DESC NULLS LAST, distance ASC NULLS LAST
+          ORDER BY
+            document_id,
+            rrf_score DESC,
+            LEAST(
+              COALESCE(vector_rank, 2147483647),
+              COALESCE(keyword_rank, 2147483647)
+            ),
+            chunk_id
         )
         SELECT document_id, raw_document_id, doc_type, title, canonical_uri, snippet
         FROM distinct_chunks
-        ORDER BY hybrid_score DESC NULLS LAST, distance ASC NULLS LAST
+        ORDER BY
+          rrf_score DESC,
+          LEAST(
+            COALESCE(vector_rank, 2147483647),
+            COALESCE(keyword_rank, 2147483647)
+          ),
+          document_id
         LIMIT ${limit}
       `) as readonly unknown[];
       return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
@@ -2117,16 +2149,55 @@ function parseOptionalNullableString(value: unknown, fieldName: string): string 
   throw new Error(`Invalid chat source row field: ${fieldName}`);
 }
 
-export function deterministicVector(text: string, dimensions: number): number[] {
-  const hash = createHash('sha256').update(text).digest();
-  let seed = hash.readUInt32BE(0);
-  const vector: number[] = [];
-  for (let index = 0; index < dimensions; index += 1) {
-    seed = (seed * 1664525 + 1013904223) | 0;
-    const value = (seed >>> 0) / 0xffffffff;
-    vector.push(value * 2 - 1);
+/**
+ * Embeds private-chat queries in the configured document embedding space.
+ *
+ * @param provider - Provider whose model and dimensions match indexed document chunks
+ * @param queries - Bounded query strings to embed in one provider batch
+ * @returns One finite vector per input query, preserving input order
+ * @throws When the provider contract does not match the private-chat vector schema
+ */
+export async function embedPrivateChatQueries(
+  provider: ChatEmbeddingProvider,
+  queries: readonly string[],
+): Promise<number[][]> {
+  if (provider.dimensions !== PRIVATE_CHAT_VECTOR_DIMENSIONS) {
+    throw new Error(
+      `Private chat embedding dimensions must be ${PRIVATE_CHAT_VECTOR_DIMENSIONS}; got ${provider.dimensions}.`,
+    );
   }
-  return vector;
+  if (provider.model.trim().length === 0) {
+    throw new Error('Private chat embedding model is required.');
+  }
+  const vectors = await provider.embedTexts([...queries]);
+  if (vectors.length !== queries.length) {
+    throw new Error(
+      `Private chat embedding count mismatch: expected ${queries.length}, got ${vectors.length}.`,
+    );
+  }
+  for (const [index, vector] of vectors.entries()) {
+    if (
+      vector.length !== PRIVATE_CHAT_VECTOR_DIMENSIONS ||
+      vector.some((value) => !Number.isFinite(value))
+    ) {
+      throw new Error(`Invalid private chat embedding at index ${index}.`);
+    }
+  }
+  return vectors;
+}
+
+/**
+ * Returns the weighted contribution for one one-based rank in reciprocal rank fusion.
+ *
+ * @param rank - One-based position in a ranked retrieval result
+ * @param weight - Relative importance of the ranked result list
+ * @returns The deterministic RRF contribution, or zero for invalid ranks and weights
+ */
+export function reciprocalRankFusionScore(rank: number, weight = 1): number {
+  if (!Number.isInteger(rank) || rank < 1 || !Number.isFinite(weight) || weight <= 0) {
+    return 0;
+  }
+  return weight / (RECIPROCAL_RANK_FUSION_K + rank);
 }
 
 async function geminiErrorDetails(response: Response): Promise<string> {
