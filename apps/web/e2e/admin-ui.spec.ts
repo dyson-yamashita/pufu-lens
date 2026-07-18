@@ -99,6 +99,7 @@ test('scenario: public user discovers public projects without private admin link
   await expect(page.getByTestId('global-nav-settings')).toHaveCount(0);
   await expect(page.getByTestId('project-list')).toHaveCount(0);
   await expect(page.getByTestId('project-card-sample-a')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Public Projects' })).toBeVisible();
   await expect(page.getByTestId('public-project-list')).toBeVisible();
   await expect(page.getByTestId('public-project-sample-a')).toBeVisible();
   await expect(page.getByTestId('public-report-sample-a-report-a')).toHaveCount(0);
@@ -175,6 +176,18 @@ test.describe('authenticated admin operation controls', () => {
     page,
   }) => {
     await expectDataSourceCreatePanelLayout(page);
+  });
+
+  test('scenario: admin user hides Public Projects when member projects cover visible public projects', async ({
+    page,
+  }) => {
+    await page.goto('/projects');
+
+    await expect(page.getByTestId('project-list')).toBeVisible();
+    await expect(page.getByTestId('project-card-sample-a')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Public Projects' })).toHaveCount(0);
+    await expect(page.getByTestId('public-project-list')).toHaveCount(0);
+    await expect(page.getByTestId('public-project-sample-a')).toHaveCount(0);
   });
 
   test('scenario: admin user can inspect stable operation controls', async ({ page }) => {

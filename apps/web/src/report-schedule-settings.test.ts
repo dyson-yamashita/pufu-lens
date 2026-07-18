@@ -250,6 +250,18 @@ test('report schedule panel explains aggregated initial history report', async (
   assert.match(panel, /1件の履歴レポート/);
 });
 
+test('report schedule panel renders the timezone note after recent period run results', async () => {
+  const panel = await readFile(new URL('./report-schedule-panel.tsx', import.meta.url), 'utf8');
+  const recentRunsEmptyIndex = panel.indexOf('data-testid="report-schedule-recent-runs-empty"');
+  const timezoneNoteIndex = panel.indexOf('data-testid="report-schedule-timezone-note"');
+  assert.notEqual(recentRunsEmptyIndex, -1, 'recent period run empty state must exist');
+  assert.notEqual(timezoneNoteIndex, -1, 'timezone note must exist');
+  assert.ok(
+    recentRunsEmptyIndex < timezoneNoteIndex,
+    'timezone note must render after recent period run results',
+  );
+});
+
 test('report schedule panel imports presentation helpers without SQL modules', async () => {
   const panel = await readFile(new URL('./report-schedule-panel.tsx', import.meta.url), 'utf8');
   assert.match(panel, /from '\.\/report-schedule-presentation\.ts'/);
