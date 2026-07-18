@@ -136,7 +136,7 @@ async function upsertActorDecision(
   input: {
     readonly createdByUserId: string;
     readonly decisionType: 'merge';
-    readonly metadata: Record<string, unknown>;
+    readonly metadata: postgres.JSONValue;
     readonly primaryActorId: string;
     readonly projectId: string;
     readonly reason: string | null;
@@ -159,7 +159,7 @@ async function upsertActorDecision(
       ${input.secondaryActorId},
       ${input.decisionType},
       ${input.reason},
-      ${sql.json(input.metadata as postgres.JSONValue)},
+      ${sql.json(input.metadata)},
       ${input.createdByUserId}
     )
     ON CONFLICT DO NOTHING

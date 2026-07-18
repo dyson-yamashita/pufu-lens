@@ -46,6 +46,7 @@ await main();
 
 async function main() {
   try {
+    assertParseAgtypeMap();
     await resetFixtureRows();
     await assertSuccessfulActorMerge();
     await resetFixtureRows();
@@ -502,15 +503,32 @@ function parseAgeCount(rows: readonly unknown[]): number {
   throw new Error('Expected AGE count row.');
 }
 
+function assertParseAgtypeMap(): void {
+  assert.deepEqual(parseAgtypeMap('{"actorId":"primary","weight":42}'), {
+    actorId: 'primary',
+    weight: 42,
+  });
+  for (const invalidJson of ['null', '[]', '"scalar"', '1', 'true']) {
+    assert.throws(() => parseAgtypeMap(invalidJson), /Expected AGE edge properties map\./);
+  }
+}
+
 function parseAgtypeMap(value: unknown): Record<string, string | number> {
   if (typeof value === 'string') {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
+    const parsed: unknown = JSON.parse(value);
+    if (!isRecord(parsed)) {
+      throw new Error('Expected AGE edge properties map.');
+    }
     return normalizeAgtypeMap(parsed);
   }
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return normalizeAgtypeMap(value as Record<string, unknown>);
+  if (isRecord(value)) {
+    return normalizeAgtypeMap(value);
   }
   throw new Error('Expected AGE edge properties map.');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function normalizeAgtypeMap(value: Record<string, unknown>): Record<string, string | number> {
