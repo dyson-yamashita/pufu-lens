@@ -133,13 +133,13 @@ function selectChatSourcesByScoreProfile(
 
 ## Step 構成
 
-| Step | status    | 内容                                              | 完了条件                                                                                                                                         |
-| ---- | --------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1    | `planned` | スコア透過と距離分布計測                          | `ChatSource` にスコア field が返り、既存挙動が不変。project 実データで距離分布を出力する計測スクリプトが scripts に入る                          |
-| 2    | `planned` | 決定論的カットオフ関数と primary / fused への適用 | `selectChatSourcesByScoreProfile` の unit test（空・全同値・単調・崖あり・スコア欠落 fallback）が通り、retry 発火条件が「閾値通過 0 件」に変わる |
-| 3    | `planned` | 編集操作分類 → selection policy 接続              | primaryOperation ごとに kMin / kMax / quota が切り替わり、分類失敗時は現行相当の既定値に fallback する                                           |
-| 4    | `planned` | 多様性 quota と確信度伝搬                         | raw_document_id 重複抑制と docType quota が有効になり、retrievalContext に strong / weak / none が入る                                           |
-| 5    | `planned` | eval fixture / regression / docs 更新             | 下記テスト計画の fixture が通り、07-chat.md に score-aware 選別の記述が反映される                                                                |
+| Step | status      | 内容                                              | 完了条件                                                                                                                                                                                   |
+| ---- | ----------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1    | `completed` | スコア透過と距離分布計測                          | `ChatSource` に retrieval 内部用の score field が返り、既存の採用件数・順序を維持。`pnpm chat:measure-distances -- --project <slug> --query <query>` で project ごとの距離分布を出力できる |
+| 2    | `planned`   | 決定論的カットオフ関数と primary / fused への適用 | `selectChatSourcesByScoreProfile` の unit test（空・全同値・単調・崖あり・スコア欠落 fallback）が通り、retry 発火条件が「閾値通過 0 件」に変わる                                           |
+| 3    | `planned`   | 編集操作分類 → selection policy 接続              | primaryOperation ごとに kMin / kMax / quota が切り替わり、分類失敗時は現行相当の既定値に fallback する                                                                                     |
+| 4    | `planned`   | 多様性 quota と確信度伝搬                         | raw_document_id 重複抑制と docType quota が有効になり、retrievalContext に strong / weak / none が入る                                                                                     |
+| 5    | `planned`   | eval fixture / regression / docs 更新             | 下記テスト計画の fixture が通り、07-chat.md に score-aware 選別の記述が反映される                                                                                                          |
 
 ## テスト計画
 

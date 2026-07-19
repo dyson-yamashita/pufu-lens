@@ -736,4 +736,5 @@ test('fuseChatSourceRankings promotes consensus while preserving deterministic t
     fused.map((source) => source.documentId),
     ['doc-b', 'doc-a', 'doc-c'],
   );
+  assert.ok((fused[0]?.fusedScore ?? 0) > (fused[1]?.fusedScore ?? 0));
 });

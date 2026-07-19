@@ -10,7 +10,11 @@ import type {
   PublicChatToolCall,
   PublicChatToolName,
 } from './chat.ts';
-import { inferChatEditingMetadata, inferPublicChatEditingMetadata } from './chat.ts';
+import {
+  inferChatEditingMetadata,
+  inferPublicChatEditingMetadata,
+  privateChatSourcesForResponse,
+} from './chat.ts';
 import type { ProjectLookupResult, PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 
 type FetchHeadersInit = Record<string, string> | Headers;
@@ -254,7 +258,9 @@ export function mergeHybridChatResponse(input: {
   return {
     ...input.agentResponse,
     editing: input.agentResponse.editing ?? input.workflowEditing,
-    sources: uniqueSources([...input.workflowSources, ...input.agentResponse.sources]).slice(0, 5),
+    sources: privateChatSourcesForResponse(
+      uniqueSources([...input.workflowSources, ...input.agentResponse.sources]).slice(0, 5),
+    ),
     toolCalls: mergeHybridToolCalls(input.workflowToolCalls, input.agentResponse.toolCalls),
   };
 }

@@ -26,6 +26,7 @@ import {
   privateChatHistoryItemsForUiDisplay,
   privateChatHistorySourcesForStorage,
   privateChatHistoryToMastraMessages,
+  privateChatSourcesForResponse,
   publicChatToolCallsFromPrivate,
   reciprocalRankFusionScore,
   runPrivateChat,
@@ -605,6 +606,12 @@ assert.deepEqual(
   [sampleSource],
 );
 assert.deepEqual(
+  privateChatSourcesForResponse([
+    { ...sampleSource, fusedScore: 0.03, keywordRank: 2, vectorDistance: 0.21, vectorRank: 1 },
+  ]),
+  [sampleSource],
+);
+assert.deepEqual(
   privateChatHistoryItemsForUiDisplay([
     {
       answer: 'newest',
@@ -1056,6 +1063,10 @@ await assert.rejects(
         raw_document_id: 'raw-rrf',
         snippet: 'RRF source',
         title: 'RRF Source',
+        fused_score: 0.03,
+        keyword_rank: 2,
+        vector_distance: 0.21,
+        vector_rank: 1,
       },
     ]);
   }) as never;
@@ -1068,8 +1079,13 @@ await assert.rejects(
     query: '仕様変更',
   });
   assert.equal(sources[0]?.documentId, 'doc-rrf');
+  assert.equal(sources[0]?.vectorDistance, 0.21);
+  assert.equal(sources[0]?.vectorRank, 1);
+  assert.equal(sources[0]?.keywordRank, 2);
+  assert.equal(sources[0]?.fusedScore, 0.03);
   assert.match(sqlTexts[0] ?? '', /embedding_model/);
   assert.match(sqlTexts[0] ?? '', /rrf_score/);
+  assert.match(sqlTexts[0] ?? '', /vector_distance/);
   assert.doesNotMatch(sqlTexts[0] ?? '', /hybrid_score/);
   assert.ok(boundValues[0]?.includes('gemini-test'));
 }

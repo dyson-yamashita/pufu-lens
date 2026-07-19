@@ -24,9 +24,17 @@ export interface ChatSource {
   readonly canonicalUri: string;
   readonly documentId: string;
   readonly docType: string;
+  /** Retrieval-only RRF score. It is never persisted or returned by chat response APIs. */
+  readonly fusedScore?: number;
   readonly rawDocumentId: string;
   readonly snippet?: string;
   readonly title: string;
+  /** Retrieval-only pgvector cosine distance; smaller values are more similar. */
+  readonly vectorDistance?: number;
+  /** One-based rank of this document in the pgvector candidate list. */
+  readonly vectorRank?: number;
+  /** One-based rank of this document in the PGroonga candidate list. */
+  readonly keywordRank?: number;
 }
 
 export type ChatGraphRelationType = 'MENTIONS' | 'RELATED_TO' | 'SAME_AS';
@@ -663,7 +671,7 @@ export async function runPrivateChat(
     answer: await options.provider.complete({ editing, question: request.question, sources }),
     editing,
     projectSlug: request.projectSlug,
-    sources,
+    sources: privateChatSourcesForResponse(sources),
     status: 'answered',
     toolCalls: [
       { name: 'vector-search', resultCount: vectorSources.length },
@@ -992,6 +1000,23 @@ export function privateChatHistorySourcesForStorage(sources: readonly ChatSource
   }));
 }
 
+/**
+ * Removes retrieval-only score fields before private chat sources cross an API boundary.
+ *
+ * @param sources - Sources used by the private retrieval pipeline
+ * @returns Sources safe to include in private chat responses and browser state
+ */
+export function privateChatSourcesForResponse(sources: readonly ChatSource[]): ChatSource[] {
+  return sources.map((source) => ({
+    canonicalUri: source.canonicalUri,
+    documentId: source.documentId,
+    docType: source.docType,
+    rawDocumentId: source.rawDocumentId,
+    ...(source.snippet === undefined ? {} : { snippet: source.snippet }),
+    title: source.title,
+  }));
+}
+
 export function privateChatHistoryToMastraMessages(
   history: readonly PrivateChatHistoryItem[],
 ): MastraChatHistoryMessage[] {
@@ -1061,7 +1086,15 @@ export function createPostgresChatRepository(
               AND dc.embedding IS NOT NULL
             ORDER BY d.id, dc.embedding <=> ${vector}::vector, dc.id
           )
-          SELECT document_id, raw_document_id, doc_type, title, canonical_uri, snippet
+          SELECT
+            document_id,
+            raw_document_id,
+            doc_type,
+            title,
+            canonical_uri,
+            snippet,
+            distance AS vector_distance,
+            row_number() OVER (ORDER BY distance ASC NULLS LAST, document_id) AS vector_rank
           FROM distinct_chunks
           ORDER BY distance ASC NULLS LAST
           LIMIT ${limit}
@@ -1111,6 +1144,7 @@ export function createPostgresChatRepository(
             title,
             canonical_uri,
             snippet,
+            distance,
             row_number() OVER (ORDER BY distance, chunk_id) AS vector_rank,
             NULL::bigint AS keyword_rank
           FROM vector_document_candidates
@@ -1150,6 +1184,7 @@ export function createPostgresChatRepository(
             title,
             canonical_uri,
             snippet,
+            NULL::double precision AS distance,
             NULL::bigint AS vector_rank,
             row_number() OVER (ORDER BY keyword_score DESC, chunk_id) AS keyword_rank
           FROM keyword_document_candidates
@@ -1164,6 +1199,7 @@ export function createPostgresChatRepository(
             document_id,
             min(vector_rank) AS vector_rank,
             min(keyword_rank) AS keyword_rank,
+            min(distance) AS vector_distance,
             COALESCE(1.0 / (${RECIPROCAL_RANK_FUSION_K} + min(vector_rank)), 0.0) +
               COALESCE(1.0 / (${RECIPROCAL_RANK_FUSION_K} + min(keyword_rank)), 0.0)
               AS rrf_score
@@ -1195,7 +1231,11 @@ export function createPostgresChatRepository(
           dd.doc_type,
           dd.title,
           dd.canonical_uri,
-          dd.snippet
+          dd.snippet,
+          ds.vector_distance,
+          ds.vector_rank,
+          ds.keyword_rank,
+          ds.rrf_score AS fused_score
         FROM document_scores ds
         JOIN document_display dd USING (document_id)
         ORDER BY
@@ -1684,13 +1724,34 @@ export interface ChatSourceRow {
   readonly raw_document_id: string;
   readonly snippet?: string | null;
   readonly title: string;
+  readonly fused_score?: number | null;
+  readonly vector_distance?: number | null;
+  readonly vector_rank?: number | null;
+  readonly keyword_rank?: number | null;
 }
 
 export function parseChatSourceRow(value: unknown): ChatSourceRow {
   if (!isRecord(value)) {
     throw new Error('Invalid chat source row.');
   }
-  const { canonical_uri, document_id, doc_type, raw_document_id, snippet, title } = value;
+  const {
+    canonical_uri,
+    document_id,
+    doc_type,
+    raw_document_id,
+    snippet,
+    title,
+    fused_score,
+    vector_distance,
+    vector_rank,
+    keyword_rank,
+  } = value;
+  const scoreFields = {
+    fused_score: parseOptionalFiniteNumber(fused_score, 'fused_score'),
+    vector_distance: parseOptionalFiniteNumber(vector_distance, 'vector_distance'),
+    vector_rank: parseOptionalPositiveInteger(vector_rank, 'vector_rank'),
+    keyword_rank: parseOptionalPositiveInteger(keyword_rank, 'keyword_rank'),
+  };
   return {
     canonical_uri: parseRequiredString(canonical_uri, 'canonical_uri'),
     document_id: parseRequiredString(document_id, 'document_id'),
@@ -1698,6 +1759,12 @@ export function parseChatSourceRow(value: unknown): ChatSourceRow {
     raw_document_id: parseRequiredString(raw_document_id, 'raw_document_id'),
     snippet: parseOptionalNullableString(snippet, 'snippet'),
     title: parseRequiredString(title, 'title'),
+    ...(scoreFields.fused_score === undefined ? {} : { fused_score: scoreFields.fused_score }),
+    ...(scoreFields.vector_distance === undefined
+      ? {}
+      : { vector_distance: scoreFields.vector_distance }),
+    ...(scoreFields.vector_rank === undefined ? {} : { vector_rank: scoreFields.vector_rank }),
+    ...(scoreFields.keyword_rank === undefined ? {} : { keyword_rank: scoreFields.keyword_rank }),
   };
 }
 
@@ -1884,6 +1951,29 @@ function parseNonNegativeInteger(value: unknown, fieldName: string): number {
   throw new Error(`Invalid private chat history field: ${fieldName}`);
 }
 
+function parseOptionalFiniteNumber(value: unknown, fieldName: string): number | null | undefined {
+  if (value === null || value === undefined) {
+    return value;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  throw new Error(`Invalid chat source field: ${fieldName}`);
+}
+
+function parseOptionalPositiveInteger(
+  value: unknown,
+  fieldName: string,
+): number | null | undefined {
+  if (value === null || value === undefined) {
+    return value;
+  }
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  throw new Error(`Invalid chat source field: ${fieldName}`);
+}
+
 /**
  * Converts a database row into a chat source.
  *
@@ -1894,9 +1984,13 @@ function sourceFromRow(row: ChatSourceRow): ChatSource {
     canonicalUri: row.canonical_uri,
     documentId: row.document_id,
     docType: row.doc_type,
+    fusedScore: row.fused_score ?? undefined,
     rawDocumentId: row.raw_document_id,
     snippet: row.snippet?.trim() || undefined,
     title: row.title,
+    vectorDistance: row.vector_distance ?? undefined,
+    vectorRank: row.vector_rank ?? undefined,
+    keywordRank: row.keyword_rank ?? undefined,
   };
 }
 
