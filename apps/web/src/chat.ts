@@ -24,7 +24,7 @@ export interface ChatSource {
   readonly canonicalUri: string;
   readonly documentId: string;
   readonly docType: string;
-  /** Retrieval-only RRF score. It is never persisted or returned by chat response APIs. */
+  /** Retrieval-only RRF score normalized to 0..1. It is never persisted or returned by chat response APIs. */
   readonly fusedScore?: number;
   readonly rawDocumentId: string;
   readonly snippet?: string;

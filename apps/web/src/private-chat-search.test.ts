@@ -11,6 +11,7 @@ import {
   applyPrivateChatQuestionClassification,
   applyPrivateChatWorkflowQueryExpansion,
   buildPrivateChatSearchQueryPlan,
+  countSelectedVectorSources,
   createFallbackPrivateChatQuestionClassification,
   extractPrivateChatProtectedAnchors,
   formatPrivateChatRetrievalContext,
@@ -25,6 +26,7 @@ import {
   runPrivateChatPreparingStep,
   runPrivateChatRetryingStep,
   runPrivateChatSearchRetrieval,
+  selectChatSourcesByScoreProfile,
   shouldRunPrivateChatRetryStep,
   shouldRunPrivateChatTimelineStep,
   stripPrivateChatRequestNoise,
@@ -86,6 +88,87 @@ test('buildPrivateChatSearchQueryPlan bounds a long original query and enables g
     buildPrivateChatSearchQueryPlan('対応の詳細について pufu-editor #559').simplifiedRetryQuery,
     null,
   );
+});
+
+test('selectChatSourcesByScoreProfile handles empty, equal, and unscored legacy rankings', () => {
+  const policy = { kMax: 5, kMin: 2, metric: 'vector_distance' } as const;
+  assert.deepEqual(selectChatSourcesByScoreProfile([], policy), []);
+  const equalSources = Array.from({ length: 6 }, (_, index) => ({
+    ...sampleSource,
+    documentId: `doc-equal-${index}`,
+    vectorDistance: 0.2,
+  }));
+  assert.deepEqual(
+    selectChatSourcesByScoreProfile(equalSources, policy).map((source) => source.documentId),
+    ['doc-equal-0', 'doc-equal-1', 'doc-equal-2', 'doc-equal-3', 'doc-equal-4'],
+  );
+  assert.deepEqual(
+    selectChatSourcesByScoreProfile(
+      equalSources.map(({ vectorDistance: _, ...source }) => source),
+      policy,
+    ).map((source) => source.documentId),
+    ['doc-equal-0', 'doc-equal-1', 'doc-equal-2', 'doc-equal-3', 'doc-equal-4'],
+  );
+});
+
+test('selectChatSourcesByScoreProfile applies both score directions and a deterministic cliff', () => {
+  const distanceSources = [0.1, 0.11, 0.12, 0.4, 0.41].map((vectorDistance, index) => ({
+    ...sampleSource,
+    documentId: `doc-distance-${index}`,
+    vectorDistance,
+  }));
+  assert.deepEqual(
+    selectChatSourcesByScoreProfile(distanceSources, {
+      gapRatio: 1,
+      kMax: 5,
+      kMin: 2,
+      metric: 'vector_distance',
+    }).map((source) => source.documentId),
+    ['doc-distance-0', 'doc-distance-1', 'doc-distance-2'],
+  );
+  assert.deepEqual(
+    selectChatSourcesByScoreProfile(
+      [0.1, 0.11, 0.2, 0.8].map((vectorDistance, index) => ({
+        ...sampleSource,
+        documentId: `doc-largest-gap-${index}`,
+        vectorDistance,
+      })),
+      { gapRatio: 0.5, kMax: 4, kMin: 1, metric: 'vector_distance' },
+    ).map((source) => source.documentId),
+    ['doc-largest-gap-0', 'doc-largest-gap-1', 'doc-largest-gap-2'],
+  );
+  const fusedSources = [1, 0.9, 0.5].map((fusedScore, index) => ({
+    ...sampleSource,
+    documentId: `doc-fused-${index}`,
+    fusedScore,
+  }));
+  assert.deepEqual(
+    selectChatSourcesByScoreProfile(fusedSources, {
+      kMax: 3,
+      kMin: 1,
+      metric: 'normalized_fused_score',
+      minNormalizedScore: 0.9,
+    }).map((source) => source.documentId),
+    ['doc-fused-0', 'doc-fused-1'],
+  );
+  assert.throws(
+    () =>
+      selectChatSourcesByScoreProfile(distanceSources, {
+        kMax: 2,
+        kMin: 1,
+        metric: 'vector_distance',
+        minNormalizedScore: 0.1,
+      }),
+    /incompatible threshold/,
+  );
+});
+
+test('unscored candidates do not suppress simplified private-chat retry', () => {
+  const plan = buildPrivateChatSearchQueryPlan('プロジェクト概要 最新 更新 状況 教えてください');
+  assert.equal(countSelectedVectorSources([sampleSource]), 0);
+  assert.deepEqual(resolvePrivateChatRetryQueries({ mergedVectorSources: [sampleSource], plan }), [
+    plan.simplifiedRetryQuery,
+  ]);
 });
 
 test('applyPrivateChatQueryExpansion validates anchors, length, controls, dedupe, and count', () => {
@@ -176,7 +259,7 @@ test('stripPrivateChatRequestNoise removes request phrases while preserving enti
   );
 });
 
-test('resolvePrivateChatRetryQueries adds simplified retry only for neutral zero-result searches', () => {
+test('resolvePrivateChatRetryQueries adds simplified retry when no scored vector candidate survives', () => {
   const plan = buildPrivateChatSearchQueryPlan('プロジェクト概要 最新 更新 状況 教えてください');
   assert.deepEqual(
     resolvePrivateChatRetryQueries({
@@ -191,7 +274,7 @@ test('resolvePrivateChatRetryQueries adds simplified retry only for neutral zero
       mergedVectorSources: [sampleSource],
       plan,
     }),
-    false,
+    true,
   );
 });
 
@@ -213,7 +296,7 @@ test('runPrivateChatSearchRetrieval always performs vector search and graph quer
     },
     async vectorSearch({ query }: { query: string }) {
       vectorSearchInputs.push(query);
-      return [sampleSource];
+      return [{ ...sampleSource, vectorDistance: 0.2 }];
     },
   };
 
@@ -247,7 +330,7 @@ test('runPrivateChatSearchRetrieval runs timeline for deterministic timeline fal
     },
     async vectorSearch({ query }: { query: string }) {
       vectorSearchInputs.push(query);
-      return [sampleSource];
+      return [{ ...sampleSource, vectorDistance: 0.2 }];
     },
   };
 
@@ -737,4 +820,6 @@ test('fuseChatSourceRankings promotes consensus while preserving deterministic t
     ['doc-b', 'doc-a', 'doc-c'],
   );
   assert.ok((fused[0]?.fusedScore ?? 0) > (fused[1]?.fusedScore ?? 0));
+  assert.ok((fused[0]?.fusedScore ?? 0) > 0);
+  assert.ok((fused[0]?.fusedScore ?? 2) <= 1);
 });
