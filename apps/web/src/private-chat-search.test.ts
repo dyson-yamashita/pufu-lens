@@ -165,6 +165,15 @@ test('stripPrivateChatRequestNoise removes request phrases while preserving enti
     stripPrivateChatRequestNoise('pufu-editorでのエラー対応実績教えてください'),
     'pufu-editor エラー',
   );
+  assert.equal(
+    stripPrivateChatRequestNoise('Pufu Lens開発 に関する情報は見つかりますか？'),
+    'Pufu Lens開発 は見つかりますか',
+  );
+  assert.equal(stripPrivateChatRequestNoise('API設計に関する資料をください。'), 'API設計 資料');
+  assert.equal(
+    stripPrivateChatRequestNoise('認証フロー 関連する情報を教えてください'),
+    '認証フロー',
+  );
 });
 
 test('resolvePrivateChatRetryQueries adds simplified retry only for neutral zero-result searches', () => {

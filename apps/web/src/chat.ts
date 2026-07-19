@@ -1931,6 +1931,8 @@ export function normalizeHybridKeywordQuery(query: string | null | undefined): s
   return Array.from(truncated.normalize('NFKC'))
     .map((character) => (isControlCharacter(character) ? ' ' : character))
     .join('')
+    .replace(/([A-Za-z0-9])([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])/gu, '$1 $2')
+    .replace(/([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])([A-Za-z0-9])/gu, '$1 $2')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, HYBRID_KEYWORD_QUERY_OUTPUT_MAX);
