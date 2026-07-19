@@ -820,5 +820,6 @@ test('fuseChatSourceRankings promotes consensus while preserving deterministic t
     ['doc-b', 'doc-a', 'doc-c'],
   );
   assert.ok((fused[0]?.fusedScore ?? 0) > (fused[1]?.fusedScore ?? 0));
+  assert.ok((fused[0]?.fusedScore ?? 0) > 0);
   assert.ok((fused[0]?.fusedScore ?? 2) <= 1);
 });

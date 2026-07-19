@@ -528,6 +528,11 @@ function validateChatSourceSelectionPolicy(policy: ChatSourceSelectionPolicy): v
 /**
  * Selects a bounded, deterministic source set from a ranked score profile.
  *
+ * Callers must pass `sources` already sorted by the retrieval metric in best-first order
+ * (ascending for `vector_distance`, descending for `fused_score`). This function treats
+ * `sources[0]` as the best scored entry when present and detects cliffs from consecutive gaps,
+ * so unsorted input yields incorrect cutoffs.
+ *
  * Sources without the requested retrieval score retain their existing rank and are not filtered by
  * score thresholds. When every source lacks a score, this is the legacy top-k fallback.
  */
