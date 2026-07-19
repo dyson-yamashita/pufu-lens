@@ -67,6 +67,8 @@ export type ChatScoreMetric = 'normalized_fused_score' | 'vector_distance';
 
 /** Defines deterministic retrieval cutoffs for one score direction. */
 export interface ChatSourceSelectionPolicy {
+  /** Limits one document type's share of a selected set when diversity is required. */
+  readonly docTypeQuota?: number;
   readonly gapRatio?: number;
   readonly kMax: number;
   readonly kMin: number;
@@ -135,6 +137,11 @@ export function privateChatSelectionPolicyForClassification(
     kMin: profile.kMin,
     metric,
     relativeWindow,
+    ...(classification.confidence !== 'low' &&
+    (classification.primaryOperation === 'comparison' ||
+      classification.primaryOperation === 'relation')
+      ? { docTypeQuota: 2 / 3 }
+      : {}),
   };
   if (metric !== 'vector_distance' || !embeddingModel) {
     return policy;
@@ -560,6 +567,9 @@ function validateChatSourceSelectionPolicy(policy: ChatSourceSelectionPolicy): v
   if (policy.gapRatio !== undefined && policy.gapRatio < 0) {
     throw new Error('gapRatio must not be negative.');
   }
+  if (policy.docTypeQuota !== undefined && (policy.docTypeQuota <= 0 || policy.docTypeQuota > 1)) {
+    throw new Error('docTypeQuota must be within (0..1].');
+  }
 }
 
 /**
@@ -649,6 +659,70 @@ export function selectChatSourcesByScoreProfile(
   });
 }
 
+function normalizedCanonicalUri(value: string): string | null {
+  try {
+    const url = new URL(value);
+    const path = url.pathname.replace(/\/+$/, '');
+    return `${url.host.toLowerCase()}${path}`.toLowerCase() || null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizedTitle(value: string): string | null {
+  const title = value.trim().replace(/\s+/g, ' ').toLowerCase();
+  return title && title !== 'untitled' ? title : null;
+}
+
+/**
+ * Removes deterministic metadata duplicates without consuming the selected-source limit.
+ *
+ * Sources remain in their incoming rank order. A raw document, canonical URI, or meaningful
+ * normalized title may occur once; comparison and relation policies can additionally cap one
+ * document type's share of the returned set.
+ */
+export function selectDiverseChatSources(
+  sources: readonly ChatSource[],
+  policy: Pick<ChatSourceSelectionPolicy, 'docTypeQuota'>,
+  limit: number,
+): ChatSource[] {
+  if (limit <= 0) {
+    return [];
+  }
+  const docTypeLimit =
+    policy.docTypeQuota === undefined
+      ? Number.POSITIVE_INFINITY
+      : Math.max(1, Math.floor(limit * policy.docTypeQuota));
+  const rawDocumentIds = new Set<string>();
+  const canonicalUris = new Set<string>();
+  const titles = new Set<string>();
+  const docTypeCounts = new Map<string, number>();
+  const selected: ChatSource[] = [];
+
+  for (const source of sources) {
+    if (selected.length >= limit) {
+      break;
+    }
+    const rawDocumentId = source.rawDocumentId.trim();
+    const canonicalUri = normalizedCanonicalUri(source.canonicalUri);
+    const title = normalizedTitle(source.title);
+    if (
+      (rawDocumentId && rawDocumentIds.has(rawDocumentId)) ||
+      (canonicalUri && canonicalUris.has(canonicalUri)) ||
+      (title && titles.has(title)) ||
+      (docTypeCounts.get(source.docType) ?? 0) >= docTypeLimit
+    ) {
+      continue;
+    }
+    if (rawDocumentId) rawDocumentIds.add(rawDocumentId);
+    if (canonicalUri) canonicalUris.add(canonicalUri);
+    if (title) titles.add(title);
+    docTypeCounts.set(source.docType, (docTypeCounts.get(source.docType) ?? 0) + 1);
+    selected.push(source);
+  }
+  return selected;
+}
+
 /**
  * Fuses ranked chat source lists without comparing provider-specific raw scores.
  *
@@ -726,13 +800,33 @@ export function mergeChatToolCallsDeterministically(
   return [...merged.entries()].map(([name, resultCount]) => ({ name, resultCount }));
 }
 
-export function formatPrivateChatRetrievalContext(sources: readonly ChatSource[]): string {
+export type PrivateChatRetrievalConfidence = 'none' | 'strong' | 'weak';
+
+/** Determines retrieval confidence from score-qualified vector evidence only. */
+export function privateChatRetrievalConfidence(input: {
+  readonly didRetry: boolean;
+  readonly policy: Pick<ChatSourceSelectionPolicy, 'kMin'>;
+  readonly vectorSources: readonly ChatSource[];
+}): PrivateChatRetrievalConfidence {
+  const qualifiedCount = countSelectedVectorSources(input.vectorSources);
+  if (qualifiedCount === 0) return 'none';
+  return !input.didRetry && qualifiedCount >= input.policy.kMin ? 'strong' : 'weak';
+}
+
+/** Serializes untrusted retrieval evidence with a score-derived confidence instruction. */
+export function formatPrivateChatRetrievalContext(
+  sources: readonly ChatSource[],
+  confidence: PrivateChatRetrievalConfidence = sources.length === 0 ? 'none' : 'weak',
+): string {
   return JSON.stringify(
     {
       note:
-        sources.length === 0
+        confidence === 'none'
           ? 'Workflow 検索では参照 source が見つかりませんでした。追加確認なしに未確認の事実を述べないでください。'
-          : 'Workflow が取得した回答根拠候補です。',
+          : confidence === 'weak'
+            ? 'Workflow が取得した回答根拠候補です。検索根拠は限定的なため、確証が薄い前提で回答してください。'
+            : 'Workflow が取得した回答根拠候補です。',
+      retrievalConfidence: confidence,
       sources: sources.map((source) => ({
         canonicalUri: source.canonicalUri || null,
         documentId: source.documentId,
@@ -753,6 +847,7 @@ export function formatPrivateChatRetrievalContext(sources: readonly ChatSource[]
 export interface PrivateChatSearchWorkflowState {
   readonly classification: PrivateChatQuestionClassification;
   readonly detailSources: readonly ChatSource[];
+  readonly didRetry: boolean;
   readonly editing: ChatEditingMetadata;
   readonly graphName: string | null;
   readonly graphSources: readonly ChatSource[];
@@ -776,6 +871,7 @@ export function runPrivateChatPreparingStep(input: {
   return {
     classification: createFallbackPrivateChatQuestionClassification(input.question),
     detailSources: [],
+    didRetry: false,
     editing,
     graphName: input.graphName,
     graphSources: [],
@@ -875,11 +971,16 @@ export async function runPrivateChatRetrievingStep(
     }),
     selectionPolicy,
   );
+  const diversePrimaryVectorSources = selectDiverseChatSources(
+    primaryVectorSources,
+    selectionPolicy,
+    selectionPolicy.kMax,
+  );
   return {
     ...state,
-    mergedVectorSources: primaryVectorSources,
+    mergedVectorSources: diversePrimaryVectorSources,
     toolCalls: mergeChatToolCallsDeterministically(state.toolCalls, [
-      { name: 'vector-search', resultCount: primaryVectorSources.length },
+      { name: 'vector-search', resultCount: diversePrimaryVectorSources.length },
     ]),
   };
 }
@@ -927,18 +1028,23 @@ export async function runPrivateChatRetryingStep(
   for (const retrySources of retrySourceGroups) {
     toolCalls.push({ name: 'vector-search', resultCount: retrySources.length });
   }
-  const mergedVectorSources = selectChatSourcesByScoreProfile(
-    fuseChatSourceRankings(
-      [
-        { sources: state.mergedVectorSources, weight: PRIMARY_QUERY_RRF_WEIGHT },
-        ...retrySourceGroups.map((sources) => ({ sources })),
-      ],
-      fusedSelectionPolicy.kMax,
+  const mergedVectorSources = selectDiverseChatSources(
+    selectChatSourcesByScoreProfile(
+      fuseChatSourceRankings(
+        [
+          { sources: state.mergedVectorSources, weight: PRIMARY_QUERY_RRF_WEIGHT },
+          ...retrySourceGroups.map((sources) => ({ sources })),
+        ],
+        fusedSelectionPolicy.kMax,
+      ),
+      fusedSelectionPolicy,
     ),
     fusedSelectionPolicy,
+    fusedSelectionPolicy.kMax,
   );
   return {
     ...state,
+    didRetry: true,
     mergedVectorSources,
     toolCalls: mergeChatToolCallsDeterministically(toolCalls),
   };
@@ -1003,17 +1109,30 @@ export async function runPrivateChatDetailStep(
         })
       : [];
 
-  const sources = mergeChatSourcesDeterministically(
-    detailSources,
-    state.editing.inferredMode === 'timeline' ? state.timelineSources : [],
-    state.mergedVectorSources,
-    state.graphSources,
-  ).slice(0, MAX_MERGED_SOURCES);
+  const selectionPolicy = privateChatSelectionPolicyForClassification(
+    state.classification,
+    'vector_distance',
+  );
+  const sources = selectDiverseChatSources(
+    mergeChatSourcesDeterministically(
+      detailSources,
+      state.editing.inferredMode === 'timeline' ? state.timelineSources : [],
+      state.mergedVectorSources,
+      state.graphSources,
+    ),
+    selectionPolicy,
+    MAX_MERGED_SOURCES,
+  );
+  const confidence = privateChatRetrievalConfidence({
+    didRetry: state.didRetry,
+    policy: selectionPolicy,
+    vectorSources: state.mergedVectorSources,
+  });
 
   return {
     ...state,
     detailSources,
-    retrievalContext: formatPrivateChatRetrievalContext(sources),
+    retrievalContext: formatPrivateChatRetrievalContext(sources, confidence),
     sources,
     toolCalls: mergeChatToolCallsDeterministically(state.toolCalls, [
       { name: 'document-fetch', resultCount: detailSources.length },

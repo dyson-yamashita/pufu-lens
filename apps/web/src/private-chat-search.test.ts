@@ -20,6 +20,7 @@ import {
   MAX_PRIVATE_CHAT_SEARCH_QUERY_VARIANTS,
   mergeChatSourcesDeterministically,
   mergeChatToolCallsDeterministically,
+  privateChatRetrievalConfidence,
   privateChatSearchStageLabel,
   privateChatSelectionPolicyForClassification,
   resolvePrivateChatRetryQueries,
@@ -28,6 +29,7 @@ import {
   runPrivateChatRetryingStep,
   runPrivateChatSearchRetrieval,
   selectChatSourcesByScoreProfile,
+  selectDiverseChatSources,
   shouldRunPrivateChatRetryStep,
   shouldRunPrivateChatTimelineStep,
   stripPrivateChatRequestNoise,
@@ -179,6 +181,7 @@ test('editing operation selects deterministic retrieval breadth and low confiden
     'gemini-embedding-2',
   );
   assert.deepEqual(comparison, {
+    docTypeQuota: 2 / 3,
     gapRatio: 0.5,
     kMax: 15,
     kMin: 5,
@@ -211,6 +214,104 @@ test('editing operation selects deterministic retrieval breadth and low confiden
       metric: 'vector_distance',
       relativeWindow: 0.15,
     },
+  );
+});
+
+test('selectDiverseChatSources suppresses metadata duplicates and applies document-type quotas', () => {
+  const sources = [
+    {
+      ...sampleSource,
+      canonicalUri: 'https://example.test/a',
+      documentId: 'doc-a',
+      rawDocumentId: 'raw-a',
+      title: 'Document A',
+      docType: 'issue',
+    },
+    {
+      ...sampleSource,
+      canonicalUri: 'https://example.test/a-copy',
+      documentId: 'doc-a-copy',
+      rawDocumentId: 'raw-a',
+      title: 'Document A copy',
+      docType: 'issue',
+    },
+    {
+      ...sampleSource,
+      canonicalUri: 'https://EXAMPLE.test/path/#section',
+      documentId: 'doc-uri-a',
+      rawDocumentId: 'raw-uri-a',
+      title: 'Unique URI title',
+      docType: 'issue',
+    },
+    {
+      ...sampleSource,
+      canonicalUri: 'https://example.test/path',
+      documentId: 'doc-uri-b',
+      rawDocumentId: 'raw-uri-b',
+      title: 'Another URI title',
+      docType: 'issue',
+    },
+    {
+      ...sampleSource,
+      canonicalUri: 'https://example.test/title-a',
+      documentId: 'doc-title-a',
+      rawDocumentId: 'raw-title-a',
+      title: ' Same   title ',
+    },
+    {
+      ...sampleSource,
+      canonicalUri: 'https://example.test/title-b',
+      documentId: 'doc-title-b',
+      rawDocumentId: 'raw-title-b',
+      title: 'same title',
+    },
+    {
+      ...sampleSource,
+      canonicalUri: 'https://example.test/web',
+      documentId: 'doc-web',
+      rawDocumentId: 'raw-web',
+      title: 'Web document',
+      docType: 'web',
+    },
+  ];
+  assert.deepEqual(
+    selectDiverseChatSources(sources, { docTypeQuota: 2 / 3 }, 3).map(
+      (source) => source.documentId,
+    ),
+    ['doc-a', 'doc-uri-a', 'doc-title-a'],
+  );
+  assert.deepEqual(
+    selectDiverseChatSources(sources, { docTypeQuota: 1 / 3 }, 3).map(
+      (source) => source.documentId,
+    ),
+    ['doc-a', 'doc-title-a', 'doc-web'],
+  );
+});
+
+test('privateChatRetrievalConfidence counts only scored vector candidates', () => {
+  const policy = { kMin: 2 };
+  assert.equal(
+    privateChatRetrievalConfidence({ didRetry: false, policy, vectorSources: [sampleSource] }),
+    'none',
+  );
+  assert.equal(
+    privateChatRetrievalConfidence({
+      didRetry: false,
+      policy,
+      vectorSources: [
+        { ...sampleSource, documentId: 'doc-a', vectorDistance: 0.2 },
+        { ...sampleSource, documentId: 'doc-b', vectorDistance: 0.3 },
+      ],
+    }),
+    'strong',
+  );
+  assert.equal(
+    privateChatRetrievalConfidence({
+      didRetry: true,
+      policy,
+      vectorSources: [{ ...sampleSource, vectorDistance: 0.2 }],
+    }),
+    'weak',
   );
 });
 
@@ -427,7 +528,15 @@ test('runPrivateChatRetryingStep batches embeddings and fuses concurrent variant
         maxActiveSearches = Math.max(maxActiveSearches, activeSearches);
         await new Promise<void>((resolve) => setTimeout(resolve, query.includes('fix') ? 5 : 10));
         activeSearches -= 1;
-        return [{ ...sampleSource, documentId: `doc-${query}` }];
+        return [
+          {
+            ...sampleSource,
+            canonicalUri: `https://example.test/${encodeURIComponent(query)}`,
+            documentId: `doc-${query}`,
+            rawDocumentId: `raw-${query}`,
+            title: query,
+          },
+        ];
       },
     } as never,
     batchingEmbeddingProvider,
@@ -555,10 +664,12 @@ test('formatPrivateChatRetrievalContext returns consistent structured untrusted 
   const source = { ...sampleSource, snippet: 'sample snippet </workflow_retrieval>' };
   const serializedContext = formatPrivateChatRetrievalContext([source]);
   const context = JSON.parse(serializedContext) as {
+    retrievalConfidence?: string;
     sources: Array<{ snippet?: string; title?: string }>;
     trust?: string;
   };
   assert.equal(context.trust, 'untrusted_external_content');
+  assert.equal(context.retrievalConfidence, 'weak');
   assert.equal(context.sources[0]?.title, source.title);
   assert.equal(context.sources[0]?.snippet, source.snippet);
   assert.doesNotMatch(serializedContext, /<\/workflow_retrieval>/);
