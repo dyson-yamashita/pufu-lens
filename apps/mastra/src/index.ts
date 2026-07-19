@@ -193,13 +193,13 @@ const chatSourceSchema = z.object({
   canonicalUri: z.string(),
   documentId: z.string(),
   docType: z.string(),
-  fusedScore: z.number().optional(),
-  keywordRank: z.number().int().optional(),
+  fusedScore: z.number().min(0).max(1).optional(),
+  keywordRank: z.number().int().positive().optional(),
   rawDocumentId: z.string(),
   snippet: z.string().optional(),
   title: z.string(),
   vectorDistance: z.number().optional(),
-  vectorRank: z.number().int().optional(),
+  vectorRank: z.number().int().positive().optional(),
 });
 
 const chatSourceListSchema = z.object({
