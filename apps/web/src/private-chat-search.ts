@@ -38,6 +38,7 @@ export interface PrivateChatSearchRetrievalInput {
   readonly repository: ChatRepository;
 }
 
+const LEGACY_PRIMARY_VECTOR_LIMIT = 5;
 const PRIMARY_VECTOR_LIMIT = 15;
 const GRAPH_LIMIT = 5;
 const TIMELINE_LIMIT = 5;
@@ -75,20 +76,28 @@ export interface ChatSourceSelectionPolicy {
   readonly relativeWindow?: number;
 }
 
-const PRIMARY_VECTOR_SELECTION_POLICY: ChatSourceSelectionPolicy = {
-  gapRatio: 0.5,
-  kMax: PRIMARY_VECTOR_LIMIT,
-  kMin: 5,
-  metric: 'vector_distance',
+interface PrivateChatSelectionProfile {
+  readonly kMax: number;
+  readonly kMin: number;
+  readonly relativeWindow: number;
+}
+
+const GENERAL_PRIVATE_CHAT_SELECTION_PROFILE: PrivateChatSelectionProfile = {
+  kMax: 10,
+  kMin: LEGACY_PRIMARY_VECTOR_LIMIT,
   relativeWindow: 0.15,
 };
 
-const FUSED_SOURCE_SELECTION_POLICY: ChatSourceSelectionPolicy = {
-  gapRatio: 0.5,
-  kMax: PRIMARY_VECTOR_LIMIT,
-  kMin: 5,
-  metric: 'normalized_fused_score',
-  relativeWindow: 0.1,
+const PRIVATE_CHAT_SELECTION_PROFILES: Readonly<
+  Partial<Record<PrivateChatEditingOperation, PrivateChatSelectionProfile>>
+> = {
+  cause: { kMax: PRIMARY_VECTOR_LIMIT, kMin: 5, relativeWindow: 0.2 },
+  comparison: { kMax: PRIMARY_VECTOR_LIMIT, kMin: 5, relativeWindow: 0.2 },
+  decision: { kMax: 8, kMin: 3, relativeWindow: 0.1 },
+  identification: { kMax: 8, kMin: 3, relativeWindow: 0.1 },
+  process: { kMax: 12, kMin: 5, relativeWindow: 0.2 },
+  relation: { kMax: PRIMARY_VECTOR_LIMIT, kMin: 5, relativeWindow: 0.2 },
+  timeline: { kMax: 12, kMin: 5, relativeWindow: 0.2 },
 };
 
 /**
@@ -101,13 +110,41 @@ const MAX_VECTOR_DISTANCE_BY_EMBEDDING_MODEL: Readonly<Record<string, number>> =
   'gemini-embedding-2': 0.6,
 };
 
-function primaryVectorSelectionPolicyForModel(embeddingModel: string): ChatSourceSelectionPolicy {
+/**
+ * Resolves a deterministic retrieval policy from the classified editing operation.
+ *
+ * Low-confidence classifications deliberately use the conservative general profile so an
+ * uncertain planner result cannot alter retrieval breadth. Vector distance ceilings remain
+ * keyed by embedding model because their scale is model-specific.
+ */
+export function privateChatSelectionPolicyForClassification(
+  classification: Pick<PrivateChatQuestionClassification, 'confidence' | 'primaryOperation'>,
+  metric: ChatScoreMetric,
+  embeddingModel?: string,
+): ChatSourceSelectionPolicy {
+  const profile =
+    classification.confidence === 'low'
+      ? GENERAL_PRIVATE_CHAT_SELECTION_PROFILE
+      : (PRIVATE_CHAT_SELECTION_PROFILES[classification.primaryOperation] ??
+        GENERAL_PRIVATE_CHAT_SELECTION_PROFILE);
+  const relativeWindow =
+    metric === 'vector_distance' ? profile.relativeWindow : Math.min(profile.relativeWindow, 0.1);
+  const policy: ChatSourceSelectionPolicy = {
+    gapRatio: 0.5,
+    kMax: profile.kMax,
+    kMin: profile.kMin,
+    metric,
+    relativeWindow,
+  };
+  if (metric !== 'vector_distance' || !embeddingModel) {
+    return policy;
+  }
   const maxDistance = MAX_VECTOR_DISTANCE_BY_EMBEDDING_MODEL[embeddingModel];
   if (maxDistance === undefined) {
-    return PRIMARY_VECTOR_SELECTION_POLICY;
+    return policy;
   }
   return {
-    ...PRIMARY_VECTOR_SELECTION_POLICY,
+    ...policy,
     maxDistance,
   };
 }
@@ -823,15 +860,20 @@ export async function runPrivateChatRetrievingStep(
   if (!embedding) {
     throw new Error('Private chat primary query embedding is unavailable.');
   }
+  const selectionPolicy = privateChatSelectionPolicyForClassification(
+    state.classification,
+    'vector_distance',
+    embeddingProvider.model,
+  );
   const primaryVectorSources = selectChatSourcesByScoreProfile(
     await repository.vectorSearch({
       embedding,
       embeddingModel: embeddingProvider.model,
-      limit: PRIMARY_VECTOR_LIMIT,
+      limit: selectionPolicy.kMax,
       projectId: state.projectId,
       query: state.plan.primaryQuery,
     }),
-    primaryVectorSelectionPolicyForModel(embeddingProvider.model),
+    selectionPolicy,
   );
   return {
     ...state,
@@ -857,6 +899,15 @@ export async function runPrivateChatRetryingStep(
 ): Promise<PrivateChatSearchWorkflowState> {
   const toolCalls = [...state.toolCalls];
   const retryQueries = resolvePrivateChatRetryQueries(state);
+  const primarySelectionPolicy = privateChatSelectionPolicyForClassification(
+    state.classification,
+    'vector_distance',
+    embeddingProvider.model,
+  );
+  const fusedSelectionPolicy = privateChatSelectionPolicyForClassification(
+    state.classification,
+    'normalized_fused_score',
+  );
   const retryEmbeddings = await embedPrivateChatQueries(embeddingProvider, retryQueries);
   const retrySourceGroups = await Promise.all(
     retryQueries.map((retryQuery, index) => {
@@ -867,7 +918,7 @@ export async function runPrivateChatRetryingStep(
       return repository.vectorSearch({
         embedding,
         embeddingModel: embeddingProvider.model,
-        limit: PRIMARY_VECTOR_LIMIT,
+        limit: primarySelectionPolicy.kMax,
         projectId: state.projectId,
         query: retryQuery,
       });
@@ -882,9 +933,9 @@ export async function runPrivateChatRetryingStep(
         { sources: state.mergedVectorSources, weight: PRIMARY_QUERY_RRF_WEIGHT },
         ...retrySourceGroups.map((sources) => ({ sources })),
       ],
-      PRIMARY_VECTOR_LIMIT,
+      fusedSelectionPolicy.kMax,
     ),
-    FUSED_SOURCE_SELECTION_POLICY,
+    fusedSelectionPolicy,
   );
   return {
     ...state,

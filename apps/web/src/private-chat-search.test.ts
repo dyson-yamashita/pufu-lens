@@ -21,6 +21,7 @@ import {
   mergeChatSourcesDeterministically,
   mergeChatToolCallsDeterministically,
   privateChatSearchStageLabel,
+  privateChatSelectionPolicyForClassification,
   resolvePrivateChatRetryQueries,
   runPrivateChatDetailStep,
   runPrivateChatPreparingStep,
@@ -169,6 +170,48 @@ test('unscored candidates do not suppress simplified private-chat retry', () => 
   assert.deepEqual(resolvePrivateChatRetryQueries({ mergedVectorSources: [sampleSource], plan }), [
     plan.simplifiedRetryQuery,
   ]);
+});
+
+test('editing operation selects deterministic retrieval breadth and low confidence falls back', () => {
+  const comparison = privateChatSelectionPolicyForClassification(
+    { confidence: 'high', primaryOperation: 'comparison' },
+    'vector_distance',
+    'gemini-embedding-2',
+  );
+  assert.deepEqual(comparison, {
+    gapRatio: 0.5,
+    kMax: 15,
+    kMin: 5,
+    maxDistance: 0.6,
+    metric: 'vector_distance',
+    relativeWindow: 0.2,
+  });
+  assert.deepEqual(
+    privateChatSelectionPolicyForClassification(
+      { confidence: 'medium', primaryOperation: 'decision' },
+      'normalized_fused_score',
+    ),
+    {
+      gapRatio: 0.5,
+      kMax: 8,
+      kMin: 3,
+      metric: 'normalized_fused_score',
+      relativeWindow: 0.1,
+    },
+  );
+  assert.deepEqual(
+    privateChatSelectionPolicyForClassification(
+      { confidence: 'low', primaryOperation: 'comparison' },
+      'vector_distance',
+    ),
+    {
+      gapRatio: 0.5,
+      kMax: 10,
+      kMin: 5,
+      metric: 'vector_distance',
+      relativeWindow: 0.15,
+    },
+  );
 });
 
 test('applyPrivateChatQueryExpansion validates anchors, length, controls, dedupe, and count', () => {
