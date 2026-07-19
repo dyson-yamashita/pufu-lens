@@ -802,7 +802,16 @@ export function mergeChatToolCallsDeterministically(
 
 export type PrivateChatRetrievalConfidence = 'none' | 'strong' | 'weak';
 
-/** Determines retrieval confidence from score-qualified vector evidence only. */
+/**
+ * Determines retrieval confidence from score-qualified vector evidence only.
+ *
+ * Callers should pass the pre-quota / pre-diversity vector set so `docTypeQuota`
+ * and duplicate suppression cannot demote an otherwise strong retrieval.
+ *
+ * - `none`: no score-qualified vector sources (`vectorDistance` present)
+ * - `strong`: no retry ran and the qualified count reaches `policy.kMin`
+ * - `weak`: some qualified evidence exists, but retry ran or the count is below `kMin`
+ */
 export function privateChatRetrievalConfidence(input: {
   readonly didRetry: boolean;
   readonly policy: Pick<ChatSourceSelectionPolicy, 'kMin'>;
@@ -813,7 +822,14 @@ export function privateChatRetrievalConfidence(input: {
   return !input.didRetry && qualifiedCount >= input.policy.kMin ? 'strong' : 'weak';
 }
 
-/** Serializes untrusted retrieval evidence with a score-derived confidence instruction. */
+/**
+ * Serializes untrusted retrieval evidence with a score-derived confidence instruction.
+ *
+ * @param sources - Final merged sources exposed to synthesis (may include graph / timeline)
+ * @param confidence - Score-derived label written to `retrievalConfidence`; defaults to
+ *   `none` when `sources` is empty, otherwise `weak`
+ * @returns JSON text containing `retrievalConfidence`, an instruction `note`, and sources
+ */
 export function formatPrivateChatRetrievalContext(
   sources: readonly ChatSource[],
   confidence: PrivateChatRetrievalConfidence = sources.length === 0 ? 'none' : 'weak',
@@ -856,6 +872,11 @@ export interface PrivateChatSearchWorkflowState {
   readonly projectId: string;
   readonly question: string;
   readonly retrievalContext: string;
+  /**
+   * Score-profile survivors before diversity / `docTypeQuota`.
+   * Used only for retrieval confidence so quota cannot under-count evidence.
+   */
+  readonly scoreQualifiedVectorSources: readonly ChatSource[];
   readonly sources: readonly ChatSource[];
   readonly timelineSources: readonly ChatSource[];
   readonly toolCalls: readonly ChatToolCall[];
@@ -880,6 +901,7 @@ export function runPrivateChatPreparingStep(input: {
     projectId: input.projectId,
     question: input.question,
     retrievalContext: '',
+    scoreQualifiedVectorSources: [],
     sources: [],
     timelineSources: [],
     toolCalls: [],
@@ -979,6 +1001,7 @@ export async function runPrivateChatRetrievingStep(
   return {
     ...state,
     mergedVectorSources: diversePrimaryVectorSources,
+    scoreQualifiedVectorSources: primaryVectorSources,
     toolCalls: mergeChatToolCallsDeterministically(state.toolCalls, [
       { name: 'vector-search', resultCount: diversePrimaryVectorSources.length },
     ]),
@@ -1028,17 +1051,18 @@ export async function runPrivateChatRetryingStep(
   for (const retrySources of retrySourceGroups) {
     toolCalls.push({ name: 'vector-search', resultCount: retrySources.length });
   }
-  const mergedVectorSources = selectDiverseChatSources(
-    selectChatSourcesByScoreProfile(
-      fuseChatSourceRankings(
-        [
-          { sources: state.mergedVectorSources, weight: PRIMARY_QUERY_RRF_WEIGHT },
-          ...retrySourceGroups.map((sources) => ({ sources })),
-        ],
-        fusedSelectionPolicy.kMax,
-      ),
-      fusedSelectionPolicy,
+  const scoreQualifiedVectorSources = selectChatSourcesByScoreProfile(
+    fuseChatSourceRankings(
+      [
+        { sources: state.mergedVectorSources, weight: PRIMARY_QUERY_RRF_WEIGHT },
+        ...retrySourceGroups.map((sources) => ({ sources })),
+      ],
+      fusedSelectionPolicy.kMax,
     ),
+    fusedSelectionPolicy,
+  );
+  const mergedVectorSources = selectDiverseChatSources(
+    scoreQualifiedVectorSources,
     fusedSelectionPolicy,
     fusedSelectionPolicy.kMax,
   );
@@ -1046,6 +1070,7 @@ export async function runPrivateChatRetryingStep(
     ...state,
     didRetry: true,
     mergedVectorSources,
+    scoreQualifiedVectorSources,
     toolCalls: mergeChatToolCallsDeterministically(toolCalls),
   };
 }
@@ -1126,7 +1151,7 @@ export async function runPrivateChatDetailStep(
   const confidence = privateChatRetrievalConfidence({
     didRetry: state.didRetry,
     policy: selectionPolicy,
-    vectorSources: state.mergedVectorSources,
+    vectorSources: state.scoreQualifiedVectorSources,
   });
 
   return {

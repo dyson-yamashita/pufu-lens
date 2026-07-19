@@ -122,6 +122,7 @@ function selectChatSourcesByScoreProfile(
 - `weak`: スコア付き候補はあるが閾値ぎわ、または retry 後にのみ確保。「確証が薄い」前提で回答するよう明示。
 - `none`: 閾値通過のスコア付き候補なし。既存の「未確認の事実を述べないでください」注記を維持。
 - 判定件数にはスコア付き候補だけを数える。graph / timeline 由来のスコア欠落候補は source には残るが、確信度を `strong` 側へ押し上げない。
+- 件数は多様性 / `docTypeQuota` 適用前の score-qualified vector 集合で数える。quota で採用枠から落ちた候補があっても、根拠の強さ判定を誤って下げない。
 
 数値スコアそのものは context に入れず、段階ラベルと件数のみとする（LLM がスコアを事実として引用するのを防ぐ）。
 

@@ -315,6 +315,60 @@ test('privateChatRetrievalConfidence counts only scored vector candidates', () =
   );
 });
 
+test('runPrivateChatDetailStep keeps strong confidence when quota shrinks diverse sources', async () => {
+  const scoreQualifiedVectorSources = [0.1, 0.12, 0.14, 0.16, 0.18].map(
+    (vectorDistance, index) => ({
+      ...sampleSource,
+      documentId: `doc-${index}`,
+      docType: 'issue',
+      rawDocumentId: `raw-${index}`,
+      title: `Issue ${index}`,
+      vectorDistance,
+    }),
+  );
+  const prepared = runPrivateChatPreparingStep({
+    graphName: 'graph-a',
+    projectId: 'project-a',
+    question: 'AとBの違いを比較して',
+  });
+  const state = {
+    ...applyPrivateChatQuestionClassification(prepared, {
+      confidence: 'high',
+      expectedEvidence: [],
+      figure: [],
+      ground: [],
+      primaryOperation: 'comparison',
+      secondaryOperations: [],
+    }),
+    didRetry: false,
+    mergedVectorSources: selectDiverseChatSources(
+      scoreQualifiedVectorSources,
+      { docTypeQuota: 2 / 3 },
+      3,
+    ),
+    scoreQualifiedVectorSources,
+  };
+
+  assert.ok(state.mergedVectorSources.length < scoreQualifiedVectorSources.length);
+  assert.equal(
+    privateChatRetrievalConfidence({
+      didRetry: false,
+      policy: { kMin: 5 },
+      vectorSources: state.mergedVectorSources,
+    }),
+    'weak',
+  );
+
+  const result = await runPrivateChatDetailStep(state, {
+    async documentFetch() {
+      return [];
+    },
+  } as never);
+
+  const context = JSON.parse(result.retrievalContext) as { retrievalConfidence?: string };
+  assert.equal(context.retrievalConfidence, 'strong');
+});
+
 test('applyPrivateChatQueryExpansion validates anchors, length, controls, dedupe, and count', () => {
   const validCandidates = Array.from(
     { length: MAX_PRIVATE_CHAT_SEARCH_QUERY_VARIANTS + 2 },

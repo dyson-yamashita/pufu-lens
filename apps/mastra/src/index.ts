@@ -193,9 +193,13 @@ const chatSourceSchema = z.object({
   canonicalUri: z.string(),
   documentId: z.string(),
   docType: z.string(),
+  fusedScore: z.number().optional(),
+  keywordRank: z.number().int().optional(),
   rawDocumentId: z.string(),
   snippet: z.string().optional(),
   title: z.string(),
+  vectorDistance: z.number().optional(),
+  vectorRank: z.number().int().optional(),
 });
 
 const chatSourceListSchema = z.object({
@@ -955,6 +959,7 @@ export function createPrivateChatSearchWorkflow(input: {
     .object({
       classification: privateChatQuestionClassificationSchema,
       detailSources: z.array(chatSourceSchema),
+      didRetry: z.boolean(),
       editing: privateChatEditingMetadataSchema,
       graphName: z.string().nullable(),
       graphSources: z.array(chatSourceSchema),
@@ -965,6 +970,7 @@ export function createPrivateChatSearchWorkflow(input: {
       projectSlug: z.string().min(1),
       question: z.string().min(1),
       retrievalContext: z.string(),
+      scoreQualifiedVectorSources: z.array(chatSourceSchema),
       sources: z.array(chatSourceSchema),
       timelineSources: z.array(chatSourceSchema),
       toolCalls: z.array(privateChatToolCallSchema),
