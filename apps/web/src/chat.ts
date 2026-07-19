@@ -1958,6 +1958,16 @@ function parseOptionalFiniteNumber(value: unknown, fieldName: string): number | 
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
   }
+  // postgres.js may return float8 / numeric columns as strings.
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  if (typeof value === 'bigint') {
+    return Number(value);
+  }
   throw new Error(`Invalid chat source field: ${fieldName}`);
 }
 
@@ -1970,6 +1980,16 @@ function parseOptionalPositiveInteger(
   }
   if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
     return value;
+  }
+  // postgres.js returns PostgreSQL bigint (e.g. row_number()) as string by default.
+  if (typeof value === 'string' && /^\d+$/.test(value)) {
+    const parsed = Number(value);
+    if (Number.isSafeInteger(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  if (typeof value === 'bigint' && value > 0n && value <= BigInt(Number.MAX_SAFE_INTEGER)) {
+    return Number(value);
   }
   throw new Error(`Invalid chat source field: ${fieldName}`);
 }
