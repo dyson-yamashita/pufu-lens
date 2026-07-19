@@ -38,7 +38,7 @@ export interface PrivateChatSearchRetrievalInput {
   readonly repository: ChatRepository;
 }
 
-const PRIMARY_VECTOR_LIMIT = 5;
+const PRIMARY_VECTOR_LIMIT = 15;
 const GRAPH_LIMIT = 5;
 const TIMELINE_LIMIT = 5;
 const DETAIL_DOCUMENT_LIMIT = 5;
@@ -61,6 +61,56 @@ export const PRIVATE_CHAT_EDITING_OPERATIONS = [
 
 export type PrivateChatEditingOperation = (typeof PRIVATE_CHAT_EDITING_OPERATIONS)[number];
 export type PrivateChatPlanningConfidence = 'high' | 'low' | 'medium';
+
+export type ChatScoreMetric = 'normalized_fused_score' | 'vector_distance';
+
+/** Defines deterministic retrieval cutoffs for one score direction. */
+export interface ChatSourceSelectionPolicy {
+  readonly gapRatio?: number;
+  readonly kMax: number;
+  readonly kMin: number;
+  readonly maxDistance?: number;
+  readonly metric: ChatScoreMetric;
+  readonly minNormalizedScore?: number;
+  readonly relativeWindow?: number;
+}
+
+const PRIMARY_VECTOR_SELECTION_POLICY: ChatSourceSelectionPolicy = {
+  gapRatio: 0.5,
+  kMax: PRIMARY_VECTOR_LIMIT,
+  kMin: 5,
+  metric: 'vector_distance',
+  relativeWindow: 0.15,
+};
+
+const FUSED_SOURCE_SELECTION_POLICY: ChatSourceSelectionPolicy = {
+  gapRatio: 0.5,
+  kMax: PRIMARY_VECTOR_LIMIT,
+  kMin: 5,
+  metric: 'normalized_fused_score',
+  relativeWindow: 0.1,
+};
+
+/**
+ * Holds measured cosine-distance ceilings by embedding model.
+ *
+ * Re-measure these values with `pnpm chat:measure-distances` whenever an embedding model changes.
+ * Unknown models intentionally omit an absolute ceiling and retain the legacy score-profile behavior.
+ */
+const MAX_VECTOR_DISTANCE_BY_EMBEDDING_MODEL: Readonly<Record<string, number>> = {
+  'gemini-embedding-2': 0.6,
+};
+
+function primaryVectorSelectionPolicyForModel(embeddingModel: string): ChatSourceSelectionPolicy {
+  const maxDistance = MAX_VECTOR_DISTANCE_BY_EMBEDDING_MODEL[embeddingModel];
+  if (maxDistance === undefined) {
+    return PRIMARY_VECTOR_SELECTION_POLICY;
+  }
+  return {
+    ...PRIMARY_VECTOR_SELECTION_POLICY,
+    maxDistance,
+  };
+}
 
 const REQUEST_NOISE_PHRASES = [
   '教えてください',
@@ -445,12 +495,124 @@ export function mergeChatSourcesDeterministically(
   return merged;
 }
 
+function scoreForMetric(source: ChatSource, metric: ChatScoreMetric): number | undefined {
+  return metric === 'vector_distance' ? source.vectorDistance : source.fusedScore;
+}
+
+function validateChatSourceSelectionPolicy(policy: ChatSourceSelectionPolicy): void {
+  if (policy.kMin < 0 || policy.kMax < 0 || policy.kMin > policy.kMax) {
+    throw new Error('Chat source selection policy requires 0 <= kMin <= kMax.');
+  }
+  if (
+    (policy.metric === 'vector_distance' && policy.minNormalizedScore !== undefined) ||
+    (policy.metric === 'normalized_fused_score' && policy.maxDistance !== undefined)
+  ) {
+    throw new Error(
+      `Chat source selection policy has an incompatible threshold for ${policy.metric}.`,
+    );
+  }
+  if (
+    policy.minNormalizedScore !== undefined &&
+    (policy.minNormalizedScore < 0 || policy.minNormalizedScore > 1)
+  ) {
+    throw new Error('minNormalizedScore must be within 0..1.');
+  }
+  if (policy.relativeWindow !== undefined && policy.relativeWindow < 0) {
+    throw new Error('relativeWindow must not be negative.');
+  }
+  if (policy.gapRatio !== undefined && policy.gapRatio < 0) {
+    throw new Error('gapRatio must not be negative.');
+  }
+}
+
+/**
+ * Selects a bounded, deterministic source set from a ranked score profile.
+ *
+ * Sources without the requested retrieval score retain their existing rank and are not filtered by
+ * score thresholds. When every source lacks a score, this is the legacy top-k fallback.
+ */
+export function selectChatSourcesByScoreProfile(
+  sources: readonly ChatSource[],
+  policy: ChatSourceSelectionPolicy,
+): ChatSource[] {
+  validateChatSourceSelectionPolicy(policy);
+  const boundedSources = sources.slice(0, policy.kMax);
+  const scored = boundedSources.filter(
+    (source) => scoreForMetric(source, policy.metric) !== undefined,
+  );
+  if (scored.length === 0) {
+    return boundedSources;
+  }
+
+  const bestScore = scoreForMetric(scored[0] as ChatSource, policy.metric) as number;
+  const passesThreshold = (source: ChatSource): boolean => {
+    const score = scoreForMetric(source, policy.metric);
+    if (score === undefined) {
+      return true;
+    }
+    if (policy.metric === 'vector_distance') {
+      return (
+        (policy.maxDistance === undefined || score <= policy.maxDistance) &&
+        (policy.relativeWindow === undefined || score <= bestScore + policy.relativeWindow)
+      );
+    }
+    return (
+      (policy.minNormalizedScore === undefined || score >= policy.minNormalizedScore) &&
+      (policy.relativeWindow === undefined || score >= bestScore - policy.relativeWindow)
+    );
+  };
+
+  const thresholdedScored = scored.filter(passesThreshold);
+  let cutoff = thresholdedScored.length;
+
+  if (policy.gapRatio !== undefined && thresholdedScored.length > policy.kMin) {
+    let largestGapRatio = policy.gapRatio;
+    let gapCutoff = cutoff;
+    for (
+      let index = policy.kMin - 1;
+      index < Math.min(thresholdedScored.length - 1, policy.kMax - 1);
+      index += 1
+    ) {
+      const current = scoreForMetric(
+        thresholdedScored[index] as ChatSource,
+        policy.metric,
+      ) as number;
+      const next = scoreForMetric(
+        thresholdedScored[index + 1] as ChatSource,
+        policy.metric,
+      ) as number;
+      const worsening = policy.metric === 'vector_distance' ? next - current : current - next;
+      const ratio = worsening / Math.max(Math.abs(current), Number.EPSILON);
+      if (ratio > largestGapRatio) {
+        largestGapRatio = ratio;
+        gapCutoff = index + 1;
+      }
+    }
+    cutoff = gapCutoff;
+  }
+
+  // Do not split a score tie at either cutoff boundary.
+  while (
+    cutoff < thresholdedScored.length &&
+    cutoff > 0 &&
+    scoreForMetric(thresholdedScored[cutoff] as ChatSource, policy.metric) ===
+      scoreForMetric(thresholdedScored[cutoff - 1] as ChatSource, policy.metric)
+  ) {
+    cutoff += 1;
+  }
+  const selectedScored = new Set(thresholdedScored.slice(0, cutoff));
+  return boundedSources.filter((source) => {
+    const score = scoreForMetric(source, policy.metric);
+    return score === undefined || selectedScored.has(source);
+  });
+}
+
 /**
  * Fuses ranked chat source lists without comparing provider-specific raw scores.
  *
  * @param rankings - Ranked source lists with optional relative weights
  * @param limit - Maximum number of fused sources to return
- * @returns Sources ordered by weighted reciprocal rank with deterministic tie-breaking
+ * @returns Sources ordered by weighted reciprocal rank with deterministic tie-breaking and normalized scores
  */
 export function fuseChatSourceRankings(
   rankings: readonly {
@@ -459,6 +621,10 @@ export function fuseChatSourceRankings(
   }[],
   limit = MAX_MERGED_SOURCES,
 ): ChatSource[] {
+  const theoreticalMaximum = rankings.reduce(
+    (total, ranking) => total + reciprocalRankFusionScore(1, ranking.weight ?? 1),
+    0,
+  );
   const candidates = new Map<
     string,
     {
@@ -500,7 +666,10 @@ export function fuseChatSourceRankings(
         (leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0),
     )
     .slice(0, Math.max(0, limit))
-    .map(([, candidate]) => ({ ...candidate.source, fusedScore: candidate.score }));
+    .map(([, candidate]) => ({
+      ...candidate.source,
+      fusedScore: theoreticalMaximum === 0 ? 0 : candidate.score / theoreticalMaximum,
+    }));
 }
 
 export function mergeChatToolCallsDeterministically(
@@ -596,6 +765,11 @@ export function applyPrivateChatWorkflowQueryExpansion(
   return { ...state, plan: applyPrivateChatQueryExpansion(state.question, expansion) };
 }
 
+/** Counts score-qualified vector candidates without treating graph-like unscored sources as evidence. */
+export function countSelectedVectorSources(sources: readonly ChatSource[]): number {
+  return sources.filter((source) => source.vectorDistance !== undefined).length;
+}
+
 export function resolvePrivateChatRetryQueries(
   state: Pick<PrivateChatSearchWorkflowState, 'mergedVectorSources' | 'plan'>,
 ): readonly string[] {
@@ -604,7 +778,7 @@ export function resolvePrivateChatRetryQueries(
     retryQueries.length === 0 &&
     state.plan.simplifiedRetryQuery &&
     state.plan.simplifiedRetryQuery !== state.plan.primaryQuery &&
-    state.mergedVectorSources.length === 0
+    countSelectedVectorSources(state.mergedVectorSources) === 0
   ) {
     retryQueries.push(state.plan.simplifiedRetryQuery);
   }
@@ -644,13 +818,16 @@ export async function runPrivateChatRetrievingStep(
   if (!embedding) {
     throw new Error('Private chat primary query embedding is unavailable.');
   }
-  const primaryVectorSources = await repository.vectorSearch({
-    embedding,
-    embeddingModel: embeddingProvider.model,
-    limit: PRIMARY_VECTOR_LIMIT,
-    projectId: state.projectId,
-    query: state.plan.primaryQuery,
-  });
+  const primaryVectorSources = selectChatSourcesByScoreProfile(
+    await repository.vectorSearch({
+      embedding,
+      embeddingModel: embeddingProvider.model,
+      limit: PRIMARY_VECTOR_LIMIT,
+      projectId: state.projectId,
+      query: state.plan.primaryQuery,
+    }),
+    primaryVectorSelectionPolicyForModel(embeddingProvider.model),
+  );
   return {
     ...state,
     mergedVectorSources: primaryVectorSources,
@@ -694,10 +871,16 @@ export async function runPrivateChatRetryingStep(
   for (const retrySources of retrySourceGroups) {
     toolCalls.push({ name: 'vector-search', resultCount: retrySources.length });
   }
-  const mergedVectorSources = fuseChatSourceRankings([
-    { sources: state.mergedVectorSources, weight: PRIMARY_QUERY_RRF_WEIGHT },
-    ...retrySourceGroups.map((sources) => ({ sources })),
-  ]);
+  const mergedVectorSources = selectChatSourcesByScoreProfile(
+    fuseChatSourceRankings(
+      [
+        { sources: state.mergedVectorSources, weight: PRIMARY_QUERY_RRF_WEIGHT },
+        ...retrySourceGroups.map((sources) => ({ sources })),
+      ],
+      PRIMARY_VECTOR_LIMIT,
+    ),
+    FUSED_SOURCE_SELECTION_POLICY,
+  );
   return {
     ...state,
     mergedVectorSources,
