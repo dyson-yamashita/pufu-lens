@@ -500,7 +500,7 @@ export function fuseChatSourceRankings(
         (leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0),
     )
     .slice(0, Math.max(0, limit))
-    .map(([, candidate]) => candidate.source);
+    .map(([, candidate]) => ({ ...candidate.source, fusedScore: candidate.score }));
 }
 
 export function mergeChatToolCallsDeterministically(

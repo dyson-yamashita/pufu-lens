@@ -26,6 +26,7 @@ import {
   privateChatHistoryItemsForUiDisplay,
   privateChatHistorySourcesForStorage,
   privateChatHistoryToMastraMessages,
+  privateChatSourcesForResponse,
   publicChatToolCallsFromPrivate,
   reciprocalRankFusionScore,
   runPrivateChat,
@@ -125,6 +126,84 @@ assert.throws(
       title: 'Spec Update',
     }),
   /Invalid chat source row field: snippet/,
+);
+assert.deepEqual(
+  parseChatSourceRow({
+    canonical_uri: 'https://example.com/spec',
+    document_id: 'doc-a',
+    doc_type: 'web_page',
+    fused_score: '0.03125',
+    keyword_rank: '2',
+    raw_document_id: 'raw-a',
+    snippet: null,
+    title: 'Spec Update',
+    vector_distance: '0.21',
+    vector_rank: '1',
+  }),
+  {
+    canonical_uri: 'https://example.com/spec',
+    document_id: 'doc-a',
+    doc_type: 'web_page',
+    fused_score: 0.03125,
+    keyword_rank: 2,
+    raw_document_id: 'raw-a',
+    snippet: null,
+    title: 'Spec Update',
+    vector_distance: 0.21,
+    vector_rank: 1,
+  },
+);
+assert.deepEqual(
+  parseChatSourceRow({
+    canonical_uri: 'https://example.com/spec',
+    document_id: 'doc-a',
+    doc_type: 'web_page',
+    fused_score: 0.5,
+    keyword_rank: 3n,
+    raw_document_id: 'raw-a',
+    snippet: null,
+    title: 'Spec Update',
+    vector_distance: 0.1,
+    vector_rank: 1n,
+  }),
+  {
+    canonical_uri: 'https://example.com/spec',
+    document_id: 'doc-a',
+    doc_type: 'web_page',
+    fused_score: 0.5,
+    keyword_rank: 3,
+    raw_document_id: 'raw-a',
+    snippet: null,
+    title: 'Spec Update',
+    vector_distance: 0.1,
+    vector_rank: 1,
+  },
+);
+assert.throws(
+  () =>
+    parseChatSourceRow({
+      canonical_uri: 'https://example.com/spec',
+      document_id: 'doc-a',
+      doc_type: 'web_page',
+      raw_document_id: 'raw-a',
+      snippet: null,
+      title: 'Spec Update',
+      vector_rank: '0',
+    }),
+  /Invalid chat source field: vector_rank/,
+);
+assert.throws(
+  () =>
+    parseChatSourceRow({
+      canonical_uri: 'https://example.com/spec',
+      document_id: 'doc-a',
+      doc_type: 'web_page',
+      raw_document_id: 'raw-a',
+      snippet: null,
+      title: 'Spec Update',
+      vector_rank: '-1',
+    }),
+  /Invalid chat source field: vector_rank/,
 );
 
 function createRepository(): ChatRepository & {
@@ -605,6 +684,12 @@ assert.deepEqual(
   [sampleSource],
 );
 assert.deepEqual(
+  privateChatSourcesForResponse([
+    { ...sampleSource, fusedScore: 0.03, keywordRank: 2, vectorDistance: 0.21, vectorRank: 1 },
+  ]),
+  [sampleSource],
+);
+assert.deepEqual(
   privateChatHistoryItemsForUiDisplay([
     {
       answer: 'newest',
@@ -1056,6 +1141,10 @@ await assert.rejects(
         raw_document_id: 'raw-rrf',
         snippet: 'RRF source',
         title: 'RRF Source',
+        fused_score: '0.03',
+        keyword_rank: '2',
+        vector_distance: '0.21',
+        vector_rank: '1',
       },
     ]);
   }) as never;
@@ -1068,8 +1157,13 @@ await assert.rejects(
     query: '仕様変更',
   });
   assert.equal(sources[0]?.documentId, 'doc-rrf');
+  assert.equal(sources[0]?.vectorDistance, 0.21);
+  assert.equal(sources[0]?.vectorRank, 1);
+  assert.equal(sources[0]?.keywordRank, 2);
+  assert.equal(sources[0]?.fusedScore, 0.03);
   assert.match(sqlTexts[0] ?? '', /embedding_model/);
   assert.match(sqlTexts[0] ?? '', /rrf_score/);
+  assert.match(sqlTexts[0] ?? '', /vector_distance/);
   assert.doesNotMatch(sqlTexts[0] ?? '', /hybrid_score/);
   assert.ok(boundValues[0]?.includes('gemini-test'));
 }

@@ -218,6 +218,10 @@ async function assertChatHybridSearchRoundTrip() {
     vectorOnly.map((source) => source.documentId),
     [matchingDocumentId, crossChunkDocumentId],
   );
+  assert.equal(vectorOnly[0]?.vectorRank, 1);
+  assert.equal(vectorOnly[1]?.vectorRank, 2);
+  assert.equal(typeof vectorOnly[0]?.vectorDistance, 'number');
+  assert.ok((vectorOnly[0]?.vectorDistance ?? Number.POSITIVE_INFINITY) >= 0);
 
   const hybrid = await repository.vectorSearch({
     embedding,
@@ -228,6 +232,10 @@ async function assertChatHybridSearchRoundTrip() {
   });
   assert.ok(hybrid.some((source) => source.documentId === matchingDocumentId));
   assert.ok(hybrid.some((source) => source.documentId === mismatchedDocumentId));
+  for (const source of hybrid) {
+    assert.equal(typeof source.fusedScore, 'number');
+    assert.ok((source.fusedScore ?? Number.NEGATIVE_INFINITY) > 0);
+  }
 
   const crossChunkHybrid = await repository.vectorSearch({
     embedding,
@@ -238,6 +246,8 @@ async function assertChatHybridSearchRoundTrip() {
   });
   assert.equal(crossChunkHybrid[0]?.documentId, crossChunkDocumentId);
   assert.match(crossChunkHybrid[0]?.snippet ?? '', /crosschunkkeyword/);
+  assert.equal(typeof crossChunkHybrid[0]?.fusedScore, 'number');
+  assert.equal(crossChunkHybrid[0]?.keywordRank, 1);
 }
 
 async function assertPrivateChatJsonbRoundTrip() {
