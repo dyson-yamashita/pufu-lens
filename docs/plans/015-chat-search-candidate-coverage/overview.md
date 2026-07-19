@@ -122,6 +122,7 @@ function selectChatSourcesByScoreProfile(
 - `weak`: スコア付き候補はあるが閾値ぎわ、または retry 後にのみ確保。「確証が薄い」前提で回答するよう明示。
 - `none`: 閾値通過のスコア付き候補なし。既存の「未確認の事実を述べないでください」注記を維持。
 - 判定件数にはスコア付き候補だけを数える。graph / timeline 由来のスコア欠落候補は source には残るが、確信度を `strong` 側へ押し上げない。
+- 件数は多様性 / `docTypeQuota` 適用前の score-qualified vector 集合で数える。quota で採用枠から落ちた候補があっても、根拠の強さ判定を誤って下げない。
 
 数値スコアそのものは context に入れず、段階ラベルと件数のみとする（LLM がスコアを事実として引用するのを防ぐ）。
 
@@ -138,7 +139,7 @@ function selectChatSourcesByScoreProfile(
 | 1    | `completed` | スコア透過と距離分布計測                          | `ChatSource` に retrieval 内部用の score field が返り、既存の採用件数・順序を維持。`pnpm chat:measure-distances -- --project <slug> --query <query>` で project ごとの距離分布を出力できる |
 | 2    | `completed` | 決定論的カットオフ関数と primary / fused への適用 | `selectChatSourcesByScoreProfile` の unit test（空・全同値・単調・崖あり・スコア欠落 fallback）が通り、retry 発火条件が「閾値通過 0 件」に変わる                                           |
 | 3    | `completed` | 編集操作分類 → selection policy 接続              | primaryOperation ごとに kMin / kMax が切り替わり、分類失敗時は現行相当の既定値に fallback する。quota は Step 4 で追加する                                                                 |
-| 4    | `planned`   | 多様性 quota と確信度伝搬                         | raw_document_id 重複抑制と docType quota が有効になり、retrievalContext に strong / weak / none が入る                                                                                     |
+| 4    | `completed` | 多様性 quota と確信度伝搬                         | raw_document_id / canonical URI / title の重複抑制、comparison / relation の docType quota、score 付き vector 候補だけによる retrievalContext の strong / weak / none を実装               |
 | 5    | `planned`   | eval fixture / regression / docs 更新             | 下記テスト計画の fixture が通り、07-chat.md に score-aware 選別の記述が反映される                                                                                                          |
 
 ## テスト計画
