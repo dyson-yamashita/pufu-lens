@@ -255,6 +255,7 @@ pnpm chat:eval --project sample-a --fixture fixtures/chat/private-chat-raw-injec
 
 - rate limit: process 内 memory bucket で user + project 単位に制限する
 - 評価: `pnpm chat:eval --fixture fixtures/chat/private-chat-eval.json` で running web server に対して source / tool call を確認する
+- score-aware 選別の回帰: fixture source を `sample-a` に ingest / parse / embed した状態で、`pnpm chat:eval --project sample-a --fixture fixtures/chat/private-chat-score-aware-eval.json` を実行する。`archived notes` の質問では `Indexer should skip archived notes` が source に含まれること、corpus に存在しない量子テレポーテーション障害の質問では source が 0 件であることを確認する。fixture は response の内部 score や confidence を検証せず、公開しない retrieval 判定の結果だけを source 件数・title で検証する。
 
 この初期実装は Step 12 の確認用であり、Mastra Agent 化、streaming、Object Storage からの raw / parsed 本文取得、AGE Cypher の本格利用、永続 rate limit / audit log は後続で置き換える。
 
