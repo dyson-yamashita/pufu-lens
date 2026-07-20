@@ -42,6 +42,12 @@ export function createPrivateChatSearchProgressEvent(
   };
 }
 
+/**
+ * NDJSON 1 行分の stream event をエンコードする。
+ *
+ * `result.response` の具体的な形状は呼び出し側の `ChatResult` に委ねる。
+ * このヘルパーは JSON 化のみを行い、response 形の検証は caller の責務とする。
+ */
 export function encodePrivateChatStreamEvent<ChatResult extends ChatStreamResponse = ChatResponse>(
   event: PrivateChatStreamEvent<ChatResult>,
 ): string {
@@ -79,6 +85,14 @@ export function clientAcceptsPrivateChatStream(request: Request): boolean {
   return accept.includes('application/x-ndjson') || accept.includes('text/event-stream');
 }
 
+/**
+ * NDJSON stream を消費し、progress event を `onProgress` へ通知しつつ最終 `result` の
+ * `response` を返す。direct な `result` 行と末尾 trailing 行の両方を扱う。
+ *
+ * `response` の実際の形状は呼び出し側の `ChatResult` に委ねられ、このヘルパーは
+ * object であることしか検証しない。caller は返り値を型ガード
+ * （例: `isPublicChatResponseBody`）で検証すること。
+ */
 export async function consumePrivateChatNdjsonStream<
   ChatResult extends ChatStreamResponse = ChatResponse,
 >(

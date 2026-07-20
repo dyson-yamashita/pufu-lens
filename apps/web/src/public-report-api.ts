@@ -264,10 +264,29 @@ export async function handlePublicChatPost(
       });
     }
 
-    return NextResponse.json(toPublicResponse(await runWorkflow()));
+    try {
+      return NextResponse.json(toPublicResponse(await runWorkflow()));
+    } catch (error) {
+      if (isPrivateChatWorkflowAbortError(error)) {
+        throw error;
+      }
+      logPrivateChatWorkflowFailure(error);
+      return publicChatErrorResponse(
+        'public_chat_internal_error',
+        'An unexpected error occurred',
+        500,
+      );
+    }
   } catch (error) {
     if (error instanceof PublicReportNotFoundError) {
       return publicChatNotFound();
+    }
+    if (isPrivateChatWorkflowAbortError(error)) {
+      return publicChatErrorResponse(
+        'public_chat_internal_error',
+        'An unexpected error occurred',
+        500,
+      );
     }
     console.error('Public Chat API Error:', error);
     return publicChatErrorResponse(

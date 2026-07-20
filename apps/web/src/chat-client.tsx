@@ -465,6 +465,7 @@ export function PublicProjectChatPanel({
       const contentType = result.headers.get('content-type') ?? '';
       if (contentType.includes('application/x-ndjson')) {
         if (!result.ok) {
+          await result.body?.cancel().catch(() => undefined);
           throw new Error(`Public Chat API failed: HTTP ${result.status}`);
         }
         const body = await consumePrivateChatNdjsonStream<PublicChatResponse>(result, (event) => {
@@ -474,12 +475,11 @@ export function PublicProjectChatPanel({
           throw new Error('Public Chat API returned an invalid response.');
         }
         setMessages((current) =>
-          replacePendingAssistant(current, pendingId, {
-            id: createMessageId('assistant'),
-            role: 'assistant',
-            response: publicSafeChatResponse(body, { projectSlug }),
-            status: 'complete',
-          }),
+          replacePendingAssistant(
+            current,
+            pendingId,
+            completePublicAssistantMessage(body, projectSlug),
+          ),
         );
         return;
       }
@@ -495,14 +495,11 @@ export function PublicProjectChatPanel({
         throw new Error('Public Chat API returned an invalid response.');
       }
       setMessages((current) =>
-        replacePendingAssistant(current, pendingId, {
-          id: createMessageId('assistant'),
-          role: 'assistant',
-          response: publicSafeChatResponse(body, {
-            projectSlug,
-          }),
-          status: 'complete',
-        }),
+        replacePendingAssistant(
+          current,
+          pendingId,
+          completePublicAssistantMessage(body, projectSlug),
+        ),
       );
     } catch (caught) {
       const errorMessage = caught instanceof Error ? caught.message : String(caught);
@@ -581,5 +578,17 @@ function publicSafeChatResponse(
     sources: response.sources,
     status: response.status,
     toolCalls: response.toolCalls,
+  };
+}
+
+function completePublicAssistantMessage(
+  response: PublicChatResponse,
+  projectSlug: string,
+): Extract<ChatThreadMessage<PublicChatResponse>, { readonly status: 'complete' }> {
+  return {
+    id: createMessageId('assistant'),
+    role: 'assistant',
+    response: publicSafeChatResponse(response, { projectSlug }),
+    status: 'complete',
   };
 }
