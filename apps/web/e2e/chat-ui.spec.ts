@@ -11,56 +11,64 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
 }) => {
   await page.route('**/api/public/projects/sample-a/chat', async (route) => {
     const body = route.request().postDataJSON() as { question?: string };
+    expect(route.request().headers().accept).toContain('application/x-ndjson');
+    const progressEvent = JSON.stringify({
+      label: '関連資料を検索しています',
+      stage: 'retrieving',
+      type: 'progress',
+    });
     if (body.question?.includes('2件目')) {
-      await route.fulfill({
-        body: JSON.stringify({
-          answer: '2件目の回答です。',
-          editing: {
-            confidence: 'medium',
-            inferredMode: 'issue_mapping',
-            questionType: 'status',
-          },
-          projectSlug: 'sample-a',
-          reportId: 'report-a',
-          sources: [
-            {
-              label: 'Issue Summary',
-              publicSourceId: 'src_issues_1',
-              sectionId: 'issues',
-            },
-          ],
-          status: 'answered',
-          toolCalls: [{ name: 'graph-query', resultCount: 2 }],
-        }),
-        contentType: 'application/json',
-        status: 200,
-      });
-      return;
-    }
-    await route.fulfill({
-      body: JSON.stringify({
-        answer:
-          '質問「直近の未解決 Issue を要約して」に関連する source は **Spec Update** です。\n- Markdown bullet',
+      const response = {
+        answer: '2件目の回答です。',
         editing: {
-          caveats: ['公開レポートと public context bundle の範囲だけで回答します。'],
           confidence: 'medium',
-          inferredMode: 'summary',
-          operations: ['要約', '凝縮', '引用'],
-          questionType: 'fact',
+          inferredMode: 'issue_mapping',
+          questionType: 'status',
         },
         projectSlug: 'sample-a',
         reportId: 'report-a',
         sources: [
           {
-            label: 'Spec Update',
-            publicSourceId: 'src_progress_1',
-            sectionId: 'progress',
+            label: 'Issue Summary',
+            publicSourceId: 'src_issues_1',
+            sectionId: 'issues',
           },
         ],
         status: 'answered',
-        toolCalls: [{ name: 'vector-search', resultCount: 2 }],
-      }),
-      contentType: 'application/json',
+        toolCalls: [{ name: 'graph-query', resultCount: 2 }],
+      };
+      await route.fulfill({
+        body: `${progressEvent}\n${JSON.stringify({ response, type: 'result' })}\n`,
+        contentType: 'application/x-ndjson',
+        status: 200,
+      });
+      return;
+    }
+    const response = {
+      answer:
+        '質問「直近の未解決 Issue を要約して」に関連する source は **Spec Update** です。\n- Markdown bullet',
+      editing: {
+        caveats: ['公開レポートと public context bundle の範囲だけで回答します。'],
+        confidence: 'medium',
+        inferredMode: 'summary',
+        operations: ['要約', '凝縮', '引用'],
+        questionType: 'fact',
+      },
+      projectSlug: 'sample-a',
+      reportId: 'report-a',
+      sources: [
+        {
+          label: 'Spec Update',
+          publicSourceId: 'src_progress_1',
+          sectionId: 'progress',
+        },
+      ],
+      status: 'answered',
+      toolCalls: [{ name: 'vector-search', resultCount: 2 }],
+    };
+    await route.fulfill({
+      body: `${progressEvent}\n${JSON.stringify({ response, type: 'result' })}\n`,
+      contentType: 'application/x-ndjson',
       status: 200,
     });
   });

@@ -456,10 +456,35 @@ export function PublicProjectChatPanel({
     try {
       const result = await fetch(`/api/public/projects/${projectSlug}/chat`, {
         body: JSON.stringify({ question: trimmedQuestion }),
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          accept: 'application/x-ndjson',
+          'content-type': 'application/json',
+        },
         method: 'POST',
       });
-      const isJson = result.headers.get('content-type')?.includes('application/json') ?? false;
+      const contentType = result.headers.get('content-type') ?? '';
+      if (contentType.includes('application/x-ndjson')) {
+        if (!result.ok) {
+          throw new Error(`Public Chat API failed: HTTP ${result.status}`);
+        }
+        const body = await consumePrivateChatNdjsonStream<PublicChatResponse>(result, (event) => {
+          setMessages((current) => updatePendingAssistantProgress(current, pendingId, event.label));
+        });
+        if (!isPublicChatResponseBody(body)) {
+          throw new Error('Public Chat API returned an invalid response.');
+        }
+        setMessages((current) =>
+          replacePendingAssistant(current, pendingId, {
+            id: createMessageId('assistant'),
+            role: 'assistant',
+            response: publicSafeChatResponse(body, { projectSlug }),
+            status: 'complete',
+          }),
+        );
+        return;
+      }
+
+      const isJson = contentType.includes('application/json');
       const body = isJson
         ? ((await result.json()) as PublicChatResponse | ChatErrorResponse)
         : null;

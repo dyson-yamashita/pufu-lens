@@ -759,7 +759,8 @@ export function createPublicReportChatAgent(input: {
   readonly tools: ReturnType<typeof createPublicReportChatTools>;
 }): Agent {
   // Legacy compatibility path. Do not route current public project/report chat here; Next.js
-  // proxies public chat to project-chat-agent and keeps public gate/redaction at the boundary.
+  // runs private-chat-search, whose synthesis uses project-chat-agent, and keeps the public gate
+  // and response redaction at the boundary.
   return new Agent({
     id: mastraAgentIds.publicReportChat,
     name: 'Public Report Chat Agent',

@@ -269,7 +269,7 @@ Private project chat は、Mastra `private-chat-search` Workflow による **制
 4. **決定論的フォールバック:** 分類失敗時は `general`、展開失敗時は正規化した元質問だけを使い、Planner 障害で chat 全体を失敗させない。元質問の検索結果が 0 件で、保護対象識別子を維持できる場合だけ simplified retry を最大 1 回実行する。検索順、件数、project scope、RRF の tie-break、document id dedupe は Workflow が決定論的に管理する。
 5. **graph / timeline / detail:** vector 結果を seed に graph related-source retrieval を実行する。LLM の primary / secondary operation が `timeline` の場合に timeline retrieval を実行し、分類失敗時も `inferChatEditingMetadata(question).inferredMode === 'timeline'` を安全側の fallback として使う。選定候補に対して bounded detail retrieval を行う。
 6. **Agent 合成:** Workflow retrieval 結果は `requestContext.retrievalContext` / `workflowSources` / `workflowToolCalls` に加えて、内部用の query classification / query plan と元の質問を synthesis に引き渡す。retrieval 本文は `untrusted_external_content` として囲み、本文内の命令、role 変更要求、tool 呼び出し要求には従わない。Agent は tool による追加確認は可能だが、Workflow 初期 retrieval の有無を Agent だけに委ねない。classification / query plan は public chat や最終 `ChatResponse` には公開しない。
-7. **Next.js 実行経路:** `POST /api/projects/[projectSlug]/chat` は認可済み `projectId` / `graphName` を使って Mastra HTTP Workflow API（`create-run` → `/api/workflows/private-chat-search/stream?runId=...`）を呼び出す。`Accept: application/x-ndjson` の場合は、Mastra workflow stream の `workflow-step-start` を NDJSON progress event に写像して browser へ proxy し、最後に `result` または generic `error` event を返す。JSON-only client も同じ registered Workflow を利用する。Mastra の失敗を記録するときは固定 reason と HTTP status のみを使い、上流 response body、質問本文、LLM 出力や例外メッセージをログへ出さない。
+7. **Next.js 実行経路:** `POST /api/projects/[projectSlug]/chat` と、public project / report の公開判定を通過した public chat API は、server-side で解決した `projectId` / `graphName` を使って Mastra HTTP Workflow API（`create-run` → `/api/workflows/private-chat-search/stream?runId=...`）を呼び出す。`Accept: application/x-ndjson` の場合は、Mastra workflow stream の `workflow-step-start` を NDJSON progress event に写像して browser へ proxy し、最後に `result` または generic `error` event を返す。public chat の `result` は公開 report に含まれる web source だけへ変換してから返す。JSON-only client も同じ registered Workflow を利用する。Mastra の失敗を記録するときは固定 reason と HTTP status のみを使い、上流 response body、質問本文、LLM 出力や例外メッセージをログへ出さない。
 8. **progress stage id / label:**
    - `preparing`: 検索条件を準備しています
    - `classifying`: 質問の見方を整理しています
@@ -333,7 +333,8 @@ public chat の入口：
 
 ```text
 Browser -> Next.js /api/public/projects/[projectSlug]/reports/[reportId]/chat
-Next.js -> Mastra Server /api/agents/project-chat-agent/generate
+Next.js -> Mastra Server /api/workflows/private-chat-search/create-run
+Next.js -> Mastra Server /api/workflows/private-chat-search/stream?runId=...
 ```
 
 Next.js は path の `projectSlug` と `reportId` を storage-safe pattern で validate し、DB で対象 project が public かつ対象 report が public であることを確認してから、server side で解決した `projectId` を Mastra に渡す。ブラウザから送られた `projectId`、`storageUri`、`sourceUri`、`artifactVersion` は信用しない。
@@ -435,6 +436,6 @@ server: {
 
 Mastra Server は private Cloud Run とし、rate limit 用の `x-user-id`、`x-project-id`、`x-report-id`、`x-client-ip` は OIDC 検証済みの Next.js から来た内部 header だけを信頼する。ブラウザから直接送られた同名 header や `x-forwarded-for` / `x-real-ip` は rate limit key として信用しない。
 
-現行の public project/report chat は、Next.js が `projects.visibility = 'public'` と `reports.is_public = true` を確認した後、private chat と同じ `project-chat-agent` に `projectId` / `graphName` を渡して実行する。`public-report-chat-agent`、`public-report-fetch`、`public-context-fetch` は redaction 済み public report JSON / public context bundle だけを扱う互換・直接回帰検証用の経路として残し、正規の public chat 実行経路とは混同しない。
+現行の public project/report chat は、Next.js が `projects.visibility = 'public'` と `reports.is_public = true` を確認した後、private chat と同じ `private-chat-search` Workflow に `projectId` / `graphName` を渡して実行する。Workflow の synthesis は private chat と同じ `project-chat-agent` を使う。`public-report-chat-agent`、`public-report-fetch`、`public-context-fetch` は redaction 済み public report JSON / public context bundle だけを扱う互換・直接回帰検証用の経路として残し、正規の public chat 実行経路とは混同しない。
 
 ---
