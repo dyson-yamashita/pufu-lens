@@ -140,7 +140,7 @@ function selectChatSourcesByScoreProfile(
 | 2    | `completed` | 決定論的カットオフ関数と primary / fused への適用 | `selectChatSourcesByScoreProfile` の unit test（空・全同値・単調・崖あり・スコア欠落 fallback）が通り、retry 発火条件が「閾値通過 0 件」に変わる                                           |
 | 3    | `completed` | 編集操作分類 → selection policy 接続              | primaryOperation ごとに kMin / kMax が切り替わり、分類失敗時は現行相当の既定値に fallback する。quota は Step 4 で追加する                                                                 |
 | 4    | `completed` | 多様性 quota と確信度伝搬                         | raw_document_id / canonical URI / title の重複抑制、comparison / relation の docType quota、score 付き vector 候補だけによる retrievalContext の strong / weak / none を実装               |
-| 5    | `planned`   | eval fixture / regression / docs 更新             | 下記テスト計画の fixture が通り、07-chat.md に score-aware 選別の記述が反映される                                                                                                          |
+| 5    | `completed` | eval fixture / regression / docs 更新             | `private-chat-score-aware-eval.json` で relevant source と corpus 外質問の source 0 件を検証し、07-chat.md に実行条件と score 非公開方針を反映（Issue #622）                               |
 
 ## テスト計画
 

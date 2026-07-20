@@ -1,0 +1,22 @@
+{
+  "project": "sample-a",
+  "baseUrl": "http://localhost:3000",
+  "cases": [
+    {
+      "question": "archived notes を除外する indexer の仕様は何ですか？",
+      "expectStatus": "answered",
+      "expectHttpStatus": 200,
+      "minSources": 1,
+      "expectSourceTitles": ["Indexer should skip archived notes"],
+      "requiredToolCalls": ["vector-search", "graph-query", "document-fetch"]
+    },
+    {
+      "question": "このプロジェクトに存在しない量子テレポーテーション障害の対応記録を教えて",
+      "expectStatus": "answered",
+      "expectHttpStatus": 200,
+      "minSources": 0,
+      "maxSources": 0,
+      "requiredToolCalls": ["vector-search", "graph-query"]
+    }
+  ]
+}

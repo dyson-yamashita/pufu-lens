@@ -13,7 +13,9 @@ interface ChatEvalCase {
   readonly expectEditingMode?: string;
   readonly expectForbiddenAnswerIncludes?: readonly string[];
   readonly expectHttpStatus?: number;
+  readonly expectSourceTitles?: readonly string[];
   readonly expectStatus: string;
+  readonly maxSources?: number;
   readonly minSources: number;
   readonly project?: string;
   readonly question: string;
@@ -26,7 +28,7 @@ interface ChatEvalResponse {
   readonly answer?: string;
   readonly error?: { readonly code?: string; readonly message?: string } | string | null;
   readonly editing?: { readonly inferredMode?: string };
-  readonly sources?: readonly unknown[];
+  readonly sources?: ReadonlyArray<{ readonly title?: string }>;
   readonly status?: string;
   readonly toolCalls?: ReadonlyArray<{ readonly name?: string }>;
 }
@@ -134,6 +136,23 @@ function assertCase(testCase: ChatEvalCase, httpStatus: number, response: ChatEv
     throw new Error(
       `Expected at least ${testCase.minSources} sources for "${testCase.question}", got ${sourceCount}.`,
     );
+  }
+  if (testCase.maxSources !== undefined && sourceCount > testCase.maxSources) {
+    throw new Error(
+      `Expected at most ${testCase.maxSources} sources for "${testCase.question}", got ${sourceCount}.`,
+    );
+  }
+  const sourceTitles = new Set(
+    response.sources
+      ?.map((source) => source.title)
+      .filter((title): title is string => typeof title === 'string') ?? [],
+  );
+  for (const expectedSourceTitle of testCase.expectSourceTitles ?? []) {
+    if (!sourceTitles.has(expectedSourceTitle)) {
+      throw new Error(
+        `Missing expected source title "${expectedSourceTitle}" for "${testCase.question}".`,
+      );
+    }
   }
   const toolCallNames = new Set(response.toolCalls?.map((toolCall) => toolCall.name) ?? []);
   for (const requiredToolCall of testCase.requiredToolCalls) {
