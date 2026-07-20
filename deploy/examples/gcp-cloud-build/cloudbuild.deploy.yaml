@@ -2,6 +2,7 @@
 #
 # Trigger deploys from a protected branch or release tag only. Do not reuse this
 # config for pull request CI.
+# Operational retry for issue #623; no deploy behavior changes.
 timeout: 3600s
 
 options:
