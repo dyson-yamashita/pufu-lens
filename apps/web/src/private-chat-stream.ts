@@ -1,4 +1,4 @@
-import type { ChatResponse } from './chat.ts';
+import type { ChatResponse, PublicChatResponse } from './chat.ts';
 import {
   type PrivateChatSearchStageId,
   privateChatSearchStageLabel,
@@ -10,8 +10,10 @@ export type PrivateChatSearchProgressEvent = {
   readonly type: 'progress';
 };
 
-export type PrivateChatStreamResultEvent = {
-  readonly response: ChatResponse;
+export type ChatStreamResponse = ChatResponse | PublicChatResponse;
+
+export type PrivateChatStreamResultEvent<ChatResult extends ChatStreamResponse = ChatResponse> = {
+  readonly response: ChatResult;
   readonly type: 'result';
 };
 
@@ -21,9 +23,9 @@ export type PrivateChatStreamErrorEvent = {
   readonly type: 'error';
 };
 
-export type PrivateChatStreamEvent =
+export type PrivateChatStreamEvent<ChatResult extends ChatStreamResponse = ChatResponse> =
   | PrivateChatSearchProgressEvent
-  | PrivateChatStreamResultEvent
+  | PrivateChatStreamResultEvent<ChatResult>
   | PrivateChatStreamErrorEvent;
 
 export const MAX_PRIVATE_CHAT_NDJSON_STREAM_BUFFER_BYTES = 256 * 1024;
@@ -40,7 +42,15 @@ export function createPrivateChatSearchProgressEvent(
   };
 }
 
-export function encodePrivateChatStreamEvent(event: PrivateChatStreamEvent): string {
+/**
+ * NDJSON 1 行分の stream event をエンコードする。
+ *
+ * `result.response` の具体的な形状は呼び出し側の `ChatResult` に委ねる。
+ * このヘルパーは JSON 化のみを行い、response 形の検証は caller の責務とする。
+ */
+export function encodePrivateChatStreamEvent<ChatResult extends ChatStreamResponse = ChatResponse>(
+  event: PrivateChatStreamEvent<ChatResult>,
+): string {
   return `${JSON.stringify(event)}\n`;
 }
 
@@ -75,11 +85,21 @@ export function clientAcceptsPrivateChatStream(request: Request): boolean {
   return accept.includes('application/x-ndjson') || accept.includes('text/event-stream');
 }
 
-export async function consumePrivateChatNdjsonStream(
+/**
+ * NDJSON stream を消費し、progress event を `onProgress` へ通知しつつ最終 `result` の
+ * `response` を返す。direct な `result` 行と末尾 trailing 行の両方を扱う。
+ *
+ * `response` の実際の形状は呼び出し側の `ChatResult` に委ねられ、このヘルパーは
+ * object であることしか検証しない。caller は返り値を型ガード
+ * （例: `isPublicChatResponseBody`）で検証すること。
+ */
+export async function consumePrivateChatNdjsonStream<
+  ChatResult extends ChatStreamResponse = ChatResponse,
+>(
   response: Response,
   onProgress?: (event: PrivateChatSearchProgressEvent) => void,
   options?: { readonly maxBufferBytes?: number },
-): Promise<ChatResponse> {
+): Promise<ChatResult> {
   if (!response.body) {
     throw new Error('Chat stream response has no body.');
   }
@@ -115,7 +135,7 @@ export async function consumePrivateChatNdjsonStream(
           continue;
         }
         if (event.type === 'result') {
-          return event.response;
+          return event.response as ChatResult;
         }
         throw new Error(event.message);
       }
@@ -123,7 +143,7 @@ export async function consumePrivateChatNdjsonStream(
     buffer += decoder.decode();
     const trailing = parsePrivateChatStreamLine(buffer);
     if (trailing?.type === 'result') {
-      return trailing.response;
+      return trailing.response as ChatResult;
     }
     if (trailing?.type === 'error') {
       throw new Error(trailing.message);

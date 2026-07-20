@@ -448,7 +448,11 @@
 
 .chat-thinking-dots {
   display: inline-flex;
-  min-width: 18px;
+  font-size: 1.6em;
+  font-weight: 700;
+  gap: 3px;
+  line-height: 1;
+  min-width: 30px;
 }
 
 .chat-thinking-dots span {

@@ -2,16 +2,21 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { getVisiblePublicProject } from './admin-db';
 import { getRequiredAdminSql } from './admin-sql';
 import {
+  type ChatResponse,
   createPublicChatMemoryRateLimiter,
   type PublicChatResponse,
   publicChatToolCallsFromPrivate,
 } from './chat';
 import {
-  createPublicProjectChatMastraBody,
-  mastraFetchHeaders,
-  mastraGenerateToChatResponse,
-  mastraProjectChatGenerateUrl,
-} from './mastra-chat';
+  clientAcceptsPrivateChatStream,
+  createPrivateChatSearchProgressEvent,
+  encodePrivateChatStreamEvent,
+} from './private-chat-stream';
+import {
+  isPrivateChatWorkflowAbortError,
+  logPrivateChatWorkflowFailure,
+  runPrivateChatSearchViaMastraWorkflow,
+} from './private-chat-workflow-client';
 import { isPublicWebChatSource, publicChatSourcesFromReport } from './public-chat-sources';
 import {
   assertPublicReportAccess,
@@ -122,7 +127,7 @@ export async function handlePublicReportPdfPost(input: {
  *
  * @param request - The incoming request containing the chat question.
  * @param input - The public project and report locator.
- * @returns A JSON response containing the answer, public sources, and tool calls, or an error response.
+ * @returns A streaming or JSON response containing public-safe progress and answer data, or an error response.
  */
 export async function handlePublicChatPost(
   request: NextRequest,
@@ -187,23 +192,19 @@ export async function handlePublicChatPost(
         );
       }
     }
-    const mastraUrl = mastraProjectChatGenerateUrl();
-    const mastraResponse = await fetch(mastraUrl, {
-      body: JSON.stringify(createPublicProjectChatMastraBody({ project, question })),
-      headers: await mastraFetchHeaders({ url: mastraUrl }),
-      method: 'POST',
-      signal: request.signal,
-    });
-    if (!mastraResponse.ok) {
-      throw new Error(`Mastra project chat agent failed: HTTP ${mastraResponse.status}`);
-    }
-    const mastraBody = (await mastraResponse.json()) as unknown;
-    const chatResponse = mastraGenerateToChatResponse({
-      mastraResponse: mastraBody,
-      projectSlug: input.projectSlug,
-      question,
-    });
-    return NextResponse.json({
+    const runWorkflow = (
+      onStage?: Parameters<typeof runPrivateChatSearchViaMastraWorkflow>[0]['onStage'],
+    ) =>
+      runPrivateChatSearchViaMastraWorkflow({
+        graphName: project.graphName,
+        history: [],
+        onStage,
+        projectId: project.id,
+        projectSlug: input.projectSlug,
+        question,
+        signal: request.signal,
+      });
+    const toPublicResponse = (chatResponse: ChatResponse): PublicChatResponse => ({
       answer: chatResponse.answer,
       ...(chatResponse.editing ? { editing: chatResponse.editing } : {}),
       projectSlug: input.projectSlug,
@@ -214,10 +215,78 @@ export async function handlePublicChatPost(
       ),
       status: 'answered',
       toolCalls: publicChatToolCallsFromPrivate(chatResponse.toolCalls),
-    } satisfies PublicChatResponse);
+    });
+
+    if (clientAcceptsPrivateChatStream(request)) {
+      const stream = new ReadableStream<Uint8Array>({
+        start: async (controller) => {
+          const encoder = new TextEncoder();
+          try {
+            const chatResponse = await runWorkflow((stage) => {
+              controller.enqueue(
+                encoder.encode(
+                  encodePrivateChatStreamEvent(createPrivateChatSearchProgressEvent(stage)),
+                ),
+              );
+            });
+            controller.enqueue(
+              encoder.encode(
+                encodePrivateChatStreamEvent({
+                  response: toPublicResponse(chatResponse),
+                  type: 'result',
+                }),
+              ),
+            );
+            controller.close();
+          } catch (error) {
+            if (isPrivateChatWorkflowAbortError(error)) {
+              return;
+            }
+            logPrivateChatWorkflowFailure(error);
+            controller.enqueue(
+              encoder.encode(
+                encodePrivateChatStreamEvent({
+                  code: 'public_chat_internal_error',
+                  message: 'An unexpected error occurred',
+                  type: 'error',
+                }),
+              ),
+            );
+            controller.close();
+          }
+        },
+      });
+      return new Response(stream, {
+        headers: {
+          'cache-control': 'no-cache',
+          'content-type': 'application/x-ndjson; charset=utf-8',
+        },
+      });
+    }
+
+    try {
+      return NextResponse.json(toPublicResponse(await runWorkflow()));
+    } catch (error) {
+      if (isPrivateChatWorkflowAbortError(error)) {
+        throw error;
+      }
+      logPrivateChatWorkflowFailure(error);
+      return publicChatErrorResponse(
+        'public_chat_internal_error',
+        'An unexpected error occurred',
+        500,
+      );
+    }
   } catch (error) {
     if (error instanceof PublicReportNotFoundError) {
       return publicChatNotFound();
+    }
+    if (isPrivateChatWorkflowAbortError(error)) {
+      return publicChatErrorResponse(
+        'public_chat_internal_error',
+        'An unexpected error occurred',
+        500,
+      );
     }
     console.error('Public Chat API Error:', error);
     return publicChatErrorResponse(

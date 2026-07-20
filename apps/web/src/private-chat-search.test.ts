@@ -4,6 +4,7 @@ import {
   type ChatEmbeddingProvider,
   inferChatEditingMetadata,
   PRIVATE_CHAT_VECTOR_DIMENSIONS,
+  type PublicChatResponse,
 } from './chat.ts';
 import { mergeHybridChatResponse } from './mastra-chat.ts';
 import {
@@ -806,6 +807,32 @@ test('consumePrivateChatNdjsonStream applies progress events and returns the fin
   assert.deepEqual(progressLabels, ['関連資料を検索しています']);
   assert.equal(response.answer, 'stream answer');
   assert.equal(streamResponse.body?.locked, false);
+});
+
+test('consumePrivateChatNdjsonStream returns a public-safe chat response from the shared contract', async () => {
+  const publicResponse: PublicChatResponse = {
+    answer: 'public stream answer',
+    projectSlug: 'sample-a',
+    reportId: 'report-a',
+    sources: [
+      {
+        label: 'Public source',
+        publicSourceId: 'src_progress_1',
+        sectionId: 'progress',
+      },
+    ],
+    status: 'answered',
+    toolCalls: [{ name: 'vector-search', resultCount: 1 }],
+  };
+  const response = await consumePrivateChatNdjsonStream<PublicChatResponse>(
+    new Response(
+      encodePrivateChatStreamEvent<PublicChatResponse>({
+        response: publicResponse,
+        type: 'result',
+      }),
+    ),
+  );
+  assert.deepEqual(response, publicResponse);
 });
 
 test('consumePrivateChatNdjsonStream rejects an oversized line with a generic error', async () => {
