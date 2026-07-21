@@ -41,7 +41,7 @@ API key、DB password は記録しない。
 - `CONNECTION_SECRET_KEY`: OAuth token と GitHub App private key metadata の暗号化 key。App Hosting runtime secret として設定し、実値は記録しない。
 - `GITHUB_APP_WEBHOOK_SECRET`: GitHub App webhook を有効化する場合だけ provider 側に設定する。現行 runtime は GitHub App setup callback を使い、webhook 受信 route は持たない。実値は記録しない。
 - `AUTH_CREDENTIALS_EMAIL` / `AUTH_CREDENTIALS_PASSWORD`: Credentials user 作成時だけローカル環境で使う。実値は記録しない。
-- `PUFU_LENS_CHAT_MODEL`: Mastra Chatのprovider-qualified model。例: `google/...`、`openai/...`、`anthropic/...`。
+- `PUFU_LENS_CHAT_MODEL`: Mastra Chatのprovider-qualified model。GCP deploy checkで検証するproviderは`google/...`、`openai/...`、`anthropic/...`。
 - `PUFU_LENS_EMBEDDING_PROVIDER`: `gemini` または `openai`。`deterministic` はローカル・テスト専用。
 - `PUFU_LENS_EMBEDDING_MODEL`: ingestionとquery検索で共有するembedding model。
 - `PUFU_LENS_EMBEDDING_DIMENSIONS`: DBの `vector(1536)` に合わせて `1536`。

@@ -79,34 +79,49 @@ function checkAiRuntime(): {
   required: string[];
   status: 'blocked' | 'passed';
 } {
-  const chatModel =
+  const legacyGeminiModel = process.env.GEMINI_CHAT_MODEL?.trim();
+  const chatModel = (
     process.env.PUFU_LENS_CHAT_MODEL ??
-    (process.env.GEMINI_CHAT_MODEL ? `google/${process.env.GEMINI_CHAT_MODEL}` : '');
-  const embeddingProvider = process.env.PUFU_LENS_EMBEDDING_PROVIDER ?? '';
+    (legacyGeminiModel
+      ? legacyGeminiModel.startsWith('google/')
+        ? legacyGeminiModel
+        : `google/${legacyGeminiModel}`
+      : '')
+  ).trim();
+  const embeddingProvider = (process.env.PUFU_LENS_EMBEDDING_PROVIDER ?? '').trim();
+  const chatRequirements = chatCredentialRequirements(chatModel);
+  const embeddingRequirements = embeddingCredentialRequirements(embeddingProvider);
+  const embeddingModel = (
+    process.env.PUFU_LENS_EMBEDDING_MODEL ??
+    process.env.GEMINI_EMBEDDING_MODEL ??
+    process.env.OPENAI_EMBEDDING_MODEL ??
+    ''
+  ).trim();
+  const embeddingDimensions = (
+    process.env.PUFU_LENS_EMBEDDING_DIMENSIONS ??
+    process.env.GEMINI_EMBEDDING_DIMENSIONS ??
+    process.env.OPENAI_EMBEDDING_DIMENSIONS ??
+    ''
+  ).trim();
   const required = [
     'PUFU_LENS_CHAT_MODEL',
     'PUFU_LENS_EMBEDDING_PROVIDER',
     'PUFU_LENS_EMBEDDING_MODEL',
     'PUFU_LENS_EMBEDDING_DIMENSIONS',
-    ...chatCredentialRequirements(chatModel),
-    ...embeddingCredentialRequirements(embeddingProvider),
+    ...(chatRequirements ?? []),
+    ...(embeddingRequirements ?? []),
   ];
   const settingsPresent =
     Boolean(chatModel) &&
     Boolean(embeddingProvider) &&
-    Boolean(
-      process.env.PUFU_LENS_EMBEDDING_MODEL ??
-        process.env.GEMINI_EMBEDDING_MODEL ??
-        process.env.OPENAI_EMBEDDING_MODEL,
-    ) &&
-    Boolean(
-      process.env.PUFU_LENS_EMBEDDING_DIMENSIONS ??
-        process.env.GEMINI_EMBEDDING_DIMENSIONS ??
-        process.env.OPENAI_EMBEDDING_DIMENSIONS,
-    );
-  const credentialsPresent = required
-    .filter((name) => name.endsWith('_SECRET') || name.startsWith('GOOGLE_CLOUD_'))
-    .every((name) => Boolean(process.env[name]));
+    Boolean(embeddingModel) &&
+    embeddingDimensions === '1536' &&
+    chatRequirements !== null &&
+    embeddingRequirements !== null;
+  const credentialsPresent =
+    chatRequirements !== null &&
+    embeddingRequirements !== null &&
+    [...chatRequirements, ...embeddingRequirements].every((name) => Boolean(process.env[name]));
   return {
     chatModel,
     embeddingProvider,
@@ -115,8 +130,12 @@ function checkAiRuntime(): {
   };
 }
 
-function chatCredentialRequirements(model: string): string[] {
-  const provider = model.split('/', 1)[0];
+function chatCredentialRequirements(model: string): string[] | null {
+  const separatorIndex = model.indexOf('/');
+  if (separatorIndex <= 0 || !model.slice(separatorIndex + 1).trim()) {
+    return null;
+  }
+  const provider = model.slice(0, separatorIndex);
   if (provider === 'google') {
     return process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true'
       ? ['GOOGLE_CLOUD_PROJECT', 'GOOGLE_CLOUD_LOCATION']
@@ -128,10 +147,13 @@ function chatCredentialRequirements(model: string): string[] {
   if (provider === 'anthropic') {
     return ['ANTHROPIC_API_KEY_SECRET'];
   }
-  return [];
+  return null;
 }
 
-function embeddingCredentialRequirements(provider: string): string[] {
+function embeddingCredentialRequirements(provider: string): string[] | null {
+  if (provider !== 'gemini' && provider !== 'openai') {
+    return null;
+  }
   if (process.env.PUFU_LENS_EMBEDDING_API_KEY_SECRET) {
     return ['PUFU_LENS_EMBEDDING_API_KEY_SECRET'];
   }
@@ -141,7 +163,7 @@ function embeddingCredentialRequirements(provider: string): string[] {
   if (provider === 'openai') {
     return ['OPENAI_API_KEY_SECRET'];
   }
-  return [];
+  return null;
 }
 
 function missingEnv(required: readonly string[]): string[] {

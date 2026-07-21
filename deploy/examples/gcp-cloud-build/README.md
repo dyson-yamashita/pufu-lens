@@ -141,7 +141,7 @@ Set these trigger substitutions in the user's GCP project:
 | `_SOURCE_SYNC_SCHEDULER`          | `source-sync-dispatcher`                            | Environment-prefixed five-minute Cloud Scheduler suffix.                  |
 | `_REPORT_SCHEDULE_DISPATCHER_JOB` | `report-schedule-dispatcher`                        | Environment-prefixed report dispatcher Cloud Run Job suffix.              |
 | `_REPORT_SCHEDULE_SCHEDULER`      | `report-schedule-dispatcher`                        | Environment-prefixed five-minute report Cloud Scheduler suffix.           |
-| `_CHAT_MODEL`                     | `google/gemini-2.5-flash`                           | Mastra provider-qualified Chat model.                                     |
+| `_CHAT_MODEL`                     | `google/gemini-2.5-flash`                           | Deploy check validates `google/...`, `openai/...`, or `anthropic/...`.    |
 | `_CHAT_API_KEY_ENV`               | `GEMINI_API_KEY`                                    | Runtime key name: Gemini, OpenAI, or Anthropic.                           |
 | `_CHAT_API_KEY_SECRET`            | `GEMINI_API_KEY`                                    | Secret Manager secret backing the selected Chat provider.                 |
 | `_EMBEDDING_PROVIDER`             | `gemini`                                            | `gemini` or `openai`; shared by ingestion and query retrieval.            |
