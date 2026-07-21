@@ -279,7 +279,7 @@ Private project chat は、Mastra `private-chat-search` Workflow による **制
    - `relating`: 関連資料を確認しています
    - `timeline`: 時系列を確認しています（timeline 質問のみ）
    - `reasoning`: 根拠を整理して回答を生成しています
-9. **response merge:** Workflow sources / tool summaries と Agent tool results を deterministic に dedupe / merge して `ChatResponse` を返す。public chat には private workflow metadata を露出しない。
+9. **response merge:** Workflow sources / tool summaries と Agent tool results を deterministic に dedupe / merge し、順位を維持した最大 10 件の source を `ChatResponse` で返す。public chat には private workflow metadata を露出せず、公開可能な web source だけに変換する。
 10. **history:** `includeHistory` と private chat turn 永続化の既存挙動を維持する。
 
 progress event 例:

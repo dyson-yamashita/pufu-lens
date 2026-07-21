@@ -217,13 +217,15 @@ function createRepository(): ChatRepository & {
         ? { graphName: 'graph_sample_a', id: 'project-a', slug: 'sample-a' }
         : undefined;
     },
-    async vectorSearch({ projectId }) {
+    async vectorSearch({ limit, projectId }) {
       assert.equal(projectId, 'project-a');
+      assert.equal(limit, 10);
       return [sampleSource];
     },
-    async graphQuery({ graphName, projectId, seedDocumentIds }) {
+    async graphQuery({ graphName, limit, projectId, seedDocumentIds }) {
       assert.equal(graphName, 'graph_sample_a');
       assert.equal(projectId, 'project-a');
+      assert.equal(limit, 10);
       assert.deepEqual(seedDocumentIds, ['doc-a']);
       return [{ ...sampleSource, documentId: 'doc-graph', title: 'Related Issue' }];
     },
@@ -232,20 +234,23 @@ function createRepository(): ChatRepository & {
       assert.deepEqual(documentIds, ['doc-a']);
       return [sampleSource];
     },
-    async rawDocumentFetch({ maxBytes, projectId }) {
+    async rawDocumentFetch({ limit, maxBytes, projectId }) {
       assert.equal(projectId, 'project-a');
+      assert.equal(limit, 10);
       rawFetchInputs.push({ maxBytes });
       return [{ ...sampleSource, documentId: 'doc-raw', title: 'Raw Metadata' }];
     },
     async rawReadViewFetch() {
       return undefined;
     },
-    async timelineSearch({ projectId }) {
+    async timelineSearch({ limit, projectId }) {
       assert.equal(projectId, 'project-a');
+      assert.equal(limit, 10);
       return [{ ...sampleSource, documentId: 'doc-timeline', title: 'Timeline Event' }];
     },
-    async parsedDocFetch({ projectId }) {
+    async parsedDocFetch({ limit, projectId }) {
       assert.equal(projectId, 'project-a');
+      assert.equal(limit, 10);
       return [{ ...sampleSource, documentId: 'doc-parsed', title: 'Parsed Metadata' }];
     },
     async listPrivateChatHistoryForContext() {
@@ -515,7 +520,14 @@ const graphBudgetResponse = await runPrivateChat(
 );
 assert.deepEqual(
   graphBudgetResponse.sources.map((source) => source.documentId),
-  ['doc-vector-1', 'doc-vector-2', 'doc-vector-3', 'doc-vector-4', 'doc-graph-budget'],
+  [
+    'doc-vector-1',
+    'doc-vector-2',
+    'doc-vector-3',
+    'doc-vector-4',
+    'doc-vector-5',
+    'doc-graph-budget',
+  ],
 );
 
 const timelineBudgetResponse = await runPrivateChat(
@@ -541,7 +553,8 @@ const timelineBudgetResponse = await runPrivateChat(
       async rawDocumentFetch() {
         return [];
       },
-      async timelineSearch() {
+      async timelineSearch({ limit }) {
+        assert.equal(limit, 10);
         return [
           { ...sampleSource, documentId: 'doc-time-1', title: 'First Decision' },
           { ...sampleSource, documentId: 'doc-time-2', title: 'Second Decision' },
@@ -561,6 +574,9 @@ assert.deepEqual(
     'doc-graph-timeline',
     'doc-vector-timeline-1',
     'doc-vector-timeline-2',
+    'doc-vector-timeline-3',
+    'doc-vector-timeline-4',
+    'doc-vector-timeline-5',
   ],
 );
 assert.deepEqual(
@@ -977,6 +993,36 @@ assert.deepEqual(
   mastraChatResponse.sources.map((source) => source.documentId),
   ['doc-a', 'doc-graph', 'doc-timeline'],
 );
+
+const mastraTenSourceResponse = mastraGenerateToChatResponse({
+  mastraResponse: {
+    steps: [
+      {
+        content: [
+          {
+            output: {
+              value: {
+                sources: Array.from({ length: 11 }, (_, index) => ({
+                  ...sampleSource,
+                  canonicalUri: `https://example.com/source-${index}`,
+                  documentId: `doc-${index}`,
+                  rawDocumentId: `raw-${index}`,
+                  title: `Source ${index}`,
+                })),
+              },
+            },
+            toolName: 'vectorSearch',
+            type: 'tool-result',
+          },
+        ],
+      },
+    ],
+    text: 'Ten-source answer',
+  },
+  projectSlug: 'sample-a',
+});
+assert.equal(mastraTenSourceResponse.sources.length, 10);
+assert.equal(mastraTenSourceResponse.sources.at(-1)?.documentId, 'doc-9');
 
 const mastraRawLeakResponse = mastraGenerateToChatResponse({
   mastraResponse: {
