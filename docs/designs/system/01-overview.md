@@ -22,7 +22,7 @@
 
 ## 概要
 
-プロジェクトに関連するデータソース（Gmail / Google Drive / GitHub / Web ページ）を横断的に取り込み、ナレッジグラフとして PostgreSQL に格納する。チャット UI から自然言語で問い合わせ・分析を行い、定期的にプロジェクトレポート（JSON）を自動生成する。初期構築では LLM / embedding provider は **Gemini API（Google AI / Vertex AI）** を前提とし、将来の provider 差し替えに備えてモデル名と接続先は環境変数で管理する。Web にはログイン機能を設け、ログイン済み管理者が Google / GitHub 連携とデータソース設定を管理する。
+プロジェクトに関連するデータソース（Gmail / Google Drive / GitHub / Web ページ）を横断的に取り込み、ナレッジグラフとして PostgreSQL に格納する。チャット UI から自然言語で問い合わせ・分析を行い、定期的にプロジェクトレポート（JSON）を自動生成する。Chat生成モデルはMastra model router経由でGoogle、OpenAI、Anthropicなどを選択でき、EmbeddingはGeminiまたはOpenAIを選択できる。回答生成とEmbeddingのproviderは独立して設定し、document ingestionとquery検索だけは同じembedding spaceを共有する。Web にはログイン機能を設け、ログイン済み管理者が Google / GitHub 連携とデータソース設定を管理する。
 
 複数のプロジェクトを並行して扱えるよう、データソース設定・取り込み済みデータ・ナレッジグラフ・レポートは **プロジェクト単位で論理的に分離** される。元データはオブジェクトストレージに原本保存し、そこから parse → DB / グラフ DB に展開する。Chat Agent は DB / グラフ DB に加え、ストレージ上の元データも参照できる。
 
@@ -34,7 +34,7 @@
 - Collection Pipeline によるデータソース単位の定期監視・原本収集・収集候補の決定的な skip / dedup 判定
 - Exception Agent による未知形式、低 confidence、parser 修正の補助
 - ナレッジグラフ（Apache AGE）+ ベクトル検索（pgvector）+ 原本ストレージによる三層知識基盤
-- Mastra Agent + Gemini によるチャット対応（グラフ / ベクトル / 原本ストレージ横断）
+- provider選択可能なMastra Agentによるチャット対応（グラフ / ベクトル / 原本ストレージ横断）
 - 定期実行による JSON レポート自動生成・API 配信
 
 ---

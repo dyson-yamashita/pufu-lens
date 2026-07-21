@@ -41,10 +41,6 @@ env:
     value: production-ingest-workflow
     availability:
       - RUNTIME
-  - variable: PUFU_LENS_ADMIN_INGEST_EMBEDDING_PROVIDER
-    value: gemini
-    availability:
-      - RUNTIME
   - variable: PUFU_LENS_ADMIN_INGEST_DRAIN_MAX_BATCHES
     value: '100'
     availability:

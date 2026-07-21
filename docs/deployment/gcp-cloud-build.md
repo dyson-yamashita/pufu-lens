@@ -268,6 +268,8 @@ printf '%s' "$AUTH_SECRET_VALUE" | gcloud secrets create AUTH_SECRET --project "
 printf '%s' "$GEMINI_API_KEY_VALUE" | gcloud secrets create GEMINI_API_KEY --project "$PROJECT_ID" --data-file=-
 ```
 
+OpenAIまたはAnthropicを選ぶ場合は、同じstdin方式で `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` を作成し、deploy triggerの `_CHAT_API_KEY_SECRET` / `_EMBEDDING_API_KEY_SECRET` にsecret名だけを指定する。
+
 OAuth / data source 連携を使う環境では、必要に応じて次も Secret Manager または App Hosting secret として管理する。
 
 - `AUTH_GITHUB_SECRET`
@@ -277,11 +279,12 @@ OAuth / data source 連携を使う環境では、必要に応じて次も Secre
 
 Cloud Run resource には secret reference を渡す。secret 値そのものを `--set-env-vars` や Cloud Build substitutions に入れない。
 
-| secret name      | used by                                                               |
-| ---------------- | --------------------------------------------------------------------- |
-| `DATABASE_URL`   | Mastra Server、Workflow Jobs、DB migration job（`_DB_MIGRATION_JOB`） |
-| `AUTH_SECRET`    | Workflow Jobs                                                         |
-| `GEMINI_API_KEY` | Mastra Server、Workflow Jobs                                          |
+| secret name                                | used by                                                               |
+| ------------------------------------------ | --------------------------------------------------------------------- |
+| `DATABASE_URL`                             | Mastra Server、Workflow Jobs、DB migration job（`_DB_MIGRATION_JOB`） |
+| `AUTH_SECRET`                              | Workflow Jobs                                                         |
+| 選択したChat providerのAPI key secret      | Mastra Server、Workflow Jobs                                          |
+| 選択したEmbedding providerのAPI key secret | Mastra Server、Workflow Jobs                                          |
 
 ## Firebase App Hosting
 

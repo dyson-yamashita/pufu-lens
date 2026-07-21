@@ -48,15 +48,15 @@ async function main(): Promise<void> {
   const allRequired = [...required, ...profileRequired];
   const anyRequiredLabels = profileAnyRequired.map(formatAnyRequirement);
   const missing = [...missingEnv(allRequired), ...missingAnyEnv(profileAnyRequired)];
-  const gemini = checkGeminiAuth();
-  const status = missing.length === 0 && gemini.status === 'passed' ? 'passed' : 'blocked';
+  const aiRuntime = checkAiRuntime();
+  const status = missing.length === 0 && aiRuntime.status === 'passed' ? 'passed' : 'blocked';
 
   console.log(
     JSON.stringify(
       {
         checkedAt: new Date().toISOString(),
         env: options.env,
-        gemini,
+        aiRuntime,
         missing,
         profile: options.profile,
         profileRequired: [...profileRequired, ...anyRequiredLabels],
@@ -73,23 +73,75 @@ async function main(): Promise<void> {
   }
 }
 
-function checkGeminiAuth():
-  | { mode: 'google-ai'; required: string[]; status: 'blocked' | 'passed' }
-  | { mode: 'vertex-ai'; required: string[]; status: 'blocked' | 'passed' } {
-  if (process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true') {
-    const required = ['GOOGLE_CLOUD_PROJECT', 'GOOGLE_CLOUD_LOCATION'];
-    return {
-      mode: 'vertex-ai',
-      required,
-      status: missingEnv(required).length === 0 ? 'passed' : 'blocked',
-    };
-  }
-  const required = ['GEMINI_API_KEY_SECRET', 'GEMINI_CHAT_MODEL', 'GEMINI_EMBEDDING_MODEL'];
+function checkAiRuntime(): {
+  chatModel: string;
+  embeddingProvider: string;
+  required: string[];
+  status: 'blocked' | 'passed';
+} {
+  const chatModel =
+    process.env.PUFU_LENS_CHAT_MODEL ??
+    (process.env.GEMINI_CHAT_MODEL ? `google/${process.env.GEMINI_CHAT_MODEL}` : '');
+  const embeddingProvider = process.env.PUFU_LENS_EMBEDDING_PROVIDER ?? '';
+  const required = [
+    'PUFU_LENS_CHAT_MODEL',
+    'PUFU_LENS_EMBEDDING_PROVIDER',
+    'PUFU_LENS_EMBEDDING_MODEL',
+    'PUFU_LENS_EMBEDDING_DIMENSIONS',
+    ...chatCredentialRequirements(chatModel),
+    ...embeddingCredentialRequirements(embeddingProvider),
+  ];
+  const settingsPresent =
+    Boolean(chatModel) &&
+    Boolean(embeddingProvider) &&
+    Boolean(
+      process.env.PUFU_LENS_EMBEDDING_MODEL ??
+        process.env.GEMINI_EMBEDDING_MODEL ??
+        process.env.OPENAI_EMBEDDING_MODEL,
+    ) &&
+    Boolean(
+      process.env.PUFU_LENS_EMBEDDING_DIMENSIONS ??
+        process.env.GEMINI_EMBEDDING_DIMENSIONS ??
+        process.env.OPENAI_EMBEDDING_DIMENSIONS,
+    );
+  const credentialsPresent = required
+    .filter((name) => name.endsWith('_SECRET') || name.startsWith('GOOGLE_CLOUD_'))
+    .every((name) => Boolean(process.env[name]));
   return {
-    mode: 'google-ai',
-    required,
-    status: missingEnv(required).length === 0 ? 'passed' : 'blocked',
+    chatModel,
+    embeddingProvider,
+    required: [...new Set(required)],
+    status: settingsPresent && credentialsPresent ? 'passed' : 'blocked',
   };
+}
+
+function chatCredentialRequirements(model: string): string[] {
+  const provider = model.split('/', 1)[0];
+  if (provider === 'google') {
+    return process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true'
+      ? ['GOOGLE_CLOUD_PROJECT', 'GOOGLE_CLOUD_LOCATION']
+      : ['GEMINI_API_KEY_SECRET'];
+  }
+  if (provider === 'openai') {
+    return ['OPENAI_API_KEY_SECRET'];
+  }
+  if (provider === 'anthropic') {
+    return ['ANTHROPIC_API_KEY_SECRET'];
+  }
+  return [];
+}
+
+function embeddingCredentialRequirements(provider: string): string[] {
+  if (process.env.PUFU_LENS_EMBEDDING_API_KEY_SECRET) {
+    return ['PUFU_LENS_EMBEDDING_API_KEY_SECRET'];
+  }
+  if (provider === 'gemini') {
+    return ['GEMINI_API_KEY_SECRET'];
+  }
+  if (provider === 'openai') {
+    return ['OPENAI_API_KEY_SECRET'];
+  }
+  return [];
 }
 
 function missingEnv(required: readonly string[]): string[] {

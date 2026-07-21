@@ -171,8 +171,6 @@ async function runSourceSync(target: SourceSyncTarget, signal: AbortSignal): Pro
       'parse',
       '--max-runtime-seconds',
       '540',
-      '--embedding-provider',
-      process.env.PUFU_LENS_SOURCE_SYNC_EMBEDDING_PROVIDER ?? 'gemini',
     ],
     signal,
   );

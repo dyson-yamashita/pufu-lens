@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 import type { SourceType } from '../packages/ingestion/dist/index.js';
+import { resolveEmbeddingRuntimeConfig } from '../packages/ingestion/dist/index.js';
 import { ensureIngestionQueueLeaseColumn } from './ingestion-queue-lease.ts';
 import { requiredEnv } from './lib/cli.ts';
 import {
@@ -155,7 +156,7 @@ async function runCommand(options: WorkflowOptions): Promise<void> {
   logEvent(run, {
     drain: options.drain ?? false,
     dryRun: options.dryRun ?? false,
-    embeddingProvider: options.embeddingProvider ?? 'deterministic',
+    embeddingProvider: selectedEmbeddingProvider(options),
     event: 'workflow_started',
     llm: noLlmUsage(),
     ...(options.drain
@@ -202,7 +203,7 @@ async function retryCommand(options: WorkflowOptions): Promise<void> {
   logEvent(run, {
     drain: options.drain ?? false,
     dryRun: options.dryRun ?? false,
-    embeddingProvider: options.embeddingProvider ?? 'deterministic',
+    embeddingProvider: selectedEmbeddingProvider(options),
     event: 'workflow_started',
     llm: noLlmUsage(),
     ...(options.drain
@@ -702,7 +703,7 @@ function buildStepCommand(
     }
     appendDataSourceId(args, options.dataSourceId);
     appendLimit(args, options.limit);
-    args.push('--embedding-provider', options.embeddingProvider ?? 'deterministic');
+    args.push('--embedding-provider', selectedEmbeddingProvider(options));
     return { args };
   }
   if (step === 'graph') {
@@ -715,6 +716,14 @@ function buildStepCommand(
     return { args };
   }
   throw new Error(`Unknown workflow step: ${step}`);
+}
+
+function selectedEmbeddingProvider(options: WorkflowOptions): string {
+  return resolveEmbeddingRuntimeConfig({
+    defaultProvider: 'deterministic',
+    env: process.env,
+    provider: options.embeddingProvider,
+  }).provider;
 }
 
 function appendLimit(args: string[], limit: number | undefined): void {

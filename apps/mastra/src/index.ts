@@ -164,6 +164,7 @@ export interface CrossProjectInvestigationRepository {
 }
 
 export interface PufuLensMastraDependencies {
+  readonly chatModel?: string;
   readonly chatRepository: ChatRepository;
   readonly crossProjectInvestigationRepository?: CrossProjectInvestigationRepository;
   readonly embeddingProvider: ChatEmbeddingProvider;
@@ -1229,16 +1230,27 @@ export function createPufuLensMastraRuntime(
     ? createCrossProjectResearchTools(dependencies.crossProjectInvestigationRepository)
     : undefined;
   const crossProjectResearchAgent = crossProjectResearchTools
-    ? createCrossProjectResearchAgent({ tools: crossProjectResearchTools })
+    ? createCrossProjectResearchAgent({
+        model: dependencies.chatModel,
+        tools: crossProjectResearchTools,
+      })
     : undefined;
   const projectChatTools = createProjectChatTools(
     dependencies.chatRepository,
     dependencies.embeddingProvider,
   );
-  const projectChatAgent = createProjectChatAgent({ tools: projectChatTools });
-  const privateChatQueryPlannerAgent = createPrivateChatQueryPlannerAgent();
+  const projectChatAgent = createProjectChatAgent({
+    model: dependencies.chatModel,
+    tools: projectChatTools,
+  });
+  const privateChatQueryPlannerAgent = createPrivateChatQueryPlannerAgent({
+    model: dependencies.chatModel,
+  });
   const publicReportChatTools = createPublicReportChatTools();
-  const publicReportChatAgent = createPublicReportChatAgent({ tools: publicReportChatTools });
+  const publicReportChatAgent = createPublicReportChatAgent({
+    model: dependencies.chatModel,
+    tools: publicReportChatTools,
+  });
   const generateReportWorkflow = createGenerateReportWorkflow({
     provider: reportProvider,
     rawReadViewRepository: { fetchRawReadView: dependencies.chatRepository.rawReadViewFetch },

@@ -35,12 +35,15 @@ export {
   chunkAndEmbed,
   createDeterministicEmbeddingProvider,
   createGeminiEmbeddingProvider,
+  createOpenAIEmbeddingProvider,
   DEFAULT_CHUNK_CONFIG,
   DEFAULT_DETERMINISTIC_EMBEDDING_MODEL,
   DEFAULT_EMBEDDING_DIMENSIONS,
   DEFAULT_GEMINI_EMBEDDING_MODEL,
+  DEFAULT_OPENAI_EMBEDDING_MODEL,
   prepareDocumentChunks,
   validateGeminiEmbeddingConfig,
+  validateOpenAIEmbeddingConfig,
 } from './chunk-embedding.js';
 export type {
   CollectDecision,
@@ -87,6 +90,12 @@ export {
   fetchDriveText,
   scanDriveDataSource,
 } from './drive-source.js';
+export type { EmbeddingProviderName, EmbeddingRuntimeConfig } from './embedding-runtime.js';
+export {
+  createEmbeddingProviderFromEnv,
+  EMBEDDING_PROVIDER_NAMES,
+  resolveEmbeddingRuntimeConfig,
+} from './embedding-runtime.js';
 export type {
   CollectGitHubSourceOptions,
   CollectGitHubSourceResult,

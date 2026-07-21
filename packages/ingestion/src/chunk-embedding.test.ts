@@ -6,11 +6,13 @@ import {
   chunkAndEmbed,
   createDeterministicEmbeddingProvider,
   createGeminiEmbeddingProvider,
+  createOpenAIEmbeddingProvider,
   type PreparedDocumentChunk,
   prepareDocumentChunks,
   type ReplaceDocumentChunksInput,
   type UpsertDocumentInput,
   validateGeminiEmbeddingConfig,
+  validateOpenAIEmbeddingConfig,
 } from './chunk-embedding.js';
 import type { ParsedDocument } from './ingestion-fixtures.js';
 import { sha256Hex } from './ingestion-fixtures.js';
@@ -160,6 +162,54 @@ test('Gemini embedding provider does not call API for an empty text list', async
       return Response.json({ embeddings: [] });
     },
     model: 'gemini-embedding-2',
+  });
+
+  assert.deepEqual(await provider.embedTexts([]), []);
+  assert.equal(fetchCalls, 0);
+});
+
+test('OpenAI embedding provider sends dimensions and restores response index order', async () => {
+  let authorization = '';
+  let requestBody: Record<string, unknown> = {};
+  const provider = createOpenAIEmbeddingProvider({
+    apiKey: 'secret',
+    dimensions: 1536,
+    fetchImpl: async (_url, init) => {
+      authorization = new Headers(init?.headers).get('authorization') ?? '';
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return Response.json({
+        data: [
+          { embedding: testVector(1536, 2), index: 1 },
+          { embedding: testVector(1536, 1), index: 0 },
+        ],
+      });
+    },
+    model: 'text-embedding-3-small',
+  });
+
+  const vectors = await provider.embedTexts(['first', 'second']);
+
+  assert.equal(authorization, 'Bearer secret');
+  assert.deepEqual(requestBody, {
+    dimensions: 1536,
+    encoding_format: 'float',
+    input: ['first', 'second'],
+    model: 'text-embedding-3-small',
+  });
+  assert.equal(vectors[0]?.[0], 1);
+  assert.equal(vectors[1]?.[0], 2);
+});
+
+test('OpenAI embedding provider does not call API for an empty text list', async () => {
+  let fetchCalls = 0;
+  const provider = createOpenAIEmbeddingProvider({
+    apiKey: 'secret',
+    dimensions: 1536,
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      return Response.json({ data: [] });
+    },
+    model: 'text-embedding-3-small',
   });
 
   assert.deepEqual(await provider.embedTexts([]), []);
@@ -351,6 +401,25 @@ test('validateGeminiEmbeddingConfig requires a 1536-dimensional Gemini configura
       apiKey: 'secret',
       dimensions: 1536,
       model: 'gemini-embedding-2',
+    }),
+  );
+});
+
+test('validateOpenAIEmbeddingConfig requires a 1536-dimensional OpenAI configuration', () => {
+  assert.throws(
+    () =>
+      validateOpenAIEmbeddingConfig({
+        apiKey: 'secret',
+        dimensions: 3072,
+        model: 'text-embedding-3-large',
+      }),
+    /OPENAI_EMBEDDING_DIMENSIONS must be 1536/,
+  );
+  assert.doesNotThrow(() =>
+    validateOpenAIEmbeddingConfig({
+      apiKey: 'secret',
+      dimensions: 1536,
+      model: 'text-embedding-3-small',
     }),
   );
 });

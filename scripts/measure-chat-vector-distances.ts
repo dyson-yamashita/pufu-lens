@@ -1,13 +1,10 @@
 import postgres from 'postgres';
-import {
-  createGeminiEmbeddingProvider,
-  DEFAULT_GEMINI_EMBEDDING_MODEL,
-} from '../packages/ingestion/dist/index.js';
+import { createEmbeddingProviderFromEnv } from '../packages/ingestion/dist/index.js';
 import { requiredEnv } from './lib/cli.ts';
 
 type Options = {
   readonly limit: number;
-  readonly model: string;
+  readonly model?: string;
   readonly project: string;
   readonly query: string;
 };
@@ -22,14 +19,15 @@ type MutableOptions = { -readonly [Key in keyof Options]?: Options[Key] };
  */
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
-  const provider = createGeminiEmbeddingProvider({
-    apiKey: requiredEnv('GEMINI_API_KEY'),
-    dimensions: 1536,
-    model: options.model,
+  const provider = createEmbeddingProviderFromEnv({
+    env: {
+      ...process.env,
+      ...(options.model ? { PUFU_LENS_EMBEDDING_MODEL: options.model } : {}),
+    },
   });
   const [embedding] = await provider.embedTexts([options.query]);
   if (embedding?.length !== 1536) {
-    throw new Error('Expected a 1536-dimensional Gemini query embedding.');
+    throw new Error('Expected a 1536-dimensional query embedding.');
   }
 
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
@@ -43,7 +41,7 @@ async function main(): Promise<void> {
         FROM public.document_chunks dc
         JOIN public.projects p ON p.id = dc.project_id
         WHERE p.slug = ${options.project}
-          AND dc.embedding_model = ${options.model}
+          AND dc.embedding_model = ${provider.model}
           AND dc.embedding IS NOT NULL
         ORDER BY dc.document_id, dc.embedding <=> ${vector}::vector, dc.id
       ),
@@ -65,7 +63,8 @@ async function main(): Promise<void> {
     console.log(
       JSON.stringify(
         {
-          embeddingModel: options.model,
+          embeddingModel: provider.model,
+          embeddingProvider: provider.provider,
           limit: options.limit,
           projectSlug: options.project,
           queryLength: Array.from(options.query).length,
@@ -81,7 +80,10 @@ async function main(): Promise<void> {
 }
 
 function parseArgs(argv: readonly string[]): Options {
-  const values: MutableOptions = { limit: 100, model: process.env.GEMINI_EMBEDDING_MODEL };
+  const values: MutableOptions = {
+    limit: 100,
+    model: process.env.PUFU_LENS_EMBEDDING_MODEL ?? process.env.GEMINI_EMBEDDING_MODEL,
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--project') values.project = readOptionValue(argv, ++index, argument);
@@ -96,7 +98,7 @@ function parseArgs(argv: readonly string[]): Options {
   }
   return {
     limit: values.limit ?? 100,
-    model: values.model ?? DEFAULT_GEMINI_EMBEDDING_MODEL,
+    ...(values.model ? { model: values.model } : {}),
     project: values.project,
     query: values.query,
   };

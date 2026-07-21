@@ -24,6 +24,7 @@ import {
   createPublicReportChatAgent,
   createPublicReportChatTools,
 } from '../index.ts';
+import { resolveChatModel } from '../model-runtime.ts';
 import { reportScheduleDispatcherRoute } from '../report-schedule-dispatcher-route.ts';
 import { sourceSyncDispatcherRoute } from '../source-sync-dispatcher-route.ts';
 
@@ -47,15 +48,20 @@ const crossProjectInvestigationRepository = databaseUrl
 const crossProjectResearchTools = createCrossProjectResearchTools(
   crossProjectInvestigationRepository,
 );
+const chatModel = resolveChatModel();
 const crossProjectResearchAgent = createCrossProjectResearchAgent({
+  model: chatModel,
   tools: crossProjectResearchTools,
 });
 const chatEmbeddingProvider = createChatEmbeddingProvider();
 const projectChatTools = createProjectChatTools(chatRepository, chatEmbeddingProvider);
-const projectChatAgent = createProjectChatAgent({ tools: projectChatTools });
-const privateChatQueryPlannerAgent = createPrivateChatQueryPlannerAgent();
+const projectChatAgent = createProjectChatAgent({ model: chatModel, tools: projectChatTools });
+const privateChatQueryPlannerAgent = createPrivateChatQueryPlannerAgent({ model: chatModel });
 const publicReportChatTools = createPublicReportChatTools();
-const publicReportChatAgent = createPublicReportChatAgent({ tools: publicReportChatTools });
+const publicReportChatAgent = createPublicReportChatAgent({
+  model: chatModel,
+  tools: publicReportChatTools,
+});
 const generateReportWorkflow = createGenerateReportWorkflow({
   provider: createReportProvider(),
   rawReadViewRepository: { fetchRawReadView: chatRepository.rawReadViewFetch },

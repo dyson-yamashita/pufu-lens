@@ -42,16 +42,27 @@ Web は provider によって build 方法が異なる。Firebase App Hosting、
 | `APP_BASE_URL` / `AUTH_URL` | env    | Web、OAuth callbacks                                 | public origin。provider の assigned URL または custom domain を設定する                    |
 | `MASTRA_API_URL`            | env    | Web                                                  | Web から Mastra Server を呼ぶ場合の internal / private service URL                         |
 
-### LLM
+### LLM / Embedding
 
-| name                           | kind         | used by                                    | note                                                                                           |
-| ------------------------------ | ------------ | ------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| `GEMINI_API_KEY`               | secret       | Web、Mastra Server、Workflow Jobs、scripts | Google AI API key 方式で使う。Vertex AI 方式を採る provider では provider IAM へ置き換えられる |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | secret alias | Mastra Server                              | `GEMINI_API_KEY` と同じ secret を注入してよい                                                  |
-| `GEMINI_CHAT_MODEL`            | env          | Web、Mastra Server、scripts                | chat / report model 名                                                                         |
-| `GEMINI_EMBEDDING_MODEL`       | env          | Mastra Server、ingestion scripts / jobs    | document chunk と chat query で共通利用する embedding model 名                                 |
-| `GEMINI_EMBEDDING_DIMENSIONS`  | env          | Mastra Server、ingestion scripts / jobs    | embedding 次元。chat query と DB の `vector(1536)` に合わせ、既定値を使う場合は省略できる      |
-| `GOOGLE_GENAI_USE_VERTEXAI`    | env          | infra check / LLM runtime                  | Vertex AI 認証へ切り替える provider では `true` を使う                                         |
+| name                             | kind         | used by                                 | note                                                                                                |
+| -------------------------------- | ------------ | --------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `PUFU_LENS_CHAT_MODEL`           | env          | Mastra Server                           | provider-qualified model。`google/...`、`openai/...`、`anthropic/...` などMastra対応IDを指定する    |
+| `PUFU_LENS_EMBEDDING_PROVIDER`   | env          | Web、Mastra Server、Workflow Jobs       | `gemini` / `openai`。`deterministic` はローカル・テスト専用                                         |
+| `PUFU_LENS_EMBEDDING_MODEL`      | env          | Mastra Server、ingestion scripts / jobs | document chunkとchat queryで共通利用するmodel名                                                     |
+| `PUFU_LENS_EMBEDDING_DIMENSIONS` | env          | Mastra Server、ingestion scripts / jobs | DBの `vector(1536)` に合わせて `1536`                                                               |
+| `PUFU_LENS_EMBEDDING_API_KEY`    | secret       | Mastra Server、Workflow Jobs            | provider固有keyを共通名へ割り当てる場合に使用可能                                                   |
+| `GEMINI_API_KEY`                 | secret       | Web、Mastra Server、Workflow Jobs       | Google Chat/Embedding、およびGemini固有のreport/topic抽出で使用                                     |
+| `OPENAI_API_KEY`                 | secret       | Mastra Server、Workflow Jobs            | OpenAI ChatまたはEmbeddingを選択した場合に使用                                                      |
+| `ANTHROPIC_API_KEY`              | secret       | Mastra Server                           | Anthropic Chatを選択した場合に使用。EmbeddingはGeminiまたはOpenAIを別途選ぶ                         |
+| `GOOGLE_GENERATIVE_AI_API_KEY`   | secret alias | Mastra Server                           | Mastra Google provider向けに `GEMINI_API_KEY` と同じsecretを注入してよい                            |
+| `GEMINI_CHAT_MODEL`              | env          | Web、Workflow Jobs                      | Gemini固有のreport/topic抽出と既存環境の互換設定。Mastra Chatでは `PUFU_LENS_CHAT_MODEL` を優先する |
+| `GEMINI_EMBEDDING_MODEL`         | env alias    | Mastra Server、Workflow Jobs            | Gemini既存環境の互換用。新規設定では `PUFU_LENS_EMBEDDING_MODEL` を使う                             |
+| `GEMINI_EMBEDDING_DIMENSIONS`    | env alias    | Mastra Server、Workflow Jobs            | Gemini既存環境の互換用                                                                              |
+| `OPENAI_EMBEDDING_MODEL`         | env alias    | Mastra Server、Workflow Jobs            | OpenAI provider固有alias。新規設定では共通model名を優先する                                         |
+| `OPENAI_EMBEDDING_DIMENSIONS`    | env alias    | Mastra Server、Workflow Jobs            | OpenAI provider固有alias                                                                            |
+| `GOOGLE_GENAI_USE_VERTEXAI`      | env          | infra check / LLM runtime               | Vertex AI認証へ切り替えるproviderでは `true` を使う                                                 |
+
+Chat回答生成とEmbedding providerは独立して選べる。たとえば `PUFU_LENS_CHAT_MODEL=anthropic/claude-sonnet-4-5` と `PUFU_LENS_EMBEDDING_PROVIDER=openai` を組み合わせられる。一方、document ingestionとchat query embeddingの3つの共通設定は全runtimeで一致させ、provider/model変更後は既存chunkを再embeddingする。
 
 ### Auth And Connections
 
