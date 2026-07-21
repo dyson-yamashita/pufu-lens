@@ -34,6 +34,7 @@ pnpm ingest:chunk --project sample-a --limit 3 --embedding-provider gemini --dry
 - `documents.raw_document_id` をキーに document を upsert し、その後で chunk を保存する。
 - deterministic provider は入力テキストとモデル名から hash ベースの固定長 vector を生成する。検索品質ではなく DB 書き込み、chunk hash、冪等性の検証用。
 - Gemini provider は `batchEmbedContents` の request 数を 100 件ずつに分割し、空の chunk list では API を呼び出さない。
+- Admin Data Source から起動する ingest workflow は Gemini provider を既定とする。`deterministic` はローカル・テストで明示指定するときだけ使い、本番の Chat 検索対象には保存しない。
 - 同じ chunk hash / embedding model / chunk index の再実行では `document_chunks` を変更しない。
 - chunk set が変わった場合は既存 `document_chunks` を `document_chunk_history` に退避してから削除し、新しい chunk set を挿入する。
 - chunk 保存後は `raw_documents.ingest_status` と `ingestion_queue.status` を `indexed` にする。
@@ -41,6 +42,17 @@ pnpm ingest:chunk --project sample-a --limit 3 --embedding-provider gemini --dry
 ## Chat 検索との整合
 
 Private Chat の query embedding は Mastra Server が `GEMINI_EMBEDDING_MODEL` / `GEMINI_EMBEDDING_DIMENSIONS=1536` で生成する。pgvector 検索は同じ `document_chunks.embedding_model` の chunk だけを候補にし、異なる model や deterministic provider の vector と cosine 距離を比較しない。PGroonga の keyword 候補は embedding model に依存しないため、再生成中も本文一致の候補として利用できる。
+
+App Hosting から Admin Data Source ingest を起動する環境では、次の runtime 設定を必須とする。provider 設定を省略した場合も Admin ingest は Gemini を選ぶが、本番設定では意図を明示し、Chat と取り込みの不一致を deploy 前に検出できるようにする。
+
+```yaml
+PUFU_LENS_ADMIN_INGEST_EMBEDDING_PROVIDER: gemini
+PUFU_LENS_SOURCE_SYNC_EMBEDDING_PROVIDER: gemini
+GEMINI_EMBEDDING_MODEL: gemini-embedding-2
+GEMINI_EMBEDDING_DIMENSIONS: 1536
+```
+
+`PUFU_LENS_ADMIN_INGEST_EMBEDDING_PROVIDER` は Admin Data Source から起動する ingest workflow、`PUFU_LENS_SOURCE_SYNC_EMBEDDING_PROVIDER` は定期 source sync dispatcher が起動する ingest workflow に適用する。どちらも本番では `gemini` とし、手動取り込みと定期取り込みが同じ embedding space を使うことを確認する。
 
 環境内に複数 model が混在している場合は、次の SQL で件数を確認する。対象 project の再生成は、2 番目の SQL の `mismatched_chunk_count` が **0** になるまで完了扱いにしない。
 

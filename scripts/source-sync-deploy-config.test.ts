@@ -27,6 +27,7 @@ test('deploy config creates one dispatcher job and one five-minute scheduler', (
   );
   assert.match(deploy, /--max-retries 0/);
   assert.match(deploy, /--task-timeout 3300s/);
+  assert.match(deploy, /PUFU_LENS_SOURCE_SYNC_EMBEDDING_PROVIDER=gemini/);
   assert.equal((deploy.match(/id: deploy-source-sync-scheduler/g) ?? []).length, 1);
 });
 

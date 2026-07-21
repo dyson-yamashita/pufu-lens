@@ -45,4 +45,6 @@ test('dispatcher drains ingest from parse after its separate collect step', () =
 
   assert.match(ingestInvocation, /'--drain'/);
   assert.match(ingestInvocation, /'--resume-from',\s*'parse'/);
+  assert.match(ingestInvocation, /'--embedding-provider'/);
+  assert.match(ingestInvocation, /PUFU_LENS_SOURCE_SYNC_EMBEDDING_PROVIDER \?\? 'gemini'/);
 });

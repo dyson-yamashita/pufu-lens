@@ -53,6 +53,7 @@ import {
   requiredProviderForSourceType,
   type SourceType,
 } from './admin-data';
+import { resolveAdminIngestEmbeddingProvider } from './admin-ingest-runtime.ts';
 import { insertDefaultDataSourceSchedule } from './data-source-schedules.ts';
 import { deleteExclusiveDocumentGraphNodes } from './graph-document-cleanup.ts';
 import {
@@ -1169,7 +1170,7 @@ async function runIngestWorkflow(input: {
       '--max-runtime-seconds',
       String(drainOptions.maxRuntimeSeconds),
       '--embedding-provider',
-      process.env.PUFU_LENS_ADMIN_INGEST_EMBEDDING_PROVIDER ?? 'deterministic',
+      resolveAdminIngestEmbeddingProvider(process.env.PUFU_LENS_ADMIN_INGEST_EMBEDDING_PROVIDER),
     ],
     {
       cwd: repoRoot,
@@ -1217,7 +1218,9 @@ async function runCloudRunIngestWorkflowJob(input: {
   const workflowInput = {
     dataSourceId: input.dataSourceId,
     drain: true,
-    embeddingProvider: process.env.PUFU_LENS_ADMIN_INGEST_EMBEDDING_PROVIDER ?? 'deterministic',
+    embeddingProvider: resolveAdminIngestEmbeddingProvider(
+      process.env.PUFU_LENS_ADMIN_INGEST_EMBEDDING_PROVIDER,
+    ),
     maxBatches: input.maxBatches,
     maxRuntimeSeconds: input.maxRuntimeSeconds,
     projectSlug: input.projectSlug,

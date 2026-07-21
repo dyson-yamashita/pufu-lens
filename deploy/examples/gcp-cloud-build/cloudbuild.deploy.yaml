@@ -242,7 +242,7 @@ steps:
             --region "${_REGION}"
             --service-account "${_RUNTIME_SERVICE_ACCOUNT}"
             --vpc-connector "${_VPC_CONNECTOR}"
-            --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},WORKFLOW_ID=$${workflow_id},GEMINI_CHAT_MODEL=gemini-2.5-flash,GEMINI_EMBEDDING_MODEL=gemini-embedding-2,GEMINI_EMBEDDING_DIMENSIONS=1536,GOOGLE_GENAI_USE_VERTEXAI=false"
+            --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},WORKFLOW_ID=$${workflow_id},PUFU_LENS_SOURCE_SYNC_EMBEDDING_PROVIDER=gemini,GEMINI_CHAT_MODEL=gemini-2.5-flash,GEMINI_EMBEDDING_MODEL=gemini-embedding-2,GEMINI_EMBEDDING_DIMENSIONS=1536,GOOGLE_GENAI_USE_VERTEXAI=false"
             --set-secrets "DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,AUTH_SECRET=AUTH_SECRET:latest"
           )
           if [[ "$${workflow_id}" == "source-sync-dispatcher" || "$${workflow_id}" == "report-schedule-dispatcher" ]]; then

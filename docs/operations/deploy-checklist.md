@@ -147,6 +147,7 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 - progress query:
 - retry / resume 条件:
 - graph / embedding smoke:
+- ingest embedding provider: App Hosting の `PUFU_LENS_ADMIN_INGEST_EMBEDDING_PROVIDER=gemini`、source sync Job の `PUFU_LENS_SOURCE_SYNC_EMBEDDING_PROVIDER=gemini`、Cloud Run Job の `GEMINI_EMBEDDING_MODEL` / `GEMINI_EMBEDDING_DIMENSIONS=1536` を確認
 - chat hybrid search smoke: Mastra Server の `GEMINI_EMBEDDING_MODEL` と `document_chunks.embedding_model` の値が一致し、固有名詞 / Issue 番号を含む質問で `vector-search` が vector / keyword 候補を RRF 統合して返すこと
 - 実行後 smoke:
 - 失敗時の判断: restore / forward fix / 再実行 / deploy 停止
