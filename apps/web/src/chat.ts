@@ -10,6 +10,9 @@ import {
 } from './raw-read-view.ts';
 import type { PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 
+/** Maximum number of deduplicated evidence sources returned by a chat response. */
+export const MAX_CHAT_RESPONSE_SOURCES = 10;
+
 export type ChatToolName =
   | 'document-fetch'
   | 'graph-query'
@@ -577,7 +580,7 @@ const HYBRID_KEYWORD_QUERY_OUTPUT_MAX = 512;
  *
  * @param request - The private chat request
  * @param options - The chat runtime dependencies
- * @returns A rate-limited response or an answered response with retrieved sources
+ * @returns A rate-limited response or an answered response with up to ten retrieved sources
  * @throws ProjectAccessDeniedError If the user does not have access to the project
  */
 export async function runPrivateChat(
@@ -611,7 +614,7 @@ export async function runPrivateChat(
   const vectorSources = await options.repository.vectorSearch({
     embedding,
     embeddingModel: options.embeddingProvider.model,
-    limit: 5,
+    limit: MAX_CHAT_RESPONSE_SOURCES,
     projectId: project.id,
     query: request.question,
   });
@@ -647,7 +650,10 @@ export async function runPrivateChat(
   });
   const timelineSourceBudget = shouldPrioritizeTimeline ? Math.min(timelineSources.length, 2) : 0;
   const graphSourceBudget = Math.min(graphSources.length, shouldPrioritizeTimeline ? 1 : 2);
-  const vectorSourceBudget = Math.max(0, 5 - graphSourceBudget - timelineSourceBudget);
+  const vectorSourceBudget = Math.max(
+    0,
+    MAX_CHAT_RESPONSE_SOURCES - graphSourceBudget - timelineSourceBudget,
+  );
   const sources = uniqueSources([
     ...(shouldPrioritizeTimeline
       ? [
@@ -665,7 +671,7 @@ export async function runPrivateChat(
     ...documentSources,
     ...rawSources,
     ...parsedSources,
-  ]).slice(0, 5);
+  ]).slice(0, MAX_CHAT_RESPONSE_SOURCES);
 
   return {
     answer: await options.provider.complete({ editing, question: request.question, sources }),

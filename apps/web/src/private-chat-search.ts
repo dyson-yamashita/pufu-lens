@@ -6,6 +6,7 @@ import {
   type ChatToolCall,
   embedPrivateChatQueries,
   inferChatEditingMetadata,
+  MAX_CHAT_RESPONSE_SOURCES,
   reciprocalRankFusionScore,
 } from './chat.ts';
 
@@ -43,7 +44,6 @@ const PRIMARY_VECTOR_LIMIT = 15;
 const GRAPH_LIMIT = 5;
 const TIMELINE_LIMIT = 5;
 const DETAIL_DOCUMENT_LIMIT = 5;
-const MAX_MERGED_SOURCES = 5;
 const PRIMARY_QUERY_RRF_WEIGHT = 2;
 export const MAX_PRIVATE_CHAT_SEARCH_QUERY_VARIANTS = 6;
 export const MAX_PRIVATE_CHAT_SEARCH_QUERY_LENGTH = 120;
@@ -735,7 +735,7 @@ export function fuseChatSourceRankings(
     readonly sources: readonly ChatSource[];
     readonly weight?: number;
   }[],
-  limit = MAX_MERGED_SOURCES,
+  limit = MAX_CHAT_RESPONSE_SOURCES,
 ): ChatSource[] {
   const theoreticalMaximum = rankings.reduce(
     (total, ranking) => total + reciprocalRankFusionScore(1, ranking.weight ?? 1),
@@ -1113,6 +1113,7 @@ export async function runPrivateChatTimelineStep(
   };
 }
 
+/** Enriches ranked retrieval candidates and selects up to ten diverse sources for synthesis. */
 export async function runPrivateChatDetailStep(
   state: PrivateChatSearchWorkflowState,
   repository: ChatRepository,
@@ -1146,7 +1147,7 @@ export async function runPrivateChatDetailStep(
       state.graphSources,
     ),
     selectionPolicy,
-    MAX_MERGED_SOURCES,
+    MAX_CHAT_RESPONSE_SOURCES,
   );
   const confidence = privateChatRetrievalConfidence({
     didRetry: state.didRetry,

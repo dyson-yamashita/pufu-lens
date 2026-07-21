@@ -627,6 +627,37 @@ test('runPrivateChatDetailStep keeps richer fetched sources for duplicate docume
   assert.ok(!result.retrievalContext.includes(originalSource.snippet));
 });
 
+test('runPrivateChatDetailStep returns up to ten ranked sources', async () => {
+  const rankedSources = Array.from({ length: 11 }, (_, index) => ({
+    ...sampleSource,
+    canonicalUri: `https://example.test/source-${index}`,
+    documentId: `doc-${index}`,
+    rawDocumentId: `raw-${index}`,
+    title: `Source ${index}`,
+  }));
+  const state = {
+    ...runPrivateChatPreparingStep({
+      graphName: 'graph-a',
+      projectId: 'project-a',
+      question: 'プロジェクト概要',
+    }),
+    mergedVectorSources: rankedSources,
+  };
+
+  const result = await runPrivateChatDetailStep(state, {
+    async documentFetch() {
+      return [];
+    },
+  } as never);
+
+  assert.deepEqual(
+    result.sources.map((source) => source.documentId),
+    rankedSources.slice(0, 10).map((source) => source.documentId),
+  );
+  const context = JSON.parse(result.retrievalContext) as { sources?: unknown[] };
+  assert.equal(context.sources?.length, 10);
+});
+
 test('runPrivateChatDetailStep excludes blank document IDs from detail fetch', async () => {
   const fetchedDocumentIds: Array<readonly string[]> = [];
   const state = {
@@ -1039,6 +1070,35 @@ test('mergeHybridChatResponse deduplicates workflow and agent sources', () => {
     { name: 'vector-search', resultCount: 2 },
     { name: 'parsed-doc-fetch', resultCount: 1 },
   ]);
+});
+
+test('mergeHybridChatResponse keeps the first ten unique sources', () => {
+  const source = (prefix: string, index: number) => ({
+    ...sampleSource,
+    canonicalUri: `https://example.test/${prefix}-${index}`,
+    documentId: `doc-${prefix}-${index}`,
+    rawDocumentId: `raw-${prefix}-${index}`,
+    title: `${prefix} ${index}`,
+  });
+  const workflowSources = Array.from({ length: 7 }, (_, index) => source('workflow', index));
+  const agentSources = Array.from({ length: 5 }, (_, index) => source('agent', index));
+
+  const merged = mergeHybridChatResponse({
+    agentResponse: {
+      answer: 'answer',
+      projectSlug: 'sample-a',
+      sources: agentSources,
+      status: 'answered',
+      toolCalls: [],
+    },
+    workflowSources,
+    workflowToolCalls: [],
+  });
+
+  assert.deepEqual(
+    merged.sources.map((item) => item.documentId),
+    [...workflowSources, ...agentSources].slice(0, 10).map((item) => item.documentId),
+  );
 });
 
 test('fuseChatSourceRankings promotes consensus while preserving deterministic ties', () => {

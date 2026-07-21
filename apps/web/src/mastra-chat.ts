@@ -13,6 +13,7 @@ import type {
 import {
   inferChatEditingMetadata,
   inferPublicChatEditingMetadata,
+  MAX_CHAT_RESPONSE_SOURCES,
   privateChatSourcesForResponse,
 } from './chat.ts';
 import type { ProjectLookupResult, PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
@@ -208,6 +209,7 @@ export function createMastraPublicReportChatBody(input: {
   };
 }
 
+/** Converts a direct Mastra Agent response into a chat response with up to ten unique sources. */
 export function mastraGenerateToChatResponse(input: {
   readonly editing?: ChatEditingMetadata;
   readonly mastraResponse: unknown;
@@ -220,7 +222,7 @@ export function mastraGenerateToChatResponse(input: {
     .filter((content) => content.type === 'tool-result');
   const sources = uniqueSources(toolResults.flatMap((result) => toolResultSources(result))).slice(
     0,
-    5,
+    MAX_CHAT_RESPONSE_SOURCES,
   );
   return {
     answer: mastraResponse.text ?? '',
@@ -249,6 +251,7 @@ export function mastraGenerateToChatResponse(input: {
   };
 }
 
+/** Merges Workflow and Agent evidence in rank order, returning up to ten unique safe sources. */
 export function mergeHybridChatResponse(input: {
   readonly agentResponse: ChatResponse;
   readonly workflowEditing?: ChatEditingMetadata;
@@ -259,7 +262,10 @@ export function mergeHybridChatResponse(input: {
     ...input.agentResponse,
     editing: input.agentResponse.editing ?? input.workflowEditing,
     sources: privateChatSourcesForResponse(
-      uniqueSources([...input.workflowSources, ...input.agentResponse.sources]).slice(0, 5),
+      uniqueSources([...input.workflowSources, ...input.agentResponse.sources]).slice(
+        0,
+        MAX_CHAT_RESPONSE_SOURCES,
+      ),
     ),
     toolCalls: mergeHybridToolCalls(input.workflowToolCalls, input.agentResponse.toolCalls),
   };
