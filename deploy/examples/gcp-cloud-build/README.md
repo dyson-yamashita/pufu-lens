@@ -141,6 +141,13 @@ Set these trigger substitutions in the user's GCP project:
 | `_SOURCE_SYNC_SCHEDULER`          | `source-sync-dispatcher`                            | Environment-prefixed five-minute Cloud Scheduler suffix.                  |
 | `_REPORT_SCHEDULE_DISPATCHER_JOB` | `report-schedule-dispatcher`                        | Environment-prefixed report dispatcher Cloud Run Job suffix.              |
 | `_REPORT_SCHEDULE_SCHEDULER`      | `report-schedule-dispatcher`                        | Environment-prefixed five-minute report Cloud Scheduler suffix.           |
+| `_CHAT_MODEL`                     | `google/gemini-2.5-flash`                           | Deploy check validates `google/...`, `openai/...`, or `anthropic/...`.    |
+| `_CHAT_API_KEY_ENV`               | `GEMINI_API_KEY`                                    | Runtime key name: Gemini, OpenAI, or Anthropic.                           |
+| `_CHAT_API_KEY_SECRET`            | `GEMINI_API_KEY`                                    | Secret Manager secret backing the selected Chat provider.                 |
+| `_EMBEDDING_PROVIDER`             | `gemini`                                            | `gemini` or `openai`; shared by ingestion and query retrieval.            |
+| `_EMBEDDING_MODEL`                | `gemini-embedding-2`                                | Model shared by ingestion and query retrieval.                            |
+| `_EMBEDDING_DIMENSIONS`           | `1536`                                              | Must match the current pgvector schema.                                   |
+| `_EMBEDDING_API_KEY_SECRET`       | `GEMINI_API_KEY`                                    | Secret Manager secret backing the selected embedding provider.            |
 
 `PROJECT_ID` and `SHORT_SHA` are Cloud Build built-in substitutions. The example uses `SHORT_SHA` as the immutable image tag and also pushes `latest` as a convenience tag.
 
@@ -168,13 +175,16 @@ The Pufu Lens GCP project currently sets `_FIREBASE_DEPLOY=true`, so Cloud Build
 
 The deploy service account needs access to these Secret Manager secret names because the Cloud Run resources reference them:
 
-| secret name      | used by                                          |
-| ---------------- | ------------------------------------------------ |
-| `DATABASE_URL`   | Mastra Server, Workflow Jobs, DB migration job   |
-| `AUTH_SECRET`    | Workflow Jobs through connection secret fallback |
-| `GEMINI_API_KEY` | Mastra Server, Workflow Jobs                     |
+| secret name                          | used by                                          |
+| ------------------------------------ | ------------------------------------------------ |
+| `DATABASE_URL`                       | Mastra Server, Workflow Jobs, DB migration job   |
+| `AUTH_SECRET`                        | Workflow Jobs through connection secret fallback |
+| `_CHAT_API_KEY_SECRET` の指定値      | Mastra Server, Workflow Jobs                     |
+| `_EMBEDDING_API_KEY_SECRET` の指定値 | Mastra Server, Workflow Jobs                     |
 
 The secret values are not read into the build log. Cloud Run receives secret references such as `DATABASE_URL=DATABASE_URL:latest`.
+
+Claude Chat + OpenAI Embedding の例では、`_CHAT_MODEL=anthropic/...`、`_CHAT_API_KEY_ENV=ANTHROPIC_API_KEY`、`_CHAT_API_KEY_SECRET=ANTHROPIC_API_KEY`、`_EMBEDDING_PROVIDER=openai`、`_EMBEDDING_MODEL=text-embedding-3-small`、`_EMBEDDING_API_KEY_SECRET=OPENAI_API_KEY` とする。providerまたはmodelを変更した後は、既存document chunkを新しいembedding spaceで再生成する。
 
 If your environment uses Google or GitHub OAuth data-source refresh in jobs, add the corresponding runtime secrets in your fork or environment-specific copy:
 

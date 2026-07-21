@@ -41,10 +41,13 @@ API key、DB password は記録しない。
 - `CONNECTION_SECRET_KEY`: OAuth token と GitHub App private key metadata の暗号化 key。App Hosting runtime secret として設定し、実値は記録しない。
 - `GITHUB_APP_WEBHOOK_SECRET`: GitHub App webhook を有効化する場合だけ provider 側に設定する。現行 runtime は GitHub App setup callback を使い、webhook 受信 route は持たない。実値は記録しない。
 - `AUTH_CREDENTIALS_EMAIL` / `AUTH_CREDENTIALS_PASSWORD`: Credentials user 作成時だけローカル環境で使う。実値は記録しない。
-- `GEMINI_API_KEY`: Google AI API key 利用時のみ。実値は記録しない。
-- `GEMINI_CHAT_MODEL`: Chat / report model。モデル名のみ記録可。
-- `GEMINI_EMBEDDING_MODEL`: embedding model。モデル名のみ記録可。
-- `GEMINI_EMBEDDING_DIMENSIONS`: embedding 次元。既定は `1536`。
+- `PUFU_LENS_CHAT_MODEL`: Mastra Chatのprovider-qualified model。GCP deploy checkで検証するproviderは`google/...`、`openai/...`、`anthropic/...`。
+- `PUFU_LENS_EMBEDDING_PROVIDER`: `gemini` または `openai`。`deterministic` はローカル・テスト専用。
+- `PUFU_LENS_EMBEDDING_MODEL`: ingestionとquery検索で共有するembedding model。
+- `PUFU_LENS_EMBEDDING_DIMENSIONS`: DBの `vector(1536)` に合わせて `1536`。
+- `GEMINI_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`: 選択したproviderで必要なものだけをsecret storeから注入し、実値は記録しない。
+- `PUFU_LENS_EMBEDDING_API_KEY`: provider固有secret名を共通名へ割り当てる場合だけ使用可能。実値は記録しない。
+- `GEMINI_CHAT_MODEL` / `GEMINI_EMBEDDING_MODEL` / `GEMINI_EMBEDDING_DIMENSIONS`: 既存環境およびGemini固有のreport/topic抽出経路との互換用。
 
 ## Provider 連携設定
 
@@ -147,7 +150,9 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 - progress query:
 - retry / resume 条件:
 - graph / embedding smoke:
-- chat hybrid search smoke: Mastra Server の `GEMINI_EMBEDDING_MODEL` と `document_chunks.embedding_model` の値が一致し、固有名詞 / Issue 番号を含む質問で `vector-search` が vector / keyword 候補を RRF 統合して返すこと
+- ingest embedding provider: Mastra Serverと全Workflow Jobの `PUFU_LENS_EMBEDDING_PROVIDER` / `PUFU_LENS_EMBEDDING_MODEL` / `PUFU_LENS_EMBEDDING_DIMENSIONS=1536` が一致することを確認。WebからCloud Run Jobを起動する入力にはproviderを重複保持しない
+- chat model: `PUFU_LENS_CHAT_MODEL` のproviderに対応するAPI key secretがMastra Serverへ注入されていることを確認
+- chat hybrid search smoke: Mastra Server の `PUFU_LENS_EMBEDDING_MODEL` と `document_chunks.embedding_model` の値が一致し、固有名詞 / Issue 番号を含む質問で `vector-search` が vector / keyword 候補を RRF 統合して返すこと
 - 実行後 smoke:
 - 失敗時の判断: restore / forward fix / 再実行 / deploy 停止
 - 記録先: PR、Issue、release note、または環境別運用ログの URL

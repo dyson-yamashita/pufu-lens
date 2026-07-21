@@ -27,6 +27,13 @@ substitutions:
   _SOURCE_SYNC_SCHEDULER: source-sync-dispatcher
   _REPORT_SCHEDULE_DISPATCHER_JOB: report-schedule-dispatcher
   _REPORT_SCHEDULE_SCHEDULER: report-schedule-dispatcher
+  _CHAT_MODEL: google/gemini-2.5-flash
+  _CHAT_API_KEY_ENV: GEMINI_API_KEY
+  _CHAT_API_KEY_SECRET: GEMINI_API_KEY
+  _EMBEDDING_PROVIDER: gemini
+  _EMBEDDING_MODEL: gemini-embedding-2
+  _EMBEDDING_DIMENSIONS: '1536'
+  _EMBEDDING_API_KEY_SECRET: GEMINI_API_KEY
 
 steps:
   - id: validate-deploy-substitutions
@@ -54,7 +61,11 @@ steps:
           "_VPC_CONNECTOR=${_VPC_CONNECTOR}" \
           "_MASTRA_SERVICE=${_MASTRA_SERVICE}" \
           "_MASTRA_IMAGE=${_MASTRA_IMAGE}" \
-          "_JOBS_IMAGE=${_JOBS_IMAGE}"; do
+          "_JOBS_IMAGE=${_JOBS_IMAGE}" \
+          "_CHAT_MODEL=${_CHAT_MODEL}" \
+          "_CHAT_API_KEY_SECRET=${_CHAT_API_KEY_SECRET}" \
+          "_EMBEDDING_MODEL=${_EMBEDDING_MODEL}" \
+          "_EMBEDDING_API_KEY_SECRET=${_EMBEDDING_API_KEY_SECRET}"; do
           name="$${pair%%=*}"
           value="$${pair#*=}"
           if [[ -z "$${value}" ]]; then
@@ -62,6 +73,35 @@ steps:
             exit 1
           fi
         done
+
+        case "${_CHAT_API_KEY_ENV}" in
+          GEMINI_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY) ;;
+          *)
+            echo "_CHAT_API_KEY_ENV must be GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY." >&2
+            exit 1
+            ;;
+        esac
+
+        case "${_CHAT_MODEL}:${_CHAT_API_KEY_ENV}" in
+          google/*:GEMINI_API_KEY|openai/*:OPENAI_API_KEY|anthropic/*:ANTHROPIC_API_KEY) ;;
+          *)
+            echo "_CHAT_MODEL provider must match _CHAT_API_KEY_ENV (google/GEMINI_API_KEY, openai/OPENAI_API_KEY, or anthropic/ANTHROPIC_API_KEY)." >&2
+            exit 1
+            ;;
+        esac
+
+        case "${_EMBEDDING_PROVIDER}" in
+          gemini|openai) ;;
+          *)
+            echo "_EMBEDDING_PROVIDER must be gemini or openai." >&2
+            exit 1
+            ;;
+        esac
+
+        if [[ "${_EMBEDDING_DIMENSIONS}" != "1536" ]]; then
+          echo "_EMBEDDING_DIMENSIONS must be 1536." >&2
+          exit 1
+        fi
 
         if [[ -z "${_SOURCE_SYNC_DISPATCHER_JOB}" || -z "${_SOURCE_SYNC_SCHEDULER}" ]]; then
           echo "_SOURCE_SYNC_DISPATCHER_JOB and _SOURCE_SYNC_SCHEDULER are required." >&2
@@ -215,8 +255,8 @@ steps:
           --vpc-connector "${_VPC_CONNECTOR}" \
           --no-allow-unauthenticated \
           --port 8080 \
-          --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},GEMINI_CHAT_MODEL=gemini-2.5-flash,GEMINI_EMBEDDING_MODEL=gemini-embedding-2,GEMINI_EMBEDDING_DIMENSIONS=1536,GOOGLE_GENAI_USE_VERTEXAI=false,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},CLOUD_RUN_JOBS_REGION=${_REGION},SOURCE_SYNC_DISPATCHER_JOB_NAME=${_ENV}-${_SOURCE_SYNC_DISPATCHER_JOB},REPORT_SCHEDULE_DISPATCHER_JOB_NAME=${_ENV}-${_REPORT_SCHEDULE_DISPATCHER_JOB}" \
-          --set-secrets "DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_GENERATIVE_AI_API_KEY=GEMINI_API_KEY:latest"
+          --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},PUFU_LENS_CHAT_MODEL=${_CHAT_MODEL},PUFU_LENS_EMBEDDING_PROVIDER=${_EMBEDDING_PROVIDER},PUFU_LENS_EMBEDDING_MODEL=${_EMBEDDING_MODEL},PUFU_LENS_EMBEDDING_DIMENSIONS=${_EMBEDDING_DIMENSIONS},GEMINI_CHAT_MODEL=gemini-2.5-flash,GOOGLE_GENAI_USE_VERTEXAI=false,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},CLOUD_RUN_JOBS_REGION=${_REGION},SOURCE_SYNC_DISPATCHER_JOB_NAME=${_ENV}-${_SOURCE_SYNC_DISPATCHER_JOB},REPORT_SCHEDULE_DISPATCHER_JOB_NAME=${_ENV}-${_REPORT_SCHEDULE_DISPATCHER_JOB}" \
+          --set-secrets "DATABASE_URL=DATABASE_URL:latest,${_CHAT_API_KEY_ENV}=${_CHAT_API_KEY_SECRET}:latest,PUFU_LENS_EMBEDDING_API_KEY=${_EMBEDDING_API_KEY_SECRET}:latest"
 
         mkdir -p /workspace/.cloudbuild
         gcloud run services describe "${_MASTRA_SERVICE}" \
@@ -242,8 +282,8 @@ steps:
             --region "${_REGION}"
             --service-account "${_RUNTIME_SERVICE_ACCOUNT}"
             --vpc-connector "${_VPC_CONNECTOR}"
-            --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},WORKFLOW_ID=$${workflow_id},GEMINI_CHAT_MODEL=gemini-2.5-flash,GEMINI_EMBEDDING_MODEL=gemini-embedding-2,GEMINI_EMBEDDING_DIMENSIONS=1536,GOOGLE_GENAI_USE_VERTEXAI=false"
-            --set-secrets "DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,AUTH_SECRET=AUTH_SECRET:latest"
+            --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},WORKFLOW_ID=$${workflow_id},PUFU_LENS_CHAT_MODEL=${_CHAT_MODEL},PUFU_LENS_EMBEDDING_PROVIDER=${_EMBEDDING_PROVIDER},PUFU_LENS_EMBEDDING_MODEL=${_EMBEDDING_MODEL},PUFU_LENS_EMBEDDING_DIMENSIONS=${_EMBEDDING_DIMENSIONS},GEMINI_CHAT_MODEL=gemini-2.5-flash,GOOGLE_GENAI_USE_VERTEXAI=false"
+            --set-secrets "DATABASE_URL=DATABASE_URL:latest,${_CHAT_API_KEY_ENV}=${_CHAT_API_KEY_SECRET}:latest,PUFU_LENS_EMBEDDING_API_KEY=${_EMBEDDING_API_KEY_SECRET}:latest,AUTH_SECRET=AUTH_SECRET:latest"
           )
           if [[ "$${workflow_id}" == "source-sync-dispatcher" || "$${workflow_id}" == "report-schedule-dispatcher" ]]; then
             job_args+=(--tasks 1 --max-retries 0 --task-timeout 3300s)

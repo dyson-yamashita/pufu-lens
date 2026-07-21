@@ -10,12 +10,7 @@ import type {
   SourceType,
   UpsertDocumentInput,
 } from '../packages/ingestion/dist/index.js';
-import {
-  chunkAndEmbed,
-  createDeterministicEmbeddingProvider,
-  createGeminiEmbeddingProvider,
-  DEFAULT_GEMINI_EMBEDDING_MODEL,
-} from '../packages/ingestion/dist/index.js';
+import { chunkAndEmbed, createEmbeddingProviderFromEnv } from '../packages/ingestion/dist/index.js';
 import { createObjectStorageFromEnv } from '../packages/storage/dist/factory.js';
 import type { ObjectStorage } from '../packages/storage/dist/object-storage.js';
 import { requiredEnv } from './lib/cli.ts';
@@ -371,17 +366,11 @@ async function markRawVersionIndexed(
 }
 
 function createEmbeddingProvider(options: { embeddingProvider?: string }): EmbeddingProvider {
-  if ((options.embeddingProvider ?? 'deterministic') === 'deterministic') {
-    return createDeterministicEmbeddingProvider();
-  }
-  if (options.embeddingProvider === 'gemini') {
-    return createGeminiEmbeddingProvider({
-      apiKey: requiredEnv('GEMINI_API_KEY'),
-      dimensions: readDimensionsEnv(),
-      model: process.env.GEMINI_EMBEDDING_MODEL ?? DEFAULT_GEMINI_EMBEDDING_MODEL,
-    });
-  }
-  throw new Error(`Unknown embedding provider: ${options.embeddingProvider}`);
+  return createEmbeddingProviderFromEnv({
+    defaultProvider: 'deterministic',
+    env: process.env,
+    provider: options.embeddingProvider,
+  });
 }
 
 function parseArgs(argv: string[]): {
@@ -426,14 +415,6 @@ function readSourceType(value: string): SourceType {
     throw new Error(`Unsupported --source value: ${value}`);
   }
   return value as SourceType;
-}
-
-function readDimensionsEnv(): number {
-  const value = process.env.GEMINI_EMBEDDING_DIMENSIONS;
-  if (!value) {
-    throw new Error('GEMINI_EMBEDDING_DIMENSIONS is required.');
-  }
-  return readPositiveInteger(value, 'GEMINI_EMBEDDING_DIMENSIONS');
 }
 
 function readOptionValue(argv: string[], index: number, optionName: string): string {

@@ -7,6 +7,10 @@
     "./embedding": {
       "types": "./dist/chunk-embedding.d.ts",
       "import": "./dist/chunk-embedding.js"
+    },
+    "./embedding-runtime": {
+      "types": "./dist/embedding-runtime.d.ts",
+      "import": "./dist/embedding-runtime.js"
     }
   },
   "scripts": {

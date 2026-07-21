@@ -27,6 +27,16 @@ test('deploy config creates one dispatcher job and one five-minute scheduler', (
   );
   assert.match(deploy, /--max-retries 0/);
   assert.match(deploy, /--task-timeout 3300s/);
+  assert.match(deploy, /_EMBEDDING_PROVIDER: gemini/);
+  assert.match(deploy, /PUFU_LENS_EMBEDDING_PROVIDER=\$\{_EMBEDDING_PROVIDER\}/);
+  assert.match(deploy, /PUFU_LENS_EMBEDDING_MODEL=\$\{_EMBEDDING_MODEL\}/);
+  assert.match(deploy, /PUFU_LENS_EMBEDDING_DIMENSIONS=\$\{_EMBEDDING_DIMENSIONS\}/);
+  assert.match(deploy, /PUFU_LENS_CHAT_MODEL=\$\{_CHAT_MODEL\}/);
+  assert.match(deploy, /PUFU_LENS_EMBEDDING_API_KEY=\$\{_EMBEDDING_API_KEY_SECRET\}:latest/);
+  assert.match(
+    deploy,
+    /google\/\*:GEMINI_API_KEY\|openai\/\*:OPENAI_API_KEY\|anthropic\/\*:ANTHROPIC_API_KEY/,
+  );
   assert.equal((deploy.match(/id: deploy-source-sync-scheduler/g) ?? []).length, 1);
 });
 

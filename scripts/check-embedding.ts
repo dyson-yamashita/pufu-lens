@@ -1,10 +1,7 @@
 import {
   checkEmbeddingProvider,
-  createDeterministicEmbeddingProvider,
-  createGeminiEmbeddingProvider,
-  DEFAULT_GEMINI_EMBEDDING_MODEL,
+  createEmbeddingProviderFromEnv,
 } from '../packages/ingestion/dist/index.js';
-import { requiredEnv } from './lib/cli.ts';
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
@@ -17,17 +14,14 @@ async function main(): Promise<void> {
 }
 
 function createEmbeddingProvider(input: { dimensions: number; providerName: string }) {
-  if (input.providerName === 'deterministic') {
-    return createDeterministicEmbeddingProvider({ dimensions: input.dimensions });
-  }
-  if (input.providerName === 'gemini') {
-    return createGeminiEmbeddingProvider({
-      apiKey: requiredEnv('GEMINI_API_KEY'),
-      dimensions: input.dimensions,
-      model: process.env.GEMINI_EMBEDDING_MODEL ?? DEFAULT_GEMINI_EMBEDDING_MODEL,
-    });
-  }
-  throw new Error(`Unknown provider: ${input.providerName}`);
+  return createEmbeddingProviderFromEnv({
+    defaultProvider: 'deterministic',
+    env: {
+      ...process.env,
+      PUFU_LENS_EMBEDDING_DIMENSIONS: String(input.dimensions),
+    },
+    provider: input.providerName,
+  });
 }
 
 function parseArgs(argv: string[]): { dimensions?: number; provider?: string } {
