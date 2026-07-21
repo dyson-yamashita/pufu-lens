@@ -222,9 +222,10 @@ function createRepository(): ChatRepository & {
       assert.equal(limit, 10);
       return [sampleSource];
     },
-    async graphQuery({ graphName, projectId, seedDocumentIds }) {
+    async graphQuery({ graphName, limit, projectId, seedDocumentIds }) {
       assert.equal(graphName, 'graph_sample_a');
       assert.equal(projectId, 'project-a');
+      assert.equal(limit, 10);
       assert.deepEqual(seedDocumentIds, ['doc-a']);
       return [{ ...sampleSource, documentId: 'doc-graph', title: 'Related Issue' }];
     },
@@ -233,20 +234,23 @@ function createRepository(): ChatRepository & {
       assert.deepEqual(documentIds, ['doc-a']);
       return [sampleSource];
     },
-    async rawDocumentFetch({ maxBytes, projectId }) {
+    async rawDocumentFetch({ limit, maxBytes, projectId }) {
       assert.equal(projectId, 'project-a');
+      assert.equal(limit, 10);
       rawFetchInputs.push({ maxBytes });
       return [{ ...sampleSource, documentId: 'doc-raw', title: 'Raw Metadata' }];
     },
     async rawReadViewFetch() {
       return undefined;
     },
-    async timelineSearch({ projectId }) {
+    async timelineSearch({ limit, projectId }) {
       assert.equal(projectId, 'project-a');
+      assert.equal(limit, 10);
       return [{ ...sampleSource, documentId: 'doc-timeline', title: 'Timeline Event' }];
     },
-    async parsedDocFetch({ projectId }) {
+    async parsedDocFetch({ limit, projectId }) {
       assert.equal(projectId, 'project-a');
+      assert.equal(limit, 10);
       return [{ ...sampleSource, documentId: 'doc-parsed', title: 'Parsed Metadata' }];
     },
     async listPrivateChatHistoryForContext() {
@@ -549,7 +553,8 @@ const timelineBudgetResponse = await runPrivateChat(
       async rawDocumentFetch() {
         return [];
       },
-      async timelineSearch() {
+      async timelineSearch({ limit }) {
+        assert.equal(limit, 10);
         return [
           { ...sampleSource, documentId: 'doc-time-1', title: 'First Decision' },
           { ...sampleSource, documentId: 'doc-time-2', title: 'Second Decision' },

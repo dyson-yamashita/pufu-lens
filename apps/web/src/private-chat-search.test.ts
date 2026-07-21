@@ -643,13 +643,19 @@ test('runPrivateChatDetailStep returns up to ten ranked sources', async () => {
     }),
     mergedVectorSources: rankedSources,
   };
+  let fetchedDocumentIds: readonly string[] = [];
 
   const result = await runPrivateChatDetailStep(state, {
-    async documentFetch() {
+    async documentFetch({ documentIds }: { documentIds: readonly string[] }) {
+      fetchedDocumentIds = documentIds;
       return [];
     },
   } as never);
 
+  assert.deepEqual(
+    fetchedDocumentIds,
+    rankedSources.slice(0, 10).map((source) => source.documentId),
+  );
   assert.deepEqual(
     result.sources.map((source) => source.documentId),
     rankedSources.slice(0, 10).map((source) => source.documentId),

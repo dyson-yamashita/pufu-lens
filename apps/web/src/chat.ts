@@ -620,7 +620,7 @@ export async function runPrivateChat(
   });
   const timelineSourcesPromise = shouldPrioritizeTimeline
     ? options.repository.timelineSearch({
-        limit: 5,
+        limit: MAX_CHAT_RESPONSE_SOURCES,
         projectId: project.id,
         query: request.question,
       })
@@ -628,19 +628,19 @@ export async function runPrivateChat(
   const [graphSources, timelineSources, rawSources, parsedSources] = await Promise.all([
     options.repository.graphQuery({
       graphName: project.graphName,
-      limit: 5,
+      limit: MAX_CHAT_RESPONSE_SOURCES,
       projectId: project.id,
       query: request.question,
       seedDocumentIds: vectorSources.map((source) => source.documentId),
     }),
     timelineSourcesPromise,
     options.repository.rawDocumentFetch({
-      limit: 5,
+      limit: MAX_CHAT_RESPONSE_SOURCES,
       maxBytes: 64 * 1024,
       projectId: project.id,
     }),
     options.repository.parsedDocFetch({
-      limit: 5,
+      limit: MAX_CHAT_RESPONSE_SOURCES,
       projectId: project.id,
     }),
   ]);
