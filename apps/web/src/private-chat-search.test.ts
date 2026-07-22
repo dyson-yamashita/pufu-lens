@@ -631,7 +631,7 @@ test('runPrivateChatSearchRetrieval forwards parsed period to timelineSearch', a
   });
 });
 
-test('createMastraPrivateChatSearchWorkflowStreamBody includes deterministic nowIso', () => {
+test('createMastraPrivateChatSearchWorkflowStreamBody propagates default and explicit limits', () => {
   assert.deepEqual(
     createMastraPrivateChatSearchWorkflowStreamBody({
       graphName: 'graph-a',
@@ -652,6 +652,18 @@ test('createMastraPrivateChatSearchWorkflowStreamBody includes deterministic now
         question: '2025年の取り組みについて',
       },
     },
+  );
+  assert.equal(
+    createMastraPrivateChatSearchWorkflowStreamBody({
+      graphName: 'graph-a',
+      history: [],
+      hybridSearchDocumentLimit: 9,
+      nowIso: TEST_NOW_ISO,
+      projectId: 'project-a',
+      projectSlug: 'sample-a',
+      question: '2025年の取り組みについて',
+    }).inputData.hybridSearchDocumentLimit,
+    9,
   );
 });
 

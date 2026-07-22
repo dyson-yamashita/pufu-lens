@@ -19,10 +19,16 @@ const validAccessRow = {
 };
 
 const validAccess = {
-  ...validAccessRow,
+  appRole: validAccessRow.appRole,
+  description: validAccessRow.description,
+  graphName: validAccessRow.graphName,
   hybridSearchDocumentLimit: 7,
+  id: validAccessRow.id,
+  name: validAccessRow.name,
+  projectRole: validAccessRow.projectRole,
+  slug: validAccessRow.slug,
+  visibility: validAccessRow.visibility,
 };
-delete (validAccess as { settings?: unknown }).settings;
 
 assert.deepEqual(parseProjectMemberAccess(validAccessRow), validAccess);
 assert.equal(projectAccessSatisfiesRole(parseProjectMemberAccess(validAccessRow), 'member'), true);

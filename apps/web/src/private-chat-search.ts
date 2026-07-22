@@ -902,7 +902,8 @@ export interface PrivateChatSearchWorkflowState {
  * `timelineTopicQuery` are set. Otherwise `timelineTopicQuery` keeps the original question so
  * non-period timeline questions retain repository keyword normalization.
  *
- * @param input - Project scope, graph name, question, and workflow `nowIso`
+ * @param input - Project scope, graph name, question, workflow `nowIso`, and a validated final
+ * source-selection limit from 1 to 20; `hybridSearchDocumentLimit` defaults to 5 when omitted
  * @returns Prepared workflow state before classification and retrieval
  */
 export function runPrivateChatPreparingStep(input: {
