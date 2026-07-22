@@ -67,6 +67,15 @@ function ageDocumentVertex(documentId: string): string {
 assert.equal(inferChatEditingMetadata('このスレッドを要約して').inferredMode, 'summary');
 assert.equal(inferChatEditingMetadata('停滞要因とリスクは?').inferredMode, 'risk_scan');
 assert.equal(inferChatEditingMetadata('意思決定の経緯を時系列で教えて').inferredMode, 'timeline');
+const CHAT_PERIOD_NOW_ISO = '2026-07-22T00:30:00.000Z';
+assert.equal(
+  inferChatEditingMetadata('2025年の取り組みについて', CHAT_PERIOD_NOW_ISO).inferredMode,
+  'timeline',
+);
+assert.equal(
+  inferChatEditingMetadata('1年間の取り組みについて教えて', CHAT_PERIOD_NOW_ISO).inferredMode,
+  'timeline',
+);
 assert.equal(inferChatEditingMetadata('次に確認すべきアクションは?').inferredMode, 'next_actions');
 assert.equal(inferChatEditingMetadata('全体像と関係を構造化して').inferredMode, 'structure');
 assert.equal(inferChatEditingMetadata('仕様変更は?').inferredMode, 'default');
@@ -1212,6 +1221,78 @@ await assert.rejects(
   assert.match(sqlTexts[0] ?? '', /vector_distance/);
   assert.doesNotMatch(sqlTexts[0] ?? '', /hybrid_score/);
   assert.ok(boundValues[0]?.includes('gemini-test'));
+}
+
+{
+  const sqlTexts: string[] = [];
+  const boundValues: unknown[][] = [];
+  let sqlCallCount = 0;
+  const sql = ((strings: TemplateStringsArray, ...values: unknown[]) => {
+    sqlCallCount += 1;
+    sqlTexts.push(strings.join('?'));
+    boundValues.push(values);
+    return Promise.resolve([]);
+  }) as never;
+  const repository = createPostgresChatRepository(sql);
+  const period = {
+    endAt: '2025-12-31T15:00:00.000Z',
+    startAt: '2024-12-31T15:00:00.000Z',
+  };
+  await repository.timelineSearch({
+    limit: 10,
+    period,
+    projectId: 'project-a',
+    query: '',
+  });
+  assert.equal(sqlCallCount, 1);
+  const periodOnlySql = sqlTexts[0] ?? '';
+  assert.match(periodOnlySql, /period_candidates/);
+  assert.match(periodOnlySql, /chronological_rank/);
+  assert.match(periodOnlySql, /generate_series/);
+  assert.match(periodOnlySql, /target_ranks/);
+  const periodCandidatesCte =
+    periodOnlySql.match(/period_candidates AS \(([\s\S]*?)\)\s*,\s*ranked/)?.[1] ?? '';
+  assert.notEqual(periodCandidatesCte, '');
+  assert.doesNotMatch(periodCandidatesCte, /document_chunks/);
+  assert.match(periodOnlySql, /LEFT JOIN LATERAL[\s\S]*document_chunks/);
+  assert.match(periodOnlySql, /coalesce\(ranked\.summary, dc\.content/);
+  assert.match(periodOnlySql, /d\.occurred_at >=/);
+  assert.match(periodOnlySql, /d\.occurred_at </);
+  assert.doesNotMatch(periodOnlySql, /ILIKE ANY/);
+  assert.ok(boundValues[0]?.includes(period.startAt));
+  assert.ok(boundValues[0]?.includes(period.endAt));
+
+  sqlTexts.length = 0;
+  boundValues.length = 0;
+  sqlCallCount = 0;
+  await repository.timelineSearch({
+    limit: 10,
+    projectId: 'project-a',
+    query: '',
+  });
+  assert.equal(sqlCallCount, 1);
+  const noPeriodSql = sqlTexts[0] ?? '';
+  assert.doesNotMatch(noPeriodSql, /period_candidates/);
+  assert.doesNotMatch(noPeriodSql, /target_ranks/);
+  assert.doesNotMatch(noPeriodSql, /generate_series/);
+  assert.match(noPeriodSql, /ORDER BY d\.occurred_at ASC/);
+  assert.match(noPeriodSql, /LIMIT/);
+
+  sqlCallCount = 0;
+  await assert.rejects(
+    () =>
+      repository.timelineSearch({
+        limit: 10,
+        period: {
+          endAt: '2025-01-01T00:00:00.000Z',
+          startAt: '2026-01-01T00:00:00.000Z',
+        },
+        projectId: 'project-a',
+        query: '',
+      }),
+    /startAt < endAt/,
+  );
+  assert.equal(sqlCallCount, 0);
 }
 
 const failingGeminiProvider = createGeminiChatProvider({

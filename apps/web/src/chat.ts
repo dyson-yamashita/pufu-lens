@@ -2,6 +2,11 @@ import { createHash } from 'node:crypto';
 import type postgres from 'postgres';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
+import {
+  type ChatSearchPeriod,
+  hasChatSearchPeriod,
+  validateChatSearchPeriod,
+} from './chat-search-period.ts';
 import { jsonParameter } from './postgres-json.ts';
 import {
   type AgentRawReadViewEnvelope,
@@ -12,6 +17,19 @@ import type { PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 
 /** Maximum number of deduplicated evidence sources returned by a chat response. */
 export const MAX_CHAT_RESPONSE_SOURCES = 10;
+
+export type { ChatSearchPeriod } from './chat-search-period.ts';
+export {
+  CHAT_SEARCH_CALENDAR_YEAR_MAX,
+  CHAT_SEARCH_CALENDAR_YEAR_MIN,
+  CHAT_SEARCH_ISO_INSTANT_PATTERN,
+  CHAT_SEARCH_PERIOD_MAX_SPAN_DAYS,
+  hasChatSearchPeriod,
+  isChatSearchIsoInstant,
+  normalizeTimelineTopicQuery,
+  parseChatSearchPeriod,
+  validateChatSearchPeriod,
+} from './chat-search-period.ts';
 
 export type ChatToolName =
   | 'document-fetch'
@@ -216,7 +234,12 @@ export interface ChatRepository {
     projectId: string;
   }): Promise<ChatSource[]>;
   rawReadViewFetch(input: RawReadViewRequest): Promise<AgentRawReadViewEnvelope | undefined>;
-  timelineSearch(input: { limit: number; projectId: string; query: string }): Promise<ChatSource[]>;
+  timelineSearch(input: {
+    limit: number;
+    period?: ChatSearchPeriod;
+    projectId: string;
+    query: string;
+  }): Promise<ChatSource[]>;
   vectorSearch(input: {
     embedding: readonly number[];
     embeddingModel: string;
@@ -399,7 +422,21 @@ export function shouldUseGraphRelatedSource(input: {
   return Boolean((title && title !== 'Untitled') || snippet);
 }
 
-export function inferChatEditingMetadata(question: string): ChatEditingMetadata {
+/**
+ * Infers private-chat editing metadata from the question text.
+ *
+ * Recognized deterministic period phrases force the timeline mode even when no timeline keyword matches.
+ *
+ * @param question - Raw user question text
+ * @param nowIso - Optional explicit current instant for period recognition; defaults to `new Date().toISOString()`
+ */
+export function inferChatEditingMetadata(
+  question: string,
+  nowIso: string = new Date().toISOString(),
+): ChatEditingMetadata {
+  if (hasChatSearchPeriod(question, nowIso)) {
+    return editingMetadataFromMode('timeline', 'high');
+  }
   const normalized = normalizeSpaces(question).toLowerCase();
   const matches = (Object.keys(EDITING_MODE_DEFINITIONS) as ChatEditingMode[])
     .filter((mode) => mode !== 'default')
@@ -1330,11 +1367,93 @@ export function createPostgresChatRepository(
       `) as readonly unknown[];
       return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
     },
-    async timelineSearch({ limit, projectId, query }) {
+    async timelineSearch({ limit, period, projectId, query }) {
+      if (period) {
+        validateChatSearchPeriod(period);
+      }
       const queryText = timelineSearchQueryText(query);
       const keywordQuery = normalizeHybridKeywordQuery(queryText);
       const searchPatterns = timelineSearchPatterns(query);
+      const periodStartAt = period?.startAt ?? null;
+      const periodEndAt = period?.endAt ?? null;
       if (keywordQuery.length === 0 && searchPatterns.length === 0) {
+        if (periodStartAt !== null) {
+          const rows = (await sql`
+            WITH period_candidates AS (
+              SELECT
+                d.id,
+                d.project_id,
+                d.raw_document_id,
+                d.doc_type,
+                d.title,
+                d.canonical_uri,
+                d.summary,
+                d.occurred_at,
+                d.updated_at
+              FROM public.documents d
+              WHERE d.project_id = ${projectId}
+                AND d.occurred_at >= ${periodStartAt}::timestamptz
+                AND d.occurred_at < ${periodEndAt}::timestamptz
+            ),
+            ranked AS (
+              SELECT
+                period_candidates.*,
+                row_number() OVER (
+                  ORDER BY
+                    period_candidates.occurred_at ASC NULLS LAST,
+                    period_candidates.updated_at ASC,
+                    period_candidates.id ASC
+                ) AS chronological_rank,
+                count(*) OVER () AS total_count
+              FROM period_candidates
+            ),
+            bounds AS (
+              SELECT coalesce(max(ranked.total_count), 0) AS total_count
+              FROM ranked
+            ),
+            target_ranks AS (
+              SELECT DISTINCT
+                CASE
+                  WHEN ${limit} = 1 THEN 1
+                  WHEN bounds.total_count <= ${limit} THEN series.idx
+                  ELSE 1 + floor(
+                    (series.idx - 1)::numeric * (bounds.total_count - 1) / (${limit} - 1)
+                  )::int
+                END AS target_rank
+              FROM bounds
+              CROSS JOIN generate_series(
+                1,
+                CASE
+                  WHEN bounds.total_count = 0 THEN 0
+                  ELSE least(${limit}, bounds.total_count)
+                END
+              ) AS series(idx)
+            )
+            SELECT
+              ranked.id::text AS document_id,
+              ranked.raw_document_id::text AS raw_document_id,
+              ranked.doc_type,
+              coalesce(ranked.title, 'Untitled') AS title,
+              coalesce(ranked.canonical_uri, '') AS canonical_uri,
+              left(coalesce(ranked.summary, dc.content, ''), 700) AS snippet
+            FROM ranked
+            INNER JOIN target_ranks
+              ON ranked.chronological_rank = target_ranks.target_rank
+            LEFT JOIN LATERAL (
+              SELECT content
+              FROM public.document_chunks
+              WHERE project_id = ranked.project_id
+                AND document_id = ranked.id
+              ORDER BY chunk_index ASC
+              LIMIT 1
+            ) dc ON true
+            ORDER BY
+              ranked.occurred_at ASC NULLS LAST,
+              ranked.updated_at ASC,
+              ranked.id ASC
+          `) as readonly unknown[];
+          return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
+        }
         const rows = (await sql`
           SELECT
             d.id::text AS document_id,
@@ -1378,6 +1497,13 @@ export function createPostgresChatRepository(
           ) dc ON true
           WHERE d.project_id = ${projectId}
             AND (
+              ${periodStartAt}::timestamptz IS NULL
+              OR (
+                d.occurred_at >= ${periodStartAt}::timestamptz
+                AND d.occurred_at < ${periodEndAt}::timestamptz
+              )
+            )
+            AND (
               d.title ILIKE ANY (${searchPatterns})
               OR d.summary ILIKE ANY (${searchPatterns})
             )
@@ -1404,6 +1530,13 @@ export function createPostgresChatRepository(
           LIMIT 1
         ) dc ON true
         WHERE d.project_id = ${projectId}
+          AND (
+            ${periodStartAt}::timestamptz IS NULL
+            OR (
+              d.occurred_at >= ${periodStartAt}::timestamptz
+              AND d.occurred_at < ${periodEndAt}::timestamptz
+            )
+          )
           AND (
             d.title ILIKE ANY (${searchPatterns})
             OR d.summary ILIKE ANY (${searchPatterns})

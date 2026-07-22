@@ -7,7 +7,9 @@ import type { ChatEmbeddingProvider, ChatRepository, ChatToolCall } from '@pufu-
 import {
   embedPrivateChatQueries,
   inferChatEditingMetadata,
+  isChatSearchIsoInstant,
   publicChatSources,
+  validateChatSearchPeriod,
 } from '@pufu-lens/web/chat';
 import { mastraGenerateToChatResponse, mergeHybridChatResponse } from '@pufu-lens/web/mastra-chat';
 import {
@@ -206,6 +208,45 @@ const chatSourceSchema = z.object({
 const chatSourceListSchema = z.object({
   sources: z.array(chatSourceSchema),
 });
+
+const chatSearchIsoInstantSchema = z.iso
+  .datetime({ offset: true })
+  .refine((value) => isChatSearchIsoInstant(value), {
+    message: 'Instant must use YYYY-MM-DDTHH:mm:ss with Z or ±HH:mm.',
+  });
+
+const chatSearchPeriodSchema = z
+  .object({
+    endAt: chatSearchIsoInstantSchema,
+    startAt: chatSearchIsoInstantSchema,
+  })
+  .strict()
+  .superRefine((period, context) => {
+    try {
+      validateChatSearchPeriod(period);
+    } catch (error) {
+      context.addIssue({
+        code: 'custom',
+        message: error instanceof Error ? error.message : 'Invalid chat search period.',
+      });
+    }
+  });
+
+const timelineSearchInputSchema = z
+  .object({
+    limit: z.number().int().min(1).max(10),
+    period: chatSearchPeriodSchema.optional(),
+    query: z.string().trim(),
+  })
+  .superRefine((input, context) => {
+    if (!input.query && !input.period) {
+      context.addIssue({
+        code: 'custom',
+        message: 'timeline-search requires query text or a validated period.',
+        path: ['query'],
+      });
+    }
+  });
 
 const publicChatSourceSchema = z.object({
   label: z.string(),
@@ -584,20 +625,23 @@ export function createProjectChatTools(
     timelineSearch: createTool({
       id: mastraToolIds.timelineSearch,
       description:
-        'Search document metadata and short snippets for timeline questions in the active project. Results are ordered chronologically by documents.occurred_at, then updated_at.',
-      inputSchema: z.object({
-        limit: z.number().int().min(1).max(10),
-        query: z.string().trim().min(1),
-      }),
+        'Search document metadata and short snippets for timeline questions in the active project. Results are ordered chronologically by documents.occurred_at, then updated_at. An optional period filters documents.occurred_at with an end-exclusive ISO range.',
+      inputSchema: timelineSearchInputSchema,
       outputSchema: chatSourceListSchema,
       requestContextSchema: mastraProjectContextSchema,
-      execute: async ({ limit, query }, context) => ({
-        sources: await repository.timelineSearch({
-          limit,
-          projectId: projectIdFromContext(context),
-          query,
-        }),
-      }),
+      execute: async ({ limit, period, query }, context) => {
+        if (period) {
+          validateChatSearchPeriod(period);
+        }
+        return {
+          sources: await repository.timelineSearch({
+            limit,
+            ...(period ? { period } : {}),
+            projectId: projectIdFromContext(context),
+            query,
+          }),
+        };
+      },
     }),
     vectorSearch: createTool({
       id: mastraToolIds.vectorSearch,
@@ -872,6 +916,18 @@ const privateChatHistoryMessageSchema = z.object({
   role: z.enum(['assistant', 'user']),
 });
 
+/**
+ * Validates input to the shared `private-chat-search` workflow.
+ */
+export const privateChatSearchWorkflowInputSchema = z.object({
+  graphName: z.string().nullable(),
+  history: z.array(privateChatHistoryMessageSchema).default([]),
+  nowIso: chatSearchIsoInstantSchema,
+  projectId: z.string().min(1),
+  projectSlug: z.string().min(1),
+  question: z.string().min(1),
+});
+
 const privateChatToolCallSchema = z.object({
   name: z.enum([
     'document-fetch',
@@ -932,13 +988,7 @@ export function createPrivateChatSearchWorkflow(input: {
   readonly projectChatAgent: Agent;
   readonly queryPlannerAgent: Agent;
 }) {
-  const inputSchema = z.object({
-    graphName: z.string().nullable(),
-    history: z.array(privateChatHistoryMessageSchema).default([]),
-    projectId: z.string().min(1),
-    projectSlug: z.string().min(1),
-    question: z.string().min(1),
-  });
+  const inputSchema = privateChatSearchWorkflowInputSchema;
   const queryPlanSchema = z
     .object({
       expandedQueries: z
@@ -967,14 +1017,17 @@ export function createPrivateChatSearchWorkflow(input: {
       graphSources: z.array(chatSourceSchema),
       history: z.array(privateChatHistoryMessageSchema),
       mergedVectorSources: z.array(chatSourceSchema),
+      nowIso: chatSearchIsoInstantSchema,
       plan: queryPlanSchema,
       projectId: z.string().min(1),
       projectSlug: z.string().min(1),
       question: z.string().min(1),
       retrievalContext: z.string(),
       scoreQualifiedVectorSources: z.array(chatSourceSchema),
+      searchPeriod: chatSearchPeriodSchema.optional(),
       sources: z.array(chatSourceSchema),
       timelineSources: z.array(chatSourceSchema),
+      timelineTopicQuery: z.string(),
       toolCalls: z.array(privateChatToolCallSchema),
     })
     .strict();
@@ -995,6 +1048,7 @@ export function createPrivateChatSearchWorkflow(input: {
     execute: async ({ inputData }) => ({
       ...runPrivateChatPreparingStep({
         graphName: inputData.graphName,
+        nowIso: inputData.nowIso,
         projectId: inputData.projectId,
         question: inputData.question,
       }),
@@ -1139,7 +1193,7 @@ export function createPrivateChatSearchWorkflow(input: {
     inputSchema: retrievalOutputSchema,
     outputSchema: privateChatWorkflowOutputSchema,
     execute: async ({ inputData }) => {
-      const editing = inferChatEditingMetadata(inputData.question);
+      const editing = inferChatEditingMetadata(inputData.question, inputData.nowIso);
       const requestContext = new RequestContext<Record<string, unknown>>();
       requestContext.set('projectId', inputData.projectId);
       requestContext.set('graphName', inputData.graphName);

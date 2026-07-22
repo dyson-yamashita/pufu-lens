@@ -49,9 +49,16 @@ export function mastraPrivateChatSearchStreamUrl(
   return `${mastraApiBase(env)}/api/workflows/${PRIVATE_CHAT_SEARCH_WORKFLOW_ID}/stream?runId=${encodeURIComponent(runId)}`;
 }
 
+/**
+ * Builds the Mastra `private-chat-search` workflow stream request body.
+ *
+ * @param input - Workflow scope, history, question, and explicit `nowIso` current instant
+ * @returns JSON body containing `inputData` for the workflow stream endpoint
+ */
 export function createMastraPrivateChatSearchWorkflowStreamBody(input: {
   readonly graphName: string | null;
   readonly history: readonly MastraChatHistoryMessage[];
+  readonly nowIso: string;
   readonly projectId: string;
   readonly projectSlug: string;
   readonly question: string;
@@ -60,6 +67,7 @@ export function createMastraPrivateChatSearchWorkflowStreamBody(input: {
     inputData: {
       graphName: input.graphName,
       history: input.history,
+      nowIso: input.nowIso,
       projectId: input.projectId,
       projectSlug: input.projectSlug,
       question: input.question,
@@ -234,11 +242,19 @@ export async function consumeMastraWorkflowStream(
   return finalResponse;
 }
 
+/**
+ * Runs the shared `private-chat-search` Mastra workflow for private and public chat callers.
+ *
+ * @param input - Project scope, question, optional history, and optional deterministic `nowIso`
+ * @returns The answered chat response extracted from the workflow stream
+ * @throws PrivateChatWorkflowInvocationError When workflow creation, streaming, or parsing fails
+ */
 export async function runPrivateChatSearchViaMastraWorkflow(input: {
   readonly env?: MastraWorkflowEnv;
   readonly fetchImpl?: typeof fetch;
   readonly graphName: string | null;
   readonly history: readonly MastraChatHistoryMessage[];
+  readonly nowIso?: string;
   readonly onStage?: (stage: PrivateChatSearchStageId) => void;
   readonly projectId: string;
   readonly projectSlug: string;
@@ -247,6 +263,7 @@ export async function runPrivateChatSearchViaMastraWorkflow(input: {
 }): Promise<ChatResponse> {
   const env = input.env ?? process.env;
   const fetchImpl = input.fetchImpl ?? fetch;
+  const nowIso = input.nowIso ?? new Date().toISOString();
   const createRunUrl = mastraPrivateChatSearchCreateRunUrl(env);
   const createRunResponse = await fetchImpl(createRunUrl, {
     body: JSON.stringify({}),
@@ -269,6 +286,7 @@ export async function runPrivateChatSearchViaMastraWorkflow(input: {
       createMastraPrivateChatSearchWorkflowStreamBody({
         graphName: input.graphName,
         history: input.history,
+        nowIso,
         projectId: input.projectId,
         projectSlug: input.projectSlug,
         question: input.question,
