@@ -1894,6 +1894,17 @@ export interface ChatSourceRow {
   readonly keyword_rank?: number | null;
 }
 
+/**
+ * Runtime-validates an unknown SQL row into a typed chat source row.
+ *
+ * Required string fields and optional score fields are validated. `occurred_at` may be
+ * omitted, `null`, or a normalized UTC ISO-8601 string from SQL; values that are neither
+ * `null` nor a string are rejected.
+ *
+ * @param value - Untrusted row value returned from a chat source SQL query
+ * @returns A validated `ChatSourceRow` with optional score and timestamp fields
+ * @throws When `value` is not a record or any field fails validation
+ */
 export function parseChatSourceRow(value: unknown): ChatSourceRow {
   if (!isRecord(value)) {
     throw new Error('Invalid chat source row.');
