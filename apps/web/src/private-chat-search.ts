@@ -827,10 +827,15 @@ export function privateChatRetrievalConfidence(input: {
 /**
  * Serializes untrusted retrieval evidence with a score-derived confidence instruction.
  *
+ * Each source object includes `occurredAt` only when the field is defined on the input;
+ * an explicit `null` value is preserved. When `confidence` is omitted, it defaults to
+ * `none` for an empty `sources` list, otherwise `weak`.
+ *
  * @param sources - Final merged sources exposed to synthesis (may include graph / timeline)
  * @param confidence - Score-derived label written to `retrievalConfidence`; defaults to
  *   `none` when `sources` is empty, otherwise `weak`
- * @returns JSON text containing `retrievalConfidence`, an instruction `note`, and sources
+ * @returns JSON text containing `retrievalConfidence`, an instruction `note`, and sources,
+ *   with `<` and `>` Unicode-escaped so the payload remains safe untrusted content
  */
 export function formatPrivateChatRetrievalContext(
   sources: readonly ChatSource[],
@@ -849,6 +854,7 @@ export function formatPrivateChatRetrievalContext(
         canonicalUri: source.canonicalUri || null,
         documentId: source.documentId,
         docType: source.docType,
+        ...(source.occurredAt === undefined ? {} : { occurredAt: source.occurredAt }),
         rawDocumentId: source.rawDocumentId,
         snippet: source.snippet ?? null,
         title: source.title,

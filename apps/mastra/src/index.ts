@@ -198,6 +198,7 @@ const chatSourceSchema = z.object({
   docType: z.string(),
   fusedScore: z.number().min(0).max(1).optional(),
   keywordRank: z.number().int().positive().optional(),
+  occurredAt: z.string().nullable().optional(),
   rawDocumentId: z.string(),
   snippet: z.string().optional(),
   title: z.string(),

@@ -47,6 +47,11 @@ export interface ChatSource {
   readonly docType: string;
   /** Retrieval-only RRF score normalized to 0..1. It is never persisted or returned by chat response APIs. */
   readonly fusedScore?: number;
+  /**
+   * Normalized UTC ISO-8601 document occurrence time (`...Z`) used during synthesis.
+   * `null` means the time is unknown; `undefined` means the retrieval path did not project it.
+   */
+  readonly occurredAt?: string | null;
   readonly rawDocumentId: string;
   readonly snippet?: string;
   readonly title: string;
@@ -1435,6 +1440,13 @@ export function createPostgresChatRepository(
               ranked.doc_type,
               coalesce(ranked.title, 'Untitled') AS title,
               coalesce(ranked.canonical_uri, '') AS canonical_uri,
+              CASE
+                WHEN ranked.occurred_at IS NULL THEN NULL
+                ELSE to_char(
+                  ranked.occurred_at AT TIME ZONE 'UTC',
+                  'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+                )
+              END AS occurred_at,
               left(coalesce(ranked.summary, dc.content, ''), 700) AS snippet
             FROM ranked
             INNER JOIN target_ranks
@@ -1461,6 +1473,10 @@ export function createPostgresChatRepository(
             d.doc_type,
             coalesce(d.title, 'Untitled') AS title,
             coalesce(d.canonical_uri, '') AS canonical_uri,
+            CASE
+              WHEN d.occurred_at IS NULL THEN NULL
+              ELSE to_char(d.occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+            END AS occurred_at,
             left(coalesce(d.summary, dc.content, ''), 700) AS snippet
           FROM public.documents d
           LEFT JOIN LATERAL (
@@ -1485,6 +1501,10 @@ export function createPostgresChatRepository(
             d.doc_type,
             coalesce(d.title, 'Untitled') AS title,
             coalesce(d.canonical_uri, '') AS canonical_uri,
+            CASE
+              WHEN d.occurred_at IS NULL THEN NULL
+              ELSE to_char(d.occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+            END AS occurred_at,
             left(coalesce(d.summary, dc.content, ''), 700) AS snippet
           FROM public.documents d
           LEFT JOIN LATERAL (
@@ -1519,6 +1539,10 @@ export function createPostgresChatRepository(
           d.doc_type,
           coalesce(d.title, 'Untitled') AS title,
           coalesce(d.canonical_uri, '') AS canonical_uri,
+          CASE
+            WHEN d.occurred_at IS NULL THEN NULL
+            ELSE to_char(d.occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+          END AS occurred_at,
           left(coalesce(d.summary, dc.content, ''), 700) AS snippet
         FROM public.documents d
         LEFT JOIN LATERAL (
@@ -1860,6 +1884,7 @@ export interface ChatSourceRow {
   readonly canonical_uri: string;
   readonly document_id: string;
   readonly doc_type: string;
+  readonly occurred_at?: string | null;
   readonly raw_document_id: string;
   readonly snippet?: string | null;
   readonly title: string;
@@ -1869,6 +1894,17 @@ export interface ChatSourceRow {
   readonly keyword_rank?: number | null;
 }
 
+/**
+ * Runtime-validates an unknown SQL row into a typed chat source row.
+ *
+ * Required string fields and optional score fields are validated. `occurred_at` may be
+ * omitted, `null`, or a normalized UTC ISO-8601 string from SQL; values that are neither
+ * `null` nor a string are rejected.
+ *
+ * @param value - Untrusted row value returned from a chat source SQL query
+ * @returns A validated `ChatSourceRow` with optional score and timestamp fields
+ * @throws When `value` is not a record or any field fails validation
+ */
 export function parseChatSourceRow(value: unknown): ChatSourceRow {
   if (!isRecord(value)) {
     throw new Error('Invalid chat source row.');
@@ -1877,6 +1913,7 @@ export function parseChatSourceRow(value: unknown): ChatSourceRow {
     canonical_uri,
     document_id,
     doc_type,
+    occurred_at,
     raw_document_id,
     snippet,
     title,
@@ -1895,6 +1932,9 @@ export function parseChatSourceRow(value: unknown): ChatSourceRow {
     canonical_uri: parseRequiredString(canonical_uri, 'canonical_uri'),
     document_id: parseRequiredString(document_id, 'document_id'),
     doc_type: parseRequiredString(doc_type, 'doc_type'),
+    ...(occurred_at === undefined
+      ? {}
+      : { occurred_at: parseOptionalNullableString(occurred_at, 'occurred_at') }),
     raw_document_id: parseRequiredString(raw_document_id, 'raw_document_id'),
     snippet: parseOptionalNullableString(snippet, 'snippet'),
     title: parseRequiredString(title, 'title'),
@@ -2144,6 +2184,7 @@ function sourceFromRow(row: ChatSourceRow): ChatSource {
     documentId: row.document_id,
     docType: row.doc_type,
     fusedScore: row.fused_score ?? undefined,
+    ...(row.occurred_at === undefined ? {} : { occurredAt: row.occurred_at }),
     rawDocumentId: row.raw_document_id,
     snippet: row.snippet?.trim() || undefined,
     title: row.title,
@@ -2224,6 +2265,10 @@ async function fetchChatSourcesByDocumentIds(
       d.doc_type,
       coalesce(d.title, 'Untitled') AS title,
       coalesce(d.canonical_uri, '') AS canonical_uri,
+      CASE
+        WHEN d.occurred_at IS NULL THEN NULL
+        ELSE to_char(d.occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+      END AS occurred_at,
       left(coalesce(d.summary, dc.content, ''), 700) AS snippet
     FROM public.documents d
     LEFT JOIN LATERAL (

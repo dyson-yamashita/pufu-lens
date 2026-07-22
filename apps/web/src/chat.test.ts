@@ -214,6 +214,51 @@ assert.throws(
     }),
   /Invalid chat source field: vector_rank/,
 );
+assert.deepEqual(
+  parseChatSourceRow({
+    canonical_uri: 'https://example.com/spec',
+    document_id: 'doc-a',
+    doc_type: 'web_page',
+    occurred_at: '2026-01-15T09:00:00.000Z',
+    raw_document_id: 'raw-a',
+    snippet: null,
+    title: 'Spec Update',
+  }),
+  {
+    canonical_uri: 'https://example.com/spec',
+    document_id: 'doc-a',
+    doc_type: 'web_page',
+    occurred_at: '2026-01-15T09:00:00.000Z',
+    raw_document_id: 'raw-a',
+    snippet: null,
+    title: 'Spec Update',
+  },
+);
+assert.deepEqual(
+  parseChatSourceRow({
+    canonical_uri: 'https://example.com/spec',
+    document_id: 'doc-a',
+    doc_type: 'web_page',
+    occurred_at: null,
+    raw_document_id: 'raw-a',
+    snippet: null,
+    title: 'Spec Update',
+  }).occurred_at,
+  null,
+);
+assert.throws(
+  () =>
+    parseChatSourceRow({
+      canonical_uri: 'https://example.com/spec',
+      document_id: 'doc-a',
+      doc_type: 'web_page',
+      occurred_at: 2026,
+      raw_document_id: 'raw-a',
+      snippet: null,
+      title: 'Spec Update',
+    }),
+  /Invalid chat source row field: occurred_at/,
+);
 
 function createRepository(): ChatRepository & {
   readonly rawFetchInputs: Array<{ maxBytes: number }>;
@@ -710,7 +755,14 @@ assert.deepEqual(
 );
 assert.deepEqual(
   privateChatSourcesForResponse([
-    { ...sampleSource, fusedScore: 0.03, keywordRank: 2, vectorDistance: 0.21, vectorRank: 1 },
+    {
+      ...sampleSource,
+      fusedScore: 0.03,
+      keywordRank: 2,
+      occurredAt: '2026-01-15T09:00:00.000Z',
+      vectorDistance: 0.21,
+      vectorRank: 1,
+    },
   ]),
   [sampleSource],
 );
@@ -1258,6 +1310,10 @@ await assert.rejects(
   assert.match(periodOnlySql, /coalesce\(ranked\.summary, dc\.content/);
   assert.match(periodOnlySql, /d\.occurred_at >=/);
   assert.match(periodOnlySql, /d\.occurred_at </);
+  assert.match(periodOnlySql, /WHEN ranked\.occurred_at IS NULL THEN NULL/);
+  assert.match(periodOnlySql, /to_char\([\s\S]*ranked\.occurred_at AT TIME ZONE 'UTC'/);
+  assert.match(periodOnlySql, /'YYYY-MM-DD"T"HH24:MI:SS\.MS"Z"'/);
+  assert.doesNotMatch(periodOnlySql, /ranked\.occurred_at::text AS occurred_at/);
   assert.doesNotMatch(periodOnlySql, /ILIKE ANY/);
   assert.ok(boundValues[0]?.includes(period.startAt));
   assert.ok(boundValues[0]?.includes(period.endAt));
@@ -1293,6 +1349,39 @@ await assert.rejects(
     /startAt < endAt/,
   );
   assert.equal(sqlCallCount, 0);
+}
+
+{
+  const sqlTexts: string[] = [];
+  const sql = ((strings: TemplateStringsArray) => {
+    sqlTexts.push(strings.join('?'));
+    return Promise.resolve([
+      {
+        canonical_uri: 'https://example.test/doc',
+        document_id: 'doc-detail',
+        doc_type: 'web_page',
+        occurred_at: '2026-03-01T00:00:00.000Z',
+        raw_document_id: 'raw-detail',
+        snippet: 'detail snippet',
+        title: 'Detail Source',
+      },
+    ]);
+  }) as never;
+  const repository = createPostgresChatRepository(sql);
+  const sources = await repository.documentFetch({
+    documentIds: ['doc-detail'],
+    projectId: 'project-a',
+  });
+  assert.equal(sources[0]?.occurredAt, '2026-03-01T00:00:00.000Z');
+  assert.ok(
+    sqlTexts.some(
+      (text) =>
+        /WHEN d\.occurred_at IS NULL THEN NULL/.test(text) &&
+        /to_char\([\s\S]*d\.occurred_at AT TIME ZONE 'UTC'/.test(text) &&
+        /'YYYY-MM-DD"T"HH24:MI:SS\.MS"Z"'/.test(text) &&
+        !/d\.occurred_at::text AS occurred_at/.test(text),
+    ),
+  );
 }
 
 const failingGeminiProvider = createGeminiChatProvider({
@@ -1339,6 +1428,7 @@ assert.deepEqual(
   ['public-report-fetch', 'public-context-fetch'],
 );
 assert.equal(publicChat.sources[0]?.publicSourceId, 'src_activity_001');
+assert.equal('occurredAt' in (publicChat.sources[0] ?? {}), false);
 
 assert.equal(
   mastraPublicReportChatGenerateUrl({ MASTRA_SERVER_URL: 'http://localhost:4111/' }),
