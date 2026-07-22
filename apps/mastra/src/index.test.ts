@@ -206,6 +206,9 @@ function createReportRepository(): ReportRepository & {
     async listReports() {
       return [];
     },
+    async readLatestScheduledReport() {
+      return undefined;
+    },
     async readReportMetadata() {
       return undefined;
     },

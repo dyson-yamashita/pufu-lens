@@ -13,6 +13,12 @@ import type { AgentRawReadViewEnvelope, RawReadViewRepository } from './raw-read
 import { editReportMaterials, REPORT_CANDIDATE_LIMIT } from './report-materials.ts';
 import { buildPreviousReportProviderContext } from './report-previous-context.ts';
 import { loadTrustedPreviousScheduledReport } from './report-previous-report.ts';
+import {
+  buildExtractiveProjectOverview,
+  normalizeProjectOverview,
+  PROJECT_OVERVIEW_SCHEMA_VERSION,
+  type ProjectOverviewV1,
+} from './report-project-overview.ts';
 import { type ReportGenerationProvider, resolveProviderCountTokens } from './report-provider.ts';
 import { publishGeneratedPublicReport } from './report-publication.ts';
 import { buildTrustedReportRecurrence, hasProviderRecurrenceDelta } from './report-recurrence.ts';
@@ -124,8 +130,10 @@ export async function runGenerateReport(input: {
     signal,
   });
   throwIfReportGenerationAborted(signal);
+  const includeProjectOverview = Boolean(scheduledDispatch);
   const generated = await input.options.provider.generate({
     documents: providerDocuments,
+    includeProjectOverview,
     ...(hasOverflow ? { materialGroups: editedMaterials.materialGroups } : {}),
     period,
     ...(previousReportContext ? { previousReportContext } : {}),
@@ -156,11 +164,15 @@ export async function runGenerateReport(input: {
         templateVersion: customTemplate.templateVersion,
       })
     : undefined;
+  const projectOverview = includeProjectOverview
+    ? resolveGeneratedProjectOverview(generated)
+    : undefined;
   const report: PrivateReportJsonV1 = {
     ...(customSnapshot ? { custom_layout: customSnapshot.snapshot } : {}),
     generated_at: now.toISOString(),
     period,
     project_id: project.id,
+    ...(projectOverview ? { project_overview: projectOverview } : {}),
     pufu_sources: editedMaterials.representativeDocuments.map(pufuSourceFromDocument),
     ...(previousReportContext && hasProviderRecurrenceDelta(generated)
       ? {
@@ -265,6 +277,31 @@ export async function runGenerateReport(input: {
     reportUrl: `/projects/${project.slug}/reports/${report.report_id}`,
     storageUri: put.uri,
   };
+}
+
+function resolveGeneratedProjectOverview(
+  generated: Awaited<ReturnType<ReportGenerationProvider['generate']>>,
+): ProjectOverviewV1 {
+  if (generated.project_overview) {
+    try {
+      return normalizeProjectOverview(generated.project_overview);
+    } catch {
+      // A malformed optional overview must not fail the scheduled report itself.
+      console.warn('[project-overview] provider normalization failed; using extractive fallback');
+    }
+  }
+  try {
+    return buildExtractiveProjectOverview(generated);
+  } catch {
+    // Generated prose can also violate the public-safety contract. Do not log provider content.
+    console.warn('[project-overview] extractive fallback failed; using minimal safe overview');
+    return {
+      assets: [],
+      issues: [],
+      schema_version: PROJECT_OVERVIEW_SCHEMA_VERSION,
+      status_summary: '定期レポートを生成しました。詳細は元レポートを確認してください。',
+    };
+  }
 }
 
 export class ReportGenerationAbortedError extends Error {

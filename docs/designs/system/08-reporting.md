@@ -21,6 +21,23 @@ Private report JSON スキーマ（`schema_version: "v1"`）：
   "period": { "start": "2026-05-25", "end": "2026-05-31" },
   "generated_at": "2026-05-31T17:00:00+09:00",
   "summary": "今週の概要...",
+  "project_overview": {
+    "schema_version": "project-overview-v1",
+    "status_summary": "現在の状況を2〜3文で簡潔に説明する。",
+    "assets": [
+      {
+        "title": "活用できるアセット",
+        "description": "成果物、知識、関係性、能力など今後活用できる蓄積を説明する。"
+      }
+    ],
+    "issues": [
+      {
+        "title": "現在の課題",
+        "description": "未解決事項や不確実性を説明する。",
+        "next_action": "次に取る具体的なアクション"
+      }
+    ]
+  },
   "recurrence": {
     "frequency": "weekly",
     "previous_report_id": "...",
@@ -68,9 +85,11 @@ Private report JSON スキーマ（`schema_version: "v1"`）：
 }
 ```
 
+`project_overview` は `scheduled` / `scheduled_backfill` report で必須とし、手動 report と既存 artifact では省略できる。Gemini は report 本文と同じ生成要求で作成し、extractive provider は report の summary、進行状況、課題から決定論的に補完する。`status_summary` は最大 400 code point、`assets` / `issues` は各最大 5 件、title は最大 120 code point、description と `next_action` は最大 300 code point とする。保存前に email、secret、token、API key、private URL、storage URI、document ID などをマスクまたは拒否し、public project の Overview にそのまま投影できる契約にする。
+
 `recurrence` は同じ project・frequency の前回 `scheduled` / `scheduled_backfill` report を参照した生成だけが持つ optional field である。`frequency` と `previous_report_id` は provider 応答を信用せず、project-scoped metadata の検証結果から組み立てる。差分本文は normalize / redaction 後に `change_summary` を最大 2,000 code point、各 list を最大 10 件・各 400 code point に制限して保存する。手動生成では `recurrence` を付けない。private report 一覧は metadata から手動 / 定期と周期を表示し、`scheduled_backfill` も通常の定期表示にまとめる。private / public report 詳細は取得済み JSON に `recurrence` がある場合だけ共通の差分パネルを描画する。public artifact にはこの field を転記しない。
 
-プ譜ビューは `sections.markdown` の本文をそのまま流し込まず、private report に保存した `pufu_sources`（生成時に参照した data source の title / snippet / doc_type / canonical_uri）を第一入力にして ProjectScoreModel を組み立てる。過去 artifact など `pufu_sources` がない private report では、`sections[].sources` または activity section の source 行を後方互換の入力として扱う。public report でも同じ private report JSON を描画するため、プ譜表示結果は member 向け report と一致する。
+プ譜ビューは `sections.markdown` の本文をそのまま流し込まず、private report に保存した `pufu_sources`（生成時に参照した data source の title / snippet / doc_type / canonical_uri）を第一入力にして ProjectScoreModel を組み立てる。過去 artifact など `pufu_sources` がない private report では、`sections[].sources` または activity section の source 行を後方互換の入力として扱う。client component へ渡す前に document ID、canonical URI、source metadata を除去し、title / snippet / doc type / occurred at と最小 section をマスク済み input に投影する。public report でも同じ投影を使うため、プ譜表示結果は member 向け report と一致する。
 
 Public report JSON / context bundle は公開 artifact 互換や検証用途として生成できるが、現行の public report 表示と public chat の実行経路では private report / private chat の処理を使う。公開可否の判定は DB の project visibility と report `is_public` metadata を正とする。
 
@@ -233,6 +252,8 @@ const generateReportWorkflow = createWorkflow({
 | 検索用埋め込み                         | pgvector `report_chunks`                                              | 過去レポートの意味検索                                    |
 
 `reports.generation_kind` は `manual` / `scheduled` / `scheduled_backfill` を区別する。定期生成では `schedule_frequency`、同じ project・frequency の `previous_scheduled_report_id`、一意な `schedule_period_run_id` を保持し、手動生成ではこれらを `NULL` にする。period run と report の相互参照も project・frequency の一致を DB 制約で保証する。`report_schedule_period_runs` は report の有無にかかわらず period 履歴の正本であり、`reports` metadata だけで retry・skip・通知状態を代用しない。
+
+Project Overview は専用の可変 row を持たず、対象期間終了日、開始日、作成日時の順で最も新しい `scheduled` / `scheduled_backfill` report を正本とする。最新 report に `project_overview` がない場合は、古い report へ遡らず未生成状態を表示する。最新 report を削除した後は、同じ query で次に新しい定期 report が選ばれる。public project の Overview は元 report の `is_public` に依存せず匿名表示できるが、公開用にマスクした Overview とプ譜 input だけを返し、元 report へのリンクは member または `is_public = true` の場合に限る。
 
 定期レポートの calendar 計算は `Asia/Tokyo` の wall clock を正とする。`weekly` は月曜、`monthly` は月初、`annually` は1月1日の次回 slot を UTC instant として保存し、通常対象は永続化済み `next_run_at` から古い順に bounded に列挙する。初回 backfill は、利用可能データ開始日を含む period の開始日から現在進行中 period の前日までを1つの対象期間とし、週次・月次・年次の各 period に分割しない。前回 report は同じ project・frequency かつ対象 period より前に完了した `scheduled` / `scheduled_backfill` だけを選び、手動 report、異周期、project 越境 report は除外する。最古未完了 period run は `succeeded` / `skipped` 以外を period start 昇順で解決し、後続 period を先に処理しない。
 

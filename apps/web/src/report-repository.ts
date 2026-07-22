@@ -84,6 +84,9 @@ export interface ReportRepository {
     readonly projectId: string;
   }): Promise<readonly ReportDocumentRecord[]>;
   listReports(input: { readonly projectId: string }): Promise<readonly ReportListItem[]>;
+  readLatestScheduledReport(input: {
+    readonly projectId: string;
+  }): Promise<ReportListItem | undefined>;
   lookupProject(input: { readonly projectSlug: string }): Promise<ProjectLookupResult | undefined>;
   lookupProjectMember(input: {
     readonly projectSlug: string;
@@ -519,6 +522,30 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
         ORDER BY created_at DESC
       `) as readonly unknown[];
       return rows.map((row) => reportFromRow(parseReportMetadataRow(row)));
+    },
+    async readLatestScheduledReport({ projectId }) {
+      const rows = (await sql`
+        SELECT
+          id::text,
+          title,
+          coalesce(summary, '') AS summary,
+          storage_uri,
+          schema_version,
+          lower(period)::text AS period_start,
+          (upper(period) - 1)::text AS period_end,
+          is_public,
+          generation_kind,
+          schedule_frequency,
+          previous_scheduled_report_id::text,
+          schedule_period_run_id::text,
+          created_at
+        FROM public.reports
+        WHERE project_id = ${projectId}
+          AND generation_kind IN ('scheduled', 'scheduled_backfill')
+        ORDER BY upper(period) DESC, lower(period) DESC, created_at DESC, id
+        LIMIT 1
+      `) as readonly unknown[];
+      return rows[0] ? reportFromRow(parseReportMetadataRow(rows[0])) : undefined;
     },
     async readReportMetadata({ projectId, reportId }) {
       const rows = (await sql`

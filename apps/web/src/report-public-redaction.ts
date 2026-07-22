@@ -7,26 +7,206 @@ export function redactText(value: string): string {
   return replacePrivateTokens(emailRedacted);
 }
 
-const PDF_TEXT_DENYLIST = [
-  /raw[_-]?document[_-]?id/giu,
-  /private[_-]?raw[_-]?locator/giu,
-  /storage[_-]?uri/giu,
-  /\bsecret(?:\s+|=|:)\s*\S+/giu,
-  /\bapi[_-]?key(?:\s+|=|:)\s*\S+/giu,
-  /\btoken(?:\s+|=|:)\s*\S+/giu,
-  /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu,
-] as const;
-
-const PDF_GENERIC_URI_PATTERN = /[a-z][a-z0-9+.-]*:\/\/[^\s)\]"']+/giu;
-const PDF_REDACTION_PLACEHOLDER = /\[redacted(?:-[a-z]+)?\]/giu;
+const SENSITIVE_LABELS = sensitiveLabelVariants([
+  ['raw', 'document', 'id'],
+  ['private', 'raw', 'locator'],
+  ['storage', 'uri'],
+  ['document', 'id'],
+  ['canonical', 'uri'],
+]);
+const SENSITIVE_ASSIGNMENT_KEYWORDS = ['secret', 'api_key', 'api-key', 'apikey', 'token'] as const;
 
 export function redactSensitivePdfText(value: string): string {
   let text = redactText(value);
-  text = text.replace(PDF_GENERIC_URI_PATTERN, '[redacted]');
-  for (const pattern of PDF_TEXT_DENYLIST) {
-    text = text.replace(pattern, '[redacted]');
+  text = redactGenericUris(text);
+  for (const label of SENSITIVE_LABELS) {
+    text = replaceAsciiInsensitiveAll(text, label, '[redacted]');
   }
-  return text.replace(PDF_REDACTION_PLACEHOLDER, '[redacted]');
+  text = redactSensitiveAssignments(text);
+  return normalizeRedactionPlaceholders(text);
+}
+
+function sensitiveLabelVariants(partsList: readonly (readonly string[])[]): readonly string[] {
+  return partsList.flatMap((parts) => joinWithOptionalSeparators(parts));
+}
+
+function joinWithOptionalSeparators(parts: readonly string[]): readonly string[] {
+  let variants = [parts[0] ?? ''];
+  for (const part of parts.slice(1)) {
+    variants = variants.flatMap((prefix) =>
+      ['', '_', '-'].map((separator) => prefix + separator + part),
+    );
+  }
+  return variants;
+}
+
+function replaceAsciiInsensitiveAll(value: string, search: string, replacement: string): string {
+  if (!search) {
+    return value;
+  }
+  const lowerValue = value.toLowerCase();
+  const lowerSearch = search.toLowerCase();
+  const output: string[] = [];
+  let cursor = 0;
+  let index = lowerValue.indexOf(lowerSearch);
+  while (index >= 0) {
+    output.push(value.slice(cursor, index), replacement);
+    cursor = index + search.length;
+    index = lowerValue.indexOf(lowerSearch, cursor);
+  }
+  output.push(value.slice(cursor));
+  return output.join('');
+}
+
+function redactSensitiveAssignments(value: string): string {
+  const lowerValue = value.toLowerCase();
+  const output: string[] = [];
+  let cursor = 0;
+  let searchFrom = 0;
+  while (searchFrom < value.length) {
+    const match = nextSensitiveAssignment(lowerValue, searchFrom);
+    if (!match) {
+      break;
+    }
+    const end = sensitiveAssignmentEnd(value, match.index + match.keyword.length);
+    if (end === undefined) {
+      searchFrom = match.index + match.keyword.length;
+      continue;
+    }
+    output.push(value.slice(cursor, match.index), '[redacted]');
+    cursor = end;
+    searchFrom = end;
+  }
+  output.push(value.slice(cursor));
+  return output.join('');
+}
+
+function nextSensitiveAssignment(
+  value: string,
+  fromIndex: number,
+): { index: number; keyword: string } | undefined {
+  let next: { index: number; keyword: string } | undefined;
+  for (const keyword of SENSITIVE_ASSIGNMENT_KEYWORDS) {
+    const index = nextBoundedKeyword(value, keyword, fromIndex);
+    if (index >= 0 && (!next || index < next.index)) {
+      next = { index, keyword };
+    }
+  }
+  return next;
+}
+
+function nextBoundedKeyword(value: string, keyword: string, fromIndex: number): number {
+  let index = value.indexOf(keyword, fromIndex);
+  while (index >= 0) {
+    const before = index > 0 ? value.charCodeAt(index - 1) : undefined;
+    if (before === undefined || !isAsciiIdentifierCode(before)) {
+      return index;
+    }
+    index = value.indexOf(keyword, index + keyword.length);
+  }
+  return -1;
+}
+
+function sensitiveAssignmentEnd(value: string, start: number): number | undefined {
+  const delimiter = value.charAt(start);
+  let valueStart = start;
+  if (delimiter === '=' || delimiter === ':') {
+    valueStart += 1;
+  } else if (delimiter?.trim() !== '') {
+    return undefined;
+  }
+  while (valueStart < value.length && value.charAt(valueStart).trim() === '') {
+    valueStart += 1;
+  }
+  if (valueStart >= value.length) {
+    return undefined;
+  }
+  let end = valueStart;
+  while (end < value.length && value.charAt(end).trim() !== '') {
+    end += 1;
+  }
+  return end;
+}
+
+function normalizeRedactionPlaceholders(value: string): string {
+  const lowerValue = value.toLowerCase();
+  const output: string[] = [];
+  let copyFrom = 0;
+  let searchFrom = 0;
+  let index = lowerValue.indexOf('[redacted', searchFrom);
+  while (index >= 0) {
+    const end = redactionPlaceholderEnd(lowerValue, index + '[redacted'.length);
+    if (end === undefined) {
+      searchFrom = index + '[redacted'.length;
+      index = lowerValue.indexOf('[redacted', searchFrom);
+      continue;
+    }
+    output.push(value.slice(copyFrom, index), '[redacted]');
+    copyFrom = end;
+    searchFrom = end;
+    index = lowerValue.indexOf('[redacted', searchFrom);
+  }
+  output.push(value.slice(copyFrom));
+  return output.join('');
+}
+
+function redactionPlaceholderEnd(value: string, start: number): number | undefined {
+  if (value.charAt(start) === ']') {
+    return start + 1;
+  }
+  if (value.charAt(start) !== '-') {
+    return undefined;
+  }
+  let index = start + 1;
+  while (index < value.length && isAsciiAlpha(value.charCodeAt(index))) {
+    index += 1;
+  }
+  return index > start + 1 && value.charAt(index) === ']' ? index + 1 : undefined;
+}
+
+function isAsciiIdentifierCode(code: number): boolean {
+  return isAsciiAlphaNumeric(code) || code === 95;
+}
+
+function redactGenericUris(value: string): string {
+  const output: string[] = [];
+  let index = 0;
+  while (index < value.length) {
+    if (!isAsciiAlpha(value.charCodeAt(index))) {
+      output.push(value[index] ?? '');
+      index += 1;
+      continue;
+    }
+    let schemeEnd = index + 1;
+    while (schemeEnd < value.length && isUriSchemeChar(value.charCodeAt(schemeEnd))) {
+      schemeEnd += 1;
+    }
+    if (value.slice(schemeEnd, schemeEnd + 3) !== '://') {
+      output.push(value.slice(index, schemeEnd));
+      index = schemeEnd;
+      continue;
+    }
+    const uriEnd = genericUriEnd(value, schemeEnd + 3);
+    output.push('[redacted]');
+    index = uriEnd;
+  }
+  return output.join('');
+}
+
+function genericUriEnd(value: string, start: number): number {
+  let index = start;
+  while (index < value.length && !isGenericUriTerminator(value.charAt(index))) {
+    index += 1;
+  }
+  return index;
+}
+
+function isGenericUriTerminator(char: string): boolean {
+  return char.trim() === '' || char === ')' || char === ']' || char === '"' || char === "'";
+}
+
+function isUriSchemeChar(code: number): boolean {
+  return isAsciiAlphaNumeric(code) || code === 43 || code === 45 || code === 46;
 }
 
 export function containsPrivateText(value: string): boolean {
@@ -111,6 +291,13 @@ function emailDomainEnd(value: string, atIndex: number): number {
   let cursor = atIndex + 1;
   while (cursor < value.length && isEmailDomainChar(value.charCodeAt(cursor))) {
     cursor += 1;
+  }
+  while (cursor > atIndex + 1) {
+    const trailingCode = value.charCodeAt(cursor - 1);
+    if (trailingCode !== 45 && trailingCode !== 46) {
+      break;
+    }
+    cursor -= 1;
   }
   return cursor;
 }

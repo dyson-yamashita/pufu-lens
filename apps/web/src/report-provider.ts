@@ -3,6 +3,10 @@ import {
   countProviderTokensConservative,
   type PreviousReportProviderContext,
 } from './report-previous-context.ts';
+import {
+  buildExtractiveProjectOverview,
+  type ProjectOverviewV1,
+} from './report-project-overview.ts';
 import type { ReportDocumentRecord } from './report-repository.ts';
 import {
   type PrivateReportJsonV1,
@@ -14,12 +18,15 @@ import { normalizeReportWhitespace, truncateReportText } from './report-text.ts'
 
 export interface GeneratedReportContent
   extends Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'>,
-    Partial<ProviderRecurrenceDelta> {}
+    Partial<ProviderRecurrenceDelta> {
+  readonly project_overview?: ProjectOverviewV1;
+}
 
 export interface ReportGenerationProvider {
   countTokens?(text: string): Promise<number>;
   generate(input: {
     readonly documents: readonly ReportDocumentRecord[];
+    readonly includeProjectOverview?: boolean;
     readonly materialGroups?: readonly ReportMaterialGroup[];
     readonly period: ReportPeriod;
     readonly previousReportContext?: PreviousReportProviderContext;
@@ -42,6 +49,7 @@ export function createExtractiveReportProvider(): ReportGenerationProvider {
   return {
     async generate({
       documents,
+      includeProjectOverview,
       materialGroups,
       period,
       previousReportContext,
@@ -99,6 +107,12 @@ export function createExtractiveReportProvider(): ReportGenerationProvider {
           }),
         );
         validateGeneratedReport(generated, { requireRecurrence: true });
+      }
+      if (includeProjectOverview) {
+        return {
+          ...generated,
+          project_overview: buildExtractiveProjectOverview(generated),
+        };
       }
       return generated;
     },
@@ -165,6 +179,7 @@ export function createGeminiReportProvider(input: {
     countTokens: countProviderTokens,
     async generate({
       documents,
+      includeProjectOverview,
       materialGroups,
       period,
       previousReportContext,
@@ -180,6 +195,7 @@ export function createGeminiReportProvider(input: {
                 {
                   text: buildGeminiReportPrompt({
                     documents,
+                    includeProjectOverview,
                     materialGroups,
                     period,
                     previousReportContext,
@@ -192,9 +208,10 @@ export function createGeminiReportProvider(input: {
           ],
           generationConfig: {
             responseMimeType: 'application/json',
-            responseSchema: previousReportContext
-              ? GEMINI_REPORT_WITH_RECURRENCE_RESPONSE_SCHEMA
-              : GEMINI_REPORT_RESPONSE_SCHEMA,
+            responseSchema: resolveGeminiReportResponseSchema({
+              includeProjectOverview,
+              previousReportContext: Boolean(previousReportContext),
+            }),
           },
         }),
         headers: { 'content-type': 'application/json' },
@@ -234,6 +251,7 @@ export function createGeminiReportProvider(input: {
 
 export function buildGeminiReportPrompt(input: {
   readonly documents: readonly ReportDocumentRecord[];
+  readonly includeProjectOverview?: boolean;
   readonly materialGroups?: readonly ReportMaterialGroup[];
   readonly period: ReportPeriod;
   readonly previousReportContext?: PreviousReportProviderContext;
@@ -259,6 +277,16 @@ export function buildGeminiReportPrompt(input: {
     `Representative documents: ${JSON.stringify(toGeminiPromptDocuments(input.documents))}`,
     `Editorial material groups: ${JSON.stringify(input.materialGroups ?? [])}`,
   ];
+  if (input.includeProjectOverview) {
+    lines.push(
+      'Also return project_overview for anonymous public project pages.',
+      'project_overview must use schema_version "project-overview-v1".',
+      'status_summary: compact current situation in plain language, max 400 code points, no source lists or identifiers.',
+      'assets: up to 5 reusable strengths or accumulations such as deliverables, knowledge, relationships, or capabilities. Each item needs title and description. Do not list image assets or raw source titles.',
+      'issues: up to 5 current blockers or uncertainties. Each item needs title, description, and next_action.',
+      'Never include emails, secrets, tokens, API keys, private URLs, storage URIs, document IDs, or canonical URIs.',
+    );
+  }
   if (input.previousReportContext) {
     lines.push(
       'When previous report context is provided, also return recurrence delta fields: change_summary, increments, decrements, continued_items.',
@@ -351,6 +379,38 @@ export function createGeminiReportProviderWithExtractiveFallback(input: {
   };
 }
 
+const GEMINI_PROJECT_OVERVIEW_SCHEMA = {
+  properties: {
+    assets: {
+      items: {
+        properties: {
+          description: { type: 'STRING' },
+          title: { type: 'STRING' },
+        },
+        required: ['title', 'description'],
+        type: 'OBJECT',
+      },
+      type: 'ARRAY',
+    },
+    issues: {
+      items: {
+        properties: {
+          description: { type: 'STRING' },
+          next_action: { type: 'STRING' },
+          title: { type: 'STRING' },
+        },
+        required: ['title', 'description', 'next_action'],
+        type: 'OBJECT',
+      },
+      type: 'ARRAY',
+    },
+    schema_version: { enum: ['project-overview-v1'], type: 'STRING' },
+    status_summary: { type: 'STRING' },
+  },
+  required: ['schema_version', 'status_summary', 'assets', 'issues'],
+  type: 'OBJECT',
+} as const;
+
 const GEMINI_REPORT_RESPONSE_SCHEMA = {
   properties: {
     sections: {
@@ -405,6 +465,26 @@ const GEMINI_REPORT_WITH_RECURRENCE_RESPONSE_SCHEMA = {
   ],
   type: 'OBJECT',
 } as const;
+
+function resolveGeminiReportResponseSchema(input: {
+  readonly includeProjectOverview?: boolean;
+  readonly previousReportContext: boolean;
+}): Record<string, unknown> {
+  const baseSchema = input.previousReportContext
+    ? GEMINI_REPORT_WITH_RECURRENCE_RESPONSE_SCHEMA
+    : GEMINI_REPORT_RESPONSE_SCHEMA;
+  if (!input.includeProjectOverview) {
+    return baseSchema;
+  }
+  return {
+    properties: {
+      ...baseSchema.properties,
+      project_overview: GEMINI_PROJECT_OVERVIEW_SCHEMA,
+    },
+    required: [...baseSchema.required, 'project_overview'],
+    type: 'OBJECT',
+  };
+}
 
 function buildExtractiveRecurrenceDelta(input: {
   readonly currentDocumentCount: number;

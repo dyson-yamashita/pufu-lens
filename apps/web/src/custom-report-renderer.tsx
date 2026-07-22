@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import type {
   ClassificationResult,
   CustomReportPart,
@@ -6,6 +7,7 @@ import type {
 } from './custom-report-schema';
 import { MarkdownContent } from './markdown-content';
 import { PufuReportViewer } from './pufu-report-viewer';
+import { type PufuScoreReportInput, toPufuScoreReportInput } from './pufu-score-input';
 import type { PrivateReportJsonV1, PrivateReportSection } from './report';
 
 export function CustomReportLayoutRenderer({
@@ -15,23 +17,31 @@ export function CustomReportLayoutRenderer({
   readonly report: PrivateReportJsonV1;
   readonly snapshot: CustomReportSnapshotV1;
 }) {
+  const pufuInput = useMemo(() => toPufuScoreReportInput(report), [report]);
   return (
     <section className="custom-report-layout" data-testid="custom-report-layout">
       <div className="custom-report-layout-meta">
         <span>Template v{snapshot.template_version}</span>
         <span className="mono">{snapshot.template_snapshot_hash}</span>
       </div>
-      <CustomReportPartRenderer part={snapshot.layout.root} report={report} snapshot={snapshot} />
+      <CustomReportPartRenderer
+        part={snapshot.layout.root}
+        pufuInput={pufuInput}
+        report={report}
+        snapshot={snapshot}
+      />
     </section>
   );
 }
 
 function CustomReportPartRenderer({
   part,
+  pufuInput,
   report,
   snapshot,
 }: {
   readonly part: CustomReportPart;
+  readonly pufuInput: PufuScoreReportInput;
   readonly report: PrivateReportJsonV1;
   readonly snapshot: CustomReportSnapshotV1;
 }) {
@@ -47,7 +57,7 @@ function CustomReportPartRenderer({
     case 'pufu_board':
       return (
         <div data-testid={`custom-report-part-${part.id}`}>
-          <PufuReportViewer report={report} />
+          <PufuReportViewer report={pufuInput} />
         </div>
       );
     case 'slider_judgement': {
@@ -101,6 +111,7 @@ function CustomReportPartRenderer({
                 <CustomReportPartRenderer
                   key={child.id}
                   part={child}
+                  pufuInput={pufuInput}
                   report={report}
                   snapshot={snapshot}
                 />
@@ -116,6 +127,7 @@ function CustomReportPartRenderer({
             <CustomReportPartRenderer
               key={child.id}
               part={child}
+              pufuInput={pufuInput}
               report={report}
               snapshot={snapshot}
             />
@@ -250,9 +262,10 @@ export function StandardReportSections({
   readonly publicView?: boolean;
   readonly report: PrivateReportJsonV1;
 }) {
+  const pufuInput = useMemo(() => toPufuScoreReportInput(report), [report]);
   return (
     <>
-      <PufuReportViewer report={report} />
+      <PufuReportViewer report={pufuInput} />
       {report.sections.map((section) => (
         <StandardReportSection key={section.id} publicView={publicView} section={section} />
       ))}
