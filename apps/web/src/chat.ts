@@ -2,6 +2,11 @@ import { createHash } from 'node:crypto';
 import type postgres from 'postgres';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
+import {
+  type ChatSearchPeriod,
+  hasChatSearchPeriod,
+  validateChatSearchPeriod,
+} from './chat-search-period.ts';
 import { jsonParameter } from './postgres-json.ts';
 import {
   type AgentRawReadViewEnvelope,
@@ -12,6 +17,19 @@ import type { PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 
 /** Maximum number of deduplicated evidence sources returned by a chat response. */
 export const MAX_CHAT_RESPONSE_SOURCES = 10;
+
+export type { ChatSearchPeriod } from './chat-search-period.ts';
+export {
+  CHAT_SEARCH_CALENDAR_YEAR_MAX,
+  CHAT_SEARCH_CALENDAR_YEAR_MIN,
+  CHAT_SEARCH_ISO_INSTANT_PATTERN,
+  CHAT_SEARCH_PERIOD_MAX_SPAN_DAYS,
+  hasChatSearchPeriod,
+  isChatSearchIsoInstant,
+  normalizeTimelineTopicQuery,
+  parseChatSearchPeriod,
+  validateChatSearchPeriod,
+} from './chat-search-period.ts';
 
 export type ChatToolName =
   | 'document-fetch'
@@ -216,7 +234,12 @@ export interface ChatRepository {
     projectId: string;
   }): Promise<ChatSource[]>;
   rawReadViewFetch(input: RawReadViewRequest): Promise<AgentRawReadViewEnvelope | undefined>;
-  timelineSearch(input: { limit: number; projectId: string; query: string }): Promise<ChatSource[]>;
+  timelineSearch(input: {
+    limit: number;
+    period?: ChatSearchPeriod;
+    projectId: string;
+    query: string;
+  }): Promise<ChatSource[]>;
   vectorSearch(input: {
     embedding: readonly number[];
     embeddingModel: string;
@@ -399,7 +422,21 @@ export function shouldUseGraphRelatedSource(input: {
   return Boolean((title && title !== 'Untitled') || snippet);
 }
 
-export function inferChatEditingMetadata(question: string): ChatEditingMetadata {
+/**
+ * Infers private-chat editing metadata from the question text.
+ *
+ * Recognized deterministic period phrases force the timeline mode even when no timeline keyword matches.
+ *
+ * @param question - Raw user question text
+ * @param nowIso - Optional explicit current instant for period recognition; defaults to `new Date().toISOString()`
+ */
+export function inferChatEditingMetadata(
+  question: string,
+  nowIso: string = new Date().toISOString(),
+): ChatEditingMetadata {
+  if (hasChatSearchPeriod(question, nowIso)) {
+    return editingMetadataFromMode('timeline', 'high');
+  }
   const normalized = normalizeSpaces(question).toLowerCase();
   const matches = (Object.keys(EDITING_MODE_DEFINITIONS) as ChatEditingMode[])
     .filter((mode) => mode !== 'default')
@@ -1330,10 +1367,15 @@ export function createPostgresChatRepository(
       `) as readonly unknown[];
       return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
     },
-    async timelineSearch({ limit, projectId, query }) {
+    async timelineSearch({ limit, period, projectId, query }) {
+      if (period) {
+        validateChatSearchPeriod(period);
+      }
       const queryText = timelineSearchQueryText(query);
       const keywordQuery = normalizeHybridKeywordQuery(queryText);
       const searchPatterns = timelineSearchPatterns(query);
+      const periodStartAt = period?.startAt ?? null;
+      const periodEndAt = period?.endAt ?? null;
       if (keywordQuery.length === 0 && searchPatterns.length === 0) {
         const rows = (await sql`
           SELECT
@@ -1353,6 +1395,13 @@ export function createPostgresChatRepository(
             LIMIT 1
           ) dc ON true
           WHERE d.project_id = ${projectId}
+            AND (
+              ${periodStartAt}::timestamptz IS NULL
+              OR (
+                d.occurred_at >= ${periodStartAt}::timestamptz
+                AND d.occurred_at < ${periodEndAt}::timestamptz
+              )
+            )
           ORDER BY d.occurred_at ASC NULLS LAST, d.updated_at ASC, d.id ASC
           LIMIT ${limit}
         `) as readonly unknown[];
@@ -1377,6 +1426,13 @@ export function createPostgresChatRepository(
             LIMIT 1
           ) dc ON true
           WHERE d.project_id = ${projectId}
+            AND (
+              ${periodStartAt}::timestamptz IS NULL
+              OR (
+                d.occurred_at >= ${periodStartAt}::timestamptz
+                AND d.occurred_at < ${periodEndAt}::timestamptz
+              )
+            )
             AND (
               d.title ILIKE ANY (${searchPatterns})
               OR d.summary ILIKE ANY (${searchPatterns})
@@ -1404,6 +1460,13 @@ export function createPostgresChatRepository(
           LIMIT 1
         ) dc ON true
         WHERE d.project_id = ${projectId}
+          AND (
+            ${periodStartAt}::timestamptz IS NULL
+            OR (
+              d.occurred_at >= ${periodStartAt}::timestamptz
+              AND d.occurred_at < ${periodEndAt}::timestamptz
+            )
+          )
           AND (
             d.title ILIKE ANY (${searchPatterns})
             OR d.summary ILIKE ANY (${searchPatterns})

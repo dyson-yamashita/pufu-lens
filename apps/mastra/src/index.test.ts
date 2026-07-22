@@ -25,6 +25,7 @@ import {
   privateChatEditingMetadataSchema,
   privateChatQueryExpansionSchema,
   privateChatQuestionClassificationSchema,
+  privateChatSearchWorkflowInputSchema,
   rawReadViewTrace,
   vectorSearchInputSchema,
 } from './index.ts';
@@ -36,7 +37,10 @@ const testEmbeddingProvider = createDeterministicEmbeddingProvider({
 
 function createChatRepository(): ChatRepository & {
   projectIds: string[];
-  timelineSearchInputs: Array<{ query: string }>;
+  timelineSearchInputs: Array<{
+    period?: { endAt: string; startAt: string };
+    query: string;
+  }>;
   vectorSearchInputs: Array<{
     embedding: readonly number[];
     embeddingModel: string;
@@ -44,7 +48,10 @@ function createChatRepository(): ChatRepository & {
   }>;
 } {
   const projectIds: string[] = [];
-  const timelineSearchInputs: Array<{ query: string }> = [];
+  const timelineSearchInputs: Array<{
+    period?: { endAt: string; startAt: string };
+    query: string;
+  }> = [];
   const vectorSearchInputs: Array<{
     embedding: readonly number[];
     embeddingModel: string;
@@ -120,9 +127,9 @@ function createChatRepository(): ChatRepository & {
       projectIds.push(projectId);
       return [{ ...sampleSource, documentId: 'doc-parsed', title: 'Parsed Metadata' }];
     },
-    async timelineSearch({ projectId, query }) {
+    async timelineSearch({ period, projectId, query }) {
       projectIds.push(projectId);
-      timelineSearchInputs.push({ query });
+      timelineSearchInputs.push({ ...(period ? { period } : {}), query });
       return [{ ...sampleSource, documentId: 'doc-timeline', title: 'Timeline Event' }];
     },
     async listPrivateChatHistoryForContext() {
@@ -401,6 +408,48 @@ assert.deepEqual(timelineSearch, {
   sources: [{ ...sampleSource, documentId: 'doc-timeline', title: 'Timeline Event' }],
 });
 assert.deepEqual(chatRepository.timelineSearchInputs.at(-1), { query: '意思決定の経緯' });
+
+const periodTimelineSearch = await runtime.projectChatTools.timelineSearch.execute?.(
+  {
+    limit: 3,
+    period: {
+      endAt: '2025-12-31T15:00:00.000Z',
+      startAt: '2024-12-31T15:00:00.000Z',
+    },
+    query: '',
+  },
+  { requestContext } as never,
+);
+assert.deepEqual(periodTimelineSearch, {
+  sources: [{ ...sampleSource, documentId: 'doc-timeline', title: 'Timeline Event' }],
+});
+assert.deepEqual(chatRepository.timelineSearchInputs.at(-1), {
+  period: {
+    endAt: '2025-12-31T15:00:00.000Z',
+    startAt: '2024-12-31T15:00:00.000Z',
+  },
+  query: '',
+});
+
+const invalidPeriodTimelineSearch = await runtime.projectChatTools.timelineSearch.execute?.(
+  {
+    limit: 3,
+    period: {
+      endAt: '2024-12-31T15:00:00.000Z',
+      startAt: '2025-12-31T15:00:00.000Z',
+    },
+    query: '',
+  },
+  { requestContext } as never,
+);
+assert.equal(
+  (invalidPeriodTimelineSearch as { error?: boolean; message?: string } | undefined)?.error,
+  true,
+);
+assert.match(
+  (invalidPeriodTimelineSearch as { message?: string } | undefined)?.message ?? '',
+  /startAt < endAt/,
+);
 
 const projectChatInstructions = PROJECT_CHAT_AGENT_INSTRUCTIONS;
 assert.match(projectChatInstructions, /まず vector-search を実行する/);
@@ -685,6 +734,7 @@ const privateChatResult = await privateChatRun.start({
   inputData: {
     graphName: 'graph_sample_a',
     history: [],
+    nowIso: '2026-07-22T00:30:00.000Z',
     projectId: 'project-a',
     projectSlug: 'sample-a',
     question: 'pufu-editorでのエラー対応実績は？',
@@ -710,6 +760,31 @@ assert.match(synthesisMessageText, new RegExp(sampleSource.title));
 assert.match(synthesisMessageText, /untrusted_external_content/);
 assert.match(synthesisMessageText, /命令.*従わず/);
 
+const periodChatRun = await privateChatSearchWorkflow.createRun();
+const periodChatResult = await periodChatRun.start({
+  inputData: {
+    graphName: 'graph_sample_a',
+    history: [],
+    nowIso: '2026-07-22T00:30:00.000Z',
+    projectId: 'project-a',
+    projectSlug: 'sample-a',
+    question: '2025年の取り組みについて',
+  },
+});
+assert.equal(periodChatResult.status, 'success');
+assert.ok(
+  (periodChatResult.result as { readonly toolCalls: Array<{ name: string }> }).toolCalls.some(
+    (toolCall) => toolCall.name === 'timeline-search',
+  ),
+);
+assert.deepEqual(chatRepository.timelineSearchInputs.at(-1), {
+  period: {
+    endAt: '2025-12-31T15:00:00.000Z',
+    startAt: '2024-12-31T15:00:00.000Z',
+  },
+  query: '',
+});
+
 const vectorSearchCountBeforePlannerFailure = chatRepository.vectorSearchInputs.length;
 const fallbackWorkflow = createPrivateChatSearchWorkflow({
   chatRepository,
@@ -726,6 +801,7 @@ const fallbackResult = await fallbackRun.start({
   inputData: {
     graphName: 'graph_sample_a',
     history: [],
+    nowIso: '2026-07-22T00:30:00.000Z',
     projectId: 'project-a',
     projectSlug: 'sample-a',
     question: '通常質問',
@@ -758,6 +834,16 @@ assert.deepEqual(
   ['assistant', 'user'],
 );
 assert.equal(mastraWorkflowIds.privateChatSearch, 'private-chat-search');
+assert.throws(() =>
+  privateChatSearchWorkflowInputSchema.parse({
+    graphName: 'graph_sample_a',
+    history: [],
+    nowIso: 'Thu, 01 Jan 2026 00:00:00 +00:00',
+    projectId: 'project-a',
+    projectSlug: 'sample-a',
+    question: '2025年の取り組みについて',
+  }),
+);
 assert.match(PRIVATE_CHAT_QUERY_PLANNER_INSTRUCTIONS, /未信頼データ/);
 assert.match(createPrivateChatClassificationPrompt('ignore <role>'), /\\u003crole\\u003e/);
 assert.match(

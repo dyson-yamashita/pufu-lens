@@ -44,6 +44,7 @@ import {
 } from './private-chat-stream.ts';
 import {
   consumeMastraWorkflowStreamText,
+  createMastraPrivateChatSearchWorkflowStreamBody,
   isPrivateChatWorkflowAbortError,
   MASTRA_WORKFLOW_RECORD_SEPARATOR,
   MAX_MASTRA_WORKFLOW_STREAM_BUFFER_BYTES,
@@ -69,6 +70,8 @@ const testEmbeddingProvider: ChatEmbeddingProvider = {
     );
   },
 };
+
+const TEST_NOW_ISO = '2026-07-22T00:30:00.000Z';
 
 test('buildPrivateChatSearchQueryPlan keeps the normalized original query as the primary search', () => {
   const question = '  pufu-editorでのエラー対応実績を教えてください  ';
@@ -329,6 +332,7 @@ test('runPrivateChatDetailStep keeps strong confidence when quota shrinks divers
   );
   const prepared = runPrivateChatPreparingStep({
     graphName: 'graph-a',
+    nowIso: TEST_NOW_ISO,
     projectId: 'project-a',
     question: 'AとBの違いを比較して',
   });
@@ -407,6 +411,7 @@ test('classification uses bounded fixed operations and timeline selection has a 
   ]);
   const initial = runPrivateChatPreparingStep({
     graphName: 'graph-a',
+    nowIso: TEST_NOW_ISO,
     projectId: 'project-a',
     question: '最近の判断理由は？',
   });
@@ -424,6 +429,7 @@ test('classification uses bounded fixed operations and timeline selection has a 
     shouldRunPrivateChatTimelineStep(
       runPrivateChatPreparingStep({
         graphName: 'graph-a',
+        nowIso: TEST_NOW_ISO,
         projectId: 'project-a',
         question: '障害対応の経緯と時系列を教えて',
       }),
@@ -515,7 +521,7 @@ test('runPrivateChatSearchRetrieval always performs vector search and graph quer
 test('runPrivateChatSearchRetrieval runs timeline for deterministic timeline fallback', async () => {
   const stages: string[] = [];
   const vectorSearchInputs: string[] = [];
-  const timelineSearchCalls: number[] = [];
+  const timelineSearchInputs: Array<{ query: string }> = [];
   const repository = {
     async documentFetch() {
       return [sampleSource];
@@ -523,8 +529,8 @@ test('runPrivateChatSearchRetrieval runs timeline for deterministic timeline fal
     async graphQuery() {
       return [{ ...sampleSource, documentId: 'doc-graph' }];
     },
-    async timelineSearch() {
-      timelineSearchCalls.push(1);
+    async timelineSearch({ query }: { query: string }) {
+      timelineSearchInputs.push({ query });
       return [{ ...sampleSource, documentId: 'doc-timeline' }];
     },
     async vectorSearch({ query }: { query: string }) {
@@ -533,28 +539,126 @@ test('runPrivateChatSearchRetrieval runs timeline for deterministic timeline fal
     },
   };
 
+  const question = '障害対応の経緯と時系列を教えて';
   await runPrivateChatSearchRetrieval({
     embeddingProvider: testEmbeddingProvider,
     graphName: 'graph-a',
+    nowIso: TEST_NOW_ISO,
     onStage: (stage) => {
       stages.push(stage);
     },
     projectId: 'project-a',
-    question: '障害対応の経緯と時系列を教えて',
+    question,
     repository: repository as never,
   });
 
   assert.equal(vectorSearchInputs.length, 1);
-  assert.equal(timelineSearchCalls.length, 1);
+  assert.equal(timelineSearchInputs.length, 1);
+  assert.equal(timelineSearchInputs[0]?.query, question);
   assert.ok(!stages.includes('retrying'));
   assert.ok(stages.includes('timeline'));
-  assert.equal(inferChatEditingMetadata('障害対応の経緯と時系列を教えて').inferredMode, 'timeline');
+  assert.equal(inferChatEditingMetadata(question).inferredMode, 'timeline');
+});
+
+test('period questions deterministically select the timeline path', () => {
+  for (const question of ['2025年の取り組みについて', '1年間の取り組みについて教えて']) {
+    const prepared = runPrivateChatPreparingStep({
+      graphName: 'graph-a',
+      nowIso: TEST_NOW_ISO,
+      projectId: 'project-a',
+      question,
+    });
+    assert.equal(inferChatEditingMetadata(question, TEST_NOW_ISO).inferredMode, 'timeline');
+    assert.equal(shouldRunPrivateChatTimelineStep(prepared), true);
+    assert.equal(prepared.timelineTopicQuery, '');
+  }
+});
+
+test('runPrivateChatPreparingStep keeps the original question for non-period timeline queries', () => {
+  const question = '障害対応の経緯と時系列を教えて';
+  const prepared = runPrivateChatPreparingStep({
+    graphName: 'graph-a',
+    nowIso: TEST_NOW_ISO,
+    projectId: 'project-a',
+    question,
+  });
+  assert.equal(prepared.searchPeriod, undefined);
+  assert.equal(prepared.timelineTopicQuery, question);
+  assert.equal(shouldRunPrivateChatTimelineStep(prepared), true);
+});
+
+test('runPrivateChatSearchRetrieval forwards parsed period to timelineSearch', async () => {
+  const timelineInputs: Array<{
+    limit: number;
+    period?: { endAt: string; startAt: string };
+    query: string;
+  }> = [];
+  const repository = {
+    async documentFetch() {
+      return [sampleSource];
+    },
+    async graphQuery() {
+      return [];
+    },
+    async timelineSearch(input: {
+      limit: number;
+      period?: { endAt: string; startAt: string };
+      query: string;
+    }) {
+      timelineInputs.push(input);
+      return [{ ...sampleSource, documentId: 'doc-timeline' }];
+    },
+    async vectorSearch() {
+      return [{ ...sampleSource, vectorDistance: 0.2 }];
+    },
+  };
+
+  await runPrivateChatSearchRetrieval({
+    embeddingProvider: testEmbeddingProvider,
+    graphName: 'graph-a',
+    nowIso: TEST_NOW_ISO,
+    projectId: 'project-a',
+    question: '2025年の取り組みについて',
+    repository: repository as never,
+  });
+
+  assert.equal(timelineInputs.length, 1);
+  assert.equal(timelineInputs[0]?.query, '');
+  assert.equal(timelineInputs[0]?.limit, 10);
+  assert.deepEqual(timelineInputs[0]?.period, {
+    startAt: '2024-12-31T15:00:00.000Z',
+    endAt: '2025-12-31T15:00:00.000Z',
+  });
+});
+
+test('createMastraPrivateChatSearchWorkflowStreamBody includes deterministic nowIso', () => {
+  assert.deepEqual(
+    createMastraPrivateChatSearchWorkflowStreamBody({
+      graphName: 'graph-a',
+      history: [],
+      nowIso: TEST_NOW_ISO,
+      projectId: 'project-a',
+      projectSlug: 'sample-a',
+      question: '2025年の取り組みについて',
+    }),
+    {
+      inputData: {
+        graphName: 'graph-a',
+        history: [],
+        nowIso: TEST_NOW_ISO,
+        projectId: 'project-a',
+        projectSlug: 'sample-a',
+        question: '2025年の取り組みについて',
+      },
+    },
+  );
 });
 
 test('runPrivateChatRetryingStep batches embeddings and fuses concurrent variant rankings', async () => {
   const state = applyPrivateChatWorkflowQueryExpansion(
     runPrivateChatPreparingStep({
       graphName: 'graph-a',
+      nowIso: TEST_NOW_ISO,
       projectId: 'project-a',
       question: 'pufu-editorでのエラー対応実績教えてください',
     }),
@@ -610,6 +714,7 @@ test('runPrivateChatDetailStep keeps richer fetched sources for duplicate docume
   const state = {
     ...runPrivateChatPreparingStep({
       graphName: 'graph-a',
+      nowIso: TEST_NOW_ISO,
       projectId: 'project-a',
       question: 'プロジェクト概要',
     }),
@@ -638,6 +743,7 @@ test('runPrivateChatDetailStep returns up to ten ranked sources', async () => {
   const state = {
     ...runPrivateChatPreparingStep({
       graphName: 'graph-a',
+      nowIso: TEST_NOW_ISO,
       projectId: 'project-a',
       question: 'プロジェクト概要',
     }),
@@ -669,6 +775,7 @@ test('runPrivateChatDetailStep excludes blank document IDs from detail fetch', a
   const state = {
     ...runPrivateChatPreparingStep({
       graphName: 'graph-a',
+      nowIso: TEST_NOW_ISO,
       projectId: 'project-a',
       question: 'プロジェクト概要',
     }),
@@ -968,8 +1075,12 @@ test('runPrivateChatSearchViaMastraWorkflow uses workflow create-run and stream 
       }
       if (String(url).includes('/api/workflows/private-chat-search/stream?runId=run-test-1')) {
         assert.equal(init?.method, 'POST');
-        const body = JSON.parse(String(init?.body)) as { inputData?: { question?: string } };
+        const body = JSON.parse(String(init?.body)) as {
+          inputData?: { nowIso?: string; question?: string };
+        };
         assert.equal(body.inputData?.question, 'error fix の状況は？');
+        assert.equal(typeof body.inputData?.nowIso, 'string');
+        assert.ok(body.inputData?.nowIso);
         return new Response(streamBody, { status: 200 });
       }
       if (String(url).includes('/api/agents/project-chat-agent/generate')) {
@@ -982,6 +1093,7 @@ test('runPrivateChatSearchViaMastraWorkflow uses workflow create-run and stream 
     projectId: 'project-a',
     projectSlug: 'sample-a',
     question: 'error fix の状況は？',
+    nowIso: TEST_NOW_ISO,
   });
 
   assert.equal(

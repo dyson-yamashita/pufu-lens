@@ -2,11 +2,13 @@ import {
   type ChatEditingMetadata,
   type ChatEmbeddingProvider,
   type ChatRepository,
+  type ChatSearchPeriod,
   type ChatSource,
   type ChatToolCall,
   embedPrivateChatQueries,
   inferChatEditingMetadata,
   MAX_CHAT_RESPONSE_SOURCES,
+  parseChatSearchPeriod,
   reciprocalRankFusionScore,
 } from './chat.ts';
 
@@ -33,6 +35,7 @@ export interface PrivateChatSearchRetrievalResult {
 export interface PrivateChatSearchRetrievalInput {
   readonly embeddingProvider: ChatEmbeddingProvider;
   readonly graphName: string | null;
+  readonly nowIso?: string;
   readonly onStage?: (stage: PrivateChatSearchStageId) => void;
   readonly projectId: string;
   readonly question: string;
@@ -42,7 +45,6 @@ export interface PrivateChatSearchRetrievalInput {
 const LEGACY_PRIMARY_VECTOR_LIMIT = 5;
 const PRIMARY_VECTOR_LIMIT = 15;
 const GRAPH_LIMIT = 5;
-const TIMELINE_LIMIT = 5;
 const DETAIL_DOCUMENT_LIMIT = MAX_CHAT_RESPONSE_SOURCES;
 const PRIMARY_QUERY_RRF_WEIGHT = 2;
 export const MAX_PRIVATE_CHAT_SEARCH_QUERY_VARIANTS = 6;
@@ -868,10 +870,12 @@ export interface PrivateChatSearchWorkflowState {
   readonly graphName: string | null;
   readonly graphSources: readonly ChatSource[];
   readonly mergedVectorSources: readonly ChatSource[];
+  readonly nowIso: string;
   readonly plan: PrivateChatSearchQueryPlan;
   readonly projectId: string;
   readonly question: string;
   readonly retrievalContext: string;
+  readonly searchPeriod?: ChatSearchPeriod;
   /**
    * Score-profile survivors before diversity / `docTypeQuota`.
    * Used only for retrieval confidence so quota cannot under-count evidence.
@@ -879,15 +883,28 @@ export interface PrivateChatSearchWorkflowState {
   readonly scoreQualifiedVectorSources: readonly ChatSource[];
   readonly sources: readonly ChatSource[];
   readonly timelineSources: readonly ChatSource[];
+  readonly timelineTopicQuery: string;
   readonly toolCalls: readonly ChatToolCall[];
 }
 
+/**
+ * Initializes private-chat workflow state from the raw question and explicit current instant.
+ *
+ * When a deterministic period phrase is recognized, `searchPeriod` and an empty or scoped
+ * `timelineTopicQuery` are set. Otherwise `timelineTopicQuery` keeps the original question so
+ * non-period timeline questions retain repository keyword normalization.
+ *
+ * @param input - Project scope, graph name, question, and workflow `nowIso`
+ * @returns Prepared workflow state before classification and retrieval
+ */
 export function runPrivateChatPreparingStep(input: {
   readonly graphName: string | null;
+  readonly nowIso: string;
   readonly projectId: string;
   readonly question: string;
 }): PrivateChatSearchWorkflowState {
-  const editing = inferChatEditingMetadata(input.question);
+  const parsedPeriod = parseChatSearchPeriod(input.question, input.nowIso);
+  const editing = inferChatEditingMetadata(input.question, input.nowIso);
   const plan = buildPrivateChatSearchQueryPlan(input.question);
   return {
     classification: createFallbackPrivateChatQuestionClassification(input.question),
@@ -897,13 +914,16 @@ export function runPrivateChatPreparingStep(input: {
     graphName: input.graphName,
     graphSources: [],
     mergedVectorSources: [],
+    nowIso: input.nowIso,
     plan,
     projectId: input.projectId,
     question: input.question,
     retrievalContext: '',
+    ...(parsedPeriod ? { searchPeriod: parsedPeriod.period } : {}),
     scoreQualifiedVectorSources: [],
     sources: [],
     timelineSources: [],
+    timelineTopicQuery: parsedPeriod?.topicQuery ?? input.question,
     toolCalls: [],
   };
 }
@@ -952,9 +972,10 @@ export function shouldRunPrivateChatRetryStep(
 }
 
 export function shouldRunPrivateChatTimelineStep(
-  state: Pick<PrivateChatSearchWorkflowState, 'classification' | 'editing'>,
+  state: Pick<PrivateChatSearchWorkflowState, 'classification' | 'editing' | 'searchPeriod'>,
 ): boolean {
   return (
+    state.searchPeriod !== undefined ||
     state.classification.primaryOperation === 'timeline' ||
     state.classification.secondaryOperations.includes('timeline') ||
     state.editing.inferredMode === 'timeline'
@@ -1100,9 +1121,10 @@ export async function runPrivateChatTimelineStep(
   repository: ChatRepository,
 ): Promise<PrivateChatSearchWorkflowState> {
   const timelineSources = await repository.timelineSearch({
-    limit: TIMELINE_LIMIT,
+    limit: MAX_CHAT_RESPONSE_SOURCES,
+    ...(state.searchPeriod ? { period: state.searchPeriod } : {}),
     projectId: state.projectId,
-    query: state.question,
+    query: state.timelineTopicQuery,
   });
   return {
     ...state,
@@ -1182,6 +1204,7 @@ export async function runPrivateChatSearchRetrieval(
   emit('preparing');
   let state = runPrivateChatPreparingStep({
     graphName: input.graphName,
+    nowIso: input.nowIso ?? new Date().toISOString(),
     projectId: input.projectId,
     question: input.question,
   });
