@@ -48,7 +48,7 @@ export interface ChatSource {
   /** Retrieval-only RRF score normalized to 0..1. It is never persisted or returned by chat response APIs. */
   readonly fusedScore?: number;
   /**
-   * ISO/date-like document occurrence time used during synthesis.
+   * Normalized UTC ISO-8601 document occurrence time (`...Z`) used during synthesis.
    * `null` means the time is unknown; `undefined` means the retrieval path did not project it.
    */
   readonly occurredAt?: string | null;
@@ -1440,7 +1440,13 @@ export function createPostgresChatRepository(
               ranked.doc_type,
               coalesce(ranked.title, 'Untitled') AS title,
               coalesce(ranked.canonical_uri, '') AS canonical_uri,
-              ranked.occurred_at::text AS occurred_at,
+              CASE
+                WHEN ranked.occurred_at IS NULL THEN NULL
+                ELSE to_char(
+                  ranked.occurred_at AT TIME ZONE 'UTC',
+                  'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+                )
+              END AS occurred_at,
               left(coalesce(ranked.summary, dc.content, ''), 700) AS snippet
             FROM ranked
             INNER JOIN target_ranks
@@ -1467,7 +1473,10 @@ export function createPostgresChatRepository(
             d.doc_type,
             coalesce(d.title, 'Untitled') AS title,
             coalesce(d.canonical_uri, '') AS canonical_uri,
-            d.occurred_at::text AS occurred_at,
+            CASE
+              WHEN d.occurred_at IS NULL THEN NULL
+              ELSE to_char(d.occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+            END AS occurred_at,
             left(coalesce(d.summary, dc.content, ''), 700) AS snippet
           FROM public.documents d
           LEFT JOIN LATERAL (
@@ -1492,7 +1501,10 @@ export function createPostgresChatRepository(
             d.doc_type,
             coalesce(d.title, 'Untitled') AS title,
             coalesce(d.canonical_uri, '') AS canonical_uri,
-            d.occurred_at::text AS occurred_at,
+            CASE
+              WHEN d.occurred_at IS NULL THEN NULL
+              ELSE to_char(d.occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+            END AS occurred_at,
             left(coalesce(d.summary, dc.content, ''), 700) AS snippet
           FROM public.documents d
           LEFT JOIN LATERAL (
@@ -1527,7 +1539,10 @@ export function createPostgresChatRepository(
           d.doc_type,
           coalesce(d.title, 'Untitled') AS title,
           coalesce(d.canonical_uri, '') AS canonical_uri,
-          d.occurred_at::text AS occurred_at,
+          CASE
+            WHEN d.occurred_at IS NULL THEN NULL
+            ELSE to_char(d.occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+          END AS occurred_at,
           left(coalesce(d.summary, dc.content, ''), 700) AS snippet
         FROM public.documents d
         LEFT JOIN LATERAL (
@@ -2239,7 +2254,10 @@ async function fetchChatSourcesByDocumentIds(
       d.doc_type,
       coalesce(d.title, 'Untitled') AS title,
       coalesce(d.canonical_uri, '') AS canonical_uri,
-      d.occurred_at::text AS occurred_at,
+      CASE
+        WHEN d.occurred_at IS NULL THEN NULL
+        ELSE to_char(d.occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+      END AS occurred_at,
       left(coalesce(d.summary, dc.content, ''), 700) AS snippet
     FROM public.documents d
     LEFT JOIN LATERAL (

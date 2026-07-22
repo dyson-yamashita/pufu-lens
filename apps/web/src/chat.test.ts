@@ -1310,7 +1310,10 @@ await assert.rejects(
   assert.match(periodOnlySql, /coalesce\(ranked\.summary, dc\.content/);
   assert.match(periodOnlySql, /d\.occurred_at >=/);
   assert.match(periodOnlySql, /d\.occurred_at </);
-  assert.match(periodOnlySql, /ranked\.occurred_at::text AS occurred_at/);
+  assert.match(periodOnlySql, /WHEN ranked\.occurred_at IS NULL THEN NULL/);
+  assert.match(periodOnlySql, /to_char\([\s\S]*ranked\.occurred_at AT TIME ZONE 'UTC'/);
+  assert.match(periodOnlySql, /'YYYY-MM-DD"T"HH24:MI:SS\.MS"Z"'/);
+  assert.doesNotMatch(periodOnlySql, /ranked\.occurred_at::text AS occurred_at/);
   assert.doesNotMatch(periodOnlySql, /ILIKE ANY/);
   assert.ok(boundValues[0]?.includes(period.startAt));
   assert.ok(boundValues[0]?.includes(period.endAt));
@@ -1370,7 +1373,15 @@ await assert.rejects(
     projectId: 'project-a',
   });
   assert.equal(sources[0]?.occurredAt, '2026-03-01T00:00:00.000Z');
-  assert.ok(sqlTexts.some((text) => /d\.occurred_at::text AS occurred_at/.test(text)));
+  assert.ok(
+    sqlTexts.some(
+      (text) =>
+        /WHEN d\.occurred_at IS NULL THEN NULL/.test(text) &&
+        /to_char\([\s\S]*d\.occurred_at AT TIME ZONE 'UTC'/.test(text) &&
+        /'YYYY-MM-DD"T"HH24:MI:SS\.MS"Z"'/.test(text) &&
+        !/d\.occurred_at::text AS occurred_at/.test(text),
+    ),
+  );
 }
 
 const failingGeminiProvider = createGeminiChatProvider({

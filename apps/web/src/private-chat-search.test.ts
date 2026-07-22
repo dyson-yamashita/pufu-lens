@@ -736,7 +736,7 @@ test('runPrivateChatDetailStep preserves occurrence timestamps from document fet
   const timelineSource = {
     ...sampleSource,
     documentId: 'doc-a',
-    occurredAt: '2026-01-01T00:00:00.000Z',
+    occurredAt: null,
     snippet: 'timeline summary',
   };
   const detailSource = {
