@@ -617,6 +617,55 @@ assert.equal(generated.report.project_overview, undefined);
   validatePrivateReportJson(scheduledGenerated.report);
 }
 
+{
+  const scheduledRepository = createRepository();
+  const scheduledStorage = new MemoryObjectStorage();
+  const extractiveProvider = createExtractiveReportProvider();
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...values: unknown[]) => warnings.push(values.join(' '));
+  try {
+    const scheduledGenerated = await runGenerateReport({
+      options: {
+        generationKind: 'scheduled',
+        now: new Date('2026-06-04T12:30:00.000Z'),
+        period: { end: '2026-06-07', start: '2026-06-01' },
+        provider: {
+          async generate(input) {
+            const extracted = await extractiveProvider.generate(input);
+            return {
+              ...extracted,
+              project_overview: {
+                assets: [],
+                issues: [],
+                schema_version: 'project-overview-v1',
+                status_summary: '00000000-0000-4000-8000-000000000101',
+              },
+              summary: '00000000-0000-4000-8000-000000000102',
+            };
+          },
+        },
+        repository: scheduledRepository,
+        scheduleFrequency: 'weekly',
+        schedulePeriodRunId: 'period-run-invalid-overview-and-summary',
+        storage: scheduledStorage,
+      },
+      projectSlug: 'sample-a',
+    });
+    assert.equal(
+      scheduledGenerated.report.project_overview?.status_summary,
+      '定期レポートを生成しました。詳細は元レポートを確認してください。',
+    );
+    validatePrivateReportJson(scheduledGenerated.report);
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.deepEqual(warnings, [
+    '[project-overview] provider normalization failed; using extractive fallback',
+    '[project-overview] extractive fallback failed; using minimal safe overview',
+  ]);
+}
+
 const generatedMetadata = await repository.readReportMetadata({
   projectId: 'project-a',
   reportId: generated.report.report_id,

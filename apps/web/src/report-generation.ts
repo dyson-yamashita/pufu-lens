@@ -16,6 +16,8 @@ import { loadTrustedPreviousScheduledReport } from './report-previous-report.ts'
 import {
   buildExtractiveProjectOverview,
   normalizeProjectOverview,
+  PROJECT_OVERVIEW_SCHEMA_VERSION,
+  type ProjectOverviewV1,
 } from './report-project-overview.ts';
 import { type ReportGenerationProvider, resolveProviderCountTokens } from './report-provider.ts';
 import { publishGeneratedPublicReport } from './report-publication.ts';
@@ -279,15 +281,27 @@ export async function runGenerateReport(input: {
 
 function resolveGeneratedProjectOverview(
   generated: Awaited<ReturnType<ReportGenerationProvider['generate']>>,
-) {
+): ProjectOverviewV1 {
   if (generated.project_overview) {
     try {
       return normalizeProjectOverview(generated.project_overview);
     } catch {
       // A malformed optional overview must not fail the scheduled report itself.
+      console.warn('[project-overview] provider normalization failed; using extractive fallback');
     }
   }
-  return buildExtractiveProjectOverview(generated);
+  try {
+    return buildExtractiveProjectOverview(generated);
+  } catch {
+    // Generated prose can also violate the public-safety contract. Do not log provider content.
+    console.warn('[project-overview] extractive fallback failed; using minimal safe overview');
+    return {
+      assets: [],
+      issues: [],
+      schema_version: PROJECT_OVERVIEW_SCHEMA_VERSION,
+      status_summary: '定期レポートを生成しました。詳細は元レポートを確認してください。',
+    };
+  }
 }
 
 export class ReportGenerationAbortedError extends Error {
