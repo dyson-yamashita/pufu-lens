@@ -47,7 +47,7 @@ Web は provider によって build 方法が異なる。Firebase App Hosting、
 | name                             | kind         | used by                                 | note                                                                                                |
 | -------------------------------- | ------------ | --------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `PUFU_LENS_CHAT_MODEL`           | env          | Mastra Server                           | provider-qualified model。GCP deploy checkは`google/...`、`openai/...`、`anthropic/...`を検証する   |
-| `PUFU_LENS_EMBEDDING_PROVIDER`   | env          | Web、Mastra Server、Workflow Jobs       | `gemini` / `openai`。`deterministic` はローカル・テスト専用                                         |
+| `PUFU_LENS_EMBEDDING_PROVIDER`   | env          | Web、Mastra Server、Workflow Jobs       | `gemini` / `openai`。本番runtimeは `deterministic` を拒否する                                       |
 | `PUFU_LENS_EMBEDDING_MODEL`      | env          | Mastra Server、ingestion scripts / jobs | document chunkとchat queryで共通利用するmodel名                                                     |
 | `PUFU_LENS_EMBEDDING_DIMENSIONS` | env          | Mastra Server、ingestion scripts / jobs | DBの `vector(1536)` に合わせて `1536`                                                               |
 | `PUFU_LENS_EMBEDDING_API_KEY`    | secret       | Mastra Server、Workflow Jobs            | provider固有keyを共通名へ割り当てる場合に使用可能                                                   |

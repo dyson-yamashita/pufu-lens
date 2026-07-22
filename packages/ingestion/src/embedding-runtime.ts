@@ -12,6 +12,9 @@ import {
 export const EMBEDDING_PROVIDER_NAMES = ['deterministic', 'gemini', 'openai'] as const;
 export type EmbeddingProviderName = (typeof EMBEDDING_PROVIDER_NAMES)[number];
 
+const DETERMINISTIC_EMBEDDING_PRODUCTION_ERROR =
+  'The deterministic embedding provider is not allowed when NODE_ENV=production.';
+
 export interface EmbeddingRuntimeConfig {
   readonly apiKey?: string;
   readonly dimensions: number;
@@ -31,6 +34,7 @@ type EmbeddingRuntimeEnv = Readonly<Record<string, string | undefined>>;
  * @param input - Environment values plus optional CLI/workflow provider override and default
  * @returns Validated provider, model, dimensions, and provider credential
  * @throws When the provider, model, or dimensions are unsupported or empty
+ * @throws When `deterministic` is selected while `NODE_ENV` is exactly `production`
  */
 export function resolveEmbeddingRuntimeConfig(input: {
   readonly defaultProvider?: EmbeddingProviderName;
@@ -50,6 +54,7 @@ export function resolveEmbeddingRuntimeConfig(input: {
   const provider = parseEmbeddingProvider(
     input.provider ?? configuredProvider ?? input.defaultProvider ?? 'gemini',
   );
+  rejectDeterministicEmbeddingInProduction(input.env.NODE_ENV, provider);
   const dimensions = parseEmbeddingDimensions(
     input.env.PUFU_LENS_EMBEDDING_DIMENSIONS ??
       providerDimensionsAlias(input.env, provider) ??
@@ -99,6 +104,15 @@ export function createEmbeddingProviderFromEnv(input: {
     dimensions: config.dimensions,
     model: config.model,
   });
+}
+
+function rejectDeterministicEmbeddingInProduction(
+  nodeEnv: string | undefined,
+  provider: EmbeddingProviderName,
+): void {
+  if (nodeEnv === 'production' && provider === 'deterministic') {
+    throw new Error(DETERMINISTIC_EMBEDDING_PRODUCTION_ERROR);
+  }
 }
 
 function parseEmbeddingProvider(value: string): EmbeddingProviderName {

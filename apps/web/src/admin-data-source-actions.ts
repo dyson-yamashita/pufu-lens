@@ -1170,7 +1170,7 @@ async function runIngestWorkflow(input: {
       '--max-runtime-seconds',
       String(drainOptions.maxRuntimeSeconds),
       '--embedding-provider',
-      resolveAdminIngestEmbeddingProvider(process.env.PUFU_LENS_EMBEDDING_PROVIDER),
+      resolveAdminIngestEmbeddingProvider(process.env),
     ],
     {
       cwd: repoRoot,
