@@ -1377,6 +1377,83 @@ export function createPostgresChatRepository(
       const periodStartAt = period?.startAt ?? null;
       const periodEndAt = period?.endAt ?? null;
       if (keywordQuery.length === 0 && searchPatterns.length === 0) {
+        if (periodStartAt !== null) {
+          const rows = (await sql`
+            WITH period_candidates AS (
+              SELECT
+                d.id,
+                d.project_id,
+                d.raw_document_id,
+                d.doc_type,
+                d.title,
+                d.canonical_uri,
+                d.summary,
+                d.occurred_at,
+                d.updated_at
+              FROM public.documents d
+              WHERE d.project_id = ${projectId}
+                AND d.occurred_at >= ${periodStartAt}::timestamptz
+                AND d.occurred_at < ${periodEndAt}::timestamptz
+            ),
+            ranked AS (
+              SELECT
+                period_candidates.*,
+                row_number() OVER (
+                  ORDER BY
+                    period_candidates.occurred_at ASC NULLS LAST,
+                    period_candidates.updated_at ASC,
+                    period_candidates.id ASC
+                ) AS chronological_rank,
+                count(*) OVER () AS total_count
+              FROM period_candidates
+            ),
+            bounds AS (
+              SELECT coalesce(max(ranked.total_count), 0) AS total_count
+              FROM ranked
+            ),
+            target_ranks AS (
+              SELECT DISTINCT
+                CASE
+                  WHEN ${limit} = 1 THEN 1
+                  WHEN bounds.total_count <= ${limit} THEN series.idx
+                  ELSE 1 + floor(
+                    (series.idx - 1)::numeric * (bounds.total_count - 1) / (${limit} - 1)
+                  )::int
+                END AS target_rank
+              FROM bounds
+              CROSS JOIN generate_series(
+                1,
+                CASE
+                  WHEN bounds.total_count = 0 THEN 0
+                  ELSE least(${limit}, bounds.total_count)
+                END
+              ) AS series(idx)
+            )
+            SELECT
+              ranked.id::text AS document_id,
+              ranked.raw_document_id::text AS raw_document_id,
+              ranked.doc_type,
+              coalesce(ranked.title, 'Untitled') AS title,
+              coalesce(ranked.canonical_uri, '') AS canonical_uri,
+              left(coalesce(ranked.summary, dc.content, ''), 700) AS snippet
+            FROM ranked
+            INNER JOIN target_ranks
+              ON ranked.chronological_rank = target_ranks.target_rank
+            LEFT JOIN LATERAL (
+              SELECT content
+              FROM public.document_chunks
+              WHERE project_id = ranked.project_id
+                AND document_id = ranked.id
+              ORDER BY chunk_index ASC
+              LIMIT 1
+            ) dc ON true
+            ORDER BY
+              ranked.occurred_at ASC NULLS LAST,
+              ranked.updated_at ASC,
+              ranked.id ASC
+          `) as readonly unknown[];
+          return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
+        }
         const rows = (await sql`
           SELECT
             d.id::text AS document_id,
@@ -1395,13 +1472,6 @@ export function createPostgresChatRepository(
             LIMIT 1
           ) dc ON true
           WHERE d.project_id = ${projectId}
-            AND (
-              ${periodStartAt}::timestamptz IS NULL
-              OR (
-                d.occurred_at >= ${periodStartAt}::timestamptz
-                AND d.occurred_at < ${periodEndAt}::timestamptz
-              )
-            )
           ORDER BY d.occurred_at ASC NULLS LAST, d.updated_at ASC, d.id ASC
           LIMIT ${limit}
         `) as readonly unknown[];

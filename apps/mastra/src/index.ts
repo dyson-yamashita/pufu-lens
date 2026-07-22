@@ -209,8 +209,7 @@ const chatSourceListSchema = z.object({
   sources: z.array(chatSourceSchema),
 });
 
-const chatSearchIsoInstantSchema = z
-  .string()
+const chatSearchIsoInstantSchema = z.iso
   .datetime({ offset: true })
   .refine((value) => isChatSearchIsoInstant(value), {
     message: 'Instant must use YYYY-MM-DDTHH:mm:ss with Z or ±HH:mm.',

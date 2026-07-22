@@ -1245,10 +1245,38 @@ await assert.rejects(
     query: '',
   });
   assert.equal(sqlCallCount, 1);
-  assert.match(sqlTexts[0] ?? '', /d\.occurred_at >=/);
-  assert.match(sqlTexts[0] ?? '', /d\.occurred_at </);
+  const periodOnlySql = sqlTexts[0] ?? '';
+  assert.match(periodOnlySql, /period_candidates/);
+  assert.match(periodOnlySql, /chronological_rank/);
+  assert.match(periodOnlySql, /generate_series/);
+  assert.match(periodOnlySql, /target_ranks/);
+  const periodCandidatesCte =
+    periodOnlySql.match(/period_candidates AS \(([\s\S]*?)\)\s*,\s*ranked/)?.[1] ?? '';
+  assert.notEqual(periodCandidatesCte, '');
+  assert.doesNotMatch(periodCandidatesCte, /document_chunks/);
+  assert.match(periodOnlySql, /LEFT JOIN LATERAL[\s\S]*document_chunks/);
+  assert.match(periodOnlySql, /coalesce\(ranked\.summary, dc\.content/);
+  assert.match(periodOnlySql, /d\.occurred_at >=/);
+  assert.match(periodOnlySql, /d\.occurred_at </);
+  assert.doesNotMatch(periodOnlySql, /ILIKE ANY/);
   assert.ok(boundValues[0]?.includes(period.startAt));
   assert.ok(boundValues[0]?.includes(period.endAt));
+
+  sqlTexts.length = 0;
+  boundValues.length = 0;
+  sqlCallCount = 0;
+  await repository.timelineSearch({
+    limit: 10,
+    projectId: 'project-a',
+    query: '',
+  });
+  assert.equal(sqlCallCount, 1);
+  const noPeriodSql = sqlTexts[0] ?? '';
+  assert.doesNotMatch(noPeriodSql, /period_candidates/);
+  assert.doesNotMatch(noPeriodSql, /target_ranks/);
+  assert.doesNotMatch(noPeriodSql, /generate_series/);
+  assert.match(noPeriodSql, /ORDER BY d\.occurred_at ASC/);
+  assert.match(noPeriodSql, /LIMIT/);
 
   sqlCallCount = 0;
   await assert.rejects(
