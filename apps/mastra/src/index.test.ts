@@ -15,6 +15,7 @@ import {
   createPrivateChatSynthesisMessages,
   createPufuLensMastraRuntime,
   generateReportWorkflowInputSchema,
+  hybridSearchInputSchema,
   type MastraProjectContext,
   type MastraPublicReportContext,
   mastraAgentIds,
@@ -27,7 +28,6 @@ import {
   privateChatQuestionClassificationSchema,
   privateChatSearchWorkflowInputSchema,
   rawReadViewTrace,
-  vectorSearchInputSchema,
 } from './index.ts';
 
 const testEmbeddingProvider = createDeterministicEmbeddingProvider({
@@ -41,7 +41,7 @@ function createChatRepository(): ChatRepository & {
     period?: { endAt: string; startAt: string };
     query: string;
   }>;
-  vectorSearchInputs: Array<{
+  hybridSearchInputs: Array<{
     embedding: readonly number[];
     embeddingModel: string;
     query: string;
@@ -52,7 +52,7 @@ function createChatRepository(): ChatRepository & {
     period?: { endAt: string; startAt: string };
     query: string;
   }> = [];
-  const vectorSearchInputs: Array<{
+  const hybridSearchInputs: Array<{
     embedding: readonly number[];
     embeddingModel: string;
     query: string;
@@ -60,15 +60,20 @@ function createChatRepository(): ChatRepository & {
   return {
     projectIds,
     timelineSearchInputs,
-    vectorSearchInputs,
+    hybridSearchInputs,
     async lookupProjectMember({ projectSlug, userId }) {
       return projectSlug === 'sample-a' && userId === 'user-a'
-        ? { graphName: 'graph_sample_a', id: 'project-a', slug: 'sample-a' }
+        ? {
+            graphName: 'graph_sample_a',
+            hybridSearchDocumentLimit: 5,
+            id: 'project-a',
+            slug: 'sample-a',
+          }
         : undefined;
     },
-    async vectorSearch({ embedding, embeddingModel, projectId, query }) {
+    async hybridSearch({ embedding, embeddingModel, projectId, query }) {
       projectIds.push(projectId);
-      vectorSearchInputs.push({ embedding, embeddingModel, query });
+      hybridSearchInputs.push({ embedding, embeddingModel, query });
       return [sampleSource];
     },
     async graphQuery({ projectId }) {
@@ -344,7 +349,7 @@ assert.deepEqual(
     mastraToolIds.pufuScoreGenerate,
     mastraToolIds.rawDocumentFetch,
     mastraToolIds.timelineSearch,
-    mastraToolIds.vectorSearch,
+    mastraToolIds.hybridSearch,
   ].sort(),
 );
 
@@ -397,23 +402,23 @@ assert.equal(dataSourceStatus?.dataSources.length, 1);
 assert.equal(dataSourceStatus?.dataSources[0]?.sourceType, 'github');
 
 const requestContext = new RequestContext<MastraProjectContext>([['projectId', 'project-a']]);
-const parsedVectorSearchInput = vectorSearchInputSchema.parse({
+const parsedHybridSearchInput = hybridSearchInputSchema.parse({
   limit: 3,
   query: '  仕様変更  ',
 });
-assert.deepEqual(parsedVectorSearchInput, { limit: 3, query: '仕様変更' });
-assert.throws(() => vectorSearchInputSchema.parse({ limit: 3, query: '   ' }));
-const vectorSearch = await runtime.projectChatTools.vectorSearch.execute?.(
-  parsedVectorSearchInput,
+assert.deepEqual(parsedHybridSearchInput, { limit: 3, query: '仕様変更' });
+assert.throws(() => hybridSearchInputSchema.parse({ limit: 3, query: '   ' }));
+const hybridSearch = await runtime.projectChatTools.hybridSearch.execute?.(
+  parsedHybridSearchInput,
   { requestContext } as never,
 );
-assert.deepEqual(vectorSearch, { sources: [sampleSource] });
-assert.deepEqual(chatRepository.vectorSearchInputs.at(-1)?.query, '仕様変更');
+assert.deepEqual(hybridSearch, { sources: [sampleSource] });
+assert.deepEqual(chatRepository.hybridSearchInputs.at(-1)?.query, '仕様変更');
 assert.deepEqual(
-  chatRepository.vectorSearchInputs.at(-1)?.embedding,
+  chatRepository.hybridSearchInputs.at(-1)?.embedding,
   (await testEmbeddingProvider.embedTexts(['仕様変更']))[0],
 );
-assert.equal(chatRepository.vectorSearchInputs.at(-1)?.embeddingModel, testEmbeddingProvider.model);
+assert.equal(chatRepository.hybridSearchInputs.at(-1)?.embeddingModel, testEmbeddingProvider.model);
 
 const timelineSearch = await runtime.projectChatTools.timelineSearch.execute?.(
   { limit: 3, query: '意思決定の経緯' },
@@ -481,7 +486,7 @@ assert.match(
 );
 
 const projectChatInstructions = PROJECT_CHAT_AGENT_INSTRUCTIONS;
-assert.match(projectChatInstructions, /まず vector-search を実行する/);
+assert.match(projectChatInstructions, /まず hybrid-search を実行する/);
 assert.match(projectChatInstructions, /graph-query と parsed-doc-fetch を補助検索/);
 assert.match(projectChatInstructions, /seedDocumentIds/);
 assert.match(projectChatInstructions, /timeline-search/);
@@ -775,12 +780,12 @@ const privateChatAnswer = privateChatResult.result as {
   readonly toolCalls: Array<{ name: string; resultCount: number }>;
 };
 assert.equal(privateChatAnswer.answer, 'workflow hybrid answer');
-assert.ok(privateChatAnswer.toolCalls.some((toolCall) => toolCall.name === 'vector-search'));
+assert.ok(privateChatAnswer.toolCalls.some((toolCall) => toolCall.name === 'hybrid-search'));
 assert.equal(plannerPrompts.length, 2);
 assert.match(plannerPrompts[0] ?? '', /編集操作/);
 assert.match(plannerPrompts[1] ?? '', /追加検索候補/);
 assert.deepEqual(
-  chatRepository.vectorSearchInputs.slice(-3).map(({ query }) => query),
+  chatRepository.hybridSearchInputs.slice(-3).map(({ query }) => query),
   ['pufu-editorでのエラー対応実績は？', 'pufu-editor エラー 原因', 'pufu-editor 修正 テスト'],
 );
 const synthesisMessageText = JSON.stringify(privateChatSynthesisMessages);
@@ -814,7 +819,7 @@ assert.deepEqual(chatRepository.timelineSearchInputs.at(-1), {
   query: '',
 });
 
-const vectorSearchCountBeforePlannerFailure = chatRepository.vectorSearchInputs.length;
+const hybridSearchCountBeforePlannerFailure = chatRepository.hybridSearchInputs.length;
 const fallbackWorkflow = createPrivateChatSearchWorkflow({
   chatRepository,
   embeddingProvider: testEmbeddingProvider,
@@ -837,8 +842,8 @@ const fallbackResult = await fallbackRun.start({
   },
 });
 assert.equal(fallbackResult.status, 'success');
-assert.equal(chatRepository.vectorSearchInputs.length - vectorSearchCountBeforePlannerFailure, 1);
-assert.equal(chatRepository.vectorSearchInputs.at(-1)?.query, '通常質問');
+assert.equal(chatRepository.hybridSearchInputs.length - hybridSearchCountBeforePlannerFailure, 1);
+assert.equal(chatRepository.hybridSearchInputs.at(-1)?.query, '通常質問');
 
 assert.equal(
   privateChatEditingMetadataSchema.safeParse({ inferredMode: 'timeline' }).success,

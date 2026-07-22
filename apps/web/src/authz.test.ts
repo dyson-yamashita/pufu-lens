@@ -13,11 +13,24 @@ const validAccessRow = {
   id: 'project-a',
   name: 'Sample Project',
   projectRole: 'admin',
+  settings: { hybridSearchDocumentLimit: 7 },
   slug: 'sample',
   visibility: 'private',
 };
 
-assert.deepEqual(parseProjectMemberAccess(validAccessRow), validAccessRow);
+const validAccess = {
+  appRole: validAccessRow.appRole,
+  description: validAccessRow.description,
+  graphName: validAccessRow.graphName,
+  hybridSearchDocumentLimit: 7,
+  id: validAccessRow.id,
+  name: validAccessRow.name,
+  projectRole: validAccessRow.projectRole,
+  slug: validAccessRow.slug,
+  visibility: validAccessRow.visibility,
+};
+
+assert.deepEqual(parseProjectMemberAccess(validAccessRow), validAccess);
 assert.equal(projectAccessSatisfiesRole(parseProjectMemberAccess(validAccessRow), 'member'), true);
 assert.equal(projectAccessSatisfiesRole(parseProjectMemberAccess(validAccessRow), 'admin'), true);
 
@@ -31,7 +44,7 @@ assert.deepEqual(
     visibility: 'public',
   }),
   {
-    ...validAccessRow,
+    ...validAccess,
     appRole: 'admin',
     description: null,
     graphName: null,

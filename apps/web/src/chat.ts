@@ -15,7 +15,7 @@ import {
 } from './raw-read-view.ts';
 import type { PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 
-/** Maximum number of deduplicated evidence sources returned by a chat response. */
+/** Candidate and compatibility ceiling used outside the project-configured final selection. */
 export const MAX_CHAT_RESPONSE_SOURCES = 10;
 
 export type { ChatSearchPeriod } from './chat-search-period.ts';
@@ -37,7 +37,7 @@ export type ChatToolName =
   | 'parsed-doc-fetch'
   | 'raw-document-fetch'
   | 'timeline-search'
-  | 'vector-search';
+  | 'hybrid-search';
 
 export type PublicChatToolName = ChatToolName | 'public-context-fetch' | 'public-report-fetch';
 
@@ -226,11 +226,14 @@ export interface ChatRepository {
     query: string;
     seedDocumentIds?: readonly string[];
   }): Promise<ChatSource[]>;
-  lookupProjectMember(input: {
-    projectSlug: string;
-    userId: string;
-  }): Promise<
-    { readonly graphName: string | null; readonly id: string; readonly slug: string } | undefined
+  lookupProjectMember(input: { projectSlug: string; userId: string }): Promise<
+    | {
+        readonly graphName: string | null;
+        readonly hybridSearchDocumentLimit: number;
+        readonly id: string;
+        readonly slug: string;
+      }
+    | undefined
   >;
   parsedDocFetch(input: { limit: number; projectId: string }): Promise<ChatSource[]>;
   rawDocumentFetch(input: {
@@ -245,7 +248,7 @@ export interface ChatRepository {
     projectId: string;
     query: string;
   }): Promise<ChatSource[]>;
-  vectorSearch(input: {
+  hybridSearch(input: {
     embedding: readonly number[];
     embeddingModel: string;
     limit: number;
@@ -653,16 +656,17 @@ export async function runPrivateChat(
   if (!embedding) {
     throw new Error('Private chat query embedding is unavailable.');
   }
-  const vectorSources = await options.repository.vectorSearch({
+  const sourceLimit = project.hybridSearchDocumentLimit;
+  const hybridSources = await options.repository.hybridSearch({
     embedding,
     embeddingModel: options.embeddingProvider.model,
-    limit: MAX_CHAT_RESPONSE_SOURCES,
+    limit: sourceLimit,
     projectId: project.id,
     query: request.question,
   });
   const timelineSourcesPromise = shouldPrioritizeTimeline
     ? options.repository.timelineSearch({
-        limit: MAX_CHAT_RESPONSE_SOURCES,
+        limit: sourceLimit,
         projectId: project.id,
         query: request.question,
       })
@@ -670,50 +674,47 @@ export async function runPrivateChat(
   const [graphSources, timelineSources, rawSources, parsedSources] = await Promise.all([
     options.repository.graphQuery({
       graphName: project.graphName,
-      limit: MAX_CHAT_RESPONSE_SOURCES,
+      limit: sourceLimit,
       projectId: project.id,
       query: request.question,
-      seedDocumentIds: vectorSources.map((source) => source.documentId),
+      seedDocumentIds: hybridSources.map((source) => source.documentId),
     }),
     timelineSourcesPromise,
     options.repository.rawDocumentFetch({
-      limit: MAX_CHAT_RESPONSE_SOURCES,
+      limit: sourceLimit,
       maxBytes: 64 * 1024,
       projectId: project.id,
     }),
     options.repository.parsedDocFetch({
-      limit: MAX_CHAT_RESPONSE_SOURCES,
+      limit: sourceLimit,
       projectId: project.id,
     }),
   ]);
   const documentSources = await options.repository.documentFetch({
-    documentIds: vectorSources.map((source) => source.documentId),
+    documentIds: hybridSources.map((source) => source.documentId),
     projectId: project.id,
   });
   const timelineSourceBudget = shouldPrioritizeTimeline ? Math.min(timelineSources.length, 2) : 0;
   const graphSourceBudget = Math.min(graphSources.length, shouldPrioritizeTimeline ? 1 : 2);
-  const vectorSourceBudget = Math.max(
-    0,
-    MAX_CHAT_RESPONSE_SOURCES - graphSourceBudget - timelineSourceBudget,
-  );
+  const hybridSourceBudget = Math.max(0, sourceLimit - graphSourceBudget - timelineSourceBudget);
   const sources = uniqueSources([
     ...(shouldPrioritizeTimeline
       ? [
           ...timelineSources.slice(0, timelineSourceBudget),
           ...graphSources.slice(0, graphSourceBudget),
-          ...vectorSources.slice(0, vectorSourceBudget),
+          ...hybridSources.slice(0, hybridSourceBudget),
           ...timelineSources.slice(timelineSourceBudget),
-          ...vectorSources.slice(vectorSourceBudget),
+          ...hybridSources.slice(hybridSourceBudget),
         ]
       : [
-          ...vectorSources.slice(0, vectorSourceBudget),
+          ...hybridSources.slice(0, hybridSourceBudget),
           ...graphSources.slice(0, graphSourceBudget),
-          ...vectorSources.slice(vectorSourceBudget),
+          ...hybridSources.slice(hybridSourceBudget),
         ]),
     ...documentSources,
     ...rawSources,
     ...parsedSources,
-  ]).slice(0, MAX_CHAT_RESPONSE_SOURCES);
+  ]).slice(0, sourceLimit);
 
   return {
     answer: await options.provider.complete({ editing, question: request.question, sources }),
@@ -722,7 +723,7 @@ export async function runPrivateChat(
     sources: privateChatSourcesForResponse(sources),
     status: 'answered',
     toolCalls: [
-      { name: 'vector-search', resultCount: vectorSources.length },
+      { name: 'hybrid-search', resultCount: hybridSources.length },
       { name: 'graph-query', resultCount: graphSources.length },
       ...(shouldPrioritizeTimeline
         ? [{ name: 'timeline-search' as const, resultCount: timelineSources.length }]
@@ -1111,9 +1112,16 @@ export function createPostgresChatRepository(
   return {
     async lookupProjectMember({ projectSlug, userId }) {
       const access = await lookupProjectMemberAccess(sql, { projectSlug, userId });
-      return access ? { graphName: access.graphName, id: access.id, slug: access.slug } : undefined;
+      return access
+        ? {
+            graphName: access.graphName,
+            hybridSearchDocumentLimit: access.hybridSearchDocumentLimit,
+            id: access.id,
+            slug: access.slug,
+          }
+        : undefined;
     },
-    async vectorSearch({ embedding, embeddingModel, limit, projectId, query }) {
+    async hybridSearch({ embedding, embeddingModel, limit, projectId, query }) {
       const vector = `[${embedding.join(',')}]`;
       const keywordQuery = normalizeHybridKeywordQuery(query);
       if (keywordQuery.length === 0) {
@@ -2056,13 +2064,16 @@ function parseStoredChatToolCall(value: unknown): ChatToolCall {
 }
 
 function parseChatToolName(value: unknown): ChatToolName {
+  if (value === 'vector-search') {
+    return 'hybrid-search';
+  }
   if (
     value === 'document-fetch' ||
     value === 'graph-query' ||
     value === 'parsed-doc-fetch' ||
     value === 'raw-document-fetch' ||
     value === 'timeline-search' ||
-    value === 'vector-search'
+    value === 'hybrid-search'
   ) {
     return value;
   }

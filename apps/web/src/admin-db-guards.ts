@@ -11,6 +11,7 @@ export type AdminDbProjectRow = {
   readonly description: string | null;
   readonly failed_count: number | string | bigint;
   readonly held_count: number | string | bigint;
+  readonly settings: unknown;
   readonly id: string;
   readonly ingested_count: number | string | bigint;
   readonly last_indexed: Date | string | null;
@@ -223,11 +224,13 @@ export function parseAdminDbProjectRow(value: unknown): AdminDbProjectRow {
     raw_count,
     slug,
     visibility,
+    settings,
   } = value;
   return {
     description: parseNullableString(description, context, 'description'),
     failed_count: parseCountLike(failed_count, context, 'failed_count'),
     held_count: parseCountLike(held_count, context, 'held_count'),
+    settings,
     id: parseRequiredString(id, context, 'id'),
     ingested_count: parseCountLike(ingested_count, context, 'ingested_count'),
     last_indexed: parseNullableDateLike(last_indexed, context, 'last_indexed'),

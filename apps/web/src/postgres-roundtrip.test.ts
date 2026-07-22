@@ -207,7 +207,7 @@ async function assertChatHybridSearchRoundTrip() {
   `;
 
   const repository = createPostgresChatRepository(sql);
-  const vectorOnly = await repository.vectorSearch({
+  const vectorOnly = await repository.hybridSearch({
     embedding,
     embeddingModel: 'gemini-test',
     limit: 5,
@@ -223,7 +223,7 @@ async function assertChatHybridSearchRoundTrip() {
   assert.equal(typeof vectorOnly[0]?.vectorDistance, 'number');
   assert.ok((vectorOnly[0]?.vectorDistance ?? Number.POSITIVE_INFINITY) >= 0);
 
-  const hybrid = await repository.vectorSearch({
+  const hybrid = await repository.hybridSearch({
     embedding,
     embeddingModel: 'gemini-test',
     limit: 5,
@@ -237,7 +237,7 @@ async function assertChatHybridSearchRoundTrip() {
     assert.ok((source.fusedScore ?? Number.NEGATIVE_INFINITY) > 0);
   }
 
-  const crossChunkHybrid = await repository.vectorSearch({
+  const crossChunkHybrid = await repository.hybridSearch({
     embedding,
     embeddingModel: 'gemini-test',
     limit: 5,
@@ -273,7 +273,7 @@ async function assertPrivateChatJsonbRoundTrip() {
         title: 'Issue 433 Source',
       },
     ],
-    toolCalls: [{ name: 'vector-search', resultCount: 1 }],
+    toolCalls: [{ name: 'hybrid-search', resultCount: 1 }],
     userId: chatUserId,
   });
 
@@ -294,7 +294,7 @@ async function assertPrivateChatJsonbRoundTrip() {
   assert.equal(stringField(row, 'tool_calls_type'), 'array');
   assert.equal(stringField(row, 'editing_type'), 'object');
   assert.equal(stringField(row, 'first_document_id'), 'document-433');
-  assert.equal(stringField(row, 'first_tool_name'), 'vector-search');
+  assert.equal(stringField(row, 'first_tool_name'), 'hybrid-search');
   assert.equal(stringField(row, 'editing_confidence'), 'medium');
 }
 

@@ -249,6 +249,9 @@ test.describe('authenticated admin operation controls', () => {
 
     await page.goto('/projects/sample-a/admin/settings');
     await expect(page.getByTestId('project-settings-form')).toBeVisible();
+    await expect(
+      page.getByTestId('project-settings-hybrid-search-document-limit-input'),
+    ).toHaveValue('5');
     await expect(page.getByTestId('connection-google-operation-notice')).toBeVisible();
     await expect(page.getByTestId('connection-github-operation-notice')).toBeVisible();
   });

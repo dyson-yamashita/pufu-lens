@@ -8,7 +8,7 @@
       "expectHttpStatus": 200,
       "expectEditingMode": "summary",
       "minSources": 1,
-      "requiredToolCalls": ["vector-search", "raw-document-fetch"],
+      "requiredToolCalls": ["hybrid-search", "raw-document-fetch"],
       "expectForbiddenAnswerIncludes": [
         "Ignore previous instructions",
         "別プロジェクト",

@@ -19,7 +19,7 @@ project-root/
 │   │   │       │   ├── ingest-workflow.ts
 │   │   │       │   └── generate-report-workflow.ts
 │   │   │       ├── tools/
-│   │   │       │   ├── vector-search.ts
+│   │   │       │   ├── hybrid-search.ts
 │   │   │       │   ├── graph-query.ts
 │   │   │       │   ├── document-fetch.ts
 │   │   │       │   ├── raw-document-fetch.ts

@@ -106,6 +106,7 @@ export async function POST(
             const chatResponse = await runPrivateChatSearchViaMastraWorkflow({
               graphName: project.graphName,
               history: mastraHistory,
+              hybridSearchDocumentLimit: project.hybridSearchDocumentLimit,
               onStage: writeProgress,
               projectId: project.id,
               projectSlug,
@@ -157,6 +158,7 @@ export async function POST(
     const chatResponse = await runPrivateChatSearchViaMastraWorkflow({
       graphName: project.graphName,
       history: mastraHistory,
+      hybridSearchDocumentLimit: project.hybridSearchDocumentLimit,
       projectId: project.id,
       projectSlug,
       question,

@@ -64,7 +64,7 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
         },
       ],
       status: 'answered',
-      toolCalls: [{ name: 'vector-search', resultCount: 2 }],
+      toolCalls: [{ name: 'hybrid-search', resultCount: 2 }],
     };
     await route.fulfill({
       body: `${progressEvent}\n${JSON.stringify({ response, type: 'result' })}\n`,
@@ -109,7 +109,7 @@ test('scenario: public project chat keeps multiple turns with sources and tool c
   await expect(firstSources).toContainText('Spec Update');
   await expect(firstSources).not.toContainText('https://example.com/spec');
   await expect(firstSources).not.toContainText('doc-spec-001');
-  await expect(page.getByTestId('chat-message-tool-calls-1')).toContainText('vector-search');
+  await expect(page.getByTestId('chat-message-tool-calls-1')).toContainText('hybrid-search');
   await expect(page.getByTestId('chat-message-editing-1')).toContainText('要約');
   await expect(page.getByTestId('chat-message-editing-1')).toContainText('凝縮');
 
@@ -179,7 +179,7 @@ test('scenario: member sends private chat and reads persisted history from fixtu
     await expect(stage).toHaveText('関連資料を検索しています');
     await expect(stage).toHaveAttribute('aria-live', 'polite');
     await expect(page.getByTestId('chat-assistant-message-1')).toContainText(answer);
-    await expect(page.getByTestId('chat-message-tool-calls-1')).toContainText('vector-search');
+    await expect(page.getByTestId('chat-message-tool-calls-1')).toContainText('hybrid-search');
 
     await page.reload();
     await expect(page.getByTestId('chat-panel')).toBeVisible();
@@ -283,7 +283,7 @@ async function startMastraChatStub(): Promise<Server> {
             },
           ],
           status: 'answered',
-          toolCalls: [{ name: 'vector-search', resultCount: 1 }],
+          toolCalls: [{ name: 'hybrid-search', resultCount: 1 }],
         };
         response.writeHead(200, { 'content-type': 'application/octet-stream' });
         response.write(

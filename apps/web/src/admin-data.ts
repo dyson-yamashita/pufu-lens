@@ -187,6 +187,7 @@ export interface ProjectSummary {
   readonly queueCount: number;
   readonly failedCount: number;
   readonly heldCount: number;
+  readonly hybridSearchDocumentLimit: number;
   readonly lastIndexed: string;
   readonly dataSources: readonly DataSourceSummary[];
   readonly parserProfiles: readonly ParserProfileSummary[];
@@ -205,6 +206,7 @@ export const fallbackProjects = [
     queueCount: 6,
     failedCount: 2,
     heldCount: 3,
+    hybridSearchDocumentLimit: 5,
     lastIndexed: '2026-06-02 09:12',
     dataSources: [
       {
@@ -306,6 +308,7 @@ export const fallbackProjects = [
     queueCount: 1,
     failedCount: 0,
     heldCount: 0,
+    hybridSearchDocumentLimit: 5,
     lastIndexed: '2026-06-02 07:36',
     dataSources: [
       {

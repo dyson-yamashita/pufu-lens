@@ -1,3 +1,4 @@
+import { DEFAULT_HYBRID_SEARCH_DOCUMENT_LIMIT } from '../../../../../src/project-chat-settings';
 import { PublicReportDocument } from '../../../../../src/report-client';
 import { AppShell, PageHeader } from '../../../../../src/ui';
 
@@ -23,6 +24,7 @@ function publicProjectSummary(slug: string, name: string) {
     description: null,
     failedCount: 0,
     heldCount: 0,
+    hybridSearchDocumentLimit: DEFAULT_HYBRID_SEARCH_DOCUMENT_LIMIT,
     ingestedCount: 0,
     lastIndexed: '',
     memberCount: 0,

@@ -8,7 +8,7 @@
       "expectHttpStatus": 200,
       "minSources": 1,
       "expectSourceTitles": ["Indexer should skip archived notes"],
-      "requiredToolCalls": ["vector-search", "graph-query", "document-fetch"]
+      "requiredToolCalls": ["hybrid-search", "graph-query", "document-fetch"]
     },
     {
       "question": "このプロジェクトに存在しない量子テレポーテーション障害の対応記録を教えて",
@@ -16,7 +16,7 @@
       "expectHttpStatus": 200,
       "minSources": 0,
       "maxSources": 0,
-      "requiredToolCalls": ["vector-search", "graph-query"]
+      "requiredToolCalls": ["hybrid-search", "graph-query"]
     }
   ]
 }

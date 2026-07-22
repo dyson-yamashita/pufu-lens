@@ -5,6 +5,7 @@ import {
   mapWorkflowStepIdToUiStage,
   type PrivateChatSearchStageId,
 } from './private-chat-search.ts';
+import { DEFAULT_HYBRID_SEARCH_DOCUMENT_LIMIT } from './project-chat-settings.ts';
 
 export const PRIVATE_CHAT_SEARCH_WORKFLOW_ID = 'private-chat-search';
 export const MASTRA_WORKFLOW_RECORD_SEPARATOR = '\x1e';
@@ -52,12 +53,14 @@ export function mastraPrivateChatSearchStreamUrl(
 /**
  * Builds the Mastra `private-chat-search` workflow stream request body.
  *
- * @param input - Workflow scope, history, question, and explicit `nowIso` current instant
+ * @param input - Workflow scope, history, question, explicit `nowIso`, and an optional final
+ * source-selection limit from 1 to 20; the serialized limit defaults to 5 when omitted
  * @returns JSON body containing `inputData` for the workflow stream endpoint
  */
 export function createMastraPrivateChatSearchWorkflowStreamBody(input: {
   readonly graphName: string | null;
   readonly history: readonly MastraChatHistoryMessage[];
+  readonly hybridSearchDocumentLimit?: number;
   readonly nowIso: string;
   readonly projectId: string;
   readonly projectSlug: string;
@@ -67,6 +70,8 @@ export function createMastraPrivateChatSearchWorkflowStreamBody(input: {
     inputData: {
       graphName: input.graphName,
       history: input.history,
+      hybridSearchDocumentLimit:
+        input.hybridSearchDocumentLimit ?? DEFAULT_HYBRID_SEARCH_DOCUMENT_LIMIT,
       nowIso: input.nowIso,
       projectId: input.projectId,
       projectSlug: input.projectSlug,
@@ -245,15 +250,18 @@ export async function consumeMastraWorkflowStream(
 /**
  * Runs the shared `private-chat-search` Mastra workflow for private and public chat callers.
  *
- * @param input - Project scope, question, optional history, and optional deterministic `nowIso`
+ * @param input - Project scope, question, optional history, optional deterministic `nowIso`, and
+ * an optional final source-selection limit from 1 to 20; the workflow receives 5 when omitted
  * @returns The answered chat response extracted from the workflow stream
- * @throws PrivateChatWorkflowInvocationError When workflow creation, streaming, or parsing fails
+ * @throws PrivateChatWorkflowInvocationError When workflow creation, input validation, streaming,
+ * or parsing fails; the Mastra workflow schema rejects limits outside 1 to 20
  */
 export async function runPrivateChatSearchViaMastraWorkflow(input: {
   readonly env?: MastraWorkflowEnv;
   readonly fetchImpl?: typeof fetch;
   readonly graphName: string | null;
   readonly history: readonly MastraChatHistoryMessage[];
+  readonly hybridSearchDocumentLimit?: number;
   readonly nowIso?: string;
   readonly onStage?: (stage: PrivateChatSearchStageId) => void;
   readonly projectId: string;
@@ -286,6 +294,7 @@ export async function runPrivateChatSearchViaMastraWorkflow(input: {
       createMastraPrivateChatSearchWorkflowStreamBody({
         graphName: input.graphName,
         history: input.history,
+        hybridSearchDocumentLimit: input.hybridSearchDocumentLimit,
         nowIso,
         projectId: input.projectId,
         projectSlug: input.projectSlug,

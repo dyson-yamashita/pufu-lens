@@ -268,18 +268,23 @@ function createRepository(): ChatRepository & {
     rawFetchInputs,
     async lookupProjectMember({ projectSlug, userId }) {
       return projectSlug === 'sample-a' && (userId === 'user-a' || userId === 'admin-a')
-        ? { graphName: 'graph_sample_a', id: 'project-a', slug: 'sample-a' }
+        ? {
+            graphName: 'graph_sample_a',
+            hybridSearchDocumentLimit: 5,
+            id: 'project-a',
+            slug: 'sample-a',
+          }
         : undefined;
     },
-    async vectorSearch({ limit, projectId }) {
+    async hybridSearch({ limit, projectId }) {
       assert.equal(projectId, 'project-a');
-      assert.equal(limit, 10);
+      assert.equal(limit, 5);
       return [sampleSource];
     },
     async graphQuery({ graphName, limit, projectId, seedDocumentIds }) {
       assert.equal(graphName, 'graph_sample_a');
       assert.equal(projectId, 'project-a');
-      assert.equal(limit, 10);
+      assert.equal(limit, 5);
       assert.deepEqual(seedDocumentIds, ['doc-a']);
       return [{ ...sampleSource, documentId: 'doc-graph', title: 'Related Issue' }];
     },
@@ -290,7 +295,7 @@ function createRepository(): ChatRepository & {
     },
     async rawDocumentFetch({ limit, maxBytes, projectId }) {
       assert.equal(projectId, 'project-a');
-      assert.equal(limit, 10);
+      assert.equal(limit, 5);
       rawFetchInputs.push({ maxBytes });
       return [{ ...sampleSource, documentId: 'doc-raw', title: 'Raw Metadata' }];
     },
@@ -299,12 +304,12 @@ function createRepository(): ChatRepository & {
     },
     async timelineSearch({ limit, projectId }) {
       assert.equal(projectId, 'project-a');
-      assert.equal(limit, 10);
+      assert.equal(limit, 5);
       return [{ ...sampleSource, documentId: 'doc-timeline', title: 'Timeline Event' }];
     },
     async parsedDocFetch({ limit, projectId }) {
       assert.equal(projectId, 'project-a');
-      assert.equal(limit, 10);
+      assert.equal(limit, 5);
       return [{ ...sampleSource, documentId: 'doc-parsed', title: 'Parsed Metadata' }];
     },
     async listPrivateChatHistoryForContext() {
@@ -336,7 +341,7 @@ assert.equal(response.editing?.questionType, 'risk');
 assert.equal(response.sources.length, 4);
 assert.deepEqual(
   response.toolCalls.map((toolCall) => toolCall.name),
-  ['vector-search', 'graph-query', 'document-fetch', 'raw-document-fetch', 'parsed-doc-fetch'],
+  ['hybrid-search', 'graph-query', 'document-fetch', 'raw-document-fetch', 'parsed-doc-fetch'],
 );
 assert.equal(repository.rawFetchInputs[0]?.maxBytes, 64 * 1024);
 
@@ -547,7 +552,7 @@ const graphBudgetResponse = await runPrivateChat(
     provider: createExtractiveChatProvider(),
     repository: {
       ...createRepository(),
-      async vectorSearch() {
+      async hybridSearch() {
         return Array.from({ length: 5 }, (_, index) => ({
           ...sampleSource,
           documentId: `doc-vector-${index + 1}`,
@@ -574,14 +579,7 @@ const graphBudgetResponse = await runPrivateChat(
 );
 assert.deepEqual(
   graphBudgetResponse.sources.map((source) => source.documentId),
-  [
-    'doc-vector-1',
-    'doc-vector-2',
-    'doc-vector-3',
-    'doc-vector-4',
-    'doc-vector-5',
-    'doc-graph-budget',
-  ],
+  ['doc-vector-1', 'doc-vector-2', 'doc-vector-3', 'doc-vector-4', 'doc-graph-budget'],
 );
 
 const timelineBudgetResponse = await runPrivateChat(
@@ -591,7 +589,7 @@ const timelineBudgetResponse = await runPrivateChat(
     provider: createExtractiveChatProvider(),
     repository: {
       ...createRepository(),
-      async vectorSearch() {
+      async hybridSearch() {
         return Array.from({ length: 5 }, (_, index) => ({
           ...sampleSource,
           documentId: `doc-vector-timeline-${index + 1}`,
@@ -608,7 +606,7 @@ const timelineBudgetResponse = await runPrivateChat(
         return [];
       },
       async timelineSearch({ limit }) {
-        assert.equal(limit, 10);
+        assert.equal(limit, 5);
         return [
           { ...sampleSource, documentId: 'doc-time-1', title: 'First Decision' },
           { ...sampleSource, documentId: 'doc-time-2', title: 'Second Decision' },
@@ -628,15 +626,12 @@ assert.deepEqual(
     'doc-graph-timeline',
     'doc-vector-timeline-1',
     'doc-vector-timeline-2',
-    'doc-vector-timeline-3',
-    'doc-vector-timeline-4',
-    'doc-vector-timeline-5',
   ],
 );
 assert.deepEqual(
   timelineBudgetResponse.toolCalls.map((toolCall) => toolCall.name),
   [
-    'vector-search',
+    'hybrid-search',
     'graph-query',
     'timeline-search',
     'document-fetch',
@@ -735,7 +730,7 @@ const priorHistory = Array.from({ length: PRIVATE_CHAT_CONTEXT_TURN_LIMIT + 1 },
   id: `turn-${index}`,
   question: `question-${index}`,
   sources: [sampleSource],
-  toolCalls: [{ name: 'vector-search' as const, resultCount: 1 }],
+  toolCalls: [{ name: 'hybrid-search' as const, resultCount: 1 }],
 }));
 assert.deepEqual(privateChatHistoryToMastraMessages(priorHistory).slice(0, 2), [
   { role: 'user', content: 'question-1' },
@@ -838,6 +833,20 @@ assert.deepEqual(
     tool_calls: [{ name: 'vector-search', resultCount: 2 }],
   },
 );
+assert.deepEqual(
+  privateChatHistoryItemFromRow(
+    parsePrivateChatHistoryRow({
+      answer: '回答',
+      created_at: '2026-06-01T00:00:00.000Z',
+      editing: null,
+      id: 'msg-legacy-tool-name',
+      question: '質問',
+      sources: [sampleSource],
+      tool_calls: [{ name: 'vector-search', resultCount: 2 }],
+    }),
+  ).toolCalls,
+  [{ name: 'hybrid-search', resultCount: 2 }],
+);
 {
   const warnings: unknown[] = [];
   const originalWarn = console.warn;
@@ -906,7 +915,7 @@ assert.deepEqual(
     projectId: 'project-a',
     question: '質問',
     sources: [sampleSource],
-    toolCalls: [{ name: 'vector-search', resultCount: 1 }],
+    toolCalls: [{ name: 'hybrid-search', resultCount: 1 }],
     userId: 'user-a',
   });
 
@@ -1072,7 +1081,7 @@ const mastraTenSourceResponse = mastraGenerateToChatResponse({
                 })),
               },
             },
-            toolName: 'vectorSearch',
+            toolName: 'hybridSearch',
             type: 'tool-result',
           },
         ],
@@ -1152,13 +1161,13 @@ assert.doesNotMatch(
 
 assert.deepEqual(
   publicChatToolCallsFromPrivate([
-    { name: 'vector-search', resultCount: 3 },
+    { name: 'hybrid-search', resultCount: 3 },
     { name: 'graph-query', resultCount: 2 },
     { name: 'timeline-search', resultCount: 2 },
     { name: 'raw-document-fetch', resultCount: 1 },
   ]),
   [
-    { name: 'vector-search', resultCount: 3 },
+    { name: 'hybrid-search', resultCount: 3 },
     { name: 'graph-query', resultCount: 2 },
     { name: 'timeline-search', resultCount: 2 },
     { name: 'raw-document-fetch', resultCount: 1 },
@@ -1256,7 +1265,7 @@ await assert.rejects(
     ]);
   }) as never;
   const rrfRepository = createPostgresChatRepository(sql);
-  const sources = await rrfRepository.vectorSearch({
+  const sources = await rrfRepository.hybridSearch({
     embedding: Array.from({ length: 1536 }, () => 0),
     embeddingModel: 'gemini-test',
     limit: 5,

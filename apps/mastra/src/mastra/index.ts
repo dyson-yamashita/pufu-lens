@@ -281,7 +281,7 @@ function unavailableChatRepository(envName: string): ChatRepository {
     rawReadViewFetch: unavailableMethod(envName),
     savePrivateChatTurn: unavailableMethod(envName),
     timelineSearch: unavailableMethod(envName),
-    vectorSearch: unavailableMethod(envName),
+    hybridSearch: unavailableMethod(envName),
   };
 }
 

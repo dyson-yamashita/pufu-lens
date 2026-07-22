@@ -1250,11 +1250,13 @@ assert.deepEqual(
   parseReportProjectLookupRow({
     graphName: 'graph_sample_a',
     id: 'proj-1',
+    settings: { hybridSearchDocumentLimit: 7 },
     slug: 'sample-a',
     visibility: 'public',
   }),
   {
     graphName: 'graph_sample_a',
+    hybridSearchDocumentLimit: 7,
     id: 'proj-1',
     slug: 'sample-a',
     visibility: 'public',

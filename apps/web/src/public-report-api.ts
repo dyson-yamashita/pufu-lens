@@ -17,6 +17,7 @@ import {
   logPrivateChatWorkflowFailure,
   runPrivateChatSearchViaMastraWorkflow,
 } from './private-chat-workflow-client';
+import { DEFAULT_HYBRID_SEARCH_DOCUMENT_LIMIT } from './project-chat-settings';
 import { isPublicWebChatSource, publicChatSourcesFromReport } from './public-chat-sources';
 import {
   assertPublicReportAccess,
@@ -198,6 +199,8 @@ export async function handlePublicChatPost(
       runPrivateChatSearchViaMastraWorkflow({
         graphName: project.graphName,
         history: [],
+        hybridSearchDocumentLimit:
+          project.hybridSearchDocumentLimit ?? DEFAULT_HYBRID_SEARCH_DOCUMENT_LIMIT,
         onStage,
         projectId: project.id,
         projectSlug: input.projectSlug,
