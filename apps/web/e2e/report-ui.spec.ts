@@ -63,6 +63,37 @@ const scheduledReport = {
   report_id: 'report-scheduled',
 };
 
+test('scenario: project overview shows the latest scheduled report summary', async ({ page }) => {
+  await page.goto('/dev/e2e/project-overview');
+
+  await expect(page.getByTestId('project-overview-report')).toBeVisible();
+  await expect(page.getByTestId('project-overview-status-summary')).toContainText(
+    'プロジェクトの現状',
+  );
+  await expect(page.getByTestId('project-overview-period')).toHaveText('2026-07-13 – 2026-07-19');
+  await expect(page.getByTestId('pufu-report-viewer')).toBeVisible();
+  await expect(page.getByTestId('project-overview-assets')).toContainText('状況把握の基盤');
+  await expect(page.getByTestId('project-overview-issues')).toContainText('公開範囲の運用確認');
+  await expect(page.getByTestId('project-overview-source-report-link')).toHaveAttribute(
+    'href',
+    '/projects/sample-a/reports/report-scheduled',
+  );
+});
+
+test('scenario: project overview stacks assets and issues on mobile @mobile', async ({ page }) => {
+  await page.setViewportSize({ height: 900, width: 390 });
+  await page.goto('/dev/e2e/project-overview');
+
+  await expect(page.getByTestId('project-overview-report')).toBeVisible();
+  await expect(page.getByTestId('project-overview-columns')).toHaveCSS(
+    'grid-template-columns',
+    /^\d+(?:\.\d+)?px$/,
+  );
+  await expect(page.getByTestId('project-overview-assets')).toBeVisible();
+  await expect(page.getByTestId('project-overview-issues')).toBeVisible();
+  await expect(page.locator('.pufu-score-frame')).toHaveCSS('overflow-x', 'auto');
+});
+
 test('scenario: member sees pending save label while report schedule form submits', async ({
   page,
 }) => {

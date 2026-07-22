@@ -6,6 +6,7 @@ import type {
 } from './custom-report-schema';
 import { MarkdownContent } from './markdown-content';
 import { PufuReportViewer } from './pufu-report-viewer';
+import { toPufuScoreReportInput } from './pufu-score-input';
 import type { PrivateReportJsonV1, PrivateReportSection } from './report';
 
 export function CustomReportLayoutRenderer({
@@ -47,7 +48,7 @@ function CustomReportPartRenderer({
     case 'pufu_board':
       return (
         <div data-testid={`custom-report-part-${part.id}`}>
-          <PufuReportViewer report={report} />
+          <PufuReportViewer report={toPufuScoreReportInput(report)} />
         </div>
       );
     case 'slider_judgement': {
@@ -252,7 +253,7 @@ export function StandardReportSections({
 }) {
   return (
     <>
-      <PufuReportViewer report={report} />
+      <PufuReportViewer report={toPufuScoreReportInput(report)} />
       {report.sections.map((section) => (
         <StandardReportSection key={section.id} publicView={publicView} section={section} />
       ))}

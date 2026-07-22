@@ -199,6 +199,93 @@
   font-weight: 600;
 }
 
+.project-overview-report-meta {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.project-overview-report-facts {
+  display: grid;
+  gap: 8px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  margin: 0;
+}
+
+.project-overview-report-facts dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.project-overview-report-facts dd {
+  margin: 4px 0 0;
+}
+
+.project-overview-status-summary {
+  font-size: 1.05rem;
+  line-height: 1.7;
+  margin: 0 0 16px;
+}
+
+.project-overview-source-link {
+  margin: 0 0 20px;
+}
+
+.project-overview-columns {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 20px;
+}
+
+.project-overview-column h3 {
+  margin: 0 0 12px;
+}
+
+.project-overview-item-list {
+  display: grid;
+  gap: 14px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.project-overview-column .project-overview-item-list > li {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.project-overview-column .project-overview-item-list > li p {
+  margin: 8px 0 0;
+}
+
+.project-overview-next-action {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.project-overview-next-action span {
+  color: var(--text);
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+@media (max-width: 900px) {
+  .project-overview-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
 .credentials-form {
   display: grid;
   gap: 12px;

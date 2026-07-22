@@ -127,6 +127,9 @@ function createRecurrenceRepository(): ReportRepository {
     async listReports() {
       return [];
     },
+    async readLatestScheduledReport() {
+      return undefined;
+    },
     async lookupProject({ projectSlug }) {
       return projectSlug === 'sample-a'
         ? { graphName: null, id: 'project-a', slug: 'sample-a', visibility: 'private' }

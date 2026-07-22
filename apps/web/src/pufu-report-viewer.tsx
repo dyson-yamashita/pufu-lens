@@ -3,11 +3,8 @@
 import dynamic from 'next/dynamic';
 import type { ComponentType, RefObject } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  createPufuScoreFromReport,
-  type PufuScoreModel,
-  type PufuScoreReportInput,
-} from './pufu-score';
+import { createPufuScoreFromReport, type PufuScoreModel } from './pufu-score';
+import type { PufuScoreReportInput } from './pufu-score-input';
 
 const ProjectScore = dynamic(
   () =>

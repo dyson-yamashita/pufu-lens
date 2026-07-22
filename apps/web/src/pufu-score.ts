@@ -1,8 +1,10 @@
 import type {
-  PrivateReportJsonV1,
-  PrivateReportPufuSource,
-  PrivateReportSection,
-} from './report.ts';
+  PufuScorePublicSection,
+  PufuScorePublicSource,
+  PufuScoreReportInput,
+} from './pufu-score-input.ts';
+
+export type { PufuScoreReportInput } from './pufu-score-input.ts';
 
 const emptyComment = { color: 'blue' as const, text: '' };
 
@@ -53,16 +55,6 @@ type PufuPurposeModel = PufuBaseModel & {
   measures: PufuMeasureModel[];
 };
 
-export type PufuScoreReportInput = Pick<
-  PrivateReportJsonV1,
-  'period' | 'pufu_sources' | 'report_id' | 'sections' | 'summary' | 'title'
->;
-
-type PufuSourceCandidate = Pick<
-  PrivateReportPufuSource,
-  'canonical_uri' | 'doc_type' | 'document_id' | 'occurred_at' | 'snippet' | 'title'
->;
-
 export function createPufuScoreFromReport(report: PufuScoreReportInput): PufuScoreModel {
   const sources = sourceCandidates(report);
   if (isExhibitionSource(sources)) {
@@ -109,7 +101,7 @@ export function createPufuScoreFromReport(report: PufuScoreReportInput): PufuSco
 
 function createExhibitionPufuScore(
   report: PufuScoreReportInput,
-  sources: readonly PufuSourceCandidate[],
+  sources: readonly PufuScorePublicSource[],
 ): PufuScoreModel {
   const primary = primarySource(sources);
   const eventName = exhibitionEventName(sources);
@@ -154,31 +146,20 @@ function createExhibitionPufuScore(
   };
 }
 
-function sourceCandidates(report: PufuScoreReportInput): PufuSourceCandidate[] {
+function sourceCandidates(report: PufuScoreReportInput): readonly PufuScorePublicSource[] {
   const explicitSources = report.pufu_sources ?? [];
   if (explicitSources.length > 0) {
     return [...explicitSources];
   }
-  const sectionSources: PufuSourceCandidate[] = report.sections.flatMap((section) =>
-    (section.sources ?? []).map((source) => ({
-      canonical_uri: source.canonical_uri,
-      doc_type: source.doc_type,
-      document_id: source.document_id,
-      occurred_at: null,
-      snippet: source.snippet,
-      title: sourceTitleFromSnippet(source.snippet) || source.canonical_uri || source.document_id,
-    })),
-  );
-  const markdownSources = report.sections.flatMap(markdownSourceCandidates);
-  return dedupeSources([...markdownSources, ...sectionSources]);
+  return dedupeSources(report.sections.flatMap(markdownSourceCandidates));
 }
 
-function markdownSourceCandidates(section: PrivateReportSection): PufuSourceCandidate[] {
+function markdownSourceCandidates(section: PufuScorePublicSection): PufuScorePublicSource[] {
   if (section.id !== 'activity') {
     return [];
   }
-  const sources: PufuSourceCandidate[] = [];
-  section.markdown.split('\n').forEach((line, index) => {
+  const sources: PufuScorePublicSource[] = [];
+  section.markdown.split('\n').forEach((line) => {
     const parsed = parseMarkdownSourceLine(line);
     const title = parsed?.title;
     const snippet = parsed?.snippet;
@@ -186,9 +167,7 @@ function markdownSourceCandidates(section: PrivateReportSection): PufuSourceCand
       return;
     }
     sources.push({
-      canonical_uri: '',
       doc_type: 'report_source',
-      document_id: `markdown-source-${index}`,
       occurred_at: null,
       snippet: truncateText(snippet, 220),
       title: truncateText(title, 120),
@@ -218,11 +197,11 @@ function parseMarkdownSourceLine(line: string): { snippet: string; title: string
   };
 }
 
-function dedupeSources(sources: PufuSourceCandidate[]): PufuSourceCandidate[] {
+function dedupeSources(sources: readonly PufuScorePublicSource[]): PufuScorePublicSource[] {
   const seen = new Set<string>();
-  const deduped: PufuSourceCandidate[] = [];
+  const deduped: PufuScorePublicSource[] = [];
   for (const source of sources) {
-    const key = source.document_id || `${source.title}:${source.snippet}`;
+    const key = `${source.title}:${source.snippet}`;
     if (!seen.has(key)) {
       seen.add(key);
       deduped.push(source);
@@ -231,7 +210,7 @@ function dedupeSources(sources: PufuSourceCandidate[]): PufuSourceCandidate[] {
   return deduped;
 }
 
-function isExhibitionSource(sources: readonly PufuSourceCandidate[]): boolean {
+function isExhibitionSource(sources: readonly PufuScorePublicSource[]): boolean {
   const text = sourceText(sources);
   return (
     text.includes('出展') ||
@@ -242,7 +221,7 @@ function isExhibitionSource(sources: readonly PufuSourceCandidate[]): boolean {
   );
 }
 
-function exhibitionEventName(sources: readonly PufuSourceCandidate[]): string {
+function exhibitionEventName(sources: readonly PufuScorePublicSource[]): string {
   const text = sourceText(sources);
   const lowerText = text.toLowerCase();
   if (
@@ -258,7 +237,7 @@ function exhibitionEventName(sources: readonly PufuSourceCandidate[]): string {
   return '対外イベント';
 }
 
-function summarizeSourceState(sources: readonly PufuSourceCandidate[]): string {
+function summarizeSourceState(sources: readonly PufuScorePublicSource[]): string {
   if (sources.length === 0) {
     return '活動領域や周辺状況は、データソースから継続して読み解く必要がある。';
   }
@@ -272,7 +251,7 @@ function summarizeSourceState(sources: readonly PufuSourceCandidate[]): string {
   return `現在の認識: ${sourceLabel(primarySource(sources))} から、プロジェクトの状況を読み解いている。`;
 }
 
-function summarizeSourceQuestion(sources: readonly PufuSourceCandidate[]): string {
+function summarizeSourceQuestion(sources: readonly PufuScorePublicSource[]): string {
   const text = sourceText(sources);
   if (/出展|展示|カンファレンス|OSC/i.test(text)) {
     return '成果や資源を取り合う相手よりも、来場者に何が伝わったか、次に誰へ届けるかが論点。';
@@ -282,7 +261,7 @@ function summarizeSourceQuestion(sources: readonly PufuSourceCandidate[]): strin
     : '成果や資源を取り合う存在・対立論点は未判定。';
 }
 
-function summarizeSourceRisk(sources: readonly PufuSourceCandidate[]): string {
+function summarizeSourceRisk(sources: readonly PufuScorePublicSource[]): string {
   const text = sourceText(sources);
   if (/投稿|レポート|記事|まとめ/i.test(text) && sources.length === 1) {
     return '目的達成を阻む外部要因は明確ではないが、単一の発信だけでは反応や学びを取りこぼす可能性がある。';
@@ -292,13 +271,13 @@ function summarizeSourceRisk(sources: readonly PufuSourceCandidate[]): string {
     : '目的達成を阻む外部要因はまだ明確ではない。';
 }
 
-function sourceGoal(sources: readonly PufuSourceCandidate[]): string {
+function sourceGoal(sources: readonly PufuScorePublicSource[]): string {
   return sources.length > 0
     ? 'データソースからプロジェクトの現在地を読み解き、次の判断に進める。'
     : 'プロジェクトの現在地を大局的に把握し、次の判断に進める。';
 }
 
-function sourceRephraseMeasure(sources: readonly PufuSourceCandidate[]): string {
+function sourceRephraseMeasure(sources: readonly PufuScorePublicSource[]): string {
   const text = sourceText(sources);
   if (/出展|展示|カンファレンス|OSC/i.test(text)) {
     return '出展レポートから、来場者の反応や説明で伝わった点を整理する。';
@@ -308,13 +287,13 @@ function sourceRephraseMeasure(sources: readonly PufuSourceCandidate[]): string 
     : '収集情報を単なる引用ではなく、現在の状況として言い換える。';
 }
 
-function sourceEvidenceMeasure(sources: readonly PufuSourceCandidate[]): string {
+function sourceEvidenceMeasure(sources: readonly PufuScorePublicSource[]): string {
   return sources.length > 0
     ? `根拠資料 ${sourceLabel(primarySource(sources))} を確認し、関係者間で同じ前提を持つ。`
     : '根拠資料を確認し、関係者間で同じ前提を持つ。';
 }
 
-function sourceMovementMeasure(sources: readonly PufuSourceCandidate[]): string {
+function sourceMovementMeasure(sources: readonly PufuScorePublicSource[]): string {
   const text = sourceText(sources);
   if (/プ譜エディター|プ譜|ProjectScore/i.test(text)) {
     return 'プ譜やプ譜エディターの利用場面を、関係者が共有できる言葉にする。';
@@ -322,7 +301,7 @@ function sourceMovementMeasure(sources: readonly PufuSourceCandidate[]): string 
   return '目指す状態に近づいているかを、タスク数ではなくデータソース上の状況変化で見る。';
 }
 
-function sourceQuestionMeasure(sources: readonly PufuSourceCandidate[]): string {
+function sourceQuestionMeasure(sources: readonly PufuScorePublicSource[]): string {
   const text = sourceText(sources);
   if (/出展|展示|カンファレンス|OSC/i.test(text)) {
     return '出展で得た接点を、次に検証したい相手・場・問いに分けて確認する。';
@@ -330,36 +309,26 @@ function sourceQuestionMeasure(sources: readonly PufuSourceCandidate[]): string 
   return '次に明らかにすべき論点を、データソースの根拠とともに関係者に確認する。';
 }
 
-function sourceRiskMeasure(sources: readonly PufuSourceCandidate[]): string {
+function sourceRiskMeasure(sources: readonly PufuScorePublicSource[]): string {
   return sources.length > 0
     ? 'データソースから見えていることと、まだ見えていないことを分けて検証する。'
     : '単一データソースからの解釈に偏りがないか、追加で確認すべき材料を決める。';
 }
 
-function sourceText(sources: readonly PufuSourceCandidate[]): string {
+function sourceText(sources: readonly PufuScorePublicSource[]): string {
   return sources.map((source) => `${source.title} ${source.snippet}`).join('\n');
 }
 
-function sourceLabel(source: PufuSourceCandidate): string {
-  return truncateText(source.title || source.snippet || source.document_id, 80);
+function sourceLabel(source: PufuScorePublicSource): string {
+  return truncateText(source.title || source.snippet, 80);
 }
 
-function primarySource(sources: readonly PufuSourceCandidate[]): PufuSourceCandidate {
+function primarySource(sources: readonly PufuScorePublicSource[]): PufuScorePublicSource {
   const source = sources[0];
   if (!source) {
     throw new Error('Expected at least one pufu source.');
   }
   return source;
-}
-
-function sourceTitleFromSnippet(snippet: string | null | undefined): string {
-  if (!snippet) {
-    return '';
-  }
-  const normalized = normalizeSpaces(snippet);
-  const separator = firstTitleSeparatorIndex(normalized);
-  const title = separator < 0 ? normalized : normalized.slice(0, separator);
-  return title && title.length < normalized.length ? truncateText(title, 120) : '';
 }
 
 function truncateText(text: string | null | undefined, maxLength: number): string {
@@ -368,18 +337,6 @@ function truncateText(text: string | null | undefined, maxLength: number): strin
   }
   const normalized = normalizeSpaces(text);
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3)}...` : normalized;
-}
-
-function firstTitleSeparatorIndex(value: string): number {
-  const colon = value.indexOf(':');
-  const japaneseColon = value.indexOf('：');
-  if (colon < 0) {
-    return japaneseColon;
-  }
-  if (japaneseColon < 0) {
-    return colon;
-  }
-  return Math.min(colon, japaneseColon);
 }
 
 function normalizeSpaces(value: string): string {

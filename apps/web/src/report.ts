@@ -18,6 +18,16 @@ import type { ReportListItem, ReportRepository } from './report-repository.ts';
 import { type PrivateReportJsonV1, validatePrivateReportJson } from './report-schema.ts';
 
 export {
+  buildProjectOverviewPufuReportKey,
+  loadLatestProjectOverview,
+  type ProjectOverviewSnapshot,
+} from './project-overview-data.ts';
+export {
+  assertPufuScoreReportInputSafe,
+  type PufuScorePublicSource,
+  toPufuScoreReportInput,
+} from './pufu-score-input.ts';
+export {
   type GenerateReportResult,
   type RunGenerateReportOptions,
   runGenerateReport,
@@ -42,6 +52,16 @@ export {
   PreviousScheduledReportNotFoundError,
   validatePairedScheduleInputs,
 } from './report-previous-report.ts';
+export {
+  buildExtractiveProjectOverview,
+  normalizeProjectOverview,
+  PROJECT_OVERVIEW_SCHEMA_VERSION,
+  type ProjectOverviewAssetV1,
+  type ProjectOverviewIssueV1,
+  type ProjectOverviewV1,
+  type PublicProjectOverviewV1,
+  validateProjectOverview,
+} from './report-project-overview.ts';
 export {
   buildGeminiReportPrompt,
   countGeminiProviderTokens,

@@ -4,6 +4,7 @@ import { MemoryObjectStorage } from '@pufu-lens/storage/testing';
 import { ProjectAccessDeniedError } from './chat.ts';
 import { CUSTOM_REPORT_LAYOUT_SCHEMA_VERSION } from './custom-report-schema.ts';
 import { createPufuScoreFromReport } from './pufu-score.ts';
+import { toPufuScoreReportInput } from './pufu-score-input.ts';
 import {
   createExtractiveReportProvider,
   createGeminiReportProvider,
@@ -203,6 +204,9 @@ function createRepository(): ReportRepository & {
           summary: 'summary',
           title: report.title,
         }));
+    },
+    async readLatestScheduledReport() {
+      return undefined;
     },
     async readReportMetadata({ projectId, reportId }) {
       const report = reports.get(reportId);
@@ -527,20 +531,23 @@ assert.deepEqual(geminiGenerationConfig, {
     type: 'OBJECT',
   },
 });
-const pufuScore = createPufuScoreFromReport({
-  ...generated.report,
-  pufu_sources: [
-    {
-      canonical_uri: 'https://note.example.com/osc-osaka',
-      doc_type: 'web_page',
-      document_id: 'doc-osc',
-      occurred_at: '2026-01-31T15:24:00.000Z',
-      snippet:
-        '昨年に引き続き、オープンソースカンファレンス＠大阪に「プ譜友の会」からプ譜エディターを出展しました。',
-      title: '【プ譜友の会】オープンソースカンファレンス2026＠大阪の出展レポート',
-    },
-  ],
-});
+const pufuScore = createPufuScoreFromReport(
+  toPufuScoreReportInput({
+    ...generated.report,
+    pufu_sources: [
+      {
+        canonical_uri: 'https://note.example.com/osc-osaka',
+        doc_type: 'web_page',
+        document_id: 'doc-osc',
+        occurred_at: '2026-01-31T15:24:00.000Z',
+        snippet:
+          '昨年に引き続き、オープンソースカンファレンス＠大阪に「プ譜友の会」からプ譜エディターを出展しました。',
+        title: '【プ譜友の会】オープンソースカンファレンス2026＠大阪の出展レポート',
+      },
+    ],
+  }),
+);
+assert.doesNotMatch(JSON.stringify(pufuScore), /document_id|canonical_uri|doc-osc/);
 assert.match(pufuScore.gainingGoal.text, /プ譜エディターを試す人を増やす/);
 assert.match(pufuScore.elements.environment.text, /来場者/);
 assert.match(pufuScore.purposes[0]?.measures[0]?.text ?? '', /ブース/);
@@ -549,6 +556,67 @@ assert.equal(repository.insertedChunks, 3);
 assert.doesNotMatch(repository.insertedChunkContents.join('\n'), /\n\n\{\}/);
 assert.ok(repository.storageUri?.includes('/sample-a/reports/private/'));
 validatePrivateReportJson(JSON.parse(await storage.getText(generated.storageUri)));
+assert.equal(generated.report.project_overview, undefined);
+
+{
+  const scheduledRepository = createRepository();
+  const scheduledStorage = new MemoryObjectStorage();
+  const scheduledGenerated = await runGenerateReport({
+    options: {
+      generationKind: 'scheduled',
+      now: new Date('2026-06-04T12:30:00.000Z'),
+      period: { end: '2026-06-07', start: '2026-06-01' },
+      provider: createExtractiveReportProvider(),
+      repository: scheduledRepository,
+      scheduleFrequency: 'weekly',
+      schedulePeriodRunId: 'period-run-overview',
+      storage: scheduledStorage,
+    },
+    projectSlug: 'sample-a',
+  });
+  assert.equal(scheduledGenerated.report.project_overview?.schema_version, 'project-overview-v1');
+  assert.ok((scheduledGenerated.report.project_overview?.status_summary.length ?? 0) > 0);
+  validatePrivateReportJson(scheduledGenerated.report);
+}
+
+{
+  const scheduledRepository = createRepository();
+  const scheduledStorage = new MemoryObjectStorage();
+  const extractiveProvider = createExtractiveReportProvider();
+  const scheduledGenerated = await runGenerateReport({
+    options: {
+      generationKind: 'scheduled',
+      now: new Date('2026-06-04T12:30:00.000Z'),
+      period: { end: '2026-06-07', start: '2026-06-01' },
+      provider: {
+        async generate(input) {
+          const extracted = await extractiveProvider.generate(input);
+          return {
+            ...extracted,
+            project_overview: {
+              assets: [],
+              issues: [],
+              schema_version: 'project-overview-v1',
+              status_summary: '00000000-0000-4000-8000-000000000101',
+            },
+          };
+        },
+      },
+      repository: scheduledRepository,
+      scheduleFrequency: 'weekly',
+      schedulePeriodRunId: 'period-run-invalid-overview',
+      storage: scheduledStorage,
+    },
+    projectSlug: 'sample-a',
+  });
+  assert.notEqual(
+    scheduledGenerated.report.project_overview?.status_summary,
+    '00000000-0000-4000-8000-000000000101',
+  );
+  assert.ok((scheduledGenerated.report.project_overview?.status_summary.length ?? 0) > 0);
+  validatePrivateReportJson(scheduledGenerated.report);
+}
+
 const generatedMetadata = await repository.readReportMetadata({
   projectId: 'project-a',
   reportId: generated.report.report_id,
@@ -991,7 +1059,6 @@ const markdownSourceScore = createPufuScoreFromReport({
     {
       id: 'activity',
       markdown: '-  Markdown Source: Parsed without leading spaces',
-      metrics: {},
       title: 'Activity',
     },
   ],
