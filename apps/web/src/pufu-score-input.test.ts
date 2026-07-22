@@ -79,3 +79,9 @@ const overviewKey = buildProjectOverviewPufuReportKey({
 const overviewInput = toPufuScoreReportInput(sensitiveReport, { reportKey: overviewKey });
 assert.equal(overviewInput.report_id, 'project-overview-sample-a-2026-06-01-2026-06-07');
 assert.doesNotMatch(JSON.stringify(overviewInput), /00000000-0000-4000-8000-000000000101/);
+
+const longUriInput = toPufuScoreReportInput({
+  ...sensitiveReport,
+  summary: `https://example.com/${'a'.repeat(20_000)}`,
+});
+assert.equal(longUriInput.summary, '[redacted]');

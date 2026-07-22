@@ -43,6 +43,15 @@ assert.throws(
   /private text/,
 );
 
+assert.throws(
+  () =>
+    validateProjectOverview({
+      ...validOverview,
+      status_summary: `token${' '.repeat(380)}secret-value`,
+    }),
+  /private text/,
+);
+
 const extractive = buildExtractiveProjectOverview({
   sections: [
     { id: 'activity', markdown: '概況', title: '概況' },

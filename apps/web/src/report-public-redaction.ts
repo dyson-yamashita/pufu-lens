@@ -17,16 +17,56 @@ const PDF_TEXT_DENYLIST = [
   /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu,
 ] as const;
 
-const PDF_GENERIC_URI_PATTERN = /[a-z][a-z0-9+.-]*:\/\/[^\s)\]"']+/giu;
 const PDF_REDACTION_PLACEHOLDER = /\[redacted(?:-[a-z]+)?\]/giu;
 
 export function redactSensitivePdfText(value: string): string {
   let text = redactText(value);
-  text = text.replace(PDF_GENERIC_URI_PATTERN, '[redacted]');
+  text = redactGenericUris(text);
   for (const pattern of PDF_TEXT_DENYLIST) {
     text = text.replace(pattern, '[redacted]');
   }
   return text.replace(PDF_REDACTION_PLACEHOLDER, '[redacted]');
+}
+
+function redactGenericUris(value: string): string {
+  const output: string[] = [];
+  let index = 0;
+  while (index < value.length) {
+    if (!isAsciiAlpha(value.charCodeAt(index))) {
+      output.push(value[index] ?? '');
+      index += 1;
+      continue;
+    }
+    let schemeEnd = index + 1;
+    while (schemeEnd < value.length && isUriSchemeChar(value.charCodeAt(schemeEnd))) {
+      schemeEnd += 1;
+    }
+    if (value.slice(schemeEnd, schemeEnd + 3) !== '://') {
+      output.push(value.slice(index, schemeEnd));
+      index = schemeEnd;
+      continue;
+    }
+    const uriEnd = genericUriEnd(value, schemeEnd + 3);
+    output.push('[redacted]');
+    index = uriEnd;
+  }
+  return output.join('');
+}
+
+function genericUriEnd(value: string, start: number): number {
+  let index = start;
+  while (index < value.length && !isGenericUriTerminator(value.charAt(index))) {
+    index += 1;
+  }
+  return index;
+}
+
+function isGenericUriTerminator(char: string): boolean {
+  return char.trim() === '' || char === ')' || char === ']' || char === '"' || char === "'";
+}
+
+function isUriSchemeChar(code: number): boolean {
+  return isAsciiAlphaNumeric(code) || code === 43 || code === 45 || code === 46;
 }
 
 export function containsPrivateText(value: string): boolean {

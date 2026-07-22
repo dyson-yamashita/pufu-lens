@@ -271,10 +271,65 @@ function containsUnsafeOverviewText(value: string): boolean {
   if (/\b(?:document_id|canonical_uri|storage_uri|raw_document_id)\b/i.test(value)) {
     return true;
   }
-  if (/\b(?:secret|api[_-]?key|token)(?:\s+|=|:)\s*\S+/i.test(value)) {
+  if (containsSensitiveAssignment(value)) {
     return true;
   }
   return false;
+}
+
+function containsSensitiveAssignment(value: string): boolean {
+  const lowerValue = value.toLowerCase();
+  return ['secret', 'api_key', 'api-key', 'token'].some((keyword) =>
+    containsSensitiveKeywordAssignment(lowerValue, keyword),
+  );
+}
+
+function containsSensitiveKeywordAssignment(value: string, keyword: string): boolean {
+  let fromIndex = 0;
+  while (fromIndex < value.length) {
+    const index = value.indexOf(keyword, fromIndex);
+    if (index < 0) {
+      return false;
+    }
+    const before = index > 0 ? value.charCodeAt(index - 1) : undefined;
+    const afterIndex = index + keyword.length;
+    if (
+      (before === undefined || !isIdentifierCode(before)) &&
+      hasAssignedValue(value, afterIndex)
+    ) {
+      return true;
+    }
+    fromIndex = afterIndex;
+  }
+  return false;
+}
+
+function hasAssignedValue(value: string, start: number): boolean {
+  const first = value.charAt(start);
+  if (first === '=' || first === ':') {
+    return hasNonWhitespaceAfter(value, start + 1);
+  }
+  if (first?.trim() !== '') {
+    return false;
+  }
+  return hasNonWhitespaceAfter(value, start);
+}
+
+function hasNonWhitespaceAfter(value: string, start: number): boolean {
+  let index = start;
+  while (index < value.length && value.charAt(index).trim() === '') {
+    index += 1;
+  }
+  return index < value.length;
+}
+
+function isIdentifierCode(code: number): boolean {
+  return (
+    (code >= 48 && code <= 57) ||
+    (code >= 65 && code <= 90) ||
+    (code >= 97 && code <= 122) ||
+    code === 95
+  );
 }
 
 function assertPublicSafeOverview(overview: ProjectOverviewV1): void {
