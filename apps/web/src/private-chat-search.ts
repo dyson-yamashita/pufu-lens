@@ -849,6 +849,7 @@ export function formatPrivateChatRetrievalContext(
         canonicalUri: source.canonicalUri || null,
         documentId: source.documentId,
         docType: source.docType,
+        ...(source.occurredAt === undefined ? {} : { occurredAt: source.occurredAt }),
         rawDocumentId: source.rawDocumentId,
         snippet: source.snippet ?? null,
         title: source.title,

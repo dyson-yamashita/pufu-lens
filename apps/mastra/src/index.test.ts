@@ -77,7 +77,15 @@ function createChatRepository(): ChatRepository & {
     },
     async documentFetch({ documentIds, projectId }) {
       projectIds.push(projectId);
-      return documentIds.map((documentId) => ({ ...sampleSource, documentId }));
+      return documentIds.map((documentId) =>
+        documentId === 'doc-timeline'
+          ? {
+              ...sampleSource,
+              documentId,
+              occurredAt: '2025-06-01T00:00:00.000Z',
+            }
+          : { ...sampleSource, documentId },
+      );
     },
     async rawDocumentFetch({ maxBytes, projectId }) {
       projectIds.push(projectId);
@@ -130,7 +138,14 @@ function createChatRepository(): ChatRepository & {
     async timelineSearch({ period, projectId, query }) {
       projectIds.push(projectId);
       timelineSearchInputs.push({ ...(period ? { period } : {}), query });
-      return [{ ...sampleSource, documentId: 'doc-timeline', title: 'Timeline Event' }];
+      return [
+        {
+          ...sampleSource,
+          documentId: 'doc-timeline',
+          title: 'Timeline Event',
+          occurredAt: period ? '2025-06-01T00:00:00.000Z' : null,
+        },
+      ];
     },
     async listPrivateChatHistoryForContext() {
       return [];
@@ -405,7 +420,14 @@ const timelineSearch = await runtime.projectChatTools.timelineSearch.execute?.(
   { requestContext } as never,
 );
 assert.deepEqual(timelineSearch, {
-  sources: [{ ...sampleSource, documentId: 'doc-timeline', title: 'Timeline Event' }],
+  sources: [
+    {
+      ...sampleSource,
+      documentId: 'doc-timeline',
+      title: 'Timeline Event',
+      occurredAt: null,
+    },
+  ],
 });
 assert.deepEqual(chatRepository.timelineSearchInputs.at(-1), { query: '意思決定の経緯' });
 
@@ -421,7 +443,14 @@ const periodTimelineSearch = await runtime.projectChatTools.timelineSearch.execu
   { requestContext } as never,
 );
 assert.deepEqual(periodTimelineSearch, {
-  sources: [{ ...sampleSource, documentId: 'doc-timeline', title: 'Timeline Event' }],
+  sources: [
+    {
+      ...sampleSource,
+      documentId: 'doc-timeline',
+      title: 'Timeline Event',
+      occurredAt: '2025-06-01T00:00:00.000Z',
+    },
+  ],
 });
 assert.deepEqual(chatRepository.timelineSearchInputs.at(-1), {
   period: {
