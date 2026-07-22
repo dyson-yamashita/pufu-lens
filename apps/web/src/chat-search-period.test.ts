@@ -95,6 +95,33 @@ test('normalizeTimelineTopicQuery clears aggregate-only timeline questions', () 
   assert.equal(normalizeTimelineTopicQuery('認証機能の取り組み'), '認証機能');
 });
 
+test('normalizeTimelineTopicQuery strips trailing punctuation without regex backtracking', () => {
+  const longTrailingPunctuation = `${'!'.repeat(10_000)}認証機能${'?'.repeat(10_000)}`;
+  assert.equal(normalizeTimelineTopicQuery(longTrailingPunctuation), '認証機能');
+});
+
+test('normalizeTimelineTopicQuery strips structural の with long whitespace runs in linear time', () => {
+  const longWhitespace = ' '.repeat(10_000);
+  assert.equal(
+    normalizeTimelineTopicQuery(`認証機能${longWhitespace}の${longWhitespace}`),
+    '認証機能',
+  );
+  assert.equal(
+    normalizeTimelineTopicQuery(`プ譜友${longWhitespace}の${longWhitespace}会の取り組み`),
+    'プ譜友 会',
+  );
+  assert.equal(normalizeTimelineTopicQuery('プ譜友の会の取り組み'), 'プ譜友の会');
+  assert.equal(normalizeTimelineTopicQuery(`認証機能${longWhitespace}詳細`), '認証機能 詳細');
+});
+
+test('normalizeTimelineTopicQuery preserves legacy structural-no normalization', () => {
+  assert.equal(normalizeTimelineTopicQuery('認証機能の 詳細'), '認証機能 詳細');
+  assert.equal(normalizeTimelineTopicQuery('認証機能   の   詳細'), '認証機能 詳細');
+  assert.equal(normalizeTimelineTopicQuery('プ譜友   の   会の取り組み'), 'プ譜友 会');
+  assert.equal(normalizeTimelineTopicQuery('プ譜友の会の取り組み'), 'プ譜友の会');
+  assert.equal(normalizeTimelineTopicQuery('認証機能 の '), '認証機能');
+});
+
 test('hasChatSearchPeriod recognizes calendar and trailing-year phrases', () => {
   assert.equal(hasChatSearchPeriod('2025年の取り組みについて', NOW_ISO), true);
   assert.equal(hasChatSearchPeriod('1年間の取り組みについて教えて', NOW_ISO), true);

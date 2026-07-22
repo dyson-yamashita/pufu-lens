@@ -196,11 +196,91 @@ export function normalizeTimelineTopicQuery(question: string, strippedQuestion =
   for (const phrase of noise) {
     output = output.replaceAll(phrase, ' ');
   }
-  output = output
-    .replace(/[？?。．!！]+$/u, '')
-    .replace(/\s*の\s*(?=$|\s)/gu, ' ')
-    .replace(/[、。?？!！]/g, ' ');
+  output = replaceInternalPunctuationWithSpaces(
+    stripStructuralNoParticle(stripTrailingTopicPunctuation(output)),
+  );
   return stripStructuralJapaneseParticles(normalizeChatSearchQuestion(output));
+}
+
+const TRAILING_TOPIC_PUNCTUATION = new Set(['？', '?', '。', '．', '!', '！']);
+const INTERNAL_TOPIC_PUNCTUATION = new Set(['、', '。', '?', '？', '!', '！']);
+
+function stripTrailingTopicPunctuation(value: string): string {
+  let end = value.length;
+  while (end > 0 && TRAILING_TOPIC_PUNCTUATION.has(value.charAt(end - 1))) {
+    end -= 1;
+  }
+  return value.slice(0, end);
+}
+
+function stripStructuralNoParticle(value: string): string {
+  const parts: string[] = [];
+  let index = 0;
+  while (index < value.length) {
+    const char = value.charAt(index);
+    if (isTopicQueryWhitespace(char)) {
+      let whitespaceEnd = index;
+      while (whitespaceEnd < value.length && isTopicQueryWhitespace(value.charAt(whitespaceEnd))) {
+        whitespaceEnd += 1;
+      }
+      if (whitespaceEnd < value.length && value.charAt(whitespaceEnd) === 'の') {
+        const afterNo = consumeStructuralNoSegment(value, whitespaceEnd);
+        if (afterNo !== null) {
+          appendNormalizedSeparator(parts);
+          index = afterNo;
+          continue;
+        }
+      }
+      appendNormalizedSeparator(parts);
+      index = whitespaceEnd;
+      continue;
+    }
+    if (char === 'の') {
+      const afterNo = consumeStructuralNoSegment(value, index);
+      if (afterNo !== null) {
+        appendNormalizedSeparator(parts);
+        index = afterNo;
+        continue;
+      }
+    }
+    parts.push(char);
+    index += 1;
+  }
+  return parts.join('');
+}
+
+function consumeStructuralNoSegment(value: string, noIndex: number): number | null {
+  if (value.charAt(noIndex) !== 'の') {
+    return null;
+  }
+  let afterNo = noIndex + 1;
+  let hadWhitespaceAfterNo = false;
+  while (afterNo < value.length && isTopicQueryWhitespace(value.charAt(afterNo))) {
+    hadWhitespaceAfterNo = true;
+    afterNo += 1;
+  }
+  if (afterNo >= value.length || hadWhitespaceAfterNo) {
+    return afterNo;
+  }
+  return null;
+}
+
+function appendNormalizedSeparator(parts: string[]): void {
+  if (parts.length > 0 && parts[parts.length - 1] !== ' ') {
+    parts.push(' ');
+  }
+}
+
+function replaceInternalPunctuationWithSpaces(value: string): string {
+  const parts: string[] = [];
+  for (const char of value) {
+    parts.push(INTERNAL_TOPIC_PUNCTUATION.has(char) ? ' ' : char);
+  }
+  return parts.join('');
+}
+
+function isTopicQueryWhitespace(char: string): boolean {
+  return char.trim() === '';
 }
 
 function stripStructuralJapaneseParticles(value: string): string {
