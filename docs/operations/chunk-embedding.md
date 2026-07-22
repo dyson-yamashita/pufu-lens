@@ -45,7 +45,7 @@ pnpm ingest:chunk --project sample-a --limit 3 --embedding-provider openai --dry
 - deterministic provider は入力テキストとモデル名から hash ベースの固定長 vector を生成する。検索品質ではなく DB 書き込み、chunk hash、冪等性の検証用。
 - Gemini provider は `batchEmbedContents` の request 数を 100 件ずつに分割し、空の chunk list では API を呼び出さない。
 - OpenAI provider は `/v1/embeddings` を100入力ずつ呼び、response index 順にvectorを復元する。
-- Admin Data Source と定期 source sync は共通の `PUFU_LENS_EMBEDDING_PROVIDER` を使う。未設定時は互換既定のGemini、`deterministic` はローカル・テストで明示指定するときだけ使う。
+- Admin Data Source と定期 source sync は共通の `PUFU_LENS_EMBEDDING_PROVIDER` を使う。未設定時は互換既定のGemini、`deterministic` はローカル・テストで明示指定するときだけ使う。共有runtimeは、環境変数・CLI/workflow override・既定値のどの経路でも、`NODE_ENV=production` で `deterministic` が選択されると処理を開始せずエラーにする。
 - 同じ chunk hash / embedding model / chunk index の再実行では `document_chunks` を変更しない。
 - chunk set が変わった場合は既存 `document_chunks` を `document_chunk_history` に退避してから削除し、新しい chunk set を挿入する。
 - chunk 保存後は `raw_documents.ingest_status` と `ingestion_queue.status` を `indexed` にする。
