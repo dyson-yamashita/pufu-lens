@@ -8,7 +8,7 @@
       "expectHttpStatus": 200,
       "expectEditingMode": "summary",
       "minSources": 1,
-      "requiredToolCalls": ["vector-search", "graph-query", "document-fetch"]
+      "requiredToolCalls": ["hybrid-search", "graph-query", "document-fetch"]
     },
     {
       "project": "sample-b",

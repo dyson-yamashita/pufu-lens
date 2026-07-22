@@ -5,6 +5,7 @@ import {
   mapWorkflowStepIdToUiStage,
   type PrivateChatSearchStageId,
 } from './private-chat-search.ts';
+import { DEFAULT_HYBRID_SEARCH_DOCUMENT_LIMIT } from './project-chat-settings.ts';
 
 export const PRIVATE_CHAT_SEARCH_WORKFLOW_ID = 'private-chat-search';
 export const MASTRA_WORKFLOW_RECORD_SEPARATOR = '\x1e';
@@ -58,6 +59,7 @@ export function mastraPrivateChatSearchStreamUrl(
 export function createMastraPrivateChatSearchWorkflowStreamBody(input: {
   readonly graphName: string | null;
   readonly history: readonly MastraChatHistoryMessage[];
+  readonly hybridSearchDocumentLimit?: number;
   readonly nowIso: string;
   readonly projectId: string;
   readonly projectSlug: string;
@@ -67,6 +69,8 @@ export function createMastraPrivateChatSearchWorkflowStreamBody(input: {
     inputData: {
       graphName: input.graphName,
       history: input.history,
+      hybridSearchDocumentLimit:
+        input.hybridSearchDocumentLimit ?? DEFAULT_HYBRID_SEARCH_DOCUMENT_LIMIT,
       nowIso: input.nowIso,
       projectId: input.projectId,
       projectSlug: input.projectSlug,
@@ -254,6 +258,7 @@ export async function runPrivateChatSearchViaMastraWorkflow(input: {
   readonly fetchImpl?: typeof fetch;
   readonly graphName: string | null;
   readonly history: readonly MastraChatHistoryMessage[];
+  readonly hybridSearchDocumentLimit?: number;
   readonly nowIso?: string;
   readonly onStage?: (stage: PrivateChatSearchStageId) => void;
   readonly projectId: string;
@@ -286,6 +291,7 @@ export async function runPrivateChatSearchViaMastraWorkflow(input: {
       createMastraPrivateChatSearchWorkflowStreamBody({
         graphName: input.graphName,
         history: input.history,
+        hybridSearchDocumentLimit: input.hybridSearchDocumentLimit,
         nowIso,
         projectId: input.projectId,
         projectSlug: input.projectSlug,

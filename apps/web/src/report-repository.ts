@@ -3,6 +3,7 @@ import { isProjectVisibility, type ProjectVisibility } from './admin-data.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
 import { type CustomReportLayoutV1, parseCustomReportLayout } from './custom-report-schema.ts';
 import { jsonParameter } from './postgres-json.ts';
+import { hybridSearchDocumentLimitFromSettings } from './project-chat-settings.ts';
 import { isScheduledReportFrequency, type ScheduledReportFrequency } from './report-schedules.ts';
 import type { PreparedReportChunk, PrivateReportJsonV1, ReportPeriod } from './report-schema.ts';
 
@@ -120,6 +121,7 @@ export interface ReportTemplateRunInsert {
 
 export type ProjectLookupResult = {
   readonly graphName: string | null;
+  readonly hybridSearchDocumentLimit?: number;
   readonly id: string;
   readonly slug: string;
   readonly visibility: ProjectVisibility;
@@ -130,7 +132,7 @@ export function parseReportProjectLookupRow(value: unknown): ProjectLookupResult
     throw new Error('Invalid project lookup row.');
   }
   const graphName = value.graphName ?? null;
-  const { id, slug, visibility } = value;
+  const { id, settings, slug, visibility } = value;
   if (typeof id !== 'string') {
     throw new Error('Invalid project lookup field: id');
   }
@@ -145,6 +147,7 @@ export function parseReportProjectLookupRow(value: unknown): ProjectLookupResult
   }
   return {
     graphName,
+    hybridSearchDocumentLimit: hybridSearchDocumentLimitFromSettings(settings),
     id,
     slug,
     visibility,
@@ -279,6 +282,7 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
       return access
         ? {
             graphName: access.graphName ?? null,
+            hybridSearchDocumentLimit: access.hybridSearchDocumentLimit,
             id: access.id,
             slug: access.slug,
             visibility: access.visibility,
@@ -290,6 +294,7 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
         SELECT
           p.id::text AS id,
           p.graph_name AS "graphName",
+          p.settings,
           p.slug,
           COALESCE(p.visibility, 'private') AS visibility
         FROM public.projects p

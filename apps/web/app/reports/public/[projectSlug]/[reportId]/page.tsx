@@ -23,6 +23,7 @@ function publicProjectSummary(slug: string, name: string) {
     description: null,
     failedCount: 0,
     heldCount: 0,
+    hybridSearchDocumentLimit: 5,
     ingestedCount: 0,
     lastIndexed: '',
     memberCount: 0,

@@ -1,5 +1,6 @@
 import type postgres from 'postgres';
 import { isProjectVisibility, type ProjectVisibility } from './admin-data.ts';
+import { hybridSearchDocumentLimitFromSettings } from './project-chat-settings.ts';
 
 export type ProjectMemberRole = 'admin' | 'member';
 export type AppMemberRole = 'admin' | 'member';
@@ -9,6 +10,7 @@ export interface ProjectMemberAccess {
   appRole: AppMemberRole;
   description: string | null;
   graphName: string | null;
+  hybridSearchDocumentLimit: number;
   id: string;
   name: string;
   projectRole: ProjectMemberRole | null;
@@ -42,6 +44,7 @@ async function fetchProjectMemberAccessRow(
       p.name,
       p.description,
       p.graph_name AS "graphName",
+      p.settings,
       COALESCE(p.visibility, 'private') AS visibility,
       app_user.role AS "appRole",
       pm.role AS "projectRole"
@@ -97,6 +100,7 @@ export function parseProjectMemberAccess(value: unknown): ProjectMemberAccess {
     appRole: parseAppMemberRole(value.appRole, 'appRole'),
     description: parseNullableString(value.description, 'description'),
     graphName: parseNullableString(value.graphName, 'graphName'),
+    hybridSearchDocumentLimit: hybridSearchDocumentLimitFromSettings(value.settings),
     id: parseRequiredString(value.id, 'id'),
     name: parseRequiredString(value.name, 'name'),
     projectRole: parseNullableProjectMemberRole(value.projectRole, 'projectRole'),

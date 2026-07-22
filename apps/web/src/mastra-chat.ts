@@ -16,6 +16,7 @@ import {
   MAX_CHAT_RESPONSE_SOURCES,
   privateChatSourcesForResponse,
 } from './chat.ts';
+import { DEFAULT_HYBRID_SEARCH_DOCUMENT_LIMIT } from './project-chat-settings.ts';
 import type { ProjectLookupResult, PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 
 type FetchHeadersInit = Record<string, string> | Headers;
@@ -41,7 +42,8 @@ const TOOL_NAME_MAP: Record<string, ChatToolName> = {
   parsedDocFetch: 'parsed-doc-fetch',
   rawDocumentFetch: 'raw-document-fetch',
   timelineSearch: 'timeline-search',
-  vectorSearch: 'vector-search',
+  hybridSearch: 'hybrid-search',
+  vectorSearch: 'hybrid-search',
 };
 
 const PUBLIC_TOOL_NAME_MAP: Record<string, PublicChatToolName> = {
@@ -209,7 +211,7 @@ export function createMastraPublicReportChatBody(input: {
   };
 }
 
-/** Converts a direct Mastra Agent response into a chat response with up to ten unique sources. */
+/** Converts a direct Mastra Agent response into a bounded chat response. */
 export function mastraGenerateToChatResponse(input: {
   readonly editing?: ChatEditingMetadata;
   readonly mastraResponse: unknown;
@@ -251,20 +253,22 @@ export function mastraGenerateToChatResponse(input: {
   };
 }
 
-/** Merges Workflow and Agent evidence in rank order, returning up to ten unique safe sources. */
+/** Merges Workflow and Agent evidence in rank order under the project document limit. */
 export function mergeHybridChatResponse(input: {
   readonly agentResponse: ChatResponse;
   readonly workflowEditing?: ChatEditingMetadata;
   readonly workflowSources: readonly ChatSource[];
   readonly workflowToolCalls: readonly ChatToolCall[];
+  readonly sourceLimit?: number;
 }): ChatResponse {
+  const sourceLimit = input.sourceLimit ?? DEFAULT_HYBRID_SEARCH_DOCUMENT_LIMIT;
   return {
     ...input.agentResponse,
     editing: input.agentResponse.editing ?? input.workflowEditing,
     sources: privateChatSourcesForResponse(
       uniqueSources([...input.workflowSources, ...input.agentResponse.sources]).slice(
         0,
-        MAX_CHAT_RESPONSE_SOURCES,
+        sourceLimit,
       ),
     ),
     toolCalls: mergeHybridToolCalls(input.workflowToolCalls, input.agentResponse.toolCalls),

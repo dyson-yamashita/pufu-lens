@@ -483,8 +483,8 @@ test('resolvePrivateChatRetryQueries adds simplified retry when no scored vector
   );
 });
 
-test('runPrivateChatSearchRetrieval always performs vector search and graph query', async () => {
-  const vectorSearchInputs: string[] = [];
+test('runPrivateChatSearchRetrieval always performs hybrid search and graph query', async () => {
+  const hybridSearchInputs: string[] = [];
   const graphQueryCalls: number[] = [];
   const timelineSearchCalls: number[] = [];
   const repository = {
@@ -499,8 +499,8 @@ test('runPrivateChatSearchRetrieval always performs vector search and graph quer
       timelineSearchCalls.push(1);
       return [{ ...sampleSource, documentId: 'doc-timeline' }];
     },
-    async vectorSearch({ query }: { query: string }) {
-      vectorSearchInputs.push(query);
+    async hybridSearch({ query }: { query: string }) {
+      hybridSearchInputs.push(query);
       return [{ ...sampleSource, vectorDistance: 0.2 }];
     },
   };
@@ -513,14 +513,14 @@ test('runPrivateChatSearchRetrieval always performs vector search and graph quer
     repository: repository as never,
   });
 
-  assert.equal(vectorSearchInputs.length, 1);
+  assert.equal(hybridSearchInputs.length, 1);
   assert.equal(graphQueryCalls.length, 1);
   assert.equal(timelineSearchCalls.length, 0);
 });
 
 test('runPrivateChatSearchRetrieval runs timeline for deterministic timeline fallback', async () => {
   const stages: string[] = [];
-  const vectorSearchInputs: string[] = [];
+  const hybridSearchInputs: string[] = [];
   const timelineSearchInputs: Array<{ query: string }> = [];
   const repository = {
     async documentFetch() {
@@ -533,8 +533,8 @@ test('runPrivateChatSearchRetrieval runs timeline for deterministic timeline fal
       timelineSearchInputs.push({ query });
       return [{ ...sampleSource, documentId: 'doc-timeline' }];
     },
-    async vectorSearch({ query }: { query: string }) {
-      vectorSearchInputs.push(query);
+    async hybridSearch({ query }: { query: string }) {
+      hybridSearchInputs.push(query);
       return [{ ...sampleSource, vectorDistance: 0.2 }];
     },
   };
@@ -552,7 +552,7 @@ test('runPrivateChatSearchRetrieval runs timeline for deterministic timeline fal
     repository: repository as never,
   });
 
-  assert.equal(vectorSearchInputs.length, 1);
+  assert.equal(hybridSearchInputs.length, 1);
   assert.equal(timelineSearchInputs.length, 1);
   assert.equal(timelineSearchInputs[0]?.query, question);
   assert.ok(!stages.includes('retrying'));
@@ -608,7 +608,7 @@ test('runPrivateChatSearchRetrieval forwards parsed period to timelineSearch', a
       timelineInputs.push(input);
       return [{ ...sampleSource, documentId: 'doc-timeline' }];
     },
-    async vectorSearch() {
+    async hybridSearch() {
       return [{ ...sampleSource, vectorDistance: 0.2 }];
     },
   };
@@ -645,6 +645,7 @@ test('createMastraPrivateChatSearchWorkflowStreamBody includes deterministic now
       inputData: {
         graphName: 'graph-a',
         history: [],
+        hybridSearchDocumentLimit: 5,
         nowIso: TEST_NOW_ISO,
         projectId: 'project-a',
         projectSlug: 'sample-a',
@@ -682,7 +683,7 @@ test('runPrivateChatRetryingStep batches embeddings and fuses concurrent variant
   const result = await runPrivateChatRetryingStep(
     state,
     {
-      async vectorSearch({ query }: { query: string }) {
+      async hybridSearch({ query }: { query: string }) {
         activeSearches += 1;
         maxActiveSearches = Math.max(maxActiveSearches, activeSearches);
         await new Promise<void>((resolve) => setTimeout(resolve, query.includes('fix') ? 5 : 10));
@@ -775,7 +776,7 @@ test('runPrivateChatDetailStep preserves occurrence timestamps from document fet
   assert.equal(context.sources[0]?.occurredAt, '2026-01-01T00:00:00.000Z');
 });
 
-test('runPrivateChatDetailStep returns up to ten ranked sources', async () => {
+test('runPrivateChatDetailStep applies the project hybrid-search document limit', async () => {
   const rankedSources = Array.from({ length: 11 }, (_, index) => ({
     ...sampleSource,
     canonicalUri: `https://example.test/source-${index}`,
@@ -786,6 +787,7 @@ test('runPrivateChatDetailStep returns up to ten ranked sources', async () => {
   const state = {
     ...runPrivateChatPreparingStep({
       graphName: 'graph-a',
+      hybridSearchDocumentLimit: 7,
       nowIso: TEST_NOW_ISO,
       projectId: 'project-a',
       question: 'プロジェクト概要',
@@ -803,14 +805,14 @@ test('runPrivateChatDetailStep returns up to ten ranked sources', async () => {
 
   assert.deepEqual(
     fetchedDocumentIds,
-    rankedSources.slice(0, 10).map((source) => source.documentId),
+    rankedSources.slice(0, 7).map((source) => source.documentId),
   );
   assert.deepEqual(
     result.sources.map((source) => source.documentId),
-    rankedSources.slice(0, 10).map((source) => source.documentId),
+    rankedSources.slice(0, 7).map((source) => source.documentId),
   );
   const context = JSON.parse(result.retrievalContext) as { sources?: unknown[] };
-  assert.equal(context.sources?.length, 10);
+  assert.equal(context.sources?.length, 7);
 });
 
 test('runPrivateChatDetailStep excludes blank document IDs from detail fetch', async () => {
@@ -840,7 +842,7 @@ test('runPrivateChatDetailStep excludes blank document IDs from detail fetch', a
 });
 
 test('runPrivateChatSearchRetrieval runs one simplified retry when neutral primary search returns zero', async () => {
-  const vectorSearchInputs: string[] = [];
+  const hybridSearchInputs: string[] = [];
   const stages: string[] = [];
   const plan = buildPrivateChatSearchQueryPlan('プロジェクト概要 最新 更新 状況 教えてください');
   const repository = {
@@ -853,8 +855,8 @@ test('runPrivateChatSearchRetrieval runs one simplified retry when neutral prima
     async timelineSearch() {
       return [];
     },
-    async vectorSearch({ query }: { query: string }) {
-      vectorSearchInputs.push(query);
+    async hybridSearch({ query }: { query: string }) {
+      hybridSearchInputs.push(query);
       return query === plan.simplifiedRetryQuery ? [sampleSource] : [];
     },
   };
@@ -870,9 +872,9 @@ test('runPrivateChatSearchRetrieval runs one simplified retry when neutral prima
     repository: repository as never,
   });
 
-  assert.equal(vectorSearchInputs.length, 2);
-  assert.equal(vectorSearchInputs[0], plan.primaryQuery);
-  assert.equal(vectorSearchInputs[1], plan.simplifiedRetryQuery);
+  assert.equal(hybridSearchInputs.length, 2);
+  assert.equal(hybridSearchInputs[0], plan.primaryQuery);
+  assert.equal(hybridSearchInputs[1], plan.simplifiedRetryQuery);
   assert.ok(stages.includes('retrying'));
 });
 
@@ -889,14 +891,14 @@ test('merge helpers dedupe sources and aggregate tool calls deterministically', 
   );
   assert.deepEqual(
     mergeChatToolCallsDeterministically(
-      [{ name: 'vector-search', resultCount: 2 }],
+      [{ name: 'hybrid-search', resultCount: 2 }],
       [
-        { name: 'vector-search', resultCount: 3 },
+        { name: 'hybrid-search', resultCount: 3 },
         { name: 'graph-query', resultCount: 1 },
       ],
     ),
     [
-      { name: 'vector-search', resultCount: 5 },
+      { name: 'hybrid-search', resultCount: 5 },
       { name: 'graph-query', resultCount: 1 },
     ],
   );
@@ -984,7 +986,7 @@ test('consumePrivateChatNdjsonStream applies progress events and returns the fin
         projectSlug: 'sample-a',
         sources: [],
         status: 'answered',
-        toolCalls: [{ name: 'vector-search', resultCount: 1 }],
+        toolCalls: [{ name: 'hybrid-search', resultCount: 1 }],
       },
       type: 'result',
     }),
@@ -1014,7 +1016,7 @@ test('consumePrivateChatNdjsonStream returns a public-safe chat response from th
       },
     ],
     status: 'answered',
-    toolCalls: [{ name: 'vector-search', resultCount: 1 }],
+    toolCalls: [{ name: 'hybrid-search', resultCount: 1 }],
   };
   const response = await consumePrivateChatNdjsonStream<PublicChatResponse>(
     new Response(
@@ -1068,7 +1070,7 @@ test('consumeMastraWorkflowStreamText maps workflow steps to UI stages and extra
     projectSlug: 'sample-a',
     sources: [],
     status: 'answered' as const,
-    toolCalls: [{ name: 'vector-search', resultCount: 1 }],
+    toolCalls: [{ name: 'hybrid-search', resultCount: 1 }],
   };
   const streamText = [
     { payload: { id: 'private-chat-preparing' }, type: 'workflow-step-start' },
@@ -1102,7 +1104,7 @@ test('runPrivateChatSearchViaMastraWorkflow uses workflow create-run and stream 
     projectSlug: 'sample-a',
     sources: [sampleSource],
     status: 'answered' as const,
-    toolCalls: [{ name: 'vector-search', resultCount: 1 }],
+    toolCalls: [{ name: 'hybrid-search', resultCount: 1 }],
   };
   const streamBody = [
     {
@@ -1226,19 +1228,19 @@ test('mergeHybridChatResponse deduplicates workflow and agent sources', () => {
       toolCalls: [{ name: 'parsed-doc-fetch', resultCount: 1 }],
     },
     workflowSources: [sampleSource],
-    workflowToolCalls: [{ name: 'vector-search', resultCount: 2 }],
+    workflowToolCalls: [{ name: 'hybrid-search', resultCount: 2 }],
   });
   assert.deepEqual(
     merged.sources.map((source) => source.documentId),
     [sampleSource.documentId, 'doc-agent'],
   );
   assert.deepEqual(merged.toolCalls, [
-    { name: 'vector-search', resultCount: 2 },
+    { name: 'hybrid-search', resultCount: 2 },
     { name: 'parsed-doc-fetch', resultCount: 1 },
   ]);
 });
 
-test('mergeHybridChatResponse keeps the first ten unique sources', () => {
+test('mergeHybridChatResponse applies a configured ten-source limit', () => {
   const source = (prefix: string, index: number) => ({
     ...sampleSource,
     canonicalUri: `https://example.test/${prefix}-${index}`,
@@ -1257,6 +1259,7 @@ test('mergeHybridChatResponse keeps the first ten unique sources', () => {
       status: 'answered',
       toolCalls: [],
     },
+    sourceLimit: 10,
     workflowSources,
     workflowToolCalls: [],
   });

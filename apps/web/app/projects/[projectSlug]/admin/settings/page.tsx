@@ -7,6 +7,10 @@ import {
 import type { ConnectionProvider, ProjectConnectionStatus } from '../../../../../src/admin-data';
 import { listProjectConnections } from '../../../../../src/admin-db';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
+import {
+  MAX_HYBRID_SEARCH_DOCUMENT_LIMIT,
+  MIN_HYBRID_SEARCH_DOCUMENT_LIMIT,
+} from '../../../../../src/project-chat-settings';
 import { ProjectDeleteDialog } from '../../../../../src/project-delete-dialog';
 import { requireProjectAdminPage } from '../../../../../src/project-page-auth';
 import { AppShell, PageHeader, StatusBadge } from '../../../../../src/ui';
@@ -98,6 +102,19 @@ export default async function ProjectSettingsPage({
               <option value="private">private</option>
               <option value="public">public</option>
             </select>
+          </label>
+          <label>
+            <span>Hybrid search document limit</span>
+            <input
+              data-testid="project-settings-hybrid-search-document-limit-input"
+              defaultValue={project.hybridSearchDocumentLimit}
+              max={MAX_HYBRID_SEARCH_DOCUMENT_LIMIT}
+              min={MIN_HYBRID_SEARCH_DOCUMENT_LIMIT}
+              name="hybridSearchDocumentLimit"
+              required
+              type="number"
+            />
+            <small>回答生成で最終的に利用するドキュメント数（1〜20）です。</small>
           </label>
           <div className="action-row">
             <PendingSubmitButton

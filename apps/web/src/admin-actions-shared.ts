@@ -35,6 +35,7 @@ export async function requireAdminProject(
   readonly adminUserId: string;
   readonly description: string | null;
   readonly graphName: string | null;
+  readonly hybridSearchDocumentLimit: number;
   readonly id: string;
   readonly name: string;
   readonly slug: string;
@@ -49,6 +50,7 @@ export async function requireAdminProject(
     adminUserId,
     description: access.description,
     graphName: access.graphName,
+    hybridSearchDocumentLimit: access.hybridSearchDocumentLimit,
     id: access.id,
     name: access.name,
     slug: access.slug,

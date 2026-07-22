@@ -11,6 +11,7 @@ import {
   parseChatSearchPeriod,
   reciprocalRankFusionScore,
 } from './chat.ts';
+import { DEFAULT_HYBRID_SEARCH_DOCUMENT_LIMIT } from './project-chat-settings.ts';
 
 export const PRIVATE_CHAT_SEARCH_STAGE_DEFINITIONS = {
   preparing: { id: 'preparing', label: '検索条件を準備しています' },
@@ -35,6 +36,7 @@ export interface PrivateChatSearchRetrievalResult {
 export interface PrivateChatSearchRetrievalInput {
   readonly embeddingProvider: ChatEmbeddingProvider;
   readonly graphName: string | null;
+  readonly hybridSearchDocumentLimit?: number;
   readonly nowIso?: string;
   readonly onStage?: (stage: PrivateChatSearchStageId) => void;
   readonly projectId: string;
@@ -45,7 +47,6 @@ export interface PrivateChatSearchRetrievalInput {
 const LEGACY_PRIMARY_VECTOR_LIMIT = 5;
 const PRIMARY_VECTOR_LIMIT = 15;
 const GRAPH_LIMIT = 5;
-const DETAIL_DOCUMENT_LIMIT = MAX_CHAT_RESPONSE_SOURCES;
 const PRIMARY_QUERY_RRF_WEIGHT = 2;
 export const MAX_PRIVATE_CHAT_SEARCH_QUERY_VARIANTS = 6;
 export const MAX_PRIVATE_CHAT_SEARCH_QUERY_LENGTH = 120;
@@ -874,6 +875,7 @@ export interface PrivateChatSearchWorkflowState {
   readonly didRetry: boolean;
   readonly editing: ChatEditingMetadata;
   readonly graphName: string | null;
+  readonly hybridSearchDocumentLimit: number;
   readonly graphSources: readonly ChatSource[];
   readonly mergedVectorSources: readonly ChatSource[];
   readonly nowIso: string;
@@ -905,6 +907,7 @@ export interface PrivateChatSearchWorkflowState {
  */
 export function runPrivateChatPreparingStep(input: {
   readonly graphName: string | null;
+  readonly hybridSearchDocumentLimit?: number;
   readonly nowIso: string;
   readonly projectId: string;
   readonly question: string;
@@ -918,6 +921,8 @@ export function runPrivateChatPreparingStep(input: {
     didRetry: false,
     editing,
     graphName: input.graphName,
+    hybridSearchDocumentLimit:
+      input.hybridSearchDocumentLimit ?? DEFAULT_HYBRID_SEARCH_DOCUMENT_LIMIT,
     graphSources: [],
     mergedVectorSources: [],
     nowIso: input.nowIso,
@@ -1011,7 +1016,7 @@ export async function runPrivateChatRetrievingStep(
     embeddingProvider.model,
   );
   const primaryVectorSources = selectChatSourcesByScoreProfile(
-    await repository.vectorSearch({
+    await repository.hybridSearch({
       embedding,
       embeddingModel: embeddingProvider.model,
       limit: selectionPolicy.kMax,
@@ -1030,7 +1035,7 @@ export async function runPrivateChatRetrievingStep(
     mergedVectorSources: diversePrimaryVectorSources,
     scoreQualifiedVectorSources: primaryVectorSources,
     toolCalls: mergeChatToolCallsDeterministically(state.toolCalls, [
-      { name: 'vector-search', resultCount: diversePrimaryVectorSources.length },
+      { name: 'hybrid-search', resultCount: diversePrimaryVectorSources.length },
     ]),
   };
 }
@@ -1066,7 +1071,7 @@ export async function runPrivateChatRetryingStep(
       if (!embedding) {
         throw new Error(`Private chat retry query embedding is unavailable at index ${index}.`);
       }
-      return repository.vectorSearch({
+      return repository.hybridSearch({
         embedding,
         embeddingModel: embeddingProvider.model,
         limit: primarySelectionPolicy.kMax,
@@ -1076,7 +1081,7 @@ export async function runPrivateChatRetryingStep(
     }),
   );
   for (const retrySources of retrySourceGroups) {
-    toolCalls.push({ name: 'vector-search', resultCount: retrySources.length });
+    toolCalls.push({ name: 'hybrid-search', resultCount: retrySources.length });
   }
   const scoreQualifiedVectorSources = selectChatSourcesByScoreProfile(
     fuseChatSourceRankings(
@@ -1141,7 +1146,7 @@ export async function runPrivateChatTimelineStep(
   };
 }
 
-/** Enriches ranked retrieval candidates and selects up to ten diverse sources for synthesis. */
+/** Enriches ranked retrieval candidates and applies the project's final document limit. */
 export async function runPrivateChatDetailStep(
   state: PrivateChatSearchWorkflowState,
   repository: ChatRepository,
@@ -1151,7 +1156,7 @@ export async function runPrivateChatDetailStep(
     state.graphSources,
     state.timelineSources,
   )
-    .slice(0, DETAIL_DOCUMENT_LIMIT)
+    .slice(0, state.hybridSearchDocumentLimit)
     .map((source) => source.documentId)
     .filter((documentId) => documentId.trim().length > 0);
 
@@ -1175,7 +1180,7 @@ export async function runPrivateChatDetailStep(
       state.graphSources,
     ),
     selectionPolicy,
-    MAX_CHAT_RESPONSE_SOURCES,
+    state.hybridSearchDocumentLimit,
   );
   const confidence = privateChatRetrievalConfidence({
     didRetry: state.didRetry,
@@ -1210,6 +1215,7 @@ export async function runPrivateChatSearchRetrieval(
   emit('preparing');
   let state = runPrivateChatPreparingStep({
     graphName: input.graphName,
+    hybridSearchDocumentLimit: input.hybridSearchDocumentLimit,
     nowIso: input.nowIso ?? new Date().toISOString(),
     projectId: input.projectId,
     question: input.question,

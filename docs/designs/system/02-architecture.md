@@ -55,7 +55,7 @@
             │  Mastra Server (Cloud Run)  │
             │  Chat Agent / Report Agent  │
             │   tools:                    │
-            │    - vector-search          │
+            │    - hybrid-search          │
             │    - graph-query            │
             │    - timeline-search        │
             │    - raw-document-fetch     │  ← Object Storage

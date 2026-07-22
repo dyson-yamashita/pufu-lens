@@ -28,6 +28,7 @@ const validProjectRow = {
   name: 'Sample A',
   queue_count: 3,
   raw_count: 12,
+  settings: { hybridSearchDocumentLimit: 5 },
   slug: 'sample-a',
   visibility: 'public',
 };

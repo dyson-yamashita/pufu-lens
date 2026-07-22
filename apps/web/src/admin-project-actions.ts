@@ -18,6 +18,10 @@ import {
 } from './admin-actions-shared.ts';
 import { isProjectVisibility, type ProjectVisibility } from './admin-data';
 import { deleteProjectUseCase } from './delete-project-use-case.ts';
+import {
+  HYBRID_SEARCH_DOCUMENT_LIMIT_SETTING_KEY,
+  requireHybridSearchDocumentLimit,
+} from './project-chat-settings.ts';
 import { saveGithubAppConnectionConfig } from './project-connections';
 import { ensureProjectStoragePrefixes } from './project-storage-cleanup.ts';
 import { writePublicProjectVisibilityManifest } from './project-visibility-manifest.ts';
@@ -147,9 +151,9 @@ export async function updateProjectVisibility(formData: FormData): Promise<void>
 }
 
 /**
- * Updates a project's name, description, and visibility.
+ * Updates a project's name, description, visibility, and hybrid-search document limit.
  *
- * @param formData - Form data containing `projectSlug`, `name`, `description`, and `visibility`
+ * @param formData - Form data containing the project fields and bounded hybrid-search limit
  */
 export async function updateProjectSettings(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
@@ -159,10 +163,13 @@ export async function updateProjectSettings(formData: FormData): Promise<void> {
   }
   const description = formData.get('description')?.toString().trim() || null;
   const visibility = requireProjectVisibility(requireFormValue(formData, 'visibility'));
+  const hybridSearchDocumentLimit = requireHybridSearchDocumentLimit(
+    requireFormValue(formData, 'hybridSearchDocumentLimit'),
+  );
 
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
-    const settings = { description, name, visibility };
+    const settings = { description, hybridSearchDocumentLimit, name, visibility };
 
     if (visibility === project.visibility) {
       await updateProjectSettingsRow(sql, project.id, settings);
@@ -178,6 +185,7 @@ export async function updateProjectSettings(formData: FormData): Promise<void> {
       async () => {
         await updateProjectSettingsRow(sql, project.id, {
           description: project.description,
+          hybridSearchDocumentLimit: project.hybridSearchDocumentLimit,
           name: project.name,
           visibility: project.visibility,
         });
@@ -294,6 +302,7 @@ async function updateProjectSettingsRow(
   projectId: string,
   input: {
     readonly description: string | null;
+    readonly hybridSearchDocumentLimit: number;
     readonly name: string;
     readonly visibility: ProjectVisibility;
   },
@@ -303,6 +312,12 @@ async function updateProjectSettingsRow(
     SET name = ${input.name},
         description = ${input.description},
         visibility = ${input.visibility},
+        settings = jsonb_set(
+          settings,
+          ARRAY[${HYBRID_SEARCH_DOCUMENT_LIMIT_SETTING_KEY}],
+          to_jsonb(${input.hybridSearchDocumentLimit}::int),
+          true
+        ),
         updated_at = now()
     WHERE id = ${projectId}
   `;

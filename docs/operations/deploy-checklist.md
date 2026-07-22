@@ -152,7 +152,7 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 - graph / embedding smoke:
 - ingest embedding provider: Mastra Serverと全Workflow Jobの `PUFU_LENS_EMBEDDING_PROVIDER` / `PUFU_LENS_EMBEDDING_MODEL` / `PUFU_LENS_EMBEDDING_DIMENSIONS=1536` が一致することを確認。WebからCloud Run Jobを起動する入力にはproviderを重複保持しない
 - chat model: `PUFU_LENS_CHAT_MODEL` のproviderに対応するAPI key secretがMastra Serverへ注入されていることを確認
-- chat hybrid search smoke: Mastra Server の `PUFU_LENS_EMBEDDING_MODEL` と `document_chunks.embedding_model` の値が一致し、固有名詞 / Issue 番号を含む質問で `vector-search` が vector / keyword 候補を RRF 統合して返すこと
+- chat hybrid search smoke: Mastra Server の `PUFU_LENS_EMBEDDING_MODEL` と `document_chunks.embedding_model` の値が一致し、固有名詞 / Issue 番号を含む質問で `hybrid-search` が vector / keyword 候補を RRF 統合して返すこと
 - 実行後 smoke:
 - 失敗時の判断: restore / forward fix / 再実行 / deploy 停止
 - 記録先: PR、Issue、release note、または環境別運用ログの URL

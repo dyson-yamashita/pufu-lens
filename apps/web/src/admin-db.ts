@@ -68,6 +68,7 @@ import {
   lookupProjectAdminAccess,
   lookupProjectMemberAccess,
 } from './authz';
+import { hybridSearchDocumentLimitFromSettings } from './project-chat-settings';
 import { isFixtureFallbackEnabled } from './runtime-guards';
 
 type MutablePublicProjectSummary = Omit<PublicProjectSummary, 'reports'> & {
@@ -148,6 +149,7 @@ async function listAdminProjectRows(sql: postgres.Sql): Promise<readonly AdminDb
       p.slug,
       p.name,
       p.description,
+      p.settings,
       p.visibility,
       (SELECT count(*)::int FROM public.project_members pm WHERE pm.project_id = p.id) AS member_count,
       (SELECT count(*)::int FROM public.raw_documents rd WHERE rd.project_id = p.id) AS raw_count,
@@ -189,6 +191,7 @@ async function listMemberProjectRows(
       p.slug,
       p.name,
       p.description,
+      p.settings,
       p.visibility,
       (SELECT count(*)::int FROM public.project_members pm WHERE pm.project_id = p.id) AS member_count,
       (SELECT count(*)::int FROM public.raw_documents rd WHERE rd.project_id = p.id) AS raw_count,
@@ -233,6 +236,7 @@ async function lookupProjectRowBySlug(
       p.slug,
       p.name,
       p.description,
+      p.settings,
       p.visibility,
       (SELECT count(*)::int FROM public.project_members pm WHERE pm.project_id = p.id) AS member_count,
       (SELECT count(*)::int FROM public.raw_documents rd WHERE rd.project_id = p.id) AS raw_count,
@@ -1353,6 +1357,7 @@ function projectFromRow(
     description: row.description,
     failedCount,
     heldCount,
+    hybridSearchDocumentLimit: hybridSearchDocumentLimitFromSettings(row.settings),
     ingestedCount: toNumber(row.ingested_count),
     lastIndexed: formatDate(row.last_indexed),
     memberCount: toNumber(row.member_count),
