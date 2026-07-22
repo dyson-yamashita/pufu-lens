@@ -180,12 +180,7 @@ function sanitizePufuOccurredAt(value: string | null): string | null {
 }
 
 function sanitizePufuClientText(value: string): string {
-  let text = redactSensitivePdfText(normalizeReportWhitespace(value));
-  text = text.replace(
-    /\b(?:document_id|canonical_uri|storage_uri|raw_document_id)\s*[=:]\s*\S+/gi,
-    '[redacted]',
-  );
-  return text;
+  return redactSensitivePdfText(normalizeReportWhitespace(value));
 }
 
 function dedupePublicSources(sources: readonly PufuScorePublicSource[]): PufuScorePublicSource[] {
