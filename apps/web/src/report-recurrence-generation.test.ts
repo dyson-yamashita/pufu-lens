@@ -15,7 +15,7 @@ import {
 } from './report-previous-report.ts';
 import type { ReportGenerationProvider } from './report-provider.ts';
 import {
-  buildGeminiReportPrompt,
+  buildReportGenerationPrompt,
   countGeminiProviderTokens,
   createExtractiveReportProvider,
   createGeminiReportProvider,
@@ -564,7 +564,7 @@ const previousContext = await buildPreviousReportProviderContext({
   previousReport: previousReportJson,
   previousReportId: 'report-prev',
 });
-const prompt = buildGeminiReportPrompt({
+const prompt = buildReportGenerationPrompt({
   documents: [
     {
       canonicalUri: 'https://example.com/issues/42',

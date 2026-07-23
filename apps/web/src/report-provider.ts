@@ -22,6 +22,15 @@ export interface GeneratedReportContent
   readonly project_overview?: ProjectOverviewV1;
 }
 
+/**
+ * Contract for generating private report JSON from project evidence.
+ *
+ * Implementations must return natural Japanese for all user-facing generated report text,
+ * including `title`, `summary`, section titles, section markdown bodies, and when present:
+ * `project_overview` fields and recurrence delta fields (`change_summary`, `increments`,
+ * `decrements`, `continued_items`). JSON keys stay unchanged. Proper nouns, product names,
+ * and code identifiers from source evidence may retain their original spelling.
+ */
 export interface ReportGenerationProvider {
   countTokens?(text: string): Promise<number>;
   generate(input: {
@@ -193,7 +202,7 @@ export function createGeminiReportProvider(input: {
             {
               parts: [
                 {
-                  text: buildGeminiReportPrompt({
+                  text: buildReportGenerationPrompt({
                     documents,
                     includeProjectOverview,
                     materialGroups,
@@ -250,13 +259,13 @@ export function createGeminiReportProvider(input: {
 }
 
 /**
- * Builds the Gemini prompt for private report JSON generation.
+ * Builds provider-neutral instructions for private report JSON generation.
  *
  * Requires natural Japanese for all user-facing report text. When `includeProjectOverview`
  * is true, the prompt also requests `project_overview` fields. When `previousReportContext`
  * is provided, the prompt requests recurrence delta fields for comparison with the prior report.
  */
-export function buildGeminiReportPrompt(input: {
+export function buildReportGenerationPrompt(input: {
   readonly documents: readonly ReportDocumentRecord[];
   readonly includeProjectOverview?: boolean;
   readonly materialGroups?: readonly ReportMaterialGroup[];

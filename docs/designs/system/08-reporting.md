@@ -87,7 +87,7 @@ Private report JSON スキーマ（`schema_version: "v1"`）：
 
 `project_overview` は `scheduled` / `scheduled_backfill` report で必須とし、手動 report と既存 artifact では省略できる。Gemini は report 本文と同じ生成要求で作成し、extractive provider は report の summary、進行状況、課題から決定論的に補完する。`status_summary` は最大 400 code point、`assets` / `issues` は各最大 5 件、title は最大 120 code point、description と `next_action` は最大 300 code point とする。保存前に email、secret、token、API key、private URL、storage URI、document ID などをマスクまたは拒否し、public project の Overview にそのまま投影できる契約にする。
 
-Gemini が生成する report の title、summary、section title / markdown、`project_overview` の各表示項目、`recurrence` の差分本文は自然な日本語とする。JSON key は変更せず、根拠資料に含まれる固有名詞、製品名、code identifier は原表記を維持できる。
+`ReportGenerationProvider` が生成する report の title、summary、section title / markdown、`project_overview` の各表示項目、`recurrence` の差分本文は、provider の種類にかかわらず自然な日本語とする。JSON key は変更せず、根拠資料に含まれる固有名詞、製品名、code identifier は原表記を維持できる。
 
 `recurrence` は同じ project・frequency の前回 `scheduled` / `scheduled_backfill` report を参照した生成だけが持つ optional field である。`frequency` と `previous_report_id` は provider 応答を信用せず、project-scoped metadata の検証結果から組み立てる。差分本文は normalize / redaction 後に `change_summary` を最大 2,000 code point、各 list を最大 10 件・各 400 code point に制限して保存する。手動生成では `recurrence` を付けない。private report 一覧は metadata から手動 / 定期と周期を表示し、`scheduled_backfill` も通常の定期表示にまとめる。private / public report 詳細は取得済み JSON に `recurrence` がある場合だけ共通の差分パネルを描画する。public artifact にはこの field を転記しない。
 

@@ -63,7 +63,7 @@ export {
   validateProjectOverview,
 } from './report-project-overview.ts';
 export {
-  buildGeminiReportPrompt,
+  buildReportGenerationPrompt,
   countGeminiProviderTokens,
   createExtractiveReportProvider,
   createGeminiReportProvider,
