@@ -648,15 +648,65 @@
 }
 
 .report-schedule-form {
-  display: flex;
-  flex-wrap: wrap;
   align-items: end;
-  gap: 12px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(140px, 180px) max-content;
+  margin: 0;
 }
 
 .report-schedule-form label {
   display: grid;
   gap: 6px;
+  min-width: 0;
+}
+
+.report-schedule-form label > span {
+  color: var(--muted);
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.report-schedule-form select {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  min-height: 40px;
+  min-width: 0;
+  padding: 9px 10px;
+  width: 100%;
+}
+
+.report-schedule-save-button {
+  color: white;
+  font-weight: 700;
+  min-width: 96px;
+}
+
+.report-schedule-save-button[data-pending="true"] {
+  cursor: progress;
+  opacity: 1;
+}
+
+.report-schedule-form .action-error {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .report-schedule-form {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .report-schedule-save-button {
+    min-width: 0;
+    width: 100%;
+  }
 }
 
 .report-schedule-summary-grid {

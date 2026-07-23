@@ -106,14 +106,51 @@ test('scenario: member sees pending save label while report schedule form submit
   await expect(page.getByTestId('report-schedule-backfill-remaining')).toHaveCount(0);
 
   const saveButton = page.getByTestId('report-schedule-save-button');
+  const frequencyInput = page.getByTestId('report-schedule-frequency-input');
+  const [frequencyBox, saveButtonBox] = await Promise.all([
+    frequencyInput.boundingBox(),
+    saveButton.boundingBox(),
+  ]);
+  expect(frequencyBox).not.toBeNull();
+  expect(saveButtonBox).not.toBeNull();
+  expect(Math.abs((frequencyBox?.y ?? 0) - (saveButtonBox?.y ?? 0))).toBeLessThanOrEqual(1);
+  expect(saveButtonBox?.width ?? 0).toBeLessThan(frequencyBox?.width ?? 0);
   await expect(saveButton).toHaveText('保存');
-  await page.getByTestId('report-schedule-frequency-input').selectOption('weekly');
+  await frequencyInput.selectOption('weekly');
+  await expect(frequencyInput).toHaveValue('weekly');
   await saveButton.click();
 
   await expect(saveButton).toHaveText('保存中...');
   await expect(saveButton).toBeDisabled();
   await expect(saveButton).toHaveAttribute('aria-busy', 'true');
   await expect(saveButton).toHaveText('保存', { timeout: 10_000 });
+  await expect(frequencyInput).toHaveValue('weekly');
+});
+
+test('scenario: member controls report schedule form layout on mobile @mobile', async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 900, width: 390 });
+  await page.goto('/dev/e2e/report-schedule-panel');
+
+  const form = page.getByTestId('report-schedule-form');
+  const saveButton = page.getByTestId('report-schedule-save-button');
+  const frequencyInput = page.getByTestId('report-schedule-frequency-input');
+
+  await expect(form).toHaveCSS('grid-template-columns', /^\d+(?:\.\d+)?px$/);
+  const [frequencyBox, saveButtonBox] = await Promise.all([
+    frequencyInput.boundingBox(),
+    saveButton.boundingBox(),
+  ]);
+  expect(frequencyBox).not.toBeNull();
+  expect(saveButtonBox).not.toBeNull();
+  expect(Math.abs((frequencyBox?.x ?? 0) - (saveButtonBox?.x ?? 0))).toBeLessThanOrEqual(1);
+  expect(Math.abs((frequencyBox?.width ?? 0) - (saveButtonBox?.width ?? 0))).toBeLessThanOrEqual(1);
+  expect(saveButtonBox?.y ?? 0).toBeGreaterThan(
+    (frequencyBox?.y ?? 0) + (frequencyBox?.height ?? 0),
+  );
+  await expect(saveButton).toBeInViewport();
+  await expect(frequencyInput).toBeInViewport();
 });
 
 test('scenario: member opens private report detail from list and sees sections', async ({

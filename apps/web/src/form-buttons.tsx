@@ -20,6 +20,7 @@ const initialActionFormState: ActionFormState = {};
  * @param children - The form content.
  * @param className - The class name applied to the form element.
  * @param confirmMessage - The confirmation message shown before submission.
+ * @param onReset - Called when the browser or React requests a form reset.
  * @param onSuccess - Called after the action completes successfully.
  * @param testId - The `data-testid` value applied to the form element.
  */
@@ -28,6 +29,7 @@ export function ActionForm({
   children,
   className,
   confirmMessage,
+  onReset,
   onSuccess,
   testId,
 }: {
@@ -35,6 +37,7 @@ export function ActionForm({
   readonly children: React.ReactNode;
   readonly className?: string;
   readonly confirmMessage?: string;
+  readonly onReset?: React.FormEventHandler<HTMLFormElement>;
   readonly onSuccess?: () => void;
   readonly testId?: string;
 }) {
@@ -67,6 +70,7 @@ export function ActionForm({
       action={formAction}
       className={className}
       data-testid={testId}
+      onReset={onReset}
       onSubmit={confirmMessage ? handleSubmit : undefined}
     >
       {children}
