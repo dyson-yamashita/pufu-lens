@@ -575,6 +575,7 @@ const prompt = buildGeminiReportPrompt({
       title: 'Issue',
     },
   ],
+  includeProjectOverview: true,
   period: newPeriod,
   previousReportContext: previousContext,
   projectSlug: 'sample-a',
