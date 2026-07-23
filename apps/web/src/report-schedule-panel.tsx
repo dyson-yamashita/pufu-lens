@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { ActionForm, PendingSubmitButton } from './form-buttons';
 import type { ReportScheduleFrequency } from './report-schedule-contract.ts';
 import {
@@ -42,36 +43,12 @@ export function ReportSchedulePanel({
         </div>
       </div>
       {canManage ? (
-        <ActionForm
-          action={updateAction}
-          className="report-schedule-form"
-          testId="report-schedule-form"
-        >
-          <input name="projectSlug" type="hidden" value={projectSlug} />
-          <label>
-            <span>周期</span>
-            <select
-              data-testid="report-schedule-frequency-input"
-              defaultValue={settings.frequency}
-              name="frequency"
-              required
-            >
-              {FREQUENCY_OPTIONS.map((frequency) => (
-                <option key={frequency} value={frequency}>
-                  {reportScheduleFrequencyLabel(frequency)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <PendingSubmitButton
-            className="primary-button"
-            pendingLabel="保存中..."
-            testId="report-schedule-save-button"
-            title="Save report schedule"
-          >
-            保存
-          </PendingSubmitButton>
-        </ActionForm>
+        <ReportScheduleForm
+          frequency={settings.frequency}
+          key={`${projectSlug}:${settings.frequency}`}
+          projectSlug={projectSlug}
+          updateAction={updateAction}
+        />
       ) : (
         <MemberReadonly frequency={settings.frequency} />
       )}
@@ -129,6 +106,64 @@ export function ReportSchedulePanel({
         定期実行のみ更新します。
       </p>
     </section>
+  );
+}
+
+/**
+ * Renders the editable report schedule frequency form for project administrators.
+ *
+ * @param frequency - The current schedule frequency from server settings
+ * @param projectSlug - The project slug submitted with the form
+ * @param updateAction - The server action that persists schedule changes
+ */
+function ReportScheduleForm({
+  frequency,
+  projectSlug,
+  updateAction,
+}: {
+  readonly frequency: ReportScheduleFrequency;
+  readonly projectSlug: string;
+  readonly updateAction: ReportScheduleUpdateAction;
+}) {
+  const [selectedFrequency, setSelectedFrequency] = useState<ReportScheduleFrequency>(frequency);
+
+  return (
+    <ActionForm
+      action={updateAction}
+      className="report-schedule-form"
+      onReset={(event) => {
+        event.preventDefault();
+      }}
+      testId="report-schedule-form"
+    >
+      <input name="projectSlug" type="hidden" value={projectSlug} />
+      <label>
+        <span>周期</span>
+        <select
+          data-testid="report-schedule-frequency-input"
+          name="frequency"
+          onChange={(event) => {
+            setSelectedFrequency(event.target.value as ReportScheduleFrequency);
+          }}
+          required
+          value={selectedFrequency}
+        >
+          {FREQUENCY_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {reportScheduleFrequencyLabel(option)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <PendingSubmitButton
+        className="primary-button report-schedule-save-button"
+        pendingLabel="保存中..."
+        testId="report-schedule-save-button"
+        title="Save report schedule"
+      >
+        保存
+      </PendingSubmitButton>
+    </ActionForm>
   );
 }
 

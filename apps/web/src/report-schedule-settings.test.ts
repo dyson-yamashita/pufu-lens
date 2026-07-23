@@ -245,6 +245,16 @@ test('reports page renders private reports before the schedule panel', async () 
   );
 });
 
+test('report schedule panel keeps frequency select controlled after form submission', async () => {
+  const panel = await readFile(new URL('./report-schedule-panel.tsx', import.meta.url), 'utf8');
+  assert.match(panel, /value=\{selectedFrequency\}/);
+  assert.match(panel, /setSelectedFrequency\(event\.target\.value/);
+  assert.match(panel, /onReset=\{\(event\) => \{/);
+  assert.match(panel, /event\.preventDefault\(\)/);
+  assert.match(panel, /key=\{`\$\{projectSlug\}:\$\{settings\.frequency\}`\}/);
+  assert.doesNotMatch(panel, /defaultValue=\{settings\.frequency\}/);
+});
+
 test('report schedule panel explains aggregated initial history report', async () => {
   const panel = await readFile(new URL('./report-schedule-panel.tsx', import.meta.url), 'utf8');
   assert.match(panel, /1件の履歴レポート/);
