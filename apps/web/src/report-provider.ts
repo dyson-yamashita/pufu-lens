@@ -249,6 +249,13 @@ export function createGeminiReportProvider(input: {
   };
 }
 
+/**
+ * Builds the Gemini prompt for private report JSON generation.
+ *
+ * Requires natural Japanese for all user-facing report text. When `includeProjectOverview`
+ * is true, the prompt also requests `project_overview` fields. When `previousReportContext`
+ * is provided, the prompt requests recurrence delta fields for comparison with the prior report.
+ */
 export function buildGeminiReportPrompt(input: {
   readonly documents: readonly ReportDocumentRecord[];
   readonly includeProjectOverview?: boolean;
@@ -260,6 +267,7 @@ export function buildGeminiReportPrompt(input: {
 }): string {
   const lines = [
     'Return only JSON for Pufu Lens private report schema v1 fields: title, summary, sections.',
+    'Output language: Write all user-facing generated report text in natural Japanese. This includes title, summary, every section title, every section markdown body, and when returned: project_overview.status_summary; project_overview.assets[].title and description; project_overview.issues[].title, description, and next_action; and recurrence fields change_summary, increments[], decrements[], and continued_items[]. Keep JSON keys unchanged. Proper nouns, product names, and code identifiers from source evidence may remain in their original language.',
     'This report is for understanding the project situation, not checking task completion.',
     'Summarize the overall context, current movement, decisions implied by the information, uncertainty, and signals that matter.',
     'Do not make the report primarily about GitHub issues, PR counts, task lists, or TODO tracking.',

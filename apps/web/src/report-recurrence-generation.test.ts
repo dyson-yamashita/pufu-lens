@@ -582,6 +582,10 @@ const prompt = buildGeminiReportPrompt({
 assert.match(prompt, /untrusted evidence/);
 assert.match(prompt, /change_summary/);
 assert.ok(prompt.includes(previousContext.serialized));
+assert.match(
+  prompt,
+  /Write all user-facing generated report text in natural Japanese[\s\S]*project_overview\.status_summary[\s\S]*recurrence fields change_summary, increments\[\], decrements\[\], and continued_items\[\][\s\S]*Proper nouns, product names, and code identifiers/,
+);
 
 let countTokensCalls = 0;
 await countGeminiProviderTokens({
