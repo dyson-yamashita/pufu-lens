@@ -15,7 +15,7 @@ import {
 } from './report-previous-report.ts';
 import type { ReportGenerationProvider } from './report-provider.ts';
 import {
-  buildGeminiReportPrompt,
+  buildReportGenerationPrompt,
   countGeminiProviderTokens,
   createExtractiveReportProvider,
   createGeminiReportProvider,
@@ -564,7 +564,7 @@ const previousContext = await buildPreviousReportProviderContext({
   previousReport: previousReportJson,
   previousReportId: 'report-prev',
 });
-const prompt = buildGeminiReportPrompt({
+const prompt = buildReportGenerationPrompt({
   documents: [
     {
       canonicalUri: 'https://example.com/issues/42',
@@ -575,6 +575,7 @@ const prompt = buildGeminiReportPrompt({
       title: 'Issue',
     },
   ],
+  includeProjectOverview: true,
   period: newPeriod,
   previousReportContext: previousContext,
   projectSlug: 'sample-a',
@@ -582,6 +583,10 @@ const prompt = buildGeminiReportPrompt({
 assert.match(prompt, /untrusted evidence/);
 assert.match(prompt, /change_summary/);
 assert.ok(prompt.includes(previousContext.serialized));
+assert.match(
+  prompt,
+  /Write all user-facing generated report text in natural Japanese[\s\S]*project_overview\.status_summary[\s\S]*project_overview\.assets\[\]\.title and description[\s\S]*project_overview\.issues\[\]\.title, description, and next_action[\s\S]*recurrence fields change_summary, increments\[\], decrements\[\], and continued_items\[\][\s\S]*Proper nouns, product names, and code identifiers/,
+);
 
 let countTokensCalls = 0;
 await countGeminiProviderTokens({
