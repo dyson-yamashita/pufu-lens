@@ -15,6 +15,18 @@ export type {
   UpsertActorAliasInput,
 } from './actor-resolution.js';
 export { parseSenderAlias, resolveActors } from './actor-resolution.js';
+export {
+  parseBuiltInParserProfileIdRow,
+  parseBuiltInParserProfileTargetRow,
+  parseBuiltInParserProfileTargetRows,
+  parseFirstSqlRow,
+} from './built-in-parser-profile-row-parsers.js';
+export type { BuiltInParserProfileSql } from './built-in-parser-profiles.js';
+export {
+  builtInParserProfileName,
+  ensureBuiltInParserProfileForDataSource,
+  ensureBuiltInParserProfilesForProjectScope,
+} from './built-in-parser-profiles.js';
 export type {
   ChunkAndEmbedDecision,
   ChunkAndEmbedOptions,
@@ -238,8 +250,12 @@ export type {
 export {
   BUILT_IN_PARSER_ARTIFACT,
   BUILT_IN_PARSER_ARTIFACT_HASH,
+  BUILT_IN_PARSER_VERSION,
+  builtInParserVersionForSourceType,
   defaultBuiltInParserVersion,
   defaultParserContract,
+  GITHUB_BUILT_IN_PARSER_VERSION,
+  LEGACY_BUILT_IN_PARSER_VERSION,
   PARSED_SCHEMA_VERSION,
   parsedStorageUri,
   parseRawDocuments,

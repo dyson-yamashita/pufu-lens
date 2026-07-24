@@ -13,8 +13,15 @@ import {
 import type { TopicExtractionAgent } from './topic-extraction-agent.js';
 
 export const PARSED_SCHEMA_VERSION = 1;
+export const LEGACY_BUILT_IN_PARSER_VERSION = 'fixture-parser-v1';
+export const BUILT_IN_PARSER_VERSION = 'fixture-parser-v2';
+/** @deprecated Use {@link BUILT_IN_PARSER_VERSION}. Kept for transitional imports. */
+export const GITHUB_BUILT_IN_PARSER_VERSION = BUILT_IN_PARSER_VERSION;
 export const BUILT_IN_PARSER_ARTIFACT = JSON.stringify(
   {
+    features: {
+      githubTopicExtraction: true,
+    },
     id: 'built-in-fixture-parser',
     parser: 'packages/ingestion/src/ingestion-fixtures.ts',
     schemaVersion: PARSED_SCHEMA_VERSION,
@@ -407,6 +414,11 @@ export function defaultParserContract(sourceType: SourceType): ParserVersionCont
   }
 }
 
+/** Returns the current built-in parser version label for all source types. */
+export function builtInParserVersionForSourceType(_sourceType: SourceType): string {
+  return BUILT_IN_PARSER_VERSION;
+}
+
 export function defaultBuiltInParserVersion(input: {
   parserProfileId: string;
   parserVersionId: string;
@@ -420,7 +432,7 @@ export function defaultBuiltInParserVersion(input: {
     schemaVersion: PARSED_SCHEMA_VERSION,
     sourceType: input.sourceType,
     status: 'approved',
-    version: 'fixture-parser-v1',
+    version: builtInParserVersionForSourceType(input.sourceType),
   };
 }
 

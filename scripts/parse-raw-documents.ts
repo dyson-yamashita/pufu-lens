@@ -10,10 +10,9 @@ import type {
   SourceType,
 } from '../packages/ingestion/dist/index.js';
 import {
-  BUILT_IN_PARSER_ARTIFACT_HASH,
   createDeterministicTopicExtractionAgent,
   createGeminiTopicExtractionAgent,
-  defaultParserContract,
+  ensureBuiltInParserProfilesForProjectScope,
   parseRawDocuments,
 } from '../packages/ingestion/dist/index.js';
 import { createObjectStorageFromEnv } from '../packages/storage/dist/factory.js';
@@ -38,7 +37,14 @@ async function main(): Promise<void> {
   try {
     await ensureIngestionQueueLeaseColumn(sql);
     if (options.seedBuiltInParsers !== false) {
-      await ensureBuiltInParserVersions({ projectSlug, sourceType: options.source, sql });
+      await ensureBuiltInParserProfilesForProjectScope({
+        approvedByUserId: '00000000-0000-0000-0000-000000000001',
+        dataSourceId: options.dataSourceId,
+        managedBy: 'scripts/parse-raw-documents.ts',
+        projectSlug,
+        sourceType: options.source,
+        sql,
+      });
     }
 
     const result = await parseRawDocuments({
@@ -279,93 +285,6 @@ class PostgresRawParseRepository implements RawParseRepository {
 function assertActiveQueueLease(rows: readonly unknown[], queueId: string): void {
   if (rows.length === 0) {
     throw new Error(`Queue lease is no longer active: ${queueId}`);
-  }
-}
-
-async function ensureBuiltInParserVersions(input: {
-  projectSlug: string;
-  sourceType?: SourceType;
-  sql: postgres.Sql;
-}): Promise<void> {
-  const sourceTypes = input.sourceType ? [input.sourceType] : SOURCE_TYPES;
-
-  for (const sourceType of sourceTypes) {
-    await input.sql`
-      WITH project AS (
-        SELECT id FROM public.projects WHERE slug = ${input.projectSlug}
-      ),
-      sources AS (
-        SELECT id AS data_source_id, project_id, source_type
-        FROM public.data_sources
-        WHERE project_id = (SELECT id FROM project)
-          AND source_type = ${sourceType}
-          AND enabled = true
-      ),
-      profiles AS (
-        INSERT INTO public.parser_profiles (
-          project_id,
-          data_source_id,
-          source_type,
-          name,
-          metadata
-        )
-        SELECT
-          sources.project_id,
-          sources.data_source_id,
-          sources.source_type,
-          ${`Built-in ${sourceType} parser`},
-          ${input.sql.json({ managedBy: 'scripts/parse-raw-documents.ts' })}
-        FROM sources
-        ON CONFLICT (project_id, data_source_id, source_type, name)
-        DO UPDATE SET metadata = EXCLUDED.metadata
-        RETURNING id, source_type
-      ),
-      versions AS (
-        INSERT INTO public.parser_versions (
-          parser_profile_id,
-          version,
-          schema_version,
-          artifact_hash,
-          contract,
-          status,
-          approved_by_user_id,
-          approved_at
-        )
-        SELECT
-          profiles.id,
-          'fixture-parser-v1',
-          1,
-          ${BUILT_IN_PARSER_ARTIFACT_HASH},
-          ${input.sql.json(defaultParserContract(sourceType) as postgres.JSONValue)},
-          'approved',
-          '00000000-0000-0000-0000-000000000001',
-          now()
-        FROM profiles
-        ON CONFLICT (parser_profile_id, version)
-        DO UPDATE SET
-          artifact_hash = EXCLUDED.artifact_hash,
-          contract = EXCLUDED.contract,
-          status = 'approved',
-          approved_by_user_id = EXCLUDED.approved_by_user_id,
-          approved_at = COALESCE(parser_versions.approved_at, now())
-        RETURNING id, parser_profile_id
-      )
-      UPDATE public.parser_profiles pp
-      SET active_version_id = versions.id
-      FROM versions
-      WHERE pp.id = versions.parser_profile_id
-    `;
-    await input.sql`
-      UPDATE public.parser_profiles pp
-      SET active_version_id = pv.id
-      FROM public.parser_versions pv, public.projects p
-      WHERE pv.parser_profile_id = pp.id
-        AND pv.version = 'fixture-parser-v1'
-        AND pv.status = 'approved'
-        AND p.id = pp.project_id
-        AND p.slug = ${input.projectSlug}
-        AND pp.source_type = ${sourceType}
-    `;
   }
 }
 

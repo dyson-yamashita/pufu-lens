@@ -329,6 +329,124 @@ test('storeGraphRelations materializes parsed Drive keyword topics as mentions',
   assert.equal(repository.nodes.get('topic:keyword:spec%20draft')?.properties.target, 'Spec draft');
 });
 
+test('storeGraphRelations materializes parsed GitHub keyword topics as mentions', async () => {
+  const githubDocument = documentRecord({
+    docType: 'pull_request',
+    graphNodeId: 'document:pull_request:example-org%2Fpufu-sample%2Fpulls%2F202',
+    id: 'document-github-pr-202',
+    rawDocumentId: 'raw-github-pr-202',
+    sourceId: 'example-org/pufu-sample/pulls/202',
+  });
+  const repository = new InMemoryGraphRelationsRepository([
+    {
+      document: githubDocument,
+      parsed: githubParsed({
+        docType: 'pull_request',
+        sourceId: 'example-org/pufu-sample/pulls/202',
+        topics: [
+          {
+            metadata: { source: 'title' },
+            target: 'Parser fixtures',
+            topicType: 'keyword',
+          },
+        ],
+      }),
+      rawContentHash: 'github-hash',
+      rawDocumentId: 'raw-github-pr-202',
+    },
+  ]);
+
+  await storeGraphRelations({
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  });
+
+  assert.ok(repository.nodes.has('topic:keyword:parser%20fixtures'));
+  assert.ok(
+    repository.hasEdge(githubDocument.graphNodeId, 'MENTIONS', 'topic:keyword:parser%20fixtures'),
+  );
+  assert.equal(
+    repository.nodes.get('topic:keyword:parser%20fixtures')?.properties.target,
+    'Parser fixtures',
+  );
+});
+
+test('storeGraphRelations shares normalized GitHub topic nodes across documents', async () => {
+  const issueDocument = documentRecord({
+    docType: 'issue',
+    graphNodeId: 'document:issue:example-org%2Fpufu-sample%2Fissues%2F101',
+    id: 'document-github-issue-101',
+    rawDocumentId: 'raw-github-issue-101',
+    sourceId: 'example-org/pufu-sample/issues/101',
+  });
+  const pullRequestDocument = documentRecord({
+    docType: 'pull_request',
+    graphNodeId: 'document:pull_request:example-org%2Fpufu-sample%2Fpulls%2F202',
+    id: 'document-github-pr-202',
+    rawDocumentId: 'raw-github-pr-202',
+    sourceId: 'example-org/pufu-sample/pulls/202',
+  });
+  const repository = new InMemoryGraphRelationsRepository([
+    {
+      document: issueDocument,
+      parsed: githubParsed({
+        docType: 'issue',
+        sourceId: 'example-org/pufu-sample/issues/101',
+        topics: [
+          {
+            metadata: { source: 'title' },
+            target: 'Release Notes',
+            topicType: 'keyword',
+          },
+        ],
+      }),
+      rawContentHash: 'hash-issue-101',
+      rawDocumentId: 'raw-github-issue-101',
+    },
+    {
+      document: pullRequestDocument,
+      parsed: githubParsed({
+        canonicalUri: 'https://github.com/example-org/pufu-sample/pull/202',
+        docType: 'pull_request',
+        relations: [
+          {
+            metadata: { number: 101, reason: 'github_closing_keyword' },
+            target: 'example-org/pufu-sample/issues/101',
+            type: 'RELATED_TO',
+          },
+        ],
+        sourceId: 'example-org/pufu-sample/pulls/202',
+        topics: [
+          {
+            metadata: { source: 'title' },
+            target: 'release notes',
+            topicType: 'keyword',
+          },
+        ],
+      }),
+      rawContentHash: 'hash-pr-202',
+      rawDocumentId: 'raw-github-pr-202',
+    },
+  ]);
+  repository.documents.set('example-org/pufu-sample/issues/101', issueDocument);
+
+  const result = await storeGraphRelations({
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  });
+
+  const topicNodeId = 'topic:keyword:release%20notes';
+  assert.equal(result.decisions.length, 2);
+  assert.ok(repository.nodes.has(topicNodeId));
+  assert.ok(repository.hasEdge(issueDocument.graphNodeId, 'MENTIONS', topicNodeId));
+  assert.ok(repository.hasEdge(pullRequestDocument.graphNodeId, 'MENTIONS', topicNodeId));
+  assert.ok(
+    repository.hasEdge(pullRequestDocument.graphNodeId, 'RELATED_TO', issueDocument.graphNodeId),
+  );
+});
+
 test('storeGraphRelations materializes GitHub related document edges', async () => {
   const issueDocument = documentRecord({
     docType: 'issue',

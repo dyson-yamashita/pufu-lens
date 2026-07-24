@@ -18,7 +18,7 @@ import { requiredEnv, validateGraphName } from './lib/cli.ts';
 import {
   extractRelatedDocumentSourceIds,
   parseAgtypeString,
-  selectMissingGraphTargets,
+  selectGraphIndexTargets,
   selectRelatedDocumentBackfillTargets,
 } from './lib/graph-target-selection.ts';
 
@@ -56,6 +56,7 @@ type GraphTargetRow = {
   documentId: string;
   documentRawDocumentId: string;
   graphNodeId: string;
+  ingestStatus: string;
   parsedUri: string;
   rawContentHash: string;
   rawDocumentId: string;
@@ -126,19 +127,28 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
         rows.map((row) => row.graphNodeId),
       );
       selectedRows.push(
-        ...selectMissingGraphTargets(rows, existingGraphNodeIds, input.limit - selectedRows.length),
+        ...selectGraphIndexTargets(rows, existingGraphNodeIds, input.limit - selectedRows.length),
       );
       if (selectedRows.length < input.limit) {
-        selectedRows.push(
-          ...(await this.selectRelatedDocumentBackfillRows({
-            existingGraphNodeIds,
-            graphName,
-            limit: input.limit - selectedRows.length,
-            parsedTextByRawDocumentId,
-            projectId: input.projectId,
-            rows,
-          })),
-        );
+        const selectedGraphNodeIds = new Set(selectedRows.map((row) => row.graphNodeId));
+        for (const row of await this.selectRelatedDocumentBackfillRows({
+          existingGraphNodeIds,
+          graphName,
+          limit: input.limit - selectedRows.length,
+          parsedTextByRawDocumentId,
+          projectId: input.projectId,
+          rows,
+          selectedGraphNodeIds,
+        })) {
+          if (selectedRows.length >= input.limit) {
+            break;
+          }
+          if (selectedGraphNodeIds.has(row.graphNodeId)) {
+            continue;
+          }
+          selectedRows.push(row);
+          selectedGraphNodeIds.add(row.graphNodeId);
+        }
       }
       if (rows.length < pageSize) {
         break;
@@ -171,6 +181,7 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
     parsedTextByRawDocumentId: Map<string, string>;
     projectId: string;
     rows: readonly GraphTargetRow[];
+    selectedGraphNodeIds: ReadonlySet<string>;
   }): Promise<GraphTargetRow[]> {
     const rowsWithParsed = (
       await Promise.all(
@@ -240,7 +251,9 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
       input.existingGraphNodeIds,
       missingRelatedEdgeGraphNodeIds,
       input.limit,
-    ).map(stripParsedText);
+    )
+      .filter((row) => !input.selectedGraphNodeIds.has(row.graphNodeId))
+      .map(stripParsedText);
   }
 
   private async readParsedText(
@@ -269,6 +282,7 @@ class PostgresGraphRelationsRepository implements GraphRelationsRepository {
         d.raw_document_id::text AS "documentRawDocumentId",
         rd.content_hash AS "rawContentHash",
         rd.id::text AS "rawDocumentId",
+        rd.ingest_status AS "ingestStatus",
         rd.parsed_uri AS "parsedUri",
         rd.source_id AS "sourceId"
       FROM public.documents d

@@ -173,6 +173,199 @@ test('drive parser emits keyword topics from title and body via topic extraction
   }
 });
 
+test('github parser emits keyword topics from title and body via topic extraction agent', async () => {
+  const topicExtractionAgent: TopicExtractionAgent = {
+    async extractTopics(input) {
+      return [
+        {
+          metadata: { source: 'test_title' },
+          target: input.title,
+          topicType: 'keyword',
+        },
+        {
+          metadata: { source: 'test_body' },
+          target: input.bodyText.slice(0, 24),
+          topicType: 'keyword',
+        },
+      ];
+    },
+  };
+  const rawPath = await writeTempRawFixture(
+    'github-topic-keywords.json',
+    JSON.stringify({
+      body: 'Semantic topics should come from issue body text only.',
+      comments: [
+        {
+          body: 'Comment-only keyword must not reach the topic agent.',
+          id: 9001,
+          user: { login: 'sample-maintainer', name: 'Sample Maintainer' },
+        },
+      ],
+      created_at: '2026-05-08T10:30:00.000Z',
+      html_url: 'https://github.com/example-org/pufu-sample/issues/404',
+      kind: 'issue',
+      number: 404,
+      repository: 'example-org/pufu-sample',
+      reviews: [
+        {
+          id: 9002,
+          state: 'CHANGES_REQUESTED',
+          user: { login: 'sample-reviewer', name: 'Sample Reviewer' },
+        },
+      ],
+      title: 'GitHub Topic Fixture',
+      updated_at: '2026-05-08T10:30:00.000Z',
+      user: { login: 'sample-author', name: 'Sample Author' },
+    }),
+  );
+
+  try {
+    const parsed = await parseRawContent(
+      buildFixtureCase('github-topic-keywords', 'github', rawPath),
+      await readFile(join(repoRoot, rawPath), 'utf8'),
+      { topicExtractionAgent },
+    );
+
+    assert.match(parsed.bodyText, /Comment-only keyword/);
+    assert.deepEqual(
+      parsed.topics?.map((topic) => ({
+        metadata: topic.metadata,
+        target: topic.target,
+        topicType: topic.topicType,
+      })),
+      [
+        {
+          metadata: { source: 'test_title' },
+          target: 'GitHub Topic Fixture',
+          topicType: 'keyword',
+        },
+        {
+          metadata: { source: 'test_body' },
+          target: 'Semantic topics should c',
+          topicType: 'keyword',
+        },
+      ],
+    );
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
+test('github parser passes only issue title and body to topic extraction agent', async () => {
+  let capturedInput:
+    | {
+        bodyText: string;
+        canonicalUri: string;
+        html: string;
+        title: string;
+      }
+    | undefined;
+  const topicExtractionAgent: TopicExtractionAgent = {
+    async extractTopics(input) {
+      capturedInput = input;
+      return [];
+    },
+  };
+  const rawPath = await writeTempRawFixture(
+    'github-topic-agent-input.json',
+    JSON.stringify({
+      body: 'Issue body keyword',
+      comments: [{ body: 'comment-only-lexeme', id: 1, user: { login: 'c', name: 'C' } }],
+      created_at: '2026-05-08T11:00:00.000Z',
+      diff: { byteSize: 128, sha256: 'a'.repeat(64) },
+      diffText: 'diff-only-lexeme',
+      html_url: 'https://github.com/example-org/pufu-sample/pull/505',
+      kind: 'pull_request',
+      number: 505,
+      repository: 'example-org/pufu-sample',
+      reviews: [
+        {
+          id: 2,
+          state: 'review-only-lexeme',
+          user: { login: 'reviewer', name: 'Reviewer' },
+        },
+      ],
+      title: 'Issue title keyword',
+      updated_at: '2026-05-08T11:00:00.000Z',
+      user: { login: 'author', name: 'Author' },
+    }),
+  );
+
+  try {
+    await parseRawContent(
+      buildFixtureCase('github-topic-agent-input', 'github', rawPath),
+      await readFile(join(repoRoot, rawPath), 'utf8'),
+      { topicExtractionAgent },
+    );
+
+    assert.deepEqual(capturedInput, {
+      bodyText: 'Issue body keyword',
+      canonicalUri: 'https://github.com/example-org/pufu-sample/pull/505',
+      html: '',
+      title: 'Issue title keyword',
+    });
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
+test('github parser extracts topics from title when issue body is empty', async () => {
+  const rawPath = await writeTempRawFixture(
+    'github-title-only-topics.json',
+    JSON.stringify({
+      body: null,
+      comments: [{ body: 'comment-only-lexeme', id: 1, user: { login: 'c', name: 'C' } }],
+      created_at: '2026-05-08T11:30:00.000Z',
+      html_url: 'https://github.com/example-org/pufu-sample/issues/606',
+      kind: 'issue',
+      number: 606,
+      repository: 'example-org/pufu-sample',
+      title: 'Title Only Topic Fixture',
+      updated_at: '2026-05-08T11:30:00.000Z',
+      user: { login: 'author', name: 'Author' },
+    }),
+  );
+
+  try {
+    const parsed = await parseRawFixture(
+      buildFixtureCase('github-title-only-topics', 'github', rawPath),
+    );
+
+    assert.equal(parsed.bodyText, '\n\ncomment-only-lexeme');
+    assert.deepEqual(parsed.topics, [
+      {
+        metadata: { source: 'title' },
+        target: 'Title Only Topic Fixture',
+        topicType: 'keyword',
+      },
+    ]);
+  } finally {
+    await rm(join(repoRoot, rawPath), { force: true });
+  }
+});
+
+test('parsed document validation rejects invalid github topics', () => {
+  const parsed = {
+    actors: [],
+    bodyText: 'Body',
+    canonicalUri: 'https://github.com/example-org/pufu-sample/issues/1',
+    docType: 'issue',
+    metadata: {},
+    occurredAt: '2026-05-08T00:00:00.000Z',
+    relations: [],
+    schemaVersion: 1,
+    sourceId: 'example-org/pufu-sample/issues/1',
+    sourceType: 'github',
+    title: 'Topic validation',
+    topics: [{ target: 'Topic', topicType: 'uri' }],
+  } as unknown as ParsedDocument;
+
+  assert.throws(
+    () => validateParsedDocument(parsed),
+    /Parsed document topicType must be 'keyword'/,
+  );
+});
+
 test('web parser prefers schema.org datePublished over fetchedAt', async () => {
   const rawPath = await writeTempRawFixture(
     'web-date-published.html',
@@ -633,6 +826,13 @@ test('parser accepts empty document bodies from real-world sources', async () =>
 
     assert.equal(parsed.bodyText, '');
     assert.equal(parsed.title, 'Empty body fixture');
+    assert.deepEqual(parsed.topics, [
+      {
+        metadata: { source: 'title' },
+        target: 'Empty body fixture',
+        topicType: 'keyword',
+      },
+    ]);
   } finally {
     await rm(join(repoRoot, rawPath), { force: true });
   }

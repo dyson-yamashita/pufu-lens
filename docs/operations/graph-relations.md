@@ -32,6 +32,8 @@ pnpm ingest:index --project sample-a --limit 10
 - GitHub lifecycle-only refresh 時は Document node properties（`state`, `closedAt`, `merged`, `mergedAt`, `draft`, `statusKnown`）だけを更新し、既存 edge を再作成しない
 - `raw_documents.ingest_status` と `ingestion_queue.status` の `indexed` 更新
 
+`ingest:index` は通常、AGE graph 上に `Document` node が無い document を対象にする。再 parse 後の `raw_documents.ingest_status='parsed'` は、既存 `Document` node があっても graph re-index 対象として選び、Topic / actor / relation edge を MERGE した後に `indexed` へ戻す。`indexed` だけの document は再 index しない。
+
 `SAME_AS` は Step 8 時点では `content_hash` が一致する別 source type の Document だけを対象にする。埋め込み類似度による同一性判定は未実装である。
 
 ## 確認
