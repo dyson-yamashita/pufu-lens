@@ -883,6 +883,40 @@ assert.deepEqual(
   ).toolCalls,
   [{ name: 'hybrid-search', resultCount: 2 }],
 );
+assert.deepEqual(
+  privateChatHistoryItemFromRow(
+    parsePrivateChatHistoryRow({
+      answer: '回答',
+      created_at: '2026-06-01T00:00:00.000Z',
+      editing: null,
+      id: 'msg-legacy-retrieval-fields',
+      question: '質問',
+      sources: [
+        {
+          ...sampleSource,
+          chunkId: 'chunk-secret',
+          chunkIndex: 2,
+          fusedScore: 0.03,
+          keywordRank: 2,
+          occurredAt: '2026-01-15T09:00:00.000Z',
+          vectorDistance: 0.21,
+          vectorRank: 1,
+        },
+      ],
+      tool_calls: [],
+    }),
+  ).sources,
+  [
+    {
+      canonicalUri: sampleSource.canonicalUri,
+      documentId: sampleSource.documentId,
+      docType: sampleSource.docType,
+      rawDocumentId: sampleSource.rawDocumentId,
+      snippet: undefined,
+      title: sampleSource.title,
+    },
+  ],
+);
 {
   const warnings: unknown[] = [];
   const originalWarn = console.warn;
