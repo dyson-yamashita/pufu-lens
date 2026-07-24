@@ -1,6 +1,5 @@
+import { BUILT_IN_SOURCE_TYPES } from './built-in-parser-profiles.js';
 import type { SourceType } from './ingestion-fixtures.js';
-
-const BUILT_IN_SOURCE_TYPES = ['drive', 'github', 'gmail', 'web'] as const;
 
 export type BuiltInParserProfileTargetRow = {
   dataSourceId: string;

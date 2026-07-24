@@ -4,6 +4,14 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./github-lifecycle": {
+      "types": "./dist/github-lifecycle.d.ts",
+      "import": "./dist/github-lifecycle.js"
+    },
+    "./github-lifecycle-selection": {
+      "types": "./dist/github-lifecycle-selection.d.ts",
+      "import": "./dist/github-lifecycle-selection.js"
+    },
     "./embedding": {
       "types": "./dist/chunk-embedding.d.ts",
       "import": "./dist/chunk-embedding.js"

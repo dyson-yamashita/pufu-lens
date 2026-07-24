@@ -287,7 +287,13 @@ export function sanitizeGitHubLifecycleError(error: unknown): string {
   return String(error instanceof Error ? error.message : error)
     .replace(/\/repos\/[^/\s]+\/[^/\s]+\//g, '/repos/<redacted>/')
     .replace(/(token|secret|api[_-]?key)=\S+/gi, '$1=<redacted>')
+    .replace(/"Authorization"\s*:\s*"Bearer\s+[^"]*"/gi, '"Authorization":"Bearer <redacted>"')
+    .replace(/Authorization:\s*Bearer\s+\S+/gi, 'Authorization: Bearer <redacted>')
+    .replace(/authorization=Bearer\s+\S+/gi, 'authorization=Bearer <redacted>')
+    .replace(/Authorization:\s*(?!Bearer\b)\S+/gi, 'Authorization: <redacted>')
     .replace(/Bearer\s+[A-Za-z0-9._-]+/g, 'Bearer <redacted>')
+    .replace(/\b(?:ghp|gho|ghu|ghs)_[A-Za-z0-9_]+/g, '<redacted>')
+    .replace(/\bgithub_pat_[A-Za-z0-9_]+/g, '<redacted>')
     .slice(0, 500);
 }
 

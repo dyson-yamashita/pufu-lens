@@ -1918,14 +1918,19 @@ export interface ChatSourceRow {
 /**
  * Runtime-validates optional GitHub lifecycle metadata embedded in a chat source row.
  *
+ * SQL `NULL` and omitted columns are treated as absent. Invalid non-null payloads still throw.
+ *
  * @param value - Untrusted lifecycle JSON from SQL metadata projection
- * @returns Parsed lifecycle metadata
+ * @returns Parsed lifecycle metadata, or `undefined` when absent or SQL-null
  * @throws When `value` is present but not a valid lifecycle object
  */
-function parseOptionalGitHubLifecycle(value: unknown): GitHubDocumentLifecycle {
+function parseChatSourceGithubLifecycle(value: unknown): GitHubDocumentLifecycle | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
   const lifecycle = parseGitHubDocumentLifecycle(value);
-  if (!lifecycle) {
-    throw new Error('Invalid chat source github_lifecycle.');
+  if (lifecycle === undefined) {
+    return undefined;
   }
   return lifecycle;
 }
@@ -1972,13 +1977,12 @@ export function parseChatSourceRow(value: unknown): ChatSourceRow {
     vector_rank: parseOptionalPositiveInteger(vector_rank, 'vector_rank'),
     keyword_rank: parseOptionalPositiveInteger(keyword_rank, 'keyword_rank'),
   };
+  const githubLifecycle = parseChatSourceGithubLifecycle(github_lifecycle);
   return {
     canonical_uri: parseRequiredString(canonical_uri, 'canonical_uri'),
     document_id: parseRequiredString(document_id, 'document_id'),
     doc_type: parseRequiredString(doc_type, 'doc_type'),
-    ...(github_lifecycle === undefined
-      ? {}
-      : { github_lifecycle: parseOptionalGitHubLifecycle(github_lifecycle) }),
+    ...(githubLifecycle === undefined ? {} : { github_lifecycle: githubLifecycle }),
     ...(occurred_at === undefined
       ? {}
       : { occurred_at: parseOptionalNullableString(occurred_at, 'occurred_at') }),
@@ -2421,6 +2425,12 @@ export function graphRelationQueryRowLimit(
   return Math.min(Math.max(1, relationLimit) * Math.max(1, seedDocumentCount), 50);
 }
 
+/**
+ * Selects bounded, deduplicated graph-related document candidates from AGE query rows.
+ *
+ * Default per-relation limits come from {@link GRAPH_RELATION_POOL_LIMITS}. Each relation keeps
+ * the first unseen `documentId` only. Oversampled AGE rows are expected upstream.
+ */
 export function selectGraphRelatedDocumentCandidates(input: {
   relationLimits?: Partial<Record<ChatGraphRelationType, number>>;
   relationRows: readonly GraphRelatedDocumentRows[];
@@ -2521,6 +2531,13 @@ export async function resolveGraphRelatedSources(
   }
 }
 
+/**
+ * Queries AGE for graph-related document candidates within a read-only transaction.
+ *
+ * Uses at most ten unique seed document IDs, applies the relation allowlist
+ * (`SAME_AS`, `RELATED_TO`, `MENTIONS`), sets `statement_timeout` to 5s, and delegates
+ * per-relation dedupe and default limits to {@link selectGraphRelatedDocumentCandidates}.
+ */
 export async function queryGraphRelatedDocumentIds(
   sql: postgres.Sql,
   input: {

@@ -117,3 +117,25 @@ test('parseGitHubLifecycleTargetRow preserves connection and metadata fields', (
   assert.equal(target.rawMetadata.number, 101);
   assert.equal(target.lifecycle?.state, 'closed');
 });
+
+test('parseGitHubLifecycleTargetRow rejects malformed connectionId UUIDs', () => {
+  assert.throws(
+    () =>
+      parseGitHubLifecycleTargetRow({
+        connectionId: 'not-a-uuid',
+        dataSourceId: '00000000-0000-0000-0000-000000000010',
+        kind: 'issue',
+        logicalSourceId: 'example-org/repo/issues/101',
+        metadata: {},
+        number: 101,
+        projectId: '00000000-0000-0000-0000-000000000001',
+        projectSlug: 'sample-a',
+        rawDocumentId: '00000000-0000-0000-0000-000000000020',
+        repository: 'example-org/repo',
+        sourceUri: 'https://github.com/example-org/repo/issues/101',
+        sourceVersion: 'v1',
+        storageUri: 'sample-a/raw/github/issue.json',
+      }),
+    /Invalid field: connectionId/,
+  );
+});

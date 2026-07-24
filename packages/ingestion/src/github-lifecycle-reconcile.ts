@@ -100,6 +100,11 @@ export function summarizeGitHubLifecycleBatchForCli(
 
 /**
  * Reconciles a bounded batch of known GitHub items against the GitHub API.
+ *
+ * When `dryRun` is true, lifecycle fetch decisions are computed but `queueLifecycleRefresh` is not
+ * called even for `status_changed`. Processing stops early on the first `rate_limited` decision.
+ * `resumeAfterLogicalSourceId` advances through completed targets and can be passed to the next
+ * batch to continue in `logicalSourceId` order.
  */
 export async function reconcileGitHubLifecycleBatch(input: {
   dataSourceId?: string;

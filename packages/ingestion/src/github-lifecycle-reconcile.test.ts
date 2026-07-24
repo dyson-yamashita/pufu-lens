@@ -181,6 +181,36 @@ test('reconcileGitHubLifecycleBatch queues lifecycle refresh on status change', 
   assert.deepEqual(queued, ['example-org/repo/issues/101']);
 });
 
+test('reconcileGitHubLifecycleBatch dryRun suppresses queueLifecycleRefresh on status change', async () => {
+  let queueCalls = 0;
+  const result = await reconcileGitHubLifecycleBatch({
+    dryRun: true,
+    fetcher: async () => ({
+      closed_at: '2026-05-08T12:00:00.000Z',
+      state: 'closed',
+      state_reason: 'completed',
+      updated_at: '2026-05-08T12:00:00.000Z',
+    }),
+    limit: 10,
+    projectId: 'project-1',
+    repository: {
+      async countOpenGitHubLifecycleTargets() {
+        return 0;
+      },
+      async listOpenGitHubLifecycleTargets() {
+        return [lifecycleTarget()];
+      },
+      async queueLifecycleRefresh() {
+        queueCalls += 1;
+        return { queued: true, rawDocumentId: 'raw-2' };
+      },
+    },
+    resolveToken: async () => 'token',
+  });
+  assert.equal(result.decisions[0]?.decision, 'status_changed');
+  assert.equal(queueCalls, 0);
+});
+
 test('reconcileGitHubLifecycleBatch reports forbidden when token is unavailable', async () => {
   const result = await reconcileGitHubLifecycleBatch({
     fetcher: async () => {

@@ -27,6 +27,20 @@ const ingestWorkflowSource = await readFile(
   'utf8',
 );
 
+test('ingest workflow step selection injects default resumeFrom only when step is absent', () => {
+  assert.match(ingestWorkflowSource, /function selectWorkflowSteps/);
+  assert.match(
+    ingestWorkflowSource,
+    /options\.step \? options : \{ resumeFrom: options\.resumeFrom \?\? 'parse' \}/,
+  );
+  assert.match(ingestWorkflowSource, /Cannot specify both --step and --resume-from/);
+  assert.match(ingestWorkflowSource, /selectWorkflowSteps\(options\)/);
+  assert.doesNotMatch(
+    ingestWorkflowSource,
+    /selectSteps\(\{ \.\.\.options, resumeFrom: options\.resumeFrom \?\? 'parse' \}\)/,
+  );
+});
+
 test('validateReprocessCommandOptions requires project, source, and apply or dry-run', () => {
   assert.throws(() => validateReprocessCommandOptions({ dryRun: true }), /--project is required/);
   assert.throws(

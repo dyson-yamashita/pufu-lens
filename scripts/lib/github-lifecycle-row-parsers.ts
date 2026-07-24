@@ -1,11 +1,12 @@
 import type { GitHubLifecycleTarget } from '../../packages/ingestion/dist/index.js';
 import { parseGitHubDocumentLifecycle } from '../../packages/ingestion/dist/index.js';
+import { parseOptionalCanonicalUuid } from './uuid.ts';
 
 export function parseGitHubLifecycleTargetRow(value: unknown): GitHubLifecycleTarget {
   const row = requireRecord(value, 'github lifecycle target row');
   const metadata = parseMetadataRecord(row.metadata);
   const kind = row.kind === 'pull_request' ? 'pull_request' : 'issue';
-  const connectionId = parseOptionalUuid(row.connectionId);
+  const connectionId = parseOptionalCanonicalUuid(row.connectionId, 'connectionId');
   return {
     connectionId,
     dataSourceId: requireString(row.dataSourceId, 'dataSourceId'),
@@ -40,16 +41,6 @@ function parseMetadataRecord(value: unknown): Record<string, unknown> {
     return value as Record<string, unknown>;
   }
   throw new Error('Invalid GitHub lifecycle metadata.');
-}
-
-function parseOptionalUuid(value: unknown): string | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  if (typeof value !== 'string' || !/^[0-9a-f-]{36}$/i.test(value)) {
-    throw new Error('Invalid field: connectionId');
-  }
-  return value;
 }
 
 function requireRecord(value: unknown, context: string): Record<string, unknown> {

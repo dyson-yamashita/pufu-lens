@@ -142,6 +142,47 @@ assert.deepEqual(
     canonical_uri: 'https://example.com/spec',
     document_id: 'doc-a',
     doc_type: 'web_page',
+    github_lifecycle: null,
+    raw_document_id: 'raw-a',
+    snippet: null,
+    title: 'Spec Update',
+  }),
+  {
+    canonical_uri: 'https://example.com/spec',
+    document_id: 'doc-a',
+    doc_type: 'web_page',
+    raw_document_id: 'raw-a',
+    snippet: null,
+    title: 'Spec Update',
+  },
+);
+assert.deepEqual(
+  parseChatSourceRow({
+    canonical_uri: 'https://example.com/spec',
+    document_id: 'doc-a',
+    doc_type: 'web_page',
+    github_lifecycle: {
+      closedAt: null,
+      draft: null,
+      kind: 'issue',
+      merged: null,
+      mergedAt: null,
+      state: 'open',
+      stateReason: null,
+      statusKnown: true,
+      updatedAt: '2026-05-08T10:00:00.000Z',
+    },
+    raw_document_id: 'raw-a',
+    snippet: null,
+    title: 'Spec Update',
+  }).github_lifecycle?.state,
+  'open',
+);
+assert.deepEqual(
+  parseChatSourceRow({
+    canonical_uri: 'https://example.com/spec',
+    document_id: 'doc-a',
+    doc_type: 'web_page',
     fused_score: '0.03125',
     keyword_rank: '2',
     raw_document_id: 'raw-a',

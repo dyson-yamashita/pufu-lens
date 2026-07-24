@@ -1,9 +1,9 @@
-import type { GitHubLifecycleSelectionHint } from '../../../packages/ingestion/dist/index.js';
+import type { GitHubLifecycleSelectionHint } from '@pufu-lens/ingestion/github-lifecycle-selection';
 import {
   inferGitHubLifecycleSelectionHint,
   rankSourcesByGitHubLifecycle,
   shouldFilterGitHubSourceByLifecycle,
-} from '../../../packages/ingestion/dist/index.js';
+} from '@pufu-lens/ingestion/github-lifecycle-selection';
 import {
   type ChatEditingMetadata,
   type ChatEmbeddingProvider,
