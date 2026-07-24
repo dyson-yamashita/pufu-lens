@@ -45,6 +45,10 @@ export interface ChatSource {
   readonly canonicalUri: string;
   readonly documentId: string;
   readonly docType: string;
+  /** Retrieval-only selected chunk id. It is never persisted or returned by chat response APIs. */
+  readonly chunkId?: string;
+  /** Retrieval-only selected chunk index. It is never persisted or returned by chat response APIs. */
+  readonly chunkIndex?: number;
   /** Retrieval-only RRF score normalized to 0..1. It is never persisted or returned by chat response APIs. */
   readonly fusedScore?: number;
   /**
@@ -1128,6 +1132,8 @@ export function createPostgresChatRepository(
         const rows = (await sql`
           WITH distinct_chunks AS (
             SELECT DISTINCT ON (d.id)
+              dc.id::text AS chunk_id,
+              dc.chunk_index,
               d.id::text AS document_id,
               d.raw_document_id::text AS raw_document_id,
               d.doc_type,
@@ -1143,6 +1149,8 @@ export function createPostgresChatRepository(
             ORDER BY d.id, dc.embedding <=> ${vector}::vector, dc.id
           )
           SELECT
+            chunk_id,
+            chunk_index,
             document_id,
             raw_document_id,
             doc_type,
@@ -1163,6 +1171,7 @@ export function createPostgresChatRepository(
         WITH vector_chunk_candidates_limit AS (
           SELECT
             dc.id::text AS chunk_id,
+            dc.chunk_index,
             d.id::text AS document_id,
             d.raw_document_id::text AS raw_document_id,
             d.doc_type,
@@ -1181,6 +1190,7 @@ export function createPostgresChatRepository(
         vector_document_candidates AS (
           SELECT DISTINCT ON (document_id)
             chunk_id,
+            chunk_index,
             document_id,
             raw_document_id,
             doc_type,
@@ -1194,6 +1204,7 @@ export function createPostgresChatRepository(
         vector_candidates AS (
           SELECT
             chunk_id,
+            chunk_index,
             document_id,
             raw_document_id,
             doc_type,
@@ -1208,6 +1219,7 @@ export function createPostgresChatRepository(
         keyword_chunk_candidates_limit AS (
           SELECT
             dc.id::text AS chunk_id,
+            dc.chunk_index,
             dc.document_id,
             dc.content,
             pgroonga_score(dc.tableoid, dc.ctid) AS keyword_score
@@ -1220,6 +1232,7 @@ export function createPostgresChatRepository(
         keyword_document_candidates AS (
           SELECT DISTINCT ON (d.id)
             kcl.chunk_id,
+            kcl.chunk_index,
             d.id::text AS document_id,
             d.raw_document_id::text AS raw_document_id,
             d.doc_type,
@@ -1234,6 +1247,7 @@ export function createPostgresChatRepository(
         keyword_candidates AS (
           SELECT
             chunk_id,
+            chunk_index,
             document_id,
             raw_document_id,
             doc_type,
@@ -1270,7 +1284,8 @@ export function createPostgresChatRepository(
             title,
             canonical_uri,
             snippet,
-            chunk_id
+            chunk_id,
+            chunk_index
           FROM document_candidates
           ORDER BY
             document_id,
@@ -1288,6 +1303,8 @@ export function createPostgresChatRepository(
           dd.title,
           dd.canonical_uri,
           dd.snippet,
+          dd.chunk_id,
+          dd.chunk_index,
           ds.vector_distance,
           ds.vector_rank,
           ds.keyword_rank,
@@ -1890,6 +1907,8 @@ function cleanupExpiredBuckets(
 
 export interface ChatSourceRow {
   readonly canonical_uri: string;
+  readonly chunk_id?: string | null;
+  readonly chunk_index?: number | null;
   readonly document_id: string;
   readonly doc_type: string;
   readonly occurred_at?: string | null;
@@ -1919,6 +1938,8 @@ export function parseChatSourceRow(value: unknown): ChatSourceRow {
   }
   const {
     canonical_uri,
+    chunk_id,
+    chunk_index,
     document_id,
     doc_type,
     occurred_at,
@@ -1930,6 +1951,11 @@ export function parseChatSourceRow(value: unknown): ChatSourceRow {
     vector_rank,
     keyword_rank,
   } = value;
+  const provenanceFields = {
+    chunk_id: parseOptionalNonEmptyString(chunk_id, 'chunk_id'),
+    chunk_index: parseOptionalNonNegativeInteger(chunk_index, 'chunk_index'),
+  };
+  validateChatSourceChunkProvenancePair(provenanceFields.chunk_id, provenanceFields.chunk_index);
   const scoreFields = {
     fused_score: parseOptionalFiniteNumber(fused_score, 'fused_score'),
     vector_distance: parseOptionalFiniteNumber(vector_distance, 'vector_distance'),
@@ -1946,6 +1972,10 @@ export function parseChatSourceRow(value: unknown): ChatSourceRow {
     raw_document_id: parseRequiredString(raw_document_id, 'raw_document_id'),
     snippet: parseOptionalNullableString(snippet, 'snippet'),
     title: parseRequiredString(title, 'title'),
+    ...(provenanceFields.chunk_id === undefined ? {} : { chunk_id: provenanceFields.chunk_id }),
+    ...(provenanceFields.chunk_index === undefined
+      ? {}
+      : { chunk_index: provenanceFields.chunk_index }),
     ...(scoreFields.fused_score === undefined ? {} : { fused_score: scoreFields.fused_score }),
     ...(scoreFields.vector_distance === undefined
       ? {}
@@ -2035,6 +2065,19 @@ function parseStoredChatSources(value: unknown): ChatSource[] {
 function parseStoredChatSource(value: unknown): ChatSource {
   if (!isRecord(value)) {
     throw new Error('Invalid stored chat source.');
+  }
+  for (const field of [
+    'chunkId',
+    'chunkIndex',
+    'fusedScore',
+    'keywordRank',
+    'occurredAt',
+    'vectorDistance',
+    'vectorRank',
+  ]) {
+    if (field in value) {
+      throw new Error('Invalid stored chat source.');
+    }
   }
   return {
     canonicalUri: parseRequiredString(value.canonicalUri, 'canonicalUri'),
@@ -2184,6 +2227,49 @@ function parseOptionalPositiveInteger(
   throw new Error(`Invalid chat source field: ${fieldName}`);
 }
 
+function validateChatSourceChunkProvenancePair(
+  chunkId: string | null | undefined,
+  chunkIndex: number | null | undefined,
+): void {
+  const hasChunkId = chunkId !== undefined && chunkId !== null;
+  const hasChunkIndex = chunkIndex !== undefined && chunkIndex !== null;
+  if (hasChunkId !== hasChunkIndex) {
+    throw new Error('Invalid chat source row: chunk_id and chunk_index must appear together.');
+  }
+}
+
+function parseOptionalNonEmptyString(value: unknown, fieldName: string): string | null | undefined {
+  if (value === null || value === undefined) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value;
+  }
+  throw new Error(`Invalid chat source field: ${fieldName}`);
+}
+
+function parseOptionalNonNegativeInteger(
+  value: unknown,
+  fieldName: string,
+): number | null | undefined {
+  if (value === null || value === undefined) {
+    return value;
+  }
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+  if (typeof value === 'string' && /^\d+$/.test(value)) {
+    const parsed = Number(value);
+    if (Number.isSafeInteger(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+  if (typeof value === 'bigint' && value >= 0n && value <= BigInt(Number.MAX_SAFE_INTEGER)) {
+    return Number(value);
+  }
+  throw new Error(`Invalid chat source field: ${fieldName}`);
+}
+
 /**
  * Converts a database row into a chat source.
  *
@@ -2192,6 +2278,8 @@ function parseOptionalPositiveInteger(
 function sourceFromRow(row: ChatSourceRow): ChatSource {
   return {
     canonicalUri: row.canonical_uri,
+    chunkId: row.chunk_id ?? undefined,
+    chunkIndex: row.chunk_index ?? undefined,
     documentId: row.document_id,
     docType: row.doc_type,
     fusedScore: row.fused_score ?? undefined,

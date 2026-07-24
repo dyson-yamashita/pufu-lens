@@ -16,6 +16,7 @@ import {
   createPufuLensMastraRuntime,
   generateReportWorkflowInputSchema,
   hybridSearchInputSchema,
+  hybridSearchOutputSchema,
   type MastraProjectContext,
   type MastraPublicReportContext,
   mastraAgentIds,
@@ -871,6 +872,30 @@ assert.deepEqual(
   ['assistant', 'user'],
 );
 assert.equal(mastraWorkflowIds.privateChatSearch, 'private-chat-search');
+assert.deepEqual(
+  hybridSearchOutputSchema.parse({
+    sources: [
+      {
+        ...sampleSource,
+        chunkId: 'chunk-workflow',
+        chunkIndex: 2,
+        fusedScore: 0.5,
+        vectorRank: 1,
+      },
+    ],
+  }),
+  {
+    sources: [
+      {
+        ...sampleSource,
+        chunkId: 'chunk-workflow',
+        chunkIndex: 2,
+        fusedScore: 0.5,
+        vectorRank: 1,
+      },
+    ],
+  },
+);
 assert.throws(() =>
   privateChatSearchWorkflowInputSchema.parse({
     graphName: 'graph_sample_a',
