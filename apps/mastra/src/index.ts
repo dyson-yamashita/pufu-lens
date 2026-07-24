@@ -238,6 +238,11 @@ export const hybridSearchOutputSchema = z.object({
   sources: z.array(chatSourceSchema),
 });
 
+/** graph-query tool output including internal traversal status for synthesis diagnostics. */
+export const graphQueryOutputSchema = hybridSearchOutputSchema.extend({
+  graphQueryStatus: z.enum(['fallback', 'success', 'unavailable']),
+});
+
 const chatSourceListSchema = hybridSearchOutputSchema;
 
 const chatSearchIsoInstantSchema = z.iso
@@ -556,17 +561,21 @@ export function createProjectChatTools(
         query: z.string(),
         seedDocumentIds: z.array(z.string()).max(10).optional(),
       }),
-      outputSchema: chatSourceListSchema,
+      outputSchema: graphQueryOutputSchema,
       requestContextSchema: mastraProjectContextSchema,
-      execute: async ({ limit, query, seedDocumentIds }, context) => ({
-        sources: await repository.graphQuery({
+      execute: async ({ limit, query, seedDocumentIds }, context) => {
+        const result = await repository.graphQueryWithStatus({
           graphName: graphNameFromContext(context),
           limit,
           projectId: projectIdFromContext(context),
           query,
           seedDocumentIds,
-        }),
-      }),
+        });
+        return {
+          graphQueryStatus: result.status,
+          sources: result.sources,
+        };
+      },
     }),
     parsedDocFetch: createTool({
       id: mastraToolIds.parsedDocFetch,
@@ -1044,13 +1053,35 @@ export function createPrivateChatSearchWorkflow(input: {
       simplifiedRetryQuery: z.string().min(1).max(120).nullable(),
     })
     .strict();
+  const graphCoverageDiagnosticsSchema = z
+    .object({
+      adoptedCount: z.number().int().min(0),
+      duplicateExcluded: z.number().int().min(0),
+      invalidRelationExcluded: z.number().int().min(0),
+      noEvidenceExcluded: z.number().int().min(0),
+      relationAdoptedCounts: z.object({
+        MENTIONS: z.number().int().min(0),
+        RELATED_TO: z.number().int().min(0),
+        SAME_AS: z.number().int().min(0),
+      }),
+      relationCandidateCounts: z.object({
+        MENTIONS: z.number().int().min(0),
+        RELATED_TO: z.number().int().min(0),
+        SAME_AS: z.number().int().min(0),
+      }),
+      seedCount: z.number().int().min(0),
+      sourceLimitExcluded: z.number().int().min(0),
+    })
+    .strict();
   const workflowPassStateSchema = z
     .object({
       classification: privateChatQuestionClassificationSchema,
       detailSources: z.array(chatSourceSchema),
       didRetry: z.boolean(),
       editing: privateChatEditingMetadataSchema,
+      graphDiagnostics: graphCoverageDiagnosticsSchema,
       graphName: z.string().nullable(),
+      graphStatus: z.enum(['fallback', 'success', 'unavailable']),
       hybridSearchDocumentLimit: z
         .number()
         .int()
@@ -1192,7 +1223,11 @@ export function createPrivateChatSearchWorkflow(input: {
     inputSchema: workflowPassStateSchema,
     outputSchema: workflowPassStateSchema,
     execute: async ({ inputData }) =>
-      runPrivateChatRelatingStep(inputData as PrivateChatSearchWorkflowState, input.chatRepository),
+      runPrivateChatRelatingStep(
+        inputData as PrivateChatSearchWorkflowState,
+        input.chatRepository,
+        input.embeddingProvider,
+      ),
   });
 
   const timelineStep = createStep({

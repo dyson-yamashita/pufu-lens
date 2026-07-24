@@ -7,16 +7,26 @@ import {
 import {
   type ChatEditingMetadata,
   type ChatEmbeddingProvider,
+  type ChatGraphRelatedSource,
   type ChatRepository,
   type ChatSearchPeriod,
   type ChatSource,
   type ChatToolCall,
   embedPrivateChatQueries,
   inferChatEditingMetadata,
+  isChatGraphRelatedSource,
   MAX_CHAT_RESPONSE_SOURCES,
   parseChatSearchPeriod,
   reciprocalRankFusionScore,
 } from './chat.ts';
+import {
+  applyGraphCoverageFinalSelection,
+  type ChatGraphQueryStatus,
+  formatGraphCoverageDiagnostics,
+  type GraphCoverageDiagnostics,
+  runPrivateChatGraphCoveragePass,
+  shouldPrioritizeGraphCoverageSupplement,
+} from './private-chat-graph-coverage.ts';
 import type { PrivateChatSearchStageId } from './private-chat-search-stages.ts';
 import { DEFAULT_HYBRID_SEARCH_DOCUMENT_LIMIT } from './project-chat-settings.ts';
 
@@ -46,7 +56,6 @@ export interface PrivateChatSearchRetrievalInput {
 
 const LEGACY_PRIMARY_VECTOR_LIMIT = 5;
 const PRIMARY_VECTOR_LIMIT = 15;
-const GRAPH_LIMIT = 5;
 const PRIMARY_QUERY_RRF_WEIGHT = 2;
 export const MAX_PRIVATE_CHAT_SEARCH_QUERY_VARIANTS = 6;
 export const MAX_PRIVATE_CHAT_SEARCH_QUERY_LENGTH = 120;
@@ -937,9 +946,13 @@ export function applyGitHubLifecycleRetrievalSelection(
 export function formatPrivateChatRetrievalContext(
   sources: readonly ChatSource[],
   confidence: PrivateChatRetrievalConfidence = sources.length === 0 ? 'none' : 'weak',
-  lifecycleHint?: GitHubLifecycleSelectionHint,
+  options?: {
+    readonly graphDiagnostics?: GraphCoverageDiagnostics;
+    readonly graphStatus?: ChatGraphQueryStatus;
+    readonly lifecycleHint?: GitHubLifecycleSelectionHint;
+  },
 ): string {
-  const lifecycleNote = lifecycleSelectionNote(lifecycleHint);
+  const lifecycleNote = lifecycleSelectionNote(options?.lifecycleHint);
   return JSON.stringify(
     {
       note:
@@ -949,6 +962,14 @@ export function formatPrivateChatRetrievalContext(
             ? 'Workflow が取得した回答根拠候補です。検索根拠は限定的なため、確証が薄い前提で回答してください。'
             : 'Workflow が取得した回答根拠候補です。',
       ...(lifecycleNote ? { lifecycleSelection: lifecycleNote } : {}),
+      ...(options?.graphStatus && options.graphDiagnostics
+        ? {
+            graphCoverage: formatGraphCoverageDiagnostics(
+              options.graphStatus,
+              options.graphDiagnostics,
+            ),
+          }
+        : {}),
       retrievalConfidence: confidence,
       sources: sources.map((source) => ({
         canonicalUri: source.canonicalUri || null,
@@ -957,6 +978,15 @@ export function formatPrivateChatRetrievalContext(
         documentId: source.documentId,
         docType: source.docType,
         ...(source.githubLifecycle ? { githubLifecycle: source.githubLifecycle } : {}),
+        ...(isChatGraphRelatedSource(source)
+          ? {
+              graphProvenance: {
+                hopCount: source.hopCount,
+                relationType: source.relationType,
+                seedDocumentId: source.seedDocumentId,
+              },
+            }
+          : {}),
         ...(source.occurredAt === undefined ? {} : { occurredAt: source.occurredAt }),
         rawDocumentId: source.rawDocumentId,
         snippet: source.snippet ?? null,
@@ -993,7 +1023,9 @@ export interface PrivateChatSearchWorkflowState {
   readonly detailSources: readonly ChatSource[];
   readonly didRetry: boolean;
   readonly editing: ChatEditingMetadata;
+  readonly graphDiagnostics: GraphCoverageDiagnostics;
   readonly graphName: string | null;
+  readonly graphStatus: ChatGraphQueryStatus;
   readonly hybridSearchDocumentLimit: number;
   readonly graphSources: readonly ChatSource[];
   readonly mergedVectorSources: readonly ChatSource[];
@@ -1040,7 +1072,18 @@ export function runPrivateChatPreparingStep(input: {
     detailSources: [],
     didRetry: false,
     editing,
+    graphDiagnostics: {
+      adoptedCount: 0,
+      duplicateExcluded: 0,
+      invalidRelationExcluded: 0,
+      noEvidenceExcluded: 0,
+      relationAdoptedCounts: { MENTIONS: 0, RELATED_TO: 0, SAME_AS: 0 },
+      relationCandidateCounts: { MENTIONS: 0, RELATED_TO: 0, SAME_AS: 0 },
+      seedCount: 0,
+      sourceLimitExcluded: 0,
+    },
     graphName: input.graphName,
+    graphStatus: 'unavailable',
     hybridSearchDocumentLimit:
       input.hybridSearchDocumentLimit ?? DEFAULT_HYBRID_SEARCH_DOCUMENT_LIMIT,
     graphSources: [],
@@ -1230,19 +1273,25 @@ export async function runPrivateChatRetryingStep(
 export async function runPrivateChatRelatingStep(
   state: PrivateChatSearchWorkflowState,
   repository: ChatRepository,
+  embeddingProvider: ChatEmbeddingProvider,
 ): Promise<PrivateChatSearchWorkflowState> {
-  const graphSources = await repository.graphQuery({
+  const coverage = await runPrivateChatGraphCoveragePass({
+    classification: state.classification,
+    embeddingProvider,
     graphName: state.graphName,
-    limit: GRAPH_LIMIT,
+    plan: state.plan,
     projectId: state.projectId,
-    query: state.question,
+    question: state.question,
+    repository,
     seedDocumentIds: state.mergedVectorSources.map((source) => source.documentId),
   });
   return {
     ...state,
-    graphSources,
+    graphDiagnostics: coverage.diagnostics,
+    graphSources: coverage.graphSources,
+    graphStatus: coverage.graphStatus,
     toolCalls: mergeChatToolCallsDeterministically(state.toolCalls, [
-      { name: 'graph-query', resultCount: graphSources.length },
+      { name: 'graph-query', resultCount: coverage.graphSources.length },
     ]),
   };
 }
@@ -1305,11 +1354,28 @@ export async function runPrivateChatDetailStep(
       question: state.question,
     },
   );
-  const sources = selectDiverseChatSources(
+  const diverseSources = selectDiverseChatSources(
     lifecycleSelection.sources,
     selectionPolicy,
     state.hybridSearchDocumentLimit,
   );
+  const hybridDocumentIds = new Set(state.mergedVectorSources.map((source) => source.documentId));
+  const graphOnlySources = state.graphSources.filter(
+    (source): source is ChatGraphRelatedSource =>
+      isChatGraphRelatedSource(source) && !hybridDocumentIds.has(source.documentId),
+  );
+  const graphFinalSelection = applyGraphCoverageFinalSelection({
+    documentLimit: state.hybridSearchDocumentLimit,
+    graphOnlySources,
+    prioritizeGraphSupplement: shouldPrioritizeGraphCoverageSupplement(state.classification),
+    selectedSources: diverseSources,
+  });
+  const sources = graphFinalSelection.selected;
+  const graphDiagnostics: GraphCoverageDiagnostics = {
+    ...state.graphDiagnostics,
+    sourceLimitExcluded:
+      state.graphDiagnostics.sourceLimitExcluded + graphFinalSelection.sourceLimitExcluded,
+  };
   const confidence = privateChatRetrievalConfidence({
     didRetry: state.didRetry,
     policy: selectionPolicy,
@@ -1319,11 +1385,12 @@ export async function runPrivateChatDetailStep(
   return {
     ...state,
     detailSources,
-    retrievalContext: formatPrivateChatRetrievalContext(
-      sources,
-      confidence,
-      lifecycleSelection.hint,
-    ),
+    graphDiagnostics,
+    retrievalContext: formatPrivateChatRetrievalContext(sources, confidence, {
+      graphDiagnostics,
+      graphStatus: state.graphStatus,
+      lifecycleHint: lifecycleSelection.hint,
+    }),
     sources,
     toolCalls: mergeChatToolCallsDeterministically(state.toolCalls, [
       { name: 'document-fetch', resultCount: detailSources.length },
@@ -1362,7 +1429,7 @@ export async function runPrivateChatSearchRetrieval(
   }
 
   emit('relating');
-  state = await runPrivateChatRelatingStep(state, input.repository);
+  state = await runPrivateChatRelatingStep(state, input.repository, input.embeddingProvider);
 
   if (shouldRunPrivateChatTimelineStep(state)) {
     emit('timeline');

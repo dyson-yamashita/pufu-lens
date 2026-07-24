@@ -11,6 +11,7 @@ import {
   createPublicChatMemoryRateLimiter,
   embedPrivateChatQueries,
   graphQuerySearchPatterns,
+  graphRelationQueryRowLimit,
   hybridSearchCandidateLimit,
   inferChatEditingMetadata,
   inferPublicChatEditingMetadata,
@@ -281,6 +282,35 @@ function createRepository(): ChatRepository & {
       assert.equal(limit, 5);
       return [sampleSource];
     },
+    async graphCoverageQuery({ graphName, projectId, seedDocumentIds }) {
+      assert.equal(graphName, 'graph_sample_a');
+      assert.equal(projectId, 'project-a');
+      assert.deepEqual(seedDocumentIds, ['doc-a']);
+      return {
+        candidates: [
+          {
+            ...sampleSource,
+            documentId: 'doc-graph',
+            hopCount: 1,
+            relationType: 'RELATED_TO',
+            seedDocumentId: 'doc-a',
+            title: 'Related Issue',
+          },
+        ],
+        queryFailed: false,
+        relationCandidateCounts: { MENTIONS: 0, RELATED_TO: 1, SAME_AS: 0 },
+      };
+    },
+    async graphQueryWithStatus({ graphName, limit, projectId, seedDocumentIds }) {
+      assert.equal(graphName, 'graph_sample_a');
+      assert.equal(projectId, 'project-a');
+      assert.equal(limit, 5);
+      assert.deepEqual(seedDocumentIds, ['doc-a']);
+      return {
+        sources: [{ ...sampleSource, documentId: 'doc-graph', title: 'Related Issue' }],
+        status: 'success',
+      };
+    },
     async graphQuery({ graphName, limit, projectId, seedDocumentIds }) {
       assert.equal(graphName, 'graph_sample_a');
       assert.equal(projectId, 'project-a');
@@ -465,7 +495,6 @@ assert.equal(
 );
 
 const selectedGraphCandidates = selectGraphRelatedDocumentCandidates({
-  limit: 10,
   relationRows: [
     {
       hopCount: 1,
@@ -510,14 +539,54 @@ assert.deepEqual(selectedGraphCandidates, [
     seedDocumentId: 'doc-a',
   },
   {
+    documentId: 'doc-shared',
+    hopCount: 1,
+    relationType: 'RELATED_TO',
+    seedDocumentId: 'doc-a',
+  },
+  {
     documentId: 'doc-mentioned',
     hopCount: 2,
     relationType: 'MENTIONS',
     seedDocumentId: 'doc-a',
   },
 ]);
-const selectedRelatedToCandidate = selectedGraphCandidates[2];
-const selectedMentionsCandidate = selectedGraphCandidates[3];
+assert.deepEqual(
+  selectGraphRelatedDocumentCandidates({
+    relationRows: [
+      {
+        hopCount: 1,
+        relationType: 'SAME_AS',
+        rows: Array.from({ length: 5 }, (_, index) => ({
+          related: ageDocumentVertex(`doc-same-${index}`),
+          seed: ageDocumentVertex('doc-a'),
+        })),
+      },
+      {
+        hopCount: 1,
+        relationType: 'RELATED_TO',
+        rows: [
+          { related: ageDocumentVertex('doc-related-extra'), seed: ageDocumentVertex('doc-a') },
+        ],
+      },
+      {
+        hopCount: 2,
+        relationType: 'MENTIONS',
+        rows: [
+          { related: ageDocumentVertex('doc-mentioned-extra'), seed: ageDocumentVertex('doc-a') },
+        ],
+      },
+    ],
+  }).map((candidate) => candidate.documentId),
+  ['doc-same-0', 'doc-same-1', 'doc-related-extra', 'doc-mentioned-extra'],
+);
+assert.equal(graphRelationQueryRowLimit(2, 3), 6);
+const selectedRelatedToCandidate = selectedGraphCandidates.find(
+  (candidate) => candidate.documentId === 'doc-related-to',
+);
+const selectedMentionsCandidate = selectedGraphCandidates.find(
+  (candidate) => candidate.relationType === 'MENTIONS',
+);
 assert.ok(selectedRelatedToCandidate);
 assert.ok(selectedMentionsCandidate);
 assert.equal(
