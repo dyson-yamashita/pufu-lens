@@ -1,3 +1,5 @@
+import { readCanonicalUuid } from './uuid.ts';
+
 export const DEFAULT_GITHUB_LIFECYCLE_LIMIT = 50;
 export const DEFAULT_GITHUB_LIFECYCLE_BATCH_SIZE = 50;
 export const DEFAULT_GITHUB_LIFECYCLE_MAX_RUNTIME_SECONDS = 540;
@@ -36,7 +38,7 @@ export function parseGitHubLifecycleCliOptions(argv: string[]): GitHubLifecycleC
       continue;
     }
     if (arg === '--data-source-id') {
-      options.dataSourceId = readUuid(readOptionValue(argv, ++index, arg), arg);
+      options.dataSourceId = readCanonicalUuid(readOptionValue(argv, ++index, arg), arg);
       continue;
     }
     if (arg === '--limit') {
@@ -114,13 +116,6 @@ function readOptionValue(argv: string[], index: number, optionName: string): str
   const value = argv[index];
   if (!value || value.startsWith('--')) {
     throw new Error(`${optionName} requires a value.`);
-  }
-  return value;
-}
-
-function readUuid(value: string, optionName: string): string {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
-    throw new Error(`${optionName} must be a valid UUID.`);
   }
   return value;
 }

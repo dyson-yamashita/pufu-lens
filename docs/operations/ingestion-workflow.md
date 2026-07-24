@@ -6,7 +6,7 @@ Step 9 では、既存の fixture collection / parse / actor resolution / chunk 
 
 - `DATABASE_URL` が PostgreSQL / AGE / pgvector / PGroonga 入りの DB を指している。
 - `STORAGE_ROOT` または `LOCAL_STORAGE_ROOT` が local object storage の root を指している。
-- fixture ingest は外部 API、Agent、chat model を呼ばない。Web / Drive 実データ parse では、環境変数が設定されている場合に `TopicExtractionAgent` が Gemini で topic を抽出する。
+- fixture ingest は外部 API、Agent、chat model を呼ばない。Web / Drive / GitHub 実データ parse では、環境変数が設定されている場合に `TopicExtractionAgent` が Gemini で topic を抽出する。
 
 ```bash
 export DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens
@@ -35,7 +35,7 @@ data source 単位で parse 以降の queue をバッチ drain する。Cloud Ru
 pnpm ingest:run --project sample-a --source github --resume-from parse --drain --limit 10 --max-batches 100 --max-runtime-seconds 540 --embedding-provider deterministic
 ```
 
-`--drain` は `collect` を含む実行では使えない。`--resume-from parse` 以降、または `--step parse|chunk|graph` と組み合わせる。`--step resolve` 単体では queue / raw status を進めないため使えない。actor 解決から drain する場合は `--resume-from resolve`（chunk / graph を含む）を使う。drain 中は選択 step を `--limit` 件ずつ繰り返し、scoped queue が空になる、進捗が止まる、`--max-batches` 到達、または `--max-runtime-seconds` 到達のいずれかで停止する。残件カウントは `parseQueue`（pending / lease 切れ parsing + fetched raw）と `parsedRaw`（chunk 未完了の parsed raw）を基準にする。graph step は AGE graph 上に `Document` node がない document を対象にし、queue / raw の残件が 0 でも graph step が進捗を出している間は drain を継続する。`--drain` を付けない場合は従来どおり 1 回だけ実行する。
+`--drain` は `collect` を含む実行では使えない。`--resume-from parse` 以降、または `--step parse|chunk|graph` と組み合わせる。`--step resolve` 単体では queue / raw status を進めないため使えない。actor 解決から drain する場合は `--resume-from resolve`（chunk / graph を含む）を使う。drain 中は選択 step を `--limit` 件ずつ繰り返し、scoped queue が空になる、進捗が止まる、`--max-batches` 到達、または `--max-runtime-seconds` 到達のいずれかで停止する。残件カウントは `parseQueue`（pending / lease 切れ parsing + fetched raw）と `parsedRaw`（chunk 未完了の parsed raw）を基準にする。graph step は AGE graph 上に `Document` node がない document、または `raw_documents.ingest_status='parsed'` の document を対象にし、queue / raw の残件が 0 でも graph step が進捗を出している間は drain を継続する。`--drain` を付けない場合は従来どおり 1 回だけ実行する。
 
 実行予定だけを構造化ログで確認する。
 
@@ -73,6 +73,13 @@ failed queue を原本再取得なしで再処理する。
 
 ```bash
 pnpm ingest:retry --project sample-a --source github --failed-only --embedding-provider deterministic
+```
+
+旧 built-in parser（`fixture-parser-v1`）で index 済みの GitHub raw を新 version で再 parse する場合は `ingest:reprocess` を使う。`--dry-run` で対象件数を確認し、`--apply` で queue / raw status を bounded に reset してから parse 以降を実行する。`ingest:reprocess` は graph と chunk を両方含むときだけ graph→chunk 順に実行し、通常 `ingest:run` の step 順序は変えない。詳細は [GitHub 実データソース収集](github-source.md) を参照する。
+
+```bash
+pnpm ingest:reprocess --project sample-a --source github --dry-run --limit 10
+pnpm ingest:reprocess --project sample-a --source github --apply --limit 10 --drain --resume-from parse --embedding-provider deterministic
 ```
 
 `ingest:retry` は `ingestion_queue.status='failed'` かつ `raw_documents.ingest_status='failed'` の対象を reset する。さらに `ingestion_queue.status='parsing'` で `lease_expires_at <= now()` の対象も `pending` に戻す。`parsed_uri` がある raw は `parsed` に戻し、`parsed_uri` がない raw は `fetched` に戻すため、parse 失敗、worker crash 後の stuck parsing、graph / chunk 失敗のいずれも同じコマンドで再開できる。

@@ -2,7 +2,8 @@ import { spawn } from 'node:child_process';
 import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const testRoot = fileURLToPath(new URL('../src', import.meta.url));
+const webTestRoot = fileURLToPath(new URL('../src', import.meta.url));
+const repoRoot = fileURLToPath(new URL('../../..', import.meta.url));
 const databaseUrl = process.env.DATABASE_URL?.trim();
 
 if (!databaseUrl) {
@@ -11,11 +12,14 @@ if (!databaseUrl) {
 }
 
 const dbTestFiles = [
-  'postgres-roundtrip.test.ts',
-  'admin-report-schedule-runtime.test.ts',
-  'actor-merge-db.test.ts',
-  'db-synthetic-monitor.test.ts',
-].map((fileName) => resolve(testRoot, fileName));
+  resolve(webTestRoot, 'postgres-roundtrip.test.ts'),
+  resolve(webTestRoot, 'admin-report-schedule-runtime.test.ts'),
+  resolve(webTestRoot, 'actor-merge-db.test.ts'),
+  resolve(webTestRoot, 'db-synthetic-monitor.test.ts'),
+  resolve(webTestRoot, 'graph-coverage-db.test.ts'),
+  resolve(repoRoot, 'scripts/lib/built-in-parser-profiles-db.test.ts'),
+  resolve(repoRoot, 'scripts/lib/ingest-workflow-reprocess-db.test.ts'),
+];
 
 async function runTestFile(testFile: string): Promise<number | null> {
   const child = spawn(process.execPath, ['--experimental-strip-types', testFile], {

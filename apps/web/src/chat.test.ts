@@ -11,6 +11,7 @@ import {
   createPublicChatMemoryRateLimiter,
   embedPrivateChatQueries,
   graphQuerySearchPatterns,
+  graphRelationQueryRowLimit,
   hybridSearchCandidateLimit,
   inferChatEditingMetadata,
   inferPublicChatEditingMetadata,
@@ -135,6 +136,47 @@ assert.throws(
       title: 'Spec Update',
     }),
   /Invalid chat source row field: snippet/,
+);
+assert.deepEqual(
+  parseChatSourceRow({
+    canonical_uri: 'https://example.com/spec',
+    document_id: 'doc-a',
+    doc_type: 'web_page',
+    github_lifecycle: null,
+    raw_document_id: 'raw-a',
+    snippet: null,
+    title: 'Spec Update',
+  }),
+  {
+    canonical_uri: 'https://example.com/spec',
+    document_id: 'doc-a',
+    doc_type: 'web_page',
+    raw_document_id: 'raw-a',
+    snippet: null,
+    title: 'Spec Update',
+  },
+);
+assert.deepEqual(
+  parseChatSourceRow({
+    canonical_uri: 'https://example.com/spec',
+    document_id: 'doc-a',
+    doc_type: 'web_page',
+    github_lifecycle: {
+      closedAt: null,
+      draft: null,
+      kind: 'issue',
+      merged: null,
+      mergedAt: null,
+      state: 'open',
+      stateReason: null,
+      statusKnown: true,
+      updatedAt: '2026-05-08T10:00:00.000Z',
+    },
+    raw_document_id: 'raw-a',
+    snippet: null,
+    title: 'Spec Update',
+  }).github_lifecycle?.state,
+  'open',
 );
 assert.deepEqual(
   parseChatSourceRow({
@@ -280,6 +322,35 @@ function createRepository(): ChatRepository & {
       assert.equal(projectId, 'project-a');
       assert.equal(limit, 5);
       return [sampleSource];
+    },
+    async graphCoverageQuery({ graphName, projectId, seedDocumentIds }) {
+      assert.equal(graphName, 'graph_sample_a');
+      assert.equal(projectId, 'project-a');
+      assert.deepEqual(seedDocumentIds, ['doc-a']);
+      return {
+        candidates: [
+          {
+            ...sampleSource,
+            documentId: 'doc-graph',
+            hopCount: 1,
+            relationType: 'RELATED_TO',
+            seedDocumentId: 'doc-a',
+            title: 'Related Issue',
+          },
+        ],
+        queryFailed: false,
+        relationCandidateCounts: { MENTIONS: 0, RELATED_TO: 1, SAME_AS: 0 },
+      };
+    },
+    async graphQueryWithStatus({ graphName, limit, projectId, seedDocumentIds }) {
+      assert.equal(graphName, 'graph_sample_a');
+      assert.equal(projectId, 'project-a');
+      assert.equal(limit, 5);
+      assert.deepEqual(seedDocumentIds, ['doc-a']);
+      return {
+        sources: [{ ...sampleSource, documentId: 'doc-graph', title: 'Related Issue' }],
+        status: 'success',
+      };
     },
     async graphQuery({ graphName, limit, projectId, seedDocumentIds }) {
       assert.equal(graphName, 'graph_sample_a');
@@ -465,7 +536,6 @@ assert.equal(
 );
 
 const selectedGraphCandidates = selectGraphRelatedDocumentCandidates({
-  limit: 10,
   relationRows: [
     {
       hopCount: 1,
@@ -510,14 +580,54 @@ assert.deepEqual(selectedGraphCandidates, [
     seedDocumentId: 'doc-a',
   },
   {
+    documentId: 'doc-shared',
+    hopCount: 1,
+    relationType: 'RELATED_TO',
+    seedDocumentId: 'doc-a',
+  },
+  {
     documentId: 'doc-mentioned',
     hopCount: 2,
     relationType: 'MENTIONS',
     seedDocumentId: 'doc-a',
   },
 ]);
-const selectedRelatedToCandidate = selectedGraphCandidates[2];
-const selectedMentionsCandidate = selectedGraphCandidates[3];
+assert.deepEqual(
+  selectGraphRelatedDocumentCandidates({
+    relationRows: [
+      {
+        hopCount: 1,
+        relationType: 'SAME_AS',
+        rows: Array.from({ length: 5 }, (_, index) => ({
+          related: ageDocumentVertex(`doc-same-${index}`),
+          seed: ageDocumentVertex('doc-a'),
+        })),
+      },
+      {
+        hopCount: 1,
+        relationType: 'RELATED_TO',
+        rows: [
+          { related: ageDocumentVertex('doc-related-extra'), seed: ageDocumentVertex('doc-a') },
+        ],
+      },
+      {
+        hopCount: 2,
+        relationType: 'MENTIONS',
+        rows: [
+          { related: ageDocumentVertex('doc-mentioned-extra'), seed: ageDocumentVertex('doc-a') },
+        ],
+      },
+    ],
+  }).map((candidate) => candidate.documentId),
+  ['doc-same-0', 'doc-same-1', 'doc-related-extra', 'doc-mentioned-extra'],
+);
+assert.equal(graphRelationQueryRowLimit(2, 3), 6);
+const selectedRelatedToCandidate = selectedGraphCandidates.find(
+  (candidate) => candidate.documentId === 'doc-related-to',
+);
+const selectedMentionsCandidate = selectedGraphCandidates.find(
+  (candidate) => candidate.relationType === 'MENTIONS',
+);
 assert.ok(selectedRelatedToCandidate);
 assert.ok(selectedMentionsCandidate);
 assert.equal(
@@ -752,6 +862,8 @@ assert.deepEqual(
   privateChatSourcesForResponse([
     {
       ...sampleSource,
+      chunkId: 'chunk-secret',
+      chunkIndex: 2,
       fusedScore: 0.03,
       keywordRank: 2,
       occurredAt: '2026-01-15T09:00:00.000Z',
@@ -760,6 +872,40 @@ assert.deepEqual(
     },
   ]),
   [sampleSource],
+);
+assert.deepEqual(
+  parseChatSourceRow({
+    canonical_uri: 'https://example.com/spec',
+    chunk_id: 'chunk-a',
+    chunk_index: '1',
+    document_id: 'doc-a',
+    doc_type: 'web_page',
+    raw_document_id: 'raw-a',
+    snippet: 'later body',
+    title: 'Spec Update',
+  }),
+  {
+    canonical_uri: 'https://example.com/spec',
+    chunk_id: 'chunk-a',
+    chunk_index: 1,
+    document_id: 'doc-a',
+    doc_type: 'web_page',
+    raw_document_id: 'raw-a',
+    snippet: 'later body',
+    title: 'Spec Update',
+  },
+);
+assert.throws(
+  () =>
+    parseChatSourceRow({
+      canonical_uri: 'https://example.com/spec',
+      chunk_id: 'chunk-a',
+      document_id: 'doc-a',
+      doc_type: 'web_page',
+      raw_document_id: 'raw-a',
+      title: 'Spec Update',
+    }),
+  /chunk_id and chunk_index must appear together/,
 );
 assert.deepEqual(
   privateChatHistoryItemsForUiDisplay([
@@ -846,6 +992,40 @@ assert.deepEqual(
     }),
   ).toolCalls,
   [{ name: 'hybrid-search', resultCount: 2 }],
+);
+assert.deepEqual(
+  privateChatHistoryItemFromRow(
+    parsePrivateChatHistoryRow({
+      answer: '回答',
+      created_at: '2026-06-01T00:00:00.000Z',
+      editing: null,
+      id: 'msg-legacy-retrieval-fields',
+      question: '質問',
+      sources: [
+        {
+          ...sampleSource,
+          chunkId: 'chunk-secret',
+          chunkIndex: 2,
+          fusedScore: 0.03,
+          keywordRank: 2,
+          occurredAt: '2026-01-15T09:00:00.000Z',
+          vectorDistance: 0.21,
+          vectorRank: 1,
+        },
+      ],
+      tool_calls: [],
+    }),
+  ).sources,
+  [
+    {
+      canonicalUri: sampleSource.canonicalUri,
+      documentId: sampleSource.documentId,
+      docType: sampleSource.docType,
+      rawDocumentId: sampleSource.rawDocumentId,
+      snippet: undefined,
+      title: sampleSource.title,
+    },
+  ],
 );
 {
   const warnings: unknown[] = [];

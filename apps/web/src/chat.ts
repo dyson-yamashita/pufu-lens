@@ -47,6 +47,10 @@ export interface ChatSource {
   readonly canonicalUri: string;
   readonly documentId: string;
   readonly docType: string;
+  /** Retrieval-only selected chunk id. It is never persisted or returned by chat response APIs. */
+  readonly chunkId?: string;
+  /** Retrieval-only selected chunk index. It is never persisted or returned by chat response APIs. */
+  readonly chunkIndex?: number;
   /** Retrieval-only RRF score normalized to 0..1. It is never persisted or returned by chat response APIs. */
   readonly fusedScore?: number;
   /**
@@ -69,11 +73,38 @@ export interface ChatSource {
 
 export type ChatGraphRelationType = 'MENTIONS' | 'RELATED_TO' | 'SAME_AS';
 
+/** Workflow graph coverage pass outcome (`success` includes zero adopted candidates). */
+export type ChatGraphCoverageStatus = 'success' | 'unavailable';
+
+/** Agent graph-query tool outcome including title / summary fallback. */
+export type ChatGraphQueryStatus = 'fallback' | ChatGraphCoverageStatus;
+
 export type ChatGraphRelatedSource = ChatSource & {
   readonly hopCount: 1 | 2;
   readonly relationType: ChatGraphRelationType;
   readonly seedDocumentId: string;
 };
+
+/** Per-relation bounded candidate pool for graph traversal (Issue #648). */
+export const GRAPH_RELATION_POOL_LIMITS = {
+  MENTIONS: 5,
+  RELATED_TO: 5,
+  SAME_AS: 2,
+} as const satisfies Record<ChatGraphRelationType, number>;
+
+/** Runtime guard for graph provenance fields kept in synthesis context only. */
+export function isChatGraphRelatedSource(source: ChatSource): source is ChatGraphRelatedSource {
+  return (
+    'relationType' in source &&
+    'seedDocumentId' in source &&
+    'hopCount' in source &&
+    (source.relationType === 'SAME_AS' ||
+      source.relationType === 'RELATED_TO' ||
+      source.relationType === 'MENTIONS') &&
+    (source.hopCount === 1 || source.hopCount === 2) &&
+    typeof source.seedDocumentId === 'string'
+  );
+}
 
 export interface ChatToolCall {
   readonly name: ChatToolName;
@@ -223,13 +254,35 @@ export interface ChatRepository {
     documentIds: readonly string[];
     projectId: string;
   }): Promise<ChatSource[]>;
+  graphCoverageQuery(input: {
+    graphName: string;
+    projectId: string;
+    question: string;
+    seedDocumentIds: readonly string[];
+  }): Promise<{
+    readonly candidates: readonly ChatGraphRelatedSource[];
+    readonly queryFailed: boolean;
+    readonly relationCandidateCounts: Readonly<Record<ChatGraphRelationType, number>>;
+  }>;
   graphQuery(input: {
     graphName?: string | null;
     limit: number;
     projectId: string;
     query: string;
     seedDocumentIds?: readonly string[];
+    skipTitleFallback?: boolean;
   }): Promise<ChatSource[]>;
+  graphQueryWithStatus(input: {
+    graphName?: string | null;
+    limit: number;
+    projectId: string;
+    query: string;
+    seedDocumentIds?: readonly string[];
+    skipTitleFallback?: boolean;
+  }): Promise<{
+    readonly sources: readonly ChatSource[];
+    readonly status: ChatGraphQueryStatus;
+  }>;
   lookupProjectMember(input: { projectSlug: string; userId: string }): Promise<
     | {
         readonly graphName: string | null;
@@ -1132,6 +1185,8 @@ export function createPostgresChatRepository(
         const rows = (await sql`
           WITH distinct_chunks AS (
             SELECT DISTINCT ON (d.id)
+              dc.id::text AS chunk_id,
+              dc.chunk_index,
               d.id::text AS document_id,
               d.raw_document_id::text AS raw_document_id,
               d.doc_type,
@@ -1147,6 +1202,8 @@ export function createPostgresChatRepository(
             ORDER BY d.id, dc.embedding <=> ${vector}::vector, dc.id
           )
           SELECT
+            chunk_id,
+            chunk_index,
             document_id,
             raw_document_id,
             doc_type,
@@ -1167,6 +1224,7 @@ export function createPostgresChatRepository(
         WITH vector_chunk_candidates_limit AS (
           SELECT
             dc.id::text AS chunk_id,
+            dc.chunk_index,
             d.id::text AS document_id,
             d.raw_document_id::text AS raw_document_id,
             d.doc_type,
@@ -1185,6 +1243,7 @@ export function createPostgresChatRepository(
         vector_document_candidates AS (
           SELECT DISTINCT ON (document_id)
             chunk_id,
+            chunk_index,
             document_id,
             raw_document_id,
             doc_type,
@@ -1198,6 +1257,7 @@ export function createPostgresChatRepository(
         vector_candidates AS (
           SELECT
             chunk_id,
+            chunk_index,
             document_id,
             raw_document_id,
             doc_type,
@@ -1212,6 +1272,7 @@ export function createPostgresChatRepository(
         keyword_chunk_candidates_limit AS (
           SELECT
             dc.id::text AS chunk_id,
+            dc.chunk_index,
             dc.document_id,
             dc.content,
             pgroonga_score(dc.tableoid, dc.ctid) AS keyword_score
@@ -1224,6 +1285,7 @@ export function createPostgresChatRepository(
         keyword_document_candidates AS (
           SELECT DISTINCT ON (d.id)
             kcl.chunk_id,
+            kcl.chunk_index,
             d.id::text AS document_id,
             d.raw_document_id::text AS raw_document_id,
             d.doc_type,
@@ -1238,6 +1300,7 @@ export function createPostgresChatRepository(
         keyword_candidates AS (
           SELECT
             chunk_id,
+            chunk_index,
             document_id,
             raw_document_id,
             doc_type,
@@ -1274,7 +1337,8 @@ export function createPostgresChatRepository(
             title,
             canonical_uri,
             snippet,
-            chunk_id
+            chunk_id,
+            chunk_index
           FROM document_candidates
           ORDER BY
             document_id,
@@ -1292,6 +1356,8 @@ export function createPostgresChatRepository(
           dd.title,
           dd.canonical_uri,
           dd.snippet,
+          dd.chunk_id,
+          dd.chunk_index,
           ds.vector_distance,
           ds.vector_rank,
           ds.keyword_rank,
@@ -1309,80 +1375,20 @@ export function createPostgresChatRepository(
       `) as readonly unknown[];
       return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
     },
-    async graphQuery({ graphName, limit, projectId, query, seedDocumentIds }) {
-      const seedIds = seedDocumentIds ?? [];
-      let relatedDocumentIds: readonly GraphRelatedDocumentCandidate[] = [];
-      if (graphName && seedIds.length > 0) {
-        try {
-          relatedDocumentIds = await queryGraphRelatedDocumentIds(sql, {
-            graphName,
-            limit,
-            projectId,
-            seedDocumentIds: seedIds,
-          });
-        } catch {
-          relatedDocumentIds = [];
-        }
-      }
-      if (relatedDocumentIds.length > 0) {
-        const candidates = await fetchChatSourcesByDocumentIds(sql, {
-          documentIds: relatedDocumentIds.map((candidate) => candidate.documentId),
-          projectId,
-        });
-        const byDocumentId = new Map(candidates.map((source) => [source.documentId, source]));
-        const acceptedSources = relatedDocumentIds
-          .map((candidate) => {
-            const source = byDocumentId.get(candidate.documentId);
-            return source
-              ? ({
-                  ...source,
-                  hopCount: candidate.hopCount,
-                  relationType: candidate.relationType,
-                  seedDocumentId: candidate.seedDocumentId,
-                } satisfies ChatGraphRelatedSource)
-              : undefined;
-          })
-          .filter((candidate): candidate is ChatGraphRelatedSource => Boolean(candidate))
-          .filter((candidate) =>
-            shouldUseGraphRelatedSource({
-              candidate,
-              question: query,
-              seedDocumentIds: seedIds,
-            }),
-          )
-          .slice(0, limit);
-        if (acceptedSources.length > 0) {
-          return acceptedSources;
-        }
-      }
-      const patterns = graphQuerySearchPatterns(query);
-      const searchPatterns = patterns.length > 0 ? patterns : [`%${query}%`];
-      const rows = (await sql`
-        SELECT
-          d.id::text AS document_id,
-          d.raw_document_id::text AS raw_document_id,
-          d.doc_type,
-          coalesce(d.title, 'Untitled') AS title,
-          coalesce(d.canonical_uri, '') AS canonical_uri,
-          left(coalesce(d.summary, dc.content, ''), 700) AS snippet
-        FROM public.documents d
-        LEFT JOIN LATERAL (
-          SELECT content
-          FROM public.document_chunks
-          WHERE project_id = d.project_id
-            AND document_id = d.id
-          ORDER BY chunk_index ASC
-          LIMIT 1
-        ) dc ON true
-        WHERE d.project_id = ${projectId}
-          AND (
-            d.title ILIKE ANY (${searchPatterns})
-            OR d.summary ILIKE ANY (${searchPatterns})
-          )
-        ORDER BY d.occurred_at DESC NULLS LAST, d.updated_at DESC
-        LIMIT ${limit}
-      `) as readonly unknown[];
-      return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
+    async graphCoverageQuery({ graphName, projectId, question, seedDocumentIds }) {
+      return resolveGraphRelatedSources(sql, {
+        graphName,
+        projectId,
+        question,
+        seedDocumentIds,
+      });
+    },
+    async graphQuery(input) {
+      const result = await executeGraphQueryWithStatus(sql, input);
+      return [...result.sources];
+    },
+    async graphQueryWithStatus(input) {
+      return executeGraphQueryWithStatus(sql, input);
     },
     async timelineSearch({ limit, period, projectId, query }) {
       if (period) {
@@ -1894,6 +1900,8 @@ function cleanupExpiredBuckets(
 
 export interface ChatSourceRow {
   readonly canonical_uri: string;
+  readonly chunk_id?: string | null;
+  readonly chunk_index?: number | null;
   readonly document_id: string;
   readonly doc_type: string;
   readonly github_lifecycle?: GitHubDocumentLifecycle;
@@ -1910,14 +1918,19 @@ export interface ChatSourceRow {
 /**
  * Runtime-validates optional GitHub lifecycle metadata embedded in a chat source row.
  *
+ * SQL `NULL` and omitted columns are treated as absent. Invalid non-null payloads still throw.
+ *
  * @param value - Untrusted lifecycle JSON from SQL metadata projection
- * @returns Parsed lifecycle metadata
+ * @returns Parsed lifecycle metadata, or `undefined` when absent or SQL-null
  * @throws When `value` is present but not a valid lifecycle object
  */
-function parseOptionalGitHubLifecycle(value: unknown): GitHubDocumentLifecycle {
+function parseChatSourceGithubLifecycle(value: unknown): GitHubDocumentLifecycle | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
   const lifecycle = parseGitHubDocumentLifecycle(value);
-  if (!lifecycle) {
-    throw new Error('Invalid chat source github_lifecycle.');
+  if (lifecycle === undefined) {
+    return undefined;
   }
   return lifecycle;
 }
@@ -1939,6 +1952,8 @@ export function parseChatSourceRow(value: unknown): ChatSourceRow {
   }
   const {
     canonical_uri,
+    chunk_id,
+    chunk_index,
     document_id,
     doc_type,
     github_lifecycle,
@@ -1951,25 +1966,33 @@ export function parseChatSourceRow(value: unknown): ChatSourceRow {
     vector_rank,
     keyword_rank,
   } = value;
+  const provenanceFields = {
+    chunk_id: parseOptionalNonEmptyString(chunk_id, 'chunk_id'),
+    chunk_index: parseOptionalNonNegativeInteger(chunk_index, 'chunk_index'),
+  };
+  validateChatSourceChunkProvenancePair(provenanceFields.chunk_id, provenanceFields.chunk_index);
   const scoreFields = {
     fused_score: parseOptionalFiniteNumber(fused_score, 'fused_score'),
     vector_distance: parseOptionalFiniteNumber(vector_distance, 'vector_distance'),
     vector_rank: parseOptionalPositiveInteger(vector_rank, 'vector_rank'),
     keyword_rank: parseOptionalPositiveInteger(keyword_rank, 'keyword_rank'),
   };
+  const githubLifecycle = parseChatSourceGithubLifecycle(github_lifecycle);
   return {
     canonical_uri: parseRequiredString(canonical_uri, 'canonical_uri'),
     document_id: parseRequiredString(document_id, 'document_id'),
     doc_type: parseRequiredString(doc_type, 'doc_type'),
-    ...(github_lifecycle === undefined
-      ? {}
-      : { github_lifecycle: parseOptionalGitHubLifecycle(github_lifecycle) }),
+    ...(githubLifecycle === undefined ? {} : { github_lifecycle: githubLifecycle }),
     ...(occurred_at === undefined
       ? {}
       : { occurred_at: parseOptionalNullableString(occurred_at, 'occurred_at') }),
     raw_document_id: parseRequiredString(raw_document_id, 'raw_document_id'),
     snippet: parseOptionalNullableString(snippet, 'snippet'),
     title: parseRequiredString(title, 'title'),
+    ...(provenanceFields.chunk_id === undefined ? {} : { chunk_id: provenanceFields.chunk_id }),
+    ...(provenanceFields.chunk_index === undefined
+      ? {}
+      : { chunk_index: provenanceFields.chunk_index }),
     ...(scoreFields.fused_score === undefined ? {} : { fused_score: scoreFields.fused_score }),
     ...(scoreFields.vector_distance === undefined
       ? {}
@@ -2208,6 +2231,49 @@ function parseOptionalPositiveInteger(
   throw new Error(`Invalid chat source field: ${fieldName}`);
 }
 
+function validateChatSourceChunkProvenancePair(
+  chunkId: string | null | undefined,
+  chunkIndex: number | null | undefined,
+): void {
+  const hasChunkId = chunkId !== undefined && chunkId !== null;
+  const hasChunkIndex = chunkIndex !== undefined && chunkIndex !== null;
+  if (hasChunkId !== hasChunkIndex) {
+    throw new Error('Invalid chat source row: chunk_id and chunk_index must appear together.');
+  }
+}
+
+function parseOptionalNonEmptyString(value: unknown, fieldName: string): string | null | undefined {
+  if (value === null || value === undefined) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value;
+  }
+  throw new Error(`Invalid chat source field: ${fieldName}`);
+}
+
+function parseOptionalNonNegativeInteger(
+  value: unknown,
+  fieldName: string,
+): number | null | undefined {
+  if (value === null || value === undefined) {
+    return value;
+  }
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+  if (typeof value === 'string' && /^\d+$/.test(value)) {
+    const parsed = Number(value);
+    if (Number.isSafeInteger(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+  if (typeof value === 'bigint' && value >= 0n && value <= BigInt(Number.MAX_SAFE_INTEGER)) {
+    return Number(value);
+  }
+  throw new Error(`Invalid chat source field: ${fieldName}`);
+}
+
 /**
  * Converts a database row into a chat source.
  *
@@ -2216,6 +2282,8 @@ function parseOptionalPositiveInteger(
 function sourceFromRow(row: ChatSourceRow): ChatSource {
   return {
     canonicalUri: row.canonical_uri,
+    chunkId: row.chunk_id ?? undefined,
+    chunkIndex: row.chunk_index ?? undefined,
     documentId: row.document_id,
     docType: row.doc_type,
     fusedScore: row.fused_score ?? undefined,
@@ -2336,48 +2404,134 @@ export interface GraphRelatedDocumentRows {
   readonly rows: readonly unknown[];
 }
 
+/** Oversamples AGE rows so per-relation unique pools survive multi-seed duplicate rows. */
+export function graphRelationQueryRowLimit(
+  relationLimit: number,
+  seedDocumentCount: number,
+): number {
+  return Math.min(Math.max(1, relationLimit) * Math.max(1, seedDocumentCount), 50);
+}
+
+/**
+ * Selects bounded, deduplicated graph-related document candidates from AGE query rows.
+ *
+ * Default per-relation limits come from {@link GRAPH_RELATION_POOL_LIMITS}. Each relation keeps
+ * the first unseen `documentId` only. Oversampled AGE rows are expected upstream.
+ */
 export function selectGraphRelatedDocumentCandidates(input: {
-  limit: number;
+  relationLimits?: Partial<Record<ChatGraphRelationType, number>>;
   relationRows: readonly GraphRelatedDocumentRows[];
 }): GraphRelatedDocumentCandidate[] {
-  const maxResults = Math.max(1, Math.min(input.limit, 10));
+  const relationLimits = { ...GRAPH_RELATION_POOL_LIMITS, ...input.relationLimits };
   const candidates: GraphRelatedDocumentCandidate[] = [];
-  const seen = new Set<string>();
+  const perRelationCount: Record<ChatGraphRelationType, number> = {
+    MENTIONS: 0,
+    RELATED_TO: 0,
+    SAME_AS: 0,
+  };
   for (const relationRows of input.relationRows) {
-    if (candidates.length >= maxResults) {
-      break;
-    }
+    const relationType = relationRows.relationType;
+    const relationLimit = relationLimits[relationType];
+    const seenInRelation = new Set<string>();
     for (const row of relationRows.rows) {
+      if (perRelationCount[relationType] >= relationLimit) {
+        break;
+      }
       if (!isRecord(row)) {
         continue;
       }
       const seedDocumentId = documentIdFromAgeVertex(row.seed);
       const documentId = documentIdFromAgeVertex(row.related);
-      if (!seedDocumentId || !documentId || seen.has(documentId)) {
+      if (!seedDocumentId || !documentId || seenInRelation.has(documentId)) {
         continue;
       }
-      seen.add(documentId);
+      seenInRelation.add(documentId);
+      perRelationCount[relationType] += 1;
       candidates.push({
         documentId,
         hopCount: relationRows.hopCount,
-        relationType: relationRows.relationType,
+        relationType,
         seedDocumentId,
       });
-      if (candidates.length >= maxResults) {
-        break;
-      }
     }
   }
   return candidates;
 }
 
-async function queryGraphRelatedDocumentIds(
+/**
+ * Resolves graph-related document candidates and enriches them with chat source metadata.
+ */
+export async function resolveGraphRelatedSources(
   sql: postgres.Sql,
   input: {
     graphName: string;
-    limit: number;
+    projectId: string;
+    question: string;
+    seedDocumentIds: readonly string[];
+    relationLimits?: Partial<Record<ChatGraphRelationType, number>>;
+  },
+): Promise<{
+  readonly candidates: readonly ChatGraphRelatedSource[];
+  readonly queryFailed: boolean;
+  readonly relationCandidateCounts: Readonly<Record<ChatGraphRelationType, number>>;
+}> {
+  const emptyCounts: Record<ChatGraphRelationType, number> = {
+    MENTIONS: 0,
+    RELATED_TO: 0,
+    SAME_AS: 0,
+  };
+  try {
+    const relatedDocumentIds = await queryGraphRelatedDocumentIds(sql, {
+      graphName: input.graphName,
+      projectId: input.projectId,
+      relationLimits: input.relationLimits,
+      seedDocumentIds: input.seedDocumentIds,
+    });
+    const relationCandidateCounts = { ...emptyCounts };
+    for (const candidate of relatedDocumentIds) {
+      relationCandidateCounts[candidate.relationType] += 1;
+    }
+    if (relatedDocumentIds.length === 0) {
+      return { candidates: [], queryFailed: false, relationCandidateCounts };
+    }
+    const sources = await fetchChatSourcesByDocumentIds(sql, {
+      documentIds: relatedDocumentIds.map((candidate) => candidate.documentId),
+      projectId: input.projectId,
+    });
+    const byDocumentId = new Map(sources.map((source) => [source.documentId, source]));
+    const candidates = relatedDocumentIds
+      .map((candidate) => {
+        const source = byDocumentId.get(candidate.documentId);
+        return source
+          ? ({
+              ...source,
+              hopCount: candidate.hopCount,
+              relationType: candidate.relationType,
+              seedDocumentId: candidate.seedDocumentId,
+            } satisfies ChatGraphRelatedSource)
+          : undefined;
+      })
+      .filter((candidate): candidate is ChatGraphRelatedSource => Boolean(candidate));
+    return { candidates, queryFailed: false, relationCandidateCounts };
+  } catch {
+    return { candidates: [], queryFailed: true, relationCandidateCounts: emptyCounts };
+  }
+}
+
+/**
+ * Queries AGE for graph-related document candidates within a read-only transaction.
+ *
+ * Uses at most ten unique seed document IDs, applies the relation allowlist
+ * (`SAME_AS`, `RELATED_TO`, `MENTIONS`), sets `statement_timeout` to 5s, and delegates
+ * per-relation dedupe and default limits to {@link selectGraphRelatedDocumentCandidates}.
+ */
+export async function queryGraphRelatedDocumentIds(
+  sql: postgres.Sql,
+  input: {
+    graphName: string;
     projectId: string;
     seedDocumentIds: readonly string[];
+    relationLimits?: Partial<Record<ChatGraphRelationType, number>>;
   },
 ): Promise<readonly GraphRelatedDocumentCandidate[]> {
   const safeGraphName = validateAgeGraphName(input.graphName);
@@ -2385,7 +2539,7 @@ async function queryGraphRelatedDocumentIds(
   if (seedDocumentIds.length === 0) {
     return [];
   }
-  const maxResults = Math.max(1, Math.min(input.limit, 10));
+  const relationLimits = { ...GRAPH_RELATION_POOL_LIMITS, ...input.relationLimits };
   const projectIdLiteral = cypherString(input.projectId);
   const seedIdList = seedDocumentIds.map(cypherString).join(', ');
   const whereBase = `seed.projectId = ${projectIdLiteral}
@@ -2400,7 +2554,7 @@ async function queryGraphRelatedDocumentIds(
     {
       cypher: `MATCH (seed:Document)-[:SAME_AS]-(related:Document)
 WHERE ${whereBase}
-RETURN DISTINCT seed, related
+RETURN seed, related
 ORDER BY seed.documentId, related.documentId`,
       hopCount: 1,
       relationType: 'SAME_AS',
@@ -2408,7 +2562,7 @@ ORDER BY seed.documentId, related.documentId`,
     {
       cypher: `MATCH (seed:Document)-[:RELATED_TO]-(related:Document)
 WHERE ${whereBase}
-RETURN DISTINCT seed, related
+RETURN seed, related
 ORDER BY seed.documentId, related.documentId`,
       hopCount: 1,
       relationType: 'RELATED_TO',
@@ -2420,7 +2574,7 @@ WHERE seed.projectId = ${projectIdLiteral}
   AND related.projectId = ${projectIdLiteral}
   AND seed.documentId IN [${seedIdList}]
   AND NOT related.documentId IN [${seedIdList}]
-RETURN DISTINCT seed, related
+RETURN seed, related
 ORDER BY seed.documentId, related.documentId`,
       hopCount: 2,
       relationType: 'MENTIONS',
@@ -2434,7 +2588,10 @@ ORDER BY seed.documentId, related.documentId`,
     await transaction`SET LOCAL statement_timeout = '5000ms'`;
     for (const relationQuery of relationQueries) {
       const cypher = `${relationQuery.cypher}
-LIMIT ${maxResults}`;
+LIMIT ${graphRelationQueryRowLimit(
+        relationLimits[relationQuery.relationType],
+        seedDocumentIds.length,
+      )}`;
       const rows = (await transaction.unsafe(
         `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
           cypher,
@@ -2447,7 +2604,132 @@ LIMIT ${maxResults}`;
       });
     }
   });
-  return selectGraphRelatedDocumentCandidates({ limit: maxResults, relationRows });
+  return selectGraphRelatedDocumentCandidates({ relationLimits, relationRows });
+}
+
+async function fetchGraphTitleFallbackSources(
+  sql: postgres.Sql,
+  input: { limit: number; projectId: string; query: string },
+): Promise<ChatSource[]> {
+  const patterns = graphQuerySearchPatterns(input.query);
+  const searchPatterns = patterns.length > 0 ? patterns : [`%${input.query}%`];
+  const rows = (await sql`
+    SELECT
+      d.id::text AS document_id,
+      d.raw_document_id::text AS raw_document_id,
+      d.doc_type,
+      coalesce(d.title, 'Untitled') AS title,
+      coalesce(d.canonical_uri, '') AS canonical_uri,
+      left(coalesce(d.summary, dc.content, ''), 700) AS snippet
+    FROM public.documents d
+    LEFT JOIN LATERAL (
+      SELECT content
+      FROM public.document_chunks
+      WHERE project_id = d.project_id
+        AND document_id = d.id
+      ORDER BY chunk_index ASC
+      LIMIT 1
+    ) dc ON true
+    WHERE d.project_id = ${input.projectId}
+      AND (
+        d.title ILIKE ANY (${searchPatterns})
+        OR d.summary ILIKE ANY (${searchPatterns})
+      )
+    ORDER BY d.occurred_at DESC NULLS LAST, d.updated_at DESC
+    LIMIT ${input.limit}
+  `) as readonly unknown[];
+  return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
+}
+
+/**
+ * Executes graph traversal and optional title/summary fallback with an internal status label.
+ */
+export async function executeGraphQueryWithStatus(
+  sql: postgres.Sql,
+  input: {
+    graphName?: string | null;
+    limit: number;
+    projectId: string;
+    query: string;
+    seedDocumentIds?: readonly string[];
+    skipTitleFallback?: boolean;
+  },
+): Promise<{ sources: ChatSource[]; status: ChatGraphQueryStatus }> {
+  const seedIds = input.seedDocumentIds ?? [];
+  if (!input.graphName || seedIds.length === 0) {
+    if (input.skipTitleFallback) {
+      return { sources: [], status: 'unavailable' };
+    }
+    return resolveGraphTitleFallbackStatus(sql, {
+      graphUnavailable: true,
+      limit: input.limit,
+      projectId: input.projectId,
+      query: input.query,
+    });
+  }
+
+  const graphResult = await resolveGraphRelatedSources(sql, {
+    graphName: input.graphName,
+    projectId: input.projectId,
+    question: input.query,
+    seedDocumentIds: seedIds,
+  });
+  if (graphResult.queryFailed) {
+    if (input.skipTitleFallback) {
+      return { sources: [], status: 'unavailable' };
+    }
+    return resolveGraphTitleFallbackStatus(sql, {
+      graphUnavailable: true,
+      limit: input.limit,
+      projectId: input.projectId,
+      query: input.query,
+    });
+  }
+
+  const acceptedSources = graphResult.candidates
+    .filter((candidate) =>
+      shouldUseGraphRelatedSource({
+        candidate,
+        question: input.query,
+        seedDocumentIds: seedIds,
+      }),
+    )
+    .slice(0, input.limit);
+  if (acceptedSources.length > 0) {
+    return { sources: acceptedSources, status: 'success' };
+  }
+  if (input.skipTitleFallback) {
+    return { sources: [], status: 'success' };
+  }
+  return resolveGraphTitleFallbackStatus(sql, {
+    graphUnavailable: false,
+    limit: input.limit,
+    projectId: input.projectId,
+    query: input.query,
+  });
+}
+
+async function resolveGraphTitleFallbackStatus(
+  sql: postgres.Sql,
+  input: {
+    graphUnavailable: boolean;
+    limit: number;
+    projectId: string;
+    query: string;
+  },
+): Promise<{ sources: ChatSource[]; status: ChatGraphQueryStatus }> {
+  const sources = await fetchGraphTitleFallbackSources(sql, {
+    limit: input.limit,
+    projectId: input.projectId,
+    query: input.query,
+  });
+  if (sources.length > 0) {
+    return { sources, status: 'fallback' };
+  }
+  return {
+    sources: [],
+    status: input.graphUnavailable ? 'unavailable' : 'success',
+  };
 }
 
 function documentIdFromAgeVertex(value: unknown): string | undefined {

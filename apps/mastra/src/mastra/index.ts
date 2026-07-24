@@ -275,7 +275,9 @@ function createStorage(): ObjectStorage {
 function unavailableChatRepository(envName: string): ChatRepository {
   return {
     documentFetch: unavailableMethod(envName),
+    graphCoverageQuery: unavailableMethod(envName),
     graphQuery: unavailableMethod(envName),
+    graphQueryWithStatus: unavailableMethod(envName),
     listPrivateChatHistoryForContext: unavailableMethod(envName),
     listPrivateChatHistoryForUi: unavailableMethod(envName),
     lookupProjectMember: unavailableMethod(envName),

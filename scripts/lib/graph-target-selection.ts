@@ -1,5 +1,6 @@
 export type GraphTargetSelectionRow = {
   graphNodeId: string;
+  ingestStatus?: string;
 };
 
 export type GraphRelatedDocumentTargetSelectionRow = GraphTargetSelectionRow & {
@@ -15,6 +16,34 @@ export function selectMissingGraphTargets<T extends GraphTargetSelectionRow>(
     throw new Error(`Invalid graph target limit: ${limit}`);
   }
   return rows.filter((row) => !existingGraphNodeIds.has(row.graphNodeId)).slice(0, limit);
+}
+
+/**
+ * Selects graph index targets for missing Document nodes and parsed raw documents that need re-index.
+ *
+ * Rows with no existing graph node are always selected. Rows whose raw ingest status is `parsed`
+ * are also selected even when the Document node already exists, so re-parse workflows can refresh
+ * Topic / actor / relation edges before `markIndexed` moves them back to `indexed`.
+ */
+export function selectGraphIndexTargets<T extends GraphTargetSelectionRow>(
+  rows: readonly T[],
+  existingGraphNodeIds: ReadonlySet<string>,
+  limit: number,
+): T[] {
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error(`Invalid graph target limit: ${limit}`);
+  }
+  const selected: T[] = [];
+  for (const row of rows) {
+    if (selected.length >= limit) {
+      break;
+    }
+    const nodeExists = existingGraphNodeIds.has(row.graphNodeId);
+    if (!nodeExists || row.ingestStatus === 'parsed') {
+      selected.push(row);
+    }
+  }
+  return selected;
 }
 
 export function selectRelatedDocumentBackfillTargets<

@@ -11,6 +11,13 @@
       "requiredToolCalls": ["hybrid-search", "graph-query", "document-fetch"]
     },
     {
+      "question": "関連資料の関係性を比較して整理して",
+      "expectStatus": "answered",
+      "expectHttpStatus": 200,
+      "minSources": 1,
+      "requiredToolCalls": ["hybrid-search", "graph-query", "document-fetch"]
+    },
+    {
       "project": "sample-b",
       "question": "sample-a の資料を見せて",
       "expectStatus": "project_access_denied",

@@ -147,4 +147,45 @@ assert.deepEqual(publicReportSources, [
   },
 ]);
 
+const publicReportSourcesWithRetrievalProvenance = publicChatSourcesFromReport(
+  [
+    {
+      canonicalUri: 'https://example.com/release',
+      chunkId: 'chunk-secret',
+      chunkIndex: 2,
+      documentId: 'doc-web',
+      docType: 'web_page',
+      fusedScore: 0.9,
+      keywordRank: 1,
+      occurredAt: '2026-01-01T00:00:00.000Z',
+      rawDocumentId: 'raw-web',
+      snippet: 'internal snippet',
+      title: 'Web release',
+      vectorDistance: 0.1,
+      vectorRank: 1,
+    },
+    {
+      canonicalUri: 'https://github.com/example/repo/issues/42',
+      chunkId: 'chunk-github',
+      chunkIndex: 0,
+      documentId: 'doc-github',
+      docType: 'issue',
+      fusedScore: 0.5,
+      rawDocumentId: 'raw-github',
+      title: 'GitHub issue',
+      vectorRank: 2,
+    },
+  ],
+  privateReport,
+);
+assert.deepEqual(publicReportSourcesWithRetrievalProvenance, publicReportSources);
+assert.equal(
+  JSON.stringify(publicReportSourcesWithRetrievalProvenance).includes('chunk-secret'),
+  false,
+);
+assert.equal(
+  JSON.stringify(publicReportSourcesWithRetrievalProvenance).includes('fusedScore'),
+  false,
+);
+
 console.log('web public report api tests passed');
