@@ -1,3 +1,9 @@
+import type { GitHubLifecycleSelectionHint } from '../../../packages/ingestion/dist/index.js';
+import {
+  inferGitHubLifecycleSelectionHint,
+  rankSourcesByGitHubLifecycle,
+  shouldFilterGitHubSourceByLifecycle,
+} from '../../../packages/ingestion/dist/index.js';
 import {
   type ChatEditingMetadata,
   type ChatEmbeddingProvider,
@@ -11,20 +17,14 @@ import {
   parseChatSearchPeriod,
   reciprocalRankFusionScore,
 } from './chat.ts';
+import type { PrivateChatSearchStageId } from './private-chat-search-stages.ts';
 import { DEFAULT_HYBRID_SEARCH_DOCUMENT_LIMIT } from './project-chat-settings.ts';
 
-export const PRIVATE_CHAT_SEARCH_STAGE_DEFINITIONS = {
-  preparing: { id: 'preparing', label: '検索条件を準備しています' },
-  classifying: { id: 'classifying', label: '質問の見方を整理しています' },
-  expanding: { id: 'expanding', label: '検索語を展開しています' },
-  retrieving: { id: 'retrieving', label: '関連資料を検索しています' },
-  retrying: { id: 'retrying', label: '検索語を広げて再検索しています' },
-  relating: { id: 'relating', label: '関連資料を確認しています' },
-  timeline: { id: 'timeline', label: '時系列を確認しています' },
-  reasoning: { id: 'reasoning', label: '根拠を整理して回答を生成しています' },
-} as const;
-
-export type PrivateChatSearchStageId = keyof typeof PRIVATE_CHAT_SEARCH_STAGE_DEFINITIONS;
+export {
+  PRIVATE_CHAT_SEARCH_STAGE_DEFINITIONS,
+  type PrivateChatSearchStageId,
+  privateChatSearchStageLabel,
+} from './private-chat-search-stages.ts';
 
 export interface PrivateChatSearchRetrievalResult {
   readonly editing: ChatEditingMetadata;
@@ -520,10 +520,6 @@ export function buildPrivateChatSearchQueries(question: string): string[] {
   );
 }
 
-export function privateChatSearchStageLabel(stage: PrivateChatSearchStageId): string {
-  return PRIVATE_CHAT_SEARCH_STAGE_DEFINITIONS[stage].label;
-}
-
 export function mergeChatSourcesDeterministically(
   ...sourceGroups: readonly (readonly ChatSource[])[]
 ): ChatSource[] {
@@ -537,6 +533,80 @@ export function mergeChatSourcesDeterministically(
       }
       seen.add(key);
       merged.push(source);
+    }
+  }
+  return merged;
+}
+
+/**
+ * Enriches a hybrid retrieval source with document-fetch metadata while preserving hit provenance.
+ *
+ * Hybrid snippet, chunk id/index, and retrieval-only score fields always come from `hybrid`.
+ * Detail metadata such as `occurredAt`, canonical URI, title, doc type, and raw document id
+ * are filled from `detail` when present.
+ */
+export function enrichHybridSourceWithDetail(hybrid: ChatSource, detail: ChatSource): ChatSource {
+  return {
+    ...hybrid,
+    canonicalUri: detail.canonicalUri || hybrid.canonicalUri,
+    docType: detail.docType || hybrid.docType,
+    rawDocumentId: detail.rawDocumentId || hybrid.rawDocumentId,
+    title: detail.title || hybrid.title,
+    ...(detail.occurredAt === undefined ? {} : { occurredAt: detail.occurredAt }),
+  };
+}
+
+/**
+ * Merges bounded detail retrieval with ranked workflow sources.
+ *
+ * Hybrid vector hits keep their matched snippet and chunk provenance while borrowing richer
+ * document metadata from `document-fetch`. Graph / timeline-only documents without a hybrid hit
+ * continue to use the detail snippet because no retrieval chunk was adopted for them.
+ */
+export function mergePrivateChatDetailSources(input: {
+  readonly detailSources: readonly ChatSource[];
+  readonly graphSources: readonly ChatSource[];
+  readonly hybridSources: readonly ChatSource[];
+  readonly includeTimelineSources: boolean;
+  readonly timelineSources: readonly ChatSource[];
+}): ChatSource[] {
+  const detailByDocumentId = new Map(
+    input.detailSources.map((source) => [source.documentId, source] as const),
+  );
+  const hybridByDocumentId = new Map(
+    input.hybridSources.map((source) => [source.documentId, source] as const),
+  );
+  const seen = new Set<string>();
+  const merged: ChatSource[] = [];
+
+  const appendSource = (source: ChatSource): void => {
+    const key = source.documentId || source.rawDocumentId || source.canonicalUri;
+    if (!key || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    const detail = detailByDocumentId.get(source.documentId);
+    const hybrid = hybridByDocumentId.get(source.documentId);
+    if (hybrid) {
+      merged.push(detail ? enrichHybridSourceWithDetail(hybrid, detail) : hybrid);
+      return;
+    }
+    if (detail) {
+      merged.push(detail);
+      return;
+    }
+    merged.push(source);
+  };
+
+  for (const source of input.hybridSources) {
+    appendSource(source);
+  }
+  for (const source of input.graphSources) {
+    appendSource(source);
+  }
+  if (input.includeTimelineSources) {
+    for (const source of input.timelineSources) {
+      appendSource(source);
     }
   }
   return merged;
@@ -826,6 +896,31 @@ export function privateChatRetrievalConfidence(input: {
 }
 
 /**
+ * Applies GitHub lifecycle ranking and strict open filtering to retrieval sources.
+ *
+ * `prefer_open` removes non-open items; other hints rank open first while keeping closed
+ * graph-related sources available for synthesis.
+ */
+export function applyGitHubLifecycleRetrievalSelection(
+  sources: readonly ChatSource[],
+  input: { primaryOperation: string; question: string },
+): { hint: GitHubLifecycleSelectionHint; sources: ChatSource[] } {
+  const hint = inferGitHubLifecycleSelectionHint(input);
+  const filtered =
+    hint === 'prefer_open'
+      ? sources.filter(
+          (source) => !shouldFilterGitHubSourceByLifecycle(source.githubLifecycle, hint),
+        )
+      : [...sources];
+  return {
+    hint,
+    sources: rankSourcesByGitHubLifecycle(filtered, hint).map(
+      ({ lifecycleRank: _lifecycleRank, ...source }) => source,
+    ),
+  };
+}
+
+/**
  * Serializes untrusted retrieval evidence with a score-derived confidence instruction.
  *
  * Each source object includes `occurredAt` only when the field is defined on the input;
@@ -835,13 +930,16 @@ export function privateChatRetrievalConfidence(input: {
  * @param sources - Final merged sources exposed to synthesis (may include graph / timeline)
  * @param confidence - Score-derived label written to `retrievalConfidence`; defaults to
  *   `none` when `sources` is empty, otherwise `weak`
+ * @param lifecycleHint - Optional lifecycle selection hint used to add synthesis guidance
  * @returns JSON text containing `retrievalConfidence`, an instruction `note`, and sources,
  *   with `<` and `>` Unicode-escaped so the payload remains safe untrusted content
  */
 export function formatPrivateChatRetrievalContext(
   sources: readonly ChatSource[],
   confidence: PrivateChatRetrievalConfidence = sources.length === 0 ? 'none' : 'weak',
+  lifecycleHint?: GitHubLifecycleSelectionHint,
 ): string {
+  const lifecycleNote = lifecycleSelectionNote(lifecycleHint);
   return JSON.stringify(
     {
       note:
@@ -850,11 +948,15 @@ export function formatPrivateChatRetrievalContext(
           : confidence === 'weak'
             ? 'Workflow が取得した回答根拠候補です。検索根拠は限定的なため、確証が薄い前提で回答してください。'
             : 'Workflow が取得した回答根拠候補です。',
+      ...(lifecycleNote ? { lifecycleSelection: lifecycleNote } : {}),
       retrievalConfidence: confidence,
       sources: sources.map((source) => ({
         canonicalUri: source.canonicalUri || null,
+        chunkId: source.chunkId ?? null,
+        chunkIndex: source.chunkIndex ?? null,
         documentId: source.documentId,
         docType: source.docType,
+        ...(source.githubLifecycle ? { githubLifecycle: source.githubLifecycle } : {}),
         ...(source.occurredAt === undefined ? {} : { occurredAt: source.occurredAt }),
         rawDocumentId: source.rawDocumentId,
         snippet: source.snippet ?? null,
@@ -867,6 +969,23 @@ export function formatPrivateChatRetrievalContext(
   )
     .replaceAll('<', '\\u003c')
     .replaceAll('>', '\\u003e');
+}
+
+function lifecycleSelectionNote(
+  hint: GitHubLifecycleSelectionHint | undefined,
+): string | undefined {
+  switch (hint) {
+    case 'prefer_open':
+      return 'open の GitHub item のみを根拠として優先してください。';
+    case 'prefer_closed_or_merged':
+      return 'closed / merged の GitHub item を優先してください。merged と未 merge close を区別してください。';
+    case 'open_primary_closed_background':
+      return 'open item を優先し、closed item は背景根拠として保持してください。';
+    case 'include_all':
+      return 'GitHub lifecycle status を回答に明示し、open / closed / merged を区別してください。';
+    default:
+      return undefined;
+  }
 }
 
 export interface PrivateChatSearchWorkflowState {
@@ -1173,13 +1292,21 @@ export async function runPrivateChatDetailStep(
     state.classification,
     'vector_distance',
   );
-  const sources = selectDiverseChatSources(
-    mergeChatSourcesDeterministically(
+  const lifecycleSelection = applyGitHubLifecycleRetrievalSelection(
+    mergePrivateChatDetailSources({
       detailSources,
-      state.editing.inferredMode === 'timeline' ? state.timelineSources : [],
-      state.mergedVectorSources,
-      state.graphSources,
-    ),
+      graphSources: state.graphSources,
+      hybridSources: state.mergedVectorSources,
+      includeTimelineSources: state.editing.inferredMode === 'timeline',
+      timelineSources: state.timelineSources,
+    }),
+    {
+      primaryOperation: state.classification.primaryOperation,
+      question: state.question,
+    },
+  );
+  const sources = selectDiverseChatSources(
+    lifecycleSelection.sources,
     selectionPolicy,
     state.hybridSearchDocumentLimit,
   );
@@ -1192,7 +1319,11 @@ export async function runPrivateChatDetailStep(
   return {
     ...state,
     detailSources,
-    retrievalContext: formatPrivateChatRetrievalContext(sources, confidence),
+    retrievalContext: formatPrivateChatRetrievalContext(
+      sources,
+      confidence,
+      lifecycleSelection.hint,
+    ),
     sources,
     toolCalls: mergeChatToolCallsDeterministically(state.toolCalls, [
       { name: 'document-fetch', resultCount: detailSources.length },

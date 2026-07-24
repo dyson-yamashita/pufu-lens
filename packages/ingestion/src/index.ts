@@ -109,6 +109,52 @@ export {
   resolveEmbeddingRuntimeConfig,
 } from './embedding-runtime.js';
 export type {
+  GitHubDocumentLifecycle,
+  GitHubLifecycleKind,
+  GitHubLifecycleReconcileDecision,
+  GitHubLifecycleState,
+} from './github-lifecycle.js';
+export {
+  classifyGitHubLifecycleApiError,
+  classifyGitHubLifecycleFetchStatus,
+  GITHUB_LIFECYCLE_METADATA_KEY,
+  GITHUB_LIFECYCLE_ONLY_METADATA_KEY,
+  githubLifecycleChanged,
+  githubLifecycleGraphProperties,
+  githubLifecycleMetadata,
+  githubRawContentSignature,
+  isGitHubLifecycleOnlyRefresh,
+  normalizeGitHubDocumentLifecycle,
+  normalizeGitHubIssueLifecycle,
+  normalizeGitHubPullRequestLifecycle,
+  parseGitHubDocumentLifecycle,
+  readGitHubDocumentLifecycle,
+  resolvePullRequestMerged,
+  sanitizeGitHubLifecycleError,
+} from './github-lifecycle.js';
+export type {
+  GitHubLifecycleReconcileBatchResult,
+  GitHubLifecycleReconcileCliBatchSummary,
+  GitHubLifecycleReconcileItemResult,
+  GitHubLifecycleReconcileRepository,
+  GitHubLifecycleTarget,
+} from './github-lifecycle-reconcile.js';
+export {
+  buildGitHubLifecycleRefreshRaw,
+  reconcileGitHubLifecycleBatch,
+  reconcileGitHubLifecycleTarget,
+  summarizeGitHubLifecycleBatchForCli,
+} from './github-lifecycle-reconcile.js';
+export type {
+  GitHubLifecycleRankedSource,
+  GitHubLifecycleSelectionHint,
+} from './github-lifecycle-selection.js';
+export {
+  inferGitHubLifecycleSelectionHint,
+  rankSourcesByGitHubLifecycle,
+  shouldFilterGitHubSourceByLifecycle,
+} from './github-lifecycle-selection.js';
+export type {
   CollectGitHubSourceOptions,
   CollectGitHubSourceResult,
   GitHubCandidate,
@@ -125,6 +171,7 @@ export {
   collectGitHubSource,
   fetchGitHubJson,
   fetchGitHubText,
+  GitHubApiRequestError,
   scanGitHubDataSource,
 } from './github-source.js';
 export type {

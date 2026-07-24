@@ -3,6 +3,11 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  type GitHubDocumentLifecycle,
+  githubLifecycleMetadata,
+  readGitHubDocumentLifecycle,
+} from './github-lifecycle.js';
+import {
   createDeterministicTopicExtractionAgent,
   type TopicExtractionAgent,
 } from './topic-extraction-agent.js';
@@ -84,6 +89,7 @@ interface GitHubRaw {
   html_url: string;
   created_at: string;
   updated_at: string;
+  lifecycle?: GitHubDocumentLifecycle;
   user: { login: string; name: string };
   comments?: Array<{ id: number; user: { login: string; name: string }; body: string }>;
   reviews?: Array<{ id: number; user: { login: string; name: string }; state: string }>;
@@ -237,6 +243,8 @@ async function parseGitHub(
   const bodyText = [issueBodyText, ...(raw.comments ?? []).map((comment) => comment.body)].join(
     '\n\n',
   );
+  const lifecycle =
+    raw.lifecycle ?? readGitHubDocumentLifecycle(raw as unknown as Record<string, unknown>);
 
   return validateParsedDocument({
     actors,
@@ -246,6 +254,7 @@ async function parseGitHub(
     metadata: {
       repository: raw.repository,
       updatedAt: raw.updated_at,
+      ...(lifecycle ? githubLifecycleMetadata(lifecycle) : {}),
     },
     occurredAt: raw.created_at,
     relations,

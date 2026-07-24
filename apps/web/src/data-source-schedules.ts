@@ -1,7 +1,7 @@
 import type postgres from 'postgres';
 import type { SourceType } from './admin-data.ts';
 
-export const DEFAULT_SCHEDULE_TIME = '10:00';
+export const DEFAULT_SCHEDULE_TIME = '06:00';
 export const SCHEDULE_TIMEZONE = 'Asia/Tokyo';
 
 export interface DataSourceScheduleSummary {

@@ -1,10 +1,8 @@
 import type { ChatResponse, MastraChatHistoryMessage } from './chat.ts';
 import { isChatResponseBody } from './chat.ts';
 import { mastraFetchHeaders } from './mastra-chat.ts';
-import {
-  mapWorkflowStepIdToUiStage,
-  type PrivateChatSearchStageId,
-} from './private-chat-search.ts';
+import { mapWorkflowStepIdToUiStage } from './private-chat-search.ts';
+import type { PrivateChatSearchStageId } from './private-chat-search-stages.ts';
 import { DEFAULT_HYBRID_SEARCH_DOCUMENT_LIMIT } from './project-chat-settings.ts';
 
 export const PRIVATE_CHAT_SEARCH_WORKFLOW_ID = 'private-chat-search';
