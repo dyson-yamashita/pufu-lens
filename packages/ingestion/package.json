@@ -11,6 +11,10 @@
     "./embedding-runtime": {
       "types": "./dist/embedding-runtime.d.ts",
       "import": "./dist/embedding-runtime.js"
+    },
+    "./source-version-identity": {
+      "types": "./dist/source-version-identity.d.ts",
+      "import": "./dist/source-version-identity.js"
     }
   },
   "scripts": {

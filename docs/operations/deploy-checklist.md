@@ -38,6 +38,9 @@ API key、DB password は記録しない。
 - `AUTH_URL`: Auth.js callback URL の origin。例: `https://app.example.com`。
 - `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET`: GitHub アプリログイン用 OAuth。callback URL は `${AUTH_URL}/api/auth/callback/github`。実値は記録しない。
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`: Google data source 連携用 OAuth。callback URL は `${APP_BASE_URL}/api/connections/google/callback`。App Hosting runtime secret として設定し、実値は記録しない。
+- `SYNTHETIC_MONITOR_OIDC_AUDIENCE`: Synthetic Monitor が Mastra へ送る Google ID token の audience。monitor 専用 SA のみが `roles/run.invoker` を持つ Mastra service URL を指すこと。
+- `SYNTHETIC_MONITOR_SERVICE_ACCOUNTS`: Synthetic Monitor 用 service account email の comma-separated allowlist。
+- `SYNTHETIC_MONITOR_PROJECT_SLUGS`: monitor が観測可能な dedicated project slug の comma-separated allowlist。運用手順は [Synthetic Monitor 運用手順](synthetic-monitoring.md) を参照。
 - `CONNECTION_SECRET_KEY`: OAuth token と GitHub App private key metadata の暗号化 key。App Hosting runtime secret として設定し、実値は記録しない。
 - `GITHUB_APP_WEBHOOK_SECRET`: GitHub App webhook を有効化する場合だけ provider 側に設定する。現行 runtime は GitHub App setup callback を使い、webhook 受信 route は持たない。実値は記録しない。
 - `AUTH_CREDENTIALS_EMAIL` / `AUTH_CREDENTIALS_PASSWORD`: Credentials user 作成時だけローカル環境で使う。実値は記録しない。

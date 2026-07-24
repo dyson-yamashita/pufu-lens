@@ -10,6 +10,7 @@
     "./project-chat-settings": "./src/project-chat-settings.ts",
     "./pufu-score": "./src/pufu-score.ts",
     "./report": "./src/report.ts",
+    "./synthetic-monitor": "./src/synthetic-monitor.ts",
     "./test-fixtures": "./src/test-fixtures.ts"
   },
   "scripts": {

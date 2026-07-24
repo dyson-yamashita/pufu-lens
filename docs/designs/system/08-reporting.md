@@ -280,4 +280,8 @@ report 生成時は既定で private report として `<project_slug>/reports/pr
 
 Next.js のページ `app/projects/[projectSlug]/reports/[reportId]/page.tsx` はクライアント or サーバーから JSON を取得し、`schema_version` に従ってレンダリングする。
 
+### Synthetic Monitor の readonly 観測境界
+
+Synthetic Monitor は optional な `report` 入力で report schedule の due 状態、`report_schedule_period_runs` の run status、Object Storage 上の private report artifact の **schema version 整合** だけを読み取り専用で観測する。artifact 本文、storage URI、report セクション内容、LLM 生成テキストは response に含めず、report 生成や schedule 更新も行わない。artifact 読み取りは bounded byte limit 内で行い、`schema_version` / `report_id` / `project_id` の不一致は `failed` として返す。
+
 ---

@@ -14,6 +14,7 @@ const dbTestFiles = [
   'postgres-roundtrip.test.ts',
   'admin-report-schedule-runtime.test.ts',
   'actor-merge-db.test.ts',
+  'db-synthetic-monitor.test.ts',
 ].map((fileName) => resolve(testRoot, fileName));
 
 async function runTestFile(testFile: string): Promise<number | null> {

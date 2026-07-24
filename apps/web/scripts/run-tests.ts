@@ -5,7 +5,11 @@ import { fileURLToPath } from 'node:url';
 
 const testRoot = fileURLToPath(new URL('../src', import.meta.url));
 // Database integration tests require DATABASE_URL and run via `pnpm test:db`.
-const excludedTestPaths = new Set(['actor-merge-db.test.ts', 'postgres-roundtrip.test.ts']);
+const excludedTestPaths = new Set([
+  'actor-merge-db.test.ts',
+  'postgres-roundtrip.test.ts',
+  'db-synthetic-monitor.test.ts',
+]);
 
 function shouldSkipDirectory(name: string): boolean {
   return name === 'node_modules' || name.startsWith('.');
