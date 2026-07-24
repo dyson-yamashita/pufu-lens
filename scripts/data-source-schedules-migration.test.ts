@@ -8,6 +8,10 @@ const migrationPath = join(
   '../infra/db/migrations/0011_data_source_schedules.sql',
 );
 const initPath = join(import.meta.dirname, '../infra/docker/postgres/init.sql');
+const defaultMigrationPath = join(
+  import.meta.dirname,
+  '../infra/db/migrations/0014_data_source_schedule_default_0600.sql',
+);
 
 test('0011 creates tenant-scoped daily schedules and backfills only enabled non-web sources', async () => {
   const migration = await readFile(migrationPath, 'utf8');
@@ -37,4 +41,28 @@ test('0011 and fresh schema share schedule constraints and migration version', a
     assert.ok(init.includes(name));
   }
   assert.match(init, /'0011_data_source_schedules'/);
+});
+
+test('0014 changes only the daily_time column default for future rows', async () => {
+  const migration = await readFile(defaultMigrationPath, 'utf8');
+
+  assert.match(migration, /0014_data_source_schedule_default_0600/);
+  assert.match(migration, /ALTER TABLE public\.data_source_schedules/);
+  assert.match(migration, /ALTER COLUMN daily_time SET DEFAULT TIME '06:00'/);
+  assert.doesNotMatch(migration, /UPDATE public\.data_source_schedules/i);
+  assert.doesNotMatch(migration, /next_run_at/i);
+});
+
+test('0014 and fresh schema share migration version and distinct schedule defaults', async () => {
+  const init = await readFile(initPath, 'utf8');
+
+  assert.match(init, /'0014_data_source_schedule_default_0600'/);
+  assert.match(
+    init,
+    /CREATE TABLE public\.data_source_schedules[\s\S]*?daily_time TIME NOT NULL DEFAULT TIME '06:00'/,
+  );
+  assert.match(
+    init,
+    /CREATE TABLE public\.project_report_schedules[\s\S]*?run_time TIME NOT NULL DEFAULT TIME '10:00'/,
+  );
 });

@@ -103,7 +103,7 @@ CREATE TABLE public.data_source_schedules (
   project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
   data_source_id UUID NOT NULL,
   enabled BOOLEAN NOT NULL DEFAULT true,
-  daily_time TIME NOT NULL DEFAULT TIME '10:00',
+  daily_time TIME NOT NULL DEFAULT TIME '06:00',
   timezone TEXT NOT NULL DEFAULT 'Asia/Tokyo',
   next_run_at TIMESTAMPTZ NOT NULL,
   lease_expires_at TIMESTAMPTZ,
@@ -746,5 +746,6 @@ VALUES
   ('0010_source_version_model'),
   ('0011_data_source_schedules'),
   ('0012_periodic_report_schedules'),
-  ('0013_consolidate_initial_report_backfill')
+  ('0013_consolidate_initial_report_backfill'),
+  ('0014_data_source_schedule_default_0600')
 ON CONFLICT (version) DO NOTHING;
