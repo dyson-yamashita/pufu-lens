@@ -2,7 +2,7 @@ import type { ChatResponse, PublicChatResponse } from './chat.ts';
 import {
   type PrivateChatSearchStageId,
   privateChatSearchStageLabel,
-} from './private-chat-search.ts';
+} from './private-chat-search-stages.ts';
 
 export type PrivateChatSearchProgressEvent = {
   readonly label: string;

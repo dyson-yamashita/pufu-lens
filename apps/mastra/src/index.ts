@@ -197,11 +197,26 @@ export interface PufuLensMastraRuntime {
   readonly privateChatSearchWorkflow: ReturnType<typeof createPrivateChatSearchWorkflow>;
 }
 
+const githubLifecycleSchema = z
+  .object({
+    closedAt: z.string().nullable(),
+    draft: z.boolean().nullable(),
+    kind: z.enum(['issue', 'pull_request']),
+    merged: z.boolean().nullable(),
+    mergedAt: z.string().nullable(),
+    state: z.enum(['open', 'closed']),
+    stateReason: z.string().nullable(),
+    statusKnown: z.boolean(),
+    updatedAt: z.string(),
+  })
+  .strict();
+
 const chatSourceSchema = z.object({
   canonicalUri: z.string(),
   documentId: z.string(),
   docType: z.string(),
   fusedScore: z.number().min(0).max(1).optional(),
+  githubLifecycle: githubLifecycleSchema.optional(),
   keywordRank: z.number().int().positive().optional(),
   occurredAt: z.string().nullable().optional(),
   rawDocumentId: z.string(),

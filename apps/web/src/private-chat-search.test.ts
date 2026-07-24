@@ -8,6 +8,7 @@ import {
 } from './chat.ts';
 import { mergeHybridChatResponse } from './mastra-chat.ts';
 import {
+  applyGitHubLifecycleRetrievalSelection,
   applyPrivateChatQueryExpansion,
   applyPrivateChatQuestionClassification,
   applyPrivateChatWorkflowQueryExpansion,
@@ -914,6 +915,94 @@ test('merge helpers dedupe sources and aggregate tool calls deterministically', 
       { name: 'graph-query', resultCount: 1 },
     ],
   );
+});
+
+test('applyGitHubLifecycleRetrievalSelection filters closed issues for strict open questions', () => {
+  const openSource = {
+    ...sampleSource,
+    documentId: 'open-doc',
+    githubLifecycle: {
+      closedAt: null,
+      draft: null,
+      kind: 'issue' as const,
+      merged: null,
+      mergedAt: null,
+      state: 'open' as const,
+      stateReason: null,
+      statusKnown: true,
+      updatedAt: '2026-05-08T10:00:00.000Z',
+    },
+  };
+  const closedSource = {
+    ...sampleSource,
+    documentId: 'closed-doc',
+    githubLifecycle: {
+      closedAt: '2026-05-08T12:00:00.000Z',
+      draft: null,
+      kind: 'issue' as const,
+      merged: null,
+      mergedAt: null,
+      state: 'closed' as const,
+      stateReason: 'completed',
+      statusKnown: true,
+      updatedAt: '2026-05-08T12:00:00.000Z',
+    },
+  };
+  const result = applyGitHubLifecycleRetrievalSelection([closedSource, openSource], {
+    primaryOperation: 'general',
+    question: '未解決Issueはどれですか',
+  });
+  assert.equal(result.hint, 'prefer_open');
+  assert.deepEqual(
+    result.sources.map((source) => source.documentId),
+    ['open-doc'],
+  );
+});
+
+test('applyGitHubLifecycleRetrievalSelection keeps closed background for next_actions', () => {
+  const openSource = {
+    ...sampleSource,
+    documentId: 'open-doc',
+    githubLifecycle: {
+      closedAt: null,
+      draft: null,
+      kind: 'issue' as const,
+      merged: null,
+      mergedAt: null,
+      state: 'open' as const,
+      stateReason: null,
+      statusKnown: true,
+      updatedAt: '2026-05-08T10:00:00.000Z',
+    },
+  };
+  const closedSource = {
+    ...sampleSource,
+    documentId: 'closed-doc',
+    githubLifecycle: {
+      closedAt: '2026-05-08T12:00:00.000Z',
+      draft: null,
+      kind: 'issue' as const,
+      merged: null,
+      mergedAt: null,
+      state: 'closed' as const,
+      stateReason: 'completed',
+      statusKnown: true,
+      updatedAt: '2026-05-08T12:00:00.000Z',
+    },
+  };
+  const result = applyGitHubLifecycleRetrievalSelection([closedSource, openSource], {
+    primaryOperation: 'next_actions',
+    question: '次のアクションを整理してください',
+  });
+  assert.equal(result.hint, 'open_primary_closed_background');
+  assert.deepEqual(
+    result.sources.map((source) => source.documentId),
+    ['open-doc', 'closed-doc'],
+  );
+  const serializedContext = formatPrivateChatRetrievalContext(result.sources, 'weak', result.hint);
+  const context = JSON.parse(serializedContext) as { lifecycleSelection?: string };
+  assert.match(context.lifecycleSelection ?? '', /open item を優先/);
+  assert.match(context.lifecycleSelection ?? '', /closed item は背景/);
 });
 
 test('formatPrivateChatRetrievalContext returns consistent structured untrusted JSON', () => {

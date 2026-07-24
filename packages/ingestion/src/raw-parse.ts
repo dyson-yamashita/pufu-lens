@@ -1,4 +1,8 @@
 import { createHash } from 'node:crypto';
+import {
+  GITHUB_LIFECYCLE_ONLY_METADATA_KEY,
+  isGitHubLifecycleOnlyRefresh,
+} from './github-lifecycle.js';
 import type { SourceType } from './ingestion-fixtures.js';
 import {
   type ParsedDocument,
@@ -351,6 +355,9 @@ async function buildParsedDocument(input: {
     ...parsed,
     metadata: {
       ...parsed.metadata,
+      ...(isGitHubLifecycleOnlyRefresh(input.rawDocument.metadata)
+        ? { [GITHUB_LIFECYCLE_ONLY_METADATA_KEY]: true }
+        : {}),
       parser: {
         artifactHash: input.parserVersion.artifactHash,
         parserProfileId: input.parserVersion.parserProfileId,
