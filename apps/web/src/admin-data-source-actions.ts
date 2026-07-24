@@ -6,16 +6,14 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type postgres from 'postgres';
 import {
-  BUILT_IN_PARSER_ARTIFACT_HASH,
   type CollectionRepository,
   collectDriveSource,
   collectGitHubSource,
   collectGmailSource,
   collectWebUrlSource,
   type DataSourceRecord,
-  defaultParserContract,
+  ensureBuiltInParserProfileForDataSource,
   type LinkDataSourceInput,
-  PARSED_SCHEMA_VERSION,
   type ProjectRecord,
   type QueueCandidateInput,
   type RawDocumentInput,
@@ -457,65 +455,14 @@ async function ensureDefaultParserProfile(
     readonly sourceType: SourceType;
   },
 ): Promise<void> {
-  await sql`
-    WITH profiles AS (
-      INSERT INTO public.parser_profiles AS pp (
-        project_id,
-        data_source_id,
-        source_type,
-        name,
-        metadata
-      )
-      VALUES (
-        ${input.projectId},
-        ${input.dataSourceId},
-        ${input.sourceType},
-        ${`Built-in ${input.sourceType} parser`},
-        ${sql.json({ managedBy: 'apps/web/src/admin-data-source-actions.ts' } as postgres.JSONValue)}
-      )
-      ON CONFLICT (project_id, data_source_id, source_type, name)
-      DO UPDATE SET
-        metadata = EXCLUDED.metadata,
-        updated_at = now()
-      RETURNING id
-    ),
-    versions AS (
-      INSERT INTO public.parser_versions AS pv (
-        parser_profile_id,
-        version,
-        schema_version,
-        artifact_hash,
-        contract,
-        status,
-        approved_by_user_id,
-        approved_at
-      )
-      SELECT
-        profiles.id,
-        'fixture-parser-v1',
-        ${PARSED_SCHEMA_VERSION},
-        ${BUILT_IN_PARSER_ARTIFACT_HASH},
-        ${sql.json(defaultParserContract(input.sourceType) as postgres.JSONValue)},
-        'approved',
-        ${input.approvedByUserId},
-        now()
-      FROM profiles
-      ON CONFLICT (parser_profile_id, version)
-      DO UPDATE SET
-        artifact_hash = EXCLUDED.artifact_hash,
-        contract = EXCLUDED.contract,
-        status = 'approved',
-        approved_by_user_id = EXCLUDED.approved_by_user_id,
-        approved_at = COALESCE(pv.approved_at, now()),
-        updated_at = now()
-      RETURNING id, parser_profile_id
-    )
-    UPDATE public.parser_profiles AS pp
-    SET active_version_id = versions.id,
-        updated_at = now()
-    FROM versions
-    WHERE pp.id = versions.parser_profile_id
-  `;
+  await ensureBuiltInParserProfileForDataSource({
+    approvedByUserId: input.approvedByUserId,
+    dataSourceId: input.dataSourceId,
+    managedBy: 'apps/web/src/admin-data-source-actions.ts',
+    projectId: input.projectId,
+    sourceType: input.sourceType,
+    sql,
+  });
 }
 
 class AdminCollectionRepository implements CollectionRepository {

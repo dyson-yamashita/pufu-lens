@@ -32,5 +32,14 @@
   "schemaVersion": 1,
   "sourceId": "example-org/pufu-sample/pulls/202",
   "sourceType": "github",
-  "title": "Add deterministic parser fixtures"
+  "title": "Add deterministic parser fixtures",
+  "topics": [
+    {
+      "metadata": {
+        "source": "title"
+      },
+      "target": "Add deterministic parser fixtures",
+      "topicType": "keyword"
+    }
+  ]
 }

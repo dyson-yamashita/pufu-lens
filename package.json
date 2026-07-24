@@ -20,6 +20,7 @@
     "ingest:chunk": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node --experimental-strip-types scripts/chunk-and-embed.ts",
     "ingest:index": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node --experimental-strip-types scripts/index-graph-relations.ts",
     "ingest:retry": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node --experimental-strip-types scripts/ingest-workflow.ts retry",
+    "ingest:reprocess": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node --experimental-strip-types scripts/ingest-workflow.ts reprocess",
     "ingest:run": "pnpm --filter @pufu-lens/storage build && pnpm --filter @pufu-lens/ingestion build && node --experimental-strip-types scripts/ingest-workflow.ts run",
     "ingest:status": "node --experimental-strip-types scripts/ingest-workflow.ts status",
     "embedding:check": "pnpm --filter @pufu-lens/ingestion build && node --experimental-strip-types scripts/check-embedding.ts",
