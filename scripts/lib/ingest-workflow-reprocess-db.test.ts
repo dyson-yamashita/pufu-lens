@@ -119,7 +119,7 @@ async function seedStaleReprocessFixture(sql: postgres.Sql): Promise<void> {
         ${fixture.dataSourceId},
         'github',
         'Built-in github parser',
-        ${fixture.builtInV2VersionId},
+        NULL,
         ${sql.json({ managedBy: 'fixture' })}
       ),
       (
@@ -128,7 +128,7 @@ async function seedStaleReprocessFixture(sql: postgres.Sql): Promise<void> {
         ${fixture.dataSourceId},
         'github',
         'Custom github parser',
-        ${fixture.customV1VersionId},
+        NULL,
         ${sql.json({ managedBy: 'fixture-custom' })}
       )
     ON CONFLICT (id) DO NOTHING
@@ -180,6 +180,16 @@ async function seedStaleReprocessFixture(sql: postgres.Sql): Promise<void> {
         now()
       )
     ON CONFLICT (id) DO NOTHING
+  `;
+  await sql`
+    UPDATE public.parser_profiles
+    SET active_version_id = ${fixture.builtInV2VersionId}
+    WHERE id = ${fixture.builtInProfileId}
+  `;
+  await sql`
+    UPDATE public.parser_profiles
+    SET active_version_id = ${fixture.customV1VersionId}
+    WHERE id = ${fixture.customProfileId}
   `;
   await sql`
     INSERT INTO public.raw_documents (

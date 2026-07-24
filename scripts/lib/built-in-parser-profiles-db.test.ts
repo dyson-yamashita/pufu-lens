@@ -195,7 +195,7 @@ async function seedLegacyV1Profile(sql: postgres.Sql): Promise<void> {
       ${fixture.dataSourceId},
       'github',
       'Built-in github parser',
-      ${fixture.legacyV1VersionId},
+      NULL,
       ${sql.json({ managedBy: 'fixture' })}
     )
     ON CONFLICT (id) DO NOTHING
@@ -225,6 +225,11 @@ async function seedLegacyV1Profile(sql: postgres.Sql): Promise<void> {
     )
     ON CONFLICT (id) DO NOTHING
   `;
+  await sql`
+    UPDATE public.parser_profiles
+    SET active_version_id = ${fixture.legacyV1VersionId}
+    WHERE id = ${fixture.legacyProfileId}
+  `;
 }
 
 async function seedOtherLegacyV1Profile(sql: postgres.Sql): Promise<void> {
@@ -238,7 +243,7 @@ async function seedOtherLegacyV1Profile(sql: postgres.Sql): Promise<void> {
       ${fixture.otherDataSourceId},
       'github',
       'Built-in github parser',
-      ${fixture.otherV1VersionId},
+      NULL,
       ${sql.json({ managedBy: 'fixture' })}
     )
     ON CONFLICT (id) DO NOTHING
@@ -267,6 +272,11 @@ async function seedOtherLegacyV1Profile(sql: postgres.Sql): Promise<void> {
       now()
     )
     ON CONFLICT (id) DO NOTHING
+  `;
+  await sql`
+    UPDATE public.parser_profiles
+    SET active_version_id = ${fixture.otherV1VersionId}
+    WHERE id = ${fixture.otherProfileId}
   `;
 }
 
