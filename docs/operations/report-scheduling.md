@@ -9,7 +9,7 @@
 | 本番     | Cloud Scheduler（5 分間隔）→ OIDC 付き Mastra 内部 API → Cloud Run Job | 最大 10 件・45 分     |
 | ローカル | `pnpm report-schedule:dispatch --once`                                 | 同じ DB lease / retry |
 
-project ごとの Cloud Scheduler resource は作らない。`project_report_schedules` と `report_schedule_period_runs` を状態の正本とし、通常実行と backfill は同じ dispatcher を使う。Synthetic Monitor は optional な `report.frequency` / `periodStart` / `periodEnd` で due 状態、period run status、artifact の schema version 整合だけを読み取り専用で返し、storage URI や report 本文は返さない。詳細は [Synthetic Monitor 運用手順](synthetic-monitoring.md) を参照。
+project ごとの Cloud Scheduler resource は作らない。`project_report_schedules` と `report_schedule_period_runs` を状態の正本とし、通常実行と backfill は同じ dispatcher を使う。既定の `run_time` は 10:00 `Asia/Tokyo` であり、data source 日次同期の既定 06:00 とは独立している。Synthetic Monitor は optional な `report.frequency` / `periodStart` / `periodEnd` で due 状態、period run status、artifact の schema version 整合だけを読み取り専用で返し、storage URI や report 本文は返さない。詳細は [Synthetic Monitor 運用手順](synthetic-monitoring.md) を参照。
 
 ## ローカル確認
 

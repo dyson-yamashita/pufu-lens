@@ -11,11 +11,18 @@ import {
   incrementalScanSince,
   normalizeSourceId,
 } from './collection-pipeline.js';
+import type { GitHubDocumentLifecycle } from './github-lifecycle.js';
+import {
+  githubLifecycleMetadata,
+  githubRawContentSignature,
+  normalizeGitHubDocumentLifecycle,
+} from './github-lifecycle.js';
 import { fetchWithRetry } from './http-retry.js';
 import { githubLogicalSourceId, githubSourceVersion } from './source-version-identity.js';
 
 export interface GitHubIssueResponse {
   body?: string | null;
+  closed_at?: string | null;
   comments_url?: string;
   created_at: string;
   diff_url?: string;
@@ -24,6 +31,7 @@ export interface GitHubIssueResponse {
   pull_request?: { diff_url?: string; html_url?: string; url?: string };
   repository_url?: string;
   state?: 'closed' | 'open';
+  state_reason?: string | null;
   title: string;
   updated_at: string;
   user: GitHubUserResponse | null;
@@ -31,9 +39,13 @@ export interface GitHubIssueResponse {
 
 export interface GitHubPullRequestResponse {
   body?: string | null;
+  closed_at?: string | null;
   created_at: string;
   diff_url?: string;
+  draft?: boolean;
   html_url: string;
+  merged?: boolean;
+  merged_at?: string | null;
   number: number;
   state?: 'closed' | 'open';
   title: string;
@@ -61,10 +73,12 @@ export interface GitHubUserResponse {
 export interface GitHubRawDocument {
   body: string;
   comments: Array<{ body: string; id: number; user: { login: string; name: string } }>;
+  contentSignature?: string;
   created_at: string;
   diff?: { byteSize: number; sha256: string };
   html_url: string;
   kind: 'issue' | 'pull_request';
+  lifecycle: GitHubDocumentLifecycle;
   number: number;
   repository: string;
   reviews: Array<{ id: number; state: string; user: { login: string; name: string } }>;
@@ -79,6 +93,7 @@ export type GitHubDiffFetcher = (input: { path: string; token?: string }) => Pro
 
 export interface GitHubCandidate {
   issue: GitHubIssueResponse;
+  pullRequest?: GitHubPullRequestResponse;
   repository: string;
 }
 
@@ -363,7 +378,7 @@ export async function scanGitHubDataSource(input: {
         addCandidate(
           candidates,
           seenSourceIds,
-          { issue: pullRequestToIssue(pullRequest, repository), repository },
+          { issue: pullRequestToIssue(pullRequest, repository), pullRequest, repository },
           dataSource.config,
         );
       }
@@ -623,18 +638,31 @@ export async function buildGitHubRawCandidate(input: {
     reviewsPromise,
     diffPromise,
   ]);
+  const validatedComments = validateCommentList(comments);
 
   const rawDocument: GitHubRawDocument = {
     body: issue.body ?? '',
-    comments: validateCommentList(comments).map((comment) => ({
+    comments: validatedComments.map((comment) => ({
       body: comment.body ?? '',
       id: comment.id,
       user: githubUser(comment.user),
     })),
+    contentSignature: githubRawContentSignature({
+      body: issue.body ?? '',
+      comments: validatedComments.map((comment) => ({
+        body: comment.body ?? '',
+      })),
+      title: issue.title,
+    }),
     created_at: issue.created_at,
     diff,
     html_url: issue.html_url,
     kind,
+    lifecycle: normalizeGitHubDocumentLifecycle({
+      issue,
+      kind,
+      pullRequest: candidate.pullRequest,
+    }),
     number: issue.number,
     repository: candidate.repository,
     reviews: validateReviewList(reviews).map((review) => ({
@@ -665,6 +693,7 @@ export async function buildGitHubRawCandidate(input: {
       logicalSourceId,
       metadata: {
         commentCount: rawDocument.comments.length,
+        contentSignature: rawDocument.contentSignature,
         dataSourceId: input.dataSource.id,
         fetchedAt,
         hasDiff: Boolean(diff),
@@ -673,6 +702,7 @@ export async function buildGitHubRawCandidate(input: {
         repository: candidate.repository,
         reviewCount: rawDocument.reviews.length,
         updatedAt: issue.updated_at,
+        ...githubLifecycleMetadata(rawDocument.lifecycle),
       },
       mimeType: 'application/json',
       projectId: input.projectId,
@@ -695,12 +725,32 @@ function githubCandidateSourceId(candidate: GitHubCandidate): string {
   );
 }
 
+/** GitHub REST API failure with HTTP status and optional rate-limit metadata. */
+export class GitHubApiRequestError extends Error {
+  readonly rateLimitRemaining?: number;
+  readonly status: number;
+
+  constructor(input: { path: string; rateLimitRemaining?: number; status: number }) {
+    super(`GitHub API request failed with status ${input.status}`);
+    this.name = 'GitHubApiRequestError';
+    this.status = input.status;
+    this.rateLimitRemaining = input.rateLimitRemaining;
+  }
+}
+
 export async function fetchGitHubJson(input: { path: string; token?: string }): Promise<unknown> {
   const response = await fetchWithRetry(`https://api.github.com${input.path}`, {
     headers: githubHeaders(input.token),
   });
   if (!response.ok) {
-    throw new Error(`GitHub API request failed with status ${response.status}: ${input.path}`);
+    const remainingHeader = response.headers.get('x-ratelimit-remaining');
+    const parsedRemaining =
+      remainingHeader !== null && remainingHeader !== '' ? Number(remainingHeader) : undefined;
+    throw new GitHubApiRequestError({
+      path: input.path,
+      rateLimitRemaining: Number.isFinite(parsedRemaining) ? parsedRemaining : undefined,
+      status: response.status,
+    });
   }
   return response.json();
 }
@@ -710,7 +760,14 @@ export async function fetchGitHubText(input: { path: string; token?: string }): 
     headers: { ...githubHeaders(input.token), accept: 'application/vnd.github.v3.diff' },
   });
   if (!response.ok) {
-    throw new Error(`GitHub diff request failed with status ${response.status}: ${input.path}`);
+    const remainingHeader = response.headers.get('x-ratelimit-remaining');
+    const parsedRemaining =
+      remainingHeader !== null && remainingHeader !== '' ? Number(remainingHeader) : undefined;
+    throw new GitHubApiRequestError({
+      path: input.path,
+      rateLimitRemaining: Number.isFinite(parsedRemaining) ? parsedRemaining : undefined,
+      status: response.status,
+    });
   }
   return response.text();
 }
@@ -791,6 +848,7 @@ function validateIssue(value: unknown): GitHubIssueResponse {
   const item = value as Record<string, unknown>;
   return {
     body: readNullableString(item.body),
+    closed_at: readNullableString(item.closed_at),
     comments_url: readString(item.comments_url),
     created_at: requiredString(item.created_at, 'created_at'),
     diff_url: readString(item.diff_url),
@@ -802,6 +860,7 @@ function validateIssue(value: unknown): GitHubIssueResponse {
         : undefined,
     repository_url: readString(item.repository_url),
     state: readIssueState(item.state),
+    state_reason: readNullableString(item.state_reason),
     title: requiredString(item.title, 'title'),
     updated_at: requiredString(item.updated_at, 'updated_at'),
     user: validateUser(item.user),
@@ -822,9 +881,13 @@ function validatePullRequest(value: unknown): GitHubPullRequestResponse {
   const item = value as Record<string, unknown>;
   return {
     body: readNullableString(item.body),
+    closed_at: readNullableString(item.closed_at),
     created_at: requiredString(item.created_at, 'created_at'),
     diff_url: readString(item.diff_url),
+    draft: typeof item.draft === 'boolean' ? item.draft : undefined,
     html_url: requiredString(item.html_url, 'html_url'),
+    merged: typeof item.merged === 'boolean' ? item.merged : undefined,
+    merged_at: readNullableString(item.merged_at),
     number: requiredNumber(item.number, 'number'),
     state: readIssueState(item.state),
     title: requiredString(item.title, 'title'),
@@ -839,6 +902,7 @@ function pullRequestToIssue(
 ): GitHubIssueResponse {
   return {
     body: pullRequest.body,
+    closed_at: pullRequest.closed_at,
     created_at: pullRequest.created_at,
     diff_url: pullRequest.diff_url,
     html_url: pullRequest.html_url,

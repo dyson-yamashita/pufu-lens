@@ -2,6 +2,8 @@
 
 Step 7 では parsed JSON から `documents` を upsert し、本文を chunk 化して `document_chunks` に最新版だけを保存する。
 
+GitHub lifecycle-only refresh（`metadata.lifecycleOnly=true`）では chunk 本文が変わらない限り embedding を再生成せず、`documents.metadata.githubLifecycle` だけを更新する。
+
 ## 実行
 
 ```bash
