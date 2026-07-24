@@ -752,6 +752,8 @@ assert.deepEqual(
   privateChatSourcesForResponse([
     {
       ...sampleSource,
+      chunkId: 'chunk-secret',
+      chunkIndex: 2,
       fusedScore: 0.03,
       keywordRank: 2,
       occurredAt: '2026-01-15T09:00:00.000Z',
@@ -760,6 +762,40 @@ assert.deepEqual(
     },
   ]),
   [sampleSource],
+);
+assert.deepEqual(
+  parseChatSourceRow({
+    canonical_uri: 'https://example.com/spec',
+    chunk_id: 'chunk-a',
+    chunk_index: '1',
+    document_id: 'doc-a',
+    doc_type: 'web_page',
+    raw_document_id: 'raw-a',
+    snippet: 'later body',
+    title: 'Spec Update',
+  }),
+  {
+    canonical_uri: 'https://example.com/spec',
+    chunk_id: 'chunk-a',
+    chunk_index: 1,
+    document_id: 'doc-a',
+    doc_type: 'web_page',
+    raw_document_id: 'raw-a',
+    snippet: 'later body',
+    title: 'Spec Update',
+  },
+);
+assert.throws(
+  () =>
+    parseChatSourceRow({
+      canonical_uri: 'https://example.com/spec',
+      chunk_id: 'chunk-a',
+      document_id: 'doc-a',
+      doc_type: 'web_page',
+      raw_document_id: 'raw-a',
+      title: 'Spec Update',
+    }),
+  /chunk_id and chunk_index must appear together/,
 );
 assert.deepEqual(
   privateChatHistoryItemsForUiDisplay([

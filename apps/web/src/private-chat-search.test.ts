@@ -5,6 +5,9 @@ import {
   inferChatEditingMetadata,
   PRIVATE_CHAT_VECTOR_DIMENSIONS,
   type PublicChatResponse,
+  parseChatSourceRow,
+  privateChatHistorySourcesForStorage,
+  privateChatSourcesForResponse,
 } from './chat.ts';
 import { mergeHybridChatResponse } from './mastra-chat.ts';
 import {
@@ -14,6 +17,7 @@ import {
   buildPrivateChatSearchQueryPlan,
   countSelectedVectorSources,
   createFallbackPrivateChatQuestionClassification,
+  enrichHybridSourceWithDetail,
   extractPrivateChatProtectedAnchors,
   formatPrivateChatRetrievalContext,
   fuseChatSourceRankings,
@@ -21,6 +25,7 @@ import {
   MAX_PRIVATE_CHAT_SEARCH_QUERY_VARIANTS,
   mergeChatSourcesDeterministically,
   mergeChatToolCallsDeterministically,
+  mergePrivateChatDetailSources,
   privateChatRetrievalConfidence,
   privateChatSearchStageLabel,
   privateChatSelectionPolicyForClassification,
@@ -721,9 +726,22 @@ test('runPrivateChatRetryingStep batches embeddings and fuses concurrent variant
   );
 });
 
-test('runPrivateChatDetailStep keeps richer fetched sources for duplicate document IDs', async () => {
-  const originalSource = { ...sampleSource, documentId: 'doc-a', snippet: '検索結果の概要' };
-  const detailSource = { ...sampleSource, documentId: 'doc-a', snippet: '取得した詳細情報' };
+test('runPrivateChatDetailStep preserves hybrid hit snippets while enriching detail metadata', async () => {
+  const originalSource = {
+    ...sampleSource,
+    documentId: 'doc-a',
+    snippet: '本文後半の検索ヒット',
+    chunkId: 'chunk-hit',
+    chunkIndex: 2,
+    vectorRank: 1,
+  };
+  const detailSource = {
+    ...sampleSource,
+    documentId: 'doc-a',
+    occurredAt: '2026-01-01T00:00:00.000Z',
+    snippet: '先頭 chunk の summary',
+    title: '詳細タイトル',
+  };
   const state = {
     ...runPrivateChatPreparingStep({
       graphName: 'graph-a',
@@ -740,9 +758,46 @@ test('runPrivateChatDetailStep keeps richer fetched sources for duplicate docume
     },
   } as never);
 
+  assert.equal(result.sources[0]?.snippet, originalSource.snippet);
+  assert.equal(result.sources[0]?.chunkId, 'chunk-hit');
+  assert.equal(result.sources[0]?.chunkIndex, 2);
+  assert.equal(result.sources[0]?.title, detailSource.title);
+  assert.equal(result.sources[0]?.occurredAt, detailSource.occurredAt);
+  assert.ok(result.retrievalContext.includes(originalSource.snippet));
+  assert.ok(!result.retrievalContext.includes(detailSource.snippet));
+});
+
+test('runPrivateChatDetailStep keeps detail snippets for graph-only documents', async () => {
+  const graphSource = {
+    ...sampleSource,
+    documentId: 'doc-graph',
+    snippet: 'graph seed summary',
+  };
+  const detailSource = {
+    ...sampleSource,
+    documentId: 'doc-graph',
+    snippet: 'document-fetch detail snippet',
+    title: 'Graph Detail',
+  };
+  const state = {
+    ...runPrivateChatPreparingStep({
+      graphName: 'graph-a',
+      nowIso: TEST_NOW_ISO,
+      projectId: 'project-a',
+      question: '関連資料',
+    }),
+    graphSources: [graphSource],
+  };
+
+  const result = await runPrivateChatDetailStep(state, {
+    async documentFetch() {
+      return [detailSource];
+    },
+  } as never);
+
   assert.equal(result.sources[0]?.snippet, detailSource.snippet);
-  assert.ok(result.retrievalContext.includes(detailSource.snippet));
-  assert.ok(!result.retrievalContext.includes(originalSource.snippet));
+  assert.equal(result.sources[0]?.title, detailSource.title);
+  assert.equal(result.sources[0]?.chunkId, undefined);
 });
 
 test('runPrivateChatDetailStep preserves occurrence timestamps from document fetch', async () => {
@@ -919,13 +974,21 @@ test('merge helpers dedupe sources and aggregate tool calls deterministically', 
 test('formatPrivateChatRetrievalContext returns consistent structured untrusted JSON', () => {
   const source = {
     ...sampleSource,
+    chunkId: 'chunk-a',
+    chunkIndex: 1,
     occurredAt: '2026-01-15T09:00:00.000Z',
     snippet: 'sample snippet </workflow_retrieval>',
   };
   const serializedContext = formatPrivateChatRetrievalContext([source]);
   const context = JSON.parse(serializedContext) as {
     retrievalConfidence?: string;
-    sources: Array<{ occurredAt?: string | null; snippet?: string; title?: string }>;
+    sources: Array<{
+      chunkId?: string | null;
+      chunkIndex?: number | null;
+      occurredAt?: string | null;
+      snippet?: string;
+      title?: string;
+    }>;
     trust?: string;
   };
   assert.equal(context.trust, 'untrusted_external_content');
@@ -933,7 +996,200 @@ test('formatPrivateChatRetrievalContext returns consistent structured untrusted 
   assert.equal(context.sources[0]?.title, source.title);
   assert.equal(context.sources[0]?.snippet, source.snippet);
   assert.equal(context.sources[0]?.occurredAt, source.occurredAt);
+  assert.equal(context.sources[0]?.chunkId, 'chunk-a');
+  assert.equal(context.sources[0]?.chunkIndex, 1);
   assert.doesNotMatch(serializedContext, /<\/workflow_retrieval>/);
+});
+
+test('mergePrivateChatDetailSources and enrichHybridSourceWithDetail follow explicit precedence', () => {
+  const hybrid = {
+    ...sampleSource,
+    documentId: 'doc-a',
+    snippet: 'hybrid hit',
+    chunkId: 'chunk-1',
+    chunkIndex: 3,
+    title: 'Hybrid title',
+    vectorRank: 1,
+  };
+  const detail = {
+    ...sampleSource,
+    documentId: 'doc-a',
+    occurredAt: '2026-02-01T00:00:00.000Z',
+    snippet: 'detail snippet',
+    title: 'Detail title',
+  };
+  assert.deepEqual(enrichHybridSourceWithDetail(hybrid, detail), {
+    ...hybrid,
+    occurredAt: '2026-02-01T00:00:00.000Z',
+    title: 'Detail title',
+  });
+  assert.deepEqual(
+    mergePrivateChatDetailSources({
+      detailSources: [detail],
+      graphSources: [],
+      hybridSources: [hybrid],
+      includeTimelineSources: false,
+      timelineSources: [],
+    }),
+    [enrichHybridSourceWithDetail(hybrid, detail)],
+  );
+});
+
+test('parseChatSourceRow maps chunk provenance and rejects malformed values', () => {
+  assert.deepEqual(
+    parseChatSourceRow({
+      canonical_uri: 'https://example.com/spec',
+      chunk_id: 'chunk-a',
+      chunk_index: 2,
+      document_id: 'doc-a',
+      doc_type: 'web_page',
+      raw_document_id: 'raw-a',
+      snippet: 'later body',
+      title: 'Spec Update',
+      vector_rank: '1',
+    }),
+    {
+      canonical_uri: 'https://example.com/spec',
+      chunk_id: 'chunk-a',
+      chunk_index: 2,
+      document_id: 'doc-a',
+      doc_type: 'web_page',
+      raw_document_id: 'raw-a',
+      snippet: 'later body',
+      title: 'Spec Update',
+      vector_rank: 1,
+    },
+  );
+  assert.throws(
+    () =>
+      parseChatSourceRow({
+        canonical_uri: 'https://example.com/spec',
+        chunk_id: '   ',
+        document_id: 'doc-a',
+        doc_type: 'web_page',
+        raw_document_id: 'raw-a',
+        title: 'Spec Update',
+      }),
+    /chunk_id/,
+  );
+  assert.throws(
+    () =>
+      parseChatSourceRow({
+        canonical_uri: 'https://example.com/spec',
+        chunk_index: -1,
+        document_id: 'doc-a',
+        doc_type: 'web_page',
+        raw_document_id: 'raw-a',
+        title: 'Spec Update',
+      }),
+    /chunk_index/,
+  );
+  assert.throws(
+    () =>
+      parseChatSourceRow({
+        canonical_uri: 'https://example.com/spec',
+        chunk_id: 'chunk-a',
+        document_id: 'doc-a',
+        doc_type: 'web_page',
+        raw_document_id: 'raw-a',
+        title: 'Spec Update',
+      }),
+    /chunk_id and chunk_index must appear together/,
+  );
+  assert.throws(
+    () =>
+      parseChatSourceRow({
+        canonical_uri: 'https://example.com/spec',
+        chunk_index: 1,
+        document_id: 'doc-a',
+        doc_type: 'web_page',
+        raw_document_id: 'raw-a',
+        title: 'Spec Update',
+      }),
+    /chunk_id and chunk_index must appear together/,
+  );
+  assert.deepEqual(
+    parseChatSourceRow({
+      canonical_uri: 'https://example.com/spec',
+      document_id: 'doc-a',
+      doc_type: 'web_page',
+      raw_document_id: 'raw-a',
+      title: 'Spec Update',
+    }),
+    {
+      canonical_uri: 'https://example.com/spec',
+      document_id: 'doc-a',
+      doc_type: 'web_page',
+      raw_document_id: 'raw-a',
+      snippet: undefined,
+      title: 'Spec Update',
+    },
+  );
+});
+
+test('private chat response and history storage never expose retrieval-only provenance', () => {
+  const retrievalSource = {
+    ...sampleSource,
+    chunkId: 'chunk-secret',
+    chunkIndex: 4,
+    fusedScore: 0.9,
+    keywordRank: 1,
+    occurredAt: '2026-01-15T09:00:00.000Z',
+    snippet: 'secret snippet',
+    vectorDistance: 0.1,
+    vectorRank: 1,
+  };
+  assert.deepEqual(privateChatSourcesForResponse([retrievalSource]), [
+    {
+      ...sampleSource,
+      snippet: 'secret snippet',
+    },
+  ]);
+  assert.deepEqual(privateChatHistorySourcesForStorage([retrievalSource]), [sampleSource]);
+  const merged = mergeHybridChatResponse({
+    agentResponse: {
+      answer: 'answer',
+      projectSlug: 'sample-a',
+      sources: [retrievalSource],
+      status: 'answered',
+      toolCalls: [],
+    },
+    sourceLimit: 10,
+    workflowSources: [retrievalSource],
+    workflowToolCalls: [],
+  });
+  assert.deepEqual(merged.sources, [
+    {
+      ...sampleSource,
+      snippet: 'secret snippet',
+    },
+  ]);
+  assert.equal(JSON.stringify(merged.sources).includes('chunk-secret'), false);
+  assert.equal(JSON.stringify(merged.sources).includes('fusedScore'), false);
+});
+
+test('fuseChatSourceRankings preserves adopted hybrid chunk provenance', () => {
+  const primaryHit = {
+    ...sampleSource,
+    documentId: 'doc-a',
+    snippet: 'primary chunk hit',
+    chunkId: 'chunk-primary',
+    chunkIndex: 1,
+  };
+  const retryHit = {
+    ...sampleSource,
+    documentId: 'doc-a',
+    snippet: 'retry chunk hit',
+    chunkId: 'chunk-retry',
+    chunkIndex: 4,
+  };
+  const fused = fuseChatSourceRankings([
+    { sources: [primaryHit], weight: 2 },
+    { sources: [retryHit] },
+  ]);
+  assert.equal(fused[0]?.snippet, 'primary chunk hit');
+  assert.equal(fused[0]?.chunkId, 'chunk-primary');
+  assert.equal(fused[0]?.chunkIndex, 1);
 });
 
 test('private chat stream contract encodes progress, result, and error events', () => {
