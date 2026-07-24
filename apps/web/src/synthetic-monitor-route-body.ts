@@ -64,11 +64,46 @@ export function parseSyntheticMonitorJsonBody(text: string): unknown {
 /**
  * Extracts a bearer token from an Authorization header.
  *
+ * Uses a linear scan (no regular expressions) so hostile header values cannot
+ * trigger super-linear pattern matching. Matching is case-insensitive for the
+ * `Bearer` scheme and requires one or more ASCII whitespace characters before
+ * the token. Surrounding header and token whitespace is trimmed.
+ *
  * @param headerValue - Raw Authorization header value.
- * @returns Bearer token string, or an empty string when absent.
+ * @returns Bearer token string, or an empty string when absent or malformed.
  */
 export function readSyntheticMonitorBearerToken(headerValue: string | null): string {
   const header = headerValue?.trim() ?? '';
-  const match = header.match(/^Bearer\s+(.+)$/i);
-  return match?.[1]?.trim() ?? '';
+  if (header.length === 0) {
+    return '';
+  }
+
+  const scheme = 'Bearer';
+  if (header.length < scheme.length) {
+    return '';
+  }
+  if (header.slice(0, scheme.length).toLowerCase() !== scheme.toLowerCase()) {
+    return '';
+  }
+
+  let index = scheme.length;
+  if (index >= header.length || !isAsciiWhitespace(header[index] ?? '')) {
+    return '';
+  }
+  while (index < header.length && isAsciiWhitespace(header[index] ?? '')) {
+    index += 1;
+  }
+
+  return header.slice(index).trim();
+}
+
+function isAsciiWhitespace(character: string): boolean {
+  return (
+    character === ' ' ||
+    character === '\t' ||
+    character === '\n' ||
+    character === '\r' ||
+    character === '\f' ||
+    character === '\v'
+  );
 }

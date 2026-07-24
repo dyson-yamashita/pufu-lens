@@ -7,6 +7,7 @@ import {
 import {
   parseSyntheticMonitorJsonBody,
   readBoundedRequestBody,
+  readSyntheticMonitorBearerToken,
 } from './synthetic-monitor-route-body.ts';
 
 function streamFromText(text: string): ReadableStream<Uint8Array> {
@@ -49,4 +50,26 @@ test('parseSyntheticMonitorJsonBody maps SyntaxError to a safe request error', (
       error instanceof SyntheticMonitorRequestError &&
       error.message === 'request body must be valid JSON.',
   );
+});
+
+test('readSyntheticMonitorBearerToken parses Bearer tokens without regular expressions', () => {
+  assert.equal(readSyntheticMonitorBearerToken('Bearer token-a'), 'token-a');
+  assert.equal(readSyntheticMonitorBearerToken('  bearer   token-b  '), 'token-b');
+  assert.equal(readSyntheticMonitorBearerToken('BEARER\t\ttoken-c'), 'token-c');
+  assert.equal(readSyntheticMonitorBearerToken(`Bearer ${' '.repeat(10_000)}token-d`), 'token-d');
+  assert.equal(
+    readSyntheticMonitorBearerToken('Bearer token-with-trailing  '),
+    'token-with-trailing',
+  );
+});
+
+test('readSyntheticMonitorBearerToken rejects absent or malformed Authorization values', () => {
+  assert.equal(readSyntheticMonitorBearerToken(null), '');
+  assert.equal(readSyntheticMonitorBearerToken(''), '');
+  assert.equal(readSyntheticMonitorBearerToken('   '), '');
+  assert.equal(readSyntheticMonitorBearerToken('Basic abc'), '');
+  assert.equal(readSyntheticMonitorBearerToken('Bearer'), '');
+  assert.equal(readSyntheticMonitorBearerToken('Bearer   '), '');
+  assert.equal(readSyntheticMonitorBearerToken('BearerToken'), '');
+  assert.equal(readSyntheticMonitorBearerToken(`Bearer${'\t'.repeat(5_000)}`), '');
 });
