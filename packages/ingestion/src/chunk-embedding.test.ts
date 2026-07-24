@@ -313,6 +313,84 @@ test('chunkAndEmbed treats unchanged chunks as current when repository order dif
   assert.equal(embedCalls, 1);
 });
 
+test('chunkAndEmbed updates lifecycle metadata without re-embedding lifecycle-only parsed input', async () => {
+  const bodyText = 'Body text for chunking.';
+  const openLifecycle = {
+    closedAt: null,
+    draft: null,
+    kind: 'issue' as const,
+    merged: null,
+    mergedAt: null,
+    state: 'open' as const,
+    stateReason: null,
+    statusKnown: true,
+    updatedAt: '2026-05-08T10:00:00.000Z',
+  };
+  const closedLifecycle = {
+    closedAt: '2026-05-08T12:00:00.000Z',
+    draft: null,
+    kind: 'issue' as const,
+    merged: null,
+    mergedAt: null,
+    state: 'closed' as const,
+    stateReason: 'completed',
+    statusKnown: true,
+    updatedAt: '2026-05-08T12:00:00.000Z',
+  };
+  const repository = new InMemoryChunkEmbeddingRepository([
+    {
+      parsed: parsedDocument({
+        bodyText,
+        metadata: { githubLifecycle: openLifecycle },
+      }),
+      logicalSourceId: 'logical/fixture-1',
+      rawContentHash: 'raw-hash-1',
+      rawDocumentId: 'raw-1',
+    },
+  ]);
+  let embedCalls = 0;
+  const provider = createDeterministicEmbeddingProvider({ dimensions: 4 });
+  const embeddingProvider = {
+    ...provider,
+    async embedTexts(texts: string[]) {
+      embedCalls += 1;
+      return provider.embedTexts(texts);
+    },
+  };
+  const options = {
+    chunkConfig: { maxCharacters: 64, overlapCharacters: 8, version: 'test-chunk-v1' },
+    embeddingProvider,
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  };
+
+  await chunkAndEmbed(options);
+  const chunkCountAfterFirst = repository.chunks.length;
+  assert.equal(embedCalls, 1);
+
+  repository.targets[0] = {
+    logicalSourceId: 'logical/fixture-1',
+    parsed: parsedDocument({
+      bodyText,
+      metadata: {
+        githubLifecycle: closedLifecycle,
+        lifecycleOnly: true,
+      },
+    }),
+    rawContentHash: 'raw-hash-2',
+    rawDocumentId: 'raw-2',
+  };
+
+  const second = await chunkAndEmbed(options);
+
+  assert.equal(second.decisions[0]?.decision, 'unchanged');
+  assert.equal(embedCalls, 1);
+  assert.equal(repository.documents[0]?.rawDocumentId, 'raw-2');
+  assert.deepEqual(repository.lastDocumentMetadata?.githubLifecycle, closedLifecycle);
+  assert.equal(repository.chunks.length, chunkCountAfterFirst);
+});
+
 test('chunkAndEmbed archives old chunks when parsed content changes', async () => {
   const repository = new InMemoryChunkEmbeddingRepository([
     {
@@ -443,6 +521,7 @@ class InMemoryChunkEmbeddingRepository implements ChunkEmbeddingRepository {
     PreparedDocumentChunk & { documentId: string; id: string; projectId: string }
   > = [];
   readonly supersededRawDocumentIds = new Set<string>();
+  lastDocumentMetadata: Record<string, unknown> | undefined;
 
   constructor(readonly targets: ChunkEmbeddingTarget[]) {}
 
@@ -492,6 +571,7 @@ class InMemoryChunkEmbeddingRepository implements ChunkEmbeddingRepository {
     document.graphNodeId = input.document.graphNodeId;
     document.logicalSourceId = input.document.logicalSourceId;
     document.rawDocumentId = input.document.rawDocumentId;
+    this.lastDocumentMetadata = input.document.metadata;
     return true;
   }
 

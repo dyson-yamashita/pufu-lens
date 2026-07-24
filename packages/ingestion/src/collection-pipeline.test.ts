@@ -933,6 +933,43 @@ test('buildGitHubRawCandidate converts issue comments, PR reviews, and diff meta
   );
   assert.equal(rawCandidate.raw.metadata.hasDiff, true);
   assert.equal(rawCandidate.raw.metadata.body, undefined);
+  assert.equal(
+    (rawCandidate.raw.metadata.githubLifecycle as { state?: string } | undefined)?.state,
+    'open',
+  );
+  assert.equal(raw.lifecycle.state, 'open');
+});
+
+test('buildGitHubRawCandidate normalizes linked issue lifecycle consistently', async () => {
+  const rawCandidate = await buildGitHubRawCandidate({
+    candidate: {
+      issue: githubIssue({
+        closed_at: '2026-05-08T12:00:00.000Z',
+        number: 101,
+        state: 'closed',
+        state_reason: 'completed',
+      }),
+      repository: 'example-org/pufu-sample',
+    },
+    dataSource: dataSource({ id: 'data-source-github', sourceType: 'github' }),
+    diffFetcher: async () => 'diff --git a/file b/file\n',
+    fetcher: async ({ path }) => {
+      if (path.endsWith('/issues/101/comments')) {
+        return [];
+      }
+      throw new Error(`Unexpected GitHub path: ${path}`);
+    },
+    projectId: 'project-1',
+    projectSlug: 'sample-a',
+  });
+
+  const raw = JSON.parse(rawCandidate.body);
+  assert.equal(raw.lifecycle.state, 'closed');
+  assert.equal(
+    (rawCandidate.raw.metadata.githubLifecycle as { stateReason?: string } | undefined)
+      ?.stateReason,
+    'completed',
+  );
 });
 
 test('buildGitHubRawCandidate falls back to ghost for deleted GitHub users', async () => {
@@ -1880,12 +1917,21 @@ function rawKey(projectId: string, sourceType: string, sourceId: string): string
   return `${projectId}:${sourceType}:${sourceId}`;
 }
 
-function githubIssue(input: { number: number; pullRequest?: boolean }): {
+function githubIssue(input: {
+  closed_at?: string | null;
+  number: number;
+  pullRequest?: boolean;
+  state?: 'closed' | 'open';
+  state_reason?: string | null;
+}): {
   body: string;
+  closed_at?: string | null;
   created_at: string;
   html_url: string;
   number: number;
   pull_request?: { html_url: string };
+  state?: 'closed' | 'open';
+  state_reason?: string | null;
   title: string;
   updated_at: string;
   user: { login: string; name: string } | null;
@@ -1893,6 +1939,7 @@ function githubIssue(input: { number: number; pullRequest?: boolean }): {
   const path = input.pullRequest ? 'pull' : 'issues';
   return {
     body: `Body ${input.number}`,
+    ...(input.closed_at === undefined ? {} : { closed_at: input.closed_at }),
     created_at: '2026-05-08T00:00:00.000Z',
     html_url: `https://github.com/example-org/pufu-sample/${path}/${input.number}`,
     number: input.number,
@@ -1903,6 +1950,8 @@ function githubIssue(input: { number: number; pullRequest?: boolean }): {
           },
         }
       : {}),
+    ...(input.state === undefined ? {} : { state: input.state }),
+    ...(input.state_reason === undefined ? {} : { state_reason: input.state_reason }),
     title: `GitHub item ${input.number}`,
     updated_at: '2026-05-09T00:00:00.000Z',
     user: { login: 'author', name: 'Author' },

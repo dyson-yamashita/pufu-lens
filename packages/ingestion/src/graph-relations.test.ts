@@ -66,6 +66,51 @@ test('storeGraphRelations materializes document, actor, topic, quote, and status
   assert.equal(repository.edges.size, 3);
 });
 
+test('storeGraphRelations updates GitHub lifecycle properties without recreating edges', async () => {
+  const repository = new InMemoryGraphRelationsRepository([
+    {
+      document: documentRecord({
+        docType: 'issue',
+        graphNodeId: 'document:issue:example-org%2Fpufu-sample%2Fissues%2F101',
+        id: 'document-github-1',
+        rawDocumentId: 'raw-github-1',
+      }),
+      parsed: githubParsed({
+        metadata: {
+          githubLifecycle: {
+            closedAt: '2026-05-08T12:00:00.000Z',
+            draft: null,
+            kind: 'issue',
+            merged: null,
+            mergedAt: null,
+            state: 'closed',
+            stateReason: 'completed',
+            statusKnown: true,
+            updatedAt: '2026-05-08T12:00:00.000Z',
+          },
+          lifecycleOnly: true,
+        },
+      }),
+      rawContentHash: 'github-hash',
+      rawDocumentId: 'raw-github-1',
+    },
+  ]);
+
+  const result = await storeGraphRelations({
+    limit: 10,
+    projectSlug: 'sample-a',
+    repository,
+  });
+
+  assert.equal(result.decisions[0]?.decision, 'indexed');
+  assert.equal(result.decisions[0]?.graphEdgeCount, 0);
+  assert.equal(result.decisions[0]?.graphNodeCount, 1);
+  const documentNode = [...repository.nodes.values()].find((node) =>
+    node.labels.includes('Document'),
+  );
+  assert.equal(documentNode?.properties.state, 'closed');
+});
+
 test('storeGraphRelations resolves web authors by domain alias', async () => {
   const repository = new InMemoryGraphRelationsRepository([
     {
