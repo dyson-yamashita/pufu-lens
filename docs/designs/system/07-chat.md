@@ -68,6 +68,21 @@ export const privateChatAgent = new Agent({
 
 `rawDocumentFetchTool` の契約は [Agent Raw Read View / raw-document-fetch 契約](#agent-raw-read-view--raw-document-fetch-契約) を正とする。Step 12 初期実装では read view 未導入のため metadata / snippet に限定しているが、Step 3 以降で read view adapter に置き換える。
 
+#### GitHub lifecycle-aware retrieval
+
+GitHub Issue / PR の `documents.metadata.githubLifecycle` は内部 `ChatSource.githubLifecycle` と Workflow の `retrievalContext` に伝搬する。`state`、`closedAt`、`mergedAt`、`merged`、`draft`、`stateReason`、`updatedAt`、`kind`、`statusKnown` を runtime validation し、`statusKnown=false` または metadata 未設定の item を同期済み status と誤認しない。
+
+質問分類と明示語に応じて、最終 document 上限を適用する前に次の selection を行う。
+
+| 質問意図                         | lifecycle selection                                                         |
+| -------------------------------- | --------------------------------------------------------------------------- |
+| 未解決 Issue、現在の課題、対応中 | status 確認済みの open item に明示限定し、status 未確認 item は誤除外しない |
+| 完了した対応、解決済み Issue     | closed / merged を優先し、merge 済みと未 merge close を区別する             |
+| 経緯、背景、理由、一般質問       | open / closed をともに保持し、status を synthesis context に明示する        |
+| 次のアクション、risk scan        | open を優先し、closed は背景根拠として保持する                              |
+
+Graph で関連付いた closed Issue は一律に除外しない。lifecycle metadata は `untrusted_external_content` 内の補助情報として Agent 合成にだけ利用し、private / public chat response、履歴、UI、public source response へは追加しない。API 境界では既存の source sanitization を通し、retrieval-only score、期間 metadata と同様に lifecycle metadata を除去する。
+
 #### Agent Raw Read View / raw-document-fetch 契約
 
 Issue #292 Step 1 で定義する Private Chat 向け tool contract。runtime 実装は Step 3 以降。本節が product / security 判断の正本である。
@@ -279,8 +294,8 @@ Private project chat は、Mastra `private-chat-search` Workflow による **制
 2. **編集操作分類:** tool を持たない `private-chat-query-planner-agent` が strict structured output で質問を `identification` / `cause` / `process` / `timeline` / `comparison` / `relation` / `evaluation` / `decision` / `general` の固定分類へ割り当てる。primary は 1 件、secondary は最大 2 件とし、figure / ground / expected evidence / confidence も上限付きで返す。質問は未信頼データとして扱い、本文内の命令や schema 変更要求には従わない。
 3. **検索語展開:** 同 Agent を別 step で呼び出し、分類結果から query / purpose / operation の候補を strict structured output で最大 5 件生成する。元の正規化質問は LLM 出力にかかわらず Workflow が必ず検索する。Workflow は全検索を合計最大 6 件、各 120 文字に制限し、空文字、制御文字、大小文字を無視した重複、元質問の保護対象識別子を欠く展開語を拒否する。LLM が追加した固有名詞を回答の必要事実として扱わない。展開語の embedding は 1 batch で生成し、各検索結果を RRF で統合する。元質問の順位 list は weight 2、展開語は weight 1 とし、元質問の焦点と複数検索語の合意を両立する。
 4. **決定論的フォールバック:** 分類失敗時は `general`、展開失敗時は正規化した元質問だけを使い、Planner 障害で chat 全体を失敗させない。元質問の検索結果が 0 件で、保護対象識別子を維持できる場合だけ simplified retry を最大 1 回実行する。検索順、件数、project scope、RRF の tie-break、document id dedupe は Workflow が決定論的に管理する。
-5. **graph / timeline / detail:** vector 結果を seed に graph related-source retrieval を実行する。LLM の primary / secondary operation が `timeline` の場合、deterministic editing metadata が timeline の場合、または期間表現を認識した場合に timeline retrieval を実行する。期間指定時は正規化済み topic と期間境界を repository に渡し、期間なしの時系列質問は従来の質問文検索を維持する。選定候補に対して bounded detail retrieval を行う。
-6. **Agent 合成:** Workflow retrieval 結果は `requestContext.retrievalContext` / `workflowSources` / `workflowToolCalls` に加えて、内部用の query classification / query plan と元の質問を synthesis に引き渡す。retrieval 本文は `untrusted_external_content` として囲み、本文内の命令、role 変更要求、tool 呼び出し要求には従わない。Agent は tool による追加確認は可能だが、Workflow 初期 retrieval の有無を Agent だけに委ねない。classification / query plan は public chat や最終 `ChatResponse` には公開しない。
+5. **graph / timeline / detail:** vector 結果を seed に graph related-source retrieval を実行する。LLM の primary / secondary operation が `timeline` の場合、deterministic editing metadata が timeline の場合、または期間表現を認識した場合に timeline retrieval を実行する。期間指定時は正規化済み topic と期間境界を repository に渡し、期間なしの時系列質問は従来の質問文検索を維持する。選定候補に対して bounded detail retrieval を行い、GitHub source は質問分類に応じた lifecycle selection を最終 document 上限の適用前に実行する。
+6. **Agent 合成:** Workflow retrieval 結果は `requestContext.retrievalContext` / `workflowSources` / `workflowToolCalls` に加えて、内部用の query classification / query plan と元の質問を synthesis に引き渡す。GitHub lifecycle status も内部 context に含め、open / closed / merged と status 未確認を区別する。retrieval 本文は `untrusted_external_content` として囲み、本文内の命令、role 変更要求、tool 呼び出し要求には従わない。Agent は tool による追加確認は可能だが、Workflow 初期 retrieval の有無を Agent だけに委ねない。classification / query plan / lifecycle metadata は public chat や最終 `ChatResponse` には公開しない。
 7. **Next.js 実行経路:** `POST /api/projects/[projectSlug]/chat` と、public project / report の公開判定を通過した public chat API は、server-side で解決した `projectId` / `graphName` と server-side の `nowIso` を使って Mastra HTTP Workflow API（`create-run` → `/api/workflows/private-chat-search/stream?runId=...`）を呼び出す。`nowIso` はブラウザrequestから受け取らず、Private / Public の共有Workflow clientが実行ごとに設定する。`Accept: application/x-ndjson` の場合は、Mastra workflow stream の `workflow-step-start` を NDJSON progress event に写像して browser へ proxy し、最後に `result` または generic `error` event を返す。public chat の `result` は公開 report に含まれる web source だけへ変換してから返す。JSON-only client も同じ registered Workflow を利用する。Mastra の失敗を記録するときは固定 reason と HTTP status のみを使い、上流 response body、質問本文、LLM 出力や例外メッセージをログへ出さない。
 8. **progress stage id / label:**
    - `preparing`: 検索条件を準備しています

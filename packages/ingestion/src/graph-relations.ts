@@ -1,4 +1,9 @@
 import { parseSenderAlias } from './actor-resolution.js';
+import {
+  githubLifecycleGraphProperties,
+  isGitHubLifecycleOnlyRefresh,
+  readGitHubDocumentLifecycle,
+} from './github-lifecycle.js';
 import type { ActorMention, ParsedDocument, ParsedDocumentType } from './ingestion-fixtures.js';
 import { validateParsedDocument } from './ingestion-fixtures.js';
 
@@ -192,6 +197,25 @@ async function storeGraphTarget(
   const parsed = parseTargetDocument(target.parsed);
   validateDocumentGraphKey(target.document, parsed);
 
+  if (isGitHubLifecycleOnlyRefresh(parsed.metadata)) {
+    await context.repository.upsertGraphNode(documentGraphNode(context.project, target, parsed));
+    await context.repository.markIndexed({
+      projectId: context.project.id,
+      rawDocumentId: target.rawDocumentId,
+    });
+    return {
+      actorEdgeCount: 0,
+      decision: 'indexed',
+      documentId: target.document.id,
+      emailQuoteCount: 0,
+      graphEdgeCount: 0,
+      graphNodeCount: 1,
+      rawDocumentId: target.rawDocumentId,
+      sameAsCount: 0,
+      sourceId: parsed.sourceId,
+    };
+  }
+
   let graphNodeCount = 0;
   let graphEdgeCount = 0;
   let actorEdgeCount = 0;
@@ -272,6 +296,7 @@ function documentGraphNode(
   target: GraphRelationTarget,
   parsed: ParsedDocument,
 ): GraphNodeInput {
+  const lifecycle = readGitHubDocumentLifecycle(parsed.metadata);
   return {
     graphNodeId: target.document.graphNodeId,
     labels: ['Document', documentLabel(parsed.docType)],
@@ -285,6 +310,7 @@ function documentGraphNode(
       sourceId: parsed.sourceId,
       sourceType: parsed.sourceType,
       title: parsed.title,
+      ...(lifecycle ? githubLifecycleGraphProperties(lifecycle) : {}),
     },
   };
 }
