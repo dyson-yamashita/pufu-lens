@@ -2,10 +2,63 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
+  DEFAULT_SCHEDULE_TIME,
   isSchedulableSourceType,
   parseDataSourceScheduleRow,
   requireDailyTime,
+  SCHEDULE_TIMEZONE,
 } from './data-source-schedules.ts';
+import { DEFAULT_REPORT_SCHEDULE_RUN_TIME } from './report-schedule-contract.ts';
+
+test('new data source schedules default to 06:00 while report schedules stay 10:00', () => {
+  assert.equal(DEFAULT_SCHEDULE_TIME, '06:00');
+  assert.equal(DEFAULT_REPORT_SCHEDULE_RUN_TIME, '10:00');
+});
+
+test('default schedule insert SQL uses strict before-slot comparison in Asia/Tokyo', async () => {
+  const source = await readFile(new URL('./data-source-schedules.ts', import.meta.url), 'utf8');
+  const insertSql = source.slice(
+    source.indexOf('export async function insertDefaultDataSourceSchedule'),
+    source.indexOf('export async function readDataSourceSchedule'),
+  );
+
+  assert.match(insertSql, /\$\{DEFAULT_SCHEDULE_TIME\}::time/);
+  assert.match(insertSql, /\$\{SCHEDULE_TIMEZONE\}/);
+  assert.match(
+    insertSql,
+    /\(now\(\) AT TIME ZONE \$\{SCHEDULE_TIMEZONE\}\)::time < \$\{DEFAULT_SCHEDULE_TIME\}::time/,
+  );
+  assert.doesNotMatch(
+    insertSql,
+    /\(now\(\) AT TIME ZONE \$\{SCHEDULE_TIMEZONE\}\)::time <= \$\{DEFAULT_SCHEDULE_TIME\}::time/,
+  );
+  assert.match(insertSql, /THEN \(now\(\) AT TIME ZONE \$\{SCHEDULE_TIMEZONE\}\)::date/);
+  assert.match(insertSql, /ELSE \(now\(\) AT TIME ZONE \$\{SCHEDULE_TIMEZONE\}\)::date \+ 1/);
+  assert.match(insertSql, /END \+ \$\{DEFAULT_SCHEDULE_TIME\}::time/);
+  assert.match(insertSql, /\) AT TIME ZONE \$\{SCHEDULE_TIMEZONE\}/);
+  assert.equal(SCHEDULE_TIMEZONE, 'Asia/Tokyo');
+});
+
+test('schedule update SQL uses strict before-slot comparison in Asia/Tokyo', async () => {
+  const source = await readFile(new URL('./data-source-schedules.ts', import.meta.url), 'utf8');
+  const updateSql = source.slice(
+    source.indexOf('export async function updateDataSourceScheduleRow'),
+    source.indexOf('function requireString'),
+  );
+
+  assert.match(
+    updateSql,
+    /\(now\(\) AT TIME ZONE \$\{SCHEDULE_TIMEZONE\}\)::time < \$\{dailyTime\}::time/,
+  );
+  assert.doesNotMatch(
+    updateSql,
+    /\(now\(\) AT TIME ZONE \$\{SCHEDULE_TIMEZONE\}\)::time <= \$\{dailyTime\}::time/,
+  );
+  assert.match(updateSql, /THEN \(now\(\) AT TIME ZONE \$\{SCHEDULE_TIMEZONE\}\)::date/);
+  assert.match(updateSql, /ELSE \(now\(\) AT TIME ZONE \$\{SCHEDULE_TIMEZONE\}\)::date \+ 1/);
+  assert.match(updateSql, /END \+ \$\{dailyTime\}::time/);
+  assert.match(updateSql, /\) AT TIME ZONE \$\{SCHEDULE_TIMEZONE\}/);
+});
 
 test('only provider-backed non-web sources are schedulable', () => {
   assert.equal(isSchedulableSourceType('github'), true);

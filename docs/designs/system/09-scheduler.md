@@ -9,7 +9,7 @@ Cloud Scheduler は Cloud Run Job の `:run` API を直接叩かず、Mastra Ser
 
 Source sync dispatcher は `scripts/source-sync-dispatcher.ts` に実装し、ローカル one-shot と Cloud Run Job が同じDB lease・heartbeat・retry処理を使う。`scripts/workflow-job.ts` は `source-sync-dispatcher` を受け付ける。
 
-GitHub / Drive / Gmail の data source は作成 transaction 内で毎日 10:00 `Asia/Tokyo` の schedule を作る。既存の有効な対象 source は migration で backfill する。project admin は Data Sources 詳細で ON / OFF と日次時刻を変更でき、変更時は次の wall-clock occurrence を UTC の `next_run_at` に再計算する。Web は自動 schedule を持たない。
+GitHub / Drive / Gmail の data source は作成 transaction 内で毎日 06:00 `Asia/Tokyo` の schedule を作る。既存の有効な対象 source は migration で backfill する。project admin は Data Sources 詳細で ON / OFF と日次時刻を変更でき、変更時は次の wall-clock occurrence を UTC の `next_run_at` に再計算する。Web は自動 schedule を持たない。
 
 定期 report schedule も project ごとの DB row を正とし、Cloud Scheduler resource を project ごとに作らない。`weekly` / `monthly` / `annually` の次回 slot は 10:00 `Asia/Tokyo` の calendar 境界から UTC instant を計算する。停止後の catch-up は保存済み `next_run_at` から古い slot 順に bounded に列挙する。初回 backfill だけは、利用可能な最古のデータを含む period の開始日から現在進行中 period の前日までを1件の履歴 report として登録する。`scripts/report-schedule-dispatcher.ts` は due slot の materialize、最古の未完了 period run の claim、report 生成、lease / heartbeat、15 分・1 時間・6 時間の retry を one-shot で実行する。`scripts/workflow-job.ts` は `report-schedule-dispatcher` を受け付ける。
 

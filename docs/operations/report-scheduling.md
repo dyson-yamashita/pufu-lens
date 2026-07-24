@@ -9,7 +9,7 @@
 | 本番     | Cloud Scheduler（5 分間隔）→ OIDC 付き Mastra 内部 API → Cloud Run Job | 最大 10 件・45 分     |
 | ローカル | `pnpm report-schedule:dispatch --once`                                 | 同じ DB lease / retry |
 
-project ごとの Cloud Scheduler resource は作らない。`project_report_schedules` と `report_schedule_period_runs` を状態の正本とし、通常実行と backfill は同じ dispatcher を使う。
+project ごとの Cloud Scheduler resource は作らない。`project_report_schedules` と `report_schedule_period_runs` を状態の正本とし、通常実行と backfill は同じ dispatcher を使う。既定の `run_time` は 10:00 `Asia/Tokyo` であり、data source 日次同期の既定 06:00 とは独立している。
 
 ## ローカル確認
 
