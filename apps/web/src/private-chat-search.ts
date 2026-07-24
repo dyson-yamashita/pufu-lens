@@ -7,6 +7,7 @@ import {
 import {
   type ChatEditingMetadata,
   type ChatEmbeddingProvider,
+  type ChatGraphCoverageStatus,
   type ChatGraphRelatedSource,
   type ChatRepository,
   type ChatSearchPeriod,
@@ -21,7 +22,6 @@ import {
 } from './chat.ts';
 import {
   applyGraphCoverageFinalSelection,
-  type ChatGraphQueryStatus,
   formatGraphCoverageDiagnostics,
   type GraphCoverageDiagnostics,
   runPrivateChatGraphCoveragePass,
@@ -905,6 +905,24 @@ export function privateChatRetrievalConfidence(input: {
 }
 
 /**
+ * Applies a lifecycle hint to retrieval sources using the same filter/rank semantics as detail step.
+ */
+export function applyGitHubLifecycleHintToSources(
+  sources: readonly ChatSource[],
+  hint: GitHubLifecycleSelectionHint,
+): ChatSource[] {
+  const filtered =
+    hint === 'prefer_open'
+      ? sources.filter(
+          (source) => !shouldFilterGitHubSourceByLifecycle(source.githubLifecycle, hint),
+        )
+      : [...sources];
+  return rankSourcesByGitHubLifecycle(filtered, hint).map(
+    ({ lifecycleRank: _lifecycleRank, ...source }) => source,
+  );
+}
+
+/**
  * Applies GitHub lifecycle ranking and strict open filtering to retrieval sources.
  *
  * `prefer_open` removes non-open items; other hints rank open first while keeping closed
@@ -915,17 +933,9 @@ export function applyGitHubLifecycleRetrievalSelection(
   input: { primaryOperation: string; question: string },
 ): { hint: GitHubLifecycleSelectionHint; sources: ChatSource[] } {
   const hint = inferGitHubLifecycleSelectionHint(input);
-  const filtered =
-    hint === 'prefer_open'
-      ? sources.filter(
-          (source) => !shouldFilterGitHubSourceByLifecycle(source.githubLifecycle, hint),
-        )
-      : [...sources];
   return {
     hint,
-    sources: rankSourcesByGitHubLifecycle(filtered, hint).map(
-      ({ lifecycleRank: _lifecycleRank, ...source }) => source,
-    ),
+    sources: applyGitHubLifecycleHintToSources(sources, hint),
   };
 }
 
@@ -948,7 +958,7 @@ export function formatPrivateChatRetrievalContext(
   confidence: PrivateChatRetrievalConfidence = sources.length === 0 ? 'none' : 'weak',
   options?: {
     readonly graphDiagnostics?: GraphCoverageDiagnostics;
-    readonly graphStatus?: ChatGraphQueryStatus;
+    readonly graphStatus?: ChatGraphCoverageStatus;
     readonly lifecycleHint?: GitHubLifecycleSelectionHint;
   },
 ): string {
@@ -1025,7 +1035,7 @@ export interface PrivateChatSearchWorkflowState {
   readonly editing: ChatEditingMetadata;
   readonly graphDiagnostics: GraphCoverageDiagnostics;
   readonly graphName: string | null;
-  readonly graphStatus: ChatGraphQueryStatus;
+  readonly graphStatus: ChatGraphCoverageStatus;
   readonly hybridSearchDocumentLimit: number;
   readonly graphSources: readonly ChatSource[];
   readonly mergedVectorSources: readonly ChatSource[];
@@ -1360,10 +1370,13 @@ export async function runPrivateChatDetailStep(
     state.hybridSearchDocumentLimit,
   );
   const hybridDocumentIds = new Set(state.mergedVectorSources.map((source) => source.documentId));
-  const graphOnlySources = state.graphSources.filter(
-    (source): source is ChatGraphRelatedSource =>
-      isChatGraphRelatedSource(source) && !hybridDocumentIds.has(source.documentId),
-  );
+  const graphOnlySources = applyGitHubLifecycleHintToSources(
+    state.graphSources.filter(
+      (source): source is ChatGraphRelatedSource =>
+        isChatGraphRelatedSource(source) && !hybridDocumentIds.has(source.documentId),
+    ),
+    lifecycleSelection.hint,
+  ).filter((source): source is ChatGraphRelatedSource => isChatGraphRelatedSource(source));
   const graphFinalSelection = applyGraphCoverageFinalSelection({
     documentLimit: state.hybridSearchDocumentLimit,
     graphOnlySources,

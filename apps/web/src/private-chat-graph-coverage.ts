@@ -1,6 +1,6 @@
 import {
   type ChatEmbeddingProvider,
-  type ChatGraphQueryStatus,
+  type ChatGraphCoverageStatus,
   type ChatGraphRelatedSource,
   type ChatGraphRelationType,
   type ChatRepository,
@@ -11,7 +11,7 @@ import {
   shouldUseGraphRelatedSource,
 } from './chat.ts';
 
-export type { ChatGraphQueryStatus };
+export type { ChatGraphCoverageStatus };
 export { GRAPH_RELATION_POOL_LIMITS };
 
 export interface GraphCoverageDiagnostics {
@@ -28,7 +28,7 @@ export interface GraphCoverageDiagnostics {
 export interface GraphCoveragePassResult {
   readonly diagnostics: GraphCoverageDiagnostics;
   readonly graphSources: readonly ChatGraphRelatedSource[];
-  readonly graphStatus: ChatGraphQueryStatus;
+  readonly graphStatus: ChatGraphCoverageStatus;
 }
 
 const GRAPH_COVERAGE_EVIDENCE_HYBRID_LIMIT = 50;
@@ -378,7 +378,7 @@ export async function runPrivateChatGraphCoveragePass(input: {
  * Serializes internal graph coverage diagnostics for synthesis-only retrieval context.
  */
 export function formatGraphCoverageDiagnostics(
-  status: ChatGraphQueryStatus,
+  status: ChatGraphCoverageStatus,
   diagnostics: GraphCoverageDiagnostics,
 ): Record<string, unknown> {
   return {

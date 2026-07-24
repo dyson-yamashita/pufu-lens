@@ -1081,7 +1081,7 @@ export function createPrivateChatSearchWorkflow(input: {
       editing: privateChatEditingMetadataSchema,
       graphDiagnostics: graphCoverageDiagnosticsSchema,
       graphName: z.string().nullable(),
-      graphStatus: z.enum(['fallback', 'success', 'unavailable']),
+      graphStatus: z.enum(['success', 'unavailable']),
       hybridSearchDocumentLimit: z
         .number()
         .int()

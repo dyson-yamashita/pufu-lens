@@ -97,7 +97,7 @@ hybrid search の採用 document を seed として、Graph を **coverage audit
 - Graph 候補は project boundary、許可された relation / hop の組み合わせ、seed との重複除外、`title` / `snippet` の有無を確認したうえで、**元の質問または query plan の hybrid search** で chunk evidence を再確認する。evidence が得られない候補は接続だけを理由に採用しない。
 - `relation` / `comparison` / `cause` / `process` では Graph 補完候補を優先し、最終 document 上限内で Graph-only evidence を最低 1 件程度予約できる。
 - 採用された Graph source の `relationType` / `seedDocumentId` / `hopCount` は `retrievalContext` の `untrusted_external_content` 内 `graphProvenance` として synthesis にだけ渡す。private / public chat response、履歴、UI、public API には公開しない。
-- Workflow 内部 diagnostics では `graphStatus`（`success` / `unavailable` / `fallback`）、seed 数、relation 別候補数・採用数、重複 / evidence なし / source 上限などの除外理由を区別する。Graph に候補が無い成功と Graph query 実行不能（graph 名なし、seed なし、AGE 失敗）は別扱いとする。Agent 向け `graph-query` tool の title / summary fallback は `fallback` として区別し、coverage pass 本体では fallback に依存しない。
+- Workflow 内部 diagnostics では `graphStatus`（`success` / `unavailable` のみ）、seed 数、relation 別候補数・採用数、重複 / evidence なし / source 上限などの除外理由を区別する。Graph に候補が無い成功と Graph query 実行不能（graph 名なし、seed なし、AGE 失敗）は別扱いとする。Agent 向け `graph-query` tool は `graphQueryStatus` で `fallback` / `success` / `unavailable` を返し、title / summary fallback は `fallback` として区別する。coverage pass 本体では fallback に依存しない。
 - Cypher graph 名 validation、read-only transaction、`statement_timeout`、projectId 固定、候補 pool / evidence 確認の明示的上限を維持する。
 
 #### Agent Raw Read View / raw-document-fetch 契約

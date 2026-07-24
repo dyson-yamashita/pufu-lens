@@ -73,8 +73,11 @@ export interface ChatSource {
 
 export type ChatGraphRelationType = 'MENTIONS' | 'RELATED_TO' | 'SAME_AS';
 
-/** Internal graph query outcome shared by coverage pass and Agent graph-query tool diagnostics. */
-export type ChatGraphQueryStatus = 'fallback' | 'success' | 'unavailable';
+/** Workflow graph coverage pass outcome (`success` includes zero adopted candidates). */
+export type ChatGraphCoverageStatus = 'success' | 'unavailable';
+
+/** Agent graph-query tool outcome including title / summary fallback. */
+export type ChatGraphQueryStatus = 'fallback' | ChatGraphCoverageStatus;
 
 export type ChatGraphRelatedSource = ChatSource & {
   readonly hopCount: 1 | 2;
@@ -2653,12 +2656,12 @@ export async function executeGraphQueryWithStatus(
     if (input.skipTitleFallback) {
       return { sources: [], status: 'unavailable' };
     }
-    const sources = await fetchGraphTitleFallbackSources(sql, {
+    return resolveGraphTitleFallbackStatus(sql, {
+      graphUnavailable: true,
       limit: input.limit,
       projectId: input.projectId,
       query: input.query,
     });
-    return { sources, status: 'fallback' };
   }
 
   const graphResult = await resolveGraphRelatedSources(sql, {
@@ -2671,12 +2674,12 @@ export async function executeGraphQueryWithStatus(
     if (input.skipTitleFallback) {
       return { sources: [], status: 'unavailable' };
     }
-    const sources = await fetchGraphTitleFallbackSources(sql, {
+    return resolveGraphTitleFallbackStatus(sql, {
+      graphUnavailable: true,
       limit: input.limit,
       projectId: input.projectId,
       query: input.query,
     });
-    return { sources, status: 'fallback' };
   }
 
   const acceptedSources = graphResult.candidates
@@ -2694,12 +2697,35 @@ export async function executeGraphQueryWithStatus(
   if (input.skipTitleFallback) {
     return { sources: [], status: 'success' };
   }
+  return resolveGraphTitleFallbackStatus(sql, {
+    graphUnavailable: false,
+    limit: input.limit,
+    projectId: input.projectId,
+    query: input.query,
+  });
+}
+
+async function resolveGraphTitleFallbackStatus(
+  sql: postgres.Sql,
+  input: {
+    graphUnavailable: boolean;
+    limit: number;
+    projectId: string;
+    query: string;
+  },
+): Promise<{ sources: ChatSource[]; status: ChatGraphQueryStatus }> {
   const sources = await fetchGraphTitleFallbackSources(sql, {
     limit: input.limit,
     projectId: input.projectId,
     query: input.query,
   });
-  return { sources, status: 'fallback' };
+  if (sources.length > 0) {
+    return { sources, status: 'fallback' };
+  }
+  return {
+    sources: [],
+    status: input.graphUnavailable ? 'unavailable' : 'success',
+  };
 }
 
 function documentIdFromAgeVertex(value: unknown): string | undefined {

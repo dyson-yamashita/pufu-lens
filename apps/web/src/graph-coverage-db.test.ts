@@ -56,6 +56,7 @@ async function main() {
       ),
     );
     await assertUndirectedMatchFindsDirectedEdges();
+    await assertGraphQueryWithStatusEmptyFallback();
     await assertGraphQueryWithStatusFallback();
     console.log('graph coverage database tests passed');
   } finally {
@@ -236,6 +237,44 @@ async function assertGraphQueryWithStatusFallback(): Promise<void> {
   assert.ok(traversalMiss.sources.some((source) => source.documentId === documentId));
   await sql`DELETE FROM public.documents WHERE id = ${documentId}`;
   await sql`DELETE FROM public.raw_documents WHERE id = ${documentId}`;
+}
+
+async function assertGraphQueryWithStatusEmptyFallback(): Promise<void> {
+  const repository = createPostgresChatRepository(sql);
+  const missingTitleQuery = 'issue-648-empty-fallback-query-xyz';
+  const isolatedSeedId = '10000000-0000-0000-0000-000000064801';
+  await runCypher(
+    graphName,
+    `CREATE (:Document {
+      projectId: $projectId,
+      documentId: $documentId,
+      graphNodeId: $graphNodeId
+    })`,
+    {
+      documentId: isolatedSeedId,
+      graphNodeId: `node-${isolatedSeedId}`,
+      projectId,
+    },
+  );
+
+  const unavailable = await repository.graphQueryWithStatus({
+    graphName: null,
+    limit: 3,
+    projectId,
+    query: missingTitleQuery,
+  });
+  assert.equal(unavailable.status, 'unavailable');
+  assert.equal(unavailable.sources.length, 0);
+
+  const successEmpty = await repository.graphQueryWithStatus({
+    graphName,
+    limit: 3,
+    projectId,
+    query: missingTitleQuery,
+    seedDocumentIds: [isolatedSeedId],
+  });
+  assert.equal(successEmpty.status, 'success');
+  assert.equal(successEmpty.sources.length, 0);
 }
 
 async function runCypher(

@@ -828,6 +828,99 @@ test('runPrivateChatDetailStep keeps detail snippets for graph-only documents', 
   assert.equal(result.sources[0]?.chunkId, undefined);
 });
 
+test('runPrivateChatDetailStep respects prefer_open lifecycle for graph-only reservation', async () => {
+  const openLifecycle = {
+    closedAt: null,
+    draft: null,
+    kind: 'issue' as const,
+    merged: null,
+    mergedAt: null,
+    state: 'open' as const,
+    stateReason: null,
+    statusKnown: true,
+    updatedAt: '2026-05-08T10:00:00.000Z',
+  };
+  const closedLifecycle = {
+    closedAt: '2026-05-08T12:00:00.000Z',
+    draft: null,
+    kind: 'issue' as const,
+    merged: null,
+    mergedAt: null,
+    state: 'closed' as const,
+    stateReason: 'completed',
+    statusKnown: true,
+    updatedAt: '2026-05-08T12:00:00.000Z',
+  };
+  const question = '未解決Issueの原因は？';
+  const prepared = runPrivateChatPreparingStep({
+    graphName: 'graph-a',
+    hybridSearchDocumentLimit: 2,
+    nowIso: TEST_NOW_ISO,
+    projectId: 'project-a',
+    question,
+  });
+  const openHybrid = {
+    ...sampleSource,
+    documentId: 'doc-open-hybrid',
+    vectorDistance: 0.2,
+    githubLifecycle: openLifecycle,
+  };
+  const filler = {
+    ...sampleSource,
+    documentId: 'doc-filler',
+    vectorDistance: 0.4,
+    githubLifecycle: openLifecycle,
+  };
+  const closedGraphOnly = createGraphCoverageCandidate({
+    documentId: 'doc-closed-graph',
+    githubLifecycle: closedLifecycle,
+    seedDocumentId: 'doc-open-hybrid',
+  });
+  const openGraphOnly = createGraphCoverageCandidate({
+    documentId: 'doc-open-graph',
+    githubLifecycle: openLifecycle,
+    seedDocumentId: 'doc-open-hybrid',
+  });
+  const nonGitHubGraphOnly = createGraphCoverageCandidate({
+    documentId: 'doc-non-github-graph',
+    docType: 'web_page',
+    githubLifecycle: undefined,
+    seedDocumentId: 'doc-open-hybrid',
+  });
+  const state = {
+    ...applyPrivateChatQuestionClassification(prepared, {
+      confidence: 'high',
+      expectedEvidence: [],
+      figure: [],
+      ground: [],
+      primaryOperation: 'cause',
+      secondaryOperations: [],
+    }),
+    mergedVectorSources: [openHybrid, filler],
+    graphSources: [closedGraphOnly, openGraphOnly, nonGitHubGraphOnly],
+  };
+
+  const result = await runPrivateChatDetailStep(state, {
+    async documentFetch({ documentIds }: { documentIds: readonly string[] }) {
+      return documentIds.map((documentId: string) => ({
+        ...sampleSource,
+        documentId,
+        snippet: `detail-${documentId}`,
+        title: `Detail ${documentId}`,
+      }));
+    },
+  } as never);
+
+  const selectedIds = result.sources.map((source) => source.documentId);
+  assert.ok(!selectedIds.includes('doc-closed-graph'));
+  assert.ok(selectedIds.includes('doc-open-hybrid'));
+  assert.ok(selectedIds.includes('doc-open-graph') || selectedIds.includes('doc-non-github-graph'));
+  const context = JSON.parse(result.retrievalContext) as {
+    sources: Array<{ documentId: string }>;
+  };
+  assert.ok(!context.sources.some((source) => source.documentId === 'doc-closed-graph'));
+});
+
 test('runPrivateChatDetailStep preserves occurrence timestamps from document fetch', async () => {
   const timelineSource = {
     ...sampleSource,
