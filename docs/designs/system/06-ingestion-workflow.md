@@ -284,4 +284,8 @@ export const ingestWorkflow = createWorkflow({
 - Drive Doc は file ID を論理 ID、`revisionId` を版 ID とし、過去版は `raw_documents` に保持したまま同じ Document ID を最新版へ切り替える。
 - Web ページは configured URL を論理 ID、`content_hash` を版 ID とする。canonical / redirect URL が変わっても論理 ID は変えず、本文 hash が同じ場合は既存 raw 版を再利用する。
 
+### Synthetic Monitor の readonly 観測境界
+
+Synthetic Monitor は `POST /internal/monitoring/v1/observations` から ingestion pipeline の各 stage（`raw` / `currentDocument` / `chunks` / `graph` / `schedule`）を **読み取り専用** で観測する。source schedule は expected raw version ではなく logical source identity（`project_id` + `source_type` + `logical_source_id`）で `data_source_schedules` を辿る。内部の `raw_documents` / `documents` / AGE graph schema や storage URI、provider payload は response に含めず、stage ごとの `ok` / `pending` / `failed` / `not_found` と schedule の `nextRunDue` だけを返す。queue 投入、parser 切替、graph 更新、schedule 変更は行わない。
+
 ---

@@ -69,4 +69,8 @@ gcloud scheduler jobs create http ingest-daily \
 
 ```
 
+### Synthetic Monitor の readonly 観測境界
+
+Synthetic Monitor は source sync schedule（`data_source_schedules`）と report schedule（`project_report_schedules`）の状態を **読み取り専用** で観測する。`enabled` / `retryCount` / active lease / `next_run_at` due 判定に必要な最小情報だけを stage status として返し、`last_error` 本文、worker token、lease token、dispatcher 起動は行わない。複数 schedule row がある場合は決定的に集約し、monitor 側から schedule を変更しない。
+
 ---

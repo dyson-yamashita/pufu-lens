@@ -7,6 +7,7 @@ const testRoot = fileURLToPath(new URL('../src', import.meta.url));
 // Database integration tests require DATABASE_URL and run via `pnpm test:db`.
 const excludedTestPaths = new Set([
   'actor-merge-db.test.ts',
+  'db-synthetic-monitor.test.ts',
   'graph-coverage-db.test.ts',
   'postgres-roundtrip.test.ts',
 ]);
