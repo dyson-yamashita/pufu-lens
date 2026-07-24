@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { readGitHubDocumentLifecycle } from './github-lifecycle.js';
 import { fetchWithRetry } from './http-retry.js';
 import type { ParsedDocument, ParsedDocumentType } from './ingestion-fixtures.js';
 import { sha256Hex, validateParsedDocument } from './ingestion-fixtures.js';
@@ -654,6 +655,7 @@ function documentMetadata(
     typeof parsed.metadata.parser === 'object' && parsed.metadata.parser !== null
       ? (parsed.metadata.parser as Record<string, unknown>)
       : {};
+  const githubLifecycle = readGitHubDocumentLifecycle(parsed.metadata);
 
   return {
     parser: {
@@ -662,6 +664,7 @@ function documentMetadata(
     },
     sourceId: parsed.sourceId,
     sourceType: parsed.sourceType,
+    ...(githubLifecycle ? { githubLifecycle } : {}),
   };
 }
 

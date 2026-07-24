@@ -7,6 +7,8 @@ import {
   hasChatSearchPeriod,
   validateChatSearchPeriod,
 } from './chat-search-period.ts';
+import type { GitHubDocumentLifecycle } from './github-lifecycle-contract.ts';
+import { parseGitHubDocumentLifecycle } from './github-lifecycle-contract.ts';
 import { jsonParameter } from './postgres-json.ts';
 import {
   type AgentRawReadViewEnvelope,
@@ -56,6 +58,8 @@ export interface ChatSource {
    * `null` means the time is unknown; `undefined` means the retrieval path did not project it.
    */
   readonly occurredAt?: string | null;
+  /** Internal retrieval metadata for GitHub lifecycle status; not exposed on public chat APIs. */
+  readonly githubLifecycle?: GitHubDocumentLifecycle;
   readonly rawDocumentId: string;
   readonly snippet?: string;
   readonly title: string;
@@ -1911,6 +1915,7 @@ export interface ChatSourceRow {
   readonly chunk_index?: number | null;
   readonly document_id: string;
   readonly doc_type: string;
+  readonly github_lifecycle?: GitHubDocumentLifecycle;
   readonly occurred_at?: string | null;
   readonly raw_document_id: string;
   readonly snippet?: string | null;
@@ -1919,6 +1924,21 @@ export interface ChatSourceRow {
   readonly vector_distance?: number | null;
   readonly vector_rank?: number | null;
   readonly keyword_rank?: number | null;
+}
+
+/**
+ * Runtime-validates optional GitHub lifecycle metadata embedded in a chat source row.
+ *
+ * @param value - Untrusted lifecycle JSON from SQL metadata projection
+ * @returns Parsed lifecycle metadata
+ * @throws When `value` is present but not a valid lifecycle object
+ */
+function parseOptionalGitHubLifecycle(value: unknown): GitHubDocumentLifecycle {
+  const lifecycle = parseGitHubDocumentLifecycle(value);
+  if (!lifecycle) {
+    throw new Error('Invalid chat source github_lifecycle.');
+  }
+  return lifecycle;
 }
 
 /**
@@ -1942,6 +1962,7 @@ export function parseChatSourceRow(value: unknown): ChatSourceRow {
     chunk_index,
     document_id,
     doc_type,
+    github_lifecycle,
     occurred_at,
     raw_document_id,
     snippet,
@@ -1966,6 +1987,9 @@ export function parseChatSourceRow(value: unknown): ChatSourceRow {
     canonical_uri: parseRequiredString(canonical_uri, 'canonical_uri'),
     document_id: parseRequiredString(document_id, 'document_id'),
     doc_type: parseRequiredString(doc_type, 'doc_type'),
+    ...(github_lifecycle === undefined
+      ? {}
+      : { github_lifecycle: parseOptionalGitHubLifecycle(github_lifecycle) }),
     ...(occurred_at === undefined
       ? {}
       : { occurred_at: parseOptionalNullableString(occurred_at, 'occurred_at') }),
@@ -2270,6 +2294,7 @@ function sourceFromRow(row: ChatSourceRow): ChatSource {
     documentId: row.document_id,
     docType: row.doc_type,
     fusedScore: row.fused_score ?? undefined,
+    ...(row.github_lifecycle ? { githubLifecycle: row.github_lifecycle } : {}),
     ...(row.occurred_at === undefined ? {} : { occurredAt: row.occurred_at }),
     rawDocumentId: row.raw_document_id,
     snippet: row.snippet?.trim() || undefined,
@@ -2349,6 +2374,7 @@ async function fetchChatSourcesByDocumentIds(
       d.id::text AS document_id,
       d.raw_document_id::text AS raw_document_id,
       d.doc_type,
+      d.metadata->'githubLifecycle' AS github_lifecycle,
       coalesce(d.title, 'Untitled') AS title,
       coalesce(d.canonical_uri, '') AS canonical_uri,
       CASE
