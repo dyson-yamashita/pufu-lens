@@ -213,6 +213,8 @@ const githubLifecycleSchema = z
 
 const chatSourceSchema = z.object({
   canonicalUri: z.string(),
+  chunkId: z.string().min(1).optional(),
+  chunkIndex: z.number().int().nonnegative().optional(),
   documentId: z.string(),
   docType: z.string(),
   fusedScore: z.number().min(0).max(1).optional(),
@@ -226,9 +228,17 @@ const chatSourceSchema = z.object({
   vectorRank: z.number().int().positive().optional(),
 });
 
-const chatSourceListSchema = z.object({
+/**
+ * Output contract for hybrid-search and other retrieval tools that return `ChatSource` lists.
+ *
+ * Sources may include synthesis-only `chunkId` / `chunkIndex` and retrieval score fields.
+ * Those values are stripped before private API responses, persisted history, and public chat.
+ */
+export const hybridSearchOutputSchema = z.object({
   sources: z.array(chatSourceSchema),
 });
+
+const chatSourceListSchema = hybridSearchOutputSchema;
 
 const chatSearchIsoInstantSchema = z.iso
   .datetime({ offset: true })

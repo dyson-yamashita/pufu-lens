@@ -538,6 +538,80 @@ export function mergeChatSourcesDeterministically(
   return merged;
 }
 
+/**
+ * Enriches a hybrid retrieval source with document-fetch metadata while preserving hit provenance.
+ *
+ * Hybrid snippet, chunk id/index, and retrieval-only score fields always come from `hybrid`.
+ * Detail metadata such as `occurredAt`, canonical URI, title, doc type, and raw document id
+ * are filled from `detail` when present.
+ */
+export function enrichHybridSourceWithDetail(hybrid: ChatSource, detail: ChatSource): ChatSource {
+  return {
+    ...hybrid,
+    canonicalUri: detail.canonicalUri || hybrid.canonicalUri,
+    docType: detail.docType || hybrid.docType,
+    rawDocumentId: detail.rawDocumentId || hybrid.rawDocumentId,
+    title: detail.title || hybrid.title,
+    ...(detail.occurredAt === undefined ? {} : { occurredAt: detail.occurredAt }),
+  };
+}
+
+/**
+ * Merges bounded detail retrieval with ranked workflow sources.
+ *
+ * Hybrid vector hits keep their matched snippet and chunk provenance while borrowing richer
+ * document metadata from `document-fetch`. Graph / timeline-only documents without a hybrid hit
+ * continue to use the detail snippet because no retrieval chunk was adopted for them.
+ */
+export function mergePrivateChatDetailSources(input: {
+  readonly detailSources: readonly ChatSource[];
+  readonly graphSources: readonly ChatSource[];
+  readonly hybridSources: readonly ChatSource[];
+  readonly includeTimelineSources: boolean;
+  readonly timelineSources: readonly ChatSource[];
+}): ChatSource[] {
+  const detailByDocumentId = new Map(
+    input.detailSources.map((source) => [source.documentId, source] as const),
+  );
+  const hybridByDocumentId = new Map(
+    input.hybridSources.map((source) => [source.documentId, source] as const),
+  );
+  const seen = new Set<string>();
+  const merged: ChatSource[] = [];
+
+  const appendSource = (source: ChatSource): void => {
+    const key = source.documentId || source.rawDocumentId || source.canonicalUri;
+    if (!key || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    const detail = detailByDocumentId.get(source.documentId);
+    const hybrid = hybridByDocumentId.get(source.documentId);
+    if (hybrid) {
+      merged.push(detail ? enrichHybridSourceWithDetail(hybrid, detail) : hybrid);
+      return;
+    }
+    if (detail) {
+      merged.push(detail);
+      return;
+    }
+    merged.push(source);
+  };
+
+  for (const source of input.hybridSources) {
+    appendSource(source);
+  }
+  for (const source of input.graphSources) {
+    appendSource(source);
+  }
+  if (input.includeTimelineSources) {
+    for (const source of input.timelineSources) {
+      appendSource(source);
+    }
+  }
+  return merged;
+}
+
 function scoreForMetric(source: ChatSource, metric: ChatScoreMetric): number | undefined {
   return metric === 'vector_distance' ? source.vectorDistance : source.fusedScore;
 }
@@ -878,6 +952,8 @@ export function formatPrivateChatRetrievalContext(
       retrievalConfidence: confidence,
       sources: sources.map((source) => ({
         canonicalUri: source.canonicalUri || null,
+        chunkId: source.chunkId ?? null,
+        chunkIndex: source.chunkIndex ?? null,
         documentId: source.documentId,
         docType: source.docType,
         ...(source.githubLifecycle ? { githubLifecycle: source.githubLifecycle } : {}),
@@ -1217,12 +1293,13 @@ export async function runPrivateChatDetailStep(
     'vector_distance',
   );
   const lifecycleSelection = applyGitHubLifecycleRetrievalSelection(
-    mergeChatSourcesDeterministically(
+    mergePrivateChatDetailSources({
       detailSources,
-      state.editing.inferredMode === 'timeline' ? state.timelineSources : [],
-      state.mergedVectorSources,
-      state.graphSources,
-    ),
+      graphSources: state.graphSources,
+      hybridSources: state.mergedVectorSources,
+      includeTimelineSources: state.editing.inferredMode === 'timeline',
+      timelineSources: state.timelineSources,
+    }),
     {
       primaryOperation: state.classification.primaryOperation,
       question: state.question,
