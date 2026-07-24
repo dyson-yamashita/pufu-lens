@@ -80,7 +80,7 @@ interface GitHubRaw {
   repository: string;
   number: number;
   title: string;
-  body: string;
+  body?: string | null;
   html_url: string;
   created_at: string;
   updated_at: string;
@@ -158,7 +158,11 @@ export async function parseRawContent(
 ): Promise<ParsedDocument> {
   switch (fixtureCase.sourceType) {
     case 'github':
-      return parseGitHub(fixtureCase, JSON.parse(rawText) as GitHubRaw);
+      return parseGitHub(
+        fixtureCase,
+        JSON.parse(rawText) as GitHubRaw,
+        options.topicExtractionAgent,
+      );
     case 'web':
       return parseWeb(fixtureCase, rawText, options.topicExtractionAgent);
     case 'gmail':
@@ -192,10 +196,11 @@ export function validateParsedDocument(parsed: ParsedDocument): ParsedDocument {
   return parsed;
 }
 
-function parseGitHub(
+async function parseGitHub(
   fixtureCase: Pick<IngestionFixtureCase, 'raw' | 'sourceType'>,
   raw: GitHubRaw,
-): ParsedDocument {
+  topicExtractionAgent: TopicExtractionAgent = createDeterministicTopicExtractionAgent(),
+): Promise<ParsedDocument> {
   const actors: ActorMention[] = [
     { displayName: raw.user.name, githubLogin: raw.user.login, role: 'author' },
   ];
@@ -228,9 +233,14 @@ function parseGitHub(
   }
   relations.push(...githubLinkedIssueRelations(raw));
 
+  const issueBodyText = raw.body ?? '';
+  const bodyText = [issueBodyText, ...(raw.comments ?? []).map((comment) => comment.body)].join(
+    '\n\n',
+  );
+
   return validateParsedDocument({
     actors,
-    bodyText: [raw.body, ...(raw.comments ?? []).map((comment) => comment.body)].join('\n\n'),
+    bodyText,
     canonicalUri: raw.html_url,
     docType: raw.kind,
     metadata: {
@@ -243,6 +253,12 @@ function parseGitHub(
     sourceId: fixtureCase.raw.sourceId,
     sourceType: 'github',
     title: raw.title,
+    topics: await topicExtractionAgent.extractTopics({
+      bodyText: issueBodyText,
+      canonicalUri: raw.html_url,
+      html: '',
+      title: raw.title,
+    }),
   });
 }
 
@@ -250,15 +266,17 @@ function githubLinkedIssueRelations(raw: GitHubRaw): ParsedRelation[] {
   if (raw.kind !== 'pull_request') {
     return [];
   }
-  return uniqueGitHubLinkedIssueRefs(`${raw.title}\n${raw.body}`, raw.repository).map((ref) => ({
-    metadata: {
-      number: ref.number,
-      reason: 'github_closing_keyword',
-      repository: ref.repository,
-    },
-    target: `${ref.repository.toLowerCase()}/issues/${ref.number}`,
-    type: 'RELATED_TO',
-  }));
+  return uniqueGitHubLinkedIssueRefs(`${raw.title}\n${raw.body ?? ''}`, raw.repository).map(
+    (ref) => ({
+      metadata: {
+        number: ref.number,
+        reason: 'github_closing_keyword',
+        repository: ref.repository,
+      },
+      target: `${ref.repository.toLowerCase()}/issues/${ref.number}`,
+      type: 'RELATED_TO',
+    }),
+  );
 }
 
 function uniqueGitHubLinkedIssueRefs(

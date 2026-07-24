@@ -16,11 +16,15 @@ STORAGE_ROOT=./.data/volumes/pufu-lens-data \
 pnpm ingest:parse --project sample-a --limit 10
 ```
 
-data source 作成時（server action）は、対象 project / data_source / source_type に built-in parser profile と `fixture-parser-v1` の approved parser version が **内部 seed** され、active version として設定される。`scripts/parse-raw-documents.ts` も既存 data source の補完として同じ default parser を seed する。**管理 UI から parser profile を作成・承認・却下する user-facing workflow は廃止** した（Issue #294）。未承認 parser の保留動作を確認したい場合は次を使う。
+data source 作成時（server action）は、対象 project / data_source / source_type に built-in parser profile と approved parser version が **内部 seed** され、active version として設定される。現在の built-in active version は全 source type で `fixture-parser-v2` であり、旧 `fixture-parser-v1` は immutable のまま DB に残す（artifact hash は上書きしない）。`Built-in <source> parser` という managed profile は seed のたびに approved v2 を active に保つ意図的契約であり、既に v2 active なら DB write は省略する。`scripts/parse-raw-documents.ts` も既存 data source の補完として同じ default parser を seed する。**管理 UI から parser profile を作成・承認・却下する user-facing workflow は廃止** した（Issue #294）。未承認 parser の保留動作を確認したい場合は次を使う。
 
 ```bash
 pnpm ingest:parse --project sample-a --limit 10 --no-seed-built-in-parsers
 ```
+
+GitHub parse は issue / PR の `title` と起票 `body` だけを `TopicExtractionAgent` に渡す。`comments` / `reviews` / diff / actor / token は agent 入力に含めない。`GEMINI_API_KEY` と `GEMINI_CHAT_MODEL` が設定されている場合は Gemini provider を使い、未設定時は deterministic provider に fallback する。topic 数は最大 10 件、候補語は最大 40 件（既定）、本文 excerpt は最大 12,000 文字。raw / provider 全文や secret はログに出さない。
+
+既存 GitHub raw の topic 再抽出手順は [GitHub 実データソース収集](github-source.md) の `ingest:reprocess` を参照する。
 
 ## 状態遷移
 

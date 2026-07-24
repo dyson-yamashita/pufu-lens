@@ -31,5 +31,6 @@
   "schemaVersion": 1,
   "sourceId": "example-org/pufu-sample/issues/101",
   "sourceType": "github",
-  "title": "Indexer should skip archived notes"
+  "title": "Indexer should skip archived notes",
+  "topics": []
 }

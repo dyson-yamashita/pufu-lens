@@ -54,7 +54,9 @@ test('parseRawDocuments stores parsed JSON and marks raw and queue parsed', asyn
   const parsed = JSON.parse(parsedBody);
   assert.equal(parsed.title, 'Fixture issue');
   assert.equal(parsed.sourceId, 'example-org/pufu-sample/issues/101');
+  assert.ok(Array.isArray(parsed.topics));
   assert.equal(parsed.metadata.parser.parserVersionId, 'parser-version-github');
+  assert.equal(repository.parsed?.parserVersion, 'fixture-parser-v2');
 });
 
 test('parseRawDocuments holds when no approved parser exists', async () => {
@@ -172,6 +174,27 @@ test('validateParserContract only accepts own JSON properties', () => {
     error: 'Raw document is missing required path: toString',
     ok: false,
   });
+});
+
+test('built-in parser versions keep legacy v1 distinct from active v2', () => {
+  const legacy = defaultBuiltInParserVersion({
+    parserProfileId: 'parser-profile-github',
+    parserVersionId: 'parser-version-github-v1',
+    sourceType: 'github',
+  });
+  legacy.version = 'fixture-parser-v1';
+  legacy.artifactHash = 'legacy-hash';
+
+  const active = defaultBuiltInParserVersion({
+    parserProfileId: 'parser-profile-github',
+    parserVersionId: 'parser-version-github-v2',
+    sourceType: 'github',
+  });
+
+  assert.equal(legacy.version, 'fixture-parser-v1');
+  assert.equal(active.version, 'fixture-parser-v2');
+  assert.notEqual(legacy.version, active.version);
+  assert.notEqual(legacy.artifactHash, active.artifactHash);
 });
 
 class InMemoryParseStorage implements ParseObjectStorage {

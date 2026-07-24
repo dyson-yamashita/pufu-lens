@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   extractRelatedDocumentSourceIds,
   parseAgtypeString,
+  selectGraphIndexTargets,
   selectMissingGraphTargets,
   selectRelatedDocumentBackfillTargets,
 } from './graph-target-selection.ts';
@@ -33,6 +34,35 @@ test('selectMissingGraphTargets applies the limit after filtering registered row
   assert.deepEqual(selectMissingGraphTargets(rows, new Set(['document:a']), 1), [
     { graphNodeId: 'document:b' },
   ]);
+});
+
+test('selectGraphIndexTargets includes parsed rows even when the Document node already exists', () => {
+  const rows = [
+    { graphNodeId: 'document:a', ingestStatus: 'indexed', sourceId: 'a' },
+    { graphNodeId: 'document:b', ingestStatus: 'parsed', sourceId: 'b' },
+    { graphNodeId: 'document:c', ingestStatus: 'indexed', sourceId: 'c' },
+    { graphNodeId: 'document:d', ingestStatus: 'parsed', sourceId: 'd' },
+  ];
+
+  assert.deepEqual(
+    selectGraphIndexTargets(rows, new Set(['document:a', 'document:b', 'document:c']), 3).map(
+      (row) => row.sourceId,
+    ),
+    ['b', 'd'],
+  );
+});
+
+test('selectGraphIndexTargets keeps row order for missing nodes and parsed re-index rows', () => {
+  const rows = [
+    { graphNodeId: 'document:a', ingestStatus: 'parsed', sourceId: 'a' },
+    { graphNodeId: 'document:b', ingestStatus: 'indexed', sourceId: 'b' },
+    { graphNodeId: 'document:c', ingestStatus: 'parsed', sourceId: 'c' },
+  ];
+
+  assert.deepEqual(
+    selectGraphIndexTargets(rows, new Set(['document:a']), 2).map((row) => row.sourceId),
+    ['a', 'b'],
+  );
 });
 
 test('selectRelatedDocumentBackfillTargets selects existing rows with missing related edges', () => {

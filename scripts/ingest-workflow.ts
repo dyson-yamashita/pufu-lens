@@ -16,6 +16,13 @@ import {
   shouldCountParsedRaw,
   summarizeDrainRemaining,
 } from './lib/ingest-workflow-drain.ts';
+import {
+  countStaleParserRawDocuments,
+  listStaleParserRawDocuments,
+  resetStaleParserRawDocuments,
+  validateReprocessCommandOptions,
+} from './lib/ingest-workflow-reprocess.ts';
+import { normalizeReprocessWorkflowSteps } from './lib/ingest-workflow-reprocess-steps.ts';
 
 const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
 const STEP_ORDER = ['collect', 'parse', 'resolve', 'chunk', 'graph'] as const;
@@ -24,9 +31,10 @@ const DEFAULT_DRAIN_MAX_RUNTIME_SECONDS = 540;
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 type WorkflowStep = (typeof STEP_ORDER)[number];
-type WorkflowCommand = 'run' | 'retry';
+type WorkflowCommand = 'run' | 'retry' | 'reprocess';
 
 type WorkflowOptions = {
+  apply?: boolean;
   dataSourceId?: string;
   drain?: boolean;
   dryRun?: boolean;
@@ -134,6 +142,10 @@ async function main(): Promise<void> {
     await retryCommand(options);
     return;
   }
+  if (command === 'reprocess') {
+    await reprocessCommand(options);
+    return;
+  }
 
   throw new Error(`Unknown workflow command: ${command ?? '<missing>'}`);
 }
@@ -220,6 +232,107 @@ async function retryCommand(options: WorkflowOptions): Promise<void> {
   } else {
     for (const step of steps) {
       await executeWorkflowStep({ options, projectSlug, run, step });
+    }
+  }
+
+  logEvent(run, { event: 'workflow_completed', llm: noLlmUsage() });
+}
+
+async function reprocessCommand(options: WorkflowOptions): Promise<void> {
+  const scope = validateReprocessCommandOptions(options);
+  const limit = options.limit ?? 10;
+  const run = createRunLogger({
+    command: 'reprocess',
+    projectSlug: scope.projectSlug,
+    sourceType: scope.sourceType,
+  });
+
+  const reprocessState = await withSql(async (sql: postgres.Sql) => {
+    const project = await lookupProject(sql, scope.projectSlug);
+    if (!project) {
+      throw new Error(`Project not found: ${scope.projectSlug}`);
+    }
+
+    if (options.dryRun) {
+      const remaining = await countStaleParserRawDocuments({
+        dataSourceId: options.dataSourceId,
+        projectId: project.id,
+        sourceType: scope.sourceType,
+        sql,
+      });
+      const selected = await listStaleParserRawDocuments({
+        dataSourceId: options.dataSourceId,
+        limit,
+        projectId: project.id,
+        sourceType: scope.sourceType,
+        sql,
+      });
+      return {
+        planned: true,
+        queueItems: 0,
+        rawDocuments: 0,
+        remaining,
+        selected,
+      };
+    }
+
+    if (!options.apply) {
+      throw new Error('ingest:reprocess requires --apply to reset queue state.');
+    }
+
+    return resetStaleParserRawDocuments({
+      dataSourceId: options.dataSourceId,
+      limit,
+      projectId: project.id,
+      sourceType: scope.sourceType,
+      sql,
+    });
+  });
+
+  logEvent(run, {
+    apply: options.apply ?? false,
+    dryRun: options.dryRun ?? false,
+    event: 'reprocess_reset',
+    limit,
+    llm: noLlmUsage(),
+    remaining: reprocessState.remaining,
+    reset: {
+      queueItems: reprocessState.queueItems,
+      rawDocuments: reprocessState.rawDocuments,
+    },
+    selectedCount: reprocessState.selected.length,
+    selectedSourceIds: reprocessState.selected.map((candidate) => candidate.sourceId),
+  });
+
+  if (options.dryRun) {
+    logEvent(run, { event: 'workflow_completed', llm: noLlmUsage() });
+    return;
+  }
+
+  const steps = normalizeReprocessWorkflowSteps(
+    selectSteps({ ...options, resumeFrom: options.resumeFrom ?? 'parse' }),
+  );
+  validateDrainOptions(options, steps);
+  logEvent(run, {
+    drain: options.drain ?? false,
+    dryRun: options.dryRun ?? false,
+    embeddingProvider: selectedEmbeddingProvider(options),
+    event: 'workflow_started',
+    llm: noLlmUsage(),
+    ...(options.drain
+      ? {
+          maxBatches: options.maxBatches ?? DEFAULT_DRAIN_MAX_BATCHES,
+          maxRuntimeSeconds: options.maxRuntimeSeconds ?? DEFAULT_DRAIN_MAX_RUNTIME_SECONDS,
+        }
+      : {}),
+    steps,
+  });
+
+  if (options.drain) {
+    await runDrainWorkflow({ options, projectSlug: scope.projectSlug, run, steps });
+  } else {
+    for (const step of steps) {
+      await executeWorkflowStep({ options, projectSlug: scope.projectSlug, run, step });
     }
   }
 
@@ -1097,6 +1210,8 @@ function parseArgs(argv: string[]): WorkflowOptions {
       options.state = readGitHubState(readOptionValue(argv, ++index, arg), arg);
     } else if (arg === '--failed-only') {
       options.failedOnly = true;
+    } else if (arg === '--apply') {
+      options.apply = true;
     } else if (arg === '--dry-run') {
       options.dryRun = true;
     } else if (arg === '--drain') {
