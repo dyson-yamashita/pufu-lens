@@ -141,6 +141,7 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 - PGroonga migration 適用前に PostgreSQL VM / Docker イメージを PGroonga 入りへ更新済みか確認:
 - PGroonga extension / index 確認: `SELECT extname FROM pg_extension WHERE extname = 'pgroonga';` と `\d document_chunks_content_pgroonga_idx`
 - data backfill 有無:
+- `0014_data_source_schedule_default_0600` 適用時: 既存 `data_source_schedules.daily_time` / `next_run_at` が保持され、新規 row の default だけが 06:00 であることを確認。既存 project を 06:00 へ移す場合は Data Sources 詳細から対象 source ごとに明示変更する。
 - AGE graph 更新有無:
 - vector / embedding 再生成有無:
 - heavy migration plan:

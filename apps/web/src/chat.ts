@@ -2083,19 +2083,6 @@ function parseStoredChatSource(value: unknown): ChatSource {
   if (!isRecord(value)) {
     throw new Error('Invalid stored chat source.');
   }
-  for (const field of [
-    'chunkId',
-    'chunkIndex',
-    'fusedScore',
-    'keywordRank',
-    'occurredAt',
-    'vectorDistance',
-    'vectorRank',
-  ]) {
-    if (field in value) {
-      throw new Error('Invalid stored chat source.');
-    }
-  }
   return {
     canonicalUri: parseRequiredString(value.canonicalUri, 'canonicalUri'),
     documentId: parseRequiredString(value.documentId, 'documentId'),
