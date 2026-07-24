@@ -56,7 +56,7 @@ type GraphTargetRow = {
   documentId: string;
   documentRawDocumentId: string;
   graphNodeId: string;
-  ingestStatus: string;
+  ingestStatus: 'parsed' | 'indexed';
   parsedUri: string;
   rawContentHash: string;
   rawDocumentId: string;

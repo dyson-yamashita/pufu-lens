@@ -210,7 +210,7 @@ async function retryCommand(options: WorkflowOptions): Promise<void> {
     reset,
   });
 
-  const steps = selectSteps({ ...options, resumeFrom: options.resumeFrom ?? 'parse' });
+  const steps = selectWorkflowSteps(options);
   validateDrainOptions(options, steps);
   logEvent(run, {
     drain: options.drain ?? false,
@@ -309,9 +309,7 @@ async function reprocessCommand(options: WorkflowOptions): Promise<void> {
     return;
   }
 
-  const steps = normalizeReprocessWorkflowSteps(
-    selectSteps({ ...options, resumeFrom: options.resumeFrom ?? 'parse' }),
-  );
+  const steps = normalizeReprocessWorkflowSteps(selectWorkflowSteps(options));
   validateDrainOptions(options, steps);
   logEvent(run, {
     drain: options.drain ?? false,
@@ -1127,6 +1125,13 @@ function selectSteps(options: { resumeFrom?: WorkflowStep; step?: WorkflowStep }
     throw new Error(`Unknown --resume-from value: ${options.resumeFrom}`);
   }
   return STEP_ORDER.slice(startIndex);
+}
+
+function selectWorkflowSteps(options: {
+  resumeFrom?: WorkflowStep;
+  step?: WorkflowStep;
+}): WorkflowStep[] {
+  return selectSteps(options.step ? options : { resumeFrom: options.resumeFrom ?? 'parse' });
 }
 
 function createRunLogger(input: {

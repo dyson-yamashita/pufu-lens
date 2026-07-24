@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, createSign, randomBytes } from 'node:crypto';
 import type postgres from 'postgres';
 import { parseOAuthConnectionRow } from './collection-connection-row-parsers.ts';
+import { assertCanonicalUuid } from './uuid.ts';
 
 const ENCRYPTED_CONNECTION_SECRET_PREFIX = 'encrypted:';
 
@@ -118,7 +119,7 @@ export async function readCollectionConnection(input: {
   sourceType: CollectionOAuthSourceType;
   sql: postgres.Sql;
 }): Promise<CollectionConnection> {
-  assertUuid(input.connectionId, '--connection-id');
+  assertCanonicalUuid(input.connectionId, '--connection-id');
   const sourceScope = requiredScopeForSourceType(input.sourceType);
   const scopeFilter = sourceScope ? input.sql`${sourceScope} = ANY(oc.scopes)` : input.sql`true`;
   const githubFilter =
@@ -447,10 +448,4 @@ function connectionSecretKey(): Buffer {
     throw new Error('CONNECTION_SECRET_KEY is required to decrypt OAuth connection tokens.');
   }
   return createHash('sha256').update(value).digest();
-}
-
-function assertUuid(value: string, name: string): void {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
-    throw new Error(`${name} must be a valid UUID.`);
-  }
 }

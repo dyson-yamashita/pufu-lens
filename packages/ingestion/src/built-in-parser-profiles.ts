@@ -11,7 +11,7 @@ import {
   PARSED_SCHEMA_VERSION,
 } from './raw-parse.js';
 
-const BUILT_IN_SOURCE_TYPES = [
+export const BUILT_IN_SOURCE_TYPES = [
   'github',
   'web',
   'gmail',

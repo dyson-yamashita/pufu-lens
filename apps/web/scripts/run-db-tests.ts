@@ -15,6 +15,7 @@ const dbTestFiles = [
   resolve(webTestRoot, 'postgres-roundtrip.test.ts'),
   resolve(webTestRoot, 'admin-report-schedule-runtime.test.ts'),
   resolve(webTestRoot, 'actor-merge-db.test.ts'),
+  resolve(webTestRoot, 'graph-coverage-db.test.ts'),
   resolve(repoRoot, 'scripts/lib/built-in-parser-profiles-db.test.ts'),
   resolve(repoRoot, 'scripts/lib/ingest-workflow-reprocess-db.test.ts'),
 ];

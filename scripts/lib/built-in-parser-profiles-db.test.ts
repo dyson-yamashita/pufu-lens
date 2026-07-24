@@ -281,24 +281,22 @@ async function seedOtherLegacyV1Profile(sql: postgres.Sql): Promise<void> {
 }
 
 async function readProfileId(sql: postgres.Sql, dataSourceId: string): Promise<string> {
-  const rows = (await sql`
+  const rows = await sql`
     SELECT id::text AS id
     FROM public.parser_profiles
     WHERE project_id = ${fixture.projectId}
       AND data_source_id = ${dataSourceId}
       AND source_type = 'github'
       AND name = 'Built-in github parser'
-  `) as Array<{ id: string }>;
-  const profileId = rows[0]?.id;
-  assert.ok(profileId);
-  return profileId;
+  `;
+  return parseProfileIdRow(rows);
 }
 
 async function readParserProfileState(
   sql: postgres.Sql,
   profileId: string,
 ): Promise<ParserProfileState> {
-  const rows = (await sql`
+  const rows = await sql`
     SELECT
       active.version AS "activeVersion",
       v1.artifact_hash AS "v1ArtifactHash",
@@ -312,10 +310,47 @@ async function readParserProfileState(
       ON v2.parser_profile_id = pp.id
       AND v2.version = ${BUILT_IN_PARSER_VERSION}
     WHERE pp.id = ${profileId}
-  `) as ParserProfileState[];
-  const state = rows[0];
-  assert.ok(state);
-  return state;
+  `;
+  return parseParserProfileStateRow(rows);
+}
+
+function parseProfileIdRow(rows: readonly unknown[]): string {
+  const row = rows[0];
+  if (!row || typeof row !== 'object' || Array.isArray(row)) {
+    throw new Error('Invalid parser profile id row.');
+  }
+  const id = (row as { id?: unknown }).id;
+  if (typeof id !== 'string' || id.trim() === '') {
+    throw new Error('Invalid parser profile id row.');
+  }
+  return id;
+}
+
+function parseParserProfileStateRow(rows: readonly unknown[]): ParserProfileState {
+  const row = rows[0];
+  if (!row || typeof row !== 'object' || Array.isArray(row)) {
+    throw new Error('Invalid parser profile state row.');
+  }
+  const record = row as {
+    activeVersion?: unknown;
+    v1ArtifactHash?: unknown;
+    v2ArtifactHash?: unknown;
+  };
+  return {
+    activeVersion: parseNullableStringField(record.activeVersion, 'activeVersion'),
+    v1ArtifactHash: parseNullableStringField(record.v1ArtifactHash, 'v1ArtifactHash'),
+    v2ArtifactHash: parseNullableStringField(record.v2ArtifactHash, 'v2ArtifactHash'),
+  };
+}
+
+function parseNullableStringField(value: unknown, fieldName: string): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    throw new Error(`Invalid parser profile state field: ${fieldName}`);
+  }
+  return value;
 }
 
 async function resetFixture(sql: postgres.Sql): Promise<void> {

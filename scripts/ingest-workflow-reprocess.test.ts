@@ -47,13 +47,14 @@ test('reprocess dry-run does not print secret-like workflow output', async () =>
       '2',
     ],
     cwd: repoRoot,
-    env: { DATABASE_URL: undefined },
+    env: { DATABASE_URL: 'postgresql://example.invalid/pufu_lens' },
     scriptPath: ingestWorkflowScript,
   });
 
   assert.notEqual(result.exitCode, 0);
   const emitted = `${result.stderr}\n${JSON.stringify(result.events)}`;
   assert.doesNotMatch(emitted, /comment-only|token=|GEMINI_API_KEY/);
+  assert.doesNotMatch(emitted, /DATABASE_URL is required/);
 });
 
 test('reprocess apply without database URL fails before mutation', async () => {

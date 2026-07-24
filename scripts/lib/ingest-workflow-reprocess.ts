@@ -127,7 +127,8 @@ export async function listStaleParserRawDocuments(input: {
  * be retried back to the previous parsed JSON.
  *
  * @param input - Project scope, optional data source filter, and maximum rows to reset.
- * @returns Reset counts, remaining candidates, and the queue ids that were reset.
+ * @returns Reset counts, remaining candidates, and selected `ReprocessCandidate` values
+ *   (`queueId`, `rawDocumentId`, `sourceId`).
  */
 export async function resetStaleParserRawDocuments(input: {
   dataSourceId?: string;

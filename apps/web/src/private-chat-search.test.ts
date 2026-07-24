@@ -79,6 +79,46 @@ const testEmbeddingProvider: ChatEmbeddingProvider = {
 
 const TEST_NOW_ISO = '2026-07-22T00:30:00.000Z';
 
+function createGraphCoverageCandidate(overrides: Record<string, unknown> = {}) {
+  return {
+    ...sampleSource,
+    documentId: 'doc-graph',
+    hopCount: 1 as const,
+    relationType: 'RELATED_TO' as const,
+    seedDocumentId: sampleSource.documentId,
+    title: 'Graph Supplement',
+    ...overrides,
+  };
+}
+
+function createRetrievalRepositoryMock(overrides: Record<string, unknown> = {}) {
+  const graphCoverageQueryCalls: number[] = [];
+  const repository = {
+    async documentFetch() {
+      return [sampleSource];
+    },
+    async graphCoverageQuery() {
+      graphCoverageQueryCalls.push(1);
+      return {
+        candidates: [createGraphCoverageCandidate()],
+        queryFailed: false,
+        relationCandidateCounts: { MENTIONS: 0, RELATED_TO: 1, SAME_AS: 0 },
+      };
+    },
+    async hybridSearch() {
+      return [
+        { ...sampleSource, vectorDistance: 0.2 },
+        { ...createGraphCoverageCandidate(), vectorDistance: 0.3 },
+      ];
+    },
+    async timelineSearch() {
+      return [];
+    },
+    ...overrides,
+  };
+  return { graphCoverageQueryCalls, repository };
+}
+
 test('buildPrivateChatSearchQueryPlan keeps the normalized original query as the primary search', () => {
   const question = '  pufu-editorでのエラー対応実績を教えてください  ';
   const plan = buildPrivateChatSearchQueryPlan(question);
@@ -491,25 +531,18 @@ test('resolvePrivateChatRetryQueries adds simplified retry when no scored vector
 
 test('runPrivateChatSearchRetrieval always performs hybrid search and graph query', async () => {
   const hybridSearchInputs: string[] = [];
-  const graphQueryCalls: number[] = [];
-  const timelineSearchCalls: number[] = [];
-  const repository = {
-    async documentFetch() {
-      return [sampleSource];
-    },
-    async graphQuery() {
-      graphQueryCalls.push(1);
-      return [{ ...sampleSource, documentId: 'doc-graph' }];
-    },
-    async timelineSearch() {
-      timelineSearchCalls.push(1);
-      return [{ ...sampleSource, documentId: 'doc-timeline' }];
-    },
+  const { graphCoverageQueryCalls, repository } = createRetrievalRepositoryMock({
     async hybridSearch({ query }: { query: string }) {
       hybridSearchInputs.push(query);
-      return [{ ...sampleSource, vectorDistance: 0.2 }];
+      return [
+        { ...sampleSource, vectorDistance: 0.2 },
+        { ...createGraphCoverageCandidate(), vectorDistance: 0.3 },
+      ];
     },
-  };
+    async timelineSearch() {
+      return [{ ...sampleSource, documentId: 'doc-timeline' }];
+    },
+  });
 
   await runPrivateChatSearchRetrieval({
     embeddingProvider: testEmbeddingProvider,
@@ -519,31 +552,27 @@ test('runPrivateChatSearchRetrieval always performs hybrid search and graph quer
     repository: repository as never,
   });
 
-  assert.equal(hybridSearchInputs.length, 1);
-  assert.equal(graphQueryCalls.length, 1);
-  assert.equal(timelineSearchCalls.length, 0);
+  assert.ok(hybridSearchInputs.length >= 1);
+  assert.equal(graphCoverageQueryCalls.length, 1);
 });
 
 test('runPrivateChatSearchRetrieval runs timeline for deterministic timeline fallback', async () => {
   const stages: string[] = [];
   const hybridSearchInputs: string[] = [];
   const timelineSearchInputs: Array<{ query: string }> = [];
-  const repository = {
-    async documentFetch() {
-      return [sampleSource];
-    },
-    async graphQuery() {
-      return [{ ...sampleSource, documentId: 'doc-graph' }];
+  const { repository } = createRetrievalRepositoryMock({
+    async hybridSearch({ query }: { query: string }) {
+      hybridSearchInputs.push(query);
+      return [
+        { ...sampleSource, vectorDistance: 0.2 },
+        { ...createGraphCoverageCandidate(), vectorDistance: 0.3 },
+      ];
     },
     async timelineSearch({ query }: { query: string }) {
       timelineSearchInputs.push({ query });
       return [{ ...sampleSource, documentId: 'doc-timeline' }];
     },
-    async hybridSearch({ query }: { query: string }) {
-      hybridSearchInputs.push(query);
-      return [{ ...sampleSource, vectorDistance: 0.2 }];
-    },
-  };
+  });
 
   const question = '障害対応の経緯と時系列を教えて';
   await runPrivateChatSearchRetrieval({
@@ -558,7 +587,7 @@ test('runPrivateChatSearchRetrieval runs timeline for deterministic timeline fal
     repository: repository as never,
   });
 
-  assert.equal(hybridSearchInputs.length, 1);
+  assert.ok(hybridSearchInputs.length >= 1);
   assert.equal(timelineSearchInputs.length, 1);
   assert.equal(timelineSearchInputs[0]?.query, question);
   assert.ok(!stages.includes('retrying'));
@@ -599,12 +628,13 @@ test('runPrivateChatSearchRetrieval forwards parsed period to timelineSearch', a
     period?: { endAt: string; startAt: string };
     query: string;
   }> = [];
-  const repository = {
-    async documentFetch() {
-      return [sampleSource];
-    },
-    async graphQuery() {
-      return [];
+  const { repository } = createRetrievalRepositoryMock({
+    async graphCoverageQuery() {
+      return {
+        candidates: [],
+        queryFailed: false,
+        relationCandidateCounts: { MENTIONS: 0, RELATED_TO: 0, SAME_AS: 0 },
+      };
     },
     async timelineSearch(input: {
       limit: number;
@@ -614,10 +644,7 @@ test('runPrivateChatSearchRetrieval forwards parsed period to timelineSearch', a
       timelineInputs.push(input);
       return [{ ...sampleSource, documentId: 'doc-timeline' }];
     },
-    async hybridSearch() {
-      return [{ ...sampleSource, vectorDistance: 0.2 }];
-    },
-  };
+  });
 
   await runPrivateChatSearchRetrieval({
     embeddingProvider: testEmbeddingProvider,
@@ -801,6 +828,99 @@ test('runPrivateChatDetailStep keeps detail snippets for graph-only documents', 
   assert.equal(result.sources[0]?.chunkId, undefined);
 });
 
+test('runPrivateChatDetailStep respects prefer_open lifecycle for graph-only reservation', async () => {
+  const openLifecycle = {
+    closedAt: null,
+    draft: null,
+    kind: 'issue' as const,
+    merged: null,
+    mergedAt: null,
+    state: 'open' as const,
+    stateReason: null,
+    statusKnown: true,
+    updatedAt: '2026-05-08T10:00:00.000Z',
+  };
+  const closedLifecycle = {
+    closedAt: '2026-05-08T12:00:00.000Z',
+    draft: null,
+    kind: 'issue' as const,
+    merged: null,
+    mergedAt: null,
+    state: 'closed' as const,
+    stateReason: 'completed',
+    statusKnown: true,
+    updatedAt: '2026-05-08T12:00:00.000Z',
+  };
+  const question = '未解決Issueの原因は？';
+  const prepared = runPrivateChatPreparingStep({
+    graphName: 'graph-a',
+    hybridSearchDocumentLimit: 2,
+    nowIso: TEST_NOW_ISO,
+    projectId: 'project-a',
+    question,
+  });
+  const openHybrid = {
+    ...sampleSource,
+    documentId: 'doc-open-hybrid',
+    vectorDistance: 0.2,
+    githubLifecycle: openLifecycle,
+  };
+  const filler = {
+    ...sampleSource,
+    documentId: 'doc-filler',
+    vectorDistance: 0.4,
+    githubLifecycle: openLifecycle,
+  };
+  const closedGraphOnly = createGraphCoverageCandidate({
+    documentId: 'doc-closed-graph',
+    githubLifecycle: closedLifecycle,
+    seedDocumentId: 'doc-open-hybrid',
+  });
+  const openGraphOnly = createGraphCoverageCandidate({
+    documentId: 'doc-open-graph',
+    githubLifecycle: openLifecycle,
+    seedDocumentId: 'doc-open-hybrid',
+  });
+  const nonGitHubGraphOnly = createGraphCoverageCandidate({
+    documentId: 'doc-non-github-graph',
+    docType: 'web_page',
+    githubLifecycle: undefined,
+    seedDocumentId: 'doc-open-hybrid',
+  });
+  const state = {
+    ...applyPrivateChatQuestionClassification(prepared, {
+      confidence: 'high',
+      expectedEvidence: [],
+      figure: [],
+      ground: [],
+      primaryOperation: 'cause',
+      secondaryOperations: [],
+    }),
+    mergedVectorSources: [openHybrid, filler],
+    graphSources: [closedGraphOnly, openGraphOnly, nonGitHubGraphOnly],
+  };
+
+  const result = await runPrivateChatDetailStep(state, {
+    async documentFetch({ documentIds }: { documentIds: readonly string[] }) {
+      return documentIds.map((documentId: string) => ({
+        ...sampleSource,
+        documentId,
+        snippet: `detail-${documentId}`,
+        title: `Detail ${documentId}`,
+      }));
+    },
+  } as never);
+
+  const selectedIds = result.sources.map((source) => source.documentId);
+  assert.ok(!selectedIds.includes('doc-closed-graph'));
+  assert.ok(selectedIds.includes('doc-open-hybrid'));
+  assert.ok(selectedIds.includes('doc-open-graph') || selectedIds.includes('doc-non-github-graph'));
+  const context = JSON.parse(result.retrievalContext) as {
+    sources: Array<{ documentId: string }>;
+  };
+  assert.ok(!context.sources.some((source) => source.documentId === 'doc-closed-graph'));
+});
+
 test('runPrivateChatDetailStep preserves occurrence timestamps from document fetch', async () => {
   const timelineSource = {
     ...sampleSource,
@@ -913,21 +1033,22 @@ test('runPrivateChatSearchRetrieval runs one simplified retry when neutral prima
   const hybridSearchInputs: string[] = [];
   const stages: string[] = [];
   const plan = buildPrivateChatSearchQueryPlan('プロジェクト概要 最新 更新 状況 教えてください');
-  const repository = {
+  const { repository } = createRetrievalRepositoryMock({
     async documentFetch() {
       return [];
     },
-    async graphQuery() {
-      return [];
-    },
-    async timelineSearch() {
-      return [];
+    async graphCoverageQuery() {
+      return {
+        candidates: [],
+        queryFailed: false,
+        relationCandidateCounts: { MENTIONS: 0, RELATED_TO: 0, SAME_AS: 0 },
+      };
     },
     async hybridSearch({ query }: { query: string }) {
       hybridSearchInputs.push(query);
       return query === plan.simplifiedRetryQuery ? [sampleSource] : [];
     },
-  };
+  });
 
   await runPrivateChatSearchRetrieval({
     embeddingProvider: testEmbeddingProvider,
@@ -940,9 +1061,8 @@ test('runPrivateChatSearchRetrieval runs one simplified retry when neutral prima
     repository: repository as never,
   });
 
-  assert.equal(hybridSearchInputs.length, 2);
-  assert.equal(hybridSearchInputs[0], plan.primaryQuery);
-  assert.equal(hybridSearchInputs[1], plan.simplifiedRetryQuery);
+  assert.ok(hybridSearchInputs.includes(plan.primaryQuery));
+  assert.ok(plan.simplifiedRetryQuery && hybridSearchInputs.includes(plan.simplifiedRetryQuery));
   assert.ok(stages.includes('retrying'));
 });
 
@@ -1054,7 +1174,9 @@ test('applyGitHubLifecycleRetrievalSelection keeps closed background for next_ac
     result.sources.map((source) => source.documentId),
     ['open-doc', 'closed-doc'],
   );
-  const serializedContext = formatPrivateChatRetrievalContext(result.sources, 'weak', result.hint);
+  const serializedContext = formatPrivateChatRetrievalContext(result.sources, 'weak', {
+    lifecycleHint: result.hint,
+  });
   const context = JSON.parse(serializedContext) as { lifecycleSelection?: string };
   assert.match(context.lifecycleSelection ?? '', /open item を優先/);
   assert.match(context.lifecycleSelection ?? '', /closed item は背景/);

@@ -167,3 +167,28 @@ test('sanitizeGitHubLifecycleError redacts repository paths and secrets', () => 
   assert.doesNotMatch(sanitized, /private-org/);
   assert.doesNotMatch(sanitized, /token=abc123/);
 });
+
+test('sanitizeGitHubLifecycleError redacts Authorization headers and GitHub token prefixes', () => {
+  const bearerToken = 'ghp_FAKEPASS1REVIEWGHPLIFECYCLETOKEN0001';
+  const queryToken = 'gho_FAKEPASS1REVIEWGHOLIFECYCLETOKEN0002';
+  const jsonToken = 'github_pat_FAKEPASS1REVIEWPATLIFECYCLETOKEN03';
+  const directToken = 'ghu_FAKEPASS1REVIEWGHULIFECYCLETOKEN0004';
+  const sanitized = sanitizeGitHubLifecycleError(
+    new Error(
+      [
+        `Authorization: Bearer ${bearerToken}`,
+        `authorization=Bearer ${queryToken}`,
+        `"Authorization":"Bearer ${jsonToken}"`,
+        `Authorization: ${directToken}`,
+      ].join(' | '),
+    ),
+  );
+  assert.match(sanitized, /Authorization: Bearer <redacted>/);
+  assert.match(sanitized, /authorization=Bearer <redacted>/);
+  assert.match(sanitized, /"Authorization":"Bearer <redacted>"/);
+  assert.match(sanitized, /Authorization: <redacted>/);
+  assert.doesNotMatch(sanitized, /ghp_FAKEPASS1/);
+  assert.doesNotMatch(sanitized, /gho_FAKEPASS1/);
+  assert.doesNotMatch(sanitized, /github_pat_FAKEPASS1/);
+  assert.doesNotMatch(sanitized, /ghu_FAKEPASS1/);
+});

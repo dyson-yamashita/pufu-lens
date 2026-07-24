@@ -738,36 +738,58 @@ export class GitHubApiRequestError extends Error {
   }
 }
 
+function readGitHubRateLimitRemaining(headers: Headers): number | undefined {
+  const remainingHeader = headers.get('x-ratelimit-remaining');
+  const parsedRemaining =
+    remainingHeader !== null && remainingHeader !== '' ? Number(remainingHeader) : undefined;
+  return Number.isFinite(parsedRemaining) ? parsedRemaining : undefined;
+}
+
+function createGitHubApiRequestError(input: {
+  path: string;
+  response: Response;
+}): GitHubApiRequestError {
+  return new GitHubApiRequestError({
+    path: input.path,
+    rateLimitRemaining: readGitHubRateLimitRemaining(input.response.headers),
+    status: input.response.status,
+  });
+}
+
+/**
+ * Fetches JSON from the GitHub REST API.
+ *
+ * @param input.path - API path beginning with `/`, excluding `https://api.github.com`
+ * @param input.token - Optional bearer token for authenticated requests
+ * @returns Parsed JSON response body
+ * @throws {GitHubApiRequestError} When GitHub returns a non-2xx status, including optional
+ *   finite `x-ratelimit-remaining` metadata on the error
+ */
 export async function fetchGitHubJson(input: { path: string; token?: string }): Promise<unknown> {
   const response = await fetchWithRetry(`https://api.github.com${input.path}`, {
     headers: githubHeaders(input.token),
   });
   if (!response.ok) {
-    const remainingHeader = response.headers.get('x-ratelimit-remaining');
-    const parsedRemaining =
-      remainingHeader !== null && remainingHeader !== '' ? Number(remainingHeader) : undefined;
-    throw new GitHubApiRequestError({
-      path: input.path,
-      rateLimitRemaining: Number.isFinite(parsedRemaining) ? parsedRemaining : undefined,
-      status: response.status,
-    });
+    throw createGitHubApiRequestError({ path: input.path, response });
   }
   return response.json();
 }
 
+/**
+ * Fetches a GitHub REST diff/text response.
+ *
+ * @param input.path - API path beginning with `/`, excluding `https://api.github.com`
+ * @param input.token - Optional bearer token for authenticated requests
+ * @returns Raw response body text
+ * @throws {GitHubApiRequestError} When GitHub returns a non-2xx status, including optional
+ *   finite `x-ratelimit-remaining` metadata on the error
+ */
 export async function fetchGitHubText(input: { path: string; token?: string }): Promise<string> {
   const response = await fetchWithRetry(`https://api.github.com${input.path}`, {
     headers: { ...githubHeaders(input.token), accept: 'application/vnd.github.v3.diff' },
   });
   if (!response.ok) {
-    const remainingHeader = response.headers.get('x-ratelimit-remaining');
-    const parsedRemaining =
-      remainingHeader !== null && remainingHeader !== '' ? Number(remainingHeader) : undefined;
-    throw new GitHubApiRequestError({
-      path: input.path,
-      rateLimitRemaining: Number.isFinite(parsedRemaining) ? parsedRemaining : undefined,
-      status: response.status,
-    });
+    throw createGitHubApiRequestError({ path: input.path, response });
   }
   return response.text();
 }
