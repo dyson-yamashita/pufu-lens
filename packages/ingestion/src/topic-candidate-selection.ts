@@ -308,6 +308,11 @@ function selectBalancedTopicCandidates(
   );
 }
 
+interface LexicalRepresentation {
+  readonly bigrams: ReadonlySet<string>;
+  readonly normalized: string;
+}
+
 function applyMmrDiversityReranking(
   rankedCandidates: readonly RankedTopicCandidate[],
   maxCandidates: number,
@@ -315,33 +320,38 @@ function applyMmrDiversityReranking(
   if (rankedCandidates.length === 0 || maxCandidates <= 0) {
     return [];
   }
-  const maxScore = rankedCandidates[0]?.score ?? 1;
+  const mmrPoolSize = Math.max(maxCandidates, Math.min(rankedCandidates.length, maxCandidates * 5));
+  const mmrPool = rankedCandidates.slice(0, mmrPoolSize);
+  const lexicalRepresentations = mmrPool.map((candidate) =>
+    createLexicalRepresentation(candidate.record.target),
+  );
+  const maxScore = mmrPool[0]?.score ?? 1;
   const selected: MutableTopicCandidateRecord[] = [];
+  const selectedRepresentations: LexicalRepresentation[] = [];
   const coveredSections = new Set<number>();
-  const remaining = [...rankedCandidates];
-  while (selected.length < maxCandidates && remaining.length > 0) {
-    let bestIndex = 0;
+  const remainingIndices = mmrPool.map((_candidate, index) => index);
+  while (selected.length < maxCandidates && remainingIndices.length > 0) {
+    let bestPoolIndex = remainingIndices[0] ?? 0;
     let bestScore = Number.NEGATIVE_INFINITY;
-    for (let index = 0; index < remaining.length; index += 1) {
-      const candidate = remaining[index];
-      if (!candidate) {
+    let bestMaxSimilarity = 0;
+    for (const poolIndex of remainingIndices) {
+      const candidate = mmrPool[poolIndex];
+      const candidateRepresentation = lexicalRepresentations[poolIndex];
+      if (!candidate || !candidateRepresentation) {
         continue;
       }
       const relevance = candidate.score / maxScore;
-      const maxSimilarity =
-        selected.length === 0
-          ? 0
-          : Math.max(
-              ...selected.map((entry) => lexicalSimilarity(candidate.record.target, entry.target)),
-            );
+      const maxSimilarity = maxLexicalSimilarityToSelected(
+        candidateRepresentation,
+        selectedRepresentations,
+      );
       if (
-        selected.length > 0 &&
-        maxSimilarity >= NEAR_DUPLICATE_SIMILARITY_THRESHOLD &&
-        remaining.some(
-          (other) =>
-            other &&
-            lexicalSimilarity(candidate.record.target, other.record.target) <
-              NEAR_DUPLICATE_SIMILARITY_THRESHOLD,
+        shouldSkipNearDuplicateCandidate(
+          candidateRepresentation,
+          maxSimilarity,
+          lexicalRepresentations,
+          remainingIndices,
+          poolIndex,
         )
       ) {
         continue;
@@ -351,42 +361,42 @@ function applyMmrDiversityReranking(
         MMR_RELEVANCE_WEIGHT * relevance +
         SECTION_NOVELTY_WEIGHT * sectionNovelty -
         (1 - MMR_RELEVANCE_WEIGHT) * maxSimilarity;
+      const bestCandidate = mmrPool[bestPoolIndex];
       if (
         mmrScore > bestScore ||
         (mmrScore === bestScore &&
-          candidate.record.target.localeCompare(remaining[bestIndex]?.record.target ?? '', 'ja') <
-            0)
+          candidate.record.target.localeCompare(bestCandidate?.record.target ?? '', 'ja') < 0)
       ) {
         bestScore = mmrScore;
-        bestIndex = index;
+        bestPoolIndex = poolIndex;
+        bestMaxSimilarity = maxSimilarity;
       }
     }
     if (bestScore === Number.NEGATIVE_INFINITY) {
       break;
     }
-    const next = remaining[bestIndex];
-    if (!next) {
+    const next = mmrPool[bestPoolIndex];
+    const nextRepresentation = lexicalRepresentations[bestPoolIndex];
+    if (!next || !nextRepresentation) {
       break;
     }
-    const maxSimilarityToSelected =
-      selected.length === 0
-        ? 0
-        : Math.max(...selected.map((entry) => lexicalSimilarity(next.record.target, entry.target)));
-    const hasDiverseAlternative = remaining.some(
-      (alternative, index) =>
-        index !== bestIndex &&
-        lexicalSimilarity(next.record.target, alternative.record.target) <
-          NEAR_DUPLICATE_SIMILARITY_THRESHOLD,
-    );
     if (
-      selected.length > 0 &&
-      maxSimilarityToSelected >= NEAR_DUPLICATE_SIMILARITY_THRESHOLD &&
-      !hasDiverseAlternative
+      shouldStopDueToNearDuplicateCluster(
+        nextRepresentation,
+        bestMaxSimilarity,
+        lexicalRepresentations,
+        remainingIndices,
+        bestPoolIndex,
+      )
     ) {
       break;
     }
-    remaining.splice(bestIndex, 1);
+    const remainingIndex = remainingIndices.indexOf(bestPoolIndex);
+    if (remainingIndex >= 0) {
+      remainingIndices.splice(remainingIndex, 1);
+    }
     selected.push(next.record);
+    selectedRepresentations.push(nextRepresentation);
     for (const sectionIndex of next.record.sectionIndices) {
       coveredSections.add(sectionIndex);
     }
@@ -531,9 +541,9 @@ function finalizeTopicCandidateLexicon(
       evidence,
       frequency: record.frequency,
       id,
-      sectionIndices: record.sectionIndices,
+      sectionIndices: new Set(record.sectionIndices),
       sourcePriority: record.sourcePriority,
-      sources: record.sources,
+      sources: new Set(record.sources),
       target: record.target,
     };
     candidates.push(candidate);
@@ -564,31 +574,109 @@ function highestPrioritySource(sources: ReadonlySet<TopicCandidateSource>): Topi
   return bestSource;
 }
 
-function lexicalSimilarity(left: string, right: string): number {
-  const normalizedLeft = left.toLowerCase();
-  const normalizedRight = right.toLowerCase();
-  if (normalizedLeft === normalizedRight) {
+function createLexicalRepresentation(target: string): LexicalRepresentation {
+  const normalized = target.toLowerCase();
+  return {
+    bigrams: characterBigrams(normalized),
+    normalized,
+  };
+}
+
+function lexicalSimilarityFromRepresentations(
+  left: LexicalRepresentation,
+  right: LexicalRepresentation,
+): number {
+  if (left.normalized === right.normalized) {
     return 1;
   }
-  const prefixSimilarity = commonPrefixSimilarity(normalizedLeft, normalizedRight);
-  if (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)) {
-    const shorter = Math.min(normalizedLeft.length, normalizedRight.length);
-    const longer = Math.max(normalizedLeft.length, normalizedRight.length);
+  const prefixSimilarity = commonPrefixSimilarity(left.normalized, right.normalized);
+  if (left.normalized.includes(right.normalized) || right.normalized.includes(left.normalized)) {
+    const shorter = Math.min(left.normalized.length, right.normalized.length);
+    const longer = Math.max(left.normalized.length, right.normalized.length);
     return Math.max(prefixSimilarity, shorter / longer);
   }
-  const leftBigrams = characterBigrams(normalizedLeft);
-  const rightBigrams = characterBigrams(normalizedRight);
-  if (leftBigrams.size === 0 || rightBigrams.size === 0) {
+  if (left.bigrams.size === 0 || right.bigrams.size === 0) {
     return prefixSimilarity;
   }
   let intersection = 0;
-  for (const bigram of leftBigrams) {
-    if (rightBigrams.has(bigram)) {
+  for (const bigram of left.bigrams) {
+    if (right.bigrams.has(bigram)) {
       intersection += 1;
     }
   }
-  const bigramSimilarity = intersection / (leftBigrams.size + rightBigrams.size - intersection);
+  const bigramSimilarity = intersection / (left.bigrams.size + right.bigrams.size - intersection);
   return Math.max(prefixSimilarity, bigramSimilarity);
+}
+
+function maxLexicalSimilarityToSelected(
+  candidateRepresentation: LexicalRepresentation,
+  selectedRepresentations: readonly LexicalRepresentation[],
+): number {
+  if (selectedRepresentations.length === 0) {
+    return 0;
+  }
+  return Math.max(
+    ...selectedRepresentations.map((selectedRepresentation) =>
+      lexicalSimilarityFromRepresentations(candidateRepresentation, selectedRepresentation),
+    ),
+  );
+}
+
+function hasDiverseAlternativeInPool(
+  candidateRepresentation: LexicalRepresentation,
+  poolRepresentations: readonly LexicalRepresentation[],
+  poolIndices: readonly number[],
+  excludePoolIndex: number,
+): boolean {
+  return poolIndices.some((poolIndex) => {
+    if (poolIndex === excludePoolIndex) {
+      return false;
+    }
+    const poolRepresentation = poolRepresentations[poolIndex];
+    if (!poolRepresentation) {
+      return false;
+    }
+    return (
+      lexicalSimilarityFromRepresentations(candidateRepresentation, poolRepresentation) <
+      NEAR_DUPLICATE_SIMILARITY_THRESHOLD
+    );
+  });
+}
+
+function shouldSkipNearDuplicateCandidate(
+  candidateRepresentation: LexicalRepresentation,
+  maxSimilarityToSelected: number,
+  poolRepresentations: readonly LexicalRepresentation[],
+  poolIndices: readonly number[],
+  poolIndex: number,
+): boolean {
+  if (maxSimilarityToSelected < NEAR_DUPLICATE_SIMILARITY_THRESHOLD) {
+    return false;
+  }
+  return hasDiverseAlternativeInPool(
+    candidateRepresentation,
+    poolRepresentations,
+    poolIndices,
+    poolIndex,
+  );
+}
+
+function shouldStopDueToNearDuplicateCluster(
+  candidateRepresentation: LexicalRepresentation,
+  maxSimilarityToSelected: number,
+  poolRepresentations: readonly LexicalRepresentation[],
+  poolIndices: readonly number[],
+  poolIndex: number,
+): boolean {
+  if (maxSimilarityToSelected < NEAR_DUPLICATE_SIMILARITY_THRESHOLD) {
+    return false;
+  }
+  return !hasDiverseAlternativeInPool(
+    candidateRepresentation,
+    poolRepresentations,
+    poolIndices,
+    poolIndex,
+  );
 }
 
 function commonPrefixSimilarity(left: string, right: string): number {

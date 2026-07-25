@@ -26,6 +26,8 @@ export interface GeminiTopicExtractionAgentOptions {
   maxBodyCharacters?: number;
   maxTopics?: number;
   model: string;
+  /** Upper bound in milliseconds for each Gemini generateContent request. Defaults to 30,000. */
+  requestTimeoutMs?: number;
   sudachiSystemDictPath?: string;
   topicMorphologicalTokenizer?: TopicMorphologicalTokenizer;
 }
@@ -117,6 +119,8 @@ export function createDeterministicTopicExtractionAgent(): TopicExtractionAgent 
 /**
  * Builds a Gemini-backed topic extractor that ranks document-wide lexical candidates,
  * sends only stable candidate IDs to the model, and maps selected IDs back to topics.
+ *
+ * @param options.requestTimeoutMs - Abort timeout for each Gemini HTTP request.
  */
 export function createGeminiTopicExtractionAgent(
   options: GeminiTopicExtractionAgentOptions,
@@ -131,6 +135,7 @@ export function createGeminiTopicExtractionAgent(
   const maxTopics = options.maxTopics ?? 10;
   const maxCandidateTopics = options.maxCandidateTopics ?? Math.max(maxTopics * 4, 20);
   const maxBodyCharacters = options.maxBodyCharacters ?? 12000;
+  const requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
   const topicMorphologicalTokenizer =
     options.topicMorphologicalTokenizer ??
     createSudachiTopicTokenizer(
@@ -170,6 +175,7 @@ export function createGeminiTopicExtractionAgent(
         }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
+        signal: AbortSignal.timeout(requestTimeoutMs),
       });
       if (!response.ok) {
         throw new Error(`Gemini topic extraction request failed: HTTP ${response.status}`);
@@ -371,6 +377,7 @@ async function collectTopicCandidateLexicon(
   const accumulator = new TopicCandidateAccumulator();
   const bodySections = splitBodyIntoSections(input.bodyText);
   const sampledSections = selectSectionsAcrossDocument(bodySections, maxBodyCharacters);
+  // Positions in sampledSections, not indices into the original bodySections array.
   const sampledSectionIndices = sampledSections.map((_section, index) => index);
 
   const addValidatedCandidates = (

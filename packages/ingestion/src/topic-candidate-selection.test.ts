@@ -5,7 +5,12 @@ import {
   selectSectionsAcrossDocument,
   splitBodyIntoSections,
   TopicCandidateAccumulator,
+  type TopicCandidateSource,
 } from './topic-candidate-selection.js';
+
+function candidateTexts(lexicon: { candidates: readonly { target: string }[] }): string[] {
+  return lexicon.candidates.map((candidate) => candidate.target);
+}
 
 test('splitBodyIntoSections splits oversized paragraphs into fixed-size chunks', () => {
   const paragraphA = 'a'.repeat(2500);
@@ -101,9 +106,44 @@ test('selectSectionsAcrossDocument samples about six sections from a large docum
   assert.ok(sampled.reduce((sum, section) => sum + section.length, 0) <= 12000);
 });
 
-function candidateTexts(lexicon: { candidates: readonly { target: string }[] }): string[] {
-  return lexicon.candidates.map((candidate) => candidate.target);
-}
+test('buildTopicCandidateLexicon does not expose mutable accumulator sets', () => {
+  const accumulator = new TopicCandidateAccumulator();
+  accumulator.addCandidate('AI', 'hashtag', 0);
+  accumulator.addCandidate('AI', 'body_lexical', 1);
+  const records = accumulator.values();
+  const lexicon = buildTopicCandidateLexicon(records, 1, [0, 1]);
+  const candidate = lexicon.candidates[0];
+  const record = records[0];
+  assert.ok(candidate);
+  assert.ok(record);
+  assert.notEqual(candidate.sectionIndices, record.sectionIndices);
+  assert.notEqual(candidate.sources, record.sources);
+  (candidate.sectionIndices as Set<number>).add(999);
+  assert.equal(record.sectionIndices.has(999), false);
+  (candidate.sources as Set<TopicCandidateSource>).add('title');
+  assert.equal(record.sources.has('title'), false);
+});
+
+test('buildTopicCandidateLexicon produces deterministic diversified selections', () => {
+  const accumulator = new TopicCandidateAccumulator();
+  for (let index = 0; index < 50; index += 1) {
+    accumulator.addCandidate('クラウドネイティブ設計', 'hashtag', 0);
+  }
+  accumulator.addCandidate('クラウドネイティブアーキテクチャ', 'body_lexical', 0);
+  accumulator.addCandidate('データ基盤', 'body_lexical', 1);
+  accumulator.addCandidate('セキュリティ統制', 'body_lexical', 2);
+  for (let index = 0; index < 12; index += 1) {
+    accumulator.addCandidate(`overflow-term-${index}`, 'body_lexical', 3);
+  }
+  const records = accumulator.values();
+  const lexiconA = buildTopicCandidateLexicon(records, 4, [0, 1, 2, 3]);
+  const lexiconB = buildTopicCandidateLexicon(records, 4, [0, 1, 2, 3]);
+  assert.deepEqual(candidateTexts(lexiconA), candidateTexts(lexiconB));
+  assert.equal(
+    candidateTexts(lexiconA).filter((text) => text.includes('クラウドネイティブ')).length,
+    1,
+  );
+});
 
 test('selectSectionsAcrossDocument includes tail slices within the analysis budget', () => {
   const sections = splitBodyIntoSections(
