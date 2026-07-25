@@ -453,55 +453,52 @@ test('Gemini TopicExtractionAgent rejects lexicon-bound free-form LLM topics', a
 test('Gemini TopicExtractionAgent passes configured request timeout to fetch', async () => {
   let capturedSignal: AbortSignal | undefined;
   const customTimeoutMs = 50;
+  const keepAlive = setInterval(() => {}, customTimeoutMs);
   const agent = createGeminiTopicExtractionAgent({
     apiKey: 'test-key',
     endpoint: 'https://gemini.example.test/model:generateContent',
     fetchImpl: async (_url, init) => {
       capturedSignal = init?.signal ?? undefined;
-      return new Response(
-        JSON.stringify({
-          candidates: [
-            {
-              content: {
-                parts: [
-                  {
-                    text: '{"selectedCandidateIds":["topic-1"]}',
-                  },
-                ],
-              },
-            },
-          ],
-        }),
-        { headers: { 'content-type': 'application/json' }, status: 200 },
-      );
+      return new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) {
+          reject(new Error('expected AbortSignal'));
+          return;
+        }
+        if (signal.aborted) {
+          reject(signal.reason);
+          return;
+        }
+        signal.addEventListener(
+          'abort',
+          () => {
+            reject(signal.reason);
+          },
+          { once: true },
+        );
+      });
     },
     model: 'gemini-test',
     requestTimeoutMs: customTimeoutMs,
   });
 
-  await agent.extractTopics({
-    bodyText: '本文',
-    canonicalUri: 'https://docs.example.test/timeout',
-    html: '<a href="/hashtag/AI">#AI</a>',
-    title: '記事',
-  });
+  try {
+    await assert.rejects(
+      () =>
+        agent.extractTopics({
+          bodyText: '本文',
+          canonicalUri: 'https://docs.example.test/timeout',
+          html: '<a href="/hashtag/AI">#AI</a>',
+          title: '記事',
+        }),
+      (error: unknown) => error instanceof DOMException && error.name === 'TimeoutError',
+    );
 
-  assert.ok(capturedSignal);
-  await new Promise<void>((resolve, reject) => {
-    const deadline = Date.now() + customTimeoutMs + 200;
-    const waitForAbort = () => {
-      if (capturedSignal?.aborted) {
-        resolve();
-        return;
-      }
-      if (Date.now() >= deadline) {
-        reject(new Error('AbortSignal was not aborted within the configured deadline'));
-        return;
-      }
-      setTimeout(waitForAbort, 5);
-    };
-    waitForAbort();
-  });
+    assert.ok(capturedSignal);
+    assert.equal(capturedSignal.aborted, true);
+  } finally {
+    clearInterval(keepAlive);
+  }
 });
 
 test('Gemini TopicExtractionAgent rejects non-object JSON responses safely', async () => {
