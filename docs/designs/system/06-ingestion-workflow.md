@@ -183,7 +183,7 @@ Collection Pipeline / Agent と Ingestion Workflow の責務を整理すると�
                       - 本文抽出
                       - メール: 引用分解、引用送信者抽出
                       - 添付・参照リンク抽出
-                      - topic 抽出は HTML tag / title / metadata と Sudachi 由来の語単位候補を先に作り、LLM を使う場合も候補語からの選別・正規化に限定する
+                      - topic 抽出は HTML tag / title / metadata / 引用句と Sudachi 由来の語単位候補を先に作る。本文は 12,000 文字の既定予算で先頭から末尾まで代表セクションをローカル解析し、ソース優先度・頻度・セクション被覆による順位付けと文字 n-gram MMR で最大 40 候補へ絞る。LLM には候補 ID・候補語・集約根拠だけを渡し、返却された ID から最大 10 topic を確定する。title / canonical URI / raw HTML / 本文 excerpt を独立した文書コンテキストとしては LLM へ送らないが、そこから抽出・正規化した候補語は送る。候補が空なら呼び出さず、Gemini request は既定 30 秒で abort し、追加の embedding API は使用しない
                         Sudachi system dictionary は `SUDACHI_SYSTEM_DICT` / `SUDACHI_SYSTEM_DICT_PATH` で指定し、未設定環境では軽量 tokenizer に fallback する
                       - GitHub: `TopicExtractionAgent` への入力は issue / PR の `title` と起票 `body` のみとし、`comments` / `reviews` / diff metadata / actor / token / connection metadata / internal URI は含めない。`ParsedDocument.bodyText` は従来どおり起票本文 + comments を保持し chunk / embedding 契約を維持する。built-in active parser version は全 source type で `fixture-parser-v2` とし、旧 `fixture-parser-v1` は immutable に保持する
                     parsed JSON を Object Storage に書き戻し、

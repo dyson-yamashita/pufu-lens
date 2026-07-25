@@ -35,7 +35,7 @@ DATABASE_URL=postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
     --embedding-provider deterministic
 ```
 
-Drive parse は `bodyText` と title を `TopicExtractionAgent` に渡し、parsed JSON の `topics` を生成する。Graph の `Topic` node / `MENTIONS` edge はこの parsed `topics` から materialize されるため、topic 抽出を有効にする実データ parse では `GEMINI_API_KEY` と `GEMINI_CHAT_MODEL` を設定する。
+Drive parse は `bodyText` と title を `TopicExtractionAgent` のローカル候補生成へ渡し、parsed JSON の `topics` を生成する。本文は最大 12,000 文字の予算で文書全体から代表セクションを選び、候補を集約・順位付けしてローカル MMR で近似重複を抑える。Gemini request に title や本文 excerpt を独立した文書コンテキストとしては含めず、そこから抽出・正規化した最大 40 件の候補 ID・候補語・集約根拠だけを渡し、返却された候補 ID から最大 10 topic を確定する。候補が空なら Gemini を呼ばず、追加の embedding API 呼び出しも行わない。Graph の `Topic` node / `MENTIONS` edge はこの parsed `topics` から materialize されるため、topic 抽出を有効にする実データ parse では `GEMINI_API_KEY` と `GEMINI_CHAT_MODEL` を設定する。
 
 既に topic 抽出対応前に parse / index 済みの Drive document は、既存 parsed JSON に `topics` が含まれない。対象 raw を原本再取得なしで再 parse するには、必ず `project_id` と `source_id` で対象を絞って status を戻す。
 

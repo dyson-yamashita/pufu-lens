@@ -22,7 +22,9 @@ data source 作成時（server action）は、対象 project / data_source / sou
 pnpm ingest:parse --project sample-a --limit 10 --no-seed-built-in-parsers
 ```
 
-GitHub parse は issue / PR の `title` と起票 `body` だけを `TopicExtractionAgent` に渡す。`comments` / `reviews` / diff / actor / token は agent 入力に含めない。`GEMINI_API_KEY` と `GEMINI_CHAT_MODEL` が設定されている場合は Gemini provider を使い、未設定時は deterministic provider に fallback する。topic 数は最大 10 件、候補語は最大 40 件（既定）、本文 excerpt は最大 12,000 文字。raw / provider 全文や secret はログに出さない。
+GitHub parse は issue / PR の `title` と起票 `body` だけを `TopicExtractionAgent` のローカル候補生成へ渡す。`comments` / `reviews` / diff / actor / token は候補生成に含めない。`GEMINI_API_KEY` と `GEMINI_CHAT_MODEL` が設定されている場合は Gemini provider を使い、未設定時は deterministic provider に fallback する。
+
+Gemini provider は本文を最大 12,000 文字の予算内で文書全体から等間隔にローカルサンプリングし、HTML tag / title / metadata / 引用句 / tokenizer の候補を全サンプルから集約する。候補はソース優先度・出現頻度・セクション被覆で順位付けし、ローカルの文字 n-gram 類似度を使う MMR で近似重複を抑える。Gemini へ送るのは最大 40 件（既定）の `{ id, text, evidence }` だけで、title / canonical URI / raw HTML / 本文 excerpt を独立した文書コンテキストとしては送らない。ただし、そこから抽出・正規化された候補語自体は `text` に含む。Gemini の `selectedCandidateIds` をローカル辞書へ厳密に戻し、topic 数は最大 10 件とする。候補が空なら Gemini を呼ばず、応答しない request は既定 30 秒で abort する。追加の embedding API 呼び出しは行わず、raw / provider 全文や secret はログに出さない。
 
 既存 GitHub raw の topic 再抽出手順は [GitHub 実データソース収集](github-source.md) の `ingest:reprocess` を参照する。
 

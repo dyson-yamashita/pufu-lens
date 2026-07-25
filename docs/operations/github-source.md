@@ -6,6 +6,7 @@ GitHub issue / PR の topic 抽出は built-in parser `fixture-parser-v2` で有
 
 - `TopicExtractionAgent` 入力: `{ title, bodyText: issue/PR body（null/undefined は空文字）, canonicalUri: html_url, html: '' }`
 - agent 入力に含めない: `comments` / `reviews` / review comments / diff 本文 / diff metadata / actor / token / connection metadata / internal URI
+- 上記入力はローカル候補生成の境界であり、Gemini request には title / `bodyText` / `canonicalUri` / raw HTML を独立した文書コンテキストとしては含めず、そこから抽出・正規化した候補 ID・候補語・集約根拠だけを含める
 - `ParsedDocument.bodyText` は従来どおり起票本文 + comments。chunk / embedding はこの全文を使う
 - Graph の `Topic` node / `MENTIONS` edge は parsed `topics` から materialize する
 
@@ -13,13 +14,13 @@ GitHub issue / PR の topic 抽出は built-in parser `fixture-parser-v2` で有
 
 `scripts/parse-raw-documents.ts` と `ingest:run` は `GEMINI_API_KEY` + `GEMINI_CHAT_MODEL` が設定されている場合に Gemini topic provider を使い、未設定時は deterministic provider に fallback する。
 
-| 項目          | 既定値      |
-| ------------- | ----------- |
-| 最大 topic 数 | 10          |
-| 最大候補語数  | 40          |
-| 本文 excerpt  | 12,000 文字 |
+| 項目                       | 既定値      |
+| -------------------------- | ----------- |
+| 最大 topic 数              | 10          |
+| Gemini へ送る最大候補語数  | 40          |
+| ローカル本文解析の文字予算 | 12,000 文字 |
 
-コスト確認は workflow JSON Lines の LLM 使用量サマリと Gemini の利用量ダッシュボードを参照する。
+ローカル本文解析は文書全体から代表セクションを等間隔に選び、候補を集約・順位付けした後、文字 n-gram 類似度を使う MMR で近似重複を抑える。Gemini は `{ id, text, evidence }` の候補から `selectedCandidateIds` を返す 1 リクエストだけを使い、追加の embedding API は呼ばない。候補が空なら Gemini request 自体を省略する。コスト確認は workflow JSON Lines の LLM 使用量サマリと Gemini の利用量ダッシュボードを参照する。
 
 ## 新 parser version の seed
 

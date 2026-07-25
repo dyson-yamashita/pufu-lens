@@ -1,4 +1,11 @@
 import type { ParsedTopic } from './ingestion-fixtures.js';
+import {
+  buildTopicCandidateLexicon,
+  selectSectionsAcrossDocument,
+  splitBodyIntoSections,
+  TopicCandidateAccumulator,
+  type TopicCandidateLexicon,
+} from './topic-candidate-selection.js';
 
 export interface TopicExtractionInput {
   bodyText: string;
@@ -19,6 +26,8 @@ export interface GeminiTopicExtractionAgentOptions {
   maxBodyCharacters?: number;
   maxTopics?: number;
   model: string;
+  /** Upper bound in milliseconds for each Gemini generateContent request. Defaults to 30,000. */
+  requestTimeoutMs?: number;
   sudachiSystemDictPath?: string;
   topicMorphologicalTokenizer?: TopicMorphologicalTokenizer;
 }
@@ -34,11 +43,6 @@ export interface TopicMorphologicalTokenizer {
   tokenize(
     text: string,
   ): Promise<readonly TopicMorphologicalToken[]> | readonly TopicMorphologicalToken[];
-}
-
-interface TopicCandidateLexicon {
-  readonly displayTargets: readonly string[];
-  readonly normalizedToDisplayTarget: ReadonlyMap<string, string>;
 }
 
 interface SudachiMorpheme {
@@ -112,6 +116,12 @@ export function createDeterministicTopicExtractionAgent(): TopicExtractionAgent 
   };
 }
 
+/**
+ * Builds a Gemini-backed topic extractor that ranks document-wide lexical candidates,
+ * sends only stable candidate IDs to the model, and maps selected IDs back to topics.
+ *
+ * @param options.requestTimeoutMs - Abort timeout for each Gemini HTTP request.
+ */
 export function createGeminiTopicExtractionAgent(
   options: GeminiTopicExtractionAgentOptions,
 ): TopicExtractionAgent {
@@ -125,6 +135,7 @@ export function createGeminiTopicExtractionAgent(
   const maxTopics = options.maxTopics ?? 10;
   const maxCandidateTopics = options.maxCandidateTopics ?? Math.max(maxTopics * 4, 20);
   const maxBodyCharacters = options.maxBodyCharacters ?? 12000;
+  const requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
   const topicMorphologicalTokenizer =
     options.topicMorphologicalTokenizer ??
     createSudachiTopicTokenizer(
@@ -140,35 +151,22 @@ export function createGeminiTopicExtractionAgent(
 
   return {
     async extractTopics(input) {
-      const candidateLexicon = await buildTopicCandidateLexicon(
-        { ...input, bodyText: input.bodyText.slice(0, maxBodyCharacters) },
+      const candidateLexicon = await collectTopicCandidateLexicon(
+        input,
         maxCandidateTopics,
+        maxBodyCharacters,
         topicMorphologicalTokenizer,
       );
+      if (candidateLexicon.candidates.length === 0) {
+        return [];
+      }
       const response = await fetchImpl(`${endpoint}?key=${encodeURIComponent(options.apiKey)}`, {
         body: JSON.stringify({
           contents: [
             {
               parts: [
                 {
-                  text: [
-                    'You are TopicExtractionAgent for Pufu Lens.',
-                    'Extract semantic topics for a document or web page.',
-                    'Return only JSON: {"topics":["topic1","topic2"]}.',
-                    `Return 1 to ${maxTopics} concise topics.`,
-                    'Use only the candidate terms below, or a normalized form of one candidate term.',
-                    'Do not invent sentence-like topics, clauses, summaries, or explanations.',
-                    'Prefer explicit content tags or hashtags when HTML metadata is present.',
-                    'Prefer project/product names, technical concepts, and domain keywords.',
-                    'Do not return generic UI words, navigation labels, login/signup links, or quoted phrases unless they are actual content topics.',
-                    'Do not return URLs.',
-                    'Keep Japanese topics in Japanese.',
-                    `Candidate terms: ${JSON.stringify(candidateLexicon.displayTargets)}`,
-                    `Title: ${input.title}`,
-                    `Canonical URI: ${input.canonicalUri}`,
-                    `HTML excerpt: ${input.html.slice(0, maxBodyCharacters)}`,
-                    `Body text excerpt: ${input.bodyText.slice(0, maxBodyCharacters)}`,
-                  ].join('\n'),
+                  text: buildGeminiTopicExtractionPrompt(candidateLexicon, maxTopics),
                 },
               ],
             },
@@ -177,6 +175,7 @@ export function createGeminiTopicExtractionAgent(
         }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
+        signal: AbortSignal.timeout(requestTimeoutMs),
       });
       if (!response.ok) {
         throw new Error(`Gemini topic extraction request failed: HTTP ${response.status}`);
@@ -194,6 +193,17 @@ export function createGeminiTopicExtractionAgent(
   };
 }
 
+/**
+ * Parses Gemini topic extraction JSON into normalized topics.
+ *
+ * When a candidate lexicon is supplied, only `selectedCandidateIds` are accepted.
+ * Legacy `topics` arrays are supported only when no lexicon is provided.
+ *
+ * @param text - Raw JSON text returned by Gemini.
+ * @param maxTopics - Maximum number of topics to return.
+ * @param candidateLexicon - Optional ranked candidate lexicon generated for the request.
+ * @returns Normalized keyword topics sourced from the LLM response.
+ */
 export function topicsFromGeminiJson(
   text: string,
   maxTopics = 10,
@@ -211,11 +221,23 @@ export function topicsFromGeminiJson(
       )}`,
     );
   }
-  const topicsValue = isRecord(value) ? value.topics : undefined;
+  if (!isRecord(value)) {
+    throw new Error('Gemini topic extraction response must be a JSON object.');
+  }
+  if (candidateLexicon) {
+    const selectedCandidateIds = value.selectedCandidateIds;
+    if (!Array.isArray(selectedCandidateIds)) {
+      throw new Error(
+        'Gemini topic extraction response must include selectedCandidateIds when a candidate lexicon is supplied.',
+      );
+    }
+    return topicsFromSelectedCandidateIds(selectedCandidateIds, maxTopics, candidateLexicon);
+  }
+  const topicsValue = value.topics;
   if (!Array.isArray(topicsValue)) {
     throw new Error('Gemini topic extraction response must include topics array.');
   }
-  return normalizeTopicTargets(topicsValue, 'llm', maxTopics, candidateLexicon);
+  return normalizeTopicTargets(topicsValue, 'llm', maxTopics);
 }
 
 function deterministicDocumentTopics(input: TopicExtractionInput): ParsedTopic[] {
@@ -259,7 +281,6 @@ function normalizeTopicTargets(
   values: unknown[],
   source: string,
   maxTopics: number,
-  candidateLexicon?: TopicCandidateLexicon,
 ): ParsedTopic[] {
   const topics: ParsedTopic[] = [];
   const seen = new Set<string>();
@@ -270,9 +291,7 @@ function normalizeTopicTargets(
     if (typeof value !== 'string') {
       continue;
     }
-    const target = candidateLexicon
-      ? topicTargetFromCandidateLexicon(value, candidateLexicon)
-      : normalizeTopicTarget(stripHashPrefix(value));
+    const target = normalizeTopicTarget(stripHashPrefix(value));
     const key = target.toLowerCase();
     if (!target || seen.has(key) || looksLikeUrl(target)) {
       continue;
@@ -294,57 +313,105 @@ function titleTopicCandidates(title: string): string[] {
   return parts;
 }
 
-function buildTopicCandidateLexicon(
+function topicsFromSelectedCandidateIds(
+  selectedCandidateIds: unknown[],
+  maxTopics: number,
+  candidateLexicon: TopicCandidateLexicon,
+): ParsedTopic[] {
+  const topics: ParsedTopic[] = [];
+  const seen = new Set<string>();
+  for (const value of selectedCandidateIds) {
+    if (topics.length >= maxTopics) {
+      break;
+    }
+    if (typeof value !== 'string') {
+      continue;
+    }
+    const target = candidateLexicon.idToTarget.get(value);
+    if (!target) {
+      continue;
+    }
+    const key = target.toLowerCase();
+    if (seen.has(key) || looksLikeUrl(target)) {
+      continue;
+    }
+    seen.add(key);
+    topics.push({ metadata: { source: 'llm' }, target, topicType: 'keyword' });
+  }
+  return topics;
+}
+
+function buildGeminiTopicExtractionPrompt(
+  candidateLexicon: TopicCandidateLexicon,
+  maxTopics: number,
+): string {
+  const promptCandidates = candidateLexicon.candidates.map((candidate) => ({
+    evidence: candidate.evidence,
+    id: candidate.id,
+    text: candidate.target,
+  }));
+  return [
+    'You are TopicExtractionAgent for Pufu Lens.',
+    'Extract semantic topics for a document or web page.',
+    'Return only JSON: {"selectedCandidateIds":["topic-1"]}.',
+    `Return 1 to ${maxTopics} candidate IDs from the list below.`,
+    'Use only the provided candidate IDs. Do not invent new topics, sentence-like summaries, or explanations.',
+    'Prefer explicit content tags or hashtags when present in candidate evidence.',
+    'Prefer project/product names, technical concepts, and domain keywords.',
+    'Do not return generic UI words, navigation labels, login/signup links, or quoted phrases unless they are actual content topics.',
+    'Do not return URLs.',
+    'Keep Japanese topics in Japanese.',
+    `Candidates: ${JSON.stringify(promptCandidates)}`,
+  ].join('\n');
+}
+
+async function collectTopicCandidateLexicon(
   input: TopicExtractionInput,
   maxCandidates: number,
+  maxBodyCharacters: number,
   topicMorphologicalTokenizer:
     | Promise<TopicMorphologicalTokenizer | undefined>
     | TopicMorphologicalTokenizer
     | undefined,
 ): Promise<TopicCandidateLexicon> {
-  const displayTargets: string[] = [];
-  const normalizedToDisplayTarget = new Map<string, string>();
+  const accumulator = new TopicCandidateAccumulator();
+  const bodySections = splitBodyIntoSections(input.bodyText);
+  const sampledSections = selectSectionsAcrossDocument(bodySections, maxBodyCharacters);
+  // Positions in sampledSections, not indices into the original bodySections array.
+  const sampledSectionIndices = sampledSections.map((_section, index) => index);
 
-  const addCandidates = (candidates: Iterable<string>) => {
-    if (displayTargets.length >= maxCandidates) {
-      return;
-    }
+  const addValidatedCandidates = (
+    candidates: Iterable<string>,
+    source: Parameters<TopicCandidateAccumulator['addCandidate']>[1],
+    sectionIndex?: number,
+  ) => {
     for (const candidate of candidates) {
-      if (displayTargets.length >= maxCandidates) {
-        break;
-      }
       const target = normalizeTopicTarget(stripHashPrefix(candidate));
-      const key = target.toLowerCase();
-      if (!isValidCandidateTerm(target) || normalizedToDisplayTarget.has(key)) {
+      if (!isValidCandidateTerm(target)) {
         continue;
       }
-      normalizedToDisplayTarget.set(key, target);
-      displayTargets.push(target);
+      accumulator.addCandidate(target, source, sectionIndex);
     }
   };
 
-  return Promise.resolve(topicMorphologicalTokenizer).then(async (tokenizer) => {
-    addCandidates(extractHashtagTopics(input.html));
-    addCandidates(splitTitleTopicParts(normalizeTopicTarget(input.title)));
-    addCandidates(extractMetaKeywords(input.html));
-    if (displayTargets.length < maxCandidates) {
-      addCandidates(await topicCandidateTerms(input.title, tokenizer));
-    }
-    if (displayTargets.length < maxCandidates) {
-      addCandidates(await topicCandidateTerms(input.bodyText, tokenizer));
-    }
-
-    return { displayTargets, normalizedToDisplayTarget };
-  });
-}
-
-function topicTargetFromCandidateLexicon(value: string, lexicon: TopicCandidateLexicon): string {
-  const normalized = normalizeTopicTarget(stripHashPrefix(value));
-  const exact = lexicon.normalizedToDisplayTarget.get(normalized.toLowerCase());
-  if (exact) {
-    return exact;
+  addValidatedCandidates(extractHashtagTopics(input.html), 'hashtag');
+  addValidatedCandidates(splitTitleTopicParts(normalizeTopicTarget(input.title)), 'title');
+  addValidatedCandidates(extractMetaKeywords(input.html), 'meta_keywords');
+  for (const [sectionIndex, sectionText] of sampledSections.entries()) {
+    addValidatedCandidates(extractQuotedTopicPhrases(sectionText), 'quoted_phrase', sectionIndex);
   }
-  return '';
+
+  const tokenizer = await Promise.resolve(topicMorphologicalTokenizer);
+  addValidatedCandidates(await topicCandidateTerms(input.title, tokenizer), 'title_lexical');
+  for (const [sectionIndex, sectionText] of sampledSections.entries()) {
+    addValidatedCandidates(
+      await topicCandidateTerms(sectionText, tokenizer),
+      'body_lexical',
+      sectionIndex,
+    );
+  }
+
+  return buildTopicCandidateLexicon(accumulator.values(), maxCandidates, sampledSectionIndices);
 }
 
 async function topicCandidateTerms(
