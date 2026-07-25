@@ -6,6 +6,8 @@ parse step では `TopicExtractionAgent` が Web 記事の topic を抽出する
 と `GEMINI_CHAT_MODEL` が設定されている場合は Gemini を使い、未設定時はローカル検証用の
 deterministic fallback を使う。
 
+Gemini を使う場合も raw HTML、canonical URI、title、本文 excerpt は独立した文書コンテキストとしてはモデルへ送らない。本文は最大 12,000 文字のローカル解析予算で文書全体から代表セクションを選び、HTML tag / title / metadata / 引用句 / tokenizer の候補を集約する。候補をソース優先度・頻度・セクション被覆で順位付けし、ローカル MMR で近似重複を抑えた後、最大 40 件の候補 ID・候補語・集約根拠だけを 1 回の Gemini request へ渡す。文書コンテキストから抽出・正規化された候補語自体は request に含む。返却された候補 ID から最大 10 topic を確定し、候補が空なら Gemini を呼ばない。追加の embedding API 呼び出しは発生しない。
+
 ## 前提
 
 - `docker compose up -d postgres` でローカル DB が起動している。
