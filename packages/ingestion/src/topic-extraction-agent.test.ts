@@ -5,7 +5,7 @@ import {
   topicsFromGeminiJson,
 } from './topic-extraction-agent.js';
 
-const SENTINEL_CANONICAL_URI = 'https://sentinel-canonical-uri.example.test/n/abc';
+const SENTINEL_CANONICAL_URI = 'sentinel-canonical-uri-must-not-appear-in-prompt';
 const SENTINEL_HTML_EXCERPT = '<sentinel-html-excerpt>must-not-appear</sentinel-html-excerpt>';
 const SENTINEL_BODY_TEXT = 'sentinel-body-text-must-not-appear-in-prompt';
 
