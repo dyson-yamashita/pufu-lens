@@ -136,7 +136,9 @@ function contextualProjectLabel(input: ContextualPufuScoreInput): string {
     return truncateLabel(input.projectLabel, 80);
   }
   const title = normalizeReportWhitespace(input.title);
-  const withoutPeriod = title.replace(/プロジェクト状況レポート.*$/u, '').trim();
+  const marker = 'プロジェクト状況レポート';
+  const markerIndex = title.indexOf(marker);
+  const withoutPeriod = markerIndex === -1 ? title : title.slice(0, markerIndex).trim();
   return truncateLabel(withoutPeriod || title, 80);
 }
 

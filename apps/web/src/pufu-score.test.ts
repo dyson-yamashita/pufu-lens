@@ -171,6 +171,15 @@ assert.equal(contextual.schema_version, PUFU_SCORE_SCHEMA_VERSION);
 assert.ok(contextual.purposes.length >= 1);
 assert.ok(contextual.purposes.every((purpose) => purpose.measures.length >= 1));
 
+const titleBasedContextual = buildContextualPufuScore({
+  period: exhibitionReport.period,
+  sections: exhibitionReport.sections,
+  sources: exhibitionReport.pufu_sources,
+  summary: exhibitionReport.summary,
+  title: 'sample-b プロジェクト状況レポート 2026-06-01 - 2026-06-07',
+});
+assert.match(JSON.stringify(titleBasedContextual), /sample-b/);
+
 const sanitizedInput = toPufuScoreReportInput({
   generated_at: '2026-06-04T00:00:00.000Z',
   period: exhibitionReport.period,
