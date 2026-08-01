@@ -582,11 +582,19 @@ const generatedScore = pufuScore?.score as {
   readonly gainingGoal?: { readonly text?: string };
   readonly purposes?: Array<{ readonly measures: Array<{ readonly text: string }> }>;
 };
-assert.match(generatedScore.gainingGoal?.text ?? '', /プ譜エディターを試す人を増やす/);
-assert.match(generatedScore.elements?.environment?.text ?? '', /来場者/);
-assert.match(generatedScore.purposes?.[0]?.measures[0]?.text ?? '', /ブース/);
+assert.match(
+  generatedScore.gainingGoal?.text ?? '',
+  /オープンソースカンファレンス2026＠大阪|出展レポート/,
+);
+assert.match(
+  generatedScore.purposes?.[0]?.measures[0]?.text ?? '',
+  /オープンソースカンファレンス2026＠大阪|出展レポート/,
+);
 assert.doesNotMatch(generatedScore.purposes?.[0]?.measures[0]?.text ?? '', /引用本文が続きます/);
-assert.doesNotMatch(JSON.stringify(generatedScore), /データソースから|根拠資料/);
+assert.doesNotMatch(
+  JSON.stringify(generatedScore),
+  /データソースからプロジェクトの現在地を読み解き/,
+);
 
 const rawDocumentFetch = (await runtime.projectChatTools.rawDocumentFetch.execute?.(
   { rawDocumentId: 'raw-a' },

@@ -38,6 +38,27 @@ Private report JSON スキーマ（`schema_version: "v1"`）：
       }
     ]
   },
+  "pufu_score": {
+    "schema_version": "pufu-score-v1",
+    "gainingGoal": "このプロジェクトが獲得を目指す成果...",
+    "winCondition": "関係者が達成を判断できる観測可能な状態...",
+    "purposes": [
+      {
+        "text": "獲得目標へ至るために実現済みであるべき中間状態...",
+        "measures": [{ "text": "中間目的を実現する具体的な行動...", "color": "red" }]
+      }
+    ],
+    "elements": {
+      "businessScheme": "ビジネススキーム...",
+      "environment": "環境...",
+      "foreignEnemy": "外敵...",
+      "money": "お金...",
+      "people": "人...",
+      "quality": "品質...",
+      "rival": "競合...",
+      "time": "時間..."
+    }
+  },
   "recurrence": {
     "frequency": "weekly",
     "previous_report_id": "...",
@@ -87,11 +108,13 @@ Private report JSON スキーマ（`schema_version: "v1"`）：
 
 `project_overview` は `scheduled` / `scheduled_backfill` report で必須とし、手動 report と既存 artifact では省略できる。Gemini は report 本文と同じ生成要求で作成し、extractive provider は report の summary、進行状況、課題から決定論的に補完する。`status_summary` は最大 400 code point、`assets` / `issues` は各最大 5 件、title は最大 120 code point、description と `next_action` は最大 300 code point とする。保存前に email、secret、token、API key、private URL、storage URI、document ID などをマスクまたは拒否し、public project の Overview にそのまま投影できる契約にする。
 
-`ReportGenerationProvider` が生成する report の title、summary、section title / markdown、`project_overview` の各表示項目、`recurrence` の差分本文は、provider の種類にかかわらず自然な日本語とする。JSON key は変更せず、根拠資料に含まれる固有名詞、製品名、code identifier は原表記を維持できる。
+`ReportGenerationProvider` が生成する report の title、summary、section title / markdown、`project_overview`、`pufu_score` の各表示項目、`recurrence` の差分本文は、provider の種類にかかわらず自然な日本語とする。JSON key は変更せず、根拠資料に含まれる固有名詞、製品名、code identifier は原表記を維持できる。
 
 `recurrence` は同じ project・frequency の前回 `scheduled` / `scheduled_backfill` report を参照した生成だけが持つ optional field である。`frequency` と `previous_report_id` は provider 応答を信用せず、project-scoped metadata の検証結果から組み立てる。差分本文は normalize / redaction 後に `change_summary` を最大 2,000 code point、各 list を最大 10 件・各 400 code point に制限して保存する。手動生成では `recurrence` を付けない。private report 一覧は metadata から手動 / 定期と周期を表示し、`scheduled_backfill` も通常の定期表示にまとめる。private / public report 詳細は取得済み JSON に `recurrence` がある場合だけ共通の差分パネルを描画する。public artifact にはこの field を転記しない。
 
-プ譜ビューは `sections.markdown` の本文をそのまま流し込まず、private report に保存した `pufu_sources`（生成時に参照した data source の title / snippet / doc_type / canonical_uri）を第一入力にして ProjectScoreModel を組み立てる。過去 artifact など `pufu_sources` がない private report では、`sections[].sources` または activity section の source 行を後方互換の入力として扱う。client component へ渡す前に document ID、canonical URI、source metadata を除去し、title / snippet / doc type / occurred at と最小 section をマスク済み input に投影する。public report でも同じ投影を使うため、プ譜表示結果は member 向け report と一致する。
+`pufu_score` はレポート生成時のプロジェクト文脈から作る表示用プ譜の正本である。Gemini provider は report 本文と代表 document を根拠に生成し、extractive provider は title、summary、進行状況、課題、`pufu_sources`、対象期間から決定論的に組み立てる。獲得目標はプロジェクトが追う成果、勝利条件は達成を判断できる観測可能な状態、中間目的は獲得目標へ至るために実現済みであるべき 1〜4 件の状態とする。各中間目的は 1〜3 件の施策を持ち、色は white（通常）、red（獲得目標に必須の主施策）、green（面倒・調整負荷が高くても必要）、blue（将来問題への予防）、yellow（人・金・時間に余裕があれば実施）として扱う。固定のプロジェクト別文言や汎用テンプレートを正本にせず、根拠が不足する項目は不足を明示する。
+
+保存前に `pufu-score-v1` の必須 key、文字列、件数、色、code point 上限を検証し、email、secret、token、API key、private URL、storage URI、document ID などをマスクまたは拒否する。provider が `pufu_score` を返さない、または正規化できない場合は extractive provider と同じ文脈ベースの生成へフォールバックする。既存 artifact など `pufu_score` がない report は、表示時に title、summary、sections、`pufu_sources` から同じフォールバックを生成する。client component へ渡す前に document ID、canonical URI、source metadata を除去し、マスク済み `pufu_score` と最小限の report 文脈へ投影する。public report artifact にもマスク済み `pufu_score` を転記するため、プ譜表示結果は member 向け report と一致する。
 
 Public report JSON / context bundle は公開 artifact 互換や検証用途として生成できるが、現行の public report 表示と public chat の実行経路では private report / private chat の処理を使う。公開可否の判定は DB の project visibility と report `is_public` metadata を正とする。
 
@@ -142,6 +165,27 @@ raw 補完あり report の regression では、private report / public artifact
   "period": { "start": "2026-05-25", "end": "2026-05-31" },
   "published_at": "2026-05-31T18:00:00+09:00",
   "summary": "公開可能な概要...",
+  "pufu_score": {
+    "schema_version": "pufu-score-v1",
+    "gainingGoal": "公開可能な獲得目標...",
+    "winCondition": "公開可能な勝利条件...",
+    "purposes": [
+      {
+        "text": "公開可能な中間目的...",
+        "measures": [{ "text": "公開可能な施策...", "color": "blue" }]
+      }
+    ],
+    "elements": {
+      "businessScheme": "...",
+      "environment": "...",
+      "foreignEnemy": "...",
+      "money": "...",
+      "people": "...",
+      "quality": "...",
+      "rival": "...",
+      "time": "..."
+    }
+  },
   "pufu_sources": [
     {
       "public_source_id": "pufu_src_001",

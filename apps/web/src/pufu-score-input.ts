@@ -1,3 +1,8 @@
+import {
+  normalizePufuScore,
+  type PufuScoreSemanticV1,
+  toPublicPufuScore,
+} from './pufu-score-schema.ts';
 import { redactSensitivePdfText } from './report-public-redaction.ts';
 import type { PrivateReportJsonV1, PrivateReportSection, ReportPeriod } from './report-schema.ts';
 import { normalizeReportWhitespace, truncateReportText } from './report-text.ts';
@@ -17,6 +22,7 @@ export interface PufuScorePublicSection {
 
 export type PufuScoreReportInput = {
   readonly period: ReportPeriod;
+  readonly pufu_score?: PufuScoreSemanticV1;
   readonly pufu_sources?: readonly PufuScorePublicSource[];
   readonly report_id: string;
   readonly sections: readonly PufuScorePublicSection[];
@@ -54,6 +60,7 @@ export function toPufuScoreReportInput(
   ]);
   const input: PufuScoreReportInput = {
     period: sanitizePufuPeriod(report.period),
+    ...(report.pufu_score ? { pufu_score: publicPufuScoreFromPrivate(report.pufu_score) } : {}),
     pufu_sources: pufu_sources.length > 0 ? pufu_sources : undefined,
     report_id: options?.reportKey ?? report.report_id,
     sections: report.sections.map(publicSectionFromPrivate),
@@ -74,6 +81,10 @@ export function assertPufuScoreReportInputSafe(input: PufuScoreReportInput): voi
       throw new Error(`Pufu score input must not include ${key}.`);
     }
   }
+}
+
+function publicPufuScoreFromPrivate(score: NonNullable<PrivateReportJsonV1['pufu_score']>) {
+  return toPublicPufuScore(normalizePufuScore(score));
 }
 
 function publicPufuSourceFromPrivate(

@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
+import type { PufuScoreSemanticV1 } from './pufu-score-schema.ts';
+import { toPublicPufuScore, validatePufuScoreSemantic } from './pufu-score-schema.ts';
 import {
   containsPrivateText,
   isRecord,
@@ -34,6 +36,7 @@ export interface PublicReportSection {
 export interface PublicReportJsonV1 {
   readonly period: ReportPeriod;
   readonly published_at: string;
+  readonly pufu_score?: PufuScoreSemanticV1;
   readonly pufu_sources?: readonly PublicReportPufuSource[];
   readonly report_id: string;
   readonly schema_version: 'public-v1';
@@ -131,6 +134,7 @@ export function buildPublicReport(
   return {
     period: report.period,
     published_at: publishedAt,
+    ...(report.pufu_score ? { pufu_score: toPublicPufuScore(report.pufu_score) } : {}),
     pufu_sources: report.pufu_sources?.map((source, index) => ({
       label: publicSourceLabel(source.doc_type, index),
       occurred_at: source.occurred_at,
@@ -207,6 +211,10 @@ export function validatePublicReportJson(value: unknown): asserts value is Publi
     throw new Error('Public report must not include private identifiers.');
   }
 
+  if (value.pufu_score !== undefined) {
+    validatePufuScoreSemantic(value.pufu_score);
+    toPublicPufuScore(value.pufu_score);
+  }
   if (value.pufu_sources !== undefined) {
     if (!Array.isArray(value.pufu_sources)) {
       throw new Error('Public report pufu_sources must be an array.');

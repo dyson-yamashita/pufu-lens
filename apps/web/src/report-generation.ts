@@ -9,6 +9,8 @@ import {
   type CustomReportSnapshotV1,
   type SliderJudgementPart,
 } from './custom-report-schema.ts';
+import { buildContextualPufuScore } from './pufu-score-generation.ts';
+import { normalizePufuScore, type PufuScoreSemanticV1 } from './pufu-score-schema.ts';
 import type { AgentRawReadViewEnvelope, RawReadViewRepository } from './raw-read-view.ts';
 import { editReportMaterials, REPORT_CANDIDATE_LIMIT } from './report-materials.ts';
 import { buildPreviousReportProviderContext } from './report-previous-context.ts';
@@ -167,12 +169,19 @@ export async function runGenerateReport(input: {
   const projectOverview = includeProjectOverview
     ? resolveGeneratedProjectOverview(generated)
     : undefined;
+  const pufuScore = resolveGeneratedPufuScore({
+    documents: providerDocuments,
+    generated,
+    period,
+    projectSlug: project.slug,
+  });
   const report: PrivateReportJsonV1 = {
     ...(customSnapshot ? { custom_layout: customSnapshot.snapshot } : {}),
     generated_at: now.toISOString(),
     period,
     project_id: project.id,
     ...(projectOverview ? { project_overview: projectOverview } : {}),
+    pufu_score: pufuScore,
     pufu_sources: editedMaterials.representativeDocuments.map(pufuSourceFromDocument),
     ...(previousReportContext && hasProviderRecurrenceDelta(generated)
       ? {
@@ -277,6 +286,38 @@ export async function runGenerateReport(input: {
     reportUrl: `/projects/${project.slug}/reports/${report.report_id}`,
     storageUri: put.uri,
   };
+}
+
+function resolveGeneratedPufuScore(input: {
+  readonly documents: readonly ReportDocumentRecord[];
+  readonly generated: Awaited<ReturnType<ReportGenerationProvider['generate']>>;
+  readonly period: ReportPeriod;
+  readonly projectSlug: string;
+}): PufuScoreSemanticV1 {
+  if (input.generated.pufu_score) {
+    try {
+      return normalizePufuScore(input.generated.pufu_score);
+    } catch {
+      console.warn('[pufu-score] provider normalization failed; using contextual fallback');
+    }
+  }
+  return buildContextualPufuScore({
+    period: input.period,
+    projectLabel: input.projectSlug,
+    sections: input.generated.sections.map((section) => ({
+      id: section.id,
+      markdown: section.markdown,
+      title: section.title,
+    })),
+    sources: input.documents.map((document) => ({
+      doc_type: document.docType,
+      occurred_at: document.occurredAt,
+      snippet: truncateReportText(document.summary || document.title, 220),
+      title: document.title,
+    })),
+    summary: input.generated.summary,
+    title: input.generated.title,
+  });
 }
 
 function resolveGeneratedProjectOverview(

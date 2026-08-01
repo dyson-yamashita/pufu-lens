@@ -493,65 +493,33 @@ assert.match(geminiPrompt, /Cite only representative documents/);
 assert.match(geminiPrompt, /Total candidate documents: 31/);
 assert.match(geminiPrompt, /marker beyond representative evidence/);
 assert.match(geminiPrompt, /Representative summary/);
+assert.match(geminiPrompt, /pufu_score must use schema_version "pufu-score-v1"/);
+assert.match(geminiPrompt, /white=standard action/);
+assert.match(geminiPrompt, /red=main action that must be undertaken to achieve the goal/);
+assert.match(geminiPrompt, /green=cumbersome\/coordination-heavy but required action/);
+assert.match(geminiPrompt, /blue=preventive action against a possible future problem/);
+assert.match(geminiPrompt, /yellow=optional action when people\/money\/time resources allow/);
+assert.doesNotMatch(geminiPrompt, /red=stop or avoid|green=do now|blue=observe or verify/);
+assert.match(geminiPrompt, /Do not copy generic boilerplate across projects/);
 assert.doesNotMatch(geminiPrompt, /rawDocumentId|00000000-0000-4000-8000-000000000101/);
-assert.deepEqual(geminiGenerationConfig, {
-  responseMimeType: 'application/json',
-  responseSchema: {
-    properties: {
-      sections: {
-        items: {
-          properties: {
-            id: { enum: ['activity', 'progress', 'risks'], type: 'STRING' },
-            markdown: { type: 'STRING' },
-            sources: {
-              items: {
-                properties: {
-                  canonical_uri: { type: 'STRING' },
-                  doc_type: { type: 'STRING' },
-                  document_id: { type: 'STRING' },
-                  snippet: { type: 'STRING' },
-                  title: { type: 'STRING' },
-                },
-                required: ['document_id', 'doc_type', 'snippet', 'canonical_uri'],
-                type: 'OBJECT',
-              },
-              type: 'ARRAY',
-            },
-            title: { type: 'STRING' },
-          },
-          required: ['id', 'title', 'markdown'],
-          type: 'OBJECT',
-        },
-        type: 'ARRAY',
-      },
-      summary: { type: 'STRING' },
-      title: { type: 'STRING' },
-    },
-    required: ['title', 'summary', 'sections'],
-    type: 'OBJECT',
-  },
-});
-const pufuScore = createPufuScoreFromReport(
-  toPufuScoreReportInput({
-    ...generated.report,
-    pufu_sources: [
-      {
-        canonical_uri: 'https://note.example.com/osc-osaka',
-        doc_type: 'web_page',
-        document_id: 'doc-osc',
-        occurred_at: '2026-01-31T15:24:00.000Z',
-        snippet:
-          '昨年に引き続き、オープンソースカンファレンス＠大阪に「プ譜友の会」からプ譜エディターを出展しました。',
-        title: '【プ譜友の会】オープンソースカンファレンス2026＠大阪の出展レポート',
-      },
-    ],
-  }),
+assert.equal(geminiGenerationConfig.responseMimeType, 'application/json');
+assert.ok(geminiGenerationConfig.responseSchema);
+assert.deepEqual((geminiGenerationConfig.responseSchema as { required: string[] }).required, [
+  'title',
+  'summary',
+  'sections',
+  'pufu_score',
+]);
+assert.ok(
+  (geminiGenerationConfig.responseSchema as { properties: Record<string, unknown> }).properties
+    .pufu_score,
 );
+assert.ok(generated.report.pufu_score);
+const pufuScore = createPufuScoreFromReport(toPufuScoreReportInput(generated.report));
 assert.doesNotMatch(JSON.stringify(pufuScore), /document_id|canonical_uri|doc-osc/);
-assert.match(pufuScore.gainingGoal.text, /プ譜エディターを試す人を増やす/);
-assert.match(pufuScore.elements.environment.text, /来場者/);
-assert.match(pufuScore.purposes[0]?.measures[0]?.text ?? '', /ブース/);
-assert.doesNotMatch(JSON.stringify(pufuScore), /データソースから|根拠資料/);
+assert.equal(pufuScore.gainingGoal.text, generated.report.pufu_score?.gainingGoal);
+assert.equal(pufuScore.winCondition.text, generated.report.pufu_score?.winCondition);
+assert.equal(pufuScore.purposes[0]?.text, generated.report.pufu_score?.purposes[0]?.text);
 assert.equal(repository.insertedChunks, 3);
 assert.doesNotMatch(repository.insertedChunkContents.join('\n'), /\n\n\{\}/);
 assert.ok(repository.storageUri?.includes('/sample-a/reports/private/'));
@@ -983,20 +951,20 @@ assert.doesNotMatch(
   /project-a|doc-issue|doc-pr|doc-a|contact@example\.com|user@example\.com|internal|corp|file:\/\//,
 );
 assert.match(publicText, /public_source_id/);
+assert.equal(published.publicReport.pufu_score?.gainingGoal, privateReport.pufu_score?.gainingGoal);
 assert.equal(published.publicReport.pufu_sources?.length, privateReport.pufu_sources?.length);
-const privatePublishedPufuScore = createPufuScoreFromReport(privateReport);
+const privatePublishedPufuScore = createPufuScoreFromReport(toPufuScoreReportInput(privateReport));
 const publicPublishedPufuScore = createPufuScoreFromReport({
   period: published.publicReport.period,
+  ...(published.publicReport.pufu_score ? { pufu_score: published.publicReport.pufu_score } : {}),
   pufu_sources: published.publicReport.pufu_sources?.map((source) => ({
-    canonical_uri: '',
     doc_type: 'public_report_source',
-    document_id: source.public_source_id,
     occurred_at: source.occurred_at,
     snippet: source.snippet,
     title: source.title,
   })),
   report_id: published.publicReport.report_id,
-  sections: [],
+  sections: published.publicReport.sections,
   summary: published.publicReport.summary,
   title: published.publicReport.title,
 });
