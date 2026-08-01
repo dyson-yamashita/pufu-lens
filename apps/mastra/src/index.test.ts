@@ -6,7 +6,12 @@ import { MemoryObjectStorage } from '@pufu-lens/storage/testing';
 import type { ChatRepository } from '@pufu-lens/web/chat';
 import { PRIVATE_CHAT_VECTOR_DIMENSIONS } from '@pufu-lens/web/chat';
 import type { ReportRepository } from '@pufu-lens/web/report';
-import { sampleChatSource as sampleSource } from '@pufu-lens/web/test-fixtures';
+import { PUFU_SCORE_SCHEMA_VERSION } from '@pufu-lens/web/report';
+import {
+  createContextualPufuScoreGenerator,
+  createFixedPufuScoreGenerator,
+  sampleChatSource as sampleSource,
+} from '@pufu-lens/web/test-fixtures';
 import {
   type CrossProjectInvestigationRepository,
   createPrivateChatClassificationPrompt,
@@ -353,9 +358,13 @@ const runtime = createPufuLensMastraRuntime({
   chatRepository,
   crossProjectInvestigationRepository,
   embeddingProvider: testEmbeddingProvider,
+  pufuScoreGenerator: createContextualPufuScoreGenerator(),
   reportRepository,
   reportStorage: storage,
 });
+
+assert.equal(runtime.pufuScoreAgent.id, mastraAgentIds.pufuScore);
+assert.ok(runtime.mastra.getAgentById(mastraAgentIds.pufuScore));
 
 assert.equal(runtime.crossProjectResearchAgent?.id, mastraAgentIds.crossProjectResearch);
 assert.equal(runtime.projectChatAgent.id, mastraAgentIds.projectChat);
@@ -595,6 +604,41 @@ assert.doesNotMatch(
   JSON.stringify(generatedScore),
   /データソースからプロジェクトの現在地を読み解き/,
 );
+
+const delegatedRuntime = createPufuLensMastraRuntime({
+  chatRepository,
+  embeddingProvider: testEmbeddingProvider,
+  pufuScoreGenerator: createFixedPufuScoreGenerator({
+    elements: {
+      businessScheme: '委譲座組',
+      environment: '委譲環境',
+      foreignEnemy: '委譲外敵',
+      money: '委譲お金',
+      people: '委譲ひと',
+      quality: '委譲品質',
+      rival: '委譲ライバル',
+      time: '委譲時間',
+    },
+    gainingGoal: '委譲済み獲得目標',
+    purposes: [{ measures: [{ color: 'white', text: '委譲済み施策' }], text: '委譲済み目的' }],
+    schema_version: PUFU_SCORE_SCHEMA_VERSION,
+    winCondition: '委譲済み勝利条件',
+  }),
+  reportRepository,
+  reportStorage: storage,
+});
+const delegatedScore = (await delegatedRuntime.projectChatTools.pufuScoreGenerate.execute?.(
+  {
+    period: { end: '2026-06-07', start: '2026-06-01' },
+    pufuSources: [],
+    reportId: 'report-delegated',
+    sections: [],
+    summary: 'summary',
+    title: 'title',
+  },
+  { requestContext } as never,
+)) as { score: { gainingGoal: { text: string } } } | undefined;
+assert.equal(delegatedScore?.score.gainingGoal.text, '委譲済み獲得目標');
 
 const rawDocumentFetch = (await runtime.projectChatTools.rawDocumentFetch.execute?.(
   { rawDocumentId: 'raw-a' },

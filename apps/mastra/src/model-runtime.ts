@@ -3,6 +3,22 @@ export const DEFAULT_CHAT_MODEL = 'google/gemini-2.5-flash';
 type ChatRuntimeEnv = Readonly<Record<string, string | undefined>>;
 
 /**
+ * Mirrors legacy `GEMINI_API_KEY` settings into Mastra Google provider env aliases.
+ */
+export function aliasLegacyGeminiApiKeys(env: NodeJS.ProcessEnv = process.env): void {
+  const geminiApiKey = env.GEMINI_API_KEY?.trim();
+  if (!geminiApiKey) {
+    return;
+  }
+  if (!env.GOOGLE_API_KEY?.trim()) {
+    env.GOOGLE_API_KEY = geminiApiKey;
+  }
+  if (!env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()) {
+    env.GOOGLE_GENERATIVE_AI_API_KEY = geminiApiKey;
+  }
+}
+
+/**
  * Resolves the Mastra model-router identifier shared by all Pufu Lens chat agents.
  *
  * `PUFU_LENS_CHAT_MODEL` accepts provider-qualified identifiers such as `openai/gpt-5-mini` or

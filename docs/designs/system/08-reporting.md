@@ -108,13 +108,13 @@ Private report JSON スキーマ（`schema_version: "v1"`）：
 
 `project_overview` は `scheduled` / `scheduled_backfill` report で必須とし、手動 report と既存 artifact では省略できる。Gemini は report 本文と同じ生成要求で作成し、extractive provider は report の summary、進行状況、課題から決定論的に補完する。`status_summary` は最大 400 code point、`assets` / `issues` は各最大 5 件、title は最大 120 code point、description と `next_action` は最大 300 code point とする。保存前に email、secret、token、API key、private URL、storage URI、document ID などをマスクまたは拒否し、public project の Overview にそのまま投影できる契約にする。
 
-`ReportGenerationProvider` が生成する report の title、summary、section title / markdown、`project_overview`、`pufu_score` の各表示項目、`recurrence` の差分本文は、provider の種類にかかわらず自然な日本語とする。JSON key は変更せず、根拠資料に含まれる固有名詞、製品名、code identifier は原表記を維持できる。
+`ReportGenerationProvider` が生成する report の title、summary、section title / markdown、`project_overview`、`recurrence` の差分本文、および専用 Mastra Agent が生成する `pufu_score` の各表示項目は、provider の種類にかかわらず自然な日本語とする。JSON key は変更せず、根拠資料に含まれる固有名詞、製品名、code identifier は原表記を維持できる。
 
 `recurrence` は同じ project・frequency の前回 `scheduled` / `scheduled_backfill` report を参照した生成だけが持つ optional field である。`frequency` と `previous_report_id` は provider 応答を信用せず、project-scoped metadata の検証結果から組み立てる。差分本文は normalize / redaction 後に `change_summary` を最大 2,000 code point、各 list を最大 10 件・各 400 code point に制限して保存する。手動生成では `recurrence` を付けない。private report 一覧は metadata から手動 / 定期と周期を表示し、`scheduled_backfill` も通常の定期表示にまとめる。private / public report 詳細は取得済み JSON に `recurrence` がある場合だけ共通の差分パネルを描画する。public artifact にはこの field を転記しない。
 
-`pufu_score` はレポート生成時のプロジェクト文脈から作る表示用プ譜の正本である。Gemini provider は report 本文と代表 document を根拠に生成し、extractive provider は title、summary、進行状況、課題、`pufu_sources`、対象期間から決定論的に組み立てる。獲得目標はプロジェクトが追う成果、勝利条件は達成を判断できる観測可能な状態、中間目的は獲得目標へ至るために実現済みであるべき 1〜4 件の状態とする。各中間目的は 1〜3 件の施策を持ち、色は white（通常）、red（獲得目標に必須の主施策）、green（面倒・調整負荷が高くても必要）、blue（将来問題への予防）、yellow（人・金・時間に余裕があれば実施）として扱う。固定のプロジェクト別文言や汎用テンプレートを正本にせず、根拠が不足する項目は不足を明示する。
+`pufu_score` はレポート生成時のプロジェクト文脈から作る表示用プ譜の正本である。report 本文の生成 provider とは分離した専用 Mastra `pufu-score-agent` が、project slug、対象期間、生成済み report の title / summary / sections、候補資料総数、代表 document の title / summary / doc type / occurred_at を根拠として構造化出力する。Agent 入力には document ID、raw document ID、canonical URI、private URI、storage URI を含めない。手動 report、定期 report、CLI report、project chat の `pufu-score-generate` tool は同じ Agent adapter を使う。獲得目標はプロジェクトが追う成果、勝利条件は達成を判断できる観測可能な状態、中間目的は獲得目標へ至るために実現済みであるべき 1〜4 件の状態とする。各中間目的は 1〜3 件の施策を持ち、色は white（通常）、red（獲得目標に必須の主施策）、green（面倒・調整負荷が高くても必要）、blue（将来問題への予防）、yellow（人・金・時間に余裕があれば実施）として扱う。固定のプロジェクト別文言や汎用テンプレートを正本にせず、根拠が不足する項目は report 固有の不足として明示する。
 
-保存前に `pufu-score-v1` の必須 key、文字列、件数、色、code point 上限を検証し、email、secret、token、API key、private URL、storage URI、document ID などをマスクまたは拒否する。provider が `pufu_score` を返さない、または正規化できない場合は extractive provider と同じ文脈ベースの生成へフォールバックする。既存 artifact など `pufu_score` がない report は、表示時に title、summary、sections、`pufu_sources` から同じフォールバックを生成する。client component へ渡す前に document ID、canonical URI、source metadata を除去し、マスク済み `pufu_score` と最小限の report 文脈へ投影する。public report artifact にもマスク済み `pufu_score` を転記するため、プ譜表示結果は member 向け report と一致する。
+保存前に `pufu-score-v1` の必須 key、文字列、件数、色、code point 上限を検証し、email、secret、token、API key、private URL、storage URI、document ID などをマスクまたは拒否する。新規 report 生成では Mastra Agent の応答欠落、生成失敗、schema 不正を report 生成全体の失敗として扱い、固定テンプレートへフォールバックせず、Object Storage・DB・public artifact のいずれにも保存しない。既存 artifact の再生成・backfill は行わず、`pufu_score` がない旧 report だけは表示互換のため、表示時に title、summary、sections、`pufu_sources` から従来の文脈ベース fallback を組み立てる。client component へ渡す前に document ID、canonical URI、source metadata を除去し、マスク済み `pufu_score` と最小限の report 文脈へ投影する。public report artifact にもマスク済み `pufu_score` を転記するため、プ譜表示結果は member 向け report と一致する。
 
 Public report JSON / context bundle は公開 artifact 互換や検証用途として生成できるが、現行の public report 表示と public chat の実行経路では private report / private chat の処理を使う。公開可否の判定は DB の project visibility と report `is_public` metadata を正とする。
 
@@ -138,7 +138,7 @@ Private report 生成は、対象期間の document を新しい順に最大 200
 - 進捗・成果
 - 背景・文脈
 
-provider へ直接渡す代表 document は最大 30 件とする。代表選定は新しさだけに寄せず、各編集テーマ、doc type、最古の dated document を時系列 anchor として先に確保し、残りを編集テーマから round-robin で選ぶ。これにより、31 件目以降も編集素材として Gemini / extractive provider の全体文脈と件数に参加させながら、直接根拠、`pufu_sources`、raw read の件数を bounded に保つ。編集素材は編集テーマごとに最大 40 件まで markdown 化し、provider プロンプトの token 増大を抑える。
+provider へ直接渡す代表 document は最大 30 件とする。代表選定は新しさだけに寄せず、各編集テーマ、doc type、最古の dated document を時系列 anchor として先に確保し、残りを編集テーマから round-robin で選ぶ。これにより、31 件目以降も編集素材として Gemini / extractive provider の全体文脈と件数に参加させながら、直接根拠、`pufu_sources`、raw read の件数を bounded に保つ。編集素材は編集テーマごとに最大 40 件まで markdown 化し、provider プロンプトの token 増大を抑える。`pufu-score-agent` は同じ代表 document と、それらを根拠に生成済みの report 本文、候補資料総数を受け取るため、document ID や URI を渡さずに全体文脈を間接的に反映する。
 
 Raw Read View の取得対象は代表 document だけとし、候補 200 件すべてを raw 補完しない。編集素材には `rawDocumentId`、private raw locator、storage URI を含めず、private report JSON に保存する `pufu_sources` も代表 document だけから組み立てる。候補上限 200 件を超えた古い document はその生成回の対象外とし、必要なら report period を分割して生成する。
 

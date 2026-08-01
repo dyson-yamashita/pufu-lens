@@ -23,9 +23,11 @@ export {
   type ProjectOverviewSnapshot,
 } from './project-overview-data.ts';
 export {
-  buildContextualPufuScore,
-  type ContextualPufuScoreInput,
-} from './pufu-score-generation.ts';
+  buildPufuScoreGenerationContext,
+  type PufuScoreEvidenceSource,
+  type PufuScoreGenerationContext,
+  type PufuScoreGenerationProvider,
+} from './pufu-score-generator.ts';
 export {
   assertPufuScoreReportInputSafe,
   type PufuScorePublicSource,
@@ -33,6 +35,7 @@ export {
 } from './pufu-score-input.ts';
 export {
   normalizePufuScore,
+  PUFU_SCORE_MEASURE_COLORS,
   PUFU_SCORE_SCHEMA_VERSION,
   type PufuScoreMeasureColor,
   type PufuScoreSemanticV1,

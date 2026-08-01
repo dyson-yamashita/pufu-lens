@@ -25,6 +25,6 @@
 - PostgreSQL は Apache AGE / pgvector / PGroonga を同梱したカスタム Docker イメージで運用する。
 - Cloud SQL は Apache AGE を前提にできないため、本番 DB の第一候補にはしない。
 - AGE を使う DB 接続では、接続確立時に `LOAD 'age'` と `SET search_path = ag_catalog, "$user", public` を実行する。
-- Chat生成モデルはMastra model routerの `PUFU_LENS_CHAT_MODEL` で選び、Google、OpenAI、Anthropicなどのprovider-qualified modelを指定する。
+- Chat回答とプ譜の生成モデルはMastra model routerの `PUFU_LENS_CHAT_MODEL` で選び、Google、OpenAI、Anthropicなどのprovider-qualified modelを指定する。
 - Embeddingは `PUFU_LENS_EMBEDDING_PROVIDER` / `PUFU_LENS_EMBEDDING_MODEL` / `PUFU_LENS_EMBEDDING_DIMENSIONS` をingestionとquery検索で共有する。実装済みproviderはGeminiとOpenAI、`deterministic` はローカル・テスト・development用途とし、`NODE_ENV=production` では共有runtimeで選択を拒否する。
 - DBの `vector(1536)` に合わせてembedding出力を1536次元に固定する。providerまたはmodelを変更する場合は、既存vectorと同じ空間として比較せず、全embeddingの再生成要否を確認する。

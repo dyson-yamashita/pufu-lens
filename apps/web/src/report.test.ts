@@ -5,6 +5,7 @@ import { ProjectAccessDeniedError } from './chat.ts';
 import { CUSTOM_REPORT_LAYOUT_SCHEMA_VERSION } from './custom-report-schema.ts';
 import { createPufuScoreFromReport } from './pufu-score.ts';
 import { toPufuScoreReportInput } from './pufu-score-input.ts';
+import { PUFU_SCORE_SCHEMA_VERSION } from './pufu-score-schema.ts';
 import {
   createExtractiveReportProvider,
   createGeminiReportProvider,
@@ -35,6 +36,14 @@ import {
 import { safeReportPdfLines } from './report-pdf.ts';
 import { publishGeneratedPublicReport } from './report-publication.ts';
 import { type PrivateReportJsonV1, validatePrivateReportJson } from './report-schema.ts';
+import {
+  createContextualPufuScoreGenerator,
+  createFixedPufuScoreGenerator,
+  createMalformedPufuScoreGenerator,
+  createRejectingPufuScoreGenerator,
+} from './test-fixtures.ts';
+
+const contextualPufuScoreGenerator = createContextualPufuScoreGenerator();
 
 function pufuScoreTexts(score: ReturnType<typeof createPufuScoreFromReport>): readonly string[] {
   return [
@@ -251,6 +260,9 @@ const generated = await runGenerateReport({
   options: {
     now: new Date('2026-06-04T12:00:00.000Z'),
     provider: createExtractiveReportProvider(),
+
+    pufuScoreGenerator: contextualPufuScoreGenerator,
+
     repository,
     storage,
   },
@@ -290,6 +302,7 @@ const customGenerated = await runGenerateReport({
     customTemplateId: 'template-a',
     now: new Date('2026-06-04T12:00:00.000Z'),
     provider: createExtractiveReportProvider(),
+    pufuScoreGenerator: contextualPufuScoreGenerator,
     repository: customRepository,
     storage: customStorage,
   },
@@ -493,14 +506,9 @@ assert.match(geminiPrompt, /Cite only representative documents/);
 assert.match(geminiPrompt, /Total candidate documents: 31/);
 assert.match(geminiPrompt, /marker beyond representative evidence/);
 assert.match(geminiPrompt, /Representative summary/);
-assert.match(geminiPrompt, /pufu_score must use schema_version "pufu-score-v1"/);
-assert.match(geminiPrompt, /white=standard action/);
-assert.match(geminiPrompt, /red=main action that must be undertaken to achieve the goal/);
-assert.match(geminiPrompt, /green=cumbersome\/coordination-heavy but required action/);
-assert.match(geminiPrompt, /blue=preventive action against a possible future problem/);
-assert.match(geminiPrompt, /yellow=optional action when people\/money\/time resources allow/);
-assert.doesNotMatch(geminiPrompt, /red=stop or avoid|green=do now|blue=observe or verify/);
-assert.match(geminiPrompt, /Do not copy generic boilerplate across projects/);
+assert.doesNotMatch(geminiPrompt, /pufu_score must use schema_version/);
+assert.doesNotMatch(geminiPrompt, /white=standard action/);
+assert.doesNotMatch(geminiPrompt, /Do not copy generic boilerplate across projects/);
 assert.doesNotMatch(geminiPrompt, /rawDocumentId|00000000-0000-4000-8000-000000000101/);
 assert.equal(geminiGenerationConfig.responseMimeType, 'application/json');
 assert.ok(geminiGenerationConfig.responseSchema);
@@ -508,11 +516,12 @@ assert.deepEqual((geminiGenerationConfig.responseSchema as { required: string[] 
   'title',
   'summary',
   'sections',
-  'pufu_score',
 ]);
-assert.ok(
-  (geminiGenerationConfig.responseSchema as { properties: Record<string, unknown> }).properties
-    .pufu_score,
+assert.doesNotMatch(
+  JSON.stringify(
+    (geminiGenerationConfig.responseSchema as { properties: Record<string, unknown> }).properties,
+  ),
+  /"pufu_score"/,
 );
 assert.ok(generated.report.pufu_score);
 const pufuScore = createPufuScoreFromReport(toPufuScoreReportInput(generated.report));
@@ -535,6 +544,7 @@ assert.equal(generated.report.project_overview, undefined);
       now: new Date('2026-06-04T12:30:00.000Z'),
       period: { end: '2026-06-07', start: '2026-06-01' },
       provider: createExtractiveReportProvider(),
+      pufuScoreGenerator: contextualPufuScoreGenerator,
       repository: scheduledRepository,
       scheduleFrequency: 'weekly',
       schedulePeriodRunId: 'period-run-overview',
@@ -570,6 +580,7 @@ assert.equal(generated.report.project_overview, undefined);
           };
         },
       },
+      pufuScoreGenerator: contextualPufuScoreGenerator,
       repository: scheduledRepository,
       scheduleFrequency: 'weekly',
       schedulePeriodRunId: 'period-run-invalid-overview',
@@ -613,6 +624,7 @@ assert.equal(generated.report.project_overview, undefined);
             };
           },
         },
+        pufuScoreGenerator: contextualPufuScoreGenerator,
         repository: scheduledRepository,
         scheduleFrequency: 'weekly',
         schedulePeriodRunId: 'period-run-invalid-overview-and-summary',
@@ -656,6 +668,9 @@ const rawSupplemented = await runGenerateReport({
         return createExtractiveReportProvider().generate({ documents, period, projectSlug });
       },
     },
+
+    pufuScoreGenerator: contextualPufuScoreGenerator,
+
     rawReadViewRepository: {
       async fetchRawReadView({ projectId, rawDocumentId }) {
         assert.equal(projectId, 'project-a');
@@ -726,6 +741,9 @@ const rawSupplementFailureReport = await runGenerateReport({
         return createExtractiveReportProvider().generate({ documents, period, projectSlug });
       },
     },
+
+    pufuScoreGenerator: contextualPufuScoreGenerator,
+
     rawReadViewRepository: {
       async fetchRawReadView() {
         throw new Error('raw view temporarily unavailable');
@@ -753,6 +771,9 @@ const malformedRawViewReport = await runGenerateReport({
         return createExtractiveReportProvider().generate({ documents, period, projectSlug });
       },
     },
+
+    pufuScoreGenerator: contextualPufuScoreGenerator,
+
     rawReadViewRepository: {
       async fetchRawReadView() {
         return {
@@ -818,6 +839,9 @@ const overflowReport = await runGenerateReport({
         });
       },
     },
+
+    pufuScoreGenerator: contextualPufuScoreGenerator,
+
     rawReadViewRepository: {
       async fetchRawReadView() {
         overflowRawReadCount += 1;
@@ -864,6 +888,7 @@ const explicitPeriodReport = await runGenerateReport({
         });
       },
     },
+    pufuScoreGenerator: contextualPufuScoreGenerator,
     repository: {
       ...explicitPeriodRepository,
       async listRecentDocuments({ period, projectId }) {
@@ -1648,6 +1673,7 @@ await assert.rejects(
       now: new Date('2026-06-04T12:00:00.000Z'),
       period: { end: '2026-06-07', start: '2026-06-01' },
       provider: createExtractiveReportProvider(),
+      pufuScoreGenerator: contextualPufuScoreGenerator,
       repository: conflictRepository,
       scheduleFrequency: 'weekly',
       schedulePeriodRunId: 'period-run-a',
@@ -1720,6 +1746,7 @@ await assert.rejects(
           now: new Date('2026-06-04T12:00:00.000Z'),
           period: { end: '2026-06-07', start: '2026-06-01' },
           provider: createExtractiveReportProvider(),
+          pufuScoreGenerator: contextualPufuScoreGenerator,
           repository: retryRepository,
           scheduleFrequency: 'weekly',
           schedulePeriodRunId: 'period-run-a',
@@ -1735,6 +1762,7 @@ await assert.rejects(
       now: new Date('2026-06-04T12:00:00.000Z'),
       period: { end: '2026-06-07', start: '2026-06-01' },
       provider: createExtractiveReportProvider(),
+      pufuScoreGenerator: contextualPufuScoreGenerator,
       repository: retryRepository,
       scheduleFrequency: 'weekly',
       schedulePeriodRunId: 'period-run-a',
@@ -1797,6 +1825,9 @@ await assert.rejects(
       now: new Date('2026-06-04T12:00:00.000Z'),
       period,
       provider: signalAwareProvider,
+
+      pufuScoreGenerator: contextualPufuScoreGenerator,
+
       repository,
       signal: controller.signal,
       storage,
@@ -1823,6 +1854,9 @@ await assert.rejects(
       now: new Date('2026-06-04T12:00:00.000Z'),
       period,
       provider: delayingProvider,
+
+      pufuScoreGenerator: contextualPufuScoreGenerator,
+
       repository,
       signal: controller.signal,
       storage: Object.assign(Object.create(Object.getPrototypeOf(storage)), storage, {
@@ -1912,6 +1946,7 @@ await assert.rejects(
           now: new Date('2026-06-04T12:00:00.000Z'),
           period,
           provider: createExtractiveReportProvider(),
+          pufuScoreGenerator: contextualPufuScoreGenerator,
           repository: trackingRepository,
           signal: controller.signal,
           storage: abortAfterPutStorage,
@@ -1959,6 +1994,115 @@ await assert.rejects(
     /report generation aborted/,
   );
   assert.equal(publicStateCalls, 0);
+}
+
+{
+  const injectedScore = {
+    elements: {
+      businessScheme: '注入済み座組',
+      environment: '注入済み環境',
+      foreignEnemy: '注入済み外敵',
+      money: '注入済みお金',
+      people: '注入済みひと',
+      quality: '注入済み品質',
+      rival: '注入済みライバル',
+      time: '注入済み時間',
+    },
+    gainingGoal: '注入済み獲得目標',
+    purposes: [
+      { measures: [{ color: 'white' as const, text: '注入済み施策' }], text: '注入済み目的' },
+    ],
+    schema_version: PUFU_SCORE_SCHEMA_VERSION,
+    winCondition: '注入済み勝利条件',
+  };
+  const injectedRepository = createRepository();
+  const injectedStorage = new MemoryObjectStorage();
+  const injectedGenerated = await runGenerateReport({
+    options: {
+      now: new Date('2026-06-04T12:00:00.000Z'),
+      provider: createExtractiveReportProvider(),
+      pufuScoreGenerator: createFixedPufuScoreGenerator(injectedScore),
+      repository: injectedRepository,
+      storage: injectedStorage,
+    },
+    projectSlug: 'sample-a',
+  });
+  assert.equal(injectedGenerated.report.pufu_score?.gainingGoal, '注入済み獲得目標');
+  assert.equal(injectedGenerated.report.pufu_score?.winCondition, '注入済み勝利条件');
+}
+
+{
+  const rejectingRepository = createRepository();
+  const rejectingStorage = new MemoryObjectStorage();
+  let rejectingInsertCalls = 0;
+  const rejectingTrackingRepository = {
+    ...rejectingRepository,
+    async insertReport(
+      args: Parameters<
+        Extract<typeof rejectingRepository.insertReport, (...args: never) => unknown>
+      >[0],
+    ) {
+      rejectingInsertCalls += 1;
+      return rejectingRepository.insertReport(args);
+    },
+  };
+  await assert.rejects(
+    () =>
+      runGenerateReport({
+        options: {
+          now: new Date('2026-06-04T12:00:00.000Z'),
+          provider: createExtractiveReportProvider(),
+          pufuScoreGenerator: createRejectingPufuScoreGenerator(),
+          repository: rejectingTrackingRepository,
+          storage: rejectingStorage,
+        },
+        projectSlug: 'sample-a',
+      }),
+    /Pufu score generation failed/,
+  );
+  assert.equal(rejectingInsertCalls, 0);
+}
+
+{
+  const malformedRepository = createRepository();
+  const malformedStorage = new MemoryObjectStorage();
+  let malformedInsertCalls = 0;
+  const malformedTrackingRepository = {
+    ...malformedRepository,
+    async insertReport(
+      args: Parameters<
+        Extract<typeof malformedRepository.insertReport, (...args: never) => unknown>
+      >[0],
+    ) {
+      malformedInsertCalls += 1;
+      return malformedRepository.insertReport(args);
+    },
+  };
+  await assert.rejects(
+    () =>
+      runGenerateReport({
+        options: {
+          now: new Date('2026-06-04T12:00:00.000Z'),
+          provider: createExtractiveReportProvider(),
+          pufuScoreGenerator: createMalformedPufuScoreGenerator(),
+          repository: malformedTrackingRepository,
+          storage: malformedStorage,
+        },
+        projectSlug: 'sample-a',
+      }),
+    /Pufu score generation returned invalid payload/,
+  );
+  assert.equal(malformedInsertCalls, 0);
+}
+
+{
+  const legacyFallbackInput = toPufuScoreReportInput({
+    ...generated.report,
+    pufu_score: undefined,
+  });
+  const legacyFallbackScore = createPufuScoreFromReport(legacyFallbackInput);
+  assert.ok(legacyFallbackScore.gainingGoal.text.length > 0);
+  assert.ok(legacyFallbackScore.winCondition.text.length > 0);
 }
 
 console.log('web report tests passed');
