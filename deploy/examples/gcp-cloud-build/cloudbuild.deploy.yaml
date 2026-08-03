@@ -15,12 +15,13 @@ substitutions:
   _RUNTIME_SERVICE_ACCOUNT: ''
   _SCHEDULER_SERVICE_ACCOUNT: ''
   _STORAGE_BUCKET: ''
-  _VPC_CONNECTOR: mastra-connector
+  _VPC_NETWORK: default
+  _VPC_SUBNET: pufu-lens-serverless
   _MASTRA_SERVICE: mastra-server
   _MASTRA_IMAGE: mastra-server
   _JOBS_IMAGE: workflow-job
   _FIREBASE_DEPLOY: 'true'
-  _FIREBASE_TOOLS_VERSION: 14.4.0
+  _FIREBASE_TOOLS_VERSION: 15.25.1
   _RUN_DB_MIGRATIONS: 'true'
   _DB_MIGRATION_JOB: db-migrate
   _SOURCE_SYNC_DISPATCHER_JOB: source-sync-dispatcher
@@ -58,7 +59,8 @@ steps:
           "_RUNTIME_SERVICE_ACCOUNT=${_RUNTIME_SERVICE_ACCOUNT}" \
           "_SCHEDULER_SERVICE_ACCOUNT=${_SCHEDULER_SERVICE_ACCOUNT}" \
           "_STORAGE_BUCKET=${_STORAGE_BUCKET}" \
-          "_VPC_CONNECTOR=${_VPC_CONNECTOR}" \
+          "_VPC_NETWORK=${_VPC_NETWORK}" \
+          "_VPC_SUBNET=${_VPC_SUBNET}" \
           "_MASTRA_SERVICE=${_MASTRA_SERVICE}" \
           "_MASTRA_IMAGE=${_MASTRA_IMAGE}" \
           "_JOBS_IMAGE=${_JOBS_IMAGE}" \
@@ -209,7 +211,9 @@ steps:
           --image "${image}"
           --region "${_REGION}"
           --service-account "${_RUNTIME_SERVICE_ACCOUNT}"
-          --vpc-connector "${_VPC_CONNECTOR}"
+          --network "${_VPC_NETWORK}"
+          --subnet "${_VPC_SUBNET}"
+          --vpc-egress private-ranges-only
           --command pnpm
           --args db:migrate
           --tasks 1
@@ -252,7 +256,9 @@ steps:
           --image "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_MASTRA_IMAGE}:${SHORT_SHA}" \
           --region "${_REGION}" \
           --service-account "${_RUNTIME_SERVICE_ACCOUNT}" \
-          --vpc-connector "${_VPC_CONNECTOR}" \
+          --network "${_VPC_NETWORK}" \
+          --subnet "${_VPC_SUBNET}" \
+          --vpc-egress private-ranges-only \
           --no-allow-unauthenticated \
           --port 8080 \
           --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},PUFU_LENS_CHAT_MODEL=${_CHAT_MODEL},PUFU_LENS_EMBEDDING_PROVIDER=${_EMBEDDING_PROVIDER},PUFU_LENS_EMBEDDING_MODEL=${_EMBEDDING_MODEL},PUFU_LENS_EMBEDDING_DIMENSIONS=${_EMBEDDING_DIMENSIONS},GEMINI_CHAT_MODEL=gemini-2.5-flash,GOOGLE_GENAI_USE_VERTEXAI=false,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},CLOUD_RUN_JOBS_REGION=${_REGION},SOURCE_SYNC_DISPATCHER_JOB_NAME=${_ENV}-${_SOURCE_SYNC_DISPATCHER_JOB},REPORT_SCHEDULE_DISPATCHER_JOB_NAME=${_ENV}-${_REPORT_SCHEDULE_DISPATCHER_JOB}" \
@@ -281,7 +287,9 @@ steps:
             --image "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_JOBS_IMAGE}:${SHORT_SHA}"
             --region "${_REGION}"
             --service-account "${_RUNTIME_SERVICE_ACCOUNT}"
-            --vpc-connector "${_VPC_CONNECTOR}"
+            --network "${_VPC_NETWORK}"
+            --subnet "${_VPC_SUBNET}"
+            --vpc-egress private-ranges-only
             --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},WORKFLOW_ID=$${workflow_id},PUFU_LENS_CHAT_MODEL=${_CHAT_MODEL},PUFU_LENS_EMBEDDING_PROVIDER=${_EMBEDDING_PROVIDER},PUFU_LENS_EMBEDDING_MODEL=${_EMBEDDING_MODEL},PUFU_LENS_EMBEDDING_DIMENSIONS=${_EMBEDDING_DIMENSIONS},GEMINI_CHAT_MODEL=gemini-2.5-flash,GOOGLE_GENAI_USE_VERTEXAI=false"
             --set-secrets "DATABASE_URL=DATABASE_URL:latest,${_CHAT_API_KEY_ENV}=${_CHAT_API_KEY_SECRET}:latest,PUFU_LENS_EMBEDDING_API_KEY=${_EMBEDDING_API_KEY_SECRET}:latest,AUTH_SECRET=AUTH_SECRET:latest"
           )

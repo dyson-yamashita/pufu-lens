@@ -24,7 +24,8 @@ const BASE_ENV = {
   PUFU_LENS_EMBEDDING_PROVIDER: 'gemini',
   SCHEDULER_SERVICE_ACCOUNT: 'scheduler@test-project.iam.gserviceaccount.com',
   STORAGE_BUCKET: 'test-bucket',
-  VPC_CONNECTOR: 'test-connector',
+  VPC_NETWORK: 'default',
+  VPC_SUBNET: 'pufu-lens-serverless',
 } as const;
 
 test('infra check accepts supported independent Chat and Embedding providers', async () => {
@@ -58,10 +59,24 @@ test('infra check blocks incomplete Chat model IDs and incompatible vector dimen
   assert.equal(invalidDimensions.output.aiRuntime.status, 'blocked');
 });
 
+test('infra check blocks staging deploy when Direct VPC network settings are missing', async () => {
+  const missingNetwork = await runInfraCheck({ VPC_NETWORK: '' });
+  const missingSubnet = await runInfraCheck({ VPC_SUBNET: '' });
+
+  assert.equal(missingNetwork.exitCode, 1);
+  assert.equal(missingNetwork.output.status, 'blocked');
+  assert.deepEqual(missingNetwork.output.missing, ['VPC_NETWORK']);
+
+  assert.equal(missingSubnet.exitCode, 1);
+  assert.equal(missingSubnet.output.status, 'blocked');
+  assert.deepEqual(missingSubnet.output.missing, ['VPC_SUBNET']);
+});
+
 async function runInfraCheck(overrides: Record<string, string>): Promise<{
   exitCode: number | null;
   output: {
     aiRuntime: { status: string };
+    missing: string[];
     status: string;
   };
 }> {
@@ -92,6 +107,7 @@ async function runInfraCheck(overrides: Record<string, string>): Promise<{
     exitCode,
     output: JSON.parse(stdout) as {
       aiRuntime: { status: string };
+      missing: string[];
       status: string;
     },
   };

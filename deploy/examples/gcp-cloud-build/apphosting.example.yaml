@@ -8,7 +8,9 @@ runConfig:
   memoryMiB: 2048
   vpcAccess:
     egress: PRIVATE_RANGES_ONLY
-    connector: <vpc-connector-name>
+    networkInterfaces:
+      - network: '<vpc-network-name>'
+        subnetwork: '<direct-vpc-subnet-name>'
 
 env:
   - variable: STORAGE_DRIVER

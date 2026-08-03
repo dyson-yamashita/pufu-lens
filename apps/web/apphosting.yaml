@@ -1,6 +1,6 @@
 # Firebase App Hosting backend configuration for @pufu-lens/web (Next.js).
-# Deployed via local source: `firebase deploy` (Firebase CLI >= 14.4.0).
-# Region must match the VPC connector (asia-east1) so the Web API can reach
+# Deployed via local source: `firebase deploy` (Firebase CLI >= 15.25.1).
+# Region must match the Direct VPC subnet (asia-east1) so the Web API can reach
 # the internal PostgreSQL VM and the Mastra Cloud Run service.
 runConfig:
   minInstances: 0
@@ -10,7 +10,9 @@ runConfig:
   memoryMiB: 2048
   vpcAccess:
     egress: PRIVATE_RANGES_ONLY
-    connector: mastra-connector
+    networkInterfaces:
+      - network: default
+        subnetwork: pufu-lens-serverless
 
 env:
   - variable: STORAGE_DRIVER
