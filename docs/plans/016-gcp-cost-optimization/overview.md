@@ -1,6 +1,6 @@
 # GCP 固定費削減移行計画
 
-- status: `active`
+- status: `completed`
 - 作成日: 2026-08-01
 - 親 Issue: [#663](https://github.com/dyson-yamashita/pufu-lens/issues/663)
 - 対象 project / region / zone: `pufu-lens` / `asia-east1` / `asia-east1-b`
@@ -88,12 +88,12 @@
 
 親 Issue #663 は全体進捗と完了条件を管理する。当初は Step ごとの Issue / PR を想定したが、ユーザーから全 Step の本番実行と完了後 PR 作成が明示されたため、#663 と同一 branch / PR に実行記録を集約した。
 
-| Step | 内容                                                                       | 状態         | Issue / PR   |
-| ---- | -------------------------------------------------------------------------- | ------------ | ------------ |
-| 1    | Direct VPC の設定契約、テスト、関連ドキュメントを更新                      | `completed`  | #663 / 本 PR |
-| 2    | 専用 subnet を作成し、全 runtime を Direct VPC へ切替、旧 Connector を廃止 | `completed`  | #663 / 本 PR |
-| 3    | DB backup / snapshot 後に `pg-ai-cos` を resize                            | `monitoring` | #663 / 本 PR |
-| 4    | 旧 `pg-ai` VM / boot disk を削除し、削減結果を確認                         | `completed`  | #663 / 本 PR |
+| Step | 内容                                                                       | 状態        | Issue / PR   |
+| ---- | -------------------------------------------------------------------------- | ----------- | ------------ |
+| 1    | Direct VPC の設定契約、テスト、関連ドキュメントを更新                      | `completed` | #663 / 本 PR |
+| 2    | 専用 subnet を作成し、全 runtime を Direct VPC へ切替、旧 Connector を廃止 | `completed` | #663 / 本 PR |
+| 3    | DB backup / snapshot 後に `pg-ai-cos` を resize                            | `completed` | #663 / 本 PR |
+| 4    | 旧 `pg-ai` VM / boot disk を削除し、削減結果を確認                         | `completed` | #663 / 本 PR |
 
 Step 2〜4 は本番変更または削除を含むため、実行日時、担当者、対象 commit、対象 GCP project を記録し、開始前に明示的な本番作業確認を行う。
 
@@ -348,7 +348,7 @@ Issue または運用記録には secret を含めず、次を残す。
 - VM 停止後に data disk snapshot `pg-ai-data-pre-resize-20260803t014704z` を作成し、50 GB、`asia-east1`、`READY` を確認した。`retain-until=2026-08-10` label を付け、安定確認後に削除判断する。
 - `pg-ai-cos` を `e2-medium` から `e2-custom-small-3072`（2 vCPU / 3,072 MiB）へ変更した。data disk `pg-ai-data`、private IP `10.140.0.3`、PostgreSQL image / schema は変更していない。
 - 起動後に PostgreSQL 18.1、AGE、pgvector、PGroonga、projects 3 件、reports 9 件、data disk 接続を確認した。container memory limit は 2.908 GiB、確認時の使用量は約 51 MiB だった。
-- resize 後の DB migration execution `db-migrate-jbtkg` と公開 Projects 表示が成功し、error log は 0 件だった。60 分の post-resize soak を完了条件として継続監視する。
+- resize 後の DB migration execution `db-migrate-jbtkg` と公開 Projects 表示が成功した。60 分の post-resize soak では Cloud Run / Job / GCE error log、OOM、container restart は 0 件だった。最終確認時は CPU 0%、memory 約 89 MiB / 2.908 GiB で、rollback 条件に該当しなかった。
 
 ### 13.3 旧 VM / disk 削除と最終 inventory
 
@@ -367,4 +367,6 @@ Issue または運用記録には secret を含めず、次を残す。
 - `pnpm typecheck`: pass
 - `db-migrate-64n78`、`db-migrate-mwlmv`、`db-migrate-jbtkg`: success
 - Direct VPC 切替後の Cloud Run / GCE error log: 0 件
+- `pnpm infra:check --env production`: pass（identifier / provider contract のみ。secret 値は使用・出力していない）
+- post-resize 60 分 soak: Dispatcher 12 周期以上 success、PostgreSQL restart 0、error log 0 件
 - 概算削減額: 約 $27 / 月。実績値は 2026-08-10 以降に Billing Report の前後 7 日を比較する。
