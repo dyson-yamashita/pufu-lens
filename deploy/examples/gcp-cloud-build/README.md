@@ -235,7 +235,7 @@ The runtime service account generally needs:
 Before enabling the deploy trigger, build and push the Firebase CLI builder image once per project. Use the same version as `_FIREBASE_TOOLS_VERSION` in `cloudbuild.deploy.yaml` for both the image tag and build arg. `gcloud builds submit --tag` does not accept `--build-arg`, so pass the arg through a temporary Cloud Build config:
 
 ```bash
-FIREBASE_TOOLS_VERSION=14.4.0
+FIREBASE_TOOLS_VERSION=15.25.1
 IMAGE="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/firebase-tools:${FIREBASE_TOOLS_VERSION}"
 
 cat > /tmp/cloudbuild.firebase-tools.yaml <<EOF

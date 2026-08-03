@@ -297,7 +297,7 @@ Cloud Run resource には secret reference を渡す。secret 値そのものを
 deploy trigger を有効化する前に、Firebase CLI builder image を Artifact Registry へ 1 回 push する。version の正は `cloudbuild.deploy.yaml` の `_FIREBASE_TOOLS_VERSION` とし、image tag と build arg の両方に同じ値を使う。`gcloud builds submit --tag` は `--build-arg` を受け付けないため、一時 config 経由で docker build する。
 
 ```bash
-FIREBASE_TOOLS_VERSION=14.4.0
+FIREBASE_TOOLS_VERSION=15.25.1
 IMAGE="${RUNTIME_REGION}-docker.pkg.dev/${PROJECT_ID}/<artifact-repo>/firebase-tools:${FIREBASE_TOOLS_VERSION}"
 
 cat > /tmp/cloudbuild.firebase-tools.yaml <<EOF
@@ -412,7 +412,8 @@ deploy 後は次を確認する。
 - Artifact Registry に `SHORT_SHA` tag の image がある。
 - `_RUN_DB_MIGRATIONS=true` の build では、Cloud Run Job `${_DB_MIGRATION_JOB}` の execute が成功している。
 - migration 適用後、`public.schema_migrations` に期待どおりの version が記録されている（IAP tunnel など DB に到達できる端末から確認する）。
-- Cloud Run service / Jobs / App Hosting が `_RUNTIME_SERVICE_ACCOUNT`、Direct VPC network / subnet、`private-ranges-only` egress、Secret Manager reference を使い、Connector annotation を持たない。
+- Cloud Run service / Jobs が `_RUNTIME_SERVICE_ACCOUNT`、Direct VPC network / subnet、`private-ranges-only` egress、Secret Manager reference を使い、Connector annotation を持たない。
+- App Hosting は backend に設定した runtime service account を使い、`apps/web/apphosting.yaml` の `runConfig.vpcAccess.networkInterfaces` と `PRIVATE_RANGES_ONLY` egress が生成後の Cloud Run revision に反映され、Connector annotation を持たない。
 - Cloud Run Jobs が deploy config の命名規則どおりに作成または更新されている。
 - 5分間隔のsource syncと定期reportのCloud Schedulerが各1件だけ存在し、Scheduler SAがMastra Cloud Run service resourceの`roles/run.invoker`を持ち、OIDCで各内部routeを呼べる。
 - Mastra runtime SAがsource syncと定期reportの両dispatcher Job resourceで`roles/run.jobsExecutorWithOverrides`を持ち、routeやJob logにtoken/secret/raw本文が出ていない。
@@ -479,7 +480,7 @@ gcloud run services update-traffic mastra-server \
 | Cloud Build が deploy 権限で失敗する      | trigger の service account、Artifact Registry / Cloud Run / Firebase 権限                                                                 |
 | Cloud Run が DB に接続できない            | Direct VPC network / subnet、専用 CIDR の firewall、Private Google Access、`DATABASE_URL` secret、Cloud Run service agent の network user |
 | DB migration job が失敗する               | `${_DB_MIGRATION_JOB}` の execute log、Workflow Job image tag、`DATABASE_URL` secret reference、Direct VPC annotation                     |
-| App Hosting が build / rollout で失敗する | `apps/web/package.json` の Next.js version、App Hosting source bucket、backend SA                                                         |
+| App Hosting が build / rollout で失敗する | `apps/web/package.json` の Next.js version、App Hosting source bucket、backend SA、生成 revision の Direct VPC network interface / egress |
 | secret 参照で失敗する                     | Secret Manager accessor、App Hosting secret grant、secret 名の typo                                                                       |
 | docs-only 変更で deploy が走る            | trigger の included files                                                                                                                 |
 | production が勝手に走りそう               | branch pattern、approval required、deploy SA 分離                                                                                         |

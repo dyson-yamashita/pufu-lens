@@ -1,6 +1,6 @@
 # GCP 固定費削減移行計画
 
-- status: `completed`
+- status: `active`
 - 作成日: 2026-08-01
 - 親 Issue: [#663](https://github.com/dyson-yamashita/pufu-lens/issues/663)
 - 対象 project / region / zone: `pufu-lens` / `asia-east1` / `asia-east1-b`
@@ -16,7 +16,7 @@
 | 停止済み旧 DB         | `pg-ai` と 20 GB boot disk `pg-ai`             | 削除                        |        約 $2.00 |
 | 合計                  |                                                |                             | **約 $27 / 月** |
 
-金額は 2026-08-01 時点の概算であり、実施後は Billing Report の 7 日間実績と対象リソースの消滅を使って確認する。
+金額は 2026-08-01 時点の概算であり、Direct VPC egress のデータ転送などの従量費を含まない。現行 VM の 20 GB boot disk は変更前後とも維持するため削減額に含めず、削除した旧 VM の別の 20 GB boot disk だけを削減対象とする。実施後は Billing Report の 7 日間実績と対象リソースの消滅を使って確認する。
 
 ## 2. 現状と判断根拠
 
@@ -328,6 +328,7 @@ Issue または運用記録には secret を含めず、次を残す。
 - DB data、schema、AGE / pgvector / PGroonga、auth、chat、report、ingest、Scheduler に回帰がない。
 - 実装、deploy 設定、system design、operation docs、OSS example、deploy skill に Connector 前提の drift が残っていない。
 - 実施内容、backup / snapshot、検証、削減後費用が追跡可能な形で記録されている。
+- 2026-08-10 以降に Billing Report の実施前後 7 日を比較し、従量差と一時 snapshot 費用を注記した実績削減額を記録している。
 
 ## 13. 実施結果（2026-08-03）
 
@@ -362,6 +363,8 @@ Issue または運用記録には secret を含めず、次を残す。
 ### 13.4 検証結果
 
 - `pnpm scripts:test`: 151 tests、147 pass / 4 skip / 0 fail
+  - `ensureBuiltInParserProfileForDataSource` の既存 profile 更新と新規 profile 作成、および project scope 更新の 3 件は、ローカル実行時に `DATABASE_URL` を注入しない DB integration test のため skip。今回の deploy / docs 変更は parser profile 実装に触れず、追加の回帰リスクはない。
+  - `stale parser queries compare queue raws only against the built-in active profile` は同じく `DATABASE_URL` を注入しない DB integration test のため skip。reprocess query 実装は変更しておらず、追加の回帰リスクはない。
 - `pnpm deploy:dry-run`: pass
 - `pnpm format:check`: pass
 - `pnpm lint`: pass
@@ -372,3 +375,4 @@ Issue または運用記録には secret を含めず、次を残す。
 - post-resize 60 分 soak: Dispatcher 12 周期以上 success、PostgreSQL restart 0、error log 0 件
 - deletion protection 有効化後も VM は `RUNNING`、private IP と machine type は不変で、`pg_isready` success、PostgreSQL container restart 0 を確認した。
 - 概算削減額: 約 $27 / 月。実績値は 2026-08-10 以降に Billing Report の前後 7 日を比較する。
+- GitHub Actions / CodeQL は PR #664 の commit `3c558ef` で format-lint、typecheck、unit-test、db-check、build、e2e、CodeQL、Actions / JavaScript-TypeScript analysis がすべて success。Billing Report 比較が未完了のため plan は `active` を維持する。

@@ -93,6 +93,13 @@ gcloud compute firewall-rules create pg-ai-allow-direct-vpc \
   --rules=tcp:5432 \
   --source-ranges=10.9.0.0/25 \
   --target-tags=pg-ai
+gcloud compute firewall-rules create pg-ai-allow-iap \
+  --network=default \
+  --direction=INGRESS \
+  --action=ALLOW \
+  --rules=tcp:22,tcp:5432 \
+  --source-ranges=35.235.240.0/20 \
+  --target-tags=pg-ai
 
 # 3. PostgreSQL COS VM 起動（初回のみ）
 gcloud compute instances create pg-ai \
