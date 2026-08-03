@@ -103,6 +103,7 @@ gcloud compute instances create pg-ai \
   --boot-disk-size=20GB \
   --boot-disk-type=pd-balanced \
   --create-disk=name=pg-ai-data,device-name=pg-ai-data,size=50GB,type=pd-ssd,auto-delete=no \
+  --deletion-protection \
   --service-account="$POSTGRES_VM_SA" \
   --scopes=cloud-platform \
   --metadata="postgres-image=${POSTGRES_IMAGE},postgres-password-secret=POSTGRES_PASSWORD,postgres-data-disk=pg-ai-data" \
@@ -185,6 +186,8 @@ gcloud run services add-iam-policy-binding mastra-server \
 gsutil iam ch serviceAccount:mastra-runtime@PROJECT.iam.gserviceaccount.com:objectAdmin gs://pufu-lens-prod
 gsutil iam ch serviceAccount:firebase-app-hosting-compute@PROJECT.iam.gserviceaccount.com:objectViewer gs://pufu-lens-prod
 ```
+
+本番 PostgreSQL VM は deletion protection を有効にする。boot disk は再構築可能なため `autoDelete=true`、DB の正である `pg-ai-data` は `autoDelete=false` とし、誤って VM を削除しても data disk が残る構成にする。意図的な VM 削除では、対象 project / zone / instance、backup、`pg-ai-data` の接続先と `autoDelete=false` を確認した後にだけ deletion protection を解除する。
 
 既存のコンテナ起動エージェント管理 VM を移行するときは、先に `gce-container-declaration` metadata の有無を確認し、メンテナンス時間内に DB backup と `pg-ai-data` snapshot を取得する。旧 VM と新 VM から同じ永続ディスクを同時に read-write mount してはならない。旧 VM を停止してディスクを保持した後、新 VM の作成では `--create-disk` の代わりに `--disk=name=pg-ai-data,device-name=pg-ai-data,auto-delete=no` を使う。内部 IP が変わる場合は `DATABASE_URL` に新しい secret version を追加してから、Cloud Run / Jobs / App Hosting を再デプロイし、接続 smoke 後に旧 VM を削除する。
 

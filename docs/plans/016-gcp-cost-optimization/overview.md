@@ -323,6 +323,7 @@ Issue または運用記録には secret を含めず、次を残す。
 - 全 App Hosting / Cloud Run service / Cloud Run Jobs が Direct VPC で private PostgreSQL へ接続できる。
 - `mastra-connector` と `pg-ai-allow-connector` が削除されている。
 - `pg-ai-cos` が `e2-custom-small-3072` で安定稼働し、ロールバック条件に抵触しない。
+- `pg-ai-cos` の deletion protection が有効で、boot disk は `autoDelete=true`、`pg-ai-data` は `autoDelete=false` である。
 - 旧 `pg-ai` VM と 20 GB boot disk `pg-ai` が存在しない。
 - DB data、schema、AGE / pgvector / PGroonga、auth、chat、report、ingest、Scheduler に回帰がない。
 - 実装、deploy 設定、system design、operation docs、OSS example、deploy skill に Connector 前提の drift が残っていない。
@@ -355,7 +356,7 @@ Issue または運用記録には secret を含めず、次を残す。
 - 削除直前に旧 `pg-ai` が `TERMINATED`、接続 disk が 20 GB `pd-balanced` boot disk `pg-ai` だけ、`autoDelete=true` であることを確認した。
 - `DATABASE_URL` は値を表示せず、host が現行 VM の `10.140.0.3` と一致することだけを判定した。
 - 旧 `pg-ai` VM を削除し、boot disk `pg-ai` も削除された。
-- 最終 Compute inventory は `pg-ai-cos`（`RUNNING`、`e2-custom-small-3072`、`10.140.0.3`）、boot disk `pg-ai-cos` 20 GB、data disk `pg-ai-data` 50 GB のみである。
+- 最終 Compute inventory は `pg-ai-cos`（`RUNNING`、`e2-custom-small-3072`、`10.140.0.3`、deletion protection 有効）、boot disk `pg-ai-cos` 20 GB（`autoDelete=true`）、data disk `pg-ai-data` 50 GB（`autoDelete=false`）のみである。
 - Serverless VPC Access Connector は 0 件。PostgreSQL firewall は Direct VPC 用 `pg-ai-allow-direct-vpc` と IAP 管理用 `pg-ai-allow-iap` のみである。
 
 ### 13.4 検証結果
@@ -369,4 +370,5 @@ Issue または運用記録には secret を含めず、次を残す。
 - Direct VPC 切替後の Cloud Run / GCE error log: 0 件
 - `pnpm infra:check --env production`: pass（identifier / provider contract のみ。secret 値は使用・出力していない）
 - post-resize 60 分 soak: Dispatcher 12 周期以上 success、PostgreSQL restart 0、error log 0 件
+- deletion protection 有効化後も VM は `RUNNING`、private IP と machine type は不変で、`pg_isready` success、PostgreSQL container restart 0 を確認した。
 - 概算削減額: 約 $27 / 月。実績値は 2026-08-10 以降に Billing Report の前後 7 日を比較する。

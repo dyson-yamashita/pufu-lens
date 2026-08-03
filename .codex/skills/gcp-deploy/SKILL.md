@@ -129,6 +129,7 @@ gcloud compute instances create pg-ai \
   --image-family cos-stable --image-project cos-cloud \
   --boot-disk-size 20GB --boot-disk-type pd-balanced \
   --create-disk=name=pg-ai-data,device-name=pg-ai-data,size=50GB,type=pd-ssd,auto-delete=no \
+  --deletion-protection \
   --service-account "$POSTGRES_VM_SA" --scopes cloud-platform \
   --metadata="postgres-image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/postgres-ai:latest,postgres-password-secret=POSTGRES_PASSWORD,postgres-data-disk=pg-ai-data" \
   --metadata-from-file=startup-script=infra/gcp/postgres-startup.sh \
@@ -139,6 +140,7 @@ gcloud compute instances create pg-ai \
 
 - `POSTGRES_PASSWORD` はシェル変数 `$PGPASS` から stdin で Secret Manager に作成し、値を表示しない。VM metadata には secret 名だけを渡す。VM 作成後に内部 IP を取得し、`DATABASE_URL` を Secret Manager に stdin で格納する。
 - DB 名は `pufu_lens` 固定（`init.sql` が参照）。
+- 本番 PostgreSQL VM は deletion protection を有効にし、誤操作による VM と auto-delete boot disk の同時削除を防ぐ。意図的に VM を削除するときだけ、対象 project / zone / instance と `pg-ai-data` の `autoDelete=false` を再確認してから deletion protection を解除する。
 - `infra/gcp/postgres-startup.sh` は起動のたびに永続ディスクの EXT4 初期化（未初期化時のみ）/ mount、COS host firewall、Artifact Registry 認証、Secret Manager 参照、`docker run --restart=always --network=host` を冪等に構成する。`cloud-platform` scope と Private Google Access の両方が必要。
 - 起動スクリプトは DB init SQL を実行しないので、コンテナ起動後に IAP SSH 経由で `infra/docker/postgres/init.sql` を流し込む。`init.sql` は全テーブル + AGE graph + `schema_migrations` stamp を作るため、適用後は migration head 相当になる。
 

@@ -22,6 +22,7 @@ API key、DB password は記録しない。
 - [ ] Direct VPC subnet の CIDR が既存 range と重複せず、Cloud Run の最大 instance 数、rollout 中の旧新 revision、Job task、IP 解放待ちを含めて十分である。
 - [ ] PostgreSQL VM に専用 service account、`cloud-platform` scope、Artifact Registry reader、`POSTGRES_PASSWORD` secret accessor を設定した。
 - [ ] PostgreSQL VM を `infra/gcp/postgres-startup.sh` で作成し、`gce-container-declaration` metadata に依存していないことを確認した。
+- [ ] PostgreSQL VM の deletion protection が有効で、boot disk は `autoDelete=true`、DB data disk は `autoDelete=false` であることを確認した。
 - [ ] Cloud Run / Cloud Run Jobs / Firebase App Hosting の service account を確認した。
 - [ ] Admin UI から Cloud Run Job を起動する App Hosting runtime service account に、対象 Job resource の `run.jobs.run` / `run.jobs.runWithOverrides` 権限を付与した（正準の IAM 要件は `docs/deployment/gcp-cloud-build.md` の IAM 節を参照）。
 - [ ] Secret Manager に runtime secret を作成した。
@@ -105,6 +106,7 @@ gcloud compute instances list --filter="metadata.items.key:gce-container-declara
 - GCS prefix 作成:
 - Secret Manager 参照:
 - PostgreSQL VPC 内接続:
+- PostgreSQL VM deletion protection / disk lifecycle: `gcloud compute instances describe pg-ai --zone "$ZONE" --format='yaml(deletionProtection,disks.boot,disks.autoDelete,disks.source)'`
 - PostgreSQL startup script log（secret 値を含まないこと）: `gcloud compute instances get-serial-port-output pg-ai --zone "$ZONE" | grep startup-script`
 - PostgreSQL container: `docker ps --filter name=^/pufu-lens-postgres$` と `docker logs pufu-lens-postgres`
 - `gce-container-declaration` metadata 検査（対象 VM が 0 件であること）:
