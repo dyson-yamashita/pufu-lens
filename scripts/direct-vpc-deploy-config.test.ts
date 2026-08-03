@@ -27,13 +27,18 @@ test('Cloud Build deploy config defines and requires Direct VPC substitutions', 
 
 test('Cloud Build deploy config applies Direct VPC flags to migration, Mastra, and workflow jobs', () => {
   const directVpcFlags =
-    /--network "\$\{_VPC_NETWORK\}"[\s\S]*?--subnet "\$\{_VPC_SUBNET\}"[\s\S]*?--vpc-egress private-ranges-only/g;
+    /--network "\$\{_VPC_NETWORK\}"[\s\S]*?--subnet "\$\{_VPC_SUBNET\}"[\s\S]*?--vpc-egress private-ranges-only[\s\S]*?--clear-vpc-connector/g;
   const matches = deploy.match(directVpcFlags) ?? [];
 
   assert.equal(
     matches.length,
     3,
     'expected Direct VPC flags on migration job, Mastra service, and workflow jobs',
+  );
+  assert.equal(
+    (deploy.match(/--clear-vpc-connector/g) ?? []).length,
+    3,
+    'expected --clear-vpc-connector in all three Direct VPC deployment groups',
   );
 
   assert.match(deploy, /id: run-db-migration[\s\S]*?--network "\$\{_VPC_NETWORK\}"/);
