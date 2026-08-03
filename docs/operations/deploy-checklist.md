@@ -18,7 +18,8 @@ API key、DB password は記録しない。
 - [ ] 必要な GCP API を有効化した。
 - [ ] Artifact Registry repository を作成した。
 - [ ] GCS bucket を作成した。
-- [ ] PostgreSQL VM / VPC / firewall / connector を作成した。
+- [ ] PostgreSQL VM / VPC / Direct VPC 専用 subnet / firewall を作成した。
+- [ ] Direct VPC subnet の CIDR が既存 range と重複せず、Cloud Run の最大 instance 数、rollout 中の旧新 revision、Job task、IP 解放待ちを含めて十分である。
 - [ ] PostgreSQL VM に専用 service account、`cloud-platform` scope、Artifact Registry reader、`POSTGRES_PASSWORD` secret accessor を設定した。
 - [ ] PostgreSQL VM を `infra/gcp/postgres-startup.sh` で作成し、`gce-container-declaration` metadata に依存していないことを確認した。
 - [ ] Cloud Run / Cloud Run Jobs / Firebase App Hosting の service account を確認した。
@@ -137,7 +138,7 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 - 実行前 plan: `pnpm db:migrate --plan`
 - 実行コマンド: `pnpm db:migrate` または Cloud Build deploy の Cloud Run Job migration step（`_RUN_DB_MIGRATIONS=true`）
 - Cloud Build migration job 名:
-- Cloud Build migration job が VPC connector / `DATABASE_URL` secret に到達できることを確認:
+- Cloud Build migration job が Direct VPC subnet / `DATABASE_URL` secret に到達でき、Connector annotation がないことを確認:
 - 適用対象 migration:
 - `schema_migrations` 確認:
 - fresh DB の `init.sql` baseline stamp 更新確認:

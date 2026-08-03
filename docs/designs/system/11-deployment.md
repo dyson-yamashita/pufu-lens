@@ -80,10 +80,24 @@ gcloud artifacts repositories add-iam-policy-binding pufu-lens \
   --member="serviceAccount:${POSTGRES_VM_SA}" \
   --role=roles/artifactregistry.reader
 
-# 2. PostgreSQL COS VM 起動（初回のみ）
+# 2. Direct VPC 専用 subnet と PostgreSQL firewall（初回のみ）
+gcloud compute networks subnets create pufu-lens-serverless \
+  --region=asia-east1 \
+  --network=default \
+  --range=10.9.0.0/25 \
+  --enable-private-ip-google-access
+gcloud compute firewall-rules create pg-ai-allow-direct-vpc \
+  --network=default \
+  --direction=INGRESS \
+  --action=ALLOW \
+  --rules=tcp:5432 \
+  --source-ranges=10.9.0.0/25 \
+  --target-tags=pg-ai
+
+# 3. PostgreSQL COS VM 起動（初回のみ）
 gcloud compute instances create pg-ai \
   --zone=asia-east1-b \
-  --machine-type=e2-medium \
+  --machine-type=e2-custom-small-3072 \
   --image-family=cos-stable \
   --image-project=cos-cloud \
   --boot-disk-size=20GB \
@@ -97,22 +111,25 @@ gcloud compute instances create pg-ai \
   --tags=pg-ai \
   --no-address
 
-# 3. レポート / 元データ用 GCS バケット作成
+# 4. レポート / 元データ用 GCS バケット作成
 gsutil mb -l asia-east1 gs://pufu-lens-prod
 
-# 4. Mastra Server デプロイ（STORAGE_DRIVER=gcs）
+# 5. Mastra Server デプロイ（STORAGE_DRIVER=gcs）
 #    monorepo は infra/docker/mastra/Dockerfile で build し、Artifact Registry 経由で渡す。
 gcloud builds submit --config /tmp/cb-mastra.yaml .   # docker build -f infra/docker/mastra/Dockerfile
 gcloud run deploy mastra-server \
   --image asia-east1-docker.pkg.dev/PROJECT/pufu-lens/mastra-server:latest \
   --region asia-east1 \
   --service-account=mastra-runtime@PROJECT.iam.gserviceaccount.com \
-  --vpc-connector=mastra-connector \
+  --clear-vpc-connector \
+  --network=default \
+  --subnet=pufu-lens-serverless \
+  --vpc-egress=private-ranges-only \
   --no-allow-unauthenticated --port 8080 \
   --set-env-vars STORAGE_DRIVER=gcs,STORAGE_BUCKET=pufu-lens-prod,PUFU_LENS_CHAT_MODEL=google/gemini-2.5-flash,PUFU_LENS_EMBEDDING_PROVIDER=gemini,PUFU_LENS_EMBEDDING_MODEL=gemini-embedding-2,PUFU_LENS_EMBEDDING_DIMENSIONS=1536 \
   --set-secrets="DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_GENERATIVE_AI_API_KEY=GEMINI_API_KEY:latest"
 
-# 5. Ingestion / Report Jobs デプロイ
+# 6. Ingestion / Report Jobs デプロイ
 #    共通イメージ infra/docker/jobs/Dockerfile（entrypoint scripts/workflow-job.ts）を build し、
 #    各 Job に WORKFLOW_ID を設定する。WORKFLOW_INPUT_JSON は実行時 override で渡す。
 for WF in curate-workflow ingest-workflow generate-report source-sync-dispatcher report-schedule-dispatcher; do
@@ -120,7 +137,10 @@ for WF in curate-workflow ingest-workflow generate-report source-sync-dispatcher
     --image asia-east1-docker.pkg.dev/PROJECT/pufu-lens/workflow-job:latest \
     --region asia-east1 \
     --service-account=mastra-runtime@PROJECT.iam.gserviceaccount.com \
-    --vpc-connector=mastra-connector \
+    --clear-vpc-connector \
+    --network=default \
+    --subnet=pufu-lens-serverless \
+    --vpc-egress=private-ranges-only \
     --set-env-vars STORAGE_DRIVER=gcs,STORAGE_BUCKET=pufu-lens-prod,WORKFLOW_ID="$WF" \
     --set-secrets="DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
 done
@@ -132,8 +152,8 @@ done
 # /internal/schedules/source-sync-dispatcher:run
 # /internal/schedules/report-schedule-dispatcher:run
 
-# 6. Next.js デプロイ（Firebase App Hosting）
-#    Firebase CLI >= 14.4.0 のローカルソースデプロイを使うと GitHub 連携や push なしで rollout できる。
+# 7. Next.js デプロイ（Firebase App Hosting）
+#    Firebase CLI >= 15.25.1 のローカルソースデプロイを使うと GitHub 連携や push なしで rollout できる。
 #    apps/web/apphosting.yaml に runtime env / secrets / VPC access、リポジトリルートに firebase.json /
 #    .firebaserc を置き、`firebase deploy --only apphosting` でローカルの作業ツリーをそのままデプロイする。
 #    NOTE: apps/web/package.json の next は CVE ゲート回避のため厳密バージョンで固定すること（冒頭の注記参照）。
@@ -150,7 +170,8 @@ firebase deploy --only apphosting --project PROJECT
 
 # apps/web/apphosting.yaml に runtime env / secrets / VPC access を定義する。
 # Web API が GCS / PostgreSQL / Mastra にアクセスするため、App Hosting backend service account に
-# Secret Manager、GCS、Cloud Run Invoker、必要に応じて VPC access の権限を付与する。
+# Secret Manager、GCS、Cloud Run Invoker の権限を付与する。Direct VPC network user が必要な
+# Shared VPC 構成では、runtime SA ではなく provider が指定する service agent へ subnet scope で付与する。
 # Admin UI から workflow job を起動する場合は、App Hosting backend service account に
 # 対象 Cloud Run Job resource の run.jobs.run / run.jobs.runWithOverrides 権限を付与する。
 # 正準の IAM 要件は docs/deployment/gcp-cloud-build.md の IAM 節に従う。
@@ -180,7 +201,9 @@ runConfig:
   memoryMiB: 1024
   vpcAccess:
     egress: PRIVATE_RANGES_ONLY
-    connector: mastra-connector
+    networkInterfaces:
+      - network: default
+        subnetwork: pufu-lens-serverless
 
 env:
   - variable: STORAGE_DRIVER

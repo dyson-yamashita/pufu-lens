@@ -1,6 +1,6 @@
 # GCP 固定費削減移行計画
 
-- status: `planned`
+- status: `active`
 - 作成日: 2026-08-01
 - 親 Issue: [#663](https://github.com/dyson-yamashita/pufu-lens/issues/663)
 - 対象 project / region / zone: `pufu-lens` / `asia-east1` / `asia-east1-b`
@@ -20,7 +20,7 @@
 
 ## 2. 現状と判断根拠
 
-### 2.1 現行リソース
+### 2.1 移行前リソース
 
 - VPC Connector `mastra-connector`
   - network: `default`
@@ -65,7 +65,7 @@
 - [Compute Engine の machine type 変更](https://docs.cloud.google.com/compute/docs/instances/changing-machine-type-of-stopped-instance)
 - [application-consistent Persistent Disk snapshot](https://docs.cloud.google.com/compute/docs/disks/creating-linux-application-consistent-pd-snapshots)
 
-## 3. 完了時の構成
+## 3. 移行後の構成
 
 - Firebase App Hosting、Mastra Server、DB migration Job、workflow / dispatcher Job は、同じ専用 subnet を使う Direct VPC egress に統一する。
 - egress は `PRIVATE_RANGES_ONLY` / `private-ranges-only` とし、外部 API 通信を VPC/NAT 経路へ変更しない。
@@ -86,14 +86,14 @@
 
 ## 5. Step と Issue 分割
 
-親 Issue #663 は全体進捗と完了条件を管理する。各 Step に着手するときは、最新 `main` から専用 branch を作り、子 Issue と PR を作成する。
+親 Issue #663 は全体進捗と完了条件を管理する。当初は Step ごとの Issue / PR を想定したが、ユーザーから全 Step の本番実行と完了後 PR 作成が明示されたため、#663 と同一 branch / PR に実行記録を集約した。
 
-| Step | 内容                                                                       | 状態      | Issue / PR   |
-| ---- | -------------------------------------------------------------------------- | --------- | ------------ |
-| 1    | Direct VPC の設定契約、テスト、関連ドキュメントを更新                      | `planned` | 着手時に作成 |
-| 2    | 専用 subnet を作成し、全 runtime を Direct VPC へ切替、旧 Connector を廃止 | `planned` | 着手時に作成 |
-| 3    | DB backup / snapshot 後に `pg-ai-cos` を resize                            | `planned` | 着手時に作成 |
-| 4    | 旧 `pg-ai` VM / boot disk を削除し、削減結果を確認                         | `planned` | 着手時に作成 |
+| Step | 内容                                                                       | 状態         | Issue / PR   |
+| ---- | -------------------------------------------------------------------------- | ------------ | ------------ |
+| 1    | Direct VPC の設定契約、テスト、関連ドキュメントを更新                      | `completed`  | #663 / 本 PR |
+| 2    | 専用 subnet を作成し、全 runtime を Direct VPC へ切替、旧 Connector を廃止 | `completed`  | #663 / 本 PR |
+| 3    | DB backup / snapshot 後に `pg-ai-cos` を resize                            | `monitoring` | #663 / 本 PR |
+| 4    | 旧 `pg-ai` VM / boot disk を削除し、削減結果を確認                         | `completed`  | #663 / 本 PR |
 
 Step 2〜4 は本番変更または削除を含むため、実行日時、担当者、対象 commit、対象 GCP project を記録し、開始前に明示的な本番作業確認を行う。
 
@@ -327,3 +327,44 @@ Issue または運用記録には secret を含めず、次を残す。
 - DB data、schema、AGE / pgvector / PGroonga、auth、chat、report、ingest、Scheduler に回帰がない。
 - 実装、deploy 設定、system design、operation docs、OSS example、deploy skill に Connector 前提の drift が残っていない。
 - 実施内容、backup / snapshot、検証、削減後費用が追跡可能な形で記録されている。
+
+## 13. 実施結果（2026-08-03）
+
+### 13.1 Direct VPC egress
+
+- `default` network の `asia-east1` に専用 subnet `pufu-lens-serverless`（`10.9.0.0/25`、Private Google Access 有効）を作成した。
+- firewall `pg-ai-allow-direct-vpc` は source `10.9.0.0/25`、target tag `pg-ai`、TCP 5432 のみに限定した。
+- Mastra Server、Firebase App Hosting、DB migration、workflow / dispatcher の全 9 Job を `private-ranges-only` の Direct VPC へ移行した。全 resource で Connector annotation がないことを API から確認した。
+- production Cloud Build trigger は `_VPC_NETWORK=default`、`_VPC_SUBNET=pufu-lens-serverless`、Firebase Tools `15.25.1` へ更新した。
+- App Hosting rollout `pufu-lens-web-build-2026-08-03-001` と Mastra revision `mastra-server-00093-6zd` が 100% traffic で Ready になった。
+- 公開 Projects、Overview、Reports、Chat、Graph をブラウザで確認し、Graph は 50 documents / 280 rows を取得した。browser console の warning / error は 0 件だった。
+- source sync / report schedule Dispatcher の 5 分周期を複数回確認し、切替後も連続成功した。切替後 30 分の soak で Cloud Run revision / Job の error log は 0 件だった。
+- 全利用者が Direct VPC であることを再確認後、`mastra-connector` と `pg-ai-allow-connector` を削除した。削除後の DB migration execution `db-migrate-mwlmv` が成功した。
+
+### 13.2 PostgreSQL VM resize
+
+- resize 前に `pg_isready`、PostgreSQL 18.1、projects 3 件、reports 9 件を baseline として記録した。
+- 論理 backup `gs://pufu-lens-prod/backups/postgres/pufu-lens-pre-resize-20260803T011606Z.dump` を作成した。size は 44,489,515 bytes、SHA-256 は `ffa340913ece35b2722738881cf6667052e8b51b4f87345f15e37ebfd4cee5cb` で、`pg_restore --list` が成功した。
+- VM 停止後に data disk snapshot `pg-ai-data-pre-resize-20260803t014704z` を作成し、50 GB、`asia-east1`、`READY` を確認した。`retain-until=2026-08-10` label を付け、安定確認後に削除判断する。
+- `pg-ai-cos` を `e2-medium` から `e2-custom-small-3072`（2 vCPU / 3,072 MiB）へ変更した。data disk `pg-ai-data`、private IP `10.140.0.3`、PostgreSQL image / schema は変更していない。
+- 起動後に PostgreSQL 18.1、AGE、pgvector、PGroonga、projects 3 件、reports 9 件、data disk 接続を確認した。container memory limit は 2.908 GiB、確認時の使用量は約 51 MiB だった。
+- resize 後の DB migration execution `db-migrate-jbtkg` と公開 Projects 表示が成功し、error log は 0 件だった。60 分の post-resize soak を完了条件として継続監視する。
+
+### 13.3 旧 VM / disk 削除と最終 inventory
+
+- 削除直前に旧 `pg-ai` が `TERMINATED`、接続 disk が 20 GB `pd-balanced` boot disk `pg-ai` だけ、`autoDelete=true` であることを確認した。
+- `DATABASE_URL` は値を表示せず、host が現行 VM の `10.140.0.3` と一致することだけを判定した。
+- 旧 `pg-ai` VM を削除し、boot disk `pg-ai` も削除された。
+- 最終 Compute inventory は `pg-ai-cos`（`RUNNING`、`e2-custom-small-3072`、`10.140.0.3`）、boot disk `pg-ai-cos` 20 GB、data disk `pg-ai-data` 50 GB のみである。
+- Serverless VPC Access Connector は 0 件。PostgreSQL firewall は Direct VPC 用 `pg-ai-allow-direct-vpc` と IAP 管理用 `pg-ai-allow-iap` のみである。
+
+### 13.4 検証結果
+
+- `pnpm scripts:test`: 151 tests、147 pass / 4 skip / 0 fail
+- `pnpm deploy:dry-run`: pass
+- `pnpm format:check`: pass
+- `pnpm lint`: pass
+- `pnpm typecheck`: pass
+- `db-migrate-64n78`、`db-migrate-mwlmv`、`db-migrate-jbtkg`: success
+- Direct VPC 切替後の Cloud Run / GCE error log: 0 件
+- 概算削減額: 約 $27 / 月。実績値は 2026-08-10 以降に Billing Report の前後 7 日を比較する。

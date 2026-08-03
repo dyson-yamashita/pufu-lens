@@ -129,12 +129,13 @@ Set these trigger substitutions in the user's GCP project:
 | `_RUNTIME_SERVICE_ACCOUNT`        | `mastra-runtime@PROJECT_ID.iam.gserviceaccount.com` | Runtime identity for Cloud Run service and jobs.                          |
 | `_SCHEDULER_SERVICE_ACCOUNT`      | `scheduler-oidc@PROJECT_ID.iam.gserviceaccount.com` | OIDC identity for the five-minute dispatcher Schedulers and smoke checks. |
 | `_STORAGE_BUCKET`                 | `YOUR_STORAGE_BUCKET`                               | Object storage bucket name; do not commit the real value.                 |
-| `_VPC_CONNECTOR`                  | `mastra-connector`                                  | VPC connector used to reach private PostgreSQL.                           |
+| `_VPC_NETWORK`                    | `default`                                           | Direct VPC network used to reach private PostgreSQL.                      |
+| `_VPC_SUBNET`                     | `pufu-lens-serverless`                              | Regional Direct VPC subnet reserved for serverless runtimes.              |
 | `_MASTRA_SERVICE`                 | `mastra-server`                                     | Cloud Run service name.                                                   |
 | `_MASTRA_IMAGE`                   | `mastra-server`                                     | Artifact Registry image name for Mastra Server.                           |
 | `_JOBS_IMAGE`                     | `workflow-job`                                      | Artifact Registry image name for workflow jobs.                           |
 | `_FIREBASE_DEPLOY`                | `true`                                              | Set to `false` only when Web deploy is handled outside Cloud Build.       |
-| `_FIREBASE_TOOLS_VERSION`         | `14.4.0`                                            | Firebase CLI version for local-source App Hosting deploy.                 |
+| `_FIREBASE_TOOLS_VERSION`         | `15.25.1`                                           | Firebase CLI version for Direct VPC-capable App Hosting deploy.           |
 | `_RUN_DB_MIGRATIONS`              | `true`                                              | Set to `false` to skip deploy-time Cloud Run Job migration.               |
 | `_DB_MIGRATION_JOB`               | `db-migrate`                                        | Cloud Run Job name used to run `pnpm db:migrate` before runtime deploy.   |
 | `_SOURCE_SYNC_DISPATCHER_JOB`     | `source-sync-dispatcher`                            | Environment-prefixed dispatcher Cloud Run Job suffix.                     |
@@ -167,7 +168,7 @@ Set these trigger substitutions in the user's GCP project:
 
 The deploy config keeps the default Cloud Build worker and uses `waitFor` only to remove avoidable serial waits. Docker image builds use `docker buildx` registry caches at each image's `:buildcache` tag so unchanged layers, including multi-stage intermediate layers, can be reused without pulling the full previous runtime image first. App Hosting deploy still waits for backend deploy completion so the Web rollout does not expose a newer frontend before the matching backend is live. Runtime deploy steps wait for the migration barrier so new Cloud Run / App Hosting code is not rolled out before pending schema migrations are applied. Cost-sensitive environments should keep this default-worker shape unless they explicitly accept higher per-minute build costs.
 
-The deploy config does not create the PostgreSQL VM, VPC connector, Artifact Registry repository, GCS bucket, Firebase App Hosting backend, or Secret Manager secrets. Provision those before enabling the trigger.
+The deploy config does not create the PostgreSQL VM, Direct VPC subnet/firewall, Artifact Registry repository, GCS bucket, Firebase App Hosting backend, or Secret Manager secrets. Provision those before enabling the trigger.
 
 The Pufu Lens GCP project currently sets `_FIREBASE_DEPLOY=true`, so Cloud Build deploys the Mastra Server, Workflow Jobs, and Web app before running smoke checks.
 
@@ -226,7 +227,7 @@ The runtime service account generally needs:
 
 - Secret Manager secret accessor for runtime secrets.
 - GCS access to `_STORAGE_BUCKET`.
-- VPC connector access if required by organization policy.
+- `roles/compute.networkUser` on the Direct VPC network/subnet for the provider-designated service agent, such as the Cloud Run service agent, when Shared VPC or organization policy requires it. Do not grant it to every runtime service account by default.
 - Cloud Run Invoker permissions only where explicitly needed.
 
 ## Firebase App Hosting
@@ -280,7 +281,7 @@ If Web deployment is handled by Firebase's own GitHub integration or another rel
 
 Deploy-time DB migration uses the same Workflow Job image and `scripts/db-migrate.ts` entrypoint as local operations. Migration targets are discovered from `infra/db/migrations/*.sql`, sorted by filename. Each migration version is the filename without the `.sql` suffix, for example `0003_add_example_table`. Applied versions are recorded in `public.schema_migrations`. Pending migrations are those whose version is not yet present in `public.schema_migrations`; they are applied in filename order during `pnpm db:migrate`.
 
-When `_RUN_DB_MIGRATIONS=true`, Cloud Build creates or updates `${_DB_MIGRATION_JOB}` after the Workflow Job image push, overrides the container command to `pnpm db:migrate`, and executes the job with `--wait` before Mastra Server, Workflow Jobs, or Web deploy start. The migration job must reach PostgreSQL through `${_VPC_CONNECTOR}` and read `DATABASE_URL` from Secret Manager through `${_RUNTIME_SERVICE_ACCOUNT}`. Secret values are passed only as Cloud Run secret references; they are not printed in Cloud Build logs.
+When `_RUN_DB_MIGRATIONS=true`, Cloud Build creates or updates `${_DB_MIGRATION_JOB}` after the Workflow Job image push, overrides the container command to `pnpm db:migrate`, and executes the job with `--wait` before Mastra Server, Workflow Jobs, or Web deploy start. The migration job must reach PostgreSQL through Direct VPC `${_VPC_NETWORK}` / `${_VPC_SUBNET}` with `private-ranges-only` egress and read `DATABASE_URL` from Secret Manager through `${_RUNTIME_SERVICE_ACCOUNT}`. Secret values are passed only as Cloud Run secret references; they are not printed in Cloud Build logs.
 
 Set `_RUN_DB_MIGRATIONS=false` only when migration is handled outside this deploy config before the Cloud Build deploy starts, for example a manual run from an IAP-tunneled admin host. In that case the `run-db-migration` step exits immediately but still acts as the deploy barrier so later runtime rollout steps keep the same ordering contract.
 
