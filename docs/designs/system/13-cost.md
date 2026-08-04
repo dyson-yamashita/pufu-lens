@@ -4,20 +4,21 @@
 
 ### 1. GCE VM + Firebase App Hosting + Cloud Run 構成（推奨）
 
-| コンポーネント                       | スペック                                                                   | 月額         |
-| ------------------------------------ | -------------------------------------------------------------------------- | ------------ |
-| Firebase App Hosting（Next.js）      | Cloud Run / Cloud CDN / Cloud Build / Artifact Registry を含む利用量ベース | $0〜20       |
-| Cloud Run（Mastra Server）           | リクエストベース                                                           | $5〜30       |
-| Cloud Run Jobs（Ingestion / Report） | 日次実行                                                                   | $1〜5        |
-| GCE VM（e2-medium）                  | 常時稼働                                                                   | $25〜35      |
-| Persistent Disk SSD 50GB             | $0.17/GB                                                                   | $9           |
-| GCS（元データ + parsed + レポート）  | 5GB 程度                                                                   | $0.15        |
-| VPC コネクタ                         | $0.01/GB + $6                                                              | $6〜         |
-| Secret Manager                       | 数バージョン                                                               | $1           |
-| Cloud Scheduler                      | 数ジョブ                                                                   | 無料枠内     |
-| **合計**                             |                                                                            | **$47〜107** |
+| コンポーネント                       | スペック                                                                   | 月額        |
+| ------------------------------------ | -------------------------------------------------------------------------- | ----------- |
+| Firebase App Hosting（Next.js）      | Cloud Run / Cloud CDN / Cloud Build / Artifact Registry を含む利用量ベース | $0〜20      |
+| Cloud Run（Mastra Server）           | リクエストベース                                                           | $5〜30      |
+| Cloud Run Jobs（Ingestion / Report） | 日次実行                                                                   | $1〜5       |
+| GCE VM（e2-custom-small-3072）       | 2 vCPU / 3 GiB、常時稼働                                                   | $14〜24     |
+| Persistent Disk Balanced 20GB        | 現行 VM の再構築可能な boot disk                                           | $2          |
+| Persistent Disk SSD 50GB             | $0.17/GB                                                                   | $9          |
+| GCS（元データ + parsed + レポート）  | 5GB 程度                                                                   | $0.15       |
+| Direct VPC egress                    | 専用 subnet を使用。Connector の常時 instance 課金なし                     | 利用量依存  |
+| Secret Manager                       | 数バージョン                                                               | $1          |
+| Cloud Scheduler                      | 数ジョブ                                                                   | 無料枠内    |
+| **従量ネットワーク・LLM除外小計**    |                                                                            | **$32〜92** |
 
-GCE VM の概算は Tokyo リージョンの `e2-medium` オンデマンド単価（[Compute Engine general purpose pricing](https://cloud.google.com/products/compute/pricing/general-purpose)）を基準に、月間の常時稼働と価格変動を考慮した幅を持たせる。
+GCE VM の概算は Taiwan リージョンの `e2-custom-small-3072` オンデマンド単価（[Compute Engine general purpose pricing](https://cloud.google.com/products/compute/pricing/general-purpose)）を基準に、月間の常時稼働と価格変動を考慮した幅を持たせる。2026-08-03 の固定費削減では Serverless VPC Access Connector 廃止、VM 縮小、停止済み旧 VM の 20 GB boot disk 廃止により、Direct VPC egress のデータ転送、LLM、Cloud Run などの従量費を除く固定費を約 $27 / 月削減する見込みである。現行 VM の 20 GB boot disk は変更前後とも必要なため、削減額には含めない。実績は Billing Report の 7 日間比較で確認する。
 
 LLM / embedding コストは利用量連動のため、上表には固定費として含めない。通常のデータ収集・parse は source 別の決定的な scanner / parser / validator で処理し、Agent に全候補を都度判定させない。これにより、取り込み件数に比例してチャットモデルのトークンを消費する経路を避ける。
 
@@ -32,6 +33,7 @@ public report / public chat は private report / private chat と同じ処理を
 ### 2. コスト最適化施策
 
 - GCE VM の継続利用割引とリソース使用率の定期確認
+- Direct VPC 専用 subnet の IP 使用率を監視し、Cloud Run の最大 instance 数、rollout 時の旧新 revision、全 9 Job の同時 task 数、IP 解放待ちを含む余裕を維持する
 - App Hosting / Cloud Run の最小インスタンス数を 0 に
 - App Hosting の cached bandwidth を活かせるよう、静的アセットと公開レポートの cache header を適切に設定する
 - GCS のライフサイクル管理（`raw/web/` を Nearline、180 日超を Coldline）

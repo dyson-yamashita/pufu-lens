@@ -34,7 +34,7 @@ Trigger を有効化する前に、利用者の GCP project で次を用意す�
 - Cloud Build から参照できる GitHub connection / repository。
 - Artifact Registry Docker repository。
 - PostgreSQL + AGE VM、VPC、firewall、Private Google Access。
-- Cloud Run / Cloud Run Jobs から DB に到達するための VPC connector。
+- Cloud Run / Cloud Run Jobs / App Hosting から DB に到達するための地域 Direct VPC 専用 subnet。最大 instance 数、rollout 中の旧新 revision、Job task、IP 解放待ちを含めて `/26` 以上を確保する。
 - GCS bucket。
 - Firebase project と App Hosting backend。
 - Secret Manager secrets。
@@ -88,7 +88,7 @@ pnpm infra:check --env production
 
 `pnpm db:migrate --check` は migration file 命名と `public.schema_migrations` の offline / online 整合を検査する。deploy 本番適用は `cloudbuild.deploy.yaml` の `run-db-migration` step が Cloud Run Job 経由で行う。
 
-private PostgreSQL VM を使う場合、default Cloud Build worker pool から DB へ直接到達できない。`_RUN_DB_MIGRATIONS=true` の deploy では、Workflow Job image を使った Cloud Run Job `${_DB_MIGRATION_JOB}` が `${_VPC_CONNECTOR}` 経由で PostgreSQL に接続し、`DATABASE_URL` secret reference だけを受け取る。Cloud Build worker 自身が DB に接続するわけではない。
+private PostgreSQL VM を使う場合、default Cloud Build worker pool から DB へ直接到達できない。`_RUN_DB_MIGRATIONS=true` の deploy では、Workflow Job image を使った Cloud Run Job `${_DB_MIGRATION_JOB}` が Direct VPC `${_VPC_NETWORK}` / `${_VPC_SUBNET}` 経由で PostgreSQL に接続し、`DATABASE_URL` secret reference だけを受け取る。Cloud Build worker 自身が DB に接続するわけではない。
 
 `_RUN_DB_MIGRATIONS=false` にして deploy 時 migration を skip する場合は、IAP tunnel を張った管理端末、private pool、または利用者環境のネットワーク設計に合わせて `pnpm db:migrate` を手動実行し、runtime rollout 前に schema を揃える。
 
@@ -138,7 +138,7 @@ gcloud builds triggers create github \
   --service-account "$PRODUCTION_DEPLOY_SA" \
   --require-approval \
   --included-files 'apps/**,packages/**,scripts/**,infra/**,deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml,.dockerignore,.firebaserc,firebase.json,pnpm-lock.yaml,pnpm-workspace.yaml,package.json,turbo.json,tsconfig*.json' \
-  --substitutions "_ENV=production,_REGION=${RUNTIME_REGION},_ARTIFACT_REPO=<artifact-repo>,_RUNTIME_SERVICE_ACCOUNT=${RUNTIME_SA},_SCHEDULER_SERVICE_ACCOUNT=${SCHEDULER_SA},_STORAGE_BUCKET=<storage-bucket>,_VPC_CONNECTOR=<vpc-connector>,_MASTRA_SERVICE=mastra-server,_MASTRA_IMAGE=mastra-server,_JOBS_IMAGE=workflow-job,_FIREBASE_DEPLOY=true,_FIREBASE_TOOLS_VERSION=14.4.0,_RUN_DB_MIGRATIONS=true,_DB_MIGRATION_JOB=db-migrate"
+  --substitutions "_ENV=production,_REGION=${RUNTIME_REGION},_ARTIFACT_REPO=<artifact-repo>,_RUNTIME_SERVICE_ACCOUNT=${RUNTIME_SA},_SCHEDULER_SERVICE_ACCOUNT=${SCHEDULER_SA},_STORAGE_BUCKET=<storage-bucket>,_VPC_NETWORK=default,_VPC_SUBNET=<serverless-subnet>,_MASTRA_SERVICE=mastra-server,_MASTRA_IMAGE=mastra-server,_JOBS_IMAGE=workflow-job,_FIREBASE_DEPLOY=true,_FIREBASE_TOOLS_VERSION=15.25.1,_RUN_DB_MIGRATIONS=true,_DB_MIGRATION_JOB=db-migrate"
 ```
 
 既存 trigger を更新する場合も、同じ included files を設定する。
@@ -178,9 +178,11 @@ Cloud Console から作成する場合は、Cloud Build > Triggers で次を設�
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | CI Cloud Build SA      | Cloud Build 実行、log 書き込み                                                                                                                                                                                                                                                                                                                                                                             | Cloud Build で CI を使う利用者のみ。deploy 権限、Secret Manager accessor は不要                                            |
 | Deploy Cloud Build SA  | Artifact Registry writer、Cloud Run / Jobs deploy、Cloud Run Jobs create / update / execute（migration job 含む）、`cloudscheduler.jobs.create/get/update`、`cloudscheduler.locations.get`、Firebase App Hosting deploy、`gs://${PROJECT_ID}_cloudbuild/pufu-lens/deploy-state/${_ENV}/apphosting-last-success` の read/write、Service Account User、Service Usage Viewer、Browser または custom read role | 環境ごとに分離する。DB migrationと5分dispatcher Schedulerの更新権限が必要。App Hosting skip 判定用の GCS object 権限も必要 |
-| Runtime SA             | Secret Manager accessor（`DATABASE_URL` など）、GCS access、VPC connector 利用、dispatcher Cloud Run Jobの`run.jobs.run` / `run.jobs.runWithOverrides`                                                                                                                                                                                                                                                     | 対象dispatcher Jobに`roles/run.jobsExecutorWithOverrides`または同等custom roleをresource scopeで付与する                   |
+| Runtime SA             | Secret Manager accessor（`DATABASE_URL` など）、GCS access、dispatcher Cloud Run Jobの`run.jobs.run` / `run.jobs.runWithOverrides`                                                                                                                                                                                                                                                                         | 対象dispatcher Jobに`roles/run.jobsExecutorWithOverrides`または同等custom roleをresource scopeで付与する                   |
 | App Hosting compute SA | Secret Manager accessor、GCS access、Cloud Run Invoker、App Hosting compute runner、Admin UI から workflow job を起動する権限                                                                                                                                                                                                                                                                              | backend に custom SA を使う場合は特に確認する。Admin UI ingest の Job 実行権限は下記を参照                                 |
 | Scheduler SA           | OIDC caller / Cloud Run Invoker                                                                                                                                                                                                                                                                                                                                                                            | build / deploy 権限は不要                                                                                                  |
+
+Direct VPC subnet の `roles/compute.networkUser` が必要な場合は、Cloud Run service agent など provider の公式手順で指定される service agent に付与する。Runtime SA に一律付与せず、Shared VPC の host project / service project 境界に合わせて subnet scope に限定する。
 
 production deploy config の `deploy-source-sync-scheduler` step は、Scheduler Job を `describe` してから `create` または `update` する。このため、Deploy Cloud Build SA には少なくとも次の権限が必要になる。
 
@@ -295,7 +297,7 @@ Cloud Run resource には secret reference を渡す。secret 値そのものを
 deploy trigger を有効化する前に、Firebase CLI builder image を Artifact Registry へ 1 回 push する。version の正は `cloudbuild.deploy.yaml` の `_FIREBASE_TOOLS_VERSION` とし、image tag と build arg の両方に同じ値を使う。`gcloud builds submit --tag` は `--build-arg` を受け付けないため、一時 config 経由で docker build する。
 
 ```bash
-FIREBASE_TOOLS_VERSION=14.4.0
+FIREBASE_TOOLS_VERSION=15.25.1
 IMAGE="${RUNTIME_REGION}-docker.pkg.dev/${PROJECT_ID}/<artifact-repo>/firebase-tools:${FIREBASE_TOOLS_VERSION}"
 
 cat > /tmp/cloudbuild.firebase-tools.yaml <<EOF
@@ -349,7 +351,7 @@ production では事前 backup、適用予定 migration、heavy migration の有
 - 対象 commit が意図したものか。
 - `_ENV` が `staging` または `production` か。
 - `_STORAGE_BUCKET`、`_RUNTIME_SERVICE_ACCOUNT`、`_SCHEDULER_SERVICE_ACCOUNT` が対象環境のものか。
-- `_RUN_DB_MIGRATIONS` が意図どおりか。`true` の場合は `${_DB_MIGRATION_JOB}` が VPC connector と `DATABASE_URL` secret に到達できるか。
+- `_RUN_DB_MIGRATIONS` が意図どおりか。`true` の場合は `${_DB_MIGRATION_JOB}` が Direct VPC subnet と `DATABASE_URL` secret に到達できるか。
 - production trigger は approval required か。
 - 実行者が approval と trigger run の権限を持つか。
 
@@ -410,7 +412,8 @@ deploy 後は次を確認する。
 - Artifact Registry に `SHORT_SHA` tag の image がある。
 - `_RUN_DB_MIGRATIONS=true` の build では、Cloud Run Job `${_DB_MIGRATION_JOB}` の execute が成功している。
 - migration 適用後、`public.schema_migrations` に期待どおりの version が記録されている（IAP tunnel など DB に到達できる端末から確認する）。
-- Cloud Run service が `_RUNTIME_SERVICE_ACCOUNT`、VPC connector、Secret Manager reference を使っている。
+- Cloud Run service / Jobs が `_RUNTIME_SERVICE_ACCOUNT`、Direct VPC network / subnet、`private-ranges-only` egress、Secret Manager reference を使い、Connector annotation を持たない。
+- App Hosting は backend に設定した runtime service account を使い、`apps/web/apphosting.yaml` の `runConfig.vpcAccess.networkInterfaces` と `PRIVATE_RANGES_ONLY` egress が生成後の Cloud Run revision に反映され、Connector annotation を持たない。
 - Cloud Run Jobs が deploy config の命名規則どおりに作成または更新されている。
 - 5分間隔のsource syncと定期reportのCloud Schedulerが各1件だけ存在し、Scheduler SAがMastra Cloud Run service resourceの`roles/run.invoker`を持ち、OIDCで各内部routeを呼べる。
 - Mastra runtime SAがsource syncと定期reportの両dispatcher Job resourceで`roles/run.jobsExecutorWithOverrides`を持ち、routeやJob logにtoken/secret/raw本文が出ていない。
@@ -472,15 +475,15 @@ gcloud run services update-traffic mastra-server \
 
 ## Troubleshooting
 
-| symptom                                   | check                                                                                                           |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Cloud Build が deploy 権限で失敗する      | trigger の service account、Artifact Registry / Cloud Run / Firebase 権限                                       |
-| Cloud Run が DB に接続できない            | VPC connector、firewall、Private Google Access、`DATABASE_URL` secret、migration job / runtime job の SA attach |
-| DB migration job が失敗する               | `${_DB_MIGRATION_JOB}` の execute log、Workflow Job image tag、`DATABASE_URL` secret reference、VPC connector   |
-| App Hosting が build / rollout で失敗する | `apps/web/package.json` の Next.js version、App Hosting source bucket、backend SA                               |
-| secret 参照で失敗する                     | Secret Manager accessor、App Hosting secret grant、secret 名の typo                                             |
-| docs-only 変更で deploy が走る            | trigger の included files                                                                                       |
-| production が勝手に走りそう               | branch pattern、approval required、deploy SA 分離                                                               |
+| symptom                                   | check                                                                                                                                     |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Cloud Build が deploy 権限で失敗する      | trigger の service account、Artifact Registry / Cloud Run / Firebase 権限                                                                 |
+| Cloud Run が DB に接続できない            | Direct VPC network / subnet、専用 CIDR の firewall、Private Google Access、`DATABASE_URL` secret、Cloud Run service agent の network user |
+| DB migration job が失敗する               | `${_DB_MIGRATION_JOB}` の execute log、Workflow Job image tag、`DATABASE_URL` secret reference、Direct VPC annotation                     |
+| App Hosting が build / rollout で失敗する | `apps/web/package.json` の Next.js version、App Hosting source bucket、backend SA、生成 revision の Direct VPC network interface / egress |
+| secret 参照で失敗する                     | Secret Manager accessor、App Hosting secret grant、secret 名の typo                                                                       |
+| docs-only 変更で deploy が走る            | trigger の included files                                                                                                                 |
+| production が勝手に走りそう               | branch pattern、approval required、deploy SA 分離                                                                                         |
 
 Cloud Run Job の log は次のように確認する。DB migration job（`${_DB_MIGRATION_JOB}`）の失敗調査にも使う。
 

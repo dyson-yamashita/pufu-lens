@@ -33,6 +33,7 @@
 | `docs/plans/013-incremental-source-sync-scheduling/overview.md` | `completed` | 2026-07-11 | Issue #512 / PR #513 で Step 1、Issue #516 / PR #517 で Step 2、Issue #518 / PR #519 で Step 3、Issue #520 / PR #521 で Step 4 を完了。Issue #514 / PR #515 で local one-shot dispatcher の実行要件を追加。Issue #522 で Step 5 の E2E、運用検証、設計書・runbook 整備を完了。 |
 | `docs/plans/014-periodic-report-scheduling/overview.md` | `completed` | 2026-07-18 | Issue #579 / PR #580 で Step 1、Issue #581 / PR #582 で Step 2、Issue #583 / PR #584 で Step 3、Issue #585 / PR #586 で Step 4、Issue #587 / PR #588 で Step 5、Issue #592 で Step 6 の一覧・差分 UI、E2E、運用手順を完了。Issue #595 で初回履歴 report の過去分一括生成、設定 UI 配置、保存遅延の追加修正を行った。 |
 | `docs/plans/015-chat-search-candidate-coverage/overview.md` | `completed` | 2026-07-19 | Issue #622 で Step 5 の score-aware eval fixture、回帰実行条件、07-chat.md 更新を完了。Step 1–4 のスコア透過、決定論的カットオフ、分類別 selection policy、多様性 quota と retrieval confidence 伝搬を含め、plan 全体を完了。 |
+| `docs/plans/016-gcp-cost-optimization/overview.md` | `active` | 2026-08-03 | Issue #663 で Direct VPC egress 移行、DB VM の `e2-custom-small-3072` 化と deletion protection 有効化、停止済み旧 `pg-ai` VM / disk 廃止、60 分の post-resize soak、ドキュメント更新まで完了。2026-08-10 以降の Billing Report 7 日比較を残す。 |
 
 ## 運用ルール
 

@@ -385,7 +385,7 @@ Next.js は path の `projectSlug` と `reportId` を storage-safe pattern で v
 
 ### 3. DB 可用性
 
-PostgreSQL は GCE VM（e2-medium）上で常時稼働させる。Private / Public Chat API は時刻による利用制限を設けず、認可・公開範囲・rate limit を確認した後に DB / AGE / pgvector / PGroonga を利用する。DB、選択した AI provider、Mastra Server、Object Storage の障害は通常の service error として扱い、営業時間専用の応答や UI の入力固定は設けない。
+PostgreSQL は GCE VM（`e2-custom-small-3072`、2 vCPU / 3 GiB）上で常時稼働させる。Private / Public Chat API は時刻による利用制限を設けず、認可・公開範囲・rate limit を確認した後に DB / AGE / pgvector / PGroonga を利用する。DB、選択した AI provider、Mastra Server、Object Storage の障害は通常の service error として扱い、営業時間専用の応答や UI の入力固定は設けない。
 
 ### 4. フロントエンド
 

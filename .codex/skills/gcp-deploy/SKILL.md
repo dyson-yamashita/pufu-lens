@@ -22,13 +22,16 @@ BUCKET=<project>-prod       # GCS バケット（実 prefix はプロジェク�
 RUNTIME_SA=mastra-runtime@${PROJECT_ID}.iam.gserviceaccount.com
 SCHED_SA=scheduler-oidc@${PROJECT_ID}.iam.gserviceaccount.com
 POSTGRES_VM_SA=postgres-vm@${PROJECT_ID}.iam.gserviceaccount.com
+VPC_NETWORK=default
+VPC_SUBNET=pufu-lens-serverless
+VPC_SUBNET_CIDR=10.9.0.0/25  # 既存 range と重複しない値を環境ごとに選ぶ
 gcloud config set project "$PROJECT_ID"
 ```
 
 ## 前提
 
-- `gcloud`（+ `gsutil`）/ `firebase` CLI(>=14.4.0) / `docker` がインストール済みでログイン済み（`gcloud auth login`、`firebase login`）。
-- 課金有効なプロジェクト。VPC connector と PostgreSQL VM は常時課金が発生する。
+- `gcloud`（+ `gsutil`）/ `firebase` CLI（>=15.25.1）/ `docker` がインストール済みでログイン済み（`gcloud auth login`、`firebase login`）。
+- 課金有効なプロジェクト。PostgreSQL VM とディスクは常時課金が発生する。
 - リポジトリの `infra/docker/{postgres,mastra,jobs}/Dockerfile` と `scripts/` を使う。
 
 ## Phase 0 — 読み取り専用チェック（クラウド非変更）
@@ -86,21 +89,21 @@ printf '%s' "$AUTH_SECRET" | gcloud secrets create AUTH_SECRET --data-file=-
 
 ルール: 実値は shell history / log / docs / コミットに出さない。`--data-file=-` で stdin 経由。`RUNTIME_SA` に各 secret の `roles/secretmanager.secretAccessor` を付与する。
 
-## Phase 5 — VPC connector / firewall / Private Google Access
+## Phase 5 — Direct VPC subnet / firewall / Private Google Access
 
 ```bash
-gcloud compute networks vpc-access connectors create mastra-connector \
-  --region "$REGION" --network default --range 10.8.0.0/28 \
-  --min-instances 2 --max-instances 3 --machine-type e2-micro
+gcloud compute networks subnets create "$VPC_SUBNET" \
+  --region "$REGION" --network "$VPC_NETWORK" --range "$VPC_SUBNET_CIDR" \
+  --enable-private-ip-google-access
 gcloud compute firewall-rules create pg-ai-allow-iap \
-  --network default --direction INGRESS --action ALLOW \
+  --network "$VPC_NETWORK" --direction INGRESS --action ALLOW \
   --rules tcp:22,tcp:5432 --source-ranges 35.235.240.0/20 --target-tags pg-ai
-gcloud compute firewall-rules create pg-ai-allow-connector \
-  --network default --direction INGRESS --action ALLOW \
-  --rules tcp:5432 --source-ranges 10.8.0.0/28 --target-tags pg-ai
-# ★必須: --no-address VM がイメージを pull できるよう Private Google Access を有効化
-gcloud compute networks subnets update default --region "$REGION" --enable-private-ip-google-access
+gcloud compute firewall-rules create pg-ai-allow-direct-vpc \
+  --network "$VPC_NETWORK" --direction INGRESS --action ALLOW \
+  --rules tcp:5432 --source-ranges "$VPC_SUBNET_CIDR" --target-tags pg-ai
 ```
+
+`VPC_SUBNET_CIDR` は Cloud Run service の最大 instance 数、rollout 中の旧新 revision、同時 Job task、解放待ち IP を含めて見積もる。Direct VPC は subnet の IP を runtime instance が直接消費するため、`/26` より小さい range は使わず、本構成では `/25` を推奨する。PostgreSQL への firewall は専用 subnet CIDR の TCP 5432 だけを許可する。
 
 ## Phase 6 — PostgreSQL(AGE) VM
 
@@ -122,10 +125,11 @@ gcloud artifacts repositories add-iam-policy-binding "$REPO" \
 
 # 3) COS VM 作成（永続データディスク + host network コンテナ + 内部IP のみ）
 gcloud compute instances create pg-ai \
-  --zone "$ZONE" --machine-type e2-medium \
+  --zone "$ZONE" --machine-type e2-custom-small-3072 \
   --image-family cos-stable --image-project cos-cloud \
   --boot-disk-size 20GB --boot-disk-type pd-balanced \
   --create-disk=name=pg-ai-data,device-name=pg-ai-data,size=50GB,type=pd-ssd,auto-delete=no \
+  --deletion-protection \
   --service-account "$POSTGRES_VM_SA" --scopes cloud-platform \
   --metadata="postgres-image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/postgres-ai:latest,postgres-password-secret=POSTGRES_PASSWORD,postgres-data-disk=pg-ai-data" \
   --metadata-from-file=startup-script=infra/gcp/postgres-startup.sh \
@@ -136,6 +140,7 @@ gcloud compute instances create pg-ai \
 
 - `POSTGRES_PASSWORD` はシェル変数 `$PGPASS` から stdin で Secret Manager に作成し、値を表示しない。VM metadata には secret 名だけを渡す。VM 作成後に内部 IP を取得し、`DATABASE_URL` を Secret Manager に stdin で格納する。
 - DB 名は `pufu_lens` 固定（`init.sql` が参照）。
+- 本番 PostgreSQL VM は deletion protection を有効にし、誤操作による VM と auto-delete boot disk の同時削除を防ぐ。意図的に VM を削除するときだけ、対象 project / zone / instance と `pg-ai-data` の `autoDelete=false` を再確認してから deletion protection を解除する。
 - `infra/gcp/postgres-startup.sh` は起動のたびに永続ディスクの EXT4 初期化（未初期化時のみ）/ mount、COS host firewall、Artifact Registry 認証、Secret Manager 参照、`docker run --restart=always --network=host` を冪等に構成する。`cloud-platform` scope と Private Google Access の両方が必要。
 - 起動スクリプトは DB init SQL を実行しないので、コンテナ起動後に IAP SSH 経由で `infra/docker/postgres/init.sql` を流し込む。`init.sql` は全テーブル + AGE graph + `schema_migrations` stamp を作るため、適用後は migration head 相当になる。
 
@@ -170,7 +175,9 @@ pnpm db:migrate --plan     # no pending（init.sql 適用済みなら 0 件）
 # infra/docker/mastra/Dockerfile で monorepo を build（cloudbuild config で -f 指定）
 gcloud run deploy mastra-server \
   --image "${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/mastra-server:latest" \
-  --region "$REGION" --service-account "$RUNTIME_SA" --vpc-connector mastra-connector \
+  --region "$REGION" --service-account "$RUNTIME_SA" \
+  --clear-vpc-connector --network "$VPC_NETWORK" --subnet "$VPC_SUBNET" \
+  --vpc-egress private-ranges-only \
   --no-allow-unauthenticated --port 8080 \
   --set-env-vars STORAGE_DRIVER=gcs,STORAGE_BUCKET=${BUCKET},GEMINI_CHAT_MODEL=gemini-2.5-flash,GEMINI_EMBEDDING_MODEL=gemini-embedding-2,GOOGLE_GENAI_USE_VERTEXAI=false \
   --set-secrets "DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_GENERATIVE_AI_API_KEY=GEMINI_API_KEY:latest"
@@ -184,7 +191,9 @@ gcloud run deploy mastra-server \
 for WF in curate-workflow ingest-workflow generate-report; do
   gcloud run jobs deploy "$WF" \
     --image "${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/workflow-job:latest" \
-    --region "$REGION" --service-account "$RUNTIME_SA" --vpc-connector mastra-connector \
+    --region "$REGION" --service-account "$RUNTIME_SA" \
+    --clear-vpc-connector --network "$VPC_NETWORK" --subnet "$VPC_SUBNET" \
+    --vpc-egress private-ranges-only \
     --set-env-vars STORAGE_DRIVER=gcs,STORAGE_BUCKET=${BUCKET},WORKFLOW_ID="$WF" \
     --set-secrets "DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
 done
