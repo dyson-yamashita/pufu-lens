@@ -36,6 +36,40 @@ const snapshot: ProjectOverviewSnapshot = {
   period: { end: '2026-07-19', start: '2026-07-13' },
   pufuInput: {
     period: { end: '2026-07-19', start: '2026-07-13' },
+    pufu_score: {
+      elements: {
+        businessScheme:
+          'Project overview reporting を含む情報を、sample-a の大局観をそろえる材料として扱う。',
+        environment: '定期レポートによるプロジェクト状況の可視化を進めています。',
+        foreignEnemy: '公開範囲と初回生成までの表示を継続して確認します。',
+        money: 'sample-a のレポートには、使える予算・工数・運用負荷に関する根拠が不足している。',
+        people: 'sample-a のレポートには、関係者の認識や期待に関する根拠が不足している。',
+        quality:
+          '「Overview に状況、アセット、課題、プ譜をまとめました。」の事実と解釈を分けて扱う必要がある。',
+        rival: 'sample-a で成果や資源を取り合う論点は、レポート上は未整理の部分がある。',
+        time: '2026-07-13 から 2026-07-19 時点の sample-a に関する認識。',
+      },
+      gainingGoal:
+        'sample-a について、Project overview reporting に記された状況を踏まえ、次の判断に進める状態をつくる。',
+      purposes: [
+        {
+          measures: [
+            {
+              color: 'green',
+              text: '「Overview に状況、アセット、課題、プ譜をまとめました。」を関係者が同じ言葉で説明できるよう整理する。',
+            },
+            {
+              color: 'blue',
+              text: 'Project overview reporting の記述とレポート進捗を突き合わせる。',
+            },
+          ],
+          text: '「Overview に状況、アセット、課題、プ譜をまとめました。」が sample-a の現在地として共有されている',
+        },
+      ],
+      schema_version: 'pufu-score-v1',
+      winCondition:
+        '関係者が「公開範囲と初回生成までの表示を継続して確認します。」を含む課題と次の一手を説明でき、sample-a の進め方に合意できる。',
+    },
     pufu_sources: [
       {
         doc_type: 'issue',

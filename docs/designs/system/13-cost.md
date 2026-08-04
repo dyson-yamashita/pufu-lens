@@ -22,7 +22,7 @@ GCE VM の概算は Taiwan リージョンの `e2-custom-small-3072` オンデ�
 
 LLM / embedding コストは利用量連動のため、上表には固定費として含めない。通常のデータ収集・parse は source 別の決定的な scanner / parser / validator で処理し、Agent に全候補を都度判定させない。これにより、取り込み件数に比例してチャットモデルのトークンを消費する経路を避ける。
 
-LLM を使う主な場面は、チャット応答、レポート生成、embedding 生成、未知形式・低 confidence・parser 修正などの例外対応に限定する。ローカルテストと CI では deterministic embedding provider を使い、Gemini / OpenAI embedding は dry-run または小さな実データ検証に限定してコストと外部依存を抑える。
+LLM を使う主な場面は、チャット応答、レポート生成、embedding 生成、未知形式・低 confidence・parser 修正などの例外対応に限定する。新規レポート生成では、レポート本文生成に加えて、同じプロジェクト資料の要約・レポート本文を入力とする専用 Mastra Agent のプ譜生成を 1 回実行する。既存レポートの表示時には再生成しないため、表示アクセスによる追加の LLM コストは発生しない。ローカルテストと CI では deterministic embedding provider を使い、Gemini / OpenAI embedding は dry-run または小さな実データ検証に限定してコストと外部依存を抑える。
 
 チャット合成へ渡す source は重複除外後に最大 10 件とする。各 source の snippet は取得時の上限内に保ち、source 数の増加による入力 token と応答コストは利用量メトリクスで監視する。
 

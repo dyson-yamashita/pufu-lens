@@ -17,22 +17,21 @@ import {
   createCrossProjectResearchAgent,
   createCrossProjectResearchTools,
   createGenerateReportWorkflow,
+  createMastraPufuScoreGenerationProvider,
   createPrivateChatQueryPlannerAgent,
   createPrivateChatSearchWorkflow,
   createProjectChatAgent,
   createProjectChatTools,
   createPublicReportChatAgent,
   createPublicReportChatTools,
+  createPufuScoreAgent,
 } from '../index.ts';
-import { resolveChatModel } from '../model-runtime.ts';
+import { aliasLegacyGeminiApiKeys, resolveChatModel } from '../model-runtime.ts';
 import { reportScheduleDispatcherRoute } from '../report-schedule-dispatcher-route.ts';
 import { sourceSyncDispatcherRoute } from '../source-sync-dispatcher-route.ts';
 import { syntheticMonitorRoute } from '../synthetic-monitor-route.ts';
 
-if (process.env.GEMINI_API_KEY) {
-  process.env.GOOGLE_API_KEY ??= process.env.GEMINI_API_KEY;
-  process.env.GOOGLE_GENERATIVE_AI_API_KEY ??= process.env.GEMINI_API_KEY;
-}
+aliasLegacyGeminiApiKeys();
 
 const databaseUrl = process.env.DATABASE_URL;
 const sql = postgres(databaseUrl ?? 'postgresql://localhost/pufu_lens_mastra_build', { max: 5 });
@@ -50,12 +49,18 @@ const crossProjectResearchTools = createCrossProjectResearchTools(
   crossProjectInvestigationRepository,
 );
 const chatModel = resolveChatModel();
+const pufuScoreAgent = createPufuScoreAgent({ model: chatModel });
+const pufuScoreGenerator = createMastraPufuScoreGenerationProvider({ agent: pufuScoreAgent });
 const crossProjectResearchAgent = createCrossProjectResearchAgent({
   model: chatModel,
   tools: crossProjectResearchTools,
 });
 const chatEmbeddingProvider = createChatEmbeddingProvider();
-const projectChatTools = createProjectChatTools(chatRepository, chatEmbeddingProvider);
+const projectChatTools = createProjectChatTools(
+  chatRepository,
+  chatEmbeddingProvider,
+  pufuScoreGenerator,
+);
 const projectChatAgent = createProjectChatAgent({ model: chatModel, tools: projectChatTools });
 const privateChatQueryPlannerAgent = createPrivateChatQueryPlannerAgent({ model: chatModel });
 const publicReportChatTools = createPublicReportChatTools();
@@ -65,6 +70,7 @@ const publicReportChatAgent = createPublicReportChatAgent({
 });
 const generateReportWorkflow = createGenerateReportWorkflow({
   provider: createReportProvider(),
+  pufuScoreGenerator,
   rawReadViewRepository: { fetchRawReadView: chatRepository.rawReadViewFetch },
   repository: reportRepository,
   storage,
@@ -81,6 +87,7 @@ export const mastra = new Mastra({
     crossProjectResearchAgent,
     projectChatAgent,
     publicReportChatAgent,
+    pufuScoreAgent,
   },
   bundler: {
     // @google-cloud/storage is reachable from @pufu-lens/storage's GcsObjectStorage.

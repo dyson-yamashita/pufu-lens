@@ -1,6 +1,11 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
+import { aliasLegacyGeminiApiKeys, resolveChatModel } from '../apps/mastra/src/model-runtime.ts';
+import {
+  createMastraPufuScoreGenerationProvider,
+  createPufuScoreAgent,
+} from '../apps/mastra/src/pufu-score-agent.ts';
 import {
   createExtractiveReportProvider,
   createGeminiReportProvider,
@@ -33,6 +38,8 @@ const LEASE_MINUTES = 15;
 const MAX_LEASE_MINUTES = 60;
 const MATERIALIZE_PERIOD_LIMIT = 10;
 
+aliasLegacyGeminiApiKeys();
+
 async function main(): Promise<void> {
   parseArgs(process.argv.slice(2));
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 2 });
@@ -45,6 +52,9 @@ async function main(): Promise<void> {
           model: process.env.GEMINI_CHAT_MODEL,
         })
       : createExtractiveReportProvider();
+  const pufuScoreGenerator = createMastraPufuScoreGenerationProvider({
+    agent: createPufuScoreAgent({ model: resolveChatModel() }),
+  });
   try {
     const result = await dispatchReportSchedules({
       repository: createPostgresReportScheduleDispatcherRepository(sql),
@@ -52,6 +62,7 @@ async function main(): Promise<void> {
         run: (target, signal) =>
           runScheduledReport({
             provider,
+            pufuScoreGenerator,
             reportRepository,
             signal,
             sql,
@@ -457,6 +468,9 @@ class MaterializeScheduleLeaseLostError extends Error {
 
 async function runScheduledReport(input: {
   readonly provider: Parameters<typeof runGenerateReport>[0]['options']['provider'];
+  readonly pufuScoreGenerator: Parameters<
+    typeof runGenerateReport
+  >[0]['options']['pufuScoreGenerator'];
   readonly reportRepository: ReportRepository;
   readonly signal: AbortSignal;
   readonly sql: postgres.Sql;
@@ -487,6 +501,7 @@ async function runScheduledReport(input: {
       period: { end: input.target.periodEnd, start: input.target.periodStart },
       previousScheduledReportId: previous?.id,
       provider: input.provider,
+      pufuScoreGenerator: input.pufuScoreGenerator,
       repository: input.reportRepository,
       scheduleFrequency: input.target.frequency,
       schedulePeriodRunId: input.target.periodRunId,

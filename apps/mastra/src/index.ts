@@ -37,6 +37,7 @@ import {
   createExtractiveReportProvider,
   type PublicContextBundleV1,
   type PublicReportJsonV1,
+  type PufuScoreGenerationProvider,
   type ReportGenerationProvider,
   type ReportPeriod,
   type ReportPeriodKind,
@@ -54,6 +55,11 @@ import {
   privateChatQueryExpansionSchema,
   privateChatQuestionClassificationSchema,
 } from './private-chat-query-planner.ts';
+import {
+  createMastraPufuScoreGenerationProvider,
+  createPufuScoreAgent,
+  PUFU_SCORE_AGENT_ID,
+} from './pufu-score-agent.ts';
 
 export {
   createPrivateChatClassificationPrompt,
@@ -64,12 +70,22 @@ export {
   privateChatQuestionClassificationSchema,
 } from './private-chat-query-planner.ts';
 
+export {
+  buildPufuScoreAgentPrompt,
+  createMastraPufuScoreGenerationProvider,
+  createPufuScoreAgent,
+  PUFU_SCORE_AGENT_ID,
+  PUFU_SCORE_AGENT_INSTRUCTIONS,
+  pufuScoreAgentOutputSchema,
+} from './pufu-score-agent.ts';
+
 export const mastraAppName = 'pufu-lens-mastra';
 
 export const mastraAgentIds = {
   crossProjectResearch: 'cross-project-research-agent',
   projectChat: 'project-chat-agent',
   publicReportChat: 'public-report-chat-agent',
+  pufuScore: PUFU_SCORE_AGENT_ID,
 } as const;
 
 export const mastraWorkflowIds = {
@@ -175,6 +191,7 @@ export interface PufuLensMastraDependencies {
   readonly chatRepository: ChatRepository;
   readonly crossProjectInvestigationRepository?: CrossProjectInvestigationRepository;
   readonly embeddingProvider: ChatEmbeddingProvider;
+  readonly pufuScoreGenerator?: PufuScoreGenerationProvider;
   readonly reportProvider?: ReportGenerationProvider;
   readonly reportRepository: ReportRepository;
   readonly reportStorage: ObjectStorage;
@@ -195,6 +212,7 @@ export interface PufuLensMastraRuntime {
   readonly publicReportChatAgent: Agent;
   readonly generateReportWorkflow: ReturnType<typeof createGenerateReportWorkflow>;
   readonly privateChatSearchWorkflow: ReturnType<typeof createPrivateChatSearchWorkflow>;
+  readonly pufuScoreAgent: Agent;
 }
 
 const githubLifecycleSchema = z
@@ -490,6 +508,7 @@ export function createCrossProjectResearchAgent(input: {
 export function createProjectChatTools(
   repository: ChatRepository,
   embeddingProvider: ChatEmbeddingProvider,
+  pufuScoreGenerator: PufuScoreGenerationProvider,
 ) {
   const projectIdFromContext = (
     context:
@@ -602,9 +621,31 @@ export function createProjectChatTools(
         projectIdFromContext(context);
         const pufuSources = input.pufuSources ?? [];
         const sections = input.sections ?? [];
+        const semanticScore = await pufuScoreGenerator.generate({
+          context: {
+            evidenceSources: pufuSources.map((source: ReportSourceInput, index: number) => ({
+              docType: source.doc_type ?? 'unknown',
+              occurredAt: source.occurred_at ?? null,
+              summary: source.snippet ?? '',
+              title: source.title ?? source.snippet ?? `データソース ${index + 1}`,
+            })),
+            period: input.period,
+            projectLabel: input.title,
+            projectSlug: input.title,
+            reportSections: sections.map((section: ReportSectionInput) => ({
+              id: section.id,
+              markdown: section.markdown,
+              title: section.title,
+            })),
+            reportSummary: input.summary,
+            reportTitle: input.title,
+            totalCandidateCount: pufuSources.length,
+          },
+        });
         return {
           score: createPufuScoreFromReport({
             period: input.period,
+            pufu_score: semanticScore,
             pufu_sources: pufuSources.map((source: ReportSourceInput, index: number) => ({
               canonical_uri: source.canonical_uri ?? '',
               doc_type: source.doc_type ?? 'unknown',
@@ -1359,6 +1400,10 @@ export function createPufuLensMastraRuntime(
   dependencies: PufuLensMastraDependencies,
 ): PufuLensMastraRuntime {
   const reportProvider = dependencies.reportProvider ?? createExtractiveReportProvider();
+  const pufuScoreAgent = createPufuScoreAgent({ model: dependencies.chatModel });
+  const pufuScoreGenerator =
+    dependencies.pufuScoreGenerator ??
+    createMastraPufuScoreGenerationProvider({ agent: pufuScoreAgent });
   const crossProjectResearchTools = dependencies.crossProjectInvestigationRepository
     ? createCrossProjectResearchTools(dependencies.crossProjectInvestigationRepository)
     : undefined;
@@ -1371,6 +1416,7 @@ export function createPufuLensMastraRuntime(
   const projectChatTools = createProjectChatTools(
     dependencies.chatRepository,
     dependencies.embeddingProvider,
+    pufuScoreGenerator,
   );
   const projectChatAgent = createProjectChatAgent({
     model: dependencies.chatModel,
@@ -1386,6 +1432,7 @@ export function createPufuLensMastraRuntime(
   });
   const generateReportWorkflow = createGenerateReportWorkflow({
     provider: reportProvider,
+    pufuScoreGenerator,
     rawReadViewRepository: { fetchRawReadView: dependencies.chatRepository.rawReadViewFetch },
     repository: dependencies.reportRepository,
     storage: dependencies.reportStorage,
@@ -1401,6 +1448,7 @@ export function createPufuLensMastraRuntime(
       ...(crossProjectResearchAgent ? { crossProjectResearchAgent } : {}),
       projectChatAgent,
       publicReportChatAgent,
+      pufuScoreAgent,
     },
     workflows: { generateReportWorkflow, privateChatSearchWorkflow },
   });
@@ -1415,5 +1463,6 @@ export function createPufuLensMastraRuntime(
     projectChatTools,
     publicReportChatAgent,
     publicReportChatTools,
+    pufuScoreAgent,
   };
 }

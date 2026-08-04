@@ -1,3 +1,7 @@
+import { buildContextualPufuScore } from './pufu-score-generation.ts';
+import type { PufuScoreGenerationProvider } from './pufu-score-generator.ts';
+import type { PufuScorePublicSection } from './pufu-score-input.ts';
+import { normalizePufuScore, type PufuScoreSemanticV1 } from './pufu-score-schema.ts';
 import type { PublicContextBundleV1, PublicReportJsonV1 } from './report.ts';
 
 function deepFreeze<T>(value: T): Readonly<T> {
@@ -59,3 +63,64 @@ export const publicContextBundleFixture: PublicContextBundleV1 = deepFreeze({
     },
   ],
 }) as PublicContextBundleV1;
+
+/**
+ * Deterministic test provider that mirrors legacy contextual pufu synthesis.
+ */
+export function createContextualPufuScoreGenerator(): PufuScoreGenerationProvider {
+  return {
+    async generate({ context }) {
+      return buildContextualPufuScore({
+        period: context.period,
+        projectLabel: context.projectLabel,
+        sections: context.reportSections as readonly PufuScorePublicSection[],
+        sources: context.evidenceSources.map((source) => ({
+          doc_type: source.docType,
+          occurred_at: source.occurredAt,
+          snippet: source.summary,
+          title: source.title,
+        })),
+        summary: context.reportSummary,
+        title: context.reportTitle,
+      });
+    },
+  };
+}
+
+/**
+ * Returns a fixed semantic score for deterministic report-generation tests.
+ */
+export function createFixedPufuScoreGenerator(
+  score: PufuScoreSemanticV1,
+): PufuScoreGenerationProvider {
+  const normalized = normalizePufuScore(score);
+  return {
+    async generate() {
+      return normalized;
+    },
+  };
+}
+
+/**
+ * Provider that always rejects generation for failure-path regression tests.
+ */
+export function createRejectingPufuScoreGenerator(
+  message = 'pufu score generation rejected',
+): PufuScoreGenerationProvider {
+  return {
+    async generate() {
+      throw new Error(message);
+    },
+  };
+}
+
+/**
+ * Provider that resolves with an invalid semantic payload for normalization tests.
+ */
+export function createMalformedPufuScoreGenerator(): PufuScoreGenerationProvider {
+  return {
+    async generate() {
+      return { gainingGoal: '不正なプ譜' } as PufuScoreSemanticV1;
+    },
+  };
+}

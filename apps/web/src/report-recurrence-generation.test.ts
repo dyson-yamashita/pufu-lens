@@ -30,6 +30,9 @@ import {
   validatePairedScheduleInputs,
 } from './report-schedule-input.ts';
 import { validateGeneratedReport } from './report-schema.ts';
+import { createContextualPufuScoreGenerator } from './test-fixtures.ts';
+
+const contextualPufuScoreGenerator = createContextualPufuScoreGenerator();
 
 assert.equal(validatePairedScheduleInputs({}), undefined);
 assert.deepEqual(
@@ -374,6 +377,9 @@ const generated = await runGenerateReport({
     period: newPeriod,
     previousScheduledReportId: 'report-prev',
     provider: trackingProvider,
+
+    pufuScoreGenerator: contextualPufuScoreGenerator,
+
     repository,
     scheduleFrequency: 'weekly',
     storage,
@@ -392,6 +398,9 @@ const manualGenerated = await runGenerateReport({
     now: new Date('2026-06-04T12:00:00.000Z'),
     period: newPeriod,
     provider: createExtractiveReportProvider(),
+
+    pufuScoreGenerator: contextualPufuScoreGenerator,
+
     repository,
     storage,
   },
@@ -419,6 +428,9 @@ await assert.rejects(
             };
           },
         },
+
+        pufuScoreGenerator: contextualPufuScoreGenerator,
+
         repository,
         scheduleFrequency: 'weekly',
         storage,
@@ -434,6 +446,9 @@ const extractiveWithContext = await runGenerateReport({
     period: newPeriod,
     previousScheduledReportId: 'report-prev',
     provider: createExtractiveReportProvider(),
+
+    pufuScoreGenerator: contextualPufuScoreGenerator,
+
     repository,
     scheduleFrequency: 'weekly',
     storage,
@@ -515,6 +530,9 @@ const oversizedGenerated = await runGenerateReport({
         };
       },
     },
+
+    pufuScoreGenerator: contextualPufuScoreGenerator,
+
     repository,
     scheduleFrequency: 'weekly',
     storage,
@@ -550,6 +568,9 @@ await assert.rejects(
             return output;
           },
         },
+
+        pufuScoreGenerator: contextualPufuScoreGenerator,
+
         repository,
         scheduleFrequency: 'weekly',
         storage,
@@ -733,6 +754,9 @@ await runGenerateReport({
     period: newPeriod,
     previousScheduledReportId: 'report-prev',
     provider: countingGeminiProvider,
+
+    pufuScoreGenerator: contextualPufuScoreGenerator,
+
     repository,
     scheduleFrequency: 'weekly',
     storage,

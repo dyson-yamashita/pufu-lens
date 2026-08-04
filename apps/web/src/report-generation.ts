@@ -9,6 +9,11 @@ import {
   type CustomReportSnapshotV1,
   type SliderJudgementPart,
 } from './custom-report-schema.ts';
+import {
+  buildPufuScoreGenerationContext,
+  type PufuScoreGenerationProvider,
+} from './pufu-score-generator.ts';
+import { normalizePufuScore, type PufuScoreSemanticV1 } from './pufu-score-schema.ts';
 import type { AgentRawReadViewEnvelope, RawReadViewRepository } from './raw-read-view.ts';
 import { editReportMaterials, REPORT_CANDIDATE_LIMIT } from './report-materials.ts';
 import { buildPreviousReportProviderContext } from './report-previous-context.ts';
@@ -49,6 +54,7 @@ export interface RunGenerateReportOptions {
   readonly periodKind?: ReportPeriodKind;
   readonly previousScheduledReportId?: string;
   readonly provider: ReportGenerationProvider;
+  readonly pufuScoreGenerator: PufuScoreGenerationProvider;
   readonly rawReadViewRepository?: Pick<RawReadViewRepository, 'fetchRawReadView'>;
   readonly repository: ReportRepository;
   readonly scheduleFrequency?: ScheduledReportFrequency;
@@ -167,12 +173,22 @@ export async function runGenerateReport(input: {
   const projectOverview = includeProjectOverview
     ? resolveGeneratedProjectOverview(generated)
     : undefined;
+  const pufuScore = await generatePersistedPufuScore({
+    documents: providerDocuments,
+    generated,
+    period,
+    projectSlug: project.slug,
+    pufuScoreGenerator: input.options.pufuScoreGenerator,
+    signal,
+    totalDocumentCount: editedMaterials.totalDocumentCount,
+  });
   const report: PrivateReportJsonV1 = {
     ...(customSnapshot ? { custom_layout: customSnapshot.snapshot } : {}),
     generated_at: now.toISOString(),
     period,
     project_id: project.id,
     ...(projectOverview ? { project_overview: projectOverview } : {}),
+    pufu_score: pufuScore,
     pufu_sources: editedMaterials.representativeDocuments.map(pufuSourceFromDocument),
     ...(previousReportContext && hasProviderRecurrenceDelta(generated)
       ? {
@@ -277,6 +293,43 @@ export async function runGenerateReport(input: {
     reportUrl: `/projects/${project.slug}/reports/${report.report_id}`,
     storageUri: put.uri,
   };
+}
+
+async function generatePersistedPufuScore(input: {
+  readonly documents: readonly ReportDocumentRecord[];
+  readonly generated: Awaited<ReturnType<ReportGenerationProvider['generate']>>;
+  readonly period: ReportPeriod;
+  readonly projectSlug: string;
+  readonly pufuScoreGenerator: PufuScoreGenerationProvider;
+  readonly signal?: AbortSignal;
+  readonly totalDocumentCount: number;
+}): Promise<PufuScoreSemanticV1> {
+  throwIfReportGenerationAborted(input.signal);
+  const context = buildPufuScoreGenerationContext({
+    documents: input.documents,
+    generated: input.generated,
+    period: input.period,
+    projectSlug: input.projectSlug,
+    totalDocumentCount: input.totalDocumentCount,
+  });
+  let generated: PufuScoreSemanticV1;
+  try {
+    generated = await input.pufuScoreGenerator.generate({
+      context,
+      ...(input.signal ? { signal: input.signal } : {}),
+    });
+  } catch (error) {
+    throwIfReportGenerationAborted(input.signal);
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Pufu score generation failed: ${reason}`);
+  }
+  throwIfReportGenerationAborted(input.signal);
+  try {
+    return normalizePufuScore(generated);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Pufu score generation returned invalid payload: ${reason}`);
+  }
 }
 
 function resolveGeneratedProjectOverview(

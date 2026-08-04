@@ -2,6 +2,7 @@ import {
   type CustomReportSnapshotV1,
   validateCustomReportSnapshot,
 } from './custom-report-schema.ts';
+import { type PufuScoreSemanticV1, validatePufuScoreSemantic } from './pufu-score-schema.ts';
 import { type ProjectOverviewV1, validateProjectOverview } from './report-project-overview.ts';
 import { isScheduledReportFrequency, type ScheduledReportFrequency } from './report-schedules.ts';
 
@@ -49,6 +50,7 @@ export interface PrivateReportJsonV1 {
   readonly period: ReportPeriod;
   readonly project_id: string;
   readonly project_overview?: ProjectOverviewV1;
+  readonly pufu_score?: PufuScoreSemanticV1;
   readonly pufu_sources?: readonly PrivateReportPufuSource[];
   readonly recurrence?: PrivateReportRecurrenceV1;
   readonly report_id: string;
@@ -156,6 +158,9 @@ export function validatePrivateReportJson(value: unknown): asserts value is Priv
   }
   if (value.project_overview !== undefined) {
     validateProjectOverview(value.project_overview);
+  }
+  if (value.pufu_score !== undefined) {
+    validatePufuScoreSemantic(value.pufu_score);
   }
   for (const section of value.sections) {
     if (!isRecord(section) || typeof section.id !== 'string' || typeof section.title !== 'string') {

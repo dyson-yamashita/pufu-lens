@@ -1,4 +1,9 @@
 import postgres from 'postgres';
+import { aliasLegacyGeminiApiKeys, resolveChatModel } from '../apps/mastra/src/model-runtime.ts';
+import {
+  createMastraPufuScoreGenerationProvider,
+  createPufuScoreAgent,
+} from '../apps/mastra/src/pufu-score-agent.ts';
 import {
   createExtractiveReportProvider,
   createGeminiReportProvider,
@@ -8,6 +13,8 @@ import {
   runGenerateReport,
 } from '../apps/web/src/report.ts';
 import { requiredEnv } from './lib/cli.ts';
+
+aliasLegacyGeminiApiKeys();
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
@@ -20,11 +27,15 @@ async function main(): Promise<void> {
             model: process.env.GEMINI_CHAT_MODEL,
           })
         : createExtractiveReportProvider();
+    const pufuScoreGenerator = createMastraPufuScoreGenerationProvider({
+      agent: createPufuScoreAgent({ model: resolveChatModel() }),
+    });
     const result = await runGenerateReport({
       options: {
         generatedBy: 'pnpm report:generate',
         now: reportNowFromEnv(process.env),
         provider,
+        pufuScoreGenerator,
         repository: createPostgresReportRepository(sql),
         storage: createReportStorageFromEnv(),
       },
