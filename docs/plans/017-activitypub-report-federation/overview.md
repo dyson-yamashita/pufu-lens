@@ -20,6 +20,7 @@ MVP の完了条件は次のとおりとする。
 4. Pufu Lens Actor と Mastodon user の双方から Follow / Undo を行える。
 5. 別の Pufu Lens Actor を project 単位で購読し、受信した report を「外部レポート」として参照できる。
 6. 配送失敗が Web request をブロックせず、lease、retry、重複排除、監査可能な状態を PostgreSQL に保持する。
+7. Mastodon から Actor を検索・followでき、home timeline に title、summary、report URL を表示できる。Step 6 の実機互換性確認を通過するまで MVP は完了しない。
 
 ## 3. MVP の対象外
 
@@ -49,7 +50,7 @@ Actor はサーバーそのものではなく、サーバー上でフォロー�
 | 集約配信                   | `Announce(Article)`                  | `@all` の follower へ通知        |
 | 購読                       | `Follow` / `Accept` / `Undo(Follow)` | 独立した片方向の購読関係         |
 
-project Actor の `preferredUsername` は専用 DB row に保存し、初期値は project slug とする。`all` は集約 Actor 用の予約名とし、衝突する場合は project の federation 有効化時に別名を明示する。公開後の Actor ID、username、canonical origin は remote follow を壊すため変更不可として扱う。
+project Actor の `preferredUsername` は専用 DB row に保存し、初期値は project slug とする。`all` は集約 Actor 用の予約名とし、衝突する場合は project の federation 有効化時に別名を明示する。username のインスタンス内一意性、集約 Actor が最大1件であること、project Actor が project ごとに最大1件であることは application の事前確認だけに依存せず DB 制約で保証する。公開後の Actor ID、username、canonical origin は remote follow を壊すため変更不可として扱う。
 
 ### 4.2 URL 契約
 
@@ -68,7 +69,7 @@ WebFinger は `acct:` resource から Actor URL を返す。Actor と `Article` 
 
 ### 4.3 配信契約
 
-project Actor は report が `projects.visibility = 'public'` かつ `reports.is_public = true` へ遷移した commit 後に、一意な `Create(Article)` を生成する。
+report 公開 transaction は `projects.visibility = 'public'` と `reports.is_public = true` を確認または更新し、同じ transaction 内で project Actor の一意な `Create(Article)` outbox row と `@all` Actor の一意な `Announce(Article)` outbox row を登録する。commit 後に dispatcher が outbox row から Activity を materialize して配送し、Web request は Activity の生成や remote HTTP response を待たない。
 
 - `Article.id`: Pufu Lens 内で不変な ActivityPub report URL
 - `Article.attributedTo`: project Actor URL
@@ -79,9 +80,11 @@ project Actor は report が `projects.visibility = 'public'` かつ `reports.is
 - `to`: ActivityStreams Public collection
 - `cc`: project Actor の followers collection
 
-同じ report に対して `@all` Actor は新しい Article を作らず、project Actor の canonical `Article` を object とする `Announce` を生成する。これにより attribution と object ID を project Actor 側へ一本化し、project Actor と `@all` の両方をフォローした remote server では object ID で重複を判定できる。
+同じ report に対して `@all` Actor は新しい Article を作らず、project Actor の canonical `Article` を object とする `Announce` を生成する。`Announce.actor` は `@all` Actor、`object` は canonical `Article`、`to` は ActivityStreams Public collection、`cc` は `@all` Actor の followers collection とする。recipient が shared inbox を公開している場合は remote shared inbox URL を優先し、未対応なら personal inbox へ fallback する。
 
-remote client の `Article` 表示互換性は Mastodon 実機で確認する。MVP では `Article` を正本とし、互換性のために別 ID の `Note` を二重配信しない。表示に問題がある場合は、同じ canonical object の vocabulary 選択を後続判断として記録する。
+同じ remote Actor が project Actor と `@all` の両方をフォローしている場合は `Create` を優先し、その remote Actor 向けの `Announce` delivery を作らない。異なる remote Actor が同じ server 上でそれぞれ project Actor と `@all` をフォローしている場合は、必要な audience を欠落させないよう両 Activity を shared inbox へ配送してよい。受信側 Pufu Lens は同じ project 内の `remote_object_uri` で統合する。この Actor 単位の優先規則、shared inbox の disjoint audience、受信側の object dedupe を fixture で固定する。
+
+remote client の `Article` 表示互換性は Mastodon 実機で確認し、Step 6 を MVP completion の blocking gate とする。Mastodon の home timeline で title、summary、report URL を表示できなければ MVP は未完了とする。fallback は同じ stable object URI を使う `Create(Note)` と `Announce(Note)` へ instance 全体で切り替え、`Note.content` に title、summary、report URL を含める方式とする。`Article` と `Note` は二重配信せず、fallback 採用時は Actor / object contract、受信 mapping、fixture、Mastodon E2E を更新してから MVP 完了とする。
 
 ## 5. Fedify の責務と境界
 
@@ -108,9 +111,11 @@ remote client の `Article` 表示互換性は Mastodon 実機で確認する。
 
 Fedify の `MemoryKvStore` と `InProcessMessageQueue` は test 以外で使わない。Fedify が必要とする cache / idempotency state は PostgreSQL-backed KV を使う。業務データを Fedify の KV に保存しない。
 
+Fedify 関連 package は SSRF 修正を含む同一 patch 版へ揃える。初期実装では 2026-08-04 時点の `@fedify/fedify`、`@fedify/next`、`@fedify/postgres`、`@fedify/vocab-runtime` の `2.3.4` を caret なしで完全固定し、lockfile 上の転移依存も 2.3.4 へ収束させる。少なくとも IPv4-mapped IPv6 bypass 修正を含む `@fedify/vocab-runtime >= 2.2.1`、special-use / tunneling address 修正を含む `>= 2.2.4`、NodeInfo redirect SSRF 修正を含む `@fedify/fedify >= 2.2.7` を下回る解決を禁止する。version 更新時も security changelog と lockfile の解決結果を同時確認する。
+
 ### 5.3 queue 統合方針
 
-本番で `sendActivity(..., { immediate: true })` は使わない。Web request 内の同期配送も行わない。
+本番で `sendActivity(..., { immediate: true })` は使わない。Web request 内の同期配送も行わない。Web process が構築する Federation は常に `manuallyStartQueue: true` とし、`startQueue()` と queue task processor を呼ばない。queue consumer の開始または manual task 処理は `activitypub-dispatcher` Job entrypoint だけに限定する。
 
 Pufu Lens の PostgreSQL queue adapter を Fedify の `MessageQueue` 契約に合わせて実装し、Fedify が生成する inbox / outbox message を `activitypub_queue_messages` に保存する。adapter は backend 側で retry を管理することを Fedify へ示し、Fedify retry と Pufu Lens retry の二重適用を防ぐ。Fedify version を固定し、adapter の enqueue、serialize、manual process 契約を contract test で保護する。
 
@@ -132,7 +137,15 @@ one-shot `activitypub-dispatcher` は due message を `FOR UPDATE SKIP LOCKED` �
 - `encrypted_private_key`
 - `created_at` / `updated_at`
 
-`kind = 'aggregate'` はインスタンスに1件、`kind = 'project'` は project に最大1件とする。project Actor は public project だけ有効化できる。秘密鍵の平文、PEM 全文、署名 header はログへ出さない。
+fresh DB の `init.sql` と migration の両方に次の制約を同じ定義で追加する。
+
+- `preferred_username` の instance 内 `UNIQUE`
+- `kind = 'aggregate'` を最大1件にする partial unique index
+- `kind = 'project'` の `project_id` を一意にする partial unique index
+- `(kind = 'aggregate' AND project_id IS NULL) OR (kind = 'project' AND project_id IS NOT NULL)` の `CHECK`
+- aggregate Actor では `preferred_username = 'all'`、project Actor では `preferred_username <> 'all'` とする `CHECK`
+
+project Actor は public project だけ有効化できる。この公開可否は transaction 内の project row lock と repository guard で検証する。秘密鍵の平文、PEM 全文、署名 header はログへ出さない。
 
 ### 6.2 `activitypub_follows`
 
@@ -170,6 +183,8 @@ outbound row は report 公開 transaction 内で `pending` として作る tran
 - `id`
 - `dedupe_key` unique
 - `queue_kind`: `inbox` / `outbox`
+- `ordering_key` nullable。outbox では必須
+- `recipient_origin` nullable。outbox では必須
 - `message_json`
 - `status`: `pending` / `running` / `retry_wait` / `succeeded` / `retry_exhausted` / `permanent_failure`
 - `available_at`
@@ -180,7 +195,7 @@ outbound row は report 公開 transaction 内で `pending` として作る tran
 - `last_http_status` nullable
 - `created_at` / `started_at` / `completed_at` / `updated_at`
 
-`worker_token` と `lease_expires_at` は同時に NULL または非 NULL とする。outbox の `dedupe_key` は少なくとも `activity_uri + recipient_inbox_uri` から決定論的に作り、activity materialize 後・処理済み更新前に worker が停止しても同じ delivery message を増やさない。message payload に private key、OAuth token、credential を入れず、処理時に Actor ID から解決する。
+`worker_token` と `lease_expires_at` は同時に NULL または非 NULL とする。outbox の `dedupe_key` は少なくとも `activity_uri + recipient_inbox_uri` から決定論的に作り、activity materialize 後・処理済み更新前に worker が停止しても同じ delivery message を増やさない。`ordering_key` は object URI、`recipient_origin` は remote inbox の origin を正規化して保存し、Fedify の queue enqueue と delivery 処理へ同じ `orderingKey` を伝搬する。message payload に private key、OAuth token、credential を入れず、処理時に Actor ID から解決する。
 
 ### 6.5 `federated_reports`
 
@@ -207,7 +222,7 @@ report 公開から remote delivery までは次の二段階に分ける。
 
 1. report を public にする transaction 内で、project Actor の `Create` と集約 Actorの `Announce` を決定論的な `activity_uri` を持つ `activitypub_activities` outbound rowとして登録する。
 2. dispatcher が pending activity を lease付きでclaimし、activity発生時点でacceptedだった followerを解決してFedifyへ渡す。followの `accepted_at` / `undone_at` を使い、公開後にfollowしたActorへ過去activityをpushしない。
-3. FedifyのPostgreSQL queue adapterはdelivery単位の決定論的な `dedupe_key` で `activitypub_queue_messages` をupsertする。
+3. Fedify の PostgreSQL queue adapter は delivery 単位の決定論的な `dedupe_key`、object 単位の `ordering_key`、正規化した `recipient_origin` で `activitypub_queue_messages` を upsert し、Fedify へ `orderingKey` を渡す。
 4. activityに必要なdelivery messageがすべて永続化された後だけ、outbound activityを `processed` にする。
 5. 別claimでdelivery messageをFedify queue task processorへ渡し、成功またはretry状態を更新する。
 
@@ -215,9 +230,10 @@ report 公開から remote delivery までは次の二段階に分ける。
 
 ### 7.2 起動と上限
 
-- Cloud Scheduler が1分または5分ごとに `POST /internal/schedules/activitypub-dispatcher:run` を OIDC 付きで呼ぶ。
-- Mastra Server は空 object を検証し、`activitypub-dispatcher` Cloud Run Job を起動する。
-- Job は `--once` のみ許可し、1 run 最大100 messageまたは開始から45分の早い方で新規 claim を停止する。
+- Cloud Scheduler が1分または5分ごとに `POST /internal/schedules/activitypub-dispatcher:run` を designated Scheduler service account の OIDC token 付きで呼ぶ。OIDC audience は Mastra internal service の固定 URL とし、route は issuer、audience、subject / email allowlist を検証する。
+- Scheduler service account には対象 Mastra service だけの `roles/run.invoker` を付与する。Mastra runtime service account には対象 `activitypub-dispatcher` Job だけの `run.jobs.run` / `run.jobs.runWithOverrides` 相当権限を付与し、他 Job や resource への権限を広げない。
+- Mastra Server は body が空 object であることを検証し、同じ Job の active execution を検出した場合は新規起動せず accepted no-op として扱い、active でなければ `activitypub-dispatcher` Cloud Run Job を起動する。active execution 検出と DB lease の両方で duplicate run を防ぐ。
+- Job entrypoint は `--once` だけを受け付け、それ以外の引数や常駐 queue consumer 起動を拒否する。1 run 最大100 messageまたは開始から45分の早い方で新規 claim を停止する。
 - Cloud Run Job timeout は55分とし、10分を後処理に確保する。
 - inbox / outbox は公平に claim し、一方の大量流入で他方を飢餓させない。
 
@@ -225,17 +241,18 @@ report 公開から remote delivery までは次の二段階に分ける。
 
 ### 7.3 claim と heartbeat
 
-- `available_at <= now()` の message を `FOR UPDATE SKIP LOCKED` で claim する。
+- `available_at <= now()` の message を `FOR UPDATE SKIP LOCKED` で候補にする。同じ `ordering_key + recipient_origin` に、より古い `created_at + id` を持つ未完了 message がある候補は claim しない。
 - claim 時にランダムな `worker_token` と15分の leaseを設定する。
 - 処理中は heartbeat で leaseを延長するが、開始から最大60分を超えない。
 - 完了 / 失敗更新は message ID、worker token、非期限切れ lease の一致を必須とする。
 - leaseを失った worker は成功・失敗状態を更新せず、後続 worker の結果を上書きしない。
+- 同じ ordering sequence の先行 message が `succeeded` になるまで後続を配送しない。先行 message が `retry_exhausted` / `permanent_failure` へ遷移した場合は、後続を送らず同じ安全な failure 分類で終端させ、Create を欠いた Update / Delete を remote へ送らない。
 
 ### 7.4 retry と permanent failure
 
 retry delay は初期値として1分、5分、30分、2時間、12時間を使い、最大5回後に `retry_exhausted` とする。network error、timeout、HTTP 408、429、5xx を retry 対象とし、`Retry-After` が安全な上限内なら優先する。404 / 410 は inbox消滅として `permanent_failure`、その他の4xxは分類をテストで固定する。
 
-同じ remote origin への同時配送数を制限し、shared inbox がある場合は remote server 単位でまとめる。Create と将来の Update / Delete の順序を保証できるよう、ordering key は `object_uri + remote_origin` を使える schema とする。
+同じ remote origin への同時配送数を制限し、shared inbox がある場合は remote server 単位でまとめる。Create と将来の Update / Delete は同じ object URI を `orderingKey` として enqueue し、queue adapter が `ordering_key + recipient_origin` ごとに直列化する。
 
 保存する error は分類 code、HTTP status、attempt、remote origin までとし、response body、署名、payload 本文、PII をログへ出さない。
 
@@ -285,7 +302,7 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 
 成果物:
 
-- Fedify versionを固定し、`@fedify/fedify`、`@fedify/next`、PostgreSQL KV / queue adapter の境界を決定
+- Fedify 関連 package を同一 patch `2.3.4` へ完全固定し、`@fedify/fedify`、`@fedify/next`、`@fedify/postgres`、`@fedify/vocab-runtime`、PostgreSQL KV / queue adapter の境界を決定
 - Next.js 16 / Firebase App Hosting の Node runtime、middleware / proxy、canonical origin の疎通確認
 - Actor / report / inbox route、identifier、Activity ID のcontract test
 - manual queue processing と one-shot dispatcher の小さな実証
@@ -295,6 +312,9 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 - local fixture で WebFinger → Actor → Article を解決できる
 - queue messageをDBへ保存し、別processのone-shot処理でsigned deliveryできる
 - process restart後もkey、idempotency、queue messageが維持される
+- lockfile 上の Fedify 関連転移依存が同一 patch へ収束し、SSRF 修正 version の下限を下回らない
+- `http://[::ffff:7f00:1]/`、special-use / tunneling address、public URL から private address へ遷移する redirect を各 hop の再検証で拒否する
+- Web process だけを起動する fixture で queue worker が開始されず、`startQueue()` / queue task processor が Job 以外から呼ばれない
 - unsupported Fedify APIや runtime制約が判明した場合、Step 2前に設計を更新する
 
 ### Step 2: schema、Actor、鍵管理、公開 endpoint
@@ -311,7 +331,8 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 - `@all` と public project Actor をremote lookupできる
 - private / disabled project は一貫して404になる
 - 鍵がActor単位で一度だけ生成・暗号化保存され、再起動で変わらない
-- project越境、username衝突、不正slug、平文key logをテストで拒否する
+- `init.sql` と migration の Actor 制約が同期し、aggregate 重複、project 重複、username 衝突、kind / project 不整合を DB で拒否する
+- project越境、不正slug、平文key logをテストで拒否する
 
 ### Step 3: Follow / Accept / Undo と購読管理
 
@@ -342,8 +363,12 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 受け入れ条件:
 
 - DB commit前やrollback時にactivityを配送しない
+- report公開可否の変更とCreate / Announce outbox row登録が同じtransactionでcommitまたはrollbackされる
 - project followerにはCreate、`@all` followerにはAnnounceが届く
+- 同じ remote Actor が project Actor と `@all` を follow する fixture では Create だけを配送し、異なる Actor が同じ shared inbox を使う fixture では必要な audience を欠落させない
 - public解除前のprivate report、disabled projectはenqueueされない
+- ordering key が同じ後続 message は先行成功まで claim されず、先行の終端失敗後も配送されない
+- designated Scheduler identity / 固定 audience 以外を拒否し、active execution 時は no-op、Job は `--once` 以外を拒否する
 - crash、timeout、429、5xx、lease expiry、duplicate起動のfixtureで欠落・二重副作用がない
 
 ### Step 5: inbound report と外部レポート表示
@@ -375,6 +400,7 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 
 - 2台のPufu Lensでproject Actor / `@all` の購読シナリオが完走する
 - Mastodon home timelineからtitle、summary、Pufu Lens report URLを確認できる
+- `Article` で表示要件を満たせない場合は MVP を未完了のままにし、単一の `Note` fallback contract へ切り替えた全 protocol / mapping / E2E 検証を完了する
 - Mastodon serverのInboxへPufu Lens dispatcherからsigned POSTされることをtraceで確認できる
 - remote server停止後のretryと復旧後配送を確認できる
 
@@ -434,5 +460,6 @@ Cloudflare Workers版のFedifyはbuilder pattern、Workers KV、Workers Queues�
 - [Fedify: Sending activities](https://fedify.dev/manual/send)
 - [Fedify: Message queue](https://fedify.dev/manual/mq)
 - [Fedify: Deployment](https://fedify.dev/manual/deploy)
+- [Fedify: Changelog](https://fedify.dev/changelog)
 - [ActivityPub W3C Recommendation](https://www.w3.org/TR/activitypub/)
 - [Activity Vocabulary W3C Recommendation](https://www.w3.org/TR/activitystreams-vocabulary/)
