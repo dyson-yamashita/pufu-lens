@@ -334,6 +334,7 @@ async function assertOneShotDispatchSignsAndDelivers() {
         env: {
           ...process.env,
           ACTIVITYPUB_RUN_DB_TESTS: '1',
+          NODE_ENV: 'test',
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       },

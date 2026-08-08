@@ -24,7 +24,7 @@ export function assertActivityPubDbTestRuntime(): void {
  * Rejects production runtime but does not require ACTIVITYPUB_RUN_DB_TESTS.
  */
 export function assertActivityPubListenerHarnessRuntime(): void {
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV !== 'test') {
     throw new ActivityPubTestRuntimeDisabledError();
   }
 }

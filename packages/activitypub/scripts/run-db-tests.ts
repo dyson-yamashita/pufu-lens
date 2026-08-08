@@ -28,6 +28,7 @@ async function runTestFile(testFile: string): Promise<number | null> {
     env: {
       ...process.env,
       ACTIVITYPUB_RUN_DB_TESTS: '1',
+      NODE_ENV: 'test',
     },
   });
 

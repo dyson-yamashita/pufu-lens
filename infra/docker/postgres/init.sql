@@ -889,7 +889,17 @@ CREATE TABLE IF NOT EXISTS public.activitypub_follows (
   CONSTRAINT activitypub_follows_status_check
     CHECK (status IN ('pending', 'accepted', 'rejected', 'undone')),
   CONSTRAINT activitypub_follows_direction_local_remote_key
-    UNIQUE (direction, local_actor_id, remote_actor_uri)
+    UNIQUE (direction, local_actor_id, remote_actor_uri),
+  CONSTRAINT activitypub_follows_accepted_timestamp_check
+    CHECK (
+      (status = 'accepted' AND accepted_at IS NOT NULL)
+      OR (status <> 'accepted' AND accepted_at IS NULL)
+    ),
+  CONSTRAINT activitypub_follows_undone_timestamp_check
+    CHECK (
+      (status = 'undone' AND undone_at IS NOT NULL)
+      OR (status <> 'undone' AND undone_at IS NULL)
+    )
 );
 
 CREATE INDEX IF NOT EXISTS activitypub_follows_accepted_collection_idx
@@ -899,26 +909,6 @@ CREATE INDEX IF NOT EXISTS activitypub_follows_accepted_collection_idx
 CREATE INDEX IF NOT EXISTS activitypub_follows_outbound_project_list_idx
   ON public.activitypub_follows (local_actor_id, created_at, id)
   WHERE direction = 'outbound';
-
-ALTER TABLE public.activitypub_follows
-  DROP CONSTRAINT IF EXISTS activitypub_follows_accepted_timestamp_check;
-
-ALTER TABLE public.activitypub_follows
-  ADD CONSTRAINT activitypub_follows_accepted_timestamp_check
-  CHECK (
-    (status = 'accepted' AND accepted_at IS NOT NULL)
-    OR (status <> 'accepted' AND accepted_at IS NULL)
-  );
-
-ALTER TABLE public.activitypub_follows
-  DROP CONSTRAINT IF EXISTS activitypub_follows_undone_timestamp_check;
-
-ALTER TABLE public.activitypub_follows
-  ADD CONSTRAINT activitypub_follows_undone_timestamp_check
-  CHECK (
-    (status = 'undone' AND undone_at IS NOT NULL)
-    OR (status <> 'undone' AND undone_at IS NULL)
-  );
 
 CREATE TABLE IF NOT EXISTS public.activitypub_activities (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1025,5 +1015,6 @@ VALUES
   ('0014_data_source_schedule_default_0600'),
   ('0015_activitypub_protocol_spike'),
   ('0016_activitypub_actor_endpoints'),
-  ('0017_activitypub_follow_management')
+  ('0017_activitypub_follow_management'),
+  ('0018_activitypub_follow_indexes')
 ON CONFLICT (version) DO NOTHING;

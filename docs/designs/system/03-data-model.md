@@ -81,7 +81,7 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
 - `activitypub_follows` は `(direction, local_actor_id, remote_actor_uri)` を follow identity とし、再 follow では新しい `follow_activity_uri` を generation ID として保持する。`accepted_at` は accepted だけ、`undone_at` は undone だけで非 NULL になる DB 制約を持つ。旧 generation の Accept / Undo は現 generation を変更しない。
 - `activitypub_activities.activity_uri` は Activity receipt の一意キーであり、raw remote payload ではなく direction、Activity type、local Actor ID、remote Actor URI の metadata だけを保存する。
 - accepted follower / following collection は `(local_actor_id, direction, created_at, id)` の順序と versioned opaque cursor で pagination し、remote Actor URI 以外の inbox、状態遷移時刻、内部 ID を公開 collection に含めない。
-- migration `0016_activitypub_actor_endpoints`、`0017_activitypub_follow_management` と fresh `init.sql` は同じ Actor / follow / activity / queue / federated report 制約を持ち、`pnpm db:schema-drift` で同期を検証する。migration version の記録は migration runner だけが行う。
+- migration `0016_activitypub_actor_endpoints`、`0017_activitypub_follow_management`、`0018_activitypub_follow_indexes` と fresh `init.sql` は同じ Actor / follow / activity / queue / federated report 制約・index を持ち、`pnpm db:schema-drift` で同期を検証する。既存 DB の follow index は `0018` で `DROP INDEX CONCURRENTLY` / `CREATE INDEX CONCURRENTLY` を個別実行し、中断後の invalid index も再試行時に再構築する。migration version の記録は全 statement 成功後に migration runner だけが行う。
 
 ### 4. Parser registry
 

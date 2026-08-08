@@ -40,6 +40,10 @@ async function collectTestFiles(directory: string): Promise<string[]> {
 async function runTestFile(testFile: string): Promise<number | null> {
   const child = spawn(process.execPath, ['--experimental-strip-types', testFile], {
     stdio: 'inherit',
+    env: {
+      ...process.env,
+      NODE_ENV: 'test',
+    },
   });
 
   return new Promise((resolveProcess, reject) => {

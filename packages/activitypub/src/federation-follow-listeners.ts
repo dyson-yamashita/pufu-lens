@@ -177,6 +177,9 @@ async function handleInboundUndo(
   }
 
   const remote = await input.followUseCases.resolveRemoteActor(remoteActorUri);
+  if (normalizeRemoteActorUri(remote.actorUri) !== remoteActorUri) {
+    return;
+  }
   await input.followUseCases.processVerifiedInboundUndo({
     localActorId: localActor.id,
     localActorPreferredUsername: localActor.preferredUsername,

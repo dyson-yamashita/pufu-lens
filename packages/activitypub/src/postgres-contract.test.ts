@@ -7,7 +7,11 @@ import {
   processOneQueuedMessage,
   processOneQueuedOutboxMessage,
 } from './postgres.ts';
-import { redactFedifyQueueMessageForStorage, UnsupportedFedifyQueueMessageError } from './queue.ts';
+import {
+  parsePinnedOutboxMessage,
+  redactFedifyQueueMessageForStorage,
+  UnsupportedFedifyQueueMessageError,
+} from './queue.ts';
 import { ActivityPubTestRuntimeDisabledError } from './test-runtime-guard.ts';
 
 const canonicalOrigin = 'https://lens.test';
@@ -367,3 +371,94 @@ for (const testCase of mismatchedLocalFieldCases) {
     assert.equal(wasTouched(), false);
   });
 }
+
+test('parsePinnedOutboxMessage accepts HTTP actorIds alongside HTTP outbox fields', () => {
+  const httpOrigin = 'http://localhost:3000';
+  const parsed = parsePinnedOutboxMessage(
+    {
+      type: 'outbox',
+      id: 'outbox-http-actorids',
+      baseUrl: httpOrigin,
+      keys: [{ keyId: `${httpOrigin}/activitypub/actors/pufu#main-key` }],
+      activity: { id: `${httpOrigin}/activitypub/activities/create/report-1` },
+      activityId: `${httpOrigin}/activitypub/activities/create/report-1`,
+      activityType: 'Create',
+      inbox: 'http://localhost:4000/inbox',
+      sharedInbox: false,
+      actorIds: [`${httpOrigin}/activitypub/actors/pufu`],
+      started: '2026-08-01T00:00:00.000Z',
+      attempt: 0,
+      headers: {},
+      orderingKey: `${httpOrigin}/activitypub/reports/report-1`,
+      traceContext: {},
+    },
+    { requirePrivateKeys: false },
+  );
+  assert.equal(parsed.actorIds?.[0], `${httpOrigin}/activitypub/actors/pufu`);
+});
+
+test('processOneQueuedMessage rejects tampered outbox actorIds before private key import', async () => {
+  const tampered = redactFedifyQueueMessageForStorage({
+    ...createValidOutboxMessage(),
+    actorIds: [`${canonicalOrigin}/activitypub/actors/other-actor`],
+  });
+  let importCalled = false;
+  const workerToken = '10000000-0000-0000-0000-000000000002';
+  const queryHandler = async (strings: TemplateStringsArray, ..._values: unknown[]) => {
+    const query = strings.join('?');
+    if (query.includes('SELECT id, dedupe_key, message_json')) {
+      return [
+        {
+          id: 'queue-row-outbox-tamper',
+          dedupe_key: `${activityId}|${remoteInbox}`,
+          message_json: tampered,
+          ordering_key: orderingKey,
+          worker_token: workerToken,
+          queue_kind: 'outbox',
+        },
+      ];
+    }
+    if (query.includes('UPDATE public.activitypub_queue_messages') && query.includes("'running'")) {
+      return [{ id: 'queue-row-outbox-tamper' }];
+    }
+    return [];
+  };
+  const fakeSql = Object.assign(queryHandler, {
+    json: (value: unknown) => value,
+    begin: async (callback: (tx: typeof fakeSql) => Promise<unknown>) => callback(fakeSql),
+  }) as never;
+
+  const actorRepository = {
+    ensureAggregateActor: async () => undefined,
+    findRemotelyVisibleActorByUsername: async () => ({
+      id: '10000000-0000-0000-0000-000000000003',
+      preferredUsername: 'pufu',
+      enabled: true,
+      kind: 'aggregate',
+      projectId: null,
+      inboxUri: null,
+      outboxUri: null,
+      followersUri: null,
+      followingUri: null,
+      publicKeyId: testKeyId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }),
+    importActorCryptoKeyPair: async () => {
+      importCalled = true;
+      throw new Error('private key import should not run');
+    },
+  } as never;
+
+  await assert.rejects(
+    () =>
+      processOneQueuedMessage({
+        sql: fakeSql,
+        canonicalOrigin,
+        encryptionKey: Buffer.alloc(32, 1),
+        actorRepository,
+      }),
+    /actor binding rejected/,
+  );
+  assert.equal(importCalled, false);
+});

@@ -15,6 +15,7 @@ import {
   assertStoredMessageHasNoPrivateJwk,
   buildInboxDedupeKey,
   buildOutboxDedupeKey,
+  extractHttpsActivityId,
   type PostgresQueueEnqueueOptions,
   parseStoredQueueMessage,
   redactFedifyQueueMessageForStorage,
@@ -30,6 +31,7 @@ import {
   assertTestOnlyPrivateAddressAllowed,
   assertTestRemoteActorResolverAllowed,
 } from './test-runtime-guard.ts';
+import { buildActivityPubUriContract } from './uri-contract.ts';
 
 type JsonWebKey = webcrypto.JsonWebKey;
 
@@ -323,7 +325,7 @@ export async function processOneQueuedMessage(
       const activityRecord = stored.activity as Record<string, unknown>;
       const signedActorUri = typeof activityRecord.actor === 'string' ? activityRecord.actor : '';
       if (!signedActorUri) {
-        throw new Error('inbox Follow activity missing actor');
+        throw new Error('inbox activity missing actor');
       }
       await processStoredInboxViaVerifiedListenerHarness({
         stored,
@@ -353,8 +355,17 @@ export async function processOneQueuedMessage(
       if (stored.type === 'inbox') {
         await federation.processQueuedTask(undefined, toFedifyMessage(stored));
       } else {
+        const uri = buildActivityPubUriContract(input.canonicalOrigin);
         const rehydrated = await rehydrateStoredOutboxMessage(stored, async (keyId) => {
           const username = extractPreferredUsernameFromKeyId(keyId);
+          const expectedKeyId = uri.actorKeyId(username);
+          const expectedActorUrl = uri.actorUrl(username);
+          if (keyId !== expectedKeyId) {
+            throw new Error('outbox queue message key binding rejected');
+          }
+          if (!stored.actorIds?.includes(expectedActorUrl)) {
+            throw new Error('outbox queue message actor binding rejected');
+          }
           const actor = await input.actorRepository.findRemotelyVisibleActorByUsername(username);
           if (!actor) {
             throw new Error('unknown actor for outbox queue key');
@@ -538,26 +549,6 @@ function assertEnqueueDelaySupported(delay: MessageQueueEnqueueOptions['delay'])
   if (delay.total('millisecond') !== 0) {
     throw new UnsupportedFedifyQueueMessageError('enqueue delay is not supported');
   }
-}
-
-function extractHttpsActivityId(activity: unknown): string {
-  if (!activity || typeof activity !== 'object') {
-    throw new UnsupportedFedifyQueueMessageError('inbox activity must be an object');
-  }
-  const id = (activity as Record<string, unknown>).id;
-  if (typeof id !== 'string' || id.length === 0) {
-    throw new UnsupportedFedifyQueueMessageError('inbox activity missing id');
-  }
-  let parsed: URL;
-  try {
-    parsed = new URL(id);
-  } catch {
-    throw new UnsupportedFedifyQueueMessageError('inbox activity id must be a valid URL');
-  }
-  if (parsed.protocol !== 'https:') {
-    throw new UnsupportedFedifyQueueMessageError('inbox activity id must use HTTPS');
-  }
-  return parsed.toString();
 }
 
 function assertStoredOutboxMessageMatchesCanonicalOrigin(

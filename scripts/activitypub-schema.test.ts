@@ -15,6 +15,10 @@ const migration0017Path = join(
   import.meta.dirname,
   '../infra/db/migrations/0017_activitypub_follow_management.sql',
 );
+const migration0018Path = join(
+  import.meta.dirname,
+  '../infra/db/migrations/0018_activitypub_follow_indexes.sql',
+);
 const initPath = join(import.meta.dirname, '../infra/docker/postgres/init.sql');
 
 test('0015 creates ActivityPub Fedify KV and queue message tables', async () => {
@@ -170,28 +174,93 @@ test('0016 and fresh schema lock representation trigger avoids COUNT scans and u
   }
 });
 
-test('0017 adds follow collection and activity lookup indexes', async () => {
-  const [migration, init] = await Promise.all([
-    readFile(migration0017Path, 'utf8'),
-    readFile(initPath, 'utf8'),
-  ]);
+test('0017 adds follow timestamp checks with NOT VALID and VALIDATE CONSTRAINT', async () => {
+  const migration = await readFile(migration0017Path, 'utf8');
 
-  for (const name of [
-    'activitypub_follows_accepted_collection_idx',
-    'activitypub_follows_outbound_project_list_idx',
-    'activitypub_follows_accepted_timestamp_check',
-    'activitypub_follows_undone_timestamp_check',
-  ]) {
-    assert.ok(migration.includes(name), `${name} is missing from migration`);
-    assert.ok(init.includes(name), `${name} is missing from fresh schema`);
-  }
-
+  assert.equal(migration.includes('CREATE INDEX'), false);
+  assert.match(
+    migration,
+    /ADD CONSTRAINT activitypub_follows_accepted_timestamp_check[\s\S]*CHECK \([\s\S]*status = 'accepted' AND accepted_at IS NOT NULL[\s\S]*status <> 'accepted' AND accepted_at IS NULL[\s\S]*\) NOT VALID;/,
+  );
+  assert.match(migration, /VALIDATE CONSTRAINT activitypub_follows_accepted_timestamp_check;/);
+  assert.match(
+    migration,
+    /ADD CONSTRAINT activitypub_follows_undone_timestamp_check[\s\S]*CHECK \([\s\S]*status = 'undone' AND undone_at IS NOT NULL[\s\S]*status <> 'undone' AND undone_at IS NULL[\s\S]*\) NOT VALID;/,
+  );
+  assert.match(migration, /VALIDATE CONSTRAINT activitypub_follows_undone_timestamp_check;/);
   assert.equal(
     /INSERT INTO public\.schema_migrations/.test(migration),
     false,
     'migration must not insert schema_migrations; runner owns version recording',
   );
+});
+
+test('0018 adds concurrent follow indexes outside transactions', async () => {
+  const migration = await readFile(migration0018Path, 'utf8');
+
+  assert.match(migration, /^-- pufu-lens: no-transaction/);
+  assert.match(
+    migration,
+    /DROP INDEX CONCURRENTLY IF EXISTS public\.activitypub_follows_accepted_collection_idx;/,
+  );
+  assert.match(migration, /-- pufu-lens: statement-break/);
+  assert.match(
+    migration,
+    /CREATE INDEX CONCURRENTLY activitypub_follows_accepted_collection_idx[\s\S]*ON public\.activitypub_follows \(local_actor_id, direction, created_at, id\)[\s\S]*WHERE status = 'accepted';/,
+  );
+  assert.equal(migration.includes('CREATE INDEX CONCURRENTLY IF NOT EXISTS'), false);
+  assert.match(
+    migration,
+    /DROP INDEX CONCURRENTLY IF EXISTS public\.activitypub_follows_outbound_project_list_idx;/,
+  );
+  assert.match(
+    migration,
+    /CREATE INDEX CONCURRENTLY activitypub_follows_outbound_project_list_idx[\s\S]*ON public\.activitypub_follows \(local_actor_id, created_at, id\)[\s\S]*WHERE direction = 'outbound';/,
+  );
+  assert.equal(
+    /INSERT INTO public\.schema_migrations/.test(migration),
+    false,
+    'migration must not insert schema_migrations; runner owns version recording',
+  );
+});
+
+test('0017, 0018, and fresh schema share follow constraints, indexes, and migration versions', async () => {
+  const [migration0017, migration0018, init] = await Promise.all([
+    readFile(migration0017Path, 'utf8'),
+    readFile(migration0018Path, 'utf8'),
+    readFile(initPath, 'utf8'),
+  ]);
+
+  for (const name of [
+    'activitypub_follows_accepted_timestamp_check',
+    'activitypub_follows_undone_timestamp_check',
+    'activitypub_follows_accepted_collection_idx',
+    'activitypub_follows_outbound_project_list_idx',
+  ]) {
+    assert.ok(init.includes(name), `${name} is missing from fresh schema`);
+  }
+
+  assert.match(
+    init,
+    /CONSTRAINT activitypub_follows_accepted_timestamp_check[\s\S]*CHECK \([\s\S]*status = 'accepted' AND accepted_at IS NOT NULL[\s\S]*status <> 'accepted' AND accepted_at IS NULL[\s\S]*\)/,
+  );
+  assert.match(
+    init,
+    /CONSTRAINT activitypub_follows_undone_timestamp_check[\s\S]*CHECK \([\s\S]*status = 'undone' AND undone_at IS NOT NULL[\s\S]*status <> 'undone' AND undone_at IS NULL[\s\S]*\)/,
+  );
+  assert.match(
+    init,
+    /CREATE INDEX IF NOT EXISTS activitypub_follows_accepted_collection_idx[\s\S]*WHERE status = 'accepted'/,
+  );
+  assert.match(
+    init,
+    /CREATE INDEX IF NOT EXISTS activitypub_follows_outbound_project_list_idx[\s\S]*WHERE direction = 'outbound'/,
+  );
+
+  assert.equal(migration0017.includes('DROP CONSTRAINT'), false);
+  assert.equal(migration0018.includes('DROP CONSTRAINT'), false);
   assert.match(init, /'0017_activitypub_follow_management'/);
+  assert.match(init, /'0018_activitypub_follow_indexes'/);
 });
 
 function extractTriggerFunctionBody(sql: string, functionName: string): string | undefined {

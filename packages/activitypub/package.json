@@ -20,7 +20,7 @@
   "scripts": {
     "build": "tsc --noEmit -p tsconfig.json",
     "test": "tsc -p tsconfig.json && node --experimental-strip-types scripts/run-tests.ts",
-    "test:db": "tsc -p tsconfig.json && ACTIVITYPUB_RUN_DB_TESTS=1 node --experimental-strip-types scripts/run-db-tests.ts",
+    "test:db": "tsc -p tsconfig.json && ACTIVITYPUB_RUN_DB_TESTS=1 NODE_ENV=test node --experimental-strip-types scripts/run-db-tests.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

@@ -39,6 +39,8 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
 
 `--check` は DB 接続なしの offline check として、migration directory、命名、番号重複、version 衝突を検査する。`--plan` / `--list` / 通常実行は DB 接続が必要で、`schema_migrations` と照合する。
 
+通常の migration は SQL 全体と version 記録を同じ transaction で実行する。`CREATE INDEX CONCURRENTLY` など transaction 外実行が必須の DDL に限り、ファイルの先頭の非空行へ `-- pufu-lens: no-transaction` を置く。複数 statement は正確な行 `-- pufu-lens: statement-break` で区切り、runner が各 statement を別々に実行する。空 statement は拒否され、全 statement が成功するまで version は記録されない。中断時に invalid index が残り得る concurrent index migration は、同じ migration 内で `DROP INDEX CONCURRENTLY IF EXISTS` と `CREATE INDEX CONCURRENTLY` を別 statement にして、未記録 migration の再試行で再構築できるようにする。
+
 CI では PostgreSQL test container に `init.sql` を適用した後、`DATABASE_URL` 付きの `pnpm db:migrate --check` を実行する。deploy 前は `pnpm deploy:dry-run` でも offline `db:migrate --check` を先に実行する。
 
 schema drift を確認するときは、create database 権限のある PostgreSQL に `DATABASE_URL` を向けて次を実行する。

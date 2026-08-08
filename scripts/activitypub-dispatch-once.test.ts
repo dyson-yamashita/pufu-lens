@@ -51,6 +51,7 @@ test('activitypub-dispatch-once reports safe errors without leaking database cre
     {
       ...process.env,
       ACTIVITYPUB_RUN_DB_TESTS: '1',
+      NODE_ENV: 'test',
     },
   );
 
@@ -75,6 +76,7 @@ test('activitypub-dispatch-once reports safe errors for malformed database URLs 
     {
       ...process.env,
       ACTIVITYPUB_RUN_DB_TESTS: '1',
+      NODE_ENV: 'test',
     },
   );
 

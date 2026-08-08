@@ -251,8 +251,7 @@ export function parsePinnedInboxMessage(message: unknown): StoredInboxMessage {
   }
   const attempt = assertNonNegativeIntegerAttempt(candidate.attempt);
   const traceContext = assertPlainStringRecord(candidate.traceContext, 'traceContext');
-  const activityId = extractHttpsActivityId(candidate.activity);
-  normalizeHttpsUrl(activityId, 'activity.id');
+  void extractHttpsActivityId(candidate.activity);
   const identifier =
     candidate.identifier === null
       ? null
@@ -388,7 +387,8 @@ export function parsePinnedOutboxMessage(
   return result;
 }
 
-function extractHttpsActivityId(activity: unknown): string {
+/** Extracts and normalizes the HTTPS activity id from a pinned inbox ActivityStreams payload. */
+export function extractHttpsActivityId(activity: unknown): string {
   if (!activity || typeof activity !== 'object') {
     throw new UnsupportedFedifyQueueMessageError('inbox activity must be an object');
   }
@@ -396,7 +396,7 @@ function extractHttpsActivityId(activity: unknown): string {
   if (typeof id !== 'string' || id.length === 0) {
     throw new UnsupportedFedifyQueueMessageError('inbox activity missing id');
   }
-  return id;
+  return normalizeHttpsUrl(id, 'activity.id');
 }
 
 function assertNonNegativeIntegerAttempt(value: unknown): number {
@@ -432,7 +432,7 @@ function assertOptionalHttpUrlList(value: unknown, label: string): readonly stri
     if (typeof entry !== 'string' || entry.length === 0) {
       throw new UnsupportedFedifyQueueMessageError(`${label}[${index}] must be a string`);
     }
-    return normalizeHttpsUrl(entry, `${label}[${index}]`);
+    return normalizeHttpUrl(entry, `${label}[${index}]`);
   });
 }
 

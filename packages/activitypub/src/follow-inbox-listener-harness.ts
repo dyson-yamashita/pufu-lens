@@ -65,6 +65,14 @@ export function readActivityFromFedifyQueueMessage(message: unknown): unknown {
   return activity;
 }
 
+/** Thrown when a stored inbox activity type is unsupported by the verified listener harness. */
+export class UnsupportedStoredInboxActivityError extends Error {
+  constructor(activityType: string) {
+    super(`unsupported inbox activity type: ${activityType}`);
+    this.name = 'UnsupportedStoredInboxActivityError';
+  }
+}
+
 /**
  * Processes a stored inbox queue payload through the verified listener path.
  * Used only from ACTIVITYPUB_RUN_DB_TESTS queue processor contract tests.
@@ -82,14 +90,35 @@ export async function processStoredInboxViaVerifiedListenerHarness(input: {
     recipient: input.recipientUsername ?? input.stored.identifier,
     signedActorUri: input.signedActorUri,
   });
-  const follow = buildFollowActivityFromJson(input.stored.activity);
-  await invokeVerifiedInboundFollowListenerForTest({
+  const activityType = readActivityType(input.stored.activity);
+  const listenerInput = {
     canonicalOrigin: input.canonicalOrigin,
     actorRepository: input.actorRepository,
     followUseCases: input.followUseCases,
     ctx,
-    activity: follow,
-  });
+  };
+  switch (activityType) {
+    case 'Follow':
+      await invokeVerifiedInboundFollowListenerForTest({
+        ...listenerInput,
+        activity: buildFollowActivityFromJson(input.stored.activity),
+      });
+      return;
+    case 'Accept':
+      await invokeVerifiedInboundAcceptListenerForTest({
+        ...listenerInput,
+        activity: await buildAcceptActivityFromJson(input.stored.activity),
+      });
+      return;
+    case 'Undo':
+      await invokeVerifiedInboundUndoListenerForTest({
+        ...listenerInput,
+        activity: await buildUndoActivityFromJson(input.stored.activity),
+      });
+      return;
+    default:
+      throw new UnsupportedStoredInboxActivityError(activityType);
+  }
 }
 
 /**
@@ -192,4 +221,13 @@ function readStringField(record: Record<string, unknown>, field: string): string
     throw new Error(`activity missing ${field}`);
   }
   return value;
+}
+
+function readActivityType(activity: unknown): string {
+  const record = readActivityRecord(activity);
+  const type = record.type;
+  if (typeof type !== 'string' || type.length === 0) {
+    throw new UnsupportedStoredInboxActivityError('missing');
+  }
+  return type;
 }

@@ -80,6 +80,7 @@ export {
   claimOneQueueMessage,
   createInMemoryQueueAdapter,
   createWebFederationWithoutQueueConsumer,
+  extractHttpsActivityId,
   type PinnedInboxMessage,
   type PinnedOutboxMessage,
   type PinnedQueueMessage,

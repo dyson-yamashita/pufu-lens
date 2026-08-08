@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
+import { isActivityPubSubscriptionE2eHarnessAllowed } from '../../../../src/activitypub-subscription-e2e-guard.ts';
 import { ActivityPubSubscriptionPanel } from '../../../../src/activitypub-subscription-panel';
 import { createDefaultActivityPubSubscriptionSettingsView } from '../../../../src/activitypub-subscription-presentation';
-import { isFixtureFallbackEnabled } from '../../../../src/runtime-guards.ts';
 import {
   delayActivityPubSubscriptionFollowForE2e,
   delayActivityPubSubscriptionUnfollowForE2e,
@@ -13,7 +13,7 @@ import {
  * Renders the ActivityPub subscription panel for Playwright E2E coverage.
  */
 export default function ActivityPubSubscriptionsE2eHarnessPage() {
-  if (!isFixtureFallbackEnabled() || process.env.PUFU_LENS_ENABLE_FIXTURE_FALLBACK !== 'true') {
+  if (!isActivityPubSubscriptionE2eHarnessAllowed()) {
     notFound();
   }
 
