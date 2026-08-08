@@ -5,6 +5,11 @@ allowBuilds:
   esbuild: true
   sharp: false
 overrides:
+  '@fedify/fedify': 2.3.4
+  '@fedify/next': 2.3.4
+  '@fedify/postgres': 2.3.4
+  '@fedify/vocab': 2.3.4
+  '@fedify/vocab-runtime': 2.3.4
   '@ai-sdk/provider-utils': 4.0.30
   '@ai-sdk/provider-utils-v5': npm:@ai-sdk/provider-utils@4.0.30
   '@ai-sdk/provider-utils-v6': npm:@ai-sdk/provider-utils@4.0.30

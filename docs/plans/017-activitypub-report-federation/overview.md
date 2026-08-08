@@ -7,7 +7,7 @@ Pufu Lens の公開レポートを ActivityPub で配送し、別の Pufu Lens �
 ActivityPub のプロトコル処理には Fedify を利用する。Actor、follow、activity、外部 report、配送状態の正本は Pufu Lens の PostgreSQL に置き、配送は既存の source sync / report schedule dispatcher と同じ one-shot、DB lease、heartbeat、bounded retry の運用モデルへ統合する。
 
 - tracking Issue: [#665](https://github.com/dyson-yamashita/pufu-lens/issues/665)
-- status: `planned`
+- status: `active`
 - 対象 runtime: Next.js 16 on Firebase App Hosting、Cloud Run Jobs、PostgreSQL
 
 ## 2. ゴール
@@ -115,15 +115,26 @@ fixture は対応対象とする Mastodon version または commit、参照し�
 
 Fedify の `MemoryKvStore` と `InProcessMessageQueue` は test 以外で使わない。Fedify が必要とする cache / idempotency state は PostgreSQL-backed KV を使う。業務データを Fedify の KV に保存しない。
 
-Fedify 関連 package は SSRF 修正を含む同一 patch 版へ揃える。初期実装では 2026-08-04 時点の `@fedify/fedify`、`@fedify/next`、`@fedify/postgres`、`@fedify/vocab-runtime` の `2.3.4` を caret なしで完全固定し、lockfile 上の転移依存も 2.3.4 へ収束させる。少なくとも IPv4-mapped IPv6 bypass 修正を含む `@fedify/vocab-runtime >= 2.2.1`、special-use / tunneling address 修正を含む `>= 2.2.4`、NodeInfo redirect SSRF 修正を含む `@fedify/fedify >= 2.2.7` を下回る解決を禁止する。version 更新時も security changelog と lockfile の解決結果を同時確認する。
+Fedify 関連 package は SSRF 修正を含む同一 patch 版へ揃える。初期実装では 2026-08-08 時点の `@fedify/fedify`、`@fedify/next`、`@fedify/postgres`、`@fedify/vocab`、`@fedify/vocab-runtime` の `2.3.4` を caret なしで完全固定し、lockfile 上の転移依存も 2.3.4 へ収束させる。少なくとも IPv4-mapped IPv6 bypass 修正を含む `@fedify/vocab-runtime >= 2.2.1`、special-use / NAT64 / Teredo / 6to4 修正を含む `>= 2.2.4`、NodeInfo redirect SSRF 修正を含む `@fedify/fedify >= 2.2.7` を下回る解決を禁止する。2.3 系では同じ NodeInfo 修正の backport が `@fedify/fedify 2.3.2` であるため、2.3 系を選ぶ場合は `>= 2.3.2` も必須とする。version 更新時も security changelog と lockfile の解決結果を同時確認する。
 
 ### 5.3 queue 統合方針
 
 本番で `sendActivity(..., { immediate: true })` は使わない。Web request 内の同期配送も行わない。Web process が構築する Federation は常に `manuallyStartQueue: true` とし、`startQueue()` と queue task processor を呼ばない。queue consumer の開始または manual task 処理は `activitypub-dispatcher` Job entrypoint だけに限定する。
 
-Pufu Lens の PostgreSQL queue adapter を Fedify の `MessageQueue` 契約に合わせて実装し、Fedify が生成する inbox / outbox message を `activitypub_queue_messages` に保存する。adapter は backend 側で retry を管理することを Fedify へ示し、Fedify retry と Pufu Lens retry の二重適用を防ぐ。Fedify version を固定し、adapter の enqueue、serialize、manual process 契約を contract test で保護する。
+Pufu Lens の PostgreSQL queue adapter を Fedify の `MessageQueue` 契約に合わせて実装し、`activitypub_queue_messages` に保存する。Step 1 で実証済みの境界は recipient ごとの `outbox` message に限定し、Fedify 2.3.4 の opaque message shape を version 固定の contract test で保護する。`fanout` / `inbox` message は黙って保存せず fail closed とし、Step 2 以降で業務要件と retry / ordering を定義してから adapter を拡張する。adapter は `nativeRetrial: true` により backend 側で retry を管理することを Fedify へ示し、Fedify retry と Pufu Lens retry の二重適用を防ぐ。
 
 one-shot `activitypub-dispatcher` は due message を `FOR UPDATE SKIP LOCKED` で claim し、Fedify の queue task processor へ渡す。Cloudflare Workers の `queue()` handler と `processQueuedTask()` を使う構造には似ているが、binding は Cloudflare Queues / KV ではなく PostgreSQL であり、起動は Cloud Scheduler → 内部 OIDC API → Cloud Run Job とする。
+
+Step 1 では `@fedify/postgres` の `PostgresMessageQueue` を採用しない。2.3.4 の実装は常駐 `listen()` を前提に handler 実行前に row を削除するため、Pufu Lens の one-shot、lease、処理結果を確認してから ack する運用契約に合わない。公式 `PostgresKvStore` は採用するが、postgres.js の JSON serialization probe を初回に必ず実行するため `initialized: false` で構築する。migration が table を作成済みでもこの probe を省略しない。
+
+### 5.4 Step 1 runtime contract
+
+- Fedify 2.3.4 は Node.js `>=22`、`@fedify/next` は Next.js `>=15.4.6 <17` を要求する。repository root の Node engine は `>=22.6.0` とする（root scripts の `node --experimental-strip-types` 利用に合わせる）。
+- Next.js 16 では `apps/web/proxy.ts` の Node runtime convention を使う。Step 1 fixture は `ACTIVITYPUB_SPIKE_ENABLED=1` のときだけ有効で、未設定時は既存 Web request をそのまま通す。
+- canonical origin は設定値だけを正とし、request の `Host` / forwarded host から生成しない。通常は HTTPS を必須とする。localhost HTTP は test-only の local protocol / DB fixture が `allowHttpLocalhost: true` を明示した場合だけ許可し、Web runtime は opt in しない。DB signed-delivery path はさらに `ACTIVITYPUB_RUN_DB_TESTS=1` を要求し、`NODE_ENV=production` では拒否する。
+- Web process の Federation は `manuallyStartQueue: true` とし、queue `listen()`、`startQueue()`、`processQueuedTask()` を開始しない。manual processing は別 process の one-shot script だけが呼ぶ。
+- queue JSON には private JWK を保存せず `keyId` だけを保持し、claim 後に Actor key repository から private key を再取得する。Step 1 の Actor key table は DB contract test 専用であり、本番の暗号化鍵 schema / repository は Step 2 で実装する。
+- Firebase App Hosting は Node.js 22 runtime を選択できる一方、公式 support schedule 上の active Next.js は 15.x であり、16.x は preview 扱いである。本番有効化前に App Hosting build / proxy routing の staging smoke を必須とする。
 
 ## 6. データモデル
 
@@ -313,9 +324,13 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 
 ### Step 1: Fedify integration spike と protocol contract
 
+- status: `completed`
+- tracking Issue: [#667](https://github.com/dyson-yamashita/pufu-lens/issues/667)
+- 更新日: 2026-08-08
+
 成果物:
 
-- Fedify 関連 package を同一 patch `2.3.4` へ完全固定し、`@fedify/fedify`、`@fedify/next`、`@fedify/postgres`、`@fedify/vocab-runtime`、PostgreSQL KV / queue adapter の境界を決定
+- Fedify 関連 package を同一 patch `2.3.4` へ完全固定し、`@fedify/fedify`、`@fedify/next`、`@fedify/postgres`、`@fedify/vocab`、`@fedify/vocab-runtime`、PostgreSQL KV / queue adapter の境界を決定
 - Next.js 16 / Firebase App Hosting の Node runtime、middleware / proxy、canonical origin の疎通確認
 - Actor / report / inbox route、identifier、Activity ID のcontract test
 - manual queue processing と one-shot dispatcher の小さな実証
@@ -329,6 +344,14 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 - `http://[::ffff:7f00:1]/`、special-use / tunneling address、public URL から private address へ遷移する redirect を各 hop の再検証で拒否する
 - Web process だけを起動する fixture で queue worker が開始されず、`startQueue()` / queue task processor が Job 以外から呼ばれない
 - unsupported Fedify APIや runtime制約が判明した場合、Step 2前に設計を更新する
+
+実証結果:
+
+- local fixture で WebFinger → Actor → Article の stable route / ID contract を確認した。
+- PostgreSQL queue / Fedify KV / test Actor key を client restart 後に再読込し、別 Node process が `Federation.processQueuedTask()` で成功 fixture 実行時に 1 件の配送を観測することを確認した。受信 fixture は HTTP signature を公開鍵で暗号学的に検証し、Fedify 2.3.4 の `Signature` + `Content-Digest` + `Signature-Input` contract を確認した。外部配送の意味論は at-least-once であり、receiver 側の HTTP 受信後かつ DB ack 前に worker が停止すると同一 Activity が再配送され得る。receiver は stable Activity ID で dedupe / 冪等処理する前提とする。
+- private JWK は queue JSON に保存せず、duplicate activity ID + recipient inbox は同じ `dedupe_key` へ収束する。ordering key と recipient origin も DB 制約で固定した。
+- built-in `PostgresMessageQueue` は one-shot lease / ack-after-handler 契約に合わないため不採用とし、Step 1 custom adapter は recipient 単位の outbox だけを受け付ける。fanout / inbox、production Actor key repository、bounded batch / heartbeat / retry exhausted は Step 2 以降の対象とする。
+- Web runtime fixture は明示 flag がない限り無効で、Web process から queue consumer / manual task processor が開始されないことを確認した。本番デプロイと外部 instance 接続は実施していない。
 
 ### Step 2: schema、Actor、鍵管理、公開 endpoint
 

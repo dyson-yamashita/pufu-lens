@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.6.0"
+  },
   "packageManager": "pnpm@11.1.1",
   "scripts": {
     "build": "turbo run build",
@@ -48,7 +51,12 @@
     "scripts:test": "pnpm --filter @pufu-lens/ingestion build && node --experimental-strip-types --test \"scripts/**/*.test.ts\"",
     "scripts:test:coverage": "pnpm --filter @pufu-lens/ingestion build && node --experimental-strip-types --experimental-test-coverage --test \"scripts/**/*.test.ts\"",
     "scripts:typecheck": "tsc --noEmit -p tsconfig.scripts.json",
+    "activitypub:dispatch": "pnpm --filter @pufu-lens/activitypub build && node --experimental-strip-types scripts/activitypub-dispatch-once.ts",
     "test": "pnpm scripts:test && turbo run test",
+    "test:activitypub": "pnpm --filter @pufu-lens/activitypub test",
+    "test:activitypub:db": "pnpm --filter @pufu-lens/activitypub test:db",
+    "test:activitypub:schema": "node --experimental-strip-types --test scripts/activitypub-schema.test.ts",
+    "test:activitypub:web": "node --experimental-strip-types --test apps/web/src/activitypub-runtime.test.ts",
     "test:e2e:seed-chat": "node --experimental-strip-types scripts/seed-e2e-chat.ts",
     "test:e2e": "pnpm --filter @pufu-lens/web test:e2e",
     "typecheck": "turbo run typecheck && pnpm scripts:typecheck"
@@ -62,6 +70,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@pufu-lens/activitypub": "workspace:*",
     "postgres": "^3.4.9"
   }
 }

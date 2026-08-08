@@ -7,6 +7,7 @@
 | Agent Framework | Mastra                                                         |
 | LLM             | Gemini API（Google AI / Vertex AI、初期構築の既定 provider）   |
 | Frontend        | Next.js + AI SDK + Auth.js                                     |
+| Federation      | Fedify 2.3.4（ActivityPub、Step 1 protocol contract）          |
 | Database        | PostgreSQL 18 + pgvector + PGroonga + Apache AGE + pgcrypto    |
 | Object Storage  | ローカル: Docker Volume / クラウド: Google Cloud Storage       |
 | MCP             | Google MCP、GitHub MCP                                         |
@@ -23,6 +24,7 @@
 補足：
 
 - PostgreSQL は Apache AGE / pgvector / PGroonga を同梱したカスタム Docker イメージで運用する。
+- Fedify 関連 package は `2.3.4` へ完全固定し、Fedify 自体は Node.js `>=22` を要求する。repository root の engine は root scripts の `node --experimental-strip-types` 利用に合わせて `>=22.6.0` とする。Web は Next.js 16 `proxy.ts` convention と `manuallyStartQueue: true` を使い、配送処理は PostgreSQL-backed one-shot process に分離する。Step 1 fixture は既定で無効であり、本番 federation 有効化は後続 Step の対象である。
 - Cloud SQL は Apache AGE を前提にできないため、本番 DB の第一候補にはしない。
 - AGE を使う DB 接続では、接続確立時に `LOAD 'age'` と `SET search_path = ag_catalog, "$user", public` を実行する。
 - Chat回答とプ譜の生成モデルはMastra model routerの `PUFU_LENS_CHAT_MODEL` で選び、Google、OpenAI、Anthropicなどのprovider-qualified modelを指定する。
