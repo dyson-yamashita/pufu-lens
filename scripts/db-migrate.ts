@@ -109,7 +109,7 @@ export function parseNonTransactionalMigrationStatements(body: string): readonly
     currentLines.push(line);
   }
 
-  if (currentLines.length > 0) {
+  if (currentLines.join('\n').trim().length > 0) {
     flushCurrentStatement();
   }
 
@@ -245,11 +245,23 @@ export async function discoverMigrationFilenames(migrationsDir: string): Promise
     .sort();
 }
 
+/**
+ * Validates migration filenames on disk and parses every valid migration file body
+ * via {@link listMigrations}. Filename issues are returned as issues; parse failures
+ * throw {@link MigrationStatementParseError}.
+ */
 export async function validateMigrationsDirectory(
   migrationsDir: string,
 ): Promise<MigrationValidationIssue[]> {
   const filenames = await discoverMigrationFilenames(migrationsDir);
-  return validateMigrationFilenames(filenames);
+  const issues = validateMigrationFilenames(filenames);
+  if (issues.length > 0) {
+    return issues;
+  }
+
+  await listMigrations(migrationsDir);
+
+  return issues;
 }
 
 export function partitionMigrations(

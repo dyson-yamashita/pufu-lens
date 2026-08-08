@@ -9,6 +9,7 @@ import {
   findMissingMigrationFiles,
   MIGRATION_NO_TRANSACTION_DIRECTIVE,
   MIGRATION_STATEMENT_BREAK_DIRECTIVE,
+  MigrationStatementParseError,
   parseCliMode,
   parseMigrationFileContent,
   parseMigrationFilename,
@@ -153,6 +154,48 @@ test('parseMigrationFileContent rejects empty statement chunks in no-transaction
         `${MIGRATION_NO_TRANSACTION_DIRECTIVE}\nDROP INDEX a;\n${MIGRATION_STATEMENT_BREAK_DIRECTIVE}\n${MIGRATION_STATEMENT_BREAK_DIRECTIVE}\nCREATE INDEX b ON c;`,
       ),
     /empty migration statement chunk/,
+  );
+});
+
+test('parseMigrationFileContent allows trailing statement-break and blank lines after final delimiter', () => {
+  const parsed = parseMigrationFileContent(
+    `${MIGRATION_NO_TRANSACTION_DIRECTIVE}\nDROP INDEX a;\n${MIGRATION_STATEMENT_BREAK_DIRECTIVE}\nCREATE INDEX b ON c;\n${MIGRATION_STATEMENT_BREAK_DIRECTIVE}\n\n\n`,
+  );
+  assert.deepEqual(parsed.statements, ['DROP INDEX a;', 'CREATE INDEX b ON c;']);
+});
+
+test('parseMigrationFileContent still rejects empty chunks between delimiters', () => {
+  assert.throws(
+    () =>
+      parseMigrationFileContent(
+        `${MIGRATION_NO_TRANSACTION_DIRECTIVE}\nDROP INDEX a;\n${MIGRATION_STATEMENT_BREAK_DIRECTIVE}\n\n${MIGRATION_STATEMENT_BREAK_DIRECTIVE}\nCREATE INDEX b ON c;`,
+      ),
+    /empty migration statement chunk/,
+  );
+});
+
+test('validateMigrationsDirectory parses valid migration files without DATABASE_URL', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'db-migrate-parse-test-'));
+  await writeFile(join(dir, '0001_valid.sql'), 'SELECT 1;');
+  await writeFile(
+    join(dir, '0002_no_transaction.sql'),
+    `${MIGRATION_NO_TRANSACTION_DIRECTIVE}\nSELECT 2;`,
+  );
+
+  const issues = await validateMigrationsDirectory(dir);
+  assert.deepEqual(issues, []);
+});
+
+test('validateMigrationsDirectory rejects broken no-transaction migration content without DATABASE_URL', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'db-migrate-parse-broken-'));
+  await writeFile(
+    join(dir, '0001_broken.sql'),
+    `${MIGRATION_NO_TRANSACTION_DIRECTIVE}\nDROP INDEX a;\n${MIGRATION_STATEMENT_BREAK_DIRECTIVE}\n${MIGRATION_STATEMENT_BREAK_DIRECTIVE}\nCREATE INDEX b ON c;`,
+  );
+
+  await assert.rejects(
+    () => validateMigrationsDirectory(dir),
+    (error: unknown) => error instanceof MigrationStatementParseError,
   );
 });
 

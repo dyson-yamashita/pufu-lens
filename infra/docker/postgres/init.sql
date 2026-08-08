@@ -1016,5 +1016,6 @@ VALUES
   ('0015_activitypub_protocol_spike'),
   ('0016_activitypub_actor_endpoints'),
   ('0017_activitypub_follow_management'),
-  ('0018_activitypub_follow_indexes')
+  ('0018_activitypub_follow_indexes'),
+  ('0019_activitypub_follow_constraint_validation')
 ON CONFLICT (version) DO NOTHING;

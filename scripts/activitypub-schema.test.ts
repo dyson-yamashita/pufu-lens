@@ -19,6 +19,10 @@ const migration0018Path = join(
   import.meta.dirname,
   '../infra/db/migrations/0018_activitypub_follow_indexes.sql',
 );
+const migration0019Path = join(
+  import.meta.dirname,
+  '../infra/db/migrations/0019_activitypub_follow_constraint_validation.sql',
+);
 const initPath = join(import.meta.dirname, '../infra/docker/postgres/init.sql');
 
 test('0015 creates ActivityPub Fedify KV and queue message tables', async () => {
@@ -174,7 +178,7 @@ test('0016 and fresh schema lock representation trigger avoids COUNT scans and u
   }
 });
 
-test('0017 adds follow timestamp checks with NOT VALID and VALIDATE CONSTRAINT', async () => {
+test('0017 adds follow timestamp checks with NOT VALID only', async () => {
   const migration = await readFile(migration0017Path, 'utf8');
 
   assert.equal(migration.includes('CREATE INDEX'), false);
@@ -182,12 +186,25 @@ test('0017 adds follow timestamp checks with NOT VALID and VALIDATE CONSTRAINT',
     migration,
     /ADD CONSTRAINT activitypub_follows_accepted_timestamp_check[\s\S]*CHECK \([\s\S]*status = 'accepted' AND accepted_at IS NOT NULL[\s\S]*status <> 'accepted' AND accepted_at IS NULL[\s\S]*\) NOT VALID;/,
   );
-  assert.match(migration, /VALIDATE CONSTRAINT activitypub_follows_accepted_timestamp_check;/);
   assert.match(
     migration,
     /ADD CONSTRAINT activitypub_follows_undone_timestamp_check[\s\S]*CHECK \([\s\S]*status = 'undone' AND undone_at IS NOT NULL[\s\S]*status <> 'undone' AND undone_at IS NULL[\s\S]*\) NOT VALID;/,
   );
+  assert.equal(migration.includes('VALIDATE CONSTRAINT'), false);
+  assert.equal(
+    /INSERT INTO public\.schema_migrations/.test(migration),
+    false,
+    'migration must not insert schema_migrations; runner owns version recording',
+  );
+});
+
+test('0019 validates follow timestamp checks in a separate transactional migration', async () => {
+  const migration = await readFile(migration0019Path, 'utf8');
+
+  assert.match(migration, /VALIDATE CONSTRAINT activitypub_follows_accepted_timestamp_check;/);
   assert.match(migration, /VALIDATE CONSTRAINT activitypub_follows_undone_timestamp_check;/);
+  assert.equal(migration.includes('ADD CONSTRAINT'), false);
+  assert.equal(migration.includes('DROP CONSTRAINT'), false);
   assert.equal(
     /INSERT INTO public\.schema_migrations/.test(migration),
     false,
@@ -199,6 +216,10 @@ test('0018 adds concurrent follow indexes outside transactions', async () => {
   const migration = await readFile(migration0018Path, 'utf8');
 
   assert.match(migration, /^-- pufu-lens: no-transaction/);
+  assert.equal(
+    migration.split('\n').filter((line) => line.trim() === '-- pufu-lens: statement-break').length,
+    3,
+  );
   assert.match(
     migration,
     /DROP INDEX CONCURRENTLY IF EXISTS public\.activitypub_follows_accepted_collection_idx;/,
@@ -224,10 +245,11 @@ test('0018 adds concurrent follow indexes outside transactions', async () => {
   );
 });
 
-test('0017, 0018, and fresh schema share follow constraints, indexes, and migration versions', async () => {
-  const [migration0017, migration0018, init] = await Promise.all([
+test('0017, 0018, 0019, and fresh schema share follow constraints, indexes, and migration versions', async () => {
+  const [migration0017, migration0018, migration0019, init] = await Promise.all([
     readFile(migration0017Path, 'utf8'),
     readFile(migration0018Path, 'utf8'),
+    readFile(migration0019Path, 'utf8'),
     readFile(initPath, 'utf8'),
   ]);
 
@@ -259,8 +281,10 @@ test('0017, 0018, and fresh schema share follow constraints, indexes, and migrat
 
   assert.equal(migration0017.includes('DROP CONSTRAINT'), false);
   assert.equal(migration0018.includes('DROP CONSTRAINT'), false);
+  assert.equal(migration0019.includes('DROP CONSTRAINT'), false);
   assert.match(init, /'0017_activitypub_follow_management'/);
   assert.match(init, /'0018_activitypub_follow_indexes'/);
+  assert.match(init, /'0019_activitypub_follow_constraint_validation'/);
 });
 
 function extractTriggerFunctionBody(sql: string, functionName: string): string | undefined {
