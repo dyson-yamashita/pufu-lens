@@ -17,10 +17,10 @@ MVP の完了条件は次のとおりとする。
 1. 公開かつ federation を有効化した project を ActivityPub Actor として解決できる。
 2. `@all` をフォローすると、そのインスタンスで federation を有効化した全 project の新規公開レポート通知を受け取れる。
 3. project Actor をフォローすると、その project の新規公開レポート通知だけを受け取れる。
-4. Pufu Lens Actor と Mastodon user の双方から Follow / Undo を行える。
+4. Pufu Lens Actor と Mastodon 互換 remote Actor の双方から Follow / Undo を行える。
 5. 別の Pufu Lens Actor を project 単位で購読し、受信した report を「外部レポート」として参照できる。
 6. 配送失敗が Web request をブロックせず、lease、retry、重複排除、監査可能な状態を PostgreSQL に保持する。
-7. Mastodon から Actor を検索・followでき、home timeline に title、summary、report URL を表示できる。Step 6 の実機互換性確認を通過するまで MVP は完了しない。
+7. Mastodon server の search、follow、inbox、timeline 正規化を HTTP 境界で再現する hermetic fixture から Actor を検索・followでき、timeline projection に title、summary、report URL を表示できる。外部 Mastodon を利用できない前提とし、Step 6 の再現テストを通過するまで MVP は完了しない。
 
 ## 3. MVP の対象外
 
@@ -84,7 +84,7 @@ report 公開 transaction は `projects.visibility = 'public'` と `reports.is_p
 
 同じ remote Actor が project Actor と `@all` の両方をフォローしている場合は `Create` を優先し、その remote Actor 向けの `Announce` delivery を作らない。異なる remote Actor が同じ server 上でそれぞれ project Actor と `@all` をフォローしている場合は、必要な audience を欠落させないよう両 Activity を shared inbox へ配送してよい。受信側 Pufu Lens は同じ project 内の `remote_object_uri` で統合する。この Actor 単位の優先規則、shared inbox の disjoint audience、受信側の object dedupe を fixture で固定する。
 
-remote client の `Article` 表示互換性は Mastodon 実機で確認し、Step 6 を MVP completion の blocking gate とする。Mastodon の home timeline で title、summary、report URL を表示できなければ MVP は未完了とする。fallback は同じ stable object URI を使う `Create(Note)` と `Announce(Note)` へ instance 全体で切り替え、`Note.content` に title、summary、report URL を含める方式とする。`Article` と `Note` は二重配信せず、fallback 採用時は Actor / object contract、受信 mapping、fixture、Mastodon E2E を更新してから MVP 完了とする。
+remote client の `Article` 表示互換性は、Mastodon の公開 protocol contract を固定した remote fixture で確認し、Step 6 を MVP completion の blocking gate とする。fixture の timeline projection で title、summary、report URL を表示できなければ MVP は未完了とする。fallback は同じ stable object URI を使う `Create(Note)` と `Announce(Note)` へ instance 全体で切り替え、`Note.content` に title、summary、report URL を含める方式とする。`Article` と `Note` は二重配信せず、fallback 採用時は Actor / object contract、受信 mapping、fixture、hermetic E2E を更新してから MVP 完了とする。fixture は対応対象とする Mastodon version または commit、参照した受信・timeline 正規化 contract を明記し、version 更新時に snapshot を更新する。外部 Mastodon に対する smoke test は利用可能になった場合だけ行う補助確認であり、MVP の完了条件にはしない。このため、実サーバー固有の挙動は未検証リスクとしてリリース記録へ残す。
 
 ## 5. Fedify の責務と境界
 
@@ -347,7 +347,7 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 受け入れ条件:
 
 - Pufu Lens A / B の片方向および相互followが成立する
-- Mastodonからproject Actor / `@all` を検索・follow・unfollowできる
+- Mastodon 互換 remote fixture から project Actor / `@all` を検索・follow・unfollowできる
 - duplicate / reordered Follow、Accept、Undo が冪等になる
 - 非adminはoutbound follow設定を変更できない
 
@@ -387,22 +387,27 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 - unrelated Actor、spoofed attribution、private address、unsafe HTMLを拒否する
 - 外部reportがchat / graph / report生成候補へ混入しない
 
-### Step 6: Mastodon / 2-instance E2E と互換性固定
+### Step 6: hermetic 2-instance / Mastodon 互換 E2E
 
 成果物:
 
-- Pufu Lens 2台とMastodonを使うE2E手順または再現可能なtest environment
-- search、follow、Accept、Create / Article表示、Announce、Undoの互換性結果
+- 1つの test process 内に、実装コードを共有しつつ PostgreSQL schema、canonical origin、Actor key を分離した Pufu Lens A / B context を構築する test harness
+- `https://lens-a.test`、`https://lens-b.test`、`https://mastodon.test` を host router で隔離し、実際の WebFinger / Actor / inbox route と署名処理を通す in-memory HTTP transport
+- Mastodon server の WebFinger lookup、Actor、signed Follow / Undo、Accept 受信、shared inbox、Create / Announce 受信、timeline 正規化を再現する remote fixture
+- search、follow、Accept、Create / Article表示、Announce、Undoの互換性結果と sanitize 済み protocol trace
 - Fedify CLI / ActivityPub test toolを使うfixtureとfailure test
 - Articleのrendering差異と採用したfallback判断の記録
 
 受け入れ条件:
 
-- 2台のPufu Lensでproject Actor / `@all` の購読シナリオが完走する
-- Mastodon home timelineからtitle、summary、Pufu Lens report URLを確認できる
+- `pnpm test:activitypub:e2e` だけで追加 instance、外部 Mastodon、外部 network を使わず、CI とローカルで同じ結果を再現できる
+- A / B context 間で project Actor / `@all` の片方向・相互購読シナリオが、service/use-case の直接呼び出しではなく実際の HTTP route、Fedify parser、署名検証、PostgreSQL queue を通って完走する
+- Mastodon 互換 fixture が WebFinger から Actor を発見し、signed Follow に対する Accept を受け取り、受信した Create / Announce から timeline item の title、summary、Pufu Lens report URL を確認できる
 - `Article` で表示要件を満たせない場合は MVP を未完了のままにし、単一の `Note` fallback contract へ切り替えた全 protocol / mapping / E2E 検証を完了する
-- Mastodon serverのInboxへPufu Lens dispatcherからsigned POSTされることをtraceで確認できる
-- remote server停止後のretryと復旧後配送を確認できる
+- Mastodon 互換 fixture の shared inbox へ Pufu Lens dispatcher から signed POST され、fixture 側が `Digest`、署名、Actor key、audience を検証したことを trace で確認できる
+- remote fixture の fault control で timeout、429、503、停止を再現し、retry schedule、復旧後配送、重複副作用なしを仮想時刻で確認できる
+- test transport の host router は test dependency injection だけで有効になり、本番 document loader の SSRF guard を無効化しない。別 security test で production loader が loopback / private address を拒否する
+- fixture が固定する Mastodon version / commit と contract 出典、実 Mastodon 未確認の残存リスクを test artifact とリリース記録に残す
 
 ### Step 7: 運用、観測、コスト、ドキュメント
 
@@ -427,9 +432,16 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 - protocol contract: WebFinger、JSON-LD、signature、Follow / Accept / Undo、Create / Announce
 - security: signature不正、古いDate、SSRF、redirect、oversize、malformed JSON-LD、unsafe HTML、spoofed attribution
 - dispatcher: concurrent worker、crash recovery、heartbeat、retry exhausted、permanent failure、bounded runtime
-- E2E: Pufu Lens A / B、Mastodon search / follow / timeline / unfollow
+- hermetic E2E: 分離した Pufu Lens A / B context、Mastodon 互換 remote fixture、search / follow / timeline / unfollow、remote fault / recovery
 
-通常の `format:check`、`lint`、`typecheck`、`test` に加え、schema変更Stepでは `db:migrate --check` と `db:schema-drift`、UI変更StepではPlaywrightと画面キャプチャを必須とする。外部Mastodonを使うtestはCIの決定論的testと分離し、実行先・日時・versionを記録する。
+通常の `format:check`、`lint`、`typecheck`、`test` に加え、schema変更Stepでは `db:migrate --check` と `db:schema-drift`、UI変更StepではPlaywrightと画面キャプチャを必須とする。`pnpm test:activitypub:e2e` は network access を禁止し、test process 内の host router 以外への接続を失敗させる。fixture は次を固定する。
+
+- A / B / Mastodon 互換 remote の canonical origin、Actor key、request body、virtual clock
+- WebFinger、Actor、Follow / Accept / Undo、Create / Announce、Article / Note fallback の golden payload
+- remote fixture が受信した signed request と timeline projection の sanitize 済み snapshot
+- 対応対象とする Mastodon version / commit および fixture contract の出典
+
+同じ harness で正常系、重複・順序逆転、shared inbox、署名不正、remote timeout / 429 / 503、停止・復旧を table-driven scenario として実行する。外部 Mastodon smoke test は将来利用可能になった場合だけ別 job で実行し、実行先、日時、version を記録する。
 
 ## 12. コスト方針
 
@@ -446,8 +458,8 @@ Cloudflare Workers版のFedifyはbuilder pattern、Workers KV、Workers Queues�
 ## 13. ロールアウトと停止
 
 1. production routeを公開する前に固定canonical originとActor key backupを確定する。
-2. internal test Actorだけを有効化し、Pufu Lens 2台で配送する。
-3. staging Mastodonまたはtest instanceで互換性を確認する。
+2. hermetic A / B / Mastodon 互換 E2E を CI で完走し、fixture version と sanitize 済み trace を保存する。
+3. 単一の staging Pufu Lens で internal test Actor だけを有効化し、WebFinger、Actor、outbox、dispatcher を自己診断する。追加 Pufu Lens instance や外部 Mastodon は必須としない。
 4. `@all` はinitially hidden / disabledとし、project Actorの実績確認後に有効化する。
 5. domain / Actor単位のkill switchとoutbox enqueue停止を用意して段階公開する。
 
