@@ -19,6 +19,7 @@ import {
   persistTestActorKey,
   reloadTestActorKey,
 } from './postgres.ts';
+import { parseStoredQueueMessage } from './queue.ts';
 
 const runDbTests = process.env.ACTIVITYPUB_RUN_DB_TESTS === '1';
 const databaseUrl = process.env.DATABASE_URL?.trim();
@@ -185,7 +186,8 @@ async function assertQueuePersistenceAndIdempotency(sql: postgres.Sql) {
   assert.match(serialized, /#main-key/);
   assert.match(serialized, /report-db-1/);
   assert.match(serialized, /create\/report-db-1/);
-  assert.ok(serialized.includes(recipientInbox));
+  const stored = parseStoredQueueMessage(rows[0]?.message_json);
+  assert.equal(stored.inbox, recipientInbox);
 }
 
 async function assertKvAndQueueSurviveClientRestart() {
@@ -369,7 +371,8 @@ async function assertOneShotDispatchSignsAndDelivers() {
 
     assertSignedDeliveryIntegrityHeaders(receivedHeaders);
     assert.match(receivedBody, /report-db-1/);
-    assert.ok(receivedBody.includes(activityId));
+    const parsedDeliveryBody = parseSignedDeliveryBody(receivedBody);
+    assert.equal(parsedDeliveryBody.id, activityId);
 
     const claimClient = postgres(resolvedDatabaseUrl, { max: 1 });
     try {
@@ -381,6 +384,19 @@ async function assertOneShotDispatchSignsAndDelivers() {
   } finally {
     await fixtureServer.close();
   }
+}
+
+function parseSignedDeliveryBody(body: string): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    throw new Error('signed delivery body must be valid JSON');
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('signed delivery body must be a plain object');
+  }
+  return parsed as Record<string, unknown>;
 }
 
 function assertSignedDeliveryIntegrityHeaders(headers: IncomingHttpHeaders): void {
