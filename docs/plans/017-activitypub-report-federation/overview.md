@@ -356,7 +356,7 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 ### Step 2: schema、Actor、鍵管理、公開 endpoint
 
 - status: `completed`
-- tracking Issue: [#669](https://github.com/dyson-yamashita/pufu-lens/issues/669)
+- tracking Issue / PR: [#669](https://github.com/dyson-yamashita/pufu-lens/issues/669) / [#670](https://github.com/dyson-yamashita/pufu-lens/pull/670)
 - 更新日: 2026-08-08
 
 成果物:
