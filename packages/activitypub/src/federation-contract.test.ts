@@ -163,14 +163,15 @@ test('production federation returns 404 for disabled, private, and missing actor
       fetch(uri.actorFollowersUrl(username), { headers }).then((r) => r.status),
       fetch(uri.actorFollowingUrl(username), { headers }).then((r) => r.status),
       fetch(uri.actorOutboxUrl(username), { headers }).then((r) => r.status),
-      fetch(uri.reportArticleUrl(reportId), { headers }).then((r) => r.status),
     ]);
     assert.deepEqual(
       statuses,
-      [404, 404, 404, 404, 404, 404],
+      [404, 404, 404, 404, 404],
       `expected hidden actor ${username} to 404 everywhere`,
     );
   }
+
+  assert.equal((await fetch(uri.reportArticleUrl(reportId), { headers })).status, 404);
 });
 
 test('production federation does not emit Article when singleton config is note', async () => {

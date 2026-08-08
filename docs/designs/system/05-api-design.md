@@ -36,7 +36,7 @@
 
 ActivityPub public endpoint は `ACTIVITYPUB_ENABLED=1` と固定 canonical origin / Actor key encryption key が設定された production proxy で処理する。`/.well-known/webfinger`、`/activitypub/actors/[preferredUsername]`、その followers / following / outbox collection、`/activitypub/reports/[reportId]` を公開し、public かつ federation-enabled な project と public report だけを解決する。private / disabled / missing は endpoint 間で区別せず `404` とする。
 
-`PATCH /api/projects/[projectSlug]/federation` は `{ "enabled": boolean, "preferredUsername"?: string }` だけを受理する。Auth.js session と既存 authz module で project admin を確認し、URL slug と認可済み project ID / slug を repository transaction で再検証する。不正 slug、未知 field、project 越境、non-admin、private project の enable を拒否する。route は認可・JSON validation・use-case 呼び出しだけを担い、SQL と鍵操作は repository / use-case 境界に置く。
+`PATCH /api/projects/[projectSlug]/federation` は `{ "enabled": boolean, "preferredUsername"?: string }` だけを受理する。Auth.js session と既存 authz module で project admin を確認し、URL slug と認可済み project ID / slug を repository transaction で再検証する。不正 slug、未知 field、project 越境、non-admin、private project の enable を拒否する。route は認可・JSON validation・use-case 呼び出しだけを担い、SQL と鍵操作は repository / use-case 境界に置く。既知の validation / visibility / username conflict は固定した status・error code・安全な message へ写像し、予期しない repository error は内部 message を返さない generic `500` とする。
 
 ### 3. Server Action / UI 内部入口
 

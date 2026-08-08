@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
-  ActivityPubAdminError,
+  mapActivityPubAdminError,
   parseProjectFederationRequest,
   patchProjectFederation,
 } from '../../../../../src/activitypub-admin';
@@ -10,7 +10,13 @@ import { AuthRequiredError, requireSessionUserId } from '../../../../../src/auth
 /**
  * Enables or disables ActivityPub federation for a public project.
  *
- * @returns JSON federation state or a structured error response.
+ * Requires an authenticated session and project-admin authorization for the exact slug.
+ * Rejects malformed JSON with 400 `invalid_body`, unauthenticated callers with 401 `auth_required`,
+ * invalid slugs with 400 `invalid_slug`, forbidden access with 403 `forbidden`, private projects
+ * with 400 `project_not_public`, username conflicts with 409 `preferred_username_conflict`, and
+ * unexpected failures with 500 `activitypub_internal_error`.
+ *
+ * @returns JSON federation state on success or `{ error: { code, message } }` with the mapped HTTP status.
  */
 export async function PATCH(
   request: Request,
@@ -41,21 +47,11 @@ export async function PATCH(
     if (error instanceof AuthRequiredError) {
       return federationErrorResponse('auth_required', error.message, 401);
     }
-    if (error instanceof ActivityPubAdminError) {
-      return federationErrorResponse(error.code, error.message, error.status);
+    const mapped = mapActivityPubAdminError(error);
+    if (mapped.code === 'activitypub_internal_error') {
+      console.error('Project federation API error');
     }
-    if (error instanceof Error && /Invalid project slug/.test(error.message)) {
-      return federationErrorResponse('invalid_slug', error.message, 400);
-    }
-    if (error instanceof Error && /public/.test(error.message)) {
-      return federationErrorResponse('project_not_public', error.message, 400);
-    }
-    console.error('Project federation API error');
-    return federationErrorResponse(
-      'activitypub_internal_error',
-      'An unexpected error occurred',
-      500,
-    );
+    return federationErrorResponse(mapped.code, mapped.message, mapped.status);
   }
 }
 

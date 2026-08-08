@@ -14,6 +14,7 @@ export async function createProductionActivityPubFederation(input: {
   kv: KvStore;
   queue: MessageQueue;
   queueHooks?: {
+    /** Observation sentinel for tests; never invoked by the Web runtime. */
     listen?: () => void;
     startQueue?: () => void;
     processQueuedTask?: () => void;
@@ -128,6 +129,7 @@ export async function createProductionActivityPubFederation(input: {
 function attachQueueHooks(
   federation: Federation<undefined>,
   queueHooks?: {
+    /** Observation sentinel for tests; never invoked by the Web runtime. */
     listen?: () => void;
     startQueue?: () => void;
     processQueuedTask?: () => void;
@@ -136,6 +138,10 @@ function attachQueueHooks(
   if (!queueHooks) {
     return;
   }
+
+  // The Web process must never start queue consumption. `listen` stays deliberately unwired
+  // because only out-of-process workers may attach a live queue consumer.
+  void queueHooks.listen;
 
   const originalStartQueue = federation.startQueue.bind(federation);
   federation.startQueue = ((...args: Parameters<typeof federation.startQueue>) => {

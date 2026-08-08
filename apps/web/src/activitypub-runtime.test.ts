@@ -95,12 +95,49 @@ test('resolveActivityPubProductionConfig validates required production env value
   assert.equal(config.encryptionKey.length, 32);
 });
 
-test('createActivityPubProductionRuntime does not start queue consumers during construction', async () => {
+test('resolveActivityPubProductionConfig parses ACTIVITYPUB_DB_MAX_CONNECTIONS', () => {
+  const baseInput = {
+    databaseUrl: 'postgresql://example',
+    canonicalOrigin: configuredOrigin,
+    encryptionKey,
+  };
+
+  assert.equal(resolveActivityPubProductionConfig(baseInput).databaseMaxConnections, 5);
+  assert.equal(
+    resolveActivityPubProductionConfig({
+      ...baseInput,
+      databaseMaxConnections: 12,
+    }).databaseMaxConnections,
+    12,
+  );
+  assert.equal(
+    resolveActivityPubProductionConfig({
+      ...baseInput,
+      databaseMaxConnections: '8',
+    }).databaseMaxConnections,
+    8,
+  );
+
+  for (const invalidValue of ['0', '21', '1.5', 'abc', ' 5 ', '05', '', ' 8', '8 ']) {
+    assert.throws(
+      () =>
+        resolveActivityPubProductionConfig({
+          ...baseInput,
+          databaseMaxConnections: invalidValue,
+        }),
+      /ACTIVITYPUB_DB_MAX_CONNECTIONS|databaseMaxConnections|connection/i,
+    );
+  }
+});
+
+test('createActivityPubProductionRuntime does not start queue consumers during construction', {
+  timeout: 10_000,
+}, async () => {
   const calls: string[] = [];
   await assert.rejects(
     () =>
       createActivityPubProductionRuntime({
-        databaseUrl: 'postgresql://invalid:5432/invalid',
+        databaseUrl: 'postgresql://127.0.0.1:1/invalid',
         canonicalOrigin: configuredOrigin,
         encryptionKey,
         queueHooks: {

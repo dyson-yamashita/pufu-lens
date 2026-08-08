@@ -69,8 +69,8 @@ API は以下の認可をかける：
 - remote document loader は private / loopback、IPv4-mapped IPv6、special-use IPv4、NAT64、Teredo、6to4 を拒否し、redirect の各 hop を再検証する。localhost HTTP は test-only の local protocol / DB fixture が `allowHttpLocalhost: true` を明示した場合だけ許可し、Web runtime は opt in しない。DB signed-delivery path はさらに `ACTIVITYPUB_RUN_DB_TESTS=1` を要求し、`NODE_ENV=production` では拒否する。本番 runtime で localhost HTTP を許可しない。
 - queue JSON から private JWK を除去し、key ID だけを保存する。Step 2 の本番 Actor 秘密鍵は `ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY` の canonical base64 32-byte key で AES-256-GCM 暗号化し、Actor row ごとに保存する。秘密 JWK、暗号文、PEM 全文、署名 header を log / response / trace に出さない。rotation と backup runbook は後続 Step の対象とする。
 - Web process は queue consumer と manual task processor を起動しない。Step 1 protocol fixture は `ACTIVITYPUB_SPIKE_ENABLED=1` の明示設定時だけ有効で、本番環境には設定しない。
-- production federation は `ACTIVITYPUB_ENABLED=1` のときだけ初期化し、設定・DB・鍵の初期化失敗は generic log と `503` で fail closed にする。private / disabled / missing project と非公開 report は WebFinger、Actor、collection、Article の全経路で `404` に統一する。
-- project federation 設定 API は Auth.js session と既存 project-admin authz を必須とし、repository transaction 内で project ID + slug を `FOR UPDATE` して public visibility を再検証する。request から graph name、project ID、鍵素材を受け取らない。
+- production federation は `ACTIVITYPUB_ENABLED=1` のときだけ初期化し、設定・DB・鍵の初期化失敗は secret や例外本文を含まない generic log と `503` で fail closed にする。失敗した初期化結果は cache せず、作成済み DB client を閉じて次の request で再試行する。private / disabled / missing project と非公開 report は WebFinger、Actor、collection、Article の全経路で `404` に統一する。
+- project federation 設定 API は Auth.js session と既存 project-admin authz を必須とし、repository transaction 内で project ID + slug を `FOR UPDATE` して public visibility を再検証する。request から graph name、project ID、鍵素材を受け取らない。既知の業務エラーだけを固定 code / message へ写像し、予期しない例外本文を response や診断 log へ出さない。
 - Fedify / vocab / integration package は SSRF 修正済みの `2.3.4` に固定し、lockfile override も同じ patch へ揃える。更新時は Fedify security changelog と resolved version の両方を確認する。
 
 ### 4. Admin data source content preview

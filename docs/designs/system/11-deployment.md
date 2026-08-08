@@ -166,6 +166,7 @@ done
 #    staging build と proxy.ts の WebFinger / ActivityPub routing smoke を行う。Step 1 の ACTIVITYPUB_SPIKE_ENABLED は
 #    本番で設定しない。Step 2 の production endpoint は ACTIVITYPUB_ENABLED=1、固定の
 #    ACTIVITYPUB_CANONICAL_ORIGIN、Secret Manager 由来の ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY が揃う場合だけ有効化する。
+#    ACTIVITYPUB_DB_MAX_CONNECTIONS は process あたりの ActivityPub 用 DB pool 上限で、未指定時は5、指定時は1..20の10進整数とする。
 #    Follow / report 配送 Job は後続 Step であり、Step 2 の rollout では起動しない。
 #    Firebase CLI >= 15.25.1 のローカルソースデプロイを使うと GitHub 連携や push なしで rollout できる。
 #    apps/web/apphosting.yaml に runtime env / secrets / VPC access、リポジトリルートに firebase.json /

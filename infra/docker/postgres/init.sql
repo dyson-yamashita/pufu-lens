@@ -928,35 +928,21 @@ CREATE OR REPLACE FUNCTION public.activitypub_lock_representation_on_first_outbo
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
-DECLARE
-  existing_outbound_count integer;
 BEGIN
   IF NEW.direction = 'outbound' THEN
-    SELECT COUNT(*)::integer
-    INTO existing_outbound_count
-    FROM public.activitypub_activities
-    WHERE direction = 'outbound';
+    UPDATE public.activitypub_instance_config
+    SET representation_locked_at = now(),
+        updated_at = now()
+    WHERE id = 1
+      AND representation_locked_at IS NULL;
 
-    IF existing_outbound_count = 0 THEN
-      IF NOT EXISTS (SELECT 1 FROM public.activitypub_instance_config WHERE id = 1) THEN
+    IF NOT FOUND THEN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM public.activitypub_instance_config
+        WHERE id = 1
+      ) THEN
         RAISE EXCEPTION 'activitypub_instance_config singleton is missing';
-      END IF;
-
-      UPDATE public.activitypub_instance_config
-      SET representation_locked_at = now(),
-          updated_at = now()
-      WHERE id = 1
-        AND representation_locked_at IS NULL;
-
-      IF NOT FOUND THEN
-        IF NOT EXISTS (
-          SELECT 1
-          FROM public.activitypub_instance_config
-          WHERE id = 1
-            AND representation_locked_at IS NOT NULL
-        ) THEN
-          RAISE EXCEPTION 'activitypub_instance_config singleton is missing';
-        END IF;
       END IF;
     END IF;
   END IF;

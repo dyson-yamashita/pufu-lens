@@ -1,4 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes, type webcrypto } from 'node:crypto';
+import { exportJwk, generateCryptoKeyPair } from '@fedify/fedify';
+import { exportSpki } from '@fedify/vocab-runtime';
 
 const ENCRYPTION_VERSION = 1;
 const ALGORITHM = 'aes-256-gcm';
@@ -13,6 +15,12 @@ export type EncryptedPrivateKeyBlob = {
   readonly iv: string;
   readonly ciphertext: string;
   readonly tag: string;
+};
+
+/** Generated actor key material ready for PostgreSQL persistence. */
+export type ActorKeyMaterial = {
+  readonly publicKeyPem: string;
+  readonly encryptedPrivateKey: EncryptedPrivateKeyBlob;
 };
 
 type JsonWebKey = webcrypto.JsonWebKey;
@@ -102,6 +110,19 @@ export function decryptPrivateJwk(input: {
     throw new Error('Decrypted private key is not a JSON object');
   }
   return parsed as JsonWebKey;
+}
+
+/** Generates RSA actor key material and encrypts the private JWK for storage. */
+export async function createActorKeyMaterial(encryptionKey: Buffer): Promise<ActorKeyMaterial> {
+  const keyPair = await generateCryptoKeyPair('RSASSA-PKCS1-v1_5');
+  const [publicKeyPem, privateJwk] = await Promise.all([
+    exportSpki(keyPair.publicKey),
+    exportJwk(keyPair.privateKey),
+  ]);
+  return {
+    publicKeyPem,
+    encryptedPrivateKey: encryptPrivateJwk({ privateJwk, encryptionKey }),
+  };
 }
 
 function parseEncryptedPrivateKeyBlob(value: unknown): EncryptedPrivateKeyBlob {

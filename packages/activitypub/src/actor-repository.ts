@@ -1,7 +1,14 @@
-import { exportJwk, generateCryptoKeyPair, importJwk } from '@fedify/fedify';
-import { exportSpki } from '@fedify/vocab-runtime';
+import { exportJwk, type generateCryptoKeyPair, importJwk } from '@fedify/fedify';
 import type postgres from 'postgres';
-import { decryptPrivateJwk, encryptPrivateJwk } from './key-encryption.ts';
+import {
+  ActivityPubPreferredUsernameConflictError,
+  ActivityPubProjectNotPublicError,
+} from './activitypub-errors.ts';
+import {
+  createActorKeyMaterial,
+  decryptPrivateJwk,
+  type EncryptedPrivateKeyBlob,
+} from './key-encryption.ts';
 import {
   type ActivityPubActor,
   type ActivityPubInstanceConfig,
@@ -157,7 +164,7 @@ async function enableProjectActorOnExecutor(input: {
     projectSlug: input.projectSlug,
   });
   if (scope.visibility !== 'public') {
-    throw new Error('Project must be public to manage ActivityPub federation');
+    throw new ActivityPubProjectNotPublicError(scope.id);
   }
   return enableProjectActorInLockedScope({
     sql: input.sql,
@@ -247,7 +254,7 @@ async function enableProjectActorInLockedScope(input: {
       ${input.scope.name},
       true,
       ${keyMaterial.publicKeyPem},
-      ${input.sql.json(keyMaterial.encryptedPrivateKey as never)},
+      ${bindEncryptedPrivateKey(input.sql, keyMaterial.encryptedPrivateKey)},
       now(),
       now()
     )
@@ -271,6 +278,13 @@ async function enableProjectActorInLockedScope(input: {
 
   const reloaded = await findProjectActorByProjectId(input.sql, input.scope.id);
   if (!reloaded) {
+    const conflict = await findActorByPreferredUsername(input.sql, preferredUsername);
+    if (conflict) {
+      throw new ActivityPubPreferredUsernameConflictError({
+        preferredUsername,
+        ownerProjectId: conflict.projectId,
+      });
+    }
     throw new Error('Failed to enable project ActivityPub actor.');
   }
   if (reloaded.preferredUsername !== preferredUsername) {
@@ -317,7 +331,7 @@ async function ensureAggregateActor(input: {
   sql: SqlExecutor;
   encryptionKey: Buffer;
 }): Promise<ActivityPubActor> {
-  const existing = await findActorByKind(input.sql, 'aggregate');
+  const existing = await findAggregateActor(input.sql);
   if (existing) {
     if (!existing.enabled) {
       return enableExistingActor(input.sql, existing.id);
@@ -345,7 +359,7 @@ async function ensureAggregateActor(input: {
       'All Projects',
       true,
       ${keyMaterial.publicKeyPem},
-      ${input.sql.json(keyMaterial.encryptedPrivateKey as never)},
+      ${bindEncryptedPrivateKey(input.sql, keyMaterial.encryptedPrivateKey)},
       now(),
       now()
     )
@@ -367,7 +381,7 @@ async function ensureAggregateActor(input: {
     return created;
   }
 
-  const reloaded = await findActorByKind(input.sql, 'aggregate');
+  const reloaded = await findAggregateActor(input.sql);
   if (!reloaded) {
     throw new Error('Failed to ensure aggregate ActivityPub actor.');
   }
@@ -483,9 +497,9 @@ async function updateInstanceRepresentation(input: {
   return parseRequiredRow(rows, parseActivityPubInstanceConfigRow);
 }
 
-async function findActorByKind(
+async function findActorByPreferredUsername(
   sql: SqlExecutor,
-  kind: 'aggregate' | 'project',
+  preferredUsername: string,
 ): Promise<ActivityPubActor | undefined> {
   const rows = (await sql`
     SELECT
@@ -499,7 +513,26 @@ async function findActorByKind(
       created_at,
       updated_at
     FROM public.activitypub_actors
-    WHERE kind = ${kind}
+    WHERE preferred_username = ${preferredUsername}
+    LIMIT 1
+  `) as readonly unknown[];
+  return parseOptionalRow(rows, parseActivityPubActorRow);
+}
+
+async function findAggregateActor(sql: SqlExecutor): Promise<ActivityPubActor | undefined> {
+  const rows = (await sql`
+    SELECT
+      id::text AS id,
+      project_id::text AS project_id,
+      kind,
+      preferred_username,
+      display_name,
+      enabled,
+      public_key_pem,
+      created_at,
+      updated_at
+    FROM public.activitypub_actors
+    WHERE kind = 'aggregate'
     LIMIT 1
   `) as readonly unknown[];
   return parseOptionalRow(rows, parseActivityPubActorRow);
@@ -548,19 +581,9 @@ async function enableExistingActor(sql: SqlExecutor, actorId: string): Promise<A
   return parseRequiredRow(rows, parseActivityPubActorRow);
 }
 
-async function createActorKeyMaterial(encryptionKey: Buffer): Promise<{
-  publicKeyPem: string;
-  encryptedPrivateKey: ReturnType<typeof encryptPrivateJwk>;
-}> {
-  const keyPair = await generateCryptoKeyPair('RSASSA-PKCS1-v1_5');
-  const [publicKeyPem, privateJwk] = await Promise.all([
-    exportSpki(keyPair.publicKey),
-    exportJwk(keyPair.privateKey),
-  ]);
-  return {
-    publicKeyPem,
-    encryptedPrivateKey: encryptPrivateJwk({ privateJwk, encryptionKey }),
-  };
+function bindEncryptedPrivateKey(sql: SqlExecutor, encryptedPrivateKey: EncryptedPrivateKeyBlob) {
+  // encryptPrivateJwk returns a JSON-safe EncryptedPrivateKeyBlob structure.
+  return sql.json(encryptedPrivateKey as never);
 }
 
 async function importSpkiToJwk(publicKeyPem: string) {

@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type postgres from 'postgres';
 import {
+  ActivityPubPreferredUsernameConflictError,
+  ActivityPubProjectNotPublicError,
+} from './activitypub-errors.ts';
+import {
   createPostgresActivityPubRepository,
   createPostgresActivityPubTransactionRepository,
   lockProjectScopeForUpdate,
@@ -56,7 +60,10 @@ test('enableProjectActor rejects private projects inside repository transaction'
     encryptionKey,
   });
 
-  await assert.rejects(() => repository.enableProjectActor({ projectId, projectSlug }), /public/i);
+  await assert.rejects(
+    () => repository.enableProjectActor({ projectId, projectSlug }),
+    (error: unknown) => error instanceof ActivityPubProjectNotPublicError,
+  );
 });
 
 test('disableProjectActor requires exact locked scope but allows private projects', async () => {
@@ -100,7 +107,7 @@ test('disableProjectActor requires exact locked scope but allows private project
   assert.equal(actor.enabled, false);
 });
 
-test('enableProjectActor rolls back when project scope does not match id', async () => {
+test('enableProjectActor rejects when project scope does not match id', async () => {
   const repository = createPostgresActivityPubRepository({
     sql: createTrackingSql({
       scopeRows: [
@@ -153,6 +160,49 @@ test('in-memory enableProjectActor reuses stored username when preferredUsername
   assert.equal(reenabled.publicKeyPem, enabled.publicKeyPem);
 });
 
+test('in-memory enableProjectActor rejects cross-project preferred username collisions', async () => {
+  const repository = createInMemoryActivityPubRepository({
+    encryptionKey,
+    canonicalOrigin: 'https://lens.test',
+  });
+  const secondaryProjectId = '50000000-0000-0000-0000-000000000003';
+  const secondaryProjectSlug = 'scope-project-2';
+  const sharedPreferredUsername = 'scope-shared-username';
+
+  repository.seedProject({
+    id: projectId,
+    slug: projectSlug,
+    name: 'Scope Project',
+    visibility: 'public',
+  });
+  repository.seedProject({
+    id: secondaryProjectId,
+    slug: secondaryProjectSlug,
+    name: 'Scope Project 2',
+    visibility: 'public',
+  });
+
+  const first = await repository.enableProjectActor({
+    projectId,
+    projectSlug,
+    preferredUsername: sharedPreferredUsername,
+  });
+
+  await assert.rejects(
+    () =>
+      repository.enableProjectActor({
+        projectId: secondaryProjectId,
+        projectSlug: secondaryProjectSlug,
+        preferredUsername: sharedPreferredUsername,
+      }),
+    (error: unknown) => error instanceof ActivityPubPreferredUsernameConflictError,
+  );
+
+  const lookup = await repository.findRemotelyVisibleActorByUsername(sharedPreferredUsername);
+  assert.equal(lookup?.id, first.id);
+  assert.equal(lookup?.preferredUsername, sharedPreferredUsername);
+});
+
 test('in-memory enableProjectActor rejects explicit username changes for existing actors', async () => {
   const repository = createInMemoryActivityPubRepository({
     encryptionKey,
@@ -178,6 +228,47 @@ test('in-memory enableProjectActor rejects explicit username changes for existin
         preferredUsername: 'another-username',
       }),
     /immutable/i,
+  );
+});
+
+test('in-memory runInTransaction rolls back actor mutations on rejection', async () => {
+  const repository = createInMemoryActivityPubRepository({
+    encryptionKey,
+    canonicalOrigin: 'https://lens.test',
+  });
+  const rollbackUsername = 'tx-rollback-username';
+  repository.seedProject({
+    id: projectId,
+    slug: projectSlug,
+    name: 'Scope Project',
+    visibility: 'public',
+  });
+
+  await assert.rejects(
+    () =>
+      repository.runInTransaction(async (tx) => {
+        await tx.enableProjectActor({
+          projectId,
+          projectSlug,
+          preferredUsername: rollbackUsername,
+        });
+        throw new Error('rollback requested');
+      }),
+    /rollback requested/,
+  );
+
+  assert.equal(await repository.findRemotelyVisibleActorByUsername(rollbackUsername), undefined);
+
+  const enabled = await repository.enableProjectActor({
+    projectId,
+    projectSlug,
+    preferredUsername: rollbackUsername,
+  });
+  assert.equal(enabled.preferredUsername, rollbackUsername);
+  assert.equal(enabled.enabled, true);
+  assert.equal(
+    (await repository.findRemotelyVisibleActorByUsername(rollbackUsername))?.id,
+    enabled.id,
   );
 });
 
@@ -255,9 +346,11 @@ function createTrackingSql(input: {
       return input.getActorRows?.() ?? [];
     }
     if (query.includes('UPDATE public.activitypub_actors')) {
-      input.updateActorEnabled?.(false);
+      const enabledMatch = query.match(/enabled = (true|false)/i);
+      const enabled = enabledMatch?.[1] === 'true';
+      input.updateActorEnabled?.(enabled);
       const row = input.getActorRows?.()[0];
-      return row ? [{ ...row, enabled: false }] : [];
+      return row ? [{ ...row, enabled }] : [];
     }
     return [];
   }) as postgres.Sql;

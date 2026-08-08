@@ -1,7 +1,11 @@
-import { exportJwk, generateCryptoKeyPair, importJwk } from '@fedify/fedify';
-import { exportSpki } from '@fedify/vocab-runtime';
+import { exportJwk, type generateCryptoKeyPair, importJwk } from '@fedify/fedify';
+import {
+  ActivityPubPreferredUsernameConflictError,
+  ActivityPubProjectNotPublicError,
+} from './activitypub-errors.ts';
 import type { ActivityPubRepository } from './actor-repository.ts';
-import { decryptPrivateJwk, encryptPrivateJwk } from './key-encryption.ts';
+import type { EncryptedPrivateKeyBlob } from './key-encryption.ts';
+import { createActorKeyMaterial, decryptPrivateJwk } from './key-encryption.ts';
 import type {
   ActivityPubActor,
   ActivityPubInstanceConfig,
@@ -12,12 +16,16 @@ import type {
 
 type MutableActor = {
   actor: ActivityPubActor;
-  encryptedPrivateKey: ReturnType<typeof encryptPrivateJwk>;
+  encryptedPrivateKey: EncryptedPrivateKeyBlob;
 };
 
 type ProjectRecord = ActivityPubProjectScope;
 
-/** In-memory ActivityPub repository for protocol contract tests. */
+/**
+ * In-memory ActivityPub repository for protocol contract tests.
+ * `runInTransaction` snapshots actor, username/project index, and instance config
+ * mutations at work start and restores them when the callback rejects.
+ */
 export function createInMemoryActivityPubRepository(input: {
   encryptionKey: Buffer;
   canonicalOrigin: string;
@@ -65,7 +73,13 @@ export function createInMemoryActivityPubRepository(input: {
     setInstanceObjectRepresentation(objectRepresentation: ObjectRepresentation): void;
   } = {
     async runInTransaction(callback) {
-      return callback(repository);
+      const snapshot = captureMutableSnapshot();
+      try {
+        return await callback(repository);
+      } catch (error) {
+        restoreMutableSnapshot(snapshot);
+        throw error;
+      }
     },
     async ensureAggregateActor() {
       const existing = [...actors.values()].find((entry) => entry.actor.kind === 'aggregate');
@@ -80,7 +94,7 @@ export function createInMemoryActivityPubRepository(input: {
     async enableProjectActor(params) {
       const scope = lockProjectScope(params.projectId, params.projectSlug);
       if (scope.visibility !== 'public') {
-        throw new Error('Project must be public to manage ActivityPub federation');
+        throw new ActivityPubProjectNotPublicError(scope.id);
       }
       const existingId = actorsByProjectId.get(scope.id);
       if (existingId) {
@@ -102,6 +116,7 @@ export function createInMemoryActivityPubRepository(input: {
       if (preferredUsername === 'all') {
         throw new Error('Project actor preferred username cannot be reserved name all');
       }
+      assertPreferredUsernameAvailable(preferredUsername);
       return seedProjectActorInternal({
         projectId: scope.id,
         projectSlug: scope.slug,
@@ -222,12 +237,60 @@ export function createInMemoryActivityPubRepository(input: {
     },
   };
 
+  function captureMutableSnapshot() {
+    return {
+      actors: new Map(
+        [...actors.entries()].map(([id, entry]) => [
+          id,
+          {
+            actor: { ...entry.actor },
+            encryptedPrivateKey: { ...entry.encryptedPrivateKey },
+          },
+        ]),
+      ),
+      actorsByUsername: new Map(actorsByUsername),
+      actorsByProjectId: new Map(actorsByProjectId),
+      instanceConfig: { ...instanceConfig },
+    };
+  }
+
+  function restoreMutableSnapshot(snapshot: ReturnType<typeof captureMutableSnapshot>) {
+    actors.clear();
+    for (const [id, entry] of snapshot.actors) {
+      actors.set(id, {
+        actor: { ...entry.actor },
+        encryptedPrivateKey: { ...entry.encryptedPrivateKey },
+      });
+    }
+    actorsByUsername.clear();
+    for (const [username, actorId] of snapshot.actorsByUsername) {
+      actorsByUsername.set(username, actorId);
+    }
+    actorsByProjectId.clear();
+    for (const [projectId, actorId] of snapshot.actorsByProjectId) {
+      actorsByProjectId.set(projectId, actorId);
+    }
+    instanceConfig = { ...snapshot.instanceConfig };
+  }
+
   function lockProjectScope(projectId: string, projectSlug: string): ProjectRecord {
     const project = projects.get(projectId);
     if (!project || project.slug !== projectSlug) {
       throw new Error('Project scope mismatch');
     }
     return project;
+  }
+
+  function assertPreferredUsernameAvailable(preferredUsername: string): void {
+    const existingId = actorsByUsername.get(preferredUsername);
+    if (!existingId) {
+      return;
+    }
+    const existing = actors.get(existingId);
+    throw new ActivityPubPreferredUsernameConflictError({
+      preferredUsername,
+      ownerProjectId: existing?.actor.projectId ?? null,
+    });
   }
 
   async function seedProjectActorInternal(actor: {
@@ -244,6 +307,7 @@ export function createInMemoryActivityPubRepository(input: {
       name: actor.projectName ?? actor.projectSlug,
       visibility: actor.visibility,
     });
+    assertPreferredUsernameAvailable(actor.preferredUsername);
     const keyMaterial = await createActorKeyMaterial(input.encryptionKey);
     const id = crypto.randomUUID();
     const created: ActivityPubActor = {
@@ -283,18 +347,6 @@ export function createInMemoryActivityPubRepository(input: {
   }
 
   return repository;
-}
-
-async function createActorKeyMaterial(encryptionKey: Buffer) {
-  const keyPair = await generateCryptoKeyPair('RSASSA-PKCS1-v1_5');
-  const [publicKeyPem, privateJwk] = await Promise.all([
-    exportSpki(keyPair.publicKey),
-    exportJwk(keyPair.privateKey),
-  ]);
-  return {
-    publicKeyPem,
-    encryptedPrivateKey: encryptPrivateJwk({ privateJwk, encryptionKey }),
-  };
 }
 
 async function importSpkiToJwk(publicKeyPem: string) {

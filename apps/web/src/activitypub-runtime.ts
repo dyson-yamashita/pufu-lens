@@ -20,6 +20,8 @@ const DEFAULT_SPIKE_REPORT: ActivityPubReportFixture = {
   publishedAt: new Date('2026-08-01T00:00:00.000Z'),
 };
 
+const DATABASE_MAX_CONNECTIONS_PATTERN = /^(?:[1-9]|1\d|20)$/;
+
 /** Step 1/2 web runtime surface compatible with Next.js 16 proxy conventions. */
 export type ActivityPubWebRuntime = {
   runtime: 'nodejs';
@@ -40,15 +42,21 @@ export function resolveActivityPubCanonicalOrigin(input?: {
   return parseCanonicalOrigin(origin).origin;
 }
 
-/** Resolves production ActivityPub runtime configuration from environment variables. */
+/**
+ * Resolves production ActivityPub runtime configuration from environment variables.
+ * `databaseMaxConnections` accepts only canonical integers 1..20 from explicit input or
+ * `ACTIVITYPUB_DB_MAX_CONNECTIONS` without trimming or leading-zero normalization.
+ */
 export function resolveActivityPubProductionConfig(input?: {
   databaseUrl?: string;
   canonicalOrigin?: string;
   encryptionKey?: string;
+  databaseMaxConnections?: number | string;
 }): {
   databaseUrl: string;
   canonicalOrigin: string;
   encryptionKey: Buffer;
+  databaseMaxConnections: number;
 } {
   const databaseUrl = input?.databaseUrl ?? process.env.DATABASE_URL?.trim();
   if (!databaseUrl) {
@@ -60,14 +68,38 @@ export function resolveActivityPubProductionConfig(input?: {
   const encryptionKey = parseActorKeyEncryptionKey(
     input?.encryptionKey ?? process.env.ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY,
   );
-  return { databaseUrl, canonicalOrigin, encryptionKey };
+  const databaseMaxConnections = resolveDatabaseMaxConnections(input);
+  return { databaseUrl, canonicalOrigin, encryptionKey, databaseMaxConnections };
 }
 
-/** Creates the production ActivityPub web runtime without starting queue consumers. */
+function resolveDatabaseMaxConnections(input?: {
+  databaseMaxConnections?: number | string;
+}): number {
+  const raw = input?.databaseMaxConnections ?? process.env.ACTIVITYPUB_DB_MAX_CONNECTIONS ?? '5';
+  const text = typeof raw === 'number' ? String(raw) : raw;
+  if (!DATABASE_MAX_CONNECTIONS_PATTERN.test(text)) {
+    throw new Error(
+      'ACTIVITYPUB_DB_MAX_CONNECTIONS must be a canonical decimal integer between 1 and 20',
+    );
+  }
+  return Number(text);
+}
+
+/** Production federation instance returned by the web proxy runtime. */
+export type ActivityPubProductionFederation = Awaited<
+  ReturnType<typeof createProductionActivityPubFederation>
+>;
+
+/**
+ * Creates the production ActivityPub web runtime without starting queue consumers.
+ * The underlying postgres pool stays open for the process lifetime; failed federation
+ * initialization closes the pool before rethrowing so proxy retries cannot leak clients.
+ */
 export async function createActivityPubProductionRuntime(input?: {
   databaseUrl?: string;
   canonicalOrigin?: string;
   encryptionKey?: string;
+  databaseMaxConnections?: number | string;
   queueHooks?: {
     listen?: () => void;
     startQueue?: () => void;
@@ -75,19 +107,8 @@ export async function createActivityPubProductionRuntime(input?: {
   };
 }): Promise<ActivityPubWebRuntime> {
   const config = resolveActivityPubProductionConfig(input);
-  const sql = postgres(config.databaseUrl, { max: 1 });
-  const repository = createPostgresActivityPubRepository({
-    sql,
-    encryptionKey: config.encryptionKey,
-  });
-  const federation = await createProductionActivityPubFederation({
-    canonicalOrigin: config.canonicalOrigin,
-    repository,
-    kv: createPostgresFedifyKvStore({ sql }),
-    queue: createPostgresQueueAdapter({
-      sql,
-      canonicalOrigin: config.canonicalOrigin,
-    }),
+  const federation = await initializeProductionFederation({
+    config,
     queueHooks: input?.queueHooks,
   });
 
@@ -141,25 +162,46 @@ export async function createActivityPubSpikeFederation(input?: { canonicalOrigin
   return fixture.rawFederation;
 }
 
-/** Creates the lazy-initialized production federation used by the web proxy runtime. */
+/**
+ * Creates the lazy-initialized production federation used by the web proxy runtime.
+ * Keeps the postgres pool open on success and closes it when federation initialization fails.
+ */
 export async function createActivityPubProductionFederation(input?: {
   databaseUrl?: string;
   canonicalOrigin?: string;
   encryptionKey?: string;
-}): Promise<Awaited<ReturnType<typeof createProductionActivityPubFederation>>> {
+  databaseMaxConnections?: number | string;
+}): Promise<ActivityPubProductionFederation> {
   const config = resolveActivityPubProductionConfig(input);
-  const sql = postgres(config.databaseUrl, { max: 1 });
-  const repository = createPostgresActivityPubRepository({
-    sql,
-    encryptionKey: config.encryptionKey,
-  });
-  return createProductionActivityPubFederation({
-    canonicalOrigin: config.canonicalOrigin,
-    repository,
-    kv: createPostgresFedifyKvStore({ sql }),
-    queue: createPostgresQueueAdapter({
+  return initializeProductionFederation({ config });
+}
+
+async function initializeProductionFederation(input: {
+  config: ReturnType<typeof resolveActivityPubProductionConfig>;
+  queueHooks?: {
+    listen?: () => void;
+    startQueue?: () => void;
+    processQueuedTask?: () => void;
+  };
+}): Promise<ActivityPubProductionFederation> {
+  const sql = postgres(input.config.databaseUrl, { max: input.config.databaseMaxConnections });
+  try {
+    const repository = createPostgresActivityPubRepository({
       sql,
-      canonicalOrigin: config.canonicalOrigin,
-    }),
-  });
+      encryptionKey: input.config.encryptionKey,
+    });
+    return await createProductionActivityPubFederation({
+      canonicalOrigin: input.config.canonicalOrigin,
+      repository,
+      kv: createPostgresFedifyKvStore({ sql }),
+      queue: createPostgresQueueAdapter({
+        sql,
+        canonicalOrigin: input.config.canonicalOrigin,
+      }),
+      queueHooks: input.queueHooks,
+    });
+  } catch (error) {
+    await sql.end({ timeout: 5 });
+    throw error;
+  }
 }

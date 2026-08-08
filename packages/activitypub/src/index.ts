@@ -1,4 +1,8 @@
 export {
+  ActivityPubPreferredUsernameConflictError,
+  ActivityPubProjectNotPublicError,
+} from './activitypub-errors.ts';
+export {
   type ActivityPubRepository,
   createPostgresActivityPubRepository,
   createPostgresActivityPubTransactionRepository,

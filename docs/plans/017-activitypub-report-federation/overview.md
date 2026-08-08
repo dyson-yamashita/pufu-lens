@@ -381,6 +381,7 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 - aggregate `@all` と public project Actor の repository / use-case、Actor 単位の暗号化鍵生成・再読込、WebFinger / Actor / followers / following / outbox / Article dispatcher を実装した。private / disabled / missing project と Article は `404` に統一した。
 - project admin API は既存 authz module、project ID + slug の transaction lock、runtime row parser を通し、non-admin、project 越境、不正 slug、private project enable を拒否する。
 - object representation は最初の outbound activity で lock し、lock 後の Article / Note 変更を use-case と DB trigger の双方で拒否する。
+- review hardening として、初期化失敗を cache しない再試行可能な production proxy、範囲を検証する DB pool 上限、型付き repository error と固定 API error、singleton row の条件付き更新だけで完結する representation lock を追加した。
 - Web process は queue consumer を起動せず、Follow / Accept / Undo、Create / Announce の report outbox、配送 Job は Step 3 以降へ残した。UI、本番デプロイ、外部 Pufu Lens / Mastodon 接続は行っていない。
 
 ### Step 3: Follow / Accept / Undo と購読管理

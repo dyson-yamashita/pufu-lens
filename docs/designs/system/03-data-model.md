@@ -76,7 +76,7 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
 - outbox row は `ordering_key` と `recipient_origin` を必須とし、`worker_token` と `lease_expires_at` は同時に設定・解除する。
 - queue payload は Fedify 2.3.4 の version-pinned outbox shape を秘密鍵参照へ変換した JSON である。private JWK、OAuth token、credential は保存しない。
 - Step 1 の test Actor key table は migration / fresh schema に含めない。Step 2 の本番 Actor 鍵は Actor row ごとに一度だけ生成し、AES-256-GCM の versioned JSON として保存する。公開鍵と Actor ID / username は再有効化・process 再起動後も同じ row を再利用する。
-- `activitypub_instance_config` は `id = 1` の singleton とし、最初の outbound `activitypub_activities` row を作る transaction で `representation_locked_at` を設定する。lock 後の Article / Note 変更は use-case と DB trigger の双方で拒否する。
+- `activitypub_instance_config` は `id = 1` の singleton とし、最初の outbound `activitypub_activities` row を作る transaction で singleton row を条件付き更新して `representation_locked_at` を設定する。activity table の件数走査には依存しない。lock 後の Article / Note 変更は use-case と DB trigger の双方で拒否する。
 - project Actor の enable / disable は project ID と slug が一致する row を transaction 内で lock する。enable は `projects.visibility = 'public'` の場合だけ許可し、username の変更は既存 Actor を作り直さず拒否する。
 - migration `0016_activitypub_actor_endpoints` と fresh `init.sql` は同じ Actor / follow / activity / queue / federated report 制約を持ち、`pnpm db:schema-drift` で同期を検証する。
 

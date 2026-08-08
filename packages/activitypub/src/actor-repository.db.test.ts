@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { exportSpki } from '@fedify/vocab-runtime';
+import { ActivityPubPreferredUsernameConflictError } from '@pufu-lens/activitypub';
 import postgres from 'postgres';
 import {
   type ActivityPubRepository,
@@ -42,6 +43,7 @@ async function main() {
     await assertProjectActorKeyStabilityAcrossClients();
     await assertTransactionBoundEnableRollsBack(sql);
     await assertCustomUsernameReenablePreservesActor(sql);
+    await assertCrossProjectPreferredUsernameCollision(sql);
     await assertRepresentationLockGuards(sql);
     await assertActorConstraintViolations(sql);
     console.log('activitypub actor repository DB tests passed');
@@ -145,6 +147,7 @@ async function assertCustomUsernameReenablePreservesActor(sql: postgres.Sql) {
   });
 
   assert.equal(disabled.enabled, false);
+  assert.equal(reenabled.enabled, true);
   assert.equal(reenabled.id, enabled.id);
   assert.equal(reenabled.preferredUsername, customUsername);
   assert.equal(reenabled.publicKeyPem, enabled.publicKeyPem);
@@ -160,6 +163,56 @@ async function assertCustomUsernameReenablePreservesActor(sql: postgres.Sql) {
   );
 
   await sql`DELETE FROM public.projects WHERE id = ${fixtureProjectId}::uuid`;
+}
+
+async function assertCrossProjectPreferredUsernameCollision(sql: postgres.Sql) {
+  await cleanupFixtureProjects(sql);
+  try {
+    await sql`
+      INSERT INTO public.projects (id, slug, name, graph_name, storage_prefix, visibility)
+      VALUES
+        (
+          ${fixtureProjectId}::uuid,
+          ${fixtureProjectSlug},
+          'ActivityPub DB Fixture',
+          'graph_activitypub_db_fixture',
+          ${fixtureProjectSlug},
+          'public'
+        ),
+        (
+          ${secondaryFixtureProjectId}::uuid,
+          ${secondaryFixtureProjectSlug},
+          'ActivityPub DB Fixture 2',
+          'graph_activitypub_db_fixture_2',
+          ${secondaryFixtureProjectSlug},
+          'public'
+        )
+    `;
+
+    const repository = createPostgresActivityPubRepository({ sql, encryptionKey });
+    const first = await repository.enableProjectActor({
+      projectId: fixtureProjectId,
+      projectSlug: fixtureProjectSlug,
+      preferredUsername: sharedPreferredUsername,
+    });
+
+    await assert.rejects(
+      () =>
+        repository.enableProjectActor({
+          projectId: secondaryFixtureProjectId,
+          projectSlug: secondaryFixtureProjectSlug,
+          preferredUsername: sharedPreferredUsername,
+        }),
+      (error: unknown) => error instanceof ActivityPubPreferredUsernameConflictError,
+      'cross-project preferred username collision must surface dedicated conflict error',
+    );
+
+    const lookup = await repository.findRemotelyVisibleActorByUsername(sharedPreferredUsername);
+    assert.equal(lookup?.id, first.id);
+    assert.equal(lookup?.preferredUsername, sharedPreferredUsername);
+  } finally {
+    await cleanupFixtureProjects(sql);
+  }
 }
 
 async function assertProjectActorKeyStabilityAcrossClients() {
@@ -340,13 +393,13 @@ async function assertActorConstraintViolations(sql: postgres.Sql) {
         await repository.ensureAggregateActor();
       },
       run: (tx) =>
-        tx.unsafe(`
+        tx`
           INSERT INTO public.activitypub_actors (kind, preferred_username, display_name, enabled, public_key_pem, encrypted_private_key)
-          SELECT 'aggregate', 'all', 'All Projects', true, 'pem', '${fixtureKeyMaterial}'::jsonb
+          SELECT 'aggregate', 'all', 'All Projects', true, 'pem', ${tx.json(JSON.parse(fixtureKeyMaterial) as never)}
           FROM public.activitypub_actors
           WHERE kind = 'aggregate'
           LIMIT 1
-        `),
+        `,
     },
     {
       label: 'project actor duplicate per project',

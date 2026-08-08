@@ -3,50 +3,91 @@ export type ActivityPubProxyEnv = {
   ACTIVITYPUB_SPIKE_ENABLED?: string;
 };
 
-type FederationLike = {
+type FederationFetchCapable = {
   fetch: (request: Request, init?: { contextData: undefined }) => Promise<Response>;
 };
 
-type ActivityPubProxyHandler = (request: Request) => unknown;
+type ActivityPubProxyHandler = (request: Request) => Response | Promise<Response>;
 
-type ActivityPubProxyHandlerInput = {
+type ActivityPubProxyHandlerInput<
+  TFederation extends FederationFetchCapable = FederationFetchCapable,
+> = {
   env?: ActivityPubProxyEnv;
-  createProductionFederation?: () => Promise<FederationLike>;
-  createSpikeFederation?: () => Promise<FederationLike>;
-  wrapFederation?: (federation: FederationLike) => (request: Request) => unknown;
+  createProductionFederation?: () => Promise<TFederation>;
+  createSpikeFederation?: () => Promise<TFederation>;
+  wrapFederation?: (federation: TFederation) => ActivityPubProxyHandler;
   fallbackResponse?: () => Response;
+};
+
+type ActivityPubProxyHandlerResult = {
+  handler: ActivityPubProxyHandler;
+  cacheable: boolean;
 };
 
 /**
  * Creates a process-scoped single-flight resolver for the ActivityPub proxy handler.
- * Concurrent first requests share one initialization promise.
+ * Concurrent first requests share one initialization attempt, but only successful handlers are cached.
+ * Transient 503 fallbacks and rejected configuration attempts are retried on the next resolve.
  */
-export function createCachedActivityPubProxyHandlerResolver(input: ActivityPubProxyHandlerInput): {
+export function createCachedActivityPubProxyHandlerResolver<
+  TFederation extends FederationFetchCapable = FederationFetchCapable,
+>(
+  input: ActivityPubProxyHandlerInput<TFederation>,
+): {
   resolve: () => Promise<ActivityPubProxyHandler>;
   reset: () => void;
 } {
+  let cached: ActivityPubProxyHandler | undefined;
   let inflight: Promise<ActivityPubProxyHandler> | undefined;
+
   return {
     async resolve() {
-      inflight ??= resolveActivityPubProxyHandler(input);
+      if (cached) {
+        return cached;
+      }
+      if (!inflight) {
+        const attempt = (async () => {
+          const { handler, cacheable } = await resolveActivityPubProxyHandlerResult(input);
+          if (cacheable) {
+            cached = handler;
+          }
+          return handler;
+        })();
+        inflight = attempt;
+        try {
+          return await attempt;
+        } finally {
+          if (inflight === attempt) {
+            inflight = undefined;
+          }
+        }
+      }
       return inflight;
     },
     reset() {
+      cached = undefined;
       inflight = undefined;
     },
   };
 }
 
 /** Resolves the ActivityPub proxy handler for federation-scoped requests. */
-export async function resolveActivityPubProxyHandler(
-  input?: ActivityPubProxyHandlerInput,
-): Promise<ActivityPubProxyHandler> {
+export async function resolveActivityPubProxyHandler<
+  TFederation extends FederationFetchCapable = FederationFetchCapable,
+>(input?: ActivityPubProxyHandlerInput<TFederation>): Promise<ActivityPubProxyHandler> {
+  const { handler } = await resolveActivityPubProxyHandlerResult(input);
+  return handler;
+}
+
+async function resolveActivityPubProxyHandlerResult<
+  TFederation extends FederationFetchCapable = FederationFetchCapable,
+>(input?: ActivityPubProxyHandlerInput<TFederation>): Promise<ActivityPubProxyHandlerResult> {
   const env = input?.env ?? process.env;
   const createProductionFederation = input?.createProductionFederation;
   const createSpikeFederation = input?.createSpikeFederation;
   const wrapFederation =
     input?.wrapFederation ??
-    ((federation: FederationLike) => (request: Request) =>
+    ((federation: TFederation) => (request: Request) =>
       federation.fetch(request, { contextData: undefined }));
   const fallbackResponse = input?.fallbackResponse ?? (() => new Response(null, { status: 204 }));
 
@@ -56,10 +97,13 @@ export async function resolveActivityPubProxyHandler(
     }
     try {
       const federation = await createProductionFederation();
-      return wrapFederation(federation);
+      return { handler: wrapFederation(federation), cacheable: true };
     } catch {
       console.error('ActivityPub production runtime failed to initialize');
-      return () => new Response('Service Unavailable', { status: 503 });
+      return {
+        handler: () => new Response('Service Unavailable', { status: 503 }),
+        cacheable: false,
+      };
     }
   }
 
@@ -69,11 +113,17 @@ export async function resolveActivityPubProxyHandler(
     }
     try {
       const federation = await createSpikeFederation();
-      return wrapFederation(federation);
+      return { handler: wrapFederation(federation), cacheable: true };
     } catch {
-      return () => fallbackResponse();
+      return {
+        handler: () => fallbackResponse(),
+        cacheable: false,
+      };
     }
   }
 
-  return () => fallbackResponse();
+  return {
+    handler: () => fallbackResponse(),
+    cacheable: true,
+  };
 }

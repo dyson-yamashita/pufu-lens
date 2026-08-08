@@ -2,19 +2,22 @@ import { fedifyWith } from '@fedify/next';
 import { NextResponse } from 'next/server';
 import { createCachedActivityPubProxyHandlerResolver } from './src/activitypub-proxy.ts';
 import {
+  type ActivityPubProductionFederation,
   createActivityPubProductionFederation,
   createActivityPubSpikeFederation,
 } from './src/activitypub-runtime.ts';
 
-const proxyHandlerResolver = createCachedActivityPubProxyHandlerResolver({
-  createProductionFederation: createActivityPubProductionFederation,
-  createSpikeFederation: createActivityPubSpikeFederation,
-  wrapFederation: (federation) => fedifyWith(federation)(() => NextResponse.next()),
-  fallbackResponse: () => NextResponse.next(),
-});
+const proxyHandlerResolver =
+  createCachedActivityPubProxyHandlerResolver<ActivityPubProductionFederation>({
+    createProductionFederation: createActivityPubProductionFederation,
+    createSpikeFederation: createActivityPubSpikeFederation,
+    wrapFederation: (federation) =>
+      fedifyWith(federation, () => undefined)(() => NextResponse.next()),
+    fallbackResponse: () => NextResponse.next(),
+  });
 
 /** Routes federation requests through production ActivityPub or the Step 1 spike when enabled. */
-export async function proxy(request: Request) {
+export async function proxy(request: Request): Promise<Response> {
   const handler = await proxyHandlerResolver.resolve();
   return await handler(request);
 }

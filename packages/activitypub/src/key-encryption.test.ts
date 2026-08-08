@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { exportJwk, generateCryptoKeyPair } from '@fedify/fedify';
+import type postgres from 'postgres';
 import { createPostgresActivityPubRepository } from './actor-repository.ts';
 import {
   decryptPrivateJwk,
@@ -28,30 +29,41 @@ test('encryptPrivateJwk round-trips a private JWK', async () => {
 
 test('actor key material generation does not log private secrets', async () => {
   const logs: string[] = [];
-  const originalLog = console.log;
-  const originalError = console.error;
-  console.log = (...args: unknown[]) => {
-    logs.push(args.map(String).join(' '));
-  };
-  console.error = (...args: unknown[]) => {
-    logs.push(args.map(String).join(' '));
-  };
+  const consoleMethods = ['log', 'error', 'warn', 'info', 'debug'] as const;
+  const originals = new Map<(typeof consoleMethods)[number], (typeof console)['log']>();
+  for (const method of consoleMethods) {
+    originals.set(method, console[method]);
+    Object.defineProperty(console, method, {
+      configurable: true,
+      writable: true,
+      value: (...args: unknown[]) => {
+        logs.push(args.map(String).join(' '));
+      },
+    });
+  }
   try {
+    console.log('key-encryption-test-capture-sentinel');
     const keyPair = await generateCryptoKeyPair('RSASSA-PKCS1-v1_5');
     const privateJwk = await exportJwk(keyPair.privateKey);
     const encrypted = encryptPrivateJwk({ privateJwk, encryptionKey });
     decryptPrivateJwk({ encrypted, encryptionKey });
     const repository = createPostgresActivityPubRepository({
-      sql: createThrowingSql(),
+      sql: createEmptyResultSql(),
       encryptionKey,
     });
     await assert.rejects(() => repository.importActorCryptoKeyPair('missing'), /not found/i);
   } finally {
-    console.log = originalLog;
-    console.error = originalError;
+    for (const [method, original] of originals) {
+      Object.defineProperty(console, method, {
+        configurable: true,
+        writable: true,
+        value: original,
+      });
+    }
   }
 
   const joined = logs.join('\n');
+  assert.match(joined, /key-encryption-test-capture-sentinel/);
   for (const sentinel of [
     '"d":',
     'BEGIN PRIVATE KEY',
@@ -63,6 +75,9 @@ test('actor key material generation does not log private secrets', async () => {
   }
 });
 
-function createThrowingSql(): never {
-  return (async () => []) as never;
+function createEmptyResultSql(): postgres.Sql {
+  const executor = (async () => []) as unknown as postgres.Sql;
+  executor.begin = (async (callback: (tx: postgres.TransactionSql) => Promise<unknown>) =>
+    callback(executor as unknown as postgres.TransactionSql)) as postgres.Sql['begin'];
+  return executor;
 }

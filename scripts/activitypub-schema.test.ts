@@ -131,3 +131,45 @@ test('0016 and fresh schema share Step 2 table definitions and migration version
 
   assert.match(init, /'0016_activitypub_actor_endpoints'/);
 });
+
+test('0016 and fresh schema lock representation trigger avoids COUNT scans and uses guarded singleton update', async () => {
+  const [migration, init] = await Promise.all([
+    readFile(migration0016Path, 'utf8'),
+    readFile(initPath, 'utf8'),
+  ]);
+
+  for (const [label, sql] of [
+    ['migration', migration],
+    ['fresh schema', init],
+  ] as const) {
+    const triggerBody = extractTriggerFunctionBody(
+      sql,
+      'activitypub_lock_representation_on_first_outbound',
+    );
+    assert.ok(triggerBody, `${label} trigger function body is missing`);
+    assert.equal(triggerBody.includes('COUNT(*)'), false, `${label} must not use COUNT(*)`);
+    assert.equal(
+      triggerBody.includes('existing_outbound_count'),
+      false,
+      `${label} must not use existing_outbound_count`,
+    );
+    assert.match(
+      triggerBody,
+      /UPDATE public\.activitypub_instance_config[\s\S]*representation_locked_at IS NULL/,
+      `${label} must guard singleton update with representation_locked_at IS NULL`,
+    );
+    assert.match(
+      triggerBody,
+      /activitypub_instance_config singleton is missing/,
+      `${label} must validate missing singleton row`,
+    );
+  }
+});
+
+function extractTriggerFunctionBody(sql: string, functionName: string): string | undefined {
+  const pattern = new RegExp(
+    `CREATE OR REPLACE FUNCTION public\\.${functionName}\\(\\)[\\s\\S]*?\\$\\$;`,
+  );
+  const match = sql.match(pattern);
+  return match?.[0];
+}

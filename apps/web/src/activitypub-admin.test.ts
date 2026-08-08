@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { ActivityPubUseCases } from '@pufu-lens/activitypub';
+import { ActivityPubProjectNotPublicError, type ActivityPubUseCases } from '@pufu-lens/activitypub';
 import type { ActivityPubActor } from '@pufu-lens/activitypub/schema';
 import {
   ActivityPubAdminError,
+  mapActivityPubAdminError,
   parseProjectFederationRequest,
   patchProjectFederation,
 } from './activitypub-admin.ts';
@@ -107,7 +108,38 @@ test('patchProjectFederation rejects invalid slug before repository calls', asyn
         encryptionKey,
         useCases: createUseCases(),
       }),
-    /Invalid project slug/,
+    (error: unknown) =>
+      error instanceof ActivityPubAdminError &&
+      error.code === 'invalid_slug' &&
+      error.status === 400,
+  );
+});
+
+test('mapActivityPubAdminError maps unexpected public.projects errors to internal 500', () => {
+  const mapped = mapActivityPubAdminError(new Error('relation "public.projects" does not exist'));
+  assert.ok(mapped instanceof ActivityPubAdminError);
+  assert.equal(mapped.code, 'activitypub_internal_error');
+  assert.equal(mapped.message, 'An unexpected error occurred');
+  assert.equal(mapped.status, 500);
+  assert.equal(mapped.message.includes('public.projects'), false);
+  assert.notEqual(mapped.code, 'project_not_public');
+});
+
+test('patchProjectFederation maps unexpected auth lookup failures to internal error', async () => {
+  await assert.rejects(
+    () =>
+      patchProjectFederation({
+        sql: createFailingAuthSql('relation "public.projects" does not exist'),
+        userId: 'user-1',
+        projectSlug,
+        body: { enabled: true },
+        encryptionKey,
+        useCases: createUseCases(),
+      }),
+    (error: unknown) =>
+      error instanceof ActivityPubAdminError &&
+      error.code === 'activitypub_internal_error' &&
+      error.status === 500,
   );
 });
 
@@ -184,11 +216,14 @@ test('patchProjectFederation rejects private project enable', async () => {
         encryptionKey,
         useCases: createUseCases({
           enableProjectActor: async () => {
-            throw new Error('Project must be public to manage ActivityPub federation');
+            throw new ActivityPubProjectNotPublicError(projectId);
           },
         }),
       }),
-    /public/i,
+    (error: unknown) =>
+      error instanceof ActivityPubAdminError &&
+      error.code === 'project_not_public' &&
+      error.status === 400,
   );
 });
 
@@ -210,6 +245,12 @@ test('patchProjectFederation returns disabled response', async () => {
   });
   assert.equal(response.enabled, false);
 });
+
+function createFailingAuthSql(message: string) {
+  return (async () => {
+    throw new Error(message);
+  }) as never;
+}
 
 function createThrowingSql(): never {
   return new Proxy(
