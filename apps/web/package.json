@@ -20,7 +20,7 @@
     "start": "next start",
     "test": "node --experimental-strip-types scripts/run-tests.ts",
     "test:db": "pnpm --filter @pufu-lens/ingestion --filter @pufu-lens/project-tenancy build && node --experimental-strip-types scripts/run-db-tests.ts",
-    "test:activitypub": "node --experimental-strip-types --test src/activitypub-runtime.test.ts",
+    "test:activitypub": "node --experimental-strip-types --test src/activitypub-runtime.test.ts src/activitypub-subscription-settings.test.ts src/activitypub-subscription-errors.test.ts src/activitypub-subscription-service.test.ts src/activitypub-subscription-validation.test.ts",
     "test:e2e": "playwright test",
     "typecheck": "next typegen && tsc --noEmit -p tsconfig.json"
   },

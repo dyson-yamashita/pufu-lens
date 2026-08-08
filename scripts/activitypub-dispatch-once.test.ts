@@ -51,6 +51,7 @@ test('activitypub-dispatch-once reports safe errors without leaking database cre
     {
       ...process.env,
       ACTIVITYPUB_RUN_DB_TESTS: '1',
+      NODE_ENV: 'test',
     },
   );
 
@@ -75,6 +76,7 @@ test('activitypub-dispatch-once reports safe errors for malformed database URLs 
     {
       ...process.env,
       ACTIVITYPUB_RUN_DB_TESTS: '1',
+      NODE_ENV: 'test',
     },
   );
 
@@ -102,4 +104,38 @@ test('activitypub-dispatch-once rejects actor arguments without ACTIVITYPUB_RUN_
   assert.notEqual(exitCode, 0);
   assert.match(stderr, /ACTIVITYPUB_RUN_DB_TESTS/i);
   assert.doesNotMatch(stderr, /postgresql:\/\//);
+});
+
+test('activitypub-dispatch-once rejects production path without ACTIVITYPUB_CANONICAL_ORIGIN', async () => {
+  const { exitCode, stderr } = await runDispatchCli(
+    ['--database-url', 'postgresql://user:pass@127.0.0.1:5432/test'],
+    {
+      ...process.env,
+      ACTIVITYPUB_CANONICAL_ORIGIN: undefined,
+      ACTIVITYPUB_RUN_DB_TESTS: undefined,
+      ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'),
+    },
+  );
+
+  assert.notEqual(exitCode, 0);
+  assert.match(stderr, /missing ACTIVITYPUB_CANONICAL_ORIGIN/i);
+  assert.doesNotMatch(stderr, /postgresql:\/\//);
+});
+
+test('activitypub-dispatch-once rejects partial actor arguments on production path', async () => {
+  const { exitCode, stderr } = await runDispatchCli(
+    [
+      '--database-url',
+      'postgresql://user:pass@127.0.0.1:5432/test',
+      '--actor-table',
+      'activitypub_contract_test_actor_keys',
+    ],
+    {
+      ...process.env,
+      ACTIVITYPUB_RUN_DB_TESTS: undefined,
+    },
+  );
+
+  assert.notEqual(exitCode, 0);
+  assert.match(stderr, /both --actor-table and --actor-id/i);
 });

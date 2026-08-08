@@ -36,6 +36,8 @@
 
 ActivityPub public endpoint は `ACTIVITYPUB_ENABLED=1` と固定 canonical origin / Actor key encryption key が設定された production proxy で処理する。`/.well-known/webfinger`、`/activitypub/actors/[preferredUsername]`、その followers / following / outbox collection、`/activitypub/reports/[reportId]` を公開し、public かつ federation-enabled な project と public report だけを解決する。private / disabled / missing は endpoint 間で区別せず `404` とする。
 
+`/activitypub/actors/[preferredUsername]/inbox` と `/activitypub/inbox` は Follow / Accept / Undo を受け付け、Fedify が検証した署名 key owner と Activity actor、embedded Follow の actor / object が一致した場合だけ PostgreSQL-backed use-case へ渡す。followers / following は accepted relation の remote Actor URI だけを versioned opaque cursor で返し、inbox URI、follow status、内部 ID、時刻を公開しない。
+
 `PATCH /api/projects/[projectSlug]/federation` は `{ "enabled": boolean, "preferredUsername"?: string }` だけを受理する。Auth.js session と既存 authz module で project admin を確認し、URL slug と認可済み project ID / slug を repository transaction で再検証する。不正 slug、未知 field、project 越境、non-admin、private project の enable を拒否する。route は認可・JSON validation・use-case 呼び出しだけを担い、SQL と鍵操作は repository / use-case 境界に置く。既知の validation / visibility / username conflict は固定した status・error code・安全な message へ写像し、予期しない repository error は内部 message を返さない generic `500` とする。
 
 ### 3. Server Action / UI 内部入口
@@ -47,6 +49,8 @@ ActivityPub public endpoint は `ACTIVITYPUB_ENABLED=1` と固定 canonical orig
 | `apps/web/app/login/page.tsx` 内 server action | public                | server-action | credentials sign-in                                                     |
 
 管理 API として REST 化されていない操作は、現状では server action を正規入口として扱う。将来 REST API を追加する場合は、server action と同じ認可 SQL / runtime validation を共有する。
+
+ActivityPub 購読管理は `followRemoteActor` / `unfollowRemoteActor` server action を正規入口とする。入力は project slug と remote Actor address または保存済み Actor URI に限定し、project admin 認可、project-scoped Actor / follow lookup、HTTPS / handle validation を server side で行う。remote inbox / shared inbox は client から受け取らず、安全な remote resolver または保存済み follow rowから解決する。予期しない resolver / DB error は固定した汎用 message へ写像し、raw payload、署名 header、credential、内部 SQL error を UI へ返さない。project member 用 settings は同じ project scope の購読状態だけを read-only で表示する。
 
 Data Sources 詳細の content preview は初期実装では REST API を増やさず、`apps/web/src/admin-db.ts` の server-side loader と Next.js server component から読む。`projectSlug` と `dataSourceId` の組み合わせを DB で検証し、他 project の data source を返さない。
 

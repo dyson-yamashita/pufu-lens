@@ -4,13 +4,20 @@ import { Article, Endpoints, Service } from '@fedify/vocab';
 import { Temporal } from '@js-temporal/polyfill';
 import type { ActivityPubRepository } from './actor-repository.ts';
 import { parseCanonicalOrigin } from './canonical-origin.ts';
+import { registerFollowInboxListeners } from './federation-follow-listeners.ts';
+import { FOLLOW_COLLECTION_START_CURSOR, resolveFollowCollectionCursor } from './follow-model.ts';
+import type { ActivityPubFollowUseCases } from './follow-use-cases.ts';
 import { createProductionSafeDocumentLoader } from './security.ts';
+import {
+  assertActivityPubDbTestRuntime,
+  assertActivityPubListenerHarnessRuntime,
+} from './test-runtime-guard.ts';
 import { buildActivityPubUriContract } from './uri-contract.ts';
 
-/** Creates the production ActivityPub federation with Step 2 public dispatchers. */
-export async function createProductionActivityPubFederation(input: {
+type FederationBuildInput = {
   canonicalOrigin: string;
   repository: ActivityPubRepository;
+  followUseCases?: ActivityPubFollowUseCases;
   kv: KvStore;
   queue: MessageQueue;
   queueHooks?: {
@@ -19,7 +26,46 @@ export async function createProductionActivityPubFederation(input: {
     startQueue?: () => void;
     processQueuedTask?: () => void;
   };
+  allowPrivateAddress: boolean;
+};
+
+/** Creates the production ActivityPub federation with Step 2 public dispatchers. */
+export async function createProductionActivityPubFederation(input: {
+  canonicalOrigin: string;
+  repository: ActivityPubRepository;
+  followUseCases?: ActivityPubFollowUseCases;
+  kv: KvStore;
+  queue: MessageQueue;
+  queueHooks?: FederationBuildInput['queueHooks'];
 }): Promise<Federation<undefined>> {
+  return buildActivityPubFederation({
+    ...input,
+    allowPrivateAddress: false,
+  });
+}
+
+/**
+ * Test-only federation builder that can allow private addresses for hermetic localhost fixtures.
+ * Must not be used from production runtime entrypoints.
+ */
+export async function createTestActivityPubFederation(
+  input: Omit<FederationBuildInput, 'allowPrivateAddress'> & {
+    allowPrivateAddress?: boolean;
+  },
+): Promise<Federation<undefined>> {
+  assertActivityPubListenerHarnessRuntime();
+  if (input.allowPrivateAddress ?? false) {
+    assertActivityPubDbTestRuntime();
+  }
+  return buildActivityPubFederation({
+    ...input,
+    allowPrivateAddress: input.allowPrivateAddress ?? false,
+  });
+}
+
+async function buildActivityPubFederation(
+  input: FederationBuildInput,
+): Promise<Federation<undefined>> {
   const { origin } = parseCanonicalOrigin(input.canonicalOrigin);
   const uri = buildActivityPubUriContract(origin);
   await input.repository.ensureAggregateActor();
@@ -88,35 +134,96 @@ export async function createProductionActivityPubFederation(input: {
     },
   );
 
-  builder.setFollowersDispatcher(
+  const followersSetters = builder.setFollowersDispatcher(
     '/activitypub/actors/{identifier}/followers',
-    async (_ctx, identifier: string) => {
+    async (_ctx, identifier, cursor) => {
       const actor = await input.repository.findRemotelyVisibleActorByUsername(identifier);
-      if (!actor) {
-        return null;
+      if (!actor || !input.followUseCases) {
+        return actor ? { items: [], nextCursor: undefined } : null;
       }
-      return { items: [], nextCursor: undefined };
+      const page = await input.followUseCases.listAcceptedFollowCollection({
+        localActorId: actor.id,
+        direction: 'inbound',
+        cursor: resolveFollowCollectionCursor(cursor),
+      });
+      return {
+        items: page.items.map((item) => ({
+          id: new URL(item.actorUri),
+          inboxId: null,
+        })),
+        nextCursor: page.nextCursor,
+      };
     },
   );
+  followersSetters.setCounter(async (_ctx, identifier) => {
+    const actor = await input.repository.findRemotelyVisibleActorByUsername(identifier);
+    if (!actor || !input.followUseCases) {
+      return actor ? 0 : null;
+    }
+    return input.followUseCases.countAcceptedFollowCollection({
+      localActorId: actor.id,
+      direction: 'inbound',
+    });
+  });
+  followersSetters.setFirstCursor(async (_ctx, identifier) => {
+    const actor = await input.repository.findRemotelyVisibleActorByUsername(identifier);
+    if (!actor) {
+      return null;
+    }
+    return FOLLOW_COLLECTION_START_CURSOR;
+  });
 
-  builder.setFollowingDispatcher(
+  const followingSetters = builder.setFollowingDispatcher(
     '/activitypub/actors/{identifier}/following',
-    async (_ctx, identifier: string) => {
+    async (_ctx, identifier, cursor) => {
       const actor = await input.repository.findRemotelyVisibleActorByUsername(identifier);
-      if (!actor) {
-        return null;
+      if (!actor || !input.followUseCases) {
+        return actor ? { items: [], nextCursor: undefined } : null;
       }
-      return { items: [], nextCursor: undefined };
+      const page = await input.followUseCases.listAcceptedFollowCollection({
+        localActorId: actor.id,
+        direction: 'outbound',
+        cursor: resolveFollowCollectionCursor(cursor),
+      });
+      return {
+        items: page.items.map((item) => new URL(item.actorUri)),
+        nextCursor: page.nextCursor,
+      };
     },
   );
+  followingSetters.setCounter(async (_ctx, identifier) => {
+    const actor = await input.repository.findRemotelyVisibleActorByUsername(identifier);
+    if (!actor || !input.followUseCases) {
+      return actor ? 0 : null;
+    }
+    return input.followUseCases.countAcceptedFollowCollection({
+      localActorId: actor.id,
+      direction: 'outbound',
+    });
+  });
+  followingSetters.setFirstCursor(async (_ctx, identifier) => {
+    const actor = await input.repository.findRemotelyVisibleActorByUsername(identifier);
+    if (!actor) {
+      return null;
+    }
+    return FOLLOW_COLLECTION_START_CURSOR;
+  });
 
-  builder.setInboxListeners('/activitypub/actors/{identifier}/inbox', '/activitypub/inbox');
+  if (input.followUseCases) {
+    registerFollowInboxListeners(builder, {
+      canonicalOrigin: origin,
+      actorRepository: input.repository,
+      followUseCases: input.followUseCases,
+    });
+  } else {
+    builder.setInboxListeners('/activitypub/actors/{identifier}/inbox', '/activitypub/inbox');
+  }
 
   const federation = (await builder.build({
     kv: input.kv,
     queue: input.queue,
     manuallyStartQueue: true,
-    allowPrivateAddress: false,
+    allowPrivateAddress: input.allowPrivateAddress,
     documentLoaderFactory: () => createProductionSafeDocumentLoader(),
     contextLoaderFactory: () => createProductionSafeDocumentLoader(),
     origin,
@@ -128,12 +235,7 @@ export async function createProductionActivityPubFederation(input: {
 
 function attachQueueHooks(
   federation: Federation<undefined>,
-  queueHooks?: {
-    /** Observation sentinel for tests; never invoked by the Web runtime. */
-    listen?: () => void;
-    startQueue?: () => void;
-    processQueuedTask?: () => void;
-  },
+  queueHooks?: FederationBuildInput['queueHooks'],
 ): void {
   if (!queueHooks) {
     return;

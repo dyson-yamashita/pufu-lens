@@ -59,6 +59,10 @@ test('buildOutboxDedupeKey is deterministic from activity id and recipient inbox
 
 test('redactFedifyQueueMessageForStorage removes private JWK members but keeps key ids', () => {
   const stored = redactFedifyQueueMessageForStorage(outboxMessage);
+  assert.equal(stored.type, 'outbox');
+  if (stored.type !== 'outbox') {
+    return;
+  }
 
   const serialized = JSON.stringify(stored);
   assert.doesNotMatch(serialized, /secret-exponent/);
@@ -97,16 +101,13 @@ test('parseStoredQueueMessage rejects unsupported opaque Fedify messages', () =>
       ),
     UnsupportedFedifyQueueMessageError,
   );
-  assert.throws(
-    () =>
-      parseStoredQueueMessage(
-        createFedifyInboxMessageFixture({
-          baseUrl: canonicalOrigin,
-          activity: outboxMessage.activity,
-        }),
-      ),
-    UnsupportedFedifyQueueMessageError,
+  const inboxStored = parseStoredQueueMessage(
+    createFedifyInboxMessageFixture({
+      baseUrl: canonicalOrigin,
+      activity: outboxMessage.activity,
+    }),
   );
+  assert.equal(inboxStored.type, 'inbox');
   assert.throws(
     () =>
       parseStoredQueueMessage({

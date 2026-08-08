@@ -182,6 +182,16 @@ export async function AppShell({
                 Settings
               </Link>
             </>
+          ) : session?.user?.id ? (
+            <Link
+              aria-current={active === 'settings' ? 'page' : undefined}
+              className={navClass(active === 'settings')}
+              href={`/projects/${projectSlug}/settings`}
+              data-testid="global-nav-member-settings"
+            >
+              <Settings size={18} />
+              Settings
+            </Link>
           ) : null}
         </>
       ) : null}

@@ -187,7 +187,10 @@ async function assertQueuePersistenceAndIdempotency(sql: postgres.Sql) {
   assert.match(serialized, /report-db-1/);
   assert.match(serialized, /create\/report-db-1/);
   const stored = parseStoredQueueMessage(rows[0]?.message_json);
-  assert.equal(stored.inbox, recipientInbox);
+  assert.equal(stored.type, 'outbox');
+  if (stored.type === 'outbox') {
+    assert.equal(stored.inbox, recipientInbox);
+  }
 }
 
 async function assertKvAndQueueSurviveClientRestart() {
@@ -331,6 +334,7 @@ async function assertOneShotDispatchSignsAndDelivers() {
         env: {
           ...process.env,
           ACTIVITYPUB_RUN_DB_TESTS: '1',
+          NODE_ENV: 'test',
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       },

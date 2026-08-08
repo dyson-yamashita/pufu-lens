@@ -7,6 +7,33 @@ const MIGRATIONS_DIR = resolveRepoRoot('infra/db/migrations');
 const MIGRATION_LOCK_KEY = 'pufu_lens_schema_migrations';
 
 export const MIGRATION_FILENAME_PATTERN = /^\d{4}_.+\.sql$/;
+export const MIGRATION_NO_TRANSACTION_DIRECTIVE = '-- pufu-lens: no-transaction';
+export const MIGRATION_STATEMENT_BREAK_DIRECTIVE = '-- pufu-lens: statement-break';
+
+export type MigrationTransactionMode = 'transactional' | 'non-transactional';
+
+export type LoadedMigration = {
+  version: string;
+  transactionMode: MigrationTransactionMode;
+  /** Full SQL body for transactional migrations. */
+  sql: string;
+  /** Ordered statements for non-transactional migrations. */
+  statements: readonly string[];
+};
+
+export type ParsedMigrationFileContent = {
+  transactionMode: MigrationTransactionMode;
+  sql: string;
+  statements: readonly string[];
+};
+
+/** Thrown when a no-transaction migration contains empty or missing statement chunks. */
+export class MigrationStatementParseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MigrationStatementParseError';
+  }
+}
 
 export type MigrationEntry = {
   filename: string;
@@ -32,6 +59,102 @@ export class MigrationValidationError extends Error {
     this.name = 'MigrationValidationError';
     this.issues = issues;
   }
+}
+
+/**
+ * Parses migration file content into transaction mode and executable SQL.
+ * Non-transactional migrations split on exact `-- pufu-lens: statement-break` lines.
+ */
+export function parseMigrationFileContent(content: string): ParsedMigrationFileContent {
+  const lines = content.split('\n');
+  const firstNonBlankIndex = lines.findIndex((line) => line.trim().length > 0);
+  if (firstNonBlankIndex === -1) {
+    return { sql: content, transactionMode: 'transactional', statements: [] };
+  }
+  const firstLine = lines[firstNonBlankIndex]?.trim() ?? '';
+  if (firstLine === MIGRATION_NO_TRANSACTION_DIRECTIVE) {
+    const body = lines.slice(firstNonBlankIndex + 1).join('\n');
+    const statements = parseNonTransactionalMigrationStatements(body);
+    return {
+      sql: statements.join('\n'),
+      transactionMode: 'non-transactional',
+      statements,
+    };
+  }
+  return { sql: content, transactionMode: 'transactional', statements: [] };
+}
+
+/**
+ * Splits no-transaction migration SQL into ordered statements separated by exact
+ * `-- pufu-lens: statement-break` lines. Rejects empty chunks.
+ */
+export function parseNonTransactionalMigrationStatements(body: string): readonly string[] {
+  const statements: string[] = [];
+  const currentLines: string[] = [];
+
+  const flushCurrentStatement = (): void => {
+    const statement = currentLines.join('\n').trim();
+    if (statement.length === 0) {
+      throw new MigrationStatementParseError('empty migration statement chunk');
+    }
+    statements.push(statement);
+    currentLines.length = 0;
+  };
+
+  for (const line of body.split('\n')) {
+    if (line.trim() === MIGRATION_STATEMENT_BREAK_DIRECTIVE) {
+      flushCurrentStatement();
+      continue;
+    }
+    currentLines.push(line);
+  }
+
+  if (currentLines.join('\n').trim().length > 0) {
+    flushCurrentStatement();
+  }
+
+  if (statements.length === 0) {
+    throw new MigrationStatementParseError('migration has no executable statements');
+  }
+
+  return statements;
+}
+
+/** Executes each no-transaction migration statement via a separate `sql.unsafe` call. */
+export async function executeNonTransactionalMigrationStatements(
+  sql: postgres.Sql,
+  statements: readonly string[],
+): Promise<void> {
+  for (const statement of statements) {
+    await sql.unsafe(statement);
+  }
+}
+
+/** Applies one loaded migration and records its version only after all SQL succeeds. */
+export async function applyLoadedMigration(
+  sql: postgres.Sql,
+  migration: Omit<LoadedMigration, 'version'> & { version: string },
+): Promise<void> {
+  if (migration.transactionMode === 'non-transactional') {
+    await executeNonTransactionalMigrationStatements(sql, migration.statements);
+    await recordMigrationVersion(sql, migration.version);
+    return;
+  }
+
+  await sql.begin(async (tx) => {
+    await tx.unsafe(migration.sql);
+    await recordMigrationVersion(tx, migration.version);
+  });
+}
+
+async function recordMigrationVersion(
+  sql: postgres.Sql | postgres.TransactionSql,
+  version: string,
+): Promise<void> {
+  await sql`
+    INSERT INTO public.schema_migrations (version)
+    VALUES (${version})
+  `;
 }
 
 export function parseMigrationFilename(
@@ -122,11 +245,23 @@ export async function discoverMigrationFilenames(migrationsDir: string): Promise
     .sort();
 }
 
+/**
+ * Validates migration filenames on disk and parses every valid migration file body
+ * via {@link listMigrations}. Filename issues are returned as issues; parse failures
+ * throw {@link MigrationStatementParseError}.
+ */
 export async function validateMigrationsDirectory(
   migrationsDir: string,
 ): Promise<MigrationValidationIssue[]> {
   const filenames = await discoverMigrationFilenames(migrationsDir);
-  return validateMigrationFilenames(filenames);
+  const issues = validateMigrationFilenames(filenames);
+  if (issues.length > 0) {
+    return issues;
+  }
+
+  await listMigrations(migrationsDir);
+
+  return issues;
 }
 
 export function partitionMigrations(
@@ -177,13 +312,7 @@ export async function migrateDatabase(databaseUrl = process.env.DATABASE_URL): P
       if (applied) {
         continue;
       }
-      await sql.begin(async (tx) => {
-        await tx.unsafe(migration.sql);
-        await tx`
-          INSERT INTO public.schema_migrations (version)
-          VALUES (${migration.version})
-        `;
-      });
+      await applyLoadedMigration(sql, migration);
       console.log(`applied migration ${migration.version}`);
     }
   } finally {
@@ -296,18 +425,22 @@ export async function checkMigrations(databaseUrl = process.env.DATABASE_URL): P
   console.log('migration check passed');
 }
 
-async function listMigrations(
-  migrationsDir = MIGRATIONS_DIR,
-): Promise<readonly { sql: string; version: string }[]> {
+async function listMigrations(migrationsDir = MIGRATIONS_DIR): Promise<readonly LoadedMigration[]> {
   const filenames = (await discoverMigrationFilenames(migrationsDir)).filter((filename) =>
     MIGRATION_FILENAME_PATTERN.test(filename),
   );
 
   return Promise.all(
-    filenames.map(async (file) => ({
-      sql: await readFile(resolve(migrationsDir, file), 'utf8'),
-      version: basename(file, '.sql'),
-    })),
+    filenames.map(async (file) => {
+      const raw = await readFile(resolve(migrationsDir, file), 'utf8');
+      const parsed = parseMigrationFileContent(raw);
+      return {
+        sql: parsed.sql,
+        statements: parsed.statements,
+        version: basename(file, '.sql'),
+        transactionMode: parsed.transactionMode,
+      };
+    }),
   );
 }
 

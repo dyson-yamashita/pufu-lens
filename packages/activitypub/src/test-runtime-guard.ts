@@ -19,9 +19,26 @@ export function assertActivityPubDbTestRuntime(): void {
   }
 }
 
+/**
+ * Fail-closed guard for test-only listener harness helpers used by hermetic unit tests.
+ * Rejects production runtime but does not require ACTIVITYPUB_RUN_DB_TESTS.
+ */
+export function assertActivityPubListenerHarnessRuntime(): void {
+  if (process.env.NODE_ENV !== 'test') {
+    throw new ActivityPubTestRuntimeDisabledError();
+  }
+}
+
 /** Ensures test-only private-address delivery cannot be enabled outside DB test runtime. */
 export function assertTestOnlyPrivateAddressAllowed(testOnlyAllowPrivateAddress?: boolean): void {
   if (testOnlyAllowPrivateAddress) {
+    assertActivityPubDbTestRuntime();
+  }
+}
+
+/** Ensures test-only remote resolver overrides cannot bypass production security policy. */
+export function assertTestRemoteActorResolverAllowed(testRemoteActorResolver?: unknown): void {
+  if (testRemoteActorResolver) {
     assertActivityPubDbTestRuntime();
   }
 }

@@ -90,10 +90,14 @@
 
 ---
 
-### 2.1 ActivityPub Step 1 / Step 2 protocol boundary
+### 2.1 ActivityPub Step 1 / Step 2 / Step 3 protocol boundary
 
 Plan 017 Step 1 では `packages/activitypub` に Fedify 2.3.4 の protocol contract と PostgreSQL KV / outbox queue adapter を追加した。Next.js の `proxy.ts` は明示的に spike flag を設定した場合だけ WebFinger / Actor / Article fixture を処理し、Web process 内で queue worker を開始しない。delivery は別 Node process が PostgreSQL row を1件 claimし、永続化した key ID から test Actor key を再取得して `Federation.processQueuedTask()` を呼ぶ。
 
 Plan 017 Step 2 では production 用の project / aggregate `@all` Actor、Actor 単位の暗号化鍵 repository、WebFinger / Actor / followers / following / outbox / Article dispatcher を追加した。production proxy は `ACTIVITYPUB_ENABLED=1` のときだけ PostgreSQL-backed federation を single-flight で初期化し、成功した instance だけを process 内で再利用する。初期化失敗時は federation route を `503` で fail closed にし、失敗結果を cache せず、作成済み DB client を閉じて次の request で再試行する。公開 endpoint は public かつ federation-enabled な project だけを解決し、private / disabled / missing project とその Article は `404` に統一する。
 
-project federation の enable / disable は project admin 用 API から既存 authz module を通し、repository transaction 内で exact project row を `FOR UPDATE` して visibility を再検証する。Web process が queue consumer を起動しない境界は維持する。Follow / Accept / Undo の業務処理、report 公開時の Create / Announce transactional outbox、配送 Job は Step 3 以降であり、Step 2 には含めない。
+project federation の enable / disable は project admin 用 API から既存 authz module を通し、repository transaction 内で exact project row を `FOR UPDATE` して visibility を再検証する。
+
+Plan 017 Step 3 では personal / shared inbox の Follow / Accept / Undo listener、inbound Follow と Accept enqueue、outbound Follow / Undo、Accept receipt、follower / following の決定論的 cursor pagination を追加した。activity URI の receipt と follow generation の状態遷移を併用し、duplicate、Undo-before-Follow、旧 generation の Accept / Undo を冪等に扱う。remote Actor 解決は HTTPS、各 redirect hop の public URL 検証、domain block、5 秒の全体 timeout、1 MiB の response 上限を通す。署名 key owner と Activity actor、embedded Follow の actor / object が一致した場合だけ listener が use-case を呼ぶ。
+
+Web process が queue consumer を起動しない境界は維持し、受信 Activity と配送 Activity は PostgreSQL queue を別 process の one-shot processor が処理する。project settings では member が購読状態を読み取り、project admin だけが server action 経由で outbound Follow / Undo を変更できる。report 公開時の Create / Announce transactional outbox、report 配送の scheduler / Job、外部 report 取り込みは Step 4 以降であり、Step 3 には含めない。

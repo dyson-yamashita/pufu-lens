@@ -1,9 +1,11 @@
 import {
+  createActivityPubFollowUseCases,
   createPostgresActivityPubRepository,
   createPostgresFedifyKvStore,
   createPostgresQueueAdapter,
   createProductionActivityPubFederation,
   parseActorKeyEncryptionKey,
+  parseBlockedDomainsFromEnv,
   parseCanonicalOrigin,
 } from '@pufu-lens/activitypub';
 import {
@@ -176,6 +178,11 @@ export async function createActivityPubProductionFederation(input?: {
   return initializeProductionFederation({ config });
 }
 
+/** Whether production web runtime persists Follow/Accept/Undo outbox rows (without starting consumers). */
+export function resolveProductionFollowOutboxEnqueueEnabled(): boolean {
+  return true;
+}
+
 async function initializeProductionFederation(input: {
   config: ReturnType<typeof resolveActivityPubProductionConfig>;
   queueHooks?: {
@@ -190,9 +197,18 @@ async function initializeProductionFederation(input: {
       sql,
       encryptionKey: input.config.encryptionKey,
     });
+    const followUseCases = createActivityPubFollowUseCases({
+      canonicalOrigin: input.config.canonicalOrigin,
+      sql,
+      encryptionKey: input.config.encryptionKey,
+      actorRepository: repository,
+      enqueueOutbox: resolveProductionFollowOutboxEnqueueEnabled(),
+      isDomainBlocked: parseBlockedDomainsFromEnv(process.env.ACTIVITYPUB_BLOCKED_DOMAINS),
+    });
     return await createProductionActivityPubFederation({
       canonicalOrigin: input.config.canonicalOrigin,
       repository,
+      followUseCases,
       kv: createPostgresFedifyKvStore({ sql }),
       queue: createPostgresQueueAdapter({
         sql,

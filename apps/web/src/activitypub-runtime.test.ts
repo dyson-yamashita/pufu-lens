@@ -5,6 +5,7 @@ import {
   createActivityPubWebRuntime,
   resolveActivityPubCanonicalOrigin,
   resolveActivityPubProductionConfig,
+  resolveProductionFollowOutboxEnqueueEnabled,
 } from './activitypub-runtime.ts';
 
 const configuredOrigin = 'https://lens.test';
@@ -149,4 +150,8 @@ test('createActivityPubProductionRuntime does not start queue consumers during c
     /(connect|ECONNREFUSED|getaddrinfo|Invalid|failed)/i,
   );
   assert.deepEqual(calls, []);
+});
+
+test('production runtime enables follow outbox enqueue for Accept persistence', () => {
+  assert.equal(resolveProductionFollowOutboxEnqueueEnabled(), true);
 });

@@ -20,3 +20,18 @@ export async function requireProjectAdminPage(projectSlug: string) {
   }
   return membership.project;
 }
+
+/** Requires an authenticated project member and returns the project summary. */
+export async function requireProjectMemberPage(projectSlug: string) {
+  const userId = await getSessionUserId();
+  if (!userId) {
+    redirect('/login');
+  }
+
+  try {
+    const membership = await getProjectMembership(projectSlug, userId);
+    return membership.project;
+  } catch {
+    redirect('/projects');
+  }
+}

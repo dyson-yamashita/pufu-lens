@@ -93,7 +93,7 @@ gcloud compute instances list --filter="metadata.items.key:gce-container-declara
 ```
 
 - `deploy:dry-run`: `pnpm db:migrate --check` と、`curate-workflow`、`ingest-workflow`、`generate-report`、`source-sync-dispatcher`、`report-schedule-dispatcher` の `WORKFLOW_ID` / `WORKFLOW_INPUT_JSON` entrypoint 計画をローカル dry-run で検査する。PGroonga migration を含む DB 変更では、dry-run 前に PostgreSQL イメージ更新 → `pnpm db:migrate` の順序を deploy checklist の DB Migration 記録へ残す。
-- `db:migrate --check`: migration file の命名、番号重複、履歴との整合を検査する。`DATABASE_URL` がある場合は online check として `schema_migrations` も照合する。
+- `db:migrate --check`: migration file の命名、番号重複、本文 parse、履歴との整合を検査する。`DATABASE_URL` がある場合は online check として `schema_migrations` も照合する。
 - `db:migrate --plan`: staging / production の `DATABASE_URL` に対して、適用予定 migration を表示する。ここではまだ適用しない。
 - `db:migrate`: `infra/db/migrations/*.sql` を番号順に適用し、`auth_accounts`、`auth_password_credentials`、project scoped `oauth_connections` など既存 DB に必要な schema を用意する。migration version はファイル名から `.sql` を除いた値、`public.schema_migrations` に未登録のものが pending として順番に適用される。既存互換の `auth:migrate` も同じ migration runner を呼び出す。
 - GCP Cloud Build deploy（`deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml`）: Workflow Job image push 後に Cloud Run Job `${_DB_MIGRATION_JOB}`（既定 `db-migrate`）で `pnpm db:migrate` を `--wait` 付き実行し、Mastra Server / Workflow Jobs / Firebase App Hosting deploy の前に schema migration を完了させる。`_RUN_DB_MIGRATIONS=false` の場合は migration step を skip するが、runtime rollout 前の barrier として同じ位置に残す。

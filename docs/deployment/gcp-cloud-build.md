@@ -86,7 +86,7 @@ pnpm db:migrate --plan
 pnpm infra:check --env production
 ```
 
-`pnpm db:migrate --check` は migration file 命名と `public.schema_migrations` の offline / online 整合を検査する。deploy 本番適用は `cloudbuild.deploy.yaml` の `run-db-migration` step が Cloud Run Job 経由で行う。
+`pnpm db:migrate --check` は migration file の命名・本文 parse と `public.schema_migrations` の offline / online 整合を検査する。deploy 本番適用は `cloudbuild.deploy.yaml` の `run-db-migration` step が Cloud Run Job 経由で行う。
 
 private PostgreSQL VM を使う場合、default Cloud Build worker pool から DB へ直接到達できない。`_RUN_DB_MIGRATIONS=true` の deploy では、Workflow Job image を使った Cloud Run Job `${_DB_MIGRATION_JOB}` が Direct VPC `${_VPC_NETWORK}` / `${_VPC_SUBNET}` 経由で PostgreSQL に接続し、`DATABASE_URL` secret reference だけを受け取る。Cloud Build worker 自身が DB に接続するわけではない。
 

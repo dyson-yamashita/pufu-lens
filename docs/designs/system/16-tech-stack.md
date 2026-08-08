@@ -2,29 +2,29 @@
 
 ## 技術スタック サマリー
 
-| カテゴリ        | 採用技術                                                       |
-| --------------- | -------------------------------------------------------------- |
-| Agent Framework | Mastra                                                         |
-| LLM             | Gemini API（Google AI / Vertex AI、初期構築の既定 provider）   |
-| Frontend        | Next.js + AI SDK + Auth.js                                     |
-| Federation      | Fedify 2.3.4（ActivityPub、Step 1/2 protocol・Actor endpoint） |
-| Database        | PostgreSQL 18 + pgvector + PGroonga + Apache AGE + pgcrypto    |
-| Object Storage  | ローカル: Docker Volume / クラウド: Google Cloud Storage       |
-| MCP             | Google MCP、GitHub MCP                                         |
-| Web Hosting     | Firebase App Hosting（Next.js）                                |
-| Compute         | Cloud Run、Cloud Run Jobs                                      |
-| Database Host   | GCE VM（Container-Optimized OS）                               |
-| Scheduler       | Cloud Scheduler                                                |
-| Secrets         | Secret Manager                                                 |
-| Auth            | Auth.js、OAuth、GitHub App、Service Account、Workload Identity |
-| Monorepo        | pnpm workspaces / Turborepo                                    |
+| カテゴリ        | 採用技術                                                        |
+| --------------- | --------------------------------------------------------------- |
+| Agent Framework | Mastra                                                          |
+| LLM             | Gemini API（Google AI / Vertex AI、初期構築の既定 provider）    |
+| Frontend        | Next.js + AI SDK + Auth.js                                      |
+| Federation      | Fedify 2.3.4（ActivityPub、Step 1/2/3 protocol・Actor・Follow） |
+| Database        | PostgreSQL 18 + pgvector + PGroonga + Apache AGE + pgcrypto     |
+| Object Storage  | ローカル: Docker Volume / クラウド: Google Cloud Storage        |
+| MCP             | Google MCP、GitHub MCP                                          |
+| Web Hosting     | Firebase App Hosting（Next.js）                                 |
+| Compute         | Cloud Run、Cloud Run Jobs                                       |
+| Database Host   | GCE VM（Container-Optimized OS）                                |
+| Scheduler       | Cloud Scheduler                                                 |
+| Secrets         | Secret Manager                                                  |
+| Auth            | Auth.js、OAuth、GitHub App、Service Account、Workload Identity  |
+| Monorepo        | pnpm workspaces / Turborepo                                     |
 
 ---
 
 補足：
 
 - PostgreSQL は Apache AGE / pgvector / PGroonga を同梱したカスタム Docker イメージで運用する。
-- Fedify 関連 package は `2.3.4` へ完全固定し、Fedify 自体は Node.js `>=22` を要求する。repository root の engine は root scripts の `node --experimental-strip-types` 利用に合わせて `>=22.6.0` とする。Web は Next.js 16 `proxy.ts` convention と `manuallyStartQueue: true` を使い、配送処理は PostgreSQL-backed one-shot process に分離する。Step 1 fixture は既定で無効で、Step 2 production Actor endpoint も `ACTIVITYPUB_ENABLED=1` の明示設定時だけ有効にする。Follow / report 配送は後続 Step の対象である。
+- Fedify 関連 package は `2.3.4` へ完全固定し、Fedify 自体は Node.js `>=22` を要求する。repository root の engine は root scripts の `node --experimental-strip-types` 利用に合わせて `>=22.6.0` とする。Web は Next.js 16 `proxy.ts` convention と `manuallyStartQueue: true` を使い、Follow / Accept / Undo の受信・配送処理を PostgreSQL-backed one-shot process に分離する。Step 1 fixture は既定で無効で、Step 2/3 production Actor / Follow endpoint も `ACTIVITYPUB_ENABLED=1` の明示設定時だけ有効にする。report の Create / Announce 配送、scheduler / Cloud Run Job、外部 report 取り込みは後続 Step の対象である。
 - Cloud SQL は Apache AGE を前提にできないため、本番 DB の第一候補にはしない。
 - AGE を使う DB 接続では、接続確立時に `LOAD 'age'` と `SET search_path = ag_catalog, "$user", public` を実行する。
 - Chat回答とプ譜の生成モデルはMastra model routerの `PUFU_LENS_CHAT_MODEL` で選び、Google、OpenAI、Anthropicなどのprovider-qualified modelを指定する。
