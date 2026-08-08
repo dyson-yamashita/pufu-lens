@@ -51,7 +51,11 @@ test('Fedify packages are pinned to 2.3.4 in manifests and workspace overrides',
 
   assert.equal(webPackage.dependencies['@fedify/next'], FEDIFY_PINNED_VERSION);
   assert.equal(webPackage.dependencies['@pufu-lens/activitypub'], 'workspace:*');
-  assert.ok(rootPackage.engines?.node?.includes('22'), 'root package.json must require Node >=22');
+  assert.equal(
+    rootPackage.engines?.node,
+    '>=22.6.0',
+    'root package.json must require Node >=22.6.0',
+  );
 });
 
 test('Fedify 2.3 line security floor rejects vulnerable 2.3.0 and 2.3.1 patch releases', () => {

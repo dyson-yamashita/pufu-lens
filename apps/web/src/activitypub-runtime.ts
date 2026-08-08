@@ -29,8 +29,7 @@ export function resolveActivityPubCanonicalOrigin(input?: {
   if (!origin) {
     throw new Error('canonical origin is required');
   }
-  parseCanonicalOrigin(origin);
-  return origin;
+  return parseCanonicalOrigin(origin).origin;
 }
 
 /** Creates the Step 1 ActivityPub web runtime spike without starting queue consumers. */

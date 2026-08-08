@@ -23,6 +23,8 @@ export type ActivityPubReportFixture = {
 /** Input for the in-memory Fedify protocol fixture used by Step 1 contract tests. */
 export type ActivityPubProtocolFixtureInput = {
   canonicalOrigin?: string;
+  /** Allows `http://localhost` only for explicit local protocol fixtures. Defaults to false. */
+  allowHttpLocalhost?: boolean;
   preferredUsername: string;
   report: ActivityPubReportFixture;
   queueHooks?: {
@@ -75,8 +77,9 @@ export function resolveStableCreateActivityId(input: {
   reportId: string;
   preferredUsername: string;
 }): string {
-  parseCanonicalOrigin(input.canonicalOrigin);
-  return `${input.canonicalOrigin}/activitypub/activities/create/${input.reportId}`;
+  void input.preferredUsername;
+  const { origin } = parseCanonicalOrigin(input.canonicalOrigin);
+  return `${origin}/activitypub/activities/create/${input.reportId}`;
 }
 
 /** Creates an in-memory Fedify protocol fixture for contract tests. */
@@ -84,7 +87,9 @@ export async function createActivityPubProtocolFixture(
   input: ActivityPubProtocolFixtureInput,
 ): Promise<ActivityPubProtocolFixture> {
   const canonicalOrigin = input.canonicalOrigin ?? DEFAULT_CANONICAL_ORIGIN;
-  const { origin } = parseCanonicalOrigin(canonicalOrigin, { allowHttpLocalhost: true });
+  const { origin } = parseCanonicalOrigin(canonicalOrigin, {
+    allowHttpLocalhost: input.allowHttpLocalhost === true,
+  });
   const { preferredUsername, report } = input;
   const actorId = `${origin}/activitypub/actors/${preferredUsername}`;
   const personalInbox = `${origin}/activitypub/actors/${preferredUsername}/inbox`;

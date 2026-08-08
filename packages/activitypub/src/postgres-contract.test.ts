@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createFedifyOutboxMessageFixture } from './fedify-message-fixture.ts';
-import { createPostgresQueueAdapter, processOneQueuedOutboxMessage } from './postgres.ts';
-import { UnsupportedFedifyQueueMessageError } from './queue.ts';
+import {
+  claimOnePostgresQueueMessage,
+  createPostgresQueueAdapter,
+  processOneQueuedOutboxMessage,
+} from './postgres.ts';
+import { redactFedifyQueueMessageForStorage, UnsupportedFedifyQueueMessageError } from './queue.ts';
 import { ActivityPubTestRuntimeDisabledError } from './test-runtime-guard.ts';
 
 const canonicalOrigin = 'https://lens.test';
@@ -29,6 +33,10 @@ function createValidOutboxMessage() {
     orderingKey,
     keys: [{ keyId: testKeyId, privateKey: fixturePrivateKey }],
   });
+}
+
+function createStoredOutboxMessage() {
+  return redactFedifyQueueMessageForStorage(createValidOutboxMessage());
 }
 
 function createFakeSql() {
@@ -111,6 +119,107 @@ test('processOneQueuedOutboxMessage rejects in production even when ACTIVITYPUB_
   } finally {
     restoreEnv('ACTIVITYPUB_RUN_DB_TESTS', previousDbTests);
     restoreEnv('NODE_ENV', previousNodeEnv);
+  }
+});
+
+test('claimOnePostgresQueueMessage inspects next due row without leasing and rejects malformed JSON', async () => {
+  const stored = createStoredOutboxMessage();
+  const inspectSql = Object.assign(
+    async () => [
+      {
+        id: 'queue-row-1',
+        dedupe_key: `${activityId}|${remoteInbox}`,
+        message_json: stored,
+        ordering_key: orderingKey,
+        worker_token: null,
+      },
+    ],
+    { json: (value: unknown) => value },
+  ) as never;
+
+  const inspected = await claimOnePostgresQueueMessage({ sql: inspectSql });
+  assert.equal(inspected?.activityId, activityId);
+  assert.equal(inspected?.inbox, remoteInbox);
+
+  const malformedSql = Object.assign(
+    async () => [
+      {
+        id: 'queue-row-2',
+        dedupe_key: 'malformed|row',
+        message_json: { type: 'unsupported-fedify-opaque' },
+        ordering_key: orderingKey,
+        worker_token: null,
+      },
+    ],
+    { json: (value: unknown) => value },
+  ) as never;
+
+  await assert.rejects(
+    () => claimOnePostgresQueueMessage({ sql: malformedSql }),
+    UnsupportedFedifyQueueMessageError,
+  );
+});
+
+test('processOneQueuedOutboxMessage rethrows original delivery error when finalizeQueueFailure fails', async () => {
+  const previousDbTests = process.env.ACTIVITYPUB_RUN_DB_TESTS;
+  process.env.ACTIVITYPUB_RUN_DB_TESTS = '1';
+
+  const stored = createStoredOutboxMessage();
+  const workerToken = '10000000-0000-0000-0000-000000000001';
+  const originalError = new Error('test actor key not found');
+
+  const fakeSql = Object.assign(
+    async (strings: TemplateStringsArray, ..._values: unknown[]) => {
+      const query = strings.join('?');
+      if (query.includes('last_error_code')) {
+        throw new Error('finalize failed');
+      }
+      if (query.includes('SELECT id, dedupe_key, message_json')) {
+        return [
+          {
+            id: 'queue-row-1',
+            dedupe_key: `${activityId}|${remoteInbox}`,
+            message_json: stored,
+            ordering_key: orderingKey,
+            worker_token: workerToken,
+          },
+        ];
+      }
+      if (
+        query.includes('UPDATE public.activitypub_queue_messages') &&
+        query.includes("'running'")
+      ) {
+        return [{ id: 'queue-row-1' }];
+      }
+      return [];
+    },
+    {
+      json: (value: unknown) => value,
+      begin: async (callback: (transaction: never) => Promise<unknown>) =>
+        callback(fakeSql as never),
+      unsafe: async () => {
+        throw originalError;
+      },
+    },
+  ) as never;
+
+  try {
+    await assert.rejects(
+      () =>
+        processOneQueuedOutboxMessage({
+          sql: fakeSql,
+          canonicalOrigin,
+          actorTable: 'activitypub_contract_test_actor_keys',
+          actorId: '10000000-0000-0000-0000-000000000667',
+          testOnlyAllowPrivateAddress: true,
+        }),
+      (error: unknown) => {
+        assert.equal(error, originalError);
+        return true;
+      },
+    );
+  } finally {
+    restoreEnv('ACTIVITYPUB_RUN_DB_TESTS', previousDbTests);
   }
 });
 

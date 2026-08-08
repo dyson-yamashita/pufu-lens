@@ -68,9 +68,13 @@ if (!args.actorTable || !args.actorId) {
 }
 
 const canonicalOrigin = process.env.ACTIVITYPUB_CANONICAL_ORIGIN?.trim() ?? 'https://lens.test';
-const sql = postgres(args.databaseUrl, { max: 1 });
+
+let exitCode = 0;
+let sql: ReturnType<typeof postgres> | undefined;
 
 try {
+  sql = postgres(args.databaseUrl, { max: 1 });
+
   const result = await processOneQueuedOutboxMessage({
     sql,
     canonicalOrigin,
@@ -81,18 +85,26 @@ try {
 
   if (result.status === 'no-op') {
     console.log(JSON.stringify({ status: 'no-op' }));
-    process.exit(0);
+  } else {
+    console.log(
+      JSON.stringify({
+        processor: result.processor,
+        messageId: result.messageId,
+      }),
+    );
   }
-
-  console.log(
-    JSON.stringify({
-      processor: result.processor,
-      messageId: result.messageId,
-    }),
-  );
 } catch {
   writeSafeError(ACTIVITYPUB_DELIVERY_FAILED);
-  process.exit(1);
+  exitCode = 1;
 } finally {
-  await sql.end({ timeout: 5 });
+  if (sql) {
+    try {
+      await sql.end({ timeout: 5 });
+    } catch {
+      writeSafeError(ACTIVITYPUB_DELIVERY_FAILED);
+      exitCode = 1;
+    }
+  }
 }
+
+process.exit(exitCode);

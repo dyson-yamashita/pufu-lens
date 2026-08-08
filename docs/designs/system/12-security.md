@@ -66,7 +66,7 @@ API は以下の認可をかける：
 ### 3.1 ActivityPub Step 1 security boundary
 
 - canonical origin は server 設定だけを正とし、未信頼の `Host` / forwarded host header から Actor、object、activity ID を生成しない。通常 runtime は HTTPS origin だけを許可する。
-- remote document loader は private / loopback、IPv4-mapped IPv6、special-use IPv4、NAT64、Teredo、6to4 を拒否し、redirect の各 hop を再検証する。localhost HTTP の許可は `ACTIVITYPUB_RUN_DB_TESTS=1` の隔離 fixture process だけに限定する。
+- remote document loader は private / loopback、IPv4-mapped IPv6、special-use IPv4、NAT64、Teredo、6to4 を拒否し、redirect の各 hop を再検証する。localhost HTTP は test-only の local protocol / DB fixture が `allowHttpLocalhost: true` を明示した場合だけ許可し、Web runtime は opt in しない。DB signed-delivery path はさらに `ACTIVITYPUB_RUN_DB_TESTS=1` を要求し、`NODE_ENV=production` では拒否する。本番 runtime で localhost HTTP を許可しない。
 - queue JSON から private JWK を除去し、key ID だけを保存する。Step 1 の DB contract test 用 Actor key table は本番 schema ではなく、本番鍵の暗号化保存・rotation・権限境界は Plan 017 Step 2 で実装する。
 - Web process は queue consumer と manual task processor を起動しない。Step 1 protocol fixture は `ACTIVITYPUB_SPIKE_ENABLED=1` の明示設定時だけ有効で、本番環境には設定しない。
 - Fedify / vocab / integration package は SSRF 修正済みの `2.3.4` に固定し、lockfile override も同じ patch へ揃える。更新時は Fedify security changelog と resolved version の両方を確認する。

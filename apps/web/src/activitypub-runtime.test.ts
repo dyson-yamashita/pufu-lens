@@ -24,6 +24,15 @@ test('resolveActivityPubCanonicalOrigin uses explicit env/input instead of untru
   );
 });
 
+test('resolveActivityPubCanonicalOrigin normalizes equivalent HTTPS origins', () => {
+  assert.equal(
+    resolveActivityPubCanonicalOrigin({
+      configuredOrigin: 'https://LENS.TEST:443/',
+    }),
+    'https://lens.test',
+  );
+});
+
 test('createActivityPubWebRuntime exposes Node-runtime-compatible proxy convention', async () => {
   const runtime = await createActivityPubWebRuntime({
     canonicalOrigin: configuredOrigin,

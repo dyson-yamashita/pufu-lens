@@ -5,7 +5,7 @@
 `pnpm test` は root の `scripts:test` と各 workspace の `test` task を実行する。
 
 - `scripts:test`: `scripts/**/*.test.ts` を `node --experimental-strip-types --test` で実行する。DB へ接続せず、script helper や migration helper の pure unit test を対象にする。
-- `turbo run test`: `apps/*` と `packages/*` の unit test を実行する。`packages/*` は各 package の `test` script 内で `tsc` を実行し、生成された `dist/**/*.test.js` を Node test runner で実行する。
+- `turbo run test`: `apps/*` と `packages/*` の unit test を実行する。多くの `packages/*` は各 package の `test` script 内で `tsc` を実行し、生成された `dist/**/*.test.js` を Node test runner で実行する。例外として `@pufu-lens/activitypub` は TypeScript を検証したうえで、protocol contract test を `node --experimental-strip-types` により `src/**/*.test.ts` から直接実行する。
 
 DB 接続を伴う migration / schema 検証は CI の `db-check` job で `pnpm db:migrate --check` と `pnpm db:schema-drift` として分離する。`scripts:test` には実 DB 接続を追加しない。
 
@@ -19,6 +19,6 @@ Source sync の差分取り込みと定期実行、および定期レポート�
 
 ## Coverage
 
-現時点では全 workspace の coverage gate は導入しない。理由は、root scripts は `--experimental-strip-types` で TypeScript source を直接実行し、`packages/*` は `tsc` 後の `dist` を実行し、`apps/web` は Next.js / Playwright を含むため、単一の coverage しきい値を置くと source map と測定対象のずれが大きいからである。
+現時点では全 workspace の coverage gate は導入しない。理由は、root scripts は `--experimental-strip-types` で TypeScript source を直接実行し、多くの `packages/*` は `tsc` 後の `dist` を実行し、`@pufu-lens/activitypub` は source から直接 contract test を実行し、`apps/web` は Next.js / Playwright を含むため、単一の coverage しきい値を置くと source map と測定対象のずれが大きいからである。
 
 代わりに、scripts 配下の pure unit test については Node 組み込み coverage を使う `pnpm scripts:test:coverage` を提供する。全 workspace coverage を必須化する場合は、別 Issue で c8 などの reporter、source map、除外対象、CI artifact の保存方針をまとめて決める。

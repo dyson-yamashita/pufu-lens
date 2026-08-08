@@ -129,9 +129,9 @@ Step 1 では `@fedify/postgres` の `PostgresMessageQueue` を採用しない�
 
 ### 5.4 Step 1 runtime contract
 
-- Fedify 2.3.4 は Node.js `>=22`、`@fedify/next` は Next.js `>=15.4.6 <17` を要求する。repository root の Node engine は `>=22.0.0` とする。
+- Fedify 2.3.4 は Node.js `>=22`、`@fedify/next` は Next.js `>=15.4.6 <17` を要求する。repository root の Node engine は `>=22.6.0` とする（root scripts の `node --experimental-strip-types` 利用に合わせる）。
 - Next.js 16 では `apps/web/proxy.ts` の Node runtime convention を使う。Step 1 fixture は `ACTIVITYPUB_SPIKE_ENABLED=1` のときだけ有効で、未設定時は既存 Web request をそのまま通す。
-- canonical origin は設定値だけを正とし、request の `Host` / forwarded host から生成しない。通常は HTTPS を必須とし、localhost HTTP は DB contract test の明示的な escape hatch だけで許可する。
+- canonical origin は設定値だけを正とし、request の `Host` / forwarded host から生成しない。通常は HTTPS を必須とする。localhost HTTP は test-only の local protocol / DB fixture が `allowHttpLocalhost: true` を明示した場合だけ許可し、Web runtime は opt in しない。DB signed-delivery path はさらに `ACTIVITYPUB_RUN_DB_TESTS=1` を要求し、`NODE_ENV=production` では拒否する。
 - Web process の Federation は `manuallyStartQueue: true` とし、queue `listen()`、`startQueue()`、`processQueuedTask()` を開始しない。manual processing は別 process の one-shot script だけが呼ぶ。
 - queue JSON には private JWK を保存せず `keyId` だけを保持し、claim 後に Actor key repository から private key を再取得する。Step 1 の Actor key table は DB contract test 専用であり、本番の暗号化鍵 schema / repository は Step 2 で実装する。
 - Firebase App Hosting は Node.js 22 runtime を選択できる一方、公式 support schedule 上の active Next.js は 15.x であり、16.x は preview 扱いである。本番有効化前に App Hosting build / proxy routing の staging smoke を必須とする。
@@ -348,7 +348,7 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 実証結果:
 
 - local fixture で WebFinger → Actor → Article の stable route / ID contract を確認した。
-- PostgreSQL queue / Fedify KV / test Actor key を client restart 後に再読込し、別 Node process が `Federation.processQueuedTask()` で exactly one message を配送することを確認した。受信 fixture は HTTP signature を公開鍵で暗号学的に検証し、Fedify 2.3.4 の `Signature` + `Content-Digest` + `Signature-Input` contract を確認した。
+- PostgreSQL queue / Fedify KV / test Actor key を client restart 後に再読込し、別 Node process が `Federation.processQueuedTask()` で成功 fixture 実行時に 1 件の配送を観測することを確認した。受信 fixture は HTTP signature を公開鍵で暗号学的に検証し、Fedify 2.3.4 の `Signature` + `Content-Digest` + `Signature-Input` contract を確認した。外部配送の意味論は at-least-once であり、receiver 側の HTTP 受信後かつ DB ack 前に worker が停止すると同一 Activity が再配送され得る。receiver は stable Activity ID で dedupe / 冪等処理する前提とする。
 - private JWK は queue JSON に保存せず、duplicate activity ID + recipient inbox は同じ `dedupe_key` へ収束する。ordering key と recipient origin も DB 制約で固定した。
 - built-in `PostgresMessageQueue` は one-shot lease / ack-after-handler 契約に合わないため不採用とし、Step 1 custom adapter は recipient 単位の outbox だけを受け付ける。fanout / inbox、production Actor key repository、bounded batch / heartbeat / retry exhausted は Step 2 以降の対象とする。
 - Web runtime fixture は明示 flag がない限り無効で、Web process から queue consumer / manual task processor が開始されないことを確認した。本番デプロイと外部 instance 接続は実施していない。

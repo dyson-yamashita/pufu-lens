@@ -115,7 +115,7 @@ export function createPostgresQueueAdapter(input: { sql: postgres.Sql; canonical
   return queue;
 }
 
-/** Claims one due queue row for test inspection; returns null when none remain. */
+/** Inspects the next due queue row without leasing or status updates; returns null when none remain. */
 export async function claimOnePostgresQueueMessage(input: {
   sql: postgres.Sql;
 }): Promise<StoredOutboxMessage | null> {
@@ -127,7 +127,11 @@ export async function claimOnePostgresQueueMessage(input: {
     ORDER BY created_at ASC, id ASC
     LIMIT 1
   `;
-  return rows[0]?.message_json ?? null;
+  const row = rows[0];
+  if (!row) {
+    return null;
+  }
+  return parseStoredQueueMessage(row.message_json);
 }
 
 /** Persists a Step 1 local DB test actor key pair; not production encrypted-key storage. */
@@ -287,7 +291,11 @@ export async function processOneQueuedOutboxMessage(
       messageId: claimed.id,
     };
   } catch (error) {
-    await finalizeQueueFailure(input.sql, claimed.id, claimed.worker_token);
+    try {
+      await finalizeQueueFailure(input.sql, claimed.id, claimed.worker_token);
+    } catch {
+      // Preserve the original delivery error when queue finalization also fails.
+    }
     throw error;
   }
 }

@@ -109,6 +109,52 @@ test('createActivityPubProtocolFixture resolves WebFinger to Service Actor and A
   assert.equal(stableActivityId, `${canonicalOrigin}/activitypub/activities/create/${reportId}`);
 });
 
+test('resolveStableCreateActivityId normalizes canonical origin before building activity ID', () => {
+  assert.equal(
+    resolveStableCreateActivityId({
+      canonicalOrigin: 'https://LENS.TEST:443/',
+      reportId,
+      preferredUsername,
+    }),
+    `${canonicalOrigin}/activitypub/activities/create/${reportId}`,
+  );
+});
+
+test('createActivityPubProtocolFixture rejects HTTP localhost by default', async () => {
+  await assert.rejects(
+    () =>
+      createActivityPubProtocolFixture({
+        canonicalOrigin: 'http://localhost:3000/',
+        preferredUsername,
+        report: {
+          reportId,
+          projectSlug,
+          title: 'Quarterly Update',
+          summary: 'A concise public summary.',
+          publishedAt: new Date('2026-08-01T00:00:00.000Z'),
+        },
+      }),
+    /HTTPS/i,
+  );
+});
+
+test('createActivityPubProtocolFixture accepts HTTP localhost only with explicit allowHttpLocalhost', async () => {
+  const fixture = await createActivityPubProtocolFixture({
+    canonicalOrigin: 'http://localhost:3000/',
+    allowHttpLocalhost: true,
+    preferredUsername,
+    report: {
+      reportId,
+      projectSlug,
+      title: 'Quarterly Update',
+      summary: 'A concise public summary.',
+      publishedAt: new Date('2026-08-01T00:00:00.000Z'),
+    },
+  });
+
+  assert.equal(fixture.canonicalOrigin, 'http://localhost:3000');
+});
+
 test('createActivityPubProtocolFixture exposes personal and shared inbox routes that reject unsigned activities', async () => {
   const fixture = await createActivityPubProtocolFixture({
     canonicalOrigin,

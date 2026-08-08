@@ -142,6 +142,23 @@ test('in-memory queue propagates orderingKey and supports one-shot claim/process
   assert.deepEqual(processed, [orderingKey]);
 });
 
+test('in-memory queue propagates onProcess success:false as a deterministic failure', async () => {
+  const queue = createInMemoryQueueAdapter({
+    onProcess: async () => ({ success: false }),
+  });
+
+  await queue.enqueue(outboxMessage);
+
+  await assert.rejects(
+    () => claimOneQueueMessage(queue),
+    (error: unknown) => {
+      assert.ok(error instanceof UnsupportedFedifyQueueMessageError);
+      assert.match(error.message, /onProcess reported failure/);
+      return true;
+    },
+  );
+});
+
 test('createWebFederationWithoutQueueConsumer never starts queue listeners or processors', async () => {
   const calls: string[] = [];
   const federation = await createWebFederationWithoutQueueConsumer({

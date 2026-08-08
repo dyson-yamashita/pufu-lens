@@ -106,10 +106,10 @@ export async function rehydrateStoredOutboxMessage(
   };
 }
 
-/** Creates a test-only in-memory queue adapter with native retry enabled. */
+/** Creates a test-only in-memory queue adapter with native retry enabled. Yields at most one queued message. */
 export function createInMemoryQueueAdapter(options: InMemoryQueueOptions = {}) {
   const pending: PinnedOutboxMessage[] = [];
-  let claimed = false;
+  let claimedOnce = false;
 
   const queue: MessageQueue & {
     enqueue(message: unknown, options?: MessageQueueEnqueueOptions): Promise<void>;
@@ -136,16 +136,21 @@ export function createInMemoryQueueAdapter(options: InMemoryQueueOptions = {}) {
       throw new Error('in-memory queue does not support listen()');
     },
     async claim(): Promise<PinnedOutboxMessage | null> {
-      if (claimed || pending.length === 0) {
+      if (claimedOnce || pending.length === 0) {
         return null;
       }
-      claimed = true;
+      claimedOnce = true;
       const [next] = pending.splice(0, 1);
       if (!next) {
         return null;
       }
       if (options.onProcess) {
-        await options.onProcess(next);
+        const result = await options.onProcess(next);
+        if (!result.success) {
+          throw new UnsupportedFedifyQueueMessageError(
+            'in-memory queue onProcess reported failure',
+          );
+        }
       }
       return next;
     },
@@ -154,7 +159,7 @@ export function createInMemoryQueueAdapter(options: InMemoryQueueOptions = {}) {
   return queue;
 }
 
-/** Claims exactly one message from the in-memory queue adapter. */
+/** Returns at most one queued message from the in-memory one-shot adapter. */
 export async function claimOneQueueMessage(
   adapter: ReturnType<typeof createInMemoryQueueAdapter>,
 ): Promise<PinnedOutboxMessage | null> {
