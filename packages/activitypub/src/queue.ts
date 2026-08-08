@@ -5,8 +5,8 @@ import { createActivityPubWebFederation } from './protocol.ts';
 type JsonWebKey = webcrypto.JsonWebKey;
 
 const PRIVATE_JWK_PROPERTIES = ['d', 'p', 'q', 'dp', 'dq', 'qi', 'oth'] as const;
+const MAX_QUEUE_PAYLOAD_BYTES = 256 * 1024;
 
-/** Pinned Fedify 2.3.4 outbox message accepted at the Step 1 queue boundary. */
 export type PinnedOutboxMessage = {
   type: 'outbox';
   id: string;
@@ -28,18 +28,40 @@ export type PinnedOutboxMessage = {
   traceContext: Readonly<Record<string, string>>;
 };
 
-/** Thrown when an opaque Fedify queue message is outside the supported Step 1 boundary. */
+/** Pinned Fedify 2.3.4 inbox message accepted at the Step 3 queue boundary. */
+export type PinnedInboxMessage = {
+  type: 'inbox';
+  id: string;
+  baseUrl: string;
+  activity: unknown;
+  normalizedActivity?: unknown;
+  ldSignatureVerified?: boolean;
+  identifier: string | null;
+  started: string;
+  attempt: number;
+  traceContext: Readonly<Record<string, string>>;
+};
+
+/** Union of queue messages persisted by the PostgreSQL adapter. */
+export type PinnedQueueMessage = PinnedOutboxMessage | PinnedInboxMessage;
+
+/** Redacted outbox payload persisted in PostgreSQL without private JWK material. */
+export type StoredOutboxMessage = Omit<PinnedOutboxMessage, 'keys'> & {
+  keys: ReadonlyArray<{ keyId: string }>;
+};
+
+/** Redacted inbox payload persisted in PostgreSQL without signature headers or keys. */
+export type StoredInboxMessage = PinnedInboxMessage;
+
+/** Union of stored queue payloads for inbox and outbox rows. */
+export type StoredQueueMessage = StoredOutboxMessage | StoredInboxMessage;
+
 export class UnsupportedFedifyQueueMessageError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'UnsupportedFedifyQueueMessageError';
   }
 }
-
-/** Redacted outbox payload persisted in PostgreSQL without private JWK material. */
-export type StoredOutboxMessage = Omit<PinnedOutboxMessage, 'keys'> & {
-  keys: ReadonlyArray<{ keyId: string }>;
-};
 
 /** PostgreSQL queue enqueue options supported by the Step 1 adapter. */
 export type PostgresQueueEnqueueOptions = MessageQueueEnqueueOptions & {
@@ -56,6 +78,11 @@ type QueueHookRecorder = {
   processQueuedTask?: () => void;
 };
 
+/** Builds a deterministic inbox dedupe key from the Activity id. */
+export function buildInboxDedupeKey(input: { activityId: string }): string {
+  return normalizeHttpsUrl(input.activityId, 'activityId');
+}
+
 /** Builds a deterministic dedupe key from activity and recipient inbox URLs. */
 export function buildOutboxDedupeKey(input: {
   activityId: string;
@@ -67,7 +94,16 @@ export function buildOutboxDedupeKey(input: {
 }
 
 /** Redacts private JWK members from a pinned outbox message for PostgreSQL storage. */
-export function redactFedifyQueueMessageForStorage(message: unknown): StoredOutboxMessage {
+export function redactFedifyQueueMessageForStorage(
+  message: unknown,
+): StoredOutboxMessage | StoredInboxMessage {
+  if (
+    message &&
+    typeof message === 'object' &&
+    (message as Record<string, unknown>).type === 'inbox'
+  ) {
+    return parsePinnedInboxMessage(message);
+  }
   const parsed = parsePinnedOutboxMessage(message, { requirePrivateKeys: true });
   return {
     ...parsed,
@@ -75,8 +111,15 @@ export function redactFedifyQueueMessageForStorage(message: unknown): StoredOutb
   };
 }
 
-/** Parses a stored queue payload back into the supported outbox shape. */
-export function parseStoredQueueMessage(message: unknown): StoredOutboxMessage {
+/** Parses a stored queue payload back into the supported inbox or outbox shape. */
+export function parseStoredQueueMessage(message: unknown): StoredQueueMessage {
+  if (
+    message &&
+    typeof message === 'object' &&
+    (message as Record<string, unknown>).type === 'inbox'
+  ) {
+    return parsePinnedInboxMessage(message);
+  }
   const parsed = parsePinnedOutboxMessage(message, { requirePrivateKeys: false });
   return {
     ...parsed,
@@ -174,6 +217,71 @@ export async function createWebFederationWithoutQueueConsumer(input: {
   return createActivityPubWebFederation(input);
 }
 
+/** Redacts an inbox message for PostgreSQL storage and enforces payload size limits. */
+export function redactFedifyInboxMessageForStorage(message: unknown): StoredInboxMessage {
+  return parsePinnedInboxMessage(message);
+}
+
+/** Parses a stored inbox queue payload. */
+export function parseStoredInboxMessage(message: unknown): StoredInboxMessage {
+  return parsePinnedInboxMessage(message);
+}
+
+/** Parses and validates the pinned Fedify 2.3.4 inbox message boundary. */
+export function parsePinnedInboxMessage(message: unknown): StoredInboxMessage {
+  if (!message || typeof message !== 'object') {
+    throw new UnsupportedFedifyQueueMessageError('queue message must be an object');
+  }
+  const candidate = message as Record<string, unknown>;
+  if (candidate.type !== 'inbox') {
+    throw new UnsupportedFedifyQueueMessageError(
+      `unsupported queue message type: ${String(candidate.type)}`,
+    );
+  }
+  for (const field of ['id', 'baseUrl', 'started'] as const) {
+    if (typeof candidate[field] !== 'string' || (candidate[field] as string).length === 0) {
+      throw new UnsupportedFedifyQueueMessageError(`inbox message missing ${field}`);
+    }
+  }
+  if (!candidate.activity) {
+    throw new UnsupportedFedifyQueueMessageError('inbox message missing activity');
+  }
+  if (typeof candidate.attempt !== 'number') {
+    throw new UnsupportedFedifyQueueMessageError('inbox message missing attempt');
+  }
+  const attempt = assertNonNegativeIntegerAttempt(candidate.attempt);
+  const traceContext = assertPlainStringRecord(candidate.traceContext, 'traceContext');
+  const activityId = extractHttpsActivityId(candidate.activity);
+  normalizeHttpsUrl(activityId, 'activity.id');
+  const identifier =
+    candidate.identifier === null
+      ? null
+      : typeof candidate.identifier === 'string'
+        ? candidate.identifier
+        : (() => {
+            throw new UnsupportedFedifyQueueMessageError(
+              'inbox message identifier must be string or null',
+            );
+          })();
+  const parsed: StoredInboxMessage = {
+    type: 'inbox',
+    id: candidate.id as string,
+    baseUrl: normalizeHttpsUrl(candidate.baseUrl as string, 'baseUrl'),
+    activity: candidate.activity,
+    normalizedActivity: candidate.normalizedActivity,
+    ldSignatureVerified:
+      typeof candidate.ldSignatureVerified === 'boolean'
+        ? candidate.ldSignatureVerified
+        : undefined,
+    identifier,
+    started: candidate.started as string,
+    attempt,
+    traceContext,
+  };
+  assertQueuePayloadSize(parsed);
+  return parsed;
+}
+
 /** Parses and validates the pinned Fedify 2.3.4 outbox message boundary. */
 export function parsePinnedOutboxMessage(
   message: unknown,
@@ -259,7 +367,7 @@ export function parsePinnedOutboxMessage(
     };
   });
 
-  return {
+  const result: PinnedOutboxMessage = {
     type: 'outbox',
     id: candidate.id as string,
     baseUrl,
@@ -276,6 +384,19 @@ export function parsePinnedOutboxMessage(
     orderingKey,
     traceContext,
   };
+  assertQueuePayloadSize(result);
+  return result;
+}
+
+function extractHttpsActivityId(activity: unknown): string {
+  if (!activity || typeof activity !== 'object') {
+    throw new UnsupportedFedifyQueueMessageError('inbox activity must be an object');
+  }
+  const id = (activity as Record<string, unknown>).id;
+  if (typeof id !== 'string' || id.length === 0) {
+    throw new UnsupportedFedifyQueueMessageError('inbox activity missing id');
+  }
+  return id;
 }
 
 function assertNonNegativeIntegerAttempt(value: unknown): number {
@@ -311,7 +432,7 @@ function assertOptionalHttpUrlList(value: unknown, label: string): readonly stri
     if (typeof entry !== 'string' || entry.length === 0) {
       throw new UnsupportedFedifyQueueMessageError(`${label}[${index}] must be a string`);
     }
-    return normalizeHttpUrl(entry, `${label}[${index}]`);
+    return normalizeHttpsUrl(entry, `${label}[${index}]`);
   });
 }
 
@@ -341,6 +462,23 @@ function normalizeHttpUrl(value: string, label: string): string {
     );
   }
   return parsed.toString();
+}
+
+/** Validates HTTPS-only URLs for production federation queue boundaries. */
+function normalizeHttpsUrl(value: string, label: string): string {
+  const normalized = normalizeHttpUrl(value, label);
+  const parsed = new URL(normalized);
+  if (parsed.protocol !== 'https:') {
+    throw new UnsupportedFedifyQueueMessageError(`${label} must use HTTPS`);
+  }
+  return normalized;
+}
+
+function assertQueuePayloadSize(message: StoredOutboxMessage | StoredInboxMessage): void {
+  const size = Buffer.byteLength(JSON.stringify(message), 'utf8');
+  if (size > MAX_QUEUE_PAYLOAD_BYTES) {
+    throw new UnsupportedFedifyQueueMessageError('queue message exceeds serialized payload limit');
+  }
 }
 
 /** Validates HTTP(S) signature key IDs, preserving URL fragments such as `#main-key`. */
@@ -384,7 +522,7 @@ export function assertStoredMessageHasNoPrivateJwk(messageJson: unknown): void {
   }
 }
 
-/** Converts a pinned outbox message into Fedify's opaque queue message type. */
-export function toFedifyMessage(message: PinnedOutboxMessage): Message {
+/** Converts a pinned queue message into Fedify's opaque queue message type. */
+export function toFedifyMessage(message: PinnedOutboxMessage | PinnedInboxMessage): Message {
   return message as Message;
 }

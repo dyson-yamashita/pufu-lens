@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MemoryKvStore } from '@fedify/fedify';
-import { createProductionActivityPubFederation } from './federation.ts';
+import {
+  createProductionActivityPubFederation,
+  createTestActivityPubFederation,
+} from './federation.ts';
+import { createActivityPubFollowUseCases } from './follow-use-cases.ts';
 import { createInMemoryActivityPubRepository } from './in-memory-actor-repository.ts';
+import { createInMemoryActivityPubFollowRepository } from './in-memory-follow-repository.ts';
+import { ActivityPubTestRuntimeDisabledError } from './test-runtime-guard.ts';
 import { buildActivityPubUriContract } from './uri-contract.ts';
 
 const canonicalOrigin = 'https://lens.test';
@@ -257,4 +263,245 @@ test('production federation resolves public report articles when config is artic
     { contextData: undefined },
   );
   assert.equal(response.status, 200);
+});
+
+test('production federation followers and following expose accepted actor URIs only', async () => {
+  const repository = createInMemoryActivityPubRepository({ encryptionKey, canonicalOrigin });
+  await repository.seedAggregateActor();
+  repository.seedProject({
+    id: projectId,
+    slug: projectSlug,
+    name: 'Sample Project',
+    visibility: 'public',
+  });
+  const actor = await repository.seedProjectActor({
+    projectId,
+    projectSlug,
+    preferredUsername: projectSlug,
+    visibility: 'public',
+    enabled: true,
+  });
+  const followRepository = createInMemoryActivityPubFollowRepository();
+  followRepository.seedFollow({
+    id: 'f0000000-0000-0000-0000-000000000101',
+    direction: 'inbound',
+    localActorId: actor.id,
+    remoteActorUri: 'https://remote.example/users/follower-1',
+    remoteInboxUri: 'https://remote.example/inbox',
+    remoteSharedInboxUri: null,
+    followActivityUri: 'https://remote.example/activities/follow-1',
+    status: 'accepted',
+    createdAt: new Date('2026-08-01T00:00:00.000Z'),
+    acceptedAt: new Date('2026-08-01T00:00:00.000Z'),
+    undoneAt: null,
+    updatedAt: new Date('2026-08-01T00:00:00.000Z'),
+  });
+  followRepository.seedFollow({
+    id: 'f0000000-0000-0000-0000-000000000102',
+    direction: 'outbound',
+    localActorId: actor.id,
+    remoteActorUri: 'https://remote.example/users/followed-1',
+    remoteInboxUri: 'https://remote.example/users/followed-1/inbox',
+    remoteSharedInboxUri: null,
+    followActivityUri: `${canonicalOrigin}/activitypub/activities/follow/out-1`,
+    status: 'accepted',
+    createdAt: new Date('2026-08-02T00:00:00.000Z'),
+    acceptedAt: new Date('2026-08-02T00:00:00.000Z'),
+    undoneAt: null,
+    updatedAt: new Date('2026-08-02T00:00:00.000Z'),
+  });
+  const followUseCases = createActivityPubFollowUseCases({
+    canonicalOrigin,
+    repository: followRepository,
+    actorRepository: repository,
+  });
+
+  const federation = await createProductionActivityPubFederation({
+    canonicalOrigin,
+    repository,
+    followUseCases,
+    kv: new MemoryKvStore(),
+    queue: createQueue(),
+  });
+  const uri = buildActivityPubUriContract(canonicalOrigin);
+  const headers = { Accept: 'application/activity+json' };
+  const followersResponse = await federation.fetch(
+    new Request(uri.actorFollowersUrl(projectSlug), { headers }),
+    { contextData: undefined },
+  );
+  assert.equal(followersResponse.status, 200);
+  const followersCollection = (await followersResponse.json()) as {
+    type: string;
+    orderedItems?: string[];
+    totalItems?: number;
+    first?: string;
+  };
+  assert.equal(followersCollection.totalItems, 1);
+  assert.ok(followersCollection.first);
+  const followersPageResponse = await federation.fetch(
+    new Request(followersCollection.first as string, { headers }),
+    { contextData: undefined },
+  );
+  assert.equal(followersPageResponse.status, 200);
+  const followers = (await followersPageResponse.json()) as { orderedItems?: string[] };
+  assert.deepEqual(followers.orderedItems, ['https://remote.example/users/follower-1']);
+
+  const followingResponse = await federation.fetch(
+    new Request(uri.actorFollowingUrl(projectSlug), { headers }),
+    { contextData: undefined },
+  );
+  assert.equal(followingResponse.status, 200);
+  const followingCollection = (await followingResponse.json()) as {
+    orderedItems?: string[];
+    totalItems?: number;
+    first?: string;
+  };
+  assert.equal(followingCollection.totalItems, 1);
+  assert.ok(followingCollection.first);
+  const followingPageResponse = await federation.fetch(
+    new Request(followingCollection.first as string, { headers }),
+    { contextData: undefined },
+  );
+  assert.equal(followingPageResponse.status, 200);
+  const following = (await followingPageResponse.json()) as { orderedItems?: string[] };
+  assert.deepEqual(following.orderedItems, ['https://remote.example/users/followed-1']);
+});
+
+test('production federation followers collection paginates with opaque cursor and counter', async () => {
+  const repository = createInMemoryActivityPubRepository({ encryptionKey, canonicalOrigin });
+  await repository.seedAggregateActor();
+  repository.seedProject({
+    id: projectId,
+    slug: projectSlug,
+    name: 'Sample Project',
+    visibility: 'public',
+  });
+  const actor = await repository.seedProjectActor({
+    projectId,
+    projectSlug,
+    preferredUsername: projectSlug,
+    visibility: 'public',
+    enabled: true,
+  });
+  const followRepository = createInMemoryActivityPubFollowRepository();
+  const now = new Date('2026-08-01T00:00:00.000Z');
+  for (let index = 0; index < 25; index += 1) {
+    followRepository.seedFollow({
+      id: `f2000000-0000-0000-0000-${String(index).padStart(12, '0')}`,
+      direction: 'inbound',
+      localActorId: actor.id,
+      remoteActorUri: `https://remote.example/users/page-${index}`,
+      remoteInboxUri: 'https://remote.example/inbox',
+      remoteSharedInboxUri: null,
+      followActivityUri: `https://remote.example/activities/page-${index}`,
+      status: 'accepted',
+      createdAt: new Date(now.getTime() + index * 1000),
+      acceptedAt: new Date(now.getTime() + index * 1000),
+      undoneAt: null,
+      updatedAt: new Date(now.getTime() + index * 1000),
+    });
+  }
+  const followUseCases = createActivityPubFollowUseCases({
+    canonicalOrigin,
+    repository: followRepository,
+    actorRepository: repository,
+  });
+  const federation = await createProductionActivityPubFederation({
+    canonicalOrigin,
+    repository,
+    followUseCases,
+    kv: new MemoryKvStore(),
+    queue: createQueue(),
+  });
+  const uri = buildActivityPubUriContract(canonicalOrigin);
+  const headers = { Accept: 'application/activity+json' };
+  const collectionResponse = await federation.fetch(
+    new Request(uri.actorFollowersUrl(projectSlug), { headers }),
+    { contextData: undefined },
+  );
+  assert.equal(collectionResponse.status, 200);
+  const collection = (await collectionResponse.json()) as {
+    totalItems?: number;
+    first?: string;
+  };
+  assert.equal(collection.totalItems, 25);
+  assert.ok(collection.first);
+  const firstPageResponse = await federation.fetch(
+    new Request(collection.first as string, { headers }),
+    {
+      contextData: undefined,
+    },
+  );
+  assert.equal(firstPageResponse.status, 200);
+  const firstPage = (await firstPageResponse.json()) as {
+    orderedItems?: string[];
+    next?: string;
+  };
+  assert.equal(firstPage.orderedItems?.length, 20);
+  assert.ok(firstPage.next);
+  const secondPageResponse = await federation.fetch(
+    new Request(firstPage.next as string, { headers }),
+    {
+      contextData: undefined,
+    },
+  );
+  assert.equal(secondPageResponse.status, 200);
+  const secondPage = (await secondPageResponse.json()) as { orderedItems?: string[] };
+  assert.equal(secondPage.orderedItems?.length, 5);
+  for (const actorUri of [...(firstPage.orderedItems ?? []), ...(secondPage.orderedItems ?? [])]) {
+    assert.match(actorUri, /^https:\/\/remote\.example\/users\/page-\d+$/);
+  }
+});
+
+function restoreEnv(name: 'ACTIVITYPUB_RUN_DB_TESTS' | 'NODE_ENV', previous: string | undefined) {
+  if (previous === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = previous;
+}
+
+const testFederationInput = {
+  canonicalOrigin,
+  repository: createInMemoryActivityPubRepository({ encryptionKey, canonicalOrigin }),
+  kv: new MemoryKvStore(),
+  queue: createQueue(),
+};
+
+test('createTestActivityPubFederation rejects production runtime', async () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+
+  try {
+    await assert.rejects(
+      () => createTestActivityPubFederation(testFederationInput),
+      (error: unknown) => {
+        assert.ok(error instanceof ActivityPubTestRuntimeDisabledError);
+        return true;
+      },
+    );
+  } finally {
+    restoreEnv('NODE_ENV', previousNodeEnv);
+  }
+});
+
+test('createTestActivityPubFederation rejects allowPrivateAddress without ACTIVITYPUB_RUN_DB_TESTS', async () => {
+  const previousDbTests = process.env.ACTIVITYPUB_RUN_DB_TESTS;
+  delete process.env.ACTIVITYPUB_RUN_DB_TESTS;
+
+  try {
+    await assert.rejects(
+      () =>
+        createTestActivityPubFederation({
+          ...testFederationInput,
+          allowPrivateAddress: true,
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ActivityPubTestRuntimeDisabledError);
+        return true;
+      },
+    );
+  } finally {
+    restoreEnv('ACTIVITYPUB_RUN_DB_TESTS', previousDbTests);
+  }
 });

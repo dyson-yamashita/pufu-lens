@@ -892,6 +892,34 @@ CREATE TABLE IF NOT EXISTS public.activitypub_follows (
     UNIQUE (direction, local_actor_id, remote_actor_uri)
 );
 
+CREATE INDEX IF NOT EXISTS activitypub_follows_accepted_collection_idx
+  ON public.activitypub_follows (local_actor_id, direction, created_at, id)
+  WHERE status = 'accepted';
+
+CREATE INDEX IF NOT EXISTS activitypub_follows_outbound_project_list_idx
+  ON public.activitypub_follows (local_actor_id, created_at, id)
+  WHERE direction = 'outbound';
+
+ALTER TABLE public.activitypub_follows
+  DROP CONSTRAINT IF EXISTS activitypub_follows_accepted_timestamp_check;
+
+ALTER TABLE public.activitypub_follows
+  ADD CONSTRAINT activitypub_follows_accepted_timestamp_check
+  CHECK (
+    (status = 'accepted' AND accepted_at IS NOT NULL)
+    OR (status <> 'accepted' AND accepted_at IS NULL)
+  );
+
+ALTER TABLE public.activitypub_follows
+  DROP CONSTRAINT IF EXISTS activitypub_follows_undone_timestamp_check;
+
+ALTER TABLE public.activitypub_follows
+  ADD CONSTRAINT activitypub_follows_undone_timestamp_check
+  CHECK (
+    (status = 'undone' AND undone_at IS NOT NULL)
+    OR (status <> 'undone' AND undone_at IS NULL)
+  );
+
 CREATE TABLE IF NOT EXISTS public.activitypub_activities (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   activity_uri text NOT NULL,
@@ -996,5 +1024,6 @@ VALUES
   ('0013_consolidate_initial_report_backfill'),
   ('0014_data_source_schedule_default_0600'),
   ('0015_activitypub_protocol_spike'),
-  ('0016_activitypub_actor_endpoints')
+  ('0016_activitypub_actor_endpoints'),
+  ('0017_activitypub_follow_management')
 ON CONFLICT (version) DO NOTHING;

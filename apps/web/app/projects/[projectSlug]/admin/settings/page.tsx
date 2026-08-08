@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { ActivityPubSubscriptionPanel } from '../../../../../src/activitypub-subscription-panel';
+import { readProjectActivityPubSubscriptionSettings } from '../../../../../src/activitypub-subscription-settings';
 import {
   deleteProject,
   updateGithubAppConnectionSettings,
@@ -6,6 +8,7 @@ import {
 } from '../../../../../src/admin-actions';
 import type { ConnectionProvider, ProjectConnectionStatus } from '../../../../../src/admin-data';
 import { listProjectConnections } from '../../../../../src/admin-db';
+import { getRequiredAdminSql } from '../../../../../src/admin-sql';
 import { ActionForm, PendingSubmitButton } from '../../../../../src/form-buttons';
 import {
   MAX_HYBRID_SEARCH_DOCUMENT_LIMIT,
@@ -35,6 +38,10 @@ export default async function ProjectSettingsPage({
   const connectionParams = await searchParams;
   const project = await requireProjectAdminPage(projectSlug);
   const connections = await listProjectConnections(projectSlug);
+  const sql = getRequiredAdminSql();
+  const subscriptionSettings = await readProjectActivityPubSubscriptionSettings(sql, {
+    projectSlug: project.slug,
+  });
 
   return (
     <AppShell active="settings" canManageProject project={project}>
@@ -310,6 +317,11 @@ export default async function ProjectSettingsPage({
           ))}
         </div>
       </section>
+      <ActivityPubSubscriptionPanel
+        canManage
+        projectSlug={project.slug}
+        settings={subscriptionSettings}
+      />
       <section className="panel danger-zone-panel" data-testid="project-settings-danger-zone">
         <div className="panel-heading">
           <div>

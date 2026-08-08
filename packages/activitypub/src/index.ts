@@ -20,7 +20,33 @@ export {
   NODE_RUNTIME_MIN_MAJOR,
 } from './dependency-metadata.ts';
 export { createProductionActivityPubFederation } from './federation.ts';
+export {
+  buildDeterministicAcceptActivityUri,
+  buildDeterministicUndoActivityUri,
+  buildOutboundFollowActivityUri,
+  decodeFollowCollectionCursor,
+  encodeFollowCollectionCursor,
+  type FollowTransitionResult,
+  getFollowCollectionPageSize,
+  normalizeRemoteActorUri,
+} from './follow-model.ts';
+export { enqueueFollowTransitionOutbox } from './follow-outbox-enqueue.ts';
+export {
+  type ActivityPubFollowRepository,
+  createPostgresActivityPubFollowRepository,
+  createPostgresActivityPubFollowTransactionRepository,
+} from './follow-repository.ts';
+export {
+  type ActivityPubFollowUseCases,
+  type CreateActivityPubFollowUseCasesInput,
+  type CreateActivityPubFollowUseCasesWithSqlInput,
+  createActivityPubFollowUseCases,
+  type FollowCollectionItem,
+  type FollowCollectionPage,
+  type ProjectOutboundSubscriptionView,
+} from './follow-use-cases.ts';
 export { createInMemoryActivityPubRepository } from './in-memory-actor-repository.ts';
+export { createInMemoryActivityPubFollowRepository } from './in-memory-follow-repository.ts';
 export {
   decryptPrivateJwk,
   encryptPrivateJwk,
@@ -31,8 +57,10 @@ export {
   createPostgresFedifyKvStore,
   createPostgresQueueAdapter,
   type OneShotDispatchResult,
+  type ProcessOneQueuedMessageInput,
   type ProcessOneQueuedOutboxMessageInput,
   persistTestActorKey,
+  processOneQueuedMessage,
   processOneQueuedOutboxMessage,
   reloadTestActorKey,
 } from './postgres.ts';
@@ -47,20 +75,34 @@ export {
 } from './protocol.ts';
 export {
   assertStoredMessageHasNoPrivateJwk,
+  buildInboxDedupeKey,
   buildOutboxDedupeKey,
   claimOneQueueMessage,
   createInMemoryQueueAdapter,
   createWebFederationWithoutQueueConsumer,
+  type PinnedInboxMessage,
   type PinnedOutboxMessage,
+  type PinnedQueueMessage,
   type PostgresQueueEnqueueOptions,
+  parsePinnedInboxMessage,
   parsePinnedOutboxMessage,
+  parseStoredInboxMessage,
   parseStoredQueueMessage,
+  redactFedifyInboxMessageForStorage,
   redactFedifyQueueMessageForStorage,
   rehydrateStoredOutboxMessage,
+  type StoredInboxMessage,
   type StoredOutboxMessage,
+  type StoredQueueMessage,
   toFedifyMessage,
   UnsupportedFedifyQueueMessageError,
 } from './queue.ts';
+export {
+  createRemoteActorResolver,
+  parseBlockedDomainsFromEnv,
+  type RemoteActorReadModel,
+  type RemoteActorResolver,
+} from './remote-actor.ts';
 export {
   type ActivityPubActivity,
   type ActivityPubActor,

@@ -231,6 +231,13 @@ PDF レポートは Web のレポートと同じ情報階層を保ち、タイ�
 - **Syncing:** Amethyst の背景（不透明度 10%）に、控えめなパルスアニメーションを組み合わせます。
 - **Failed:** Red の背景（不透明度 10%）に Red のテキストを組み合わせます。
 
+### ActivityPub 購読管理
+
+- Project Settings の ActivityPub panel は federation の Enabled / Disabled、federated username、outbound subscription の remote Actor URI と Pending / Accepted / Undone / Rejected 状態を表示します。remote inbox / shared inbox、内部 follow ID、Activity ID、鍵、raw payload は表示しません。
+- project admin には remote Actor address 入力と Follow / Unfollow action を表示し、project member には同じ project scope の状態だけを read-only で表示します。member 向けナビゲーションは `/projects/{projectSlug}/settings` に限定し、管理操作を描画しません。
+- Follow / Unfollow の送信中は既存 `PendingSubmitButton` の disabled / pending feedback を使い、resolver / DB の失敗は `role="alert"` の安全な短文で表示します。秘密情報や remote response 本文を error に含めません。
+- subscription list は既存 panel、stacked list、mono metadata、status badge のトークンを再利用します。desktop / mobile とも縦積みで overflow を避け、長い Actor URI は panel 幅内で折り返します。
+
 ### AI チャットとシステムレポート
 
 - **AI チャットバブル:** 控えめなグラスモーフィズム効果と、細い Amethyst の左ボーダーでスタイルを設定します。タイポグラフィには Inter を使用します。

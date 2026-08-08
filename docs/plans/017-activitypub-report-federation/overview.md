@@ -386,6 +386,10 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 
 ### Step 3: Follow / Accept / Undo と購読管理
 
+- status: `completed`
+- tracking Issue: [#671](https://github.com/dyson-yamashita/pufu-lens/issues/671)
+- 更新日: 2026-08-08
+
 成果物:
 
 - personal / shared inbox listener
@@ -400,6 +404,16 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 - Mastodon 互換 remote fixture から project Actor / `@all` を検索・follow・unfollowできる
 - duplicate / reordered Follow、Accept、Undo が冪等になる
 - 非adminはoutbound follow設定を変更できない
+
+実装結果:
+
+- personal / shared inbox に Fedify listener を登録し、署名 key owner と Activity actor、embedded Follow の actor / object を検証してから inbound Follow / Accept / Undo を PostgreSQL-backed use-case へ渡すようにした。inbound Follow の永続化と Accept enqueue、outbound Follow / Undo enqueue、Accept receipt は follow row、Activity receipt、queue row を同じ transaction 境界で更新する。
+- `(direction, local_actor_id, remote_actor_uri)` の follow identity、`follow_activity_uri` の generation、Activity URI receipt を組み合わせ、duplicate、Undo-before-Follow、旧 generation の Accept / Undo、再 follow を冪等化した。accepted / undone timestamp の整合を migration `0017_activitypub_follow_management` と DB contract test で固定した。
+- followers / following は accepted relation の remote Actor URI だけを `(created_at, id)` 順の versioned opaque cursor で公開し、count / first cursor を含む決定論的 pagination を実装した。
+- remote Actor resolver は WebFinger / Actor / inbox / shared inbox の HTTPS、SSRF guard、redirect 各 hop、domain block、5 秒 timeout、1 MiB response limit、Actor document ID の一致を検証する。private key、署名 header、raw remote payload、credential は queue 永続化、log、UI に出さない。
+- project admin settings に remote Actor address、Follow / Unfollow、状態、safe error を追加した。member settings は project-scoped read-only とし、server action で non-admin、project 越境、不正 slug、不正 Actor address を拒否する。
+- distinct origin の Pufu Lens A / B fixture bridge で片方向・相互 Follow、Accept、Undo、duplicate / reordered / stale generation を再現し、Mastodon 互換 fixture で project Actor / `@all` の WebFinger 検索、Actor lookup、follow / unfollowを外部 instance なしで確認した。desktop / mobile Playwright でも管理可否、pending、safe error を確認した。
+- report 公開時の Create / Announce、report 配送 scheduler / Cloud Run Job、外部 report 取り込み、本番デプロイは実施しておらず、Step 4 以降に残している。
 
 ### Step 4: 公開 report の transactional enqueue と outbound delivery
 

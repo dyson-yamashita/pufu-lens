@@ -52,10 +52,10 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
 | `email_quotes`                                   | Gmail の引用チェーンを document と分離して保持する。                                                                                                                                                                           |
 | `reports` / `report_chunks`                      | private/public report metadata、artifact URI、検索用 chunk を保持する。`reports` は手動・通常定期・backfill の生成種別、周期、前回定期 report、period run を参照する。                                                         |
 | `activitypub_fedify_kv`                          | Fedify の cache / idempotency state 用 PostgreSQL KV。業務データは保存しない。Step 1 protocol spike で導入済み。                                                                                                               |
-| `activitypub_queue_messages`                     | ActivityPub delivery queue。Step 1 では recipient 単位の outbox message だけを保存し、決定論的 dedupe、ordering key、recipient origin、lease / attempt /結果を保持する。private JWK は保存しない。                             |
+| `activitypub_queue_messages`                     | ActivityPub inbox / delivery queue。Activity ID 単位の inbound dedupe と recipient 単位の outbox dedupe、ordering key、recipient origin、lease / attempt / 結果を保持する。private JWK は保存しない。                          |
 | `activitypub_instance_config`                    | instance 全体の `article` / `note` 表現を保持する singleton。最初の outbound activity 作成時に DB trigger で lock し、以後の変更・unlock・singleton 削除を拒否する。                                                           |
 | `activitypub_actors`                             | project Actor と aggregate `@all` Actor の正本。instance 内 username 一意、aggregate 最大1件、project ごと最大1件、kind / project 整合、`all` 予約を DB 制約で保証し、Actor 単位の暗号化秘密鍵を保持する。                     |
-| `activitypub_follows` / `activitypub_activities` | inbound / outbound follow と activity / transactional outbox の正本。Step 2 は schema と runtime guard までを実装し、Follow 処理と report 配送は後続 Step で実装する。                                                         |
+| `activitypub_follows` / `activitypub_activities` | inbound / outbound Follow の状態と Activity receipt の正本。Step 3 で Follow / Accept / Undo の遷移と Accept / Follow / Undo enqueue を実装済み。report の transactional outbox は Step 4 以降で実装する。                     |
 | `federated_reports`                              | remote object を project scope で参照する外部 report の正本。`project_id + remote_object_uri` を一意にし、保存・表示処理は後続 Step で実装する。                                                                               |
 | `schema_migrations`                              | `pnpm db:migrate` が適用済み migration version を記録する。fresh DB では `init.sql` に取り込み済み version を seed する。                                                                                                      |
 
@@ -70,15 +70,18 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
 - `reports.generation_kind = 'manual'` では schedule metadata を持たず、`scheduled` / `scheduled_backfill` では canonical frequency と `schedule_period_run_id` を必須にする。期間列挙と前回定期 report 解決では project-scoped metadata の `frequency` を検証し、取得した前回 private report JSON では `report_id`・`project_id`・`period` を再検証する。bounded な差分生成、dispatcher、周期設定と実行状態の UI は実装済みである。差分の `frequency` と `previous_report_id` は DB metadata を正として private report JSON の optional `recurrence` に保存する。定期 report JSON は public-safe な optional `project_overview` snapshot も保持する。Project Overview 専用 table は設けず、対象期間が最も新しい定期 report を project-scoped query で解決する。
 - token / refresh token の扱いはセキュリティ設計に従う。収集では project の `oauth_connections` から token を解決し、GitHub App 設定は connection metadata に保存する。
 
-### 3.1 ActivityPub Step 1 / Step 2 persistence boundary
+### 3.1 ActivityPub Step 1 / Step 2 / Step 3 persistence boundary
 
-- `activitypub_queue_messages.dedupe_key` は `activity ID + recipient inbox URI` から決定論的に作り、同じ delivery の重複 row を拒否する。
+- `activitypub_queue_messages.dedupe_key` は inbound では Activity ID、outbound では `activity ID + recipient inbox URI` から決定論的に作り、同じ受信処理または delivery の重複 row を拒否する。
 - outbox row は `ordering_key` と `recipient_origin` を必須とし、`worker_token` と `lease_expires_at` は同時に設定・解除する。
-- queue payload は Fedify 2.3.4 の version-pinned outbox shape を秘密鍵参照へ変換した JSON である。private JWK、OAuth token、credential は保存しない。
+- queue payload は Fedify 2.3.4 の version-pinned inbox / outbox shape を保存する。outbox は enqueue transaction 内だけで秘密鍵を利用し、保存時には key ID だけへ変換する。private JWK、OAuth token、credential は保存しない。
 - Step 1 の test Actor key table は migration / fresh schema に含めない。Step 2 の本番 Actor 鍵は Actor row ごとに一度だけ生成し、AES-256-GCM の versioned JSON として保存する。公開鍵と Actor ID / username は再有効化・process 再起動後も同じ row を再利用する。
 - `activitypub_instance_config` は `id = 1` の singleton とし、最初の outbound `activitypub_activities` row を作る transaction で singleton row を条件付き更新して `representation_locked_at` を設定する。activity table の件数走査には依存しない。lock 後の Article / Note 変更は use-case と DB trigger の双方で拒否する。
 - project Actor の enable / disable は project ID と slug が一致する row を transaction 内で lock する。enable は `projects.visibility = 'public'` の場合だけ許可し、username の変更は既存 Actor を作り直さず拒否する。
-- migration `0016_activitypub_actor_endpoints` と fresh `init.sql` は同じ Actor / follow / activity / queue / federated report 制約を持ち、`pnpm db:schema-drift` で同期を検証する。
+- `activitypub_follows` は `(direction, local_actor_id, remote_actor_uri)` を follow identity とし、再 follow では新しい `follow_activity_uri` を generation ID として保持する。`accepted_at` は accepted だけ、`undone_at` は undone だけで非 NULL になる DB 制約を持つ。旧 generation の Accept / Undo は現 generation を変更しない。
+- `activitypub_activities.activity_uri` は Activity receipt の一意キーであり、raw remote payload ではなく direction、Activity type、local Actor ID、remote Actor URI の metadata だけを保存する。
+- accepted follower / following collection は `(local_actor_id, direction, created_at, id)` の順序と versioned opaque cursor で pagination し、remote Actor URI 以外の inbox、状態遷移時刻、内部 ID を公開 collection に含めない。
+- migration `0016_activitypub_actor_endpoints`、`0017_activitypub_follow_management` と fresh `init.sql` は同じ Actor / follow / activity / queue / federated report 制約を持ち、`pnpm db:schema-drift` で同期を検証する。migration version の記録は migration runner だけが行う。
 
 ### 4. Parser registry
 

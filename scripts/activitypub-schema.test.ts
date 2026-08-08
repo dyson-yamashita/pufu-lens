@@ -11,6 +11,10 @@ const migration0016Path = join(
   import.meta.dirname,
   '../infra/db/migrations/0016_activitypub_actor_endpoints.sql',
 );
+const migration0017Path = join(
+  import.meta.dirname,
+  '../infra/db/migrations/0017_activitypub_follow_management.sql',
+);
 const initPath = join(import.meta.dirname, '../infra/docker/postgres/init.sql');
 
 test('0015 creates ActivityPub Fedify KV and queue message tables', async () => {
@@ -164,6 +168,30 @@ test('0016 and fresh schema lock representation trigger avoids COUNT scans and u
       `${label} must validate missing singleton row`,
     );
   }
+});
+
+test('0017 adds follow collection and activity lookup indexes', async () => {
+  const [migration, init] = await Promise.all([
+    readFile(migration0017Path, 'utf8'),
+    readFile(initPath, 'utf8'),
+  ]);
+
+  for (const name of [
+    'activitypub_follows_accepted_collection_idx',
+    'activitypub_follows_outbound_project_list_idx',
+    'activitypub_follows_accepted_timestamp_check',
+    'activitypub_follows_undone_timestamp_check',
+  ]) {
+    assert.ok(migration.includes(name), `${name} is missing from migration`);
+    assert.ok(init.includes(name), `${name} is missing from fresh schema`);
+  }
+
+  assert.equal(
+    /INSERT INTO public\.schema_migrations/.test(migration),
+    false,
+    'migration must not insert schema_migrations; runner owns version recording',
+  );
+  assert.match(init, /'0017_activitypub_follow_management'/);
 });
 
 function extractTriggerFunctionBody(sql: string, functionName: string): string | undefined {

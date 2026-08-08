@@ -1,9 +1,11 @@
 import {
+  createActivityPubFollowUseCases,
   createPostgresActivityPubRepository,
   createPostgresFedifyKvStore,
   createPostgresQueueAdapter,
   createProductionActivityPubFederation,
   parseActorKeyEncryptionKey,
+  parseBlockedDomainsFromEnv,
   parseCanonicalOrigin,
 } from '@pufu-lens/activitypub';
 import {
@@ -190,9 +192,18 @@ async function initializeProductionFederation(input: {
       sql,
       encryptionKey: input.config.encryptionKey,
     });
+    const followUseCases = createActivityPubFollowUseCases({
+      canonicalOrigin: input.config.canonicalOrigin,
+      sql,
+      encryptionKey: input.config.encryptionKey,
+      actorRepository: repository,
+      enqueueOutbox: false,
+      isDomainBlocked: parseBlockedDomainsFromEnv(process.env.ACTIVITYPUB_BLOCKED_DOMAINS),
+    });
     return await createProductionActivityPubFederation({
       canonicalOrigin: input.config.canonicalOrigin,
       repository,
+      followUseCases,
       kv: createPostgresFedifyKvStore({ sql }),
       queue: createPostgresQueueAdapter({
         sql,

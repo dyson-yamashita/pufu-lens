@@ -4,6 +4,7 @@ import { createFedifyOutboxMessageFixture } from './fedify-message-fixture.ts';
 import {
   claimOnePostgresQueueMessage,
   createPostgresQueueAdapter,
+  processOneQueuedMessage,
   processOneQueuedOutboxMessage,
 } from './postgres.ts';
 import { redactFedifyQueueMessageForStorage, UnsupportedFedifyQueueMessageError } from './queue.ts';
@@ -122,6 +123,72 @@ test('processOneQueuedOutboxMessage rejects in production even when ACTIVITYPUB_
   }
 });
 
+const testRemoteActorResolver = {
+  resolve: async () => ({
+    actorUri: 'https://remote.example/users/alice',
+    inboxUri: remoteInbox,
+    sharedInboxUri: null,
+  }),
+};
+
+test('processOneQueuedMessage rejects testRemoteActorResolver when ACTIVITYPUB_RUN_DB_TESTS is unset', async () => {
+  const previous = process.env.ACTIVITYPUB_RUN_DB_TESTS;
+  delete process.env.ACTIVITYPUB_RUN_DB_TESTS;
+
+  const { fakeSql, wasTouched } = createFakeSql();
+
+  try {
+    await assert.rejects(
+      () =>
+        processOneQueuedMessage({
+          sql: fakeSql,
+          canonicalOrigin,
+          encryptionKey: Buffer.alloc(32, 1),
+          actorRepository: { findRemotelyVisibleActorByUsername: async () => undefined } as never,
+          testRemoteActorResolver,
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ActivityPubTestRuntimeDisabledError);
+        return true;
+      },
+    );
+    assert.equal(wasTouched(), false);
+  } finally {
+    restoreEnv('ACTIVITYPUB_RUN_DB_TESTS', previous);
+  }
+});
+
+test('processOneQueuedMessage rejects testRemoteActorResolver in production even when ACTIVITYPUB_RUN_DB_TESTS=1', async () => {
+  const previousDbTests = process.env.ACTIVITYPUB_RUN_DB_TESTS;
+  const previousNodeEnv = process.env.NODE_ENV;
+
+  process.env.ACTIVITYPUB_RUN_DB_TESTS = '1';
+  process.env.NODE_ENV = 'production';
+
+  const { fakeSql, wasTouched } = createFakeSql();
+
+  try {
+    await assert.rejects(
+      () =>
+        processOneQueuedMessage({
+          sql: fakeSql,
+          canonicalOrigin,
+          encryptionKey: Buffer.alloc(32, 1),
+          actorRepository: { findRemotelyVisibleActorByUsername: async () => undefined } as never,
+          testRemoteActorResolver,
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ActivityPubTestRuntimeDisabledError);
+        return true;
+      },
+    );
+    assert.equal(wasTouched(), false);
+  } finally {
+    restoreEnv('ACTIVITYPUB_RUN_DB_TESTS', previousDbTests);
+    restoreEnv('NODE_ENV', previousNodeEnv);
+  }
+});
+
 test('claimOnePostgresQueueMessage inspects next due row without leasing and rejects malformed JSON', async () => {
   const stored = createStoredOutboxMessage();
   const inspectSql = Object.assign(
@@ -132,14 +199,18 @@ test('claimOnePostgresQueueMessage inspects next due row without leasing and rej
         message_json: stored,
         ordering_key: orderingKey,
         worker_token: null,
+        queue_kind: 'outbox',
       },
     ],
     { json: (value: unknown) => value },
   ) as never;
 
   const inspected = await claimOnePostgresQueueMessage({ sql: inspectSql });
-  assert.equal(inspected?.activityId, activityId);
-  assert.equal(inspected?.inbox, remoteInbox);
+  assert.equal(inspected?.type, 'outbox');
+  if (inspected?.type === 'outbox') {
+    assert.equal(inspected.activityId, activityId);
+    assert.equal(inspected.inbox, remoteInbox);
+  }
 
   const malformedSql = Object.assign(
     async () => [
@@ -149,6 +220,7 @@ test('claimOnePostgresQueueMessage inspects next due row without leasing and rej
         message_json: { type: 'unsupported-fedify-opaque' },
         ordering_key: orderingKey,
         worker_token: null,
+        queue_kind: 'outbox',
       },
     ],
     { json: (value: unknown) => value },
