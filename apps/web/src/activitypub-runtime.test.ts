@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  createActivityPubProductionRuntime,
   createActivityPubWebRuntime,
   resolveActivityPubCanonicalOrigin,
+  resolveActivityPubProductionConfig,
 } from './activitypub-runtime.ts';
 
 const configuredOrigin = 'https://lens.test';
+const encryptionKey = Buffer.alloc(32, 2).toString('base64');
 
 test('resolveActivityPubCanonicalOrigin uses explicit env/input instead of untrusted Host', () => {
   assert.equal(
@@ -70,5 +73,80 @@ test('createActivityPubWebRuntime does not start a queue consumer during constru
     }),
   );
 
+  assert.deepEqual(calls, []);
+});
+
+test('resolveActivityPubProductionConfig validates required production env values', () => {
+  assert.throws(
+    () =>
+      resolveActivityPubProductionConfig({
+        databaseUrl: 'postgresql://example',
+        canonicalOrigin: configuredOrigin,
+        encryptionKey: Buffer.alloc(16).toString('base64'),
+      }),
+    /32 bytes/,
+  );
+  const config = resolveActivityPubProductionConfig({
+    databaseUrl: 'postgresql://example',
+    canonicalOrigin: configuredOrigin,
+    encryptionKey,
+  });
+  assert.equal(config.canonicalOrigin, configuredOrigin);
+  assert.equal(config.encryptionKey.length, 32);
+});
+
+test('resolveActivityPubProductionConfig parses ACTIVITYPUB_DB_MAX_CONNECTIONS', () => {
+  const baseInput = {
+    databaseUrl: 'postgresql://example',
+    canonicalOrigin: configuredOrigin,
+    encryptionKey,
+  };
+
+  assert.equal(resolveActivityPubProductionConfig(baseInput).databaseMaxConnections, 5);
+  assert.equal(
+    resolveActivityPubProductionConfig({
+      ...baseInput,
+      databaseMaxConnections: 12,
+    }).databaseMaxConnections,
+    12,
+  );
+  assert.equal(
+    resolveActivityPubProductionConfig({
+      ...baseInput,
+      databaseMaxConnections: '8',
+    }).databaseMaxConnections,
+    8,
+  );
+
+  for (const invalidValue of ['0', '21', '1.5', 'abc', ' 5 ', '05', '', ' 8', '8 ']) {
+    assert.throws(
+      () =>
+        resolveActivityPubProductionConfig({
+          ...baseInput,
+          databaseMaxConnections: invalidValue,
+        }),
+      /ACTIVITYPUB_DB_MAX_CONNECTIONS|databaseMaxConnections|connection/i,
+    );
+  }
+});
+
+test('createActivityPubProductionRuntime does not start queue consumers during construction', {
+  timeout: 10_000,
+}, async () => {
+  const calls: string[] = [];
+  await assert.rejects(
+    () =>
+      createActivityPubProductionRuntime({
+        databaseUrl: 'postgresql://127.0.0.1:1/invalid',
+        canonicalOrigin: configuredOrigin,
+        encryptionKey,
+        queueHooks: {
+          listen: () => calls.push('listen'),
+          startQueue: () => calls.push('startQueue'),
+          processQueuedTask: () => calls.push('processQueuedTask'),
+        },
+      }),
+    /(connect|ECONNREFUSED|getaddrinfo|Invalid|failed)/i,
+  );
   assert.deepEqual(calls, []);
 });

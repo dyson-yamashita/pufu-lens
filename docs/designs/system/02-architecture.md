@@ -90,8 +90,10 @@
 
 ---
 
-### 2.1 ActivityPub Step 1 protocol boundary
+### 2.1 ActivityPub Step 1 / Step 2 protocol boundary
 
 Plan 017 Step 1 では `packages/activitypub` に Fedify 2.3.4 の protocol contract と PostgreSQL KV / outbox queue adapter を追加した。Next.js の `proxy.ts` は明示的に spike flag を設定した場合だけ WebFinger / Actor / Article fixture を処理し、Web process 内で queue worker を開始しない。delivery は別 Node process が PostgreSQL row を1件 claimし、永続化した key ID から test Actor key を再取得して `Federation.processQueuedTask()` を呼ぶ。
 
-これは本番 federation architecture の有効化ではない。project / aggregate Actor、暗号化鍵 repository、follow / inbox / fanout、transactional outbox、Cloud Scheduler / Cloud Run Job entrypoint は Plan 017 Step 2 以降で追加する。
+Plan 017 Step 2 では production 用の project / aggregate `@all` Actor、Actor 単位の暗号化鍵 repository、WebFinger / Actor / followers / following / outbox / Article dispatcher を追加した。production proxy は `ACTIVITYPUB_ENABLED=1` のときだけ PostgreSQL-backed federation を single-flight で初期化し、成功した instance だけを process 内で再利用する。初期化失敗時は federation route を `503` で fail closed にし、失敗結果を cache せず、作成済み DB client を閉じて次の request で再試行する。公開 endpoint は public かつ federation-enabled な project だけを解決し、private / disabled / missing project とその Article は `404` に統一する。
+
+project federation の enable / disable は project admin 用 API から既存 authz module を通し、repository transaction 内で exact project row を `FOR UPDATE` して visibility を再検証する。Web process が queue consumer を起動しない境界は維持する。Follow / Accept / Undo の業務処理、report 公開時の Create / Announce transactional outbox、配送 Job は Step 3 以降であり、Step 2 には含めない。

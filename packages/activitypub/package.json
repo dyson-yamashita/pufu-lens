@@ -6,6 +6,12 @@
   "exports": {
     ".": "./src/index.ts",
     "./dependency-metadata": "./src/dependency-metadata.ts",
+    "./actor-repository": "./src/actor-repository.ts",
+    "./actor-use-cases": "./src/actor-use-cases.ts",
+    "./federation": "./src/federation.ts",
+    "./key-encryption": "./src/key-encryption.ts",
+    "./schema": "./src/schema.ts",
+    "./uri-contract": "./src/uri-contract.ts",
     "./postgres": "./src/postgres.ts",
     "./protocol": "./src/protocol.ts",
     "./queue": "./src/queue.ts",
