@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { type ChildProcess, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import {
   createServer,
   type IncomingHttpHeaders,
@@ -55,6 +56,7 @@ async function main() {
     const setupClient = postgres(resolvedDatabaseUrl, { max: 1 });
     try {
       await resetFixture(setupClient);
+      await assertResetFixtureDeletesOnlyExactActivityId(setupClient);
       await assertQueuePersistenceAndIdempotency(setupClient);
     } finally {
       await setupClient.end({ timeout: 5 });
@@ -76,13 +78,80 @@ async function main() {
 
 async function resetFixture(sql: postgres.Sql) {
   await sql.unsafe(`DROP TABLE IF EXISTS public.${testActorTable}`);
-  await sql.unsafe(`DELETE FROM public.activitypub_queue_messages WHERE dedupe_key LIKE $1`, [
-    `${canonicalOrigin}%`,
-  ]);
+  await sql.unsafe(
+    `DELETE FROM public.activitypub_queue_messages WHERE split_part(dedupe_key, '|', 1) = $1`,
+    [activityId],
+  );
   await sql.unsafe(
     `DELETE FROM public.activitypub_fedify_kv WHERE array_length(key, 1) = 1 AND key[1] LIKE $1`,
     ['activitypub-contract:%'],
   );
+}
+
+async function assertResetFixtureDeletesOnlyExactActivityId(sql: postgres.Sql) {
+  const lookalikeOrigin = 'https://lens.test.evil';
+  const lookalikeActivityId = `${lookalikeOrigin}/activitypub/activities/create/report-db-sentinel`;
+  const sentinelDedupeKey = `${lookalikeActivityId}|${recipientInbox}`;
+  const sentinelOrderingKey = `${lookalikeOrigin}/activitypub/reports/report-db-sentinel`;
+
+  try {
+    await sql`
+      INSERT INTO public.activitypub_queue_messages (
+        id,
+        dedupe_key,
+        queue_kind,
+        ordering_key,
+        recipient_origin,
+        message_json,
+        status,
+        available_at,
+        attempt_count,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        ${randomUUID()},
+        ${sentinelDedupeKey},
+        'outbox',
+        ${sentinelOrderingKey},
+        ${new URL(recipientInbox).origin},
+        ${sql.json({ sentinel: true })},
+        'pending',
+        now(),
+        0,
+        now(),
+        now()
+      )
+    `;
+
+    const queue = createPostgresQueueAdapter({ sql, canonicalOrigin });
+    await queue.enqueue(createOutboxMessage(recipientInbox), { dedupeKey });
+
+    await resetFixture(sql);
+
+    const sentinelRows = await sql<{ dedupe_key: string }[]>`
+      SELECT dedupe_key
+      FROM public.activitypub_queue_messages
+      WHERE dedupe_key = ${sentinelDedupeKey}
+    `;
+    assert.equal(sentinelRows.length, 1, 'lookalike-origin sentinel row must survive resetFixture');
+
+    const canonicalRows = await sql<{ dedupe_key: string }[]>`
+      SELECT dedupe_key
+      FROM public.activitypub_queue_messages
+      WHERE dedupe_key = ${dedupeKey}
+    `;
+    assert.equal(
+      canonicalRows.length,
+      0,
+      'canonical contract activity row must be deleted by resetFixture',
+    );
+  } finally {
+    await sql`
+      DELETE FROM public.activitypub_queue_messages
+      WHERE dedupe_key = ${sentinelDedupeKey}
+    `;
+  }
 }
 
 function createOutboxMessage(inbox: string) {
