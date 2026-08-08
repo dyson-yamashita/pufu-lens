@@ -1,36 +1,29 @@
 import { fedifyWith } from '@fedify/next';
 import { NextResponse } from 'next/server';
-import { createActivityPubSpikeFederation } from './src/activitypub-runtime.ts';
+import { createCachedActivityPubProxyHandlerResolver } from './src/activitypub-proxy.ts';
+import {
+  createActivityPubProductionFederation,
+  createActivityPubSpikeFederation,
+} from './src/activitypub-runtime.ts';
 
-type ProxyHandler = (request: Request) => unknown;
+const proxyHandlerResolver = createCachedActivityPubProxyHandlerResolver({
+  createProductionFederation: createActivityPubProductionFederation,
+  createSpikeFederation: createActivityPubSpikeFederation,
+  wrapFederation: (federation) => fedifyWith(federation)(() => NextResponse.next()),
+  fallbackResponse: () => NextResponse.next(),
+});
 
-let spikeHandler: ProxyHandler | undefined;
-
-async function resolveSpikeHandler(): Promise<ProxyHandler> {
-  if (spikeHandler) {
-    return spikeHandler;
-  }
-
-  if (process.env.ACTIVITYPUB_SPIKE_ENABLED !== '1') {
-    spikeHandler = () => NextResponse.next();
-    return spikeHandler;
-  }
-
-  try {
-    const federation = await createActivityPubSpikeFederation();
-    spikeHandler = fedifyWith(federation)(() => NextResponse.next());
-  } catch {
-    spikeHandler = () => NextResponse.next();
-  }
-
-  return spikeHandler;
-}
-
-/** Routes federation requests through the Step 1 ActivityPub spike when explicitly enabled. */
+/** Routes federation requests through production ActivityPub or the Step 1 spike when enabled. */
 export async function proxy(request: Request) {
-  const handler = await resolveSpikeHandler();
+  const handler = await proxyHandlerResolver.resolve();
   return await handler(request);
 }
+
+export {
+  type ActivityPubProxyEnv,
+  createCachedActivityPubProxyHandlerResolver,
+  resolveActivityPubProxyHandler,
+} from './src/activitypub-proxy.ts';
 
 export const config = {
   matcher: [

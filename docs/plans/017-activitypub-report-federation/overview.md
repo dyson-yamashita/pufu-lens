@@ -355,6 +355,10 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 
 ### Step 2: schema、Actor、鍵管理、公開 endpoint
 
+- status: `completed`
+- tracking Issue: [#669](https://github.com/dyson-yamashita/pufu-lens/issues/669)
+- 更新日: 2026-08-08
+
 成果物:
 
 - instance representation config / Actor / follow / activity / queue / federated report の migration、fresh DB schema、runtime guard
@@ -370,6 +374,14 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 - object representation が singleton config として永続化され、最初の outbound outbox 作成後の変更を DB / use-case の両方で拒否する
 - `init.sql` と migration の Actor 制約が同期し、aggregate 重複、project 重複、username 衝突、kind / project 不整合を DB で拒否する
 - project越境、不正slug、平文key logをテストで拒否する
+
+実装結果:
+
+- migration `0016_activitypub_actor_endpoints` と fresh `init.sql` に singleton representation config、Actor、follow、activity、queue guard、federated report schema を同期し、DB integration と schema drift で制約を確認した。
+- aggregate `@all` と public project Actor の repository / use-case、Actor 単位の暗号化鍵生成・再読込、WebFinger / Actor / followers / following / outbox / Article dispatcher を実装した。private / disabled / missing project と Article は `404` に統一した。
+- project admin API は既存 authz module、project ID + slug の transaction lock、runtime row parser を通し、non-admin、project 越境、不正 slug、private project enable を拒否する。
+- object representation は最初の outbound activity で lock し、lock 後の Article / Note 変更を use-case と DB trigger の双方で拒否する。
+- Web process は queue consumer を起動せず、Follow / Accept / Undo、Create / Announce の report outbox、配送 Job は Step 3 以降へ残した。UI、本番デプロイ、外部 Pufu Lens / Mastodon 接続は行っていない。
 
 ### Step 3: Follow / Accept / Undo と購読管理
 
