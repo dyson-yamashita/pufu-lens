@@ -84,7 +84,11 @@ report 公開 transaction は `projects.visibility = 'public'` と `reports.is_p
 
 同じ remote Actor が project Actor と `@all` の両方をフォローしている場合は `Create` を優先し、その remote Actor 向けの `Announce` delivery を作らない。異なる remote Actor が同じ server 上でそれぞれ project Actor と `@all` をフォローしている場合は、必要な audience を欠落させないよう両 Activity を shared inbox へ配送してよい。受信側 Pufu Lens は同じ project 内の `remote_object_uri` で統合する。この Actor 単位の優先規則、shared inbox の disjoint audience、受信側の object dedupe を fixture で固定する。
 
-remote client の `Article` 表示互換性は、Mastodon の公開 protocol contract を固定した remote fixture で確認し、Step 6 を MVP completion の blocking gate とする。fixture の timeline projection で title、summary、report URL を表示できなければ MVP は未完了とする。fallback は同じ stable object URI を使う `Create(Note)` と `Announce(Note)` へ instance 全体で切り替え、`Note.content` に title、summary、report URL を含める方式とする。`Article` と `Note` は二重配信せず、fallback 採用時は Actor / object contract、受信 mapping、fixture、hermetic E2E を更新してから MVP 完了とする。fixture は対応対象とする Mastodon version または commit、参照した受信・timeline 正規化 contract を明記し、version 更新時に snapshot を更新する。外部 Mastodon に対する smoke test は利用可能になった場合だけ行う補助確認であり、MVP の完了条件にはしない。このため、実サーバー固有の挙動は未検証リスクとしてリリース記録へ残す。
+remote client の `Article` 表示互換性は、Mastodon の公開 protocol contract を固定した remote fixture で確認し、Step 6 を MVP completion の blocking gate とする。fixture の timeline projection で title、summary、report URL を表示できなければ MVP は未完了とする。fallback は `Create(Note)` と `Announce(Note)` を instance 全体で採用し、`Note.content` に title、summary、report URL を含める方式とする。
+
+採用する object representation は production の最初の outbound activity 作成前に `Article` または `Note` のどちらかへ固定する。最初の outbound outbox row を作る transaction で設定を lock し、lock 後の型変更を DB guard と use-case guard の両方で拒否する。したがって、同じ stable object URI で `Article` と `Note` を時系列に配信せず、`remote_object_uri` による重複排除は型切替の影響を受けない。公開後の表現切替は MVP 対象外とし、将来必要になった場合は別 plan で representation を dedupe key に含め、別 object URI と activity ID version、既存 object の移行規則を設計する。fallback 採用時は production 配送を始める前に Actor / object contract、受信 mapping、fixture、hermetic E2E を `Note` へ統一してから MVP 完了とする。
+
+fixture は対応対象とする Mastodon version または commit、参照した受信・timeline 正規化 contract を明記し、version 更新時に snapshot を更新する。外部 Mastodon に対する smoke test は利用可能になった場合だけ行う補助確認であり、MVP の完了条件にはしない。このため、実サーバー固有の挙動は未検証リスクとしてリリース記録へ残す。
 
 ## 5. Fedify の責務と境界
 
@@ -125,7 +129,16 @@ one-shot `activitypub-dispatcher` は due message を `FOR UPDATE SKIP LOCKED` �
 
 実装 Step では `infra/docker/postgres/init.sql` と migration を同時更新する。名称は実装時の既存命名規則に合わせられるが、責務は次の単位に分離する。
 
-### 6.1 `activitypub_actors`
+### 6.1 `activitypub_instance_config`
+
+- singleton `id`
+- `object_representation`: `article` / `note`
+- `representation_locked_at` nullable
+- `created_at` / `updated_at`
+
+初期値は `article` とする。最初の outbound `activitypub_activities` row を作る transaction で `representation_locked_at` を設定し、以後の変更を拒否する。設定値、materialize する object type、object / activity ID、受信 mapping が一致しない場合は配送せず permanent failure とする。fresh DB、migration、runtime guard、repository contract test で singleton と lock 後不変条件を固定する。
+
+### 6.2 `activitypub_actors`
 
 - `id`
 - `project_id` nullable。集約 Actor は `NULL`
@@ -147,7 +160,7 @@ fresh DB の `init.sql` と migration の両方に次の制約を同じ定義で
 
 project Actor は public project だけ有効化できる。この公開可否は transaction 内の project row lock と repository guard で検証する。秘密鍵の平文、PEM 全文、署名 header はログへ出さない。
 
-### 6.2 `activitypub_follows`
+### 6.3 `activitypub_follows`
 
 - `id`
 - `direction`: `inbound` / `outbound`
@@ -161,7 +174,7 @@ project Actor は public project だけ有効化できる。この公開可否�
 
 `direction + local_actor_id + remote_actor_uri` を一意にし、同じ Follow / Accept / Undo の再送を冪等に処理する。outbound follow の local Actor が project Actor の場合、受信 report の表示先 project はその `project_id` とする。
 
-### 6.3 `activitypub_activities`
+### 6.4 `activitypub_activities`
 
 - `id`
 - `activity_uri` unique
@@ -178,7 +191,7 @@ project Actor は public project だけ有効化できる。この公開可否�
 
 outbound row は report 公開 transaction 内で `pending` として作る transactional outbox でもある。payload は size limit 適用後の監査・再処理用とし、remote HTML は表示時に直接信用しない。`activity_uri` と `object_uri` で重複配送を排除する。
 
-### 6.4 `activitypub_queue_messages`
+### 6.5 `activitypub_queue_messages`
 
 - `id`
 - `dedupe_key` unique
@@ -197,7 +210,7 @@ outbound row は report 公開 transaction 内で `pending` として作る tran
 
 `worker_token` と `lease_expires_at` は同時に NULL または非 NULL とする。outbox の `dedupe_key` は少なくとも `activity_uri + recipient_inbox_uri` から決定論的に作り、activity materialize 後・処理済み更新前に worker が停止しても同じ delivery message を増やさない。`ordering_key` は object URI、`recipient_origin` は remote inbox の origin を正規化して保存し、Fedify の queue enqueue と delivery 処理へ同じ `orderingKey` を伝搬する。message payload に private key、OAuth token、credential を入れず、処理時に Actor ID から解決する。
 
-### 6.5 `federated_reports`
+### 6.6 `federated_reports`
 
 - `id`
 - `project_id`
@@ -321,7 +334,7 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 
 成果物:
 
-- Actor / follow / activity / queue / federated report の migration、fresh DB schema、runtime guard
+- instance representation config / Actor / follow / activity / queue / federated report の migration、fresh DB schema、runtime guard
 - aggregate `@all` と project Actor のrepository / use-case
 - WebFinger、Actor、followers、following、outbox、Article object dispatcher
 - project admin の federation enable / disable API
@@ -331,6 +344,7 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 - `@all` と public project Actor をremote lookupできる
 - private / disabled project は一貫して404になる
 - 鍵がActor単位で一度だけ生成・暗号化保存され、再起動で変わらない
+- object representation が singleton config として永続化され、最初の outbound outbox 作成後の変更を DB / use-case の両方で拒否する
 - `init.sql` と migration の Actor 制約が同期し、aggregate 重複、project 重複、username 衝突、kind / project 不整合を DB で拒否する
 - project越境、不正slug、平文key logをテストで拒否する
 
@@ -403,7 +417,8 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 - `pnpm test:activitypub:e2e` だけで追加 instance、外部 Mastodon、外部 network を使わず、CI とローカルで同じ結果を再現できる
 - A / B context 間で project Actor / `@all` の片方向・相互購読シナリオが、service/use-case の直接呼び出しではなく実際の HTTP route、Fedify parser、署名検証、PostgreSQL queue を通って完走する
 - Mastodon 互換 fixture が WebFinger から Actor を発見し、signed Follow に対する Accept を受け取り、受信した Create / Announce から timeline item の title、summary、Pufu Lens report URL を確認できる
-- `Article` で表示要件を満たせない場合は MVP を未完了のままにし、単一の `Note` fallback contract へ切り替えた全 protocol / mapping / E2E 検証を完了する
+- `Article` で表示要件を満たせない場合は MVP を未完了のままにし、production の最初の outbound activity より前に singleton config を `Note` へ変更して、全 protocol / mapping / E2E 検証を完了する
+- 最初の outbound outbox 作成で representation が lock され、その後の `Article` / `Note` 切替が拒否されることを DB integration と hermetic E2E で確認する
 - Mastodon 互換 fixture の shared inbox へ Pufu Lens dispatcher から signed POST され、fixture 側が `Digest`、署名、Actor key、audience を検証したことを trace で確認できる
 - remote fixture の fault control で timeout、429、503、停止を再現し、retry schedule、復旧後配送、重複副作用なしを仮想時刻で確認できる
 - test transport の host router は test dependency injection だけで有効になり、本番 document loader の SSRF guard を無効化しない。別 security test で production loader が loopback / private address を拒否する
