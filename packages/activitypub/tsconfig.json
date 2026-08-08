@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "lib": ["ES2023", "DOM"],
+    "outDir": "dist",
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": "src"
+  },
+  "include": ["src/**/*.ts"]
+}

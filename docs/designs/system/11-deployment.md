@@ -161,6 +161,10 @@ done
 # /internal/schedules/report-schedule-dispatcher:run
 
 # 7. Next.js デプロイ（Firebase App Hosting）
+#    Fedify 2.3.4 は Node.js >=22 を要求するため、ActivityPub を有効化する backend は nodejs22 以上を選ぶ。
+#    Firebase App Hosting の公式 support schedule では Next.js 16 は preview 扱いのため、Plan 017 の本番有効化前に
+#    staging build と proxy.ts の WebFinger / ActivityPub routing smoke を行う。Step 1 の ACTIVITYPUB_SPIKE_ENABLED は
+#    本番で設定しない。
 #    Firebase CLI >= 15.25.1 のローカルソースデプロイを使うと GitHub 連携や push なしで rollout できる。
 #    apps/web/apphosting.yaml に runtime env / secrets / VPC access、リポジトリルートに firebase.json /
 #    .firebaserc を置き、`firebase deploy --only apphosting` でローカルの作業ツリーをそのままデプロイする。

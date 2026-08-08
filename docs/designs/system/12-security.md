@@ -63,6 +63,14 @@ API は以下の認可をかける：
 - レート制限を Cloud Armor または Hono middleware で実装する。public chat は信頼プロキシが付与した `x-forwarded-for` を右端から走査し、private / local IP と無効値を除いた最初の有効値（なければ `x-real-ip`、最後に anonymous bucket）+ report id 単位で 1 時間 / 1 日 / 質問長の上限を設け、クライアントが任意に付与できる左端値は信用しない。private chat は user + project 単位で public より緩い上限にする。Mastra 側で使う rate limit 用 header は OIDC 検証済みの Next.js から来たものだけを信頼する
 - App Hosting の runtime env と secret は `apphosting.yaml` で参照し、secret 値をリポジトリに含めない。
 
+### 3.1 ActivityPub Step 1 security boundary
+
+- canonical origin は server 設定だけを正とし、未信頼の `Host` / forwarded host header から Actor、object、activity ID を生成しない。通常 runtime は HTTPS origin だけを許可する。
+- remote document loader は private / loopback、IPv4-mapped IPv6、special-use IPv4、NAT64、Teredo、6to4 を拒否し、redirect の各 hop を再検証する。localhost HTTP の許可は `ACTIVITYPUB_RUN_DB_TESTS=1` の隔離 fixture process だけに限定する。
+- queue JSON から private JWK を除去し、key ID だけを保存する。Step 1 の DB contract test 用 Actor key table は本番 schema ではなく、本番鍵の暗号化保存・rotation・権限境界は Plan 017 Step 2 で実装する。
+- Web process は queue consumer と manual task processor を起動しない。Step 1 protocol fixture は `ACTIVITYPUB_SPIKE_ENABLED=1` の明示設定時だけ有効で、本番環境には設定しない。
+- Fedify / vocab / integration package は SSRF 修正済みの `2.3.4` に固定し、lockfile override も同じ patch へ揃える。更新時は Fedify security changelog と resolved version の両方を確認する。
+
 ### 4. Admin data source content preview
 
 - `/projects/[projectSlug]/admin/data-sources` の content preview は project admin 専用の private UI とし、public report / public chat へ流用しない。

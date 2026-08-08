@@ -51,6 +51,8 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
 | `actors` / `actor_aliases`                   | email / GitHub login / Web author domain などの actor と alias を project scope で管理する。                                                                                                                                   |
 | `email_quotes`                               | Gmail の引用チェーンを document と分離して保持する。                                                                                                                                                                           |
 | `reports` / `report_chunks`                  | private/public report metadata、artifact URI、検索用 chunk を保持する。`reports` は手動・通常定期・backfill の生成種別、周期、前回定期 report、period run を参照する。                                                         |
+| `activitypub_fedify_kv`                      | Fedify の cache / idempotency state 用 PostgreSQL KV。業務データは保存しない。Step 1 protocol spike で導入済み。                                                                                                               |
+| `activitypub_queue_messages`                 | ActivityPub delivery queue。Step 1 では recipient 単位の outbox message だけを保存し、決定論的 dedupe、ordering key、recipient origin、lease / attempt /結果を保持する。private JWK は保存しない。                             |
 | `schema_migrations`                          | `pnpm db:migrate` が適用済み migration version を記録する。fresh DB では `init.sql` に取り込み済み version を seed する。                                                                                                      |
 
 ### 3. OAuth connection と data source
@@ -63,6 +65,13 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
 - `report_schedule_period_runs` は同じ project・frequency・period を一意にし、report が生成されない `skipped` も理由と完了時刻を持つ履歴として残す。`succeeded` は report ID と完了時刻を必須とし、それ以外の状態では report ID を持たない。生成 report との相互参照は period run ID・project ID・frequency の複合制約で越境と周期不一致を拒否し、前回定期 report 参照も同じ project・frequency に限定する。
 - `reports.generation_kind = 'manual'` では schedule metadata を持たず、`scheduled` / `scheduled_backfill` では canonical frequency と `schedule_period_run_id` を必須にする。期間列挙と前回定期 report 解決では project-scoped metadata の `frequency` を検証し、取得した前回 private report JSON では `report_id`・`project_id`・`period` を再検証する。bounded な差分生成、dispatcher、周期設定と実行状態の UI は実装済みである。差分の `frequency` と `previous_report_id` は DB metadata を正として private report JSON の optional `recurrence` に保存する。定期 report JSON は public-safe な optional `project_overview` snapshot も保持する。Project Overview 専用 table は設けず、対象期間が最も新しい定期 report を project-scoped query で解決する。
 - token / refresh token の扱いはセキュリティ設計に従う。収集では project の `oauth_connections` から token を解決し、GitHub App 設定は connection metadata に保存する。
+
+### 3.1 ActivityPub Step 1 persistence boundary
+
+- `activitypub_queue_messages.dedupe_key` は `activity ID + recipient inbox URI` から決定論的に作り、同じ delivery の重複 row を拒否する。
+- outbox row は `ordering_key` と `recipient_origin` を必須とし、`worker_token` と `lease_expires_at` は同時に設定・解除する。
+- queue payload は Fedify 2.3.4 の version-pinned outbox shape を秘密鍵参照へ変換した JSON である。private JWK、OAuth token、credential は保存しない。
+- Step 1 の test Actor key table は migration / fresh schema に含めない。本番 Actor / encrypted key schema と repository は Plan 017 Step 2 で追加する。
 
 ### 4. Parser registry
 

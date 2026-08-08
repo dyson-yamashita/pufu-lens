@@ -89,3 +89,9 @@
 | Secret Manager      | 認証情報管理                                                                                                 | GCP マネージド                          |
 
 ---
+
+### 2.1 ActivityPub Step 1 protocol boundary
+
+Plan 017 Step 1 では `packages/activitypub` に Fedify 2.3.4 の protocol contract と PostgreSQL KV / outbox queue adapter を追加した。Next.js の `proxy.ts` は明示的に spike flag を設定した場合だけ WebFinger / Actor / Article fixture を処理し、Web process 内で queue worker を開始しない。delivery は別 Node process が PostgreSQL row を1件 claimし、永続化した key ID から test Actor key を再取得して `Federation.processQueuedTask()` を呼ぶ。
+
+これは本番 federation architecture の有効化ではない。project / aggregate Actor、暗号化鍵 repository、follow / inbox / fanout、transactional outbox、Cloud Scheduler / Cloud Run Job entrypoint は Plan 017 Step 2 以降で追加する。
