@@ -418,7 +418,7 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 ### Step 4: 公開 report の transactional enqueue と outbound delivery
 
 - status: `completed`
-- tracking Issue: [#673](https://github.com/dyson-yamashita/pufu-lens/issues/673)
+- tracking Issue / PR: [#673](https://github.com/dyson-yamashita/pufu-lens/issues/673) / [#674](https://github.com/dyson-yamashita/pufu-lens/pull/674)
 - 更新日: 2026-08-09
 
 成果物:
