@@ -5,6 +5,19 @@ import { PostgresKvStore } from '@fedify/postgres';
 import type postgres from 'postgres';
 import type { ActivityPubRepository } from './actor-repository.ts';
 import { parseCanonicalOrigin } from './canonical-origin.ts';
+import { DELIVERY_ERROR_CODES, LeaseLostError, mapDeliveryError } from './delivery-errors.ts';
+import { withTimedDeliveryFetch } from './delivery-fetch.ts';
+import { createDeliveryHeartbeatController } from './delivery-heartbeat.ts';
+import { createDeliveryErrorObserver, toObservedDeliveryError } from './delivery-observer.ts';
+import {
+  type ActivityPubDispatcherClock,
+  classifyDeliveryFailure,
+  computeHeartbeatLeaseExpiry,
+  DISPATCHER_LEASE_MS,
+  isBlockedByOrderingPredecessor,
+  PREDECESSOR_FAILURE_CODE,
+  parseRetryAfterHeader,
+} from './dispatcher.ts';
 import {
   createProductionActivityPubFederation,
   createTestActivityPubFederation,
@@ -36,7 +49,6 @@ import { buildActivityPubUriContract } from './uri-contract.ts';
 type JsonWebKey = webcrypto.JsonWebKey;
 
 const TABLE_NAME_PATTERN = /^[a-z_][a-z0-9_]*$/;
-const ACTIVITYPUB_DELIVERY_FAILED = 'activitypub_delivery_failed';
 
 type QueueRow = {
   id: string;
@@ -277,7 +289,17 @@ function parseReloadedJwk(value: unknown, label: string): JsonWebKey {
 }
 
 export type OneShotDispatchResult =
-  | { status: 'processed'; processor: 'Federation.processQueuedTask'; messageId: string }
+  | {
+      status: 'processed';
+      processor: 'Federation.processQueuedTask';
+      messageId: string;
+      queueKind: 'inbox' | 'outbox';
+    }
+  | {
+      status: 'delivery_failed';
+      messageId: string;
+      queueKind: 'inbox' | 'outbox';
+    }
   | { status: 'no-op' };
 
 /** Input for the production one-shot queue processor used by dispatch jobs. */
@@ -293,6 +315,14 @@ export type ProcessOneQueuedMessageInput = {
   testOnlyAllowPrivateAddress?: boolean;
   /** Test-only remote actor resolver override for inbox queue contract tests. */
   testRemoteActorResolver?: RemoteActorResolver;
+  /** Optional queue kind preference for fair inbox/outbox claiming. */
+  preferredQueueKind?: 'inbox' | 'outbox';
+  /** Injectable clock for deterministic dispatcher tests. */
+  clock?: ActivityPubDispatcherClock;
+  /** Injectable heartbeat callback used during potentially slow delivery. */
+  heartbeat?: (input: { messageId: string; workerToken: string }) => Promise<boolean>;
+  /** Heartbeat interval in milliseconds for long-running delivery. */
+  heartbeatIntervalMs?: number;
 };
 
 /** Claims and processes exactly one queued inbox or outbox message through Fedify manual task processing. */
@@ -302,7 +332,11 @@ export async function processOneQueuedMessage(
   assertTestOnlyPrivateAddressAllowed(input.testOnlyAllowPrivateAddress);
   assertTestRemoteActorResolverAllowed(input.testRemoteActorResolver);
 
-  const claimed = await claimQueueRow(input.sql);
+  const claimed = await claimQueueRow({
+    sql: input.sql,
+    preferredQueueKind: input.preferredQueueKind,
+    clock: input.clock,
+  });
   if (!claimed) {
     return { status: 'no-op' };
   }
@@ -321,73 +355,147 @@ export async function processOneQueuedMessage(
         : {}),
     });
 
-    if (stored.type === 'inbox' && input.testOnlyAllowPrivateAddress) {
-      const activityRecord = stored.activity as Record<string, unknown>;
-      const signedActorUri = typeof activityRecord.actor === 'string' ? activityRecord.actor : '';
-      if (!signedActorUri) {
-        throw new Error('inbox activity missing actor');
-      }
-      await processStoredInboxViaVerifiedListenerHarness({
-        stored,
-        canonicalOrigin: input.canonicalOrigin,
-        actorRepository: input.actorRepository,
-        followUseCases,
-        signedActorUri,
-        recipientUsername: stored.identifier,
-      });
-    } else {
-      const queue = createPostgresQueueAdapter({
-        sql: input.sql,
-        canonicalOrigin: input.canonicalOrigin,
-      });
-      const federationBuilder = input.testOnlyAllowPrivateAddress
-        ? createTestActivityPubFederation
-        : createProductionActivityPubFederation;
-      const federation = await federationBuilder({
-        canonicalOrigin: input.canonicalOrigin,
-        repository: input.actorRepository,
-        followUseCases,
-        kv: createPostgresFedifyKvStore({ sql: input.sql, initialized: true }),
-        queue,
-        ...(input.testOnlyAllowPrivateAddress ? { allowPrivateAddress: true } : {}),
-      });
+    const heartbeatIntervalMs = input.heartbeatIntervalMs ?? 30_000;
+    const heartbeat =
+      input.heartbeat ??
+      (async ({ messageId, workerToken }) =>
+        heartbeatPostgresQueueMessage({
+          sql: input.sql,
+          messageId,
+          workerToken,
+          clock: input.clock,
+        }));
+    const heartbeatController = createDeliveryHeartbeatController({
+      heartbeat,
+      messageId: claimed.id,
+      workerToken: claimed.worker_token,
+      heartbeatIntervalMs,
+    });
+    heartbeatController.start();
+    let heartbeatLost = false;
 
-      if (stored.type === 'inbox') {
-        await federation.processQueuedTask(undefined, toFedifyMessage(stored));
-      } else {
-        const uri = buildActivityPubUriContract(input.canonicalOrigin);
-        const rehydrated = await rehydrateStoredOutboxMessage(stored, async (keyId) => {
-          const username = extractPreferredUsernameFromKeyId(keyId);
-          const expectedKeyId = uri.actorKeyId(username);
-          const expectedActorUrl = uri.actorUrl(username);
-          if (keyId !== expectedKeyId) {
-            throw new Error('outbox queue message key binding rejected');
+    try {
+      await withTimedDeliveryFetch({}, async () => {
+        if (stored.type === 'inbox' && input.testOnlyAllowPrivateAddress) {
+          const activityRecord = stored.activity as Record<string, unknown>;
+          const signedActorUri =
+            typeof activityRecord.actor === 'string' ? activityRecord.actor : '';
+          if (!signedActorUri) {
+            throw new Error('inbox activity missing actor');
           }
-          if (!stored.actorIds?.includes(expectedActorUrl)) {
-            throw new Error('outbox queue message actor binding rejected');
+          await processStoredInboxViaVerifiedListenerHarness({
+            stored,
+            canonicalOrigin: input.canonicalOrigin,
+            actorRepository: input.actorRepository,
+            followUseCases,
+            signedActorUri,
+            recipientUsername: stored.identifier,
+          });
+        } else {
+          const queue = createPostgresQueueAdapter({
+            sql: input.sql,
+            canonicalOrigin: input.canonicalOrigin,
+          });
+          const deliveryObserver = createDeliveryErrorObserver();
+          const federationBuilder = input.testOnlyAllowPrivateAddress
+            ? createTestActivityPubFederation
+            : createProductionActivityPubFederation;
+          const federation = await federationBuilder({
+            canonicalOrigin: input.canonicalOrigin,
+            repository: input.actorRepository,
+            followUseCases,
+            kv: createPostgresFedifyKvStore({ sql: input.sql, initialized: true }),
+            queue,
+            deliveryObserver,
+            ...(input.testOnlyAllowPrivateAddress ? { allowPrivateAddress: true } : {}),
+          });
+
+          if (stored.type === 'inbox') {
+            try {
+              await federation.processQueuedTask(undefined, toFedifyMessage(stored));
+            } catch (deliveryError) {
+              const observed = deliveryObserver.consume();
+              if (observed) {
+                throw toObservedDeliveryError(observed);
+              }
+              throw deliveryError;
+            }
+          } else {
+            const uri = buildActivityPubUriContract(input.canonicalOrigin);
+            const rehydrated = await rehydrateStoredOutboxMessage(stored, async (keyId) => {
+              const username = extractPreferredUsernameFromKeyId(keyId);
+              const expectedKeyId = uri.actorKeyId(username);
+              const expectedActorUrl = uri.actorUrl(username);
+              if (keyId !== expectedKeyId) {
+                throw new Error('outbox queue message key binding rejected');
+              }
+              if (!stored.actorIds?.includes(expectedActorUrl)) {
+                throw new Error('outbox queue message actor binding rejected');
+              }
+              const actor =
+                await input.actorRepository.findRemotelyVisibleActorByUsername(username);
+              if (!actor) {
+                throw new Error('unknown actor for outbox queue key');
+              }
+              const keyPair = await input.actorRepository.importActorCryptoKeyPair(actor.id);
+              return exportJwk(keyPair.privateKey);
+            });
+            try {
+              await federation.processQueuedTask(undefined, toFedifyMessage(rehydrated));
+            } catch (deliveryError) {
+              const observed = deliveryObserver.consume();
+              if (observed) {
+                throw toObservedDeliveryError(observed);
+              }
+              throw deliveryError;
+            }
           }
-          const actor = await input.actorRepository.findRemotelyVisibleActorByUsername(username);
-          if (!actor) {
-            throw new Error('unknown actor for outbox queue key');
+
+          const observed = deliveryObserver.consume();
+          if (observed) {
+            throw toObservedDeliveryError(observed);
           }
-          const keyPair = await input.actorRepository.importActorCryptoKeyPair(actor.id);
-          return exportJwk(keyPair.privateKey);
-        });
-        await federation.processQueuedTask(undefined, toFedifyMessage(rehydrated));
-      }
+        }
+      });
+    } finally {
+      heartbeatLost = await heartbeatController.stop();
     }
 
-    await finalizeQueueSuccess(input.sql, claimed.id, claimed.worker_token);
+    if (heartbeatLost) {
+      throw new LeaseLostError();
+    }
+
+    await finalizeQueueSuccess(input.sql, claimed.id, claimed.worker_token, input.clock);
     return {
       status: 'processed',
       processor: 'Federation.processQueuedTask',
       messageId: claimed.id,
+      queueKind: claimed.queue_kind,
     };
   } catch (error) {
+    if (error instanceof LeaseLostError) {
+      throw error;
+    }
     try {
-      await finalizeQueueFailure(input.sql, claimed.id, claimed.worker_token);
-    } catch {
-      // Preserve the original delivery error when queue finalization also fails.
+      await finalizeQueueFailure({
+        sql: input.sql,
+        id: claimed.id,
+        workerToken: claimed.worker_token,
+        attemptCount: claimed.attempt_count,
+        error,
+        clock: input.clock,
+      });
+    } catch (finalizeError) {
+      if (finalizeError instanceof LeaseLostError) {
+        throw finalizeError;
+      }
+    }
+    if (isExpectedDeliveryFailure(error)) {
+      return {
+        status: 'delivery_failed',
+        messageId: claimed.id,
+        queueKind: claimed.queue_kind,
+      };
     }
     throw error;
   }
@@ -413,7 +521,7 @@ export async function processOneQueuedOutboxMessage(
   assertActivityPubDbTestRuntime();
   assertTestOnlyPrivateAddressAllowed(input.testOnlyAllowPrivateAddress);
 
-  const claimed = await claimQueueRow(input.sql);
+  const claimed = await claimQueueRow({ sql: input.sql });
   if (!claimed) {
     return { status: 'no-op' };
   }
@@ -462,10 +570,17 @@ export async function processOneQueuedOutboxMessage(
       status: 'processed',
       processor: 'Federation.processQueuedTask',
       messageId: claimed.id,
+      queueKind: claimed.queue_kind,
     };
   } catch (error) {
     try {
-      await finalizeQueueFailure(input.sql, claimed.id, claimed.worker_token);
+      await finalizeQueueFailure({
+        sql: input.sql,
+        id: claimed.id,
+        workerToken: claimed.worker_token,
+        attemptCount: claimed.attempt_count,
+        error,
+      });
     } catch {
       // Preserve the original delivery error when queue finalization also fails.
     }
@@ -473,73 +588,371 @@ export async function processOneQueuedOutboxMessage(
   }
 }
 
-async function claimQueueRow(
-  sql: postgres.Sql,
-): Promise<(QueueRow & { worker_token: string }) | null> {
-  return sql.begin(async (transaction) => {
-    const rows = await transaction<QueueRow[]>`
-      SELECT id, dedupe_key, message_json, ordering_key, worker_token, queue_kind
-      FROM public.activitypub_queue_messages
-      WHERE status IN ('pending', 'retry_wait')
-        AND available_at <= now()
-      ORDER BY created_at ASC, id ASC
-      FOR UPDATE SKIP LOCKED
-      LIMIT 1
-    `;
-    const row = rows[0];
-    if (!row) {
-      return null;
-    }
-    const workerToken = randomUUID();
-    const updated = await transaction<{ id: string }[]>`
+type ClaimedQueueRow = QueueRow & {
+  worker_token: string;
+  attempt_count: number;
+};
+
+async function claimQueueRow(input: {
+  sql: postgres.Sql;
+  preferredQueueKind?: 'inbox' | 'outbox';
+  clock?: ActivityPubDispatcherClock;
+}): Promise<ClaimedQueueRow | null> {
+  const clock = input.clock ?? { now: () => new Date() };
+  return input.sql.begin(async (transaction) => {
+    await transaction`
       UPDATE public.activitypub_queue_messages
-      SET status = 'running',
-          worker_token = ${workerToken},
-          lease_expires_at = now() + interval '15 minutes',
-          started_at = COALESCE(started_at, now()),
-          attempt_count = attempt_count + 1,
-          updated_at = now()
-      WHERE id = ${row.id}
-        AND status IN ('pending', 'retry_wait')
-      RETURNING id
+      SET status = 'pending',
+          worker_token = NULL,
+          lease_expires_at = NULL,
+          attempt_lease_started_at = NULL,
+          available_at = ${clock.now()},
+          updated_at = ${clock.now()}
+      WHERE status = 'running'
+        AND lease_expires_at IS NOT NULL
+        AND lease_expires_at <= ${clock.now()}
     `;
-    if (updated.length === 0) {
-      return null;
+
+    const queueKinds: readonly ('inbox' | 'outbox')[] =
+      input.preferredQueueKind === undefined
+        ? (['inbox', 'outbox'] as const)
+        : input.preferredQueueKind === 'inbox'
+          ? (['inbox', 'outbox'] as const)
+          : (['outbox', 'inbox'] as const);
+
+    for (const queueKind of queueKinds) {
+      const rows = await transaction<
+        (QueueRow & {
+          recipient_origin: string | null;
+          attempt_count: number;
+        })[]
+      >`
+        SELECT id, dedupe_key, message_json, ordering_key, worker_token, queue_kind, recipient_origin, attempt_count
+        FROM public.activitypub_queue_messages q
+        WHERE status IN ('pending', 'retry_wait')
+          AND available_at <= ${clock.now()}
+          AND queue_kind = ${queueKind}
+          AND (
+            q.queue_kind <> 'outbox'
+            OR q.ordering_key IS NULL
+            OR q.recipient_origin IS NULL
+            OR NOT EXISTS (
+              SELECT 1
+              FROM public.activitypub_queue_messages p
+              WHERE p.queue_kind = 'outbox'
+                AND p.ordering_key = q.ordering_key
+                AND p.recipient_origin = q.recipient_origin
+                AND (p.created_at, p.id) < (q.created_at, q.id)
+                AND p.status NOT IN ('succeeded', 'retry_exhausted', 'permanent_failure')
+            )
+          )
+        ORDER BY created_at ASC, id ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 20
+      `;
+      for (const row of rows) {
+        const gate = await evaluateOrderingGate(transaction, row);
+        if (gate.kind === 'block') {
+          continue;
+        }
+        if (gate.kind === 'terminalize') {
+          await transaction`
+            UPDATE public.activitypub_queue_messages
+            SET status = ${gate.terminalStatus},
+                worker_token = NULL,
+                lease_expires_at = NULL,
+                attempt_lease_started_at = NULL,
+                last_error_code = ${PREDECESSOR_FAILURE_CODE},
+                completed_at = ${clock.now()},
+                updated_at = ${clock.now()}
+            WHERE id = ${row.id}
+          `;
+          continue;
+        }
+        const workerToken = randomUUID();
+        const leaseExpiresAt = new Date(clock.now().getTime() + DISPATCHER_LEASE_MS);
+        const updated = await transaction<{ id: string; attempt_count: number }[]>`
+          UPDATE public.activitypub_queue_messages
+          SET status = 'running',
+              worker_token = ${workerToken},
+              lease_expires_at = ${leaseExpiresAt},
+              attempt_lease_started_at = ${clock.now()},
+              started_at = COALESCE(started_at, ${clock.now()}),
+              attempt_count = attempt_count + 1,
+              updated_at = ${clock.now()}
+          WHERE id = ${row.id}
+            AND status IN ('pending', 'retry_wait')
+          RETURNING id, attempt_count
+        `;
+        if (updated.length === 0) {
+          continue;
+        }
+        return {
+          ...row,
+          worker_token: workerToken,
+          attempt_count: updated[0]?.attempt_count ?? row.attempt_count + 1,
+        };
+      }
     }
-    return {
-      ...row,
-      worker_token: workerToken,
-    };
+    return null;
   });
 }
 
-async function finalizeQueueSuccess(sql: postgres.Sql, id: string, workerToken: string) {
-  await sql`
+async function evaluateOrderingGate(
+  transaction: postgres.TransactionSql,
+  row: QueueRow & { recipient_origin: string | null },
+): Promise<
+  | { readonly kind: 'claim' }
+  | { readonly kind: 'block' }
+  | {
+      readonly kind: 'terminalize';
+      readonly terminalStatus: 'retry_exhausted' | 'permanent_failure';
+    }
+> {
+  if (row.queue_kind !== 'outbox' || !row.ordering_key || !row.recipient_origin) {
+    return { kind: 'claim' };
+  }
+  const predecessors = await transaction<
+    { status: string; id: string; created_at: Date; attempt_count: number }[]
+  >`
+    SELECT status, id::text AS id, created_at, attempt_count
+    FROM public.activitypub_queue_messages
+    WHERE queue_kind = 'outbox'
+      AND ordering_key = ${row.ordering_key}
+      AND recipient_origin = ${row.recipient_origin}
+      AND (created_at, id) < (
+        SELECT created_at, id
+        FROM public.activitypub_queue_messages
+        WHERE id = ${row.id}
+      )
+      AND status <> 'succeeded'
+    ORDER BY created_at ASC, id ASC
+    LIMIT 1
+  `;
+  const predecessor = predecessors[0];
+  if (!predecessor) {
+    return { kind: 'claim' };
+  }
+  const gate = isBlockedByOrderingPredecessor({
+    hasOlderIncompletePredecessor: true,
+    predecessorTerminalFailure:
+      predecessor.status === 'retry_exhausted' || predecessor.status === 'permanent_failure',
+  });
+  if (gate === 'claim') {
+    return { kind: 'claim' };
+  }
+  if (gate === 'block') {
+    return { kind: 'block' };
+  }
+  return {
+    kind: 'terminalize',
+    terminalStatus:
+      predecessor.status === 'retry_exhausted' ? 'retry_exhausted' : 'permanent_failure',
+  };
+}
+
+async function finalizeQueueSuccess(
+  sql: postgres.Sql,
+  id: string,
+  workerToken: string,
+  clock?: ActivityPubDispatcherClock,
+) {
+  const now = clock?.now() ?? new Date();
+  const updated = await sql`
     UPDATE public.activitypub_queue_messages
     SET status = 'succeeded',
         worker_token = NULL,
         lease_expires_at = NULL,
-        completed_at = now(),
-        updated_at = now()
+        attempt_lease_started_at = NULL,
+        completed_at = ${now},
+        updated_at = ${now}
     WHERE id = ${id}
       AND worker_token = ${workerToken}
-      AND (lease_expires_at IS NULL OR lease_expires_at > now())
+      AND status = 'running'
+      AND lease_expires_at > ${now}
   `;
+  if (updated.count === 0) {
+    throw new LeaseLostError();
+  }
 }
 
-async function finalizeQueueFailure(sql: postgres.Sql, id: string, workerToken: string) {
-  await sql`
+async function finalizeQueueFailure(input: {
+  sql: postgres.Sql;
+  id: string;
+  workerToken: string;
+  attemptCount: number;
+  error: unknown;
+  clock?: ActivityPubDispatcherClock;
+}) {
+  const now = input.clock?.now() ?? new Date();
+  const processorError = toDeliveryProcessorError(input.error);
+  const classification = classifyDeliveryFailure({
+    attemptCount: input.attemptCount,
+    error: processorError,
+  });
+  let updated: { count: number };
+  if (classification.kind === 'retry_exhausted') {
+    updated = await input.sql`
+      UPDATE public.activitypub_queue_messages
+      SET status = 'retry_exhausted',
+          worker_token = NULL,
+          lease_expires_at = NULL,
+          attempt_lease_started_at = NULL,
+          last_error_code = ${processorError.code},
+          last_http_status = ${processorError.httpStatus ?? null},
+          completed_at = ${now},
+          updated_at = ${now}
+      WHERE id = ${input.id}
+        AND worker_token = ${input.workerToken}
+        AND status = 'running'
+        AND lease_expires_at > ${now}
+    `;
+  } else if (classification.kind === 'permanent_failure') {
+    updated = await input.sql`
+      UPDATE public.activitypub_queue_messages
+      SET status = 'permanent_failure',
+          worker_token = NULL,
+          lease_expires_at = NULL,
+          attempt_lease_started_at = NULL,
+          last_error_code = ${processorError.code},
+          last_http_status = ${processorError.httpStatus ?? null},
+          completed_at = ${now},
+          updated_at = ${now}
+      WHERE id = ${input.id}
+        AND worker_token = ${input.workerToken}
+        AND status = 'running'
+        AND lease_expires_at > ${now}
+    `;
+  } else {
+    updated = await input.sql`
+      UPDATE public.activitypub_queue_messages
+      SET status = 'retry_wait',
+          worker_token = NULL,
+          lease_expires_at = NULL,
+          attempt_lease_started_at = NULL,
+          available_at = ${new Date(now.getTime() + classification.delayMs)},
+          last_error_code = ${processorError.code},
+          last_http_status = ${processorError.httpStatus ?? null},
+          updated_at = ${now}
+      WHERE id = ${input.id}
+        AND worker_token = ${input.workerToken}
+        AND status = 'running'
+        AND lease_expires_at > ${now}
+    `;
+  }
+  if (updated.count === 0) {
+    throw new LeaseLostError();
+  }
+}
+
+function toDeliveryProcessorError(error: unknown): {
+  code: string;
+  httpStatus?: number;
+  retryAfterMs?: number;
+} {
+  const mapped = mapDeliveryError(error);
+  if (error && typeof error === 'object' && !Array.isArray(error)) {
+    const record = error as Record<string, unknown>;
+    const retryAfter =
+      typeof record.retryAfter === 'string' ? parseRetryAfterHeader(record.retryAfter) : undefined;
+    return {
+      code: mapped.code,
+      httpStatus: mapped.httpStatus,
+      retryAfterMs: mapped.retryAfterMs ?? retryAfter,
+    };
+  }
+  return mapped;
+}
+
+function isExpectedDeliveryFailure(error: unknown): boolean {
+  if (error instanceof LeaseLostError) {
+    return false;
+  }
+  const mapped = mapDeliveryError(error);
+  if (mapped.httpStatus !== undefined) {
+    return true;
+  }
+  return (
+    mapped.code === DELIVERY_ERROR_CODES.deliveryTimeout ||
+    mapped.code === DELIVERY_ERROR_CODES.networkError
+  );
+}
+
+/** Extends a queue message lease when the worker token and lease are still valid. */
+export async function heartbeatPostgresQueueMessage(input: {
+  readonly sql: postgres.Sql;
+  readonly messageId: string;
+  readonly workerToken: string;
+  readonly clock?: ActivityPubDispatcherClock;
+}): Promise<boolean> {
+  const clock = input.clock ?? { now: () => new Date() };
+  const rows = (await input.sql`
+    SELECT attempt_lease_started_at
+    FROM public.activitypub_queue_messages
+    WHERE id = ${input.messageId}::uuid
+      AND worker_token = ${input.workerToken}::uuid
+      AND status = 'running'
+      AND lease_expires_at > ${clock.now()}
+  `) as readonly unknown[];
+  const row = rows[0];
+  if (!row || typeof row !== 'object' || Array.isArray(row)) {
+    return false;
+  }
+  const attemptLeaseStartedAt = Reflect.get(row, 'attempt_lease_started_at');
+  if (!(attemptLeaseStartedAt instanceof Date) && typeof attemptLeaseStartedAt !== 'string') {
+    return false;
+  }
+  const parsedAttemptLeaseStartedAt =
+    attemptLeaseStartedAt instanceof Date ? attemptLeaseStartedAt : new Date(attemptLeaseStartedAt);
+  const nextLease = computeHeartbeatLeaseExpiry({
+    now: clock.now(),
+    attemptLeaseStartedAt: parsedAttemptLeaseStartedAt,
+  });
+  if (!nextLease) {
+    return false;
+  }
+  const updated = await input.sql`
     UPDATE public.activitypub_queue_messages
-    SET status = 'retry_wait',
+    SET lease_expires_at = ${nextLease},
+        updated_at = ${clock.now()}
+    WHERE id = ${input.messageId}::uuid
+      AND worker_token = ${input.workerToken}::uuid
+      AND status = 'running'
+      AND lease_expires_at > ${clock.now()}
+  `;
+  return updated.count > 0;
+}
+
+/** Terminalizes later queue rows when an ordering predecessor failed permanently. */
+export async function terminalizeSuccessorAfterPredecessorFailure(input: {
+  readonly sql: postgres.Sql;
+  readonly orderingKey: string;
+  readonly recipientOrigin: string;
+  readonly predecessorId: string;
+  readonly terminalStatus: 'retry_exhausted' | 'permanent_failure';
+  readonly clock?: ActivityPubDispatcherClock;
+}): Promise<number> {
+  const clock = input.clock ?? { now: () => new Date() };
+  const updated = await input.sql`
+    UPDATE public.activitypub_queue_messages
+    SET status = ${input.terminalStatus},
         worker_token = NULL,
         lease_expires_at = NULL,
-        available_at = now() + interval '1 minute',
-        last_error_code = ${ACTIVITYPUB_DELIVERY_FAILED},
-        updated_at = now()
-    WHERE id = ${id}
-      AND worker_token = ${workerToken}
-      AND (lease_expires_at IS NULL OR lease_expires_at > now())
+        attempt_lease_started_at = NULL,
+        last_error_code = ${PREDECESSOR_FAILURE_CODE},
+        completed_at = ${clock.now()},
+        updated_at = ${clock.now()}
+    WHERE queue_kind = 'outbox'
+      AND ordering_key = ${input.orderingKey}
+      AND recipient_origin = ${input.recipientOrigin}
+      AND status IN ('pending', 'retry_wait')
+      AND (created_at, id) > (
+        SELECT created_at, id
+        FROM public.activitypub_queue_messages
+        WHERE id = ${input.predecessorId}::uuid
+      )
   `;
+  return updated.count;
 }
 
 function assertEnqueueDelaySupported(delay: MessageQueueEnqueueOptions['delay']): void {

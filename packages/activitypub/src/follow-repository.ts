@@ -371,7 +371,6 @@ async function requestOutboundUndo(input: {
     const rows = (await input.sql`
       UPDATE public.activitypub_follows
       SET status = 'undone',
-          accepted_at = NULL,
           undone_at = now(),
           updated_at = now()
       WHERE id = ${existing.id}::uuid
@@ -619,7 +618,6 @@ async function recordInboundUndoFollow(input: {
     const rows = (await input.sql`
       UPDATE public.activitypub_follows
       SET status = 'undone',
-          accepted_at = NULL,
           undone_at = now(),
           updated_at = now()
       WHERE id = ${existing.id}::uuid

@@ -455,8 +455,8 @@ async function findPublicReportArticle(input: {
       p.slug AS project_slug,
       a.preferred_username,
       r.title,
-      COALESCE(r.summary, '') AS summary,
-      r.created_at AS published_at
+      COALESCE(r.activitypub_public_summary, r.summary, '') AS summary,
+      COALESCE(r.activitypub_published_at, r.created_at) AS published_at
     FROM public.reports r
     JOIN public.projects p
       ON p.id = r.project_id

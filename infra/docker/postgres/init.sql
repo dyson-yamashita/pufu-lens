@@ -507,6 +507,8 @@ CREATE TABLE public.reports (
   schema_version TEXT NOT NULL DEFAULT 'v1',
   period DATERANGE,
   is_public BOOLEAN NOT NULL DEFAULT false,
+  activitypub_published_at TIMESTAMPTZ,
+  activitypub_public_summary TEXT,
   generated_by TEXT,
   generation_kind TEXT NOT NULL DEFAULT 'manual',
   schedule_frequency TEXT,
@@ -746,6 +748,7 @@ CREATE TABLE IF NOT EXISTS public.activitypub_queue_messages (
   attempt_count integer NOT NULL DEFAULT 0,
   worker_token uuid,
   lease_expires_at timestamptz,
+  attempt_lease_started_at timestamptz,
   last_error_code text,
   last_http_status integer,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -785,6 +788,14 @@ CREATE INDEX IF NOT EXISTS activitypub_queue_messages_due_idx
 
 CREATE INDEX IF NOT EXISTS activitypub_queue_messages_ordering_origin_idx
   ON public.activitypub_queue_messages (ordering_key, recipient_origin);
+
+CREATE INDEX IF NOT EXISTS activitypub_queue_messages_running_lease_idx
+  ON public.activitypub_queue_messages (lease_expires_at, id)
+  WHERE status = 'running';
+
+CREATE INDEX IF NOT EXISTS activitypub_queue_messages_outbox_claim_idx
+  ON public.activitypub_queue_messages (queue_kind, available_at, created_at, id)
+  WHERE status IN ('pending', 'retry_wait');
 
 ALTER TABLE public.activitypub_queue_messages
   ADD CONSTRAINT activitypub_queue_messages_message_json_object_check
@@ -892,8 +903,9 @@ CREATE TABLE IF NOT EXISTS public.activitypub_follows (
     UNIQUE (direction, local_actor_id, remote_actor_uri),
   CONSTRAINT activitypub_follows_accepted_timestamp_check
     CHECK (
-      (status = 'accepted' AND accepted_at IS NOT NULL)
-      OR (status <> 'accepted' AND accepted_at IS NULL)
+      (status = 'accepted' AND accepted_at IS NOT NULL AND undone_at IS NULL)
+      OR (status = 'undone' AND undone_at IS NOT NULL)
+      OR (status IN ('pending', 'rejected') AND accepted_at IS NULL AND undone_at IS NULL)
     ),
   CONSTRAINT activitypub_follows_undone_timestamp_check
     CHECK (
@@ -921,8 +933,11 @@ CREATE TABLE IF NOT EXISTS public.activitypub_activities (
   payload_json jsonb NOT NULL,
   processing_status text NOT NULL,
   available_at timestamptz NOT NULL DEFAULT now(),
+  attempt_count integer NOT NULL DEFAULT 0,
   worker_token uuid,
   lease_expires_at timestamptz,
+  last_error_code text,
+  started_at timestamptz,
   occurred_at timestamptz NOT NULL DEFAULT now(),
   processed_at timestamptz,
   CONSTRAINT activitypub_activities_activity_uri_key UNIQUE (activity_uri),
@@ -938,9 +953,19 @@ CREATE TABLE IF NOT EXISTS public.activitypub_activities (
     ),
   CONSTRAINT activitypub_activities_lease_available_check
     CHECK (lease_expires_at IS NULL OR lease_expires_at >= available_at),
+  CONSTRAINT activitypub_activities_attempt_count_check
+    CHECK (attempt_count >= 0),
   CONSTRAINT activitypub_activities_outbound_local_actor_check
     CHECK (direction <> 'outbound' OR local_actor_id IS NOT NULL)
 );
+
+CREATE INDEX IF NOT EXISTS activitypub_activities_outbound_due_idx
+  ON public.activitypub_activities (available_at, occurred_at, id)
+  WHERE direction = 'outbound' AND processing_status = 'pending';
+
+CREATE INDEX IF NOT EXISTS activitypub_activities_outbound_running_lease_idx
+  ON public.activitypub_activities (lease_expires_at, id)
+  WHERE direction = 'outbound' AND processing_status = 'running';
 
 CREATE OR REPLACE FUNCTION public.activitypub_lock_representation_on_first_outbound()
 RETURNS trigger
@@ -1017,5 +1042,7 @@ VALUES
   ('0016_activitypub_actor_endpoints'),
   ('0017_activitypub_follow_management'),
   ('0018_activitypub_follow_indexes'),
-  ('0019_activitypub_follow_constraint_validation')
+  ('0019_activitypub_follow_constraint_validation'),
+  ('0020_activitypub_report_publication_outbox'),
+  ('0021_activitypub_validate_step4_constraints')
 ON CONFLICT (version) DO NOTHING;

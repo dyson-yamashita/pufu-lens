@@ -23,6 +23,14 @@ const migration0019Path = join(
   import.meta.dirname,
   '../infra/db/migrations/0019_activitypub_follow_constraint_validation.sql',
 );
+const migration0020Path = join(
+  import.meta.dirname,
+  '../infra/db/migrations/0020_activitypub_report_publication_outbox.sql',
+);
+const migration0021Path = join(
+  import.meta.dirname,
+  '../infra/db/migrations/0021_activitypub_validate_step4_constraints.sql',
+);
 const initPath = join(import.meta.dirname, '../infra/docker/postgres/init.sql');
 
 test('0015 creates ActivityPub Fedify KV and queue message tables', async () => {
@@ -264,7 +272,7 @@ test('0017, 0018, 0019, and fresh schema share follow constraints, indexes, and 
 
   assert.match(
     init,
-    /CONSTRAINT activitypub_follows_accepted_timestamp_check[\s\S]*CHECK \([\s\S]*status = 'accepted' AND accepted_at IS NOT NULL[\s\S]*status <> 'accepted' AND accepted_at IS NULL[\s\S]*\)/,
+    /CONSTRAINT activitypub_follows_accepted_timestamp_check[\s\S]*CHECK \([\s\S]*status = 'accepted' AND accepted_at IS NOT NULL[\s\S]*status = 'undone' AND undone_at IS NOT NULL[\s\S]*status IN \('pending', 'rejected'\) AND accepted_at IS NULL AND undone_at IS NULL[\s\S]*\)/,
   );
   assert.match(
     init,
@@ -285,6 +293,41 @@ test('0017, 0018, 0019, and fresh schema share follow constraints, indexes, and 
   assert.match(init, /'0017_activitypub_follow_management'/);
   assert.match(init, /'0018_activitypub_follow_indexes'/);
   assert.match(init, /'0019_activitypub_follow_constraint_validation'/);
+});
+
+test('0020 adds report publication outbox columns, dispatcher lease fields, and follow audience timestamps', async () => {
+  const [migration, init] = await Promise.all([
+    readFile(migration0020Path, 'utf8'),
+    readFile(initPath, 'utf8'),
+  ]);
+
+  for (const name of [
+    'activitypub_published_at',
+    'activitypub_public_summary',
+    'activitypub_activities_attempt_count_check',
+    'attempt_lease_started_at',
+    'activitypub_activities_outbound_due_idx',
+    'activitypub_activities_outbound_running_lease_idx',
+    'activitypub_queue_messages_running_lease_idx',
+    'activitypub_queue_messages_outbox_claim_idx',
+  ]) {
+    assert.ok(migration.includes(name), `${name} is missing from migration`);
+    assert.ok(init.includes(name), `${name} is missing from fresh schema`);
+  }
+
+  assert.match(migration, /DROP CONSTRAINT IF EXISTS activitypub_follows_accepted_timestamp_check/);
+  assert.match(init, /'0020_activitypub_report_publication_outbox'/);
+});
+
+test('0021 validates Step 4 NOT VALID constraints', async () => {
+  const [migration, init] = await Promise.all([
+    readFile(migration0021Path, 'utf8'),
+    readFile(initPath, 'utf8'),
+  ]);
+
+  assert.match(migration, /VALIDATE CONSTRAINT activitypub_activities_attempt_count_check/);
+  assert.match(migration, /VALIDATE CONSTRAINT activitypub_follows_accepted_timestamp_check/);
+  assert.match(init, /'0021_activitypub_validate_step4_constraints'/);
 });
 
 function extractTriggerFunctionBody(sql: string, functionName: string): string | undefined {

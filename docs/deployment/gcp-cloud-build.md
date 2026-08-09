@@ -90,6 +90,8 @@ pnpm infra:check --env production
 
 private PostgreSQL VM を使う場合、default Cloud Build worker pool から DB へ直接到達できない。`_RUN_DB_MIGRATIONS=true` の deploy では、Workflow Job image を使った Cloud Run Job `${_DB_MIGRATION_JOB}` が Direct VPC `${_VPC_NETWORK}` / `${_VPC_SUBNET}` 経由で PostgreSQL に接続し、`DATABASE_URL` secret reference だけを受け取る。Cloud Build worker 自身が DB に接続するわけではない。
 
+ActivityPub dispatcher を有効にする trigger は `_ACTIVITYPUB_CANONICAL_ORIGIN`、`_ACTIVITYPUB_DISPATCHER_JOB`、`_ACTIVITYPUB_DISPATCHER_SCHEDULER`、designated Scheduler SA の numeric subject を指定する `_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT`、Actor key暗号化secret名の `_ACTIVITYPUB_ACTOR_KEY_SECRET` を必須にする。canonical origin と OIDC audience は外部入力から組み立てず、deploy対象Mastra serviceの固定URLへ揃える。secret実値やOIDC tokenをsubstitutionへ入れない。
+
 `_RUN_DB_MIGRATIONS=false` にして deploy 時 migration を skip する場合は、IAP tunnel を張った管理端末、private pool、または利用者環境のネットワーク設計に合わせて `pnpm db:migrate` を手動実行し、runtime rollout 前に schema を揃える。
 
 ## Trigger Model
@@ -237,15 +239,16 @@ gcloud run services add-iam-policy-binding "$MASTRA_SERVICE" \
   --role="roles/run.invoker"
 ```
 
-Mastra runtime SA から dispatcher Cloud Run Job を container override 付きで起動するため、source sync と定期 report の両方の Job resource に `roles/run.jobsExecutorWithOverrides` を付与する。
-`<environment>` には deploy substitution の `_ENV` と同じ値（例: `staging`、`production`）を指定する。片方だけに付与すると、権限がない側の Scheduler は Mastra Server から HTTP 503 を受け、Mastra log には `Cloud Run Jobs API HTTP 403` が記録される。
+Mastra runtime SA から dispatcher Cloud Run Job を container override 付きで起動するため、source sync、定期 report、ActivityPub の各 Job resource に `roles/run.jobsExecutorWithOverrides` を付与する。
+`<environment>` には deploy substitution の `_ENV` と同じ値（例: `staging`、`production`）を指定する。いずれかだけに付与すると、権限がない Scheduler route は HTTP 503 を返す。
 
 ```bash
 RUNTIME_SA="<mastra-runtime-service-account>"
 
 for DISPATCHER_JOB in \
   "<environment>-source-sync-dispatcher" \
-  "<environment>-report-schedule-dispatcher"; do
+  "<environment>-report-schedule-dispatcher" \
+  "<environment>-activitypub-dispatcher"; do
   gcloud run jobs add-iam-policy-binding "$DISPATCHER_JOB" \
     --project "$PROJECT_ID" \
     --region "$REGION" \
@@ -253,6 +256,8 @@ for DISPATCHER_JOB in \
     --role="roles/run.jobsExecutorWithOverrides"
 done
 ```
+
+ActivityPub用Schedulerは `POST /internal/schedules/activitypub-dispatcher:run` を空object bodyとOIDC tokenで呼ぶ。Mastra routeはGoogle issuer、deploy時に固定したaudience、numeric subject、Scheduler SA email、`email_verified`をすべて検証する。Cloud BuildはScheduler SAの`roles/run.invoker`を対象Mastra serviceだけに、Mastra runtime SAの`roles/run.jobsExecutorWithOverrides`を対象ActivityPub Jobだけにresource-level IAMとして付与する。Job timeoutは55分、entrypointは`activitypub-dispatch --once`だけを許可し、active execution検出時は新規実行を作らない。
 
 Deploy Cloud Build SA は runtime service account を attach するため、対象 runtime SA に対する Service Account User が必要になる。Cloud Build から `firebase deploy --only apphosting` を実行する場合、Firebase CLI が有効 API と project IAM policy を確認するため `serviceusage.services.get`、`resourcemanager.projects.get`、`resourcemanager.projects.getIamPolicy` も必要になる。project scope の `roles/serviceusage.serviceUsageViewer` と `roles/browser` を付与するか、最小権限を厳格にする環境では Resource Manager の読み取り権限だけを含む custom role を付与する。
 
@@ -415,8 +420,8 @@ deploy 後は次を確認する。
 - Cloud Run service / Jobs が `_RUNTIME_SERVICE_ACCOUNT`、Direct VPC network / subnet、`private-ranges-only` egress、Secret Manager reference を使い、Connector annotation を持たない。
 - App Hosting は backend に設定した runtime service account を使い、`apps/web/apphosting.yaml` の `runConfig.vpcAccess.networkInterfaces` と `PRIVATE_RANGES_ONLY` egress が生成後の Cloud Run revision に反映され、Connector annotation を持たない。
 - Cloud Run Jobs が deploy config の命名規則どおりに作成または更新されている。
-- 5分間隔のsource syncと定期reportのCloud Schedulerが各1件だけ存在し、Scheduler SAがMastra Cloud Run service resourceの`roles/run.invoker`を持ち、OIDCで各内部routeを呼べる。
-- Mastra runtime SAがsource syncと定期reportの両dispatcher Job resourceで`roles/run.jobsExecutorWithOverrides`を持ち、routeやJob logにtoken/secret/raw本文が出ていない。
+- source sync、定期report、ActivityPub dispatcherのCloud Schedulerが各1件だけ存在し、Scheduler SAがMastra Cloud Run service resourceの`roles/run.invoker`を持ち、固定audienceのOIDCで各内部routeを呼べる。
+- Mastra runtime SAが3つのdispatcher Job resourceで`roles/run.jobsExecutorWithOverrides`を持ち、ActivityPub権限が対象Job以外へ広がっていない。routeやJob logにtoken、Actor private key、署名header、raw payload、credentialが出ていない。
 - Web runtime が正しい App Hosting backend、secret、bucket、Mastra URL を参照している。
 - Admin UI から data source ingest を実行し、Web runtime SA が対象 workflow job resource を起動できる（`run.jobs.run` / `run.jobs.runWithOverrides` 不足の 403 が出ていない）。
 - `pnpm deploy:smoke --env staging` または `pnpm deploy:smoke --env production` が通る。

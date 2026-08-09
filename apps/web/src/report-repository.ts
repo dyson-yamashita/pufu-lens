@@ -101,6 +101,8 @@ export interface ReportRepository {
     readonly isPublic: boolean;
     readonly projectId: string;
     readonly reportId: string;
+    readonly publishedAt?: string;
+    readonly publicSummary?: string;
   }): Promise<void>;
 }
 
@@ -583,10 +585,53 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
         `;
       });
     },
-    async setReportPublicState({ isPublic, projectId, reportId }) {
+    async setReportPublicState({ isPublic, projectId, reportId, publishedAt, publicSummary }) {
+      const activityPubEnabled = process.env.ACTIVITYPUB_ENABLED === '1';
+      const canonicalOrigin = process.env.ACTIVITYPUB_CANONICAL_ORIGIN?.trim();
+      if (activityPubEnabled && isPublic && publishedAt !== undefined) {
+        if (!canonicalOrigin) {
+          throw new Error(
+            'ACTIVITYPUB_CANONICAL_ORIGIN is required when ACTIVITYPUB_ENABLED=1 and publishing publicly',
+          );
+        }
+        if (publicSummary === undefined) {
+          throw new Error('publicSummary is required when publishing a report');
+        }
+        const parsedPublishedAt = new Date(publishedAt);
+        if (Number.isNaN(parsedPublishedAt.getTime())) {
+          throw new Error('publishedAt must be a valid timestamp');
+        }
+        const { parseCanonicalOrigin } = await import('@pufu-lens/activitypub');
+        const { enqueueReportPublicationOutbox } = await import(
+          '@pufu-lens/activitypub/report-publication-outbox'
+        );
+        parseCanonicalOrigin(canonicalOrigin);
+        await sql.begin(async (transaction) => {
+          await enqueueReportPublicationOutbox({
+            sql: transaction,
+            canonicalOrigin,
+            projectId,
+            reportId,
+            publishedAt: parsedPublishedAt,
+            publicSummary,
+          });
+        });
+        return;
+      }
+      if (isPublic) {
+        await sql`
+          UPDATE public.reports
+          SET is_public = true,
+              activitypub_published_at = COALESCE(${publishedAt ?? null}::timestamptz, activitypub_published_at),
+              activitypub_public_summary = COALESCE(${publicSummary ?? null}, activitypub_public_summary)
+          WHERE project_id = ${projectId}
+            AND id = ${reportId}
+        `;
+        return;
+      }
       await sql`
         UPDATE public.reports
-        SET is_public = ${isPublic}
+        SET is_public = false
         WHERE project_id = ${projectId}
           AND id = ${reportId}
       `;

@@ -52,6 +52,8 @@ ActivityPub public endpoint は `ACTIVITYPUB_ENABLED=1` と固定 canonical orig
 
 ActivityPub 購読管理は `followRemoteActor` / `unfollowRemoteActor` server action を正規入口とする。入力は project slug と remote Actor address または保存済み Actor URI に限定し、project admin 認可、project-scoped Actor / follow lookup、HTTPS / handle validation を server side で行う。remote inbox / shared inbox は client から受け取らず、安全な remote resolver または保存済み follow rowから解決する。予期しない resolver / DB error は固定した汎用 message へ写像し、raw payload、署名 header、credential、内部 SQL error を UI へ返さない。project member 用 settings は同じ project scope の購読状態だけを read-only で表示する。
 
+`POST /internal/schedules/activitypub-dispatcher:run` は空 JSON object だけを受理し、Google OIDC token の issuer、固定 audience、designated Scheduler service account の subject / email / verified emailを検証する。active Cloud Run Job execution があれば `202` no-op、なければ対象 `activitypub-dispatcher` Jobだけを起動する。token、Cloud access token、raw body、署名headerはlogへ出さない。
+
 Data Sources 詳細の content preview は初期実装では REST API を増やさず、`apps/web/src/admin-db.ts` の server-side loader と Next.js server component から読む。`projectSlug` と `dataSourceId` の組み合わせを DB で検証し、他 project の data source を返さない。
 
 ### 4. CLI / Job 入口
@@ -68,6 +70,7 @@ Data Sources 詳細の content preview は初期実装では REST API を増や�
 | `scripts/workflow-job.ts`                                         | cli/job-entrypoint | Cloud Run Job 目標の entrypoint。現状は Node script として実行 |
 | `scripts/source-sync-dispatcher.ts`                               | cli/job-entrypoint | due source scheduleをlease付きでone-shot実行                   |
 | `scripts/report-schedule-dispatcher.ts`                           | cli/job-entrypoint | due report periodをlease付きでmaterialize・生成                |
+| `scripts/activitypub-dispatch-once.ts --once`                     | cli/job-entrypoint | ActivityPub activity / delivery queueをbounded one-shot処理    |
 | `scripts/generate-report.ts` / `scripts/publish-report.ts`        | cli                | report 生成 / 公開 artifact 更新                               |
 | `scripts/deploy-dry-run.ts` / `scripts/deploy-smoke.ts`           | cli                | deploy 前検査 / smoke                                          |
 
@@ -83,6 +86,7 @@ Data Sources 詳細の content preview は初期実装では REST API を増や�
 | `POST`  | `/api/projects/[projectSlug]/ingestion/run`               | project admin  | planned     | ingestion 起動。現状は server action / CLI                     |
 | `POST`  | `/internal/schedules/source-sync-dispatcher:run`          | scheduler OIDC | implemented | Cloud Schedulerからsource sync dispatcher Jobを起動            |
 | `POST`  | `/internal/schedules/report-schedule-dispatcher:run`      | scheduler OIDC | implemented | Cloud Schedulerからreport schedule dispatcher Jobを起動        |
+| `POST`  | `/internal/schedules/activitypub-dispatcher:run`          | scheduler OIDC | implemented | Cloud SchedulerからActivityPub dispatcher Jobを起動            |
 | `POST`  | `/internal/monitoring/v1/observations`                    | monitor OIDC   | implemented | Synthetic Monitor 向け読み取り専用観測 API                     |
 | `POST`  | `/internal/jobs/[workflowId]:run`                         | internal OIDC  | planned     | internal service から Cloud Run Job 起動                       |
 

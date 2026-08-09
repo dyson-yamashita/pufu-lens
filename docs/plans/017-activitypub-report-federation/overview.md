@@ -413,9 +413,13 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 - remote Actor resolver は WebFinger / Actor / inbox / shared inbox の HTTPS、SSRF guard、redirect 各 hop、domain block、5 秒 timeout、1 MiB response limit、Actor document ID の一致を検証する。private key、署名 header、raw remote payload、credential は queue 永続化、log、UI に出さない。
 - project admin settings に remote Actor address、Follow / Unfollow、状態、safe error を追加した。member settings は project-scoped read-only とし、server action で non-admin、project 越境、不正 slug、不正 Actor address を拒否する。
 - distinct origin の Pufu Lens A / B fixture bridge で片方向・相互 Follow、Accept、Undo、duplicate / reordered / stale generation を再現し、Mastodon 互換 fixture で project Actor / `@all` の WebFinger 検索、Actor lookup、follow / unfollowを外部 instance なしで確認した。desktop / mobile Playwright でも管理可否、pending、safe error を確認した。
-- report 公開時の Create / Announce、report 配送 scheduler / Cloud Run Job、外部 report 取り込み、本番デプロイは実施しておらず、Step 4 以降に残している。
+- Step 3 完了時点では report 公開時の Create / Announce と配送基盤を未実装として残し、Step 4 で transactional outbox、scheduler / Cloud Run Job 定義まで実装した。外部 report 取り込みと本番デプロイは引き続き後続 Step の対象である。
 
 ### Step 4: 公開 report の transactional enqueue と outbound delivery
+
+- status: `completed`
+- tracking Issue: [#673](https://github.com/dyson-yamashita/pufu-lens/issues/673)
+- 更新日: 2026-08-09
 
 成果物:
 
@@ -434,6 +438,14 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 - ordering key が同じ後続 message は先行成功まで claim されず、先行の終端失敗後も配送されない
 - designated Scheduler identity / 固定 audience 以外を拒否し、active execution 時は no-op、Job は `--once` 以外を拒否する
 - crash、timeout、429、5xx、lease expiry、duplicate起動のfixtureで欠落・二重副作用がない
+
+実装結果:
+
+- report 公開状態、公開用 short summary snapshot、project Actor の `Create`、aggregate `@all` Actor の `Announce` を同じ DB transaction で更新する transactional outbox を実装した。private project、disabled Actor、rollback では outbound activity と representation lock を作らず、public / enabled の最初の outbound activity で Article / Note representation を固定する。
+- dispatcher は commit 済み activity から stable object / activity URI と公開時点の follower audience を再構築する。同一 remote Actor が project Actor と `@all` を follow する場合は Create を優先し、異なる remote Actor が同じ shared inbox を使う場合は Create / Announce の必要な audience を保持する。personal / shared inbox は delivery 単位の dedupe key、object URI の ordering key、正規化した recipient origin へ永続化する。
+- PostgreSQL queue の lease、重複しない heartbeat、最大100件 / 45分の bounded one-shot、fair claim、bounded Retry-After / backoff、retry exhausted / permanent failure、先行成功待ちと先行終端失敗の後続抑止を実装した。Fedify の再試行は無効化し、404 / 410 / 429 / 5xx / timeout を安全な allowlist code に写像して DB dispatcher だけが状態遷移を管理する。
+- Web federation は `manuallyStartQueue: true` を維持し、queue consumer / manual task processor を開始しない。`activitypub-dispatcher` Cloud Run Job だけが `--once` で処理し、Cloud Scheduler は固定 audience と designated service account の issuer / subject / email allowlist を検証する内部 route を呼ぶ。active execution は `202` no-op とし、Scheduler SA の対象 service invoker と Mastra runtime SA の対象 Job executor 権限を resource scope で定義した。
+- localhost signed POST fixture、DB integration、仮想 clock / injected signal で commit / rollback、shared inbox、ordering、crash / lease expiry、heartbeat競合、timeout、429 / 5xx、retry exhausted、permanent failure、duplicate起動を外部 network なしで確認した。UI変更、本番deploy、Cloud resource操作、外部 Pufu Lens / Mastodon接続は行っていない。
 
 ### Step 5: inbound report と外部レポート表示
 

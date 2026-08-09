@@ -130,19 +130,37 @@ async function enqueueInboundFollow(
 
 async function assertClaimQueueUpdateHasNoDuplicateWorkerTokenAssignments() {
   const postgresSource = await readFile(join(import.meta.dirname, 'postgres.ts'), 'utf8');
-  const claimMatch = postgresSource.match(/async function claimQueueRow[\s\S]*?^}/m);
-  assert.ok(claimMatch, 'claimQueueRow must exist in postgres.ts');
-  const updateMatch = claimMatch[0].match(
-    /UPDATE public\.activitypub_queue_messages[\s\S]*?RETURNING id/,
+  const claimSource = extractFunctionSource(postgresSource, 'claimQueueRow');
+  assert.ok(claimSource, 'claimQueueRow must exist in postgres.ts');
+  const runningClaimIndex = claimSource.indexOf("SET status = 'running'");
+  assert.ok(runningClaimIndex >= 0, 'claimQueueRow must include running-status claim UPDATE');
+  const updateStart = claimSource.lastIndexOf(
+    'UPDATE public.activitypub_queue_messages',
+    runningClaimIndex,
   );
-  assert.ok(updateMatch, 'claimQueueRow must include queue claim UPDATE');
-  const assignments = [...updateMatch[0].matchAll(/^\s+([a-z_]+)\s*=/gm)].map((match) => match[1]);
+  const updateEnd =
+    claimSource.indexOf('RETURNING id, attempt_count', runningClaimIndex) +
+    'RETURNING id, attempt_count'.length;
+  const updateBlock = claimSource.slice(updateStart, updateEnd);
+  const assignments = [...updateBlock.matchAll(/^\s+([a-z_]+)\s*=/gm)].map((match) => match[1]);
   const workerTokenAssignments = assignments.filter((name) => name === 'worker_token');
   assert.equal(
     workerTokenAssignments.length,
     1,
     'claimQueueRow UPDATE must assign worker_token exactly once',
   );
+}
+
+function extractFunctionSource(source: string, functionName: string): string | null {
+  const start = source.indexOf(`async function ${functionName}`);
+  if (start < 0) {
+    return null;
+  }
+  const nextFunction = source.indexOf('\nasync function ', start + 1);
+  if (nextFunction < 0) {
+    return source.slice(start);
+  }
+  return source.slice(start, nextFunction);
 }
 
 async function assertVerifiedInboundFollowQueueProcessorPersistsAcceptedFollowAndAcceptOutbox(

@@ -11,6 +11,7 @@ import {
 } from '@pufu-lens/web/report';
 import postgres from 'postgres';
 import type { ObjectStorage } from '../../../../packages/storage/src/object-storage.ts';
+import { activityPubDispatcherRoute } from '../activitypub-dispatcher-route.ts';
 import { createChatEmbeddingProvider } from '../chat-embedding-provider.ts';
 import {
   type CrossProjectInvestigationRepository,
@@ -95,7 +96,12 @@ export const mastra = new Mastra({
     externals: ['@google-cloud/storage'],
   },
   server: {
-    apiRoutes: [reportScheduleDispatcherRoute, sourceSyncDispatcherRoute, syntheticMonitorRoute],
+    apiRoutes: [
+      activityPubDispatcherRoute,
+      reportScheduleDispatcherRoute,
+      sourceSyncDispatcherRoute,
+      syntheticMonitorRoute,
+    ],
   },
   workflows: { generateReportWorkflow, privateChatSearchWorkflow },
 });

@@ -40,7 +40,7 @@ async function main() {
     await assertEnqueueFailureRollsBackFollowState(sql);
     await assertInboundAcceptEnqueueFailureRollsBackFollowState(sql);
     await assertConcurrentOutboundFollowIsIdempotent(sql);
-    await assertAcceptedOutboundUndoClearsAcceptedAt(sql);
+    await assertAcceptedOutboundUndoPreservesAcceptedAt(sql);
     await assertStaleInboundUndoDoesNotCancelNewGeneration(sql);
     await assertMigration0017TimestampConstraints(sql);
     await assertProjectScopedOutboundListing(sql);
@@ -370,7 +370,7 @@ async function assertConcurrentOutboundFollowIsIdempotent(sql: postgres.Sql) {
   }
 }
 
-async function assertAcceptedOutboundUndoClearsAcceptedAt(sql: postgres.Sql) {
+async function assertAcceptedOutboundUndoPreservesAcceptedAt(sql: postgres.Sql) {
   const repository = createPostgresActivityPubFollowRepository({ sql });
   const remote = 'https://remote.example/users/accepted-undo';
   const follow = await repository.requestOutboundFollow({
@@ -382,13 +382,15 @@ async function assertAcceptedOutboundUndoClearsAcceptedAt(sql: postgres.Sql) {
     remoteInboxUri: `${remote}/inbox`,
     remoteSharedInboxUri: null,
   });
-  await repository.recordOutboundAcceptReceipt({
+  const accepted = await repository.recordOutboundAcceptReceipt({
     canonicalOrigin,
     localActorId,
     remoteActorUri: remote,
     followActivityUri: follow.follow.followActivityUri,
     activityUri: `${canonicalOrigin}/activitypub/activities/accept/db-accepted-undo`,
   });
+  assert.ok(accepted?.follow.acceptedAt);
+  const acceptedAt = accepted.follow.acceptedAt;
   const undone = await repository.requestOutboundUndo({
     canonicalOrigin,
     localActorId,
@@ -399,7 +401,7 @@ async function assertAcceptedOutboundUndoClearsAcceptedAt(sql: postgres.Sql) {
     remoteSharedInboxUri: null,
   });
   assert.equal(undone?.follow.status, 'undone');
-  assert.equal(undone?.follow.acceptedAt, null);
+  assert.equal(undone?.follow.acceptedAt?.toISOString(), acceptedAt?.toISOString());
   assert.ok(undone?.follow.undoneAt);
 }
 

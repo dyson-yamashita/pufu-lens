@@ -83,6 +83,8 @@ export async function publishGeneratedPublicReport(input: {
     isPublic: true,
     projectId: input.project.id,
     reportId: input.report.report_id,
+    publishedAt: input.publishedAt,
+    publicSummary: publicReport.summary,
   });
   throwIfPublicationAborted(input.signal);
   return { manifest, publicReport };

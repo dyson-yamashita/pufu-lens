@@ -4,6 +4,7 @@ import { Article, Endpoints, Service } from '@fedify/vocab';
 import { Temporal } from '@js-temporal/polyfill';
 import type { ActivityPubRepository } from './actor-repository.ts';
 import { parseCanonicalOrigin } from './canonical-origin.ts';
+import type { DeliveryErrorObserver } from './delivery-observer.ts';
 import { registerFollowInboxListeners } from './federation-follow-listeners.ts';
 import { FOLLOW_COLLECTION_START_CURSOR, resolveFollowCollectionCursor } from './follow-model.ts';
 import type { ActivityPubFollowUseCases } from './follow-use-cases.ts';
@@ -26,6 +27,8 @@ type FederationBuildInput = {
     startQueue?: () => void;
     processQueuedTask?: () => void;
   };
+  /** Scoped observer for one dispatcher-owned delivery attempt. */
+  deliveryObserver?: DeliveryErrorObserver;
   allowPrivateAddress: boolean;
 };
 
@@ -37,6 +40,7 @@ export async function createProductionActivityPubFederation(input: {
   kv: KvStore;
   queue: MessageQueue;
   queueHooks?: FederationBuildInput['queueHooks'];
+  deliveryObserver?: DeliveryErrorObserver;
 }): Promise<Federation<undefined>> {
   return buildActivityPubFederation({
     ...input,
@@ -113,13 +117,17 @@ async function buildActivityPubFederation(
     if (!report) {
       return null;
     }
+    const projectActorUrl = new URL(uri.actorUrl(report.preferredUsername));
     return new Article({
       id: new URL(uri.reportArticleUrl(report.reportId)),
       name: report.title,
       summary: report.summary,
+      content: report.summary,
       published: Temporal.Instant.from(report.publishedAt.toISOString()),
-      attribution: new URL(uri.actorUrl(report.preferredUsername)),
+      attribution: projectActorUrl,
       url: new URL(uri.publicReportUrl(report.projectSlug, report.reportId)),
+      to: new URL('https://www.w3.org/ns/activitystreams#Public'),
+      cc: new URL(uri.actorFollowersUrl(report.preferredUsername)),
     });
   });
 
@@ -224,8 +232,16 @@ async function buildActivityPubFederation(
     queue: input.queue,
     manuallyStartQueue: true,
     allowPrivateAddress: input.allowPrivateAddress,
-    documentLoaderFactory: () => createProductionSafeDocumentLoader(),
-    contextLoaderFactory: () => createProductionSafeDocumentLoader(),
+    permanentFailureStatusCodes: [],
+    onOutboxError: (error) => {
+      input.deliveryObserver?.record(error);
+    },
+    ...(input.allowPrivateAddress
+      ? {}
+      : {
+          documentLoaderFactory: () => createProductionSafeDocumentLoader(),
+          contextLoaderFactory: () => createProductionSafeDocumentLoader(),
+        }),
     origin,
   })) as Federation<undefined>;
 

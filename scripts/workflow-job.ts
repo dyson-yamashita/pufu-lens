@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const WORKFLOW_IDS = [
+  'activitypub-dispatcher',
   'curate-workflow',
   'generate-report',
   'ingest-workflow',
@@ -59,6 +60,13 @@ async function main(): Promise<void> {
 }
 
 function buildJobPlan(workflowId: WorkflowId, input: WorkflowInput): JobPlan {
+  if (workflowId === 'activitypub-dispatcher') {
+    return {
+      args: [join(repoRoot, 'scripts/activitypub-dispatch-once.ts'), '--once'],
+      input,
+      workflowId,
+    };
+  }
   if (workflowId === 'source-sync-dispatcher') {
     return {
       args: [join(repoRoot, 'scripts/source-sync-dispatcher.ts'), '--once'],
