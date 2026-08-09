@@ -211,7 +211,14 @@ async function startDispatcherJob(
     const response = await fetcher(dispatcherJobRunUrl(config), {
       body: JSON.stringify({
         overrides: {
-          containerOverrides: [{ env: [{ name: 'WORKFLOW_ID', value: 'activitypub-dispatcher' }] }],
+          containerOverrides: [
+            {
+              env: [
+                { name: 'WORKFLOW_ID', value: 'activitypub-dispatcher' },
+                { name: 'WORKFLOW_INPUT_JSON', value: '{}' },
+              ],
+            },
+          ],
         },
       }),
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },

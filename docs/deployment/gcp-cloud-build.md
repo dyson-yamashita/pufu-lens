@@ -257,7 +257,7 @@ for DISPATCHER_JOB in \
 done
 ```
 
-ActivityPub用Schedulerは `POST /internal/schedules/activitypub-dispatcher:run` を空object bodyとOIDC tokenで呼ぶ。Mastra routeはGoogle issuer、deploy時に固定したaudience、numeric subject、Scheduler SA email、`email_verified`をすべて検証する。Cloud BuildはScheduler SAの`roles/run.invoker`を対象Mastra serviceだけに、Mastra runtime SAの`roles/run.jobsExecutorWithOverrides`を対象ActivityPub Jobだけにresource-level IAMとして付与する。Job timeoutは55分、entrypointは`activitypub-dispatch --once`だけを許可し、active execution検出時は新規実行を作らない。
+ActivityPub用Schedulerは `POST /internal/schedules/activitypub-dispatcher:run` を空object bodyとOIDC tokenで呼ぶ。Mastra routeはGoogle issuer、deploy時に固定したaudience、numeric subject、Scheduler SA email、`email_verified`をすべて検証する。Cloud BuildはScheduler SAの`roles/run.invoker`を対象Mastra serviceだけに、Mastra runtime SAの`roles/run.jobsExecutorWithOverrides`を対象ActivityPub Jobだけにresource-level IAMとして付与する。Job timeoutは55分。コンテナ entrypoint は共通の `workflow-job` で、Scheduler route は container override で `WORKFLOW_ID=activitypub-dispatcher` と `WORKFLOW_INPUT_JSON={}` を渡し、`workflow-job` が `scripts/activitypub-dispatch-once.ts --once` を起動する。active execution検出時は新規実行を作らない。
 
 Deploy Cloud Build SA は runtime service account を attach するため、対象 runtime SA に対する Service Account User が必要になる。Cloud Build から `firebase deploy --only apphosting` を実行する場合、Firebase CLI が有効 API と project IAM policy を確認するため `serviceusage.services.get`、`resourcemanager.projects.get`、`resourcemanager.projects.getIamPolicy` も必要になる。project scope の `roles/serviceusage.serviceUsageViewer` と `roles/browser` を付与するか、最小権限を厳格にする環境では Resource Manager の読み取り権限だけを含む custom role を付与する。
 

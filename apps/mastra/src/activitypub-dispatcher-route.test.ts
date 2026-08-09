@@ -123,6 +123,41 @@ test('handleActivityPubDispatcherHttpRequest treats an empty body as an empty JS
   assert.equal(verifyCalled, true);
 });
 
+test('handleActivityPubDispatcherRequest starts job with workflow env overrides', async () => {
+  let requestBody = '';
+  const result = await handleActivityPubDispatcherRequest({}, 'Bearer token', {
+    env,
+    fetcher: async (url, init) => {
+      if (String(url).includes('/executions')) {
+        return new Response(JSON.stringify({ executions: [] }), { status: 200 });
+      }
+      requestBody = String(init?.body);
+      return new Response(JSON.stringify({ name: 'operations/activitypub-exec-1' }), {
+        status: 200,
+      });
+    },
+    getAccessToken: async () => 'token',
+    createAuth: () => ({}) as never,
+    verifyToken: async () => ({
+      subject: 'scheduler-subject',
+      email: env.SCHEDULER_SERVICE_ACCOUNT,
+    }),
+  });
+  assert.equal(result.status, 202);
+  assert.deepEqual(JSON.parse(requestBody), {
+    overrides: {
+      containerOverrides: [
+        {
+          env: [
+            { name: 'WORKFLOW_ID', value: 'activitypub-dispatcher' },
+            { name: 'WORKFLOW_INPUT_JSON', value: '{}' },
+          ],
+        },
+      ],
+    },
+  });
+});
+
 test('handleActivityPubDispatcherRequest no-ops when an active execution exists', async () => {
   let runCalled = false;
   const result = await handleActivityPubDispatcherRequest({}, 'Bearer token', {
