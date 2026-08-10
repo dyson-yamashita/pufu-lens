@@ -23,6 +23,14 @@ const migration0019Path = join(
   import.meta.dirname,
   '../infra/db/migrations/0019_activitypub_follow_constraint_validation.sql',
 );
+const migration0020Path = join(
+  import.meta.dirname,
+  '../infra/db/migrations/0020_activitypub_report_publication_outbox.sql',
+);
+const migration0021Path = join(
+  import.meta.dirname,
+  '../infra/db/migrations/0021_activitypub_validate_step4_constraints.sql',
+);
 const initPath = join(import.meta.dirname, '../infra/docker/postgres/init.sql');
 
 test('0015 creates ActivityPub Fedify KV and queue message tables', async () => {
@@ -264,7 +272,7 @@ test('0017, 0018, 0019, and fresh schema share follow constraints, indexes, and 
 
   assert.match(
     init,
-    /CONSTRAINT activitypub_follows_accepted_timestamp_check[\s\S]*CHECK \([\s\S]*status = 'accepted' AND accepted_at IS NOT NULL[\s\S]*status <> 'accepted' AND accepted_at IS NULL[\s\S]*\)/,
+    /CONSTRAINT activitypub_follows_accepted_timestamp_check[\s\S]*CHECK \([\s\S]*status = 'accepted' AND accepted_at IS NOT NULL[\s\S]*status = 'undone' AND undone_at IS NOT NULL[\s\S]*status IN \('pending', 'rejected'\) AND accepted_at IS NULL AND undone_at IS NULL[\s\S]*\)/,
   );
   assert.match(
     init,
@@ -285,6 +293,115 @@ test('0017, 0018, 0019, and fresh schema share follow constraints, indexes, and 
   assert.match(init, /'0017_activitypub_follow_management'/);
   assert.match(init, /'0018_activitypub_follow_indexes'/);
   assert.match(init, /'0019_activitypub_follow_constraint_validation'/);
+});
+
+test('0020 adds report publication outbox columns, dispatcher lease fields, and follow audience timestamps', async () => {
+  const [migration, init] = await Promise.all([
+    readFile(migration0020Path, 'utf8'),
+    readFile(initPath, 'utf8'),
+  ]);
+
+  for (const name of [
+    'activitypub_published_at',
+    'activitypub_public_summary',
+    'activitypub_activities_attempt_count_check',
+    'activitypub_queue_messages_last_error_code_check',
+    'activitypub_activities_last_error_code_check',
+    'attempt_lease_started_at',
+    'activitypub_activities_outbound_due_idx',
+    'activitypub_activities_outbound_running_lease_idx',
+    'activitypub_queue_messages_running_lease_idx',
+    'activitypub_queue_messages_outbox_claim_idx',
+  ]) {
+    assert.ok(migration.includes(name), `${name} is missing from migration`);
+    assert.ok(init.includes(name), `${name} is missing from fresh schema`);
+  }
+
+  assert.match(migration, /DROP CONSTRAINT IF EXISTS activitypub_follows_accepted_timestamp_check/);
+  assert.match(migration, /DROP CONSTRAINT IF EXISTS activitypub_activities_attempt_count_check/);
+  assert.match(init, /'0020_activitypub_report_publication_outbox'/);
+});
+
+test('0021 validates Step 4 NOT VALID constraints', async () => {
+  const [migration, init] = await Promise.all([
+    readFile(migration0021Path, 'utf8'),
+    readFile(initPath, 'utf8'),
+  ]);
+
+  assert.match(migration, /VALIDATE CONSTRAINT activitypub_activities_attempt_count_check/);
+  assert.match(migration, /VALIDATE CONSTRAINT activitypub_follows_accepted_timestamp_check/);
+  assert.match(migration, /VALIDATE CONSTRAINT activitypub_queue_messages_last_error_code_check/);
+  assert.match(migration, /VALIDATE CONSTRAINT activitypub_activities_last_error_code_check/);
+  assert.match(init, /'0021_activitypub_validate_step4_constraints'/);
+});
+
+test('0020, 0021, and fresh schema share last_error_code allowlist constraints', async () => {
+  const [migration0020, migration0021, init] = await Promise.all([
+    readFile(migration0020Path, 'utf8'),
+    readFile(migration0021Path, 'utf8'),
+    readFile(initPath, 'utf8'),
+  ]);
+
+  for (const name of [
+    'activitypub_queue_messages_last_error_code_check',
+    'activitypub_activities_last_error_code_check',
+  ]) {
+    assert.match(migration0020, new RegExp(`DROP CONSTRAINT IF EXISTS ${name}`));
+    assert.match(migration0020, new RegExp(`ADD CONSTRAINT ${name}[\\s\\S]*NOT VALID`));
+    assert.match(migration0021, new RegExp(`VALIDATE CONSTRAINT ${name}`));
+    assert.match(init, new RegExp(`CONSTRAINT ${name}`));
+  }
+
+  for (const code of [
+    'delivery_timeout',
+    'network_error',
+    'http_408',
+    'http_429',
+    'http_5xx',
+    'inbox_gone',
+    'http_4xx',
+    'unknown_delivery_error',
+    'lease_lost',
+    'activitypub_predecessor_failure',
+    'activitypub_materialization_private',
+    'activitypub_materialization_disabled',
+    'activitypub_materialization_representation',
+    'activitypub_materialization_retry_exhausted',
+  ]) {
+    assert.match(migration0020, new RegExp(`'${code}'`));
+    assert.match(init, new RegExp(`'${code}'`));
+  }
+});
+
+test('0020 normalizes legacy activitypub_delivery_failed before last_error_code CHECK constraints', async () => {
+  const migration = await readFile(migration0020Path, 'utf8');
+
+  assert.match(
+    migration,
+    /UPDATE public\.activitypub_queue_messages[\s\S]*SET last_error_code = 'unknown_delivery_error'[\s\S]*WHERE last_error_code = 'activitypub_delivery_failed'/,
+  );
+
+  const backfillIndex = migration.indexOf("WHERE last_error_code = 'activitypub_delivery_failed'");
+  const queueCheckIndex = migration.indexOf(
+    'ADD CONSTRAINT activitypub_queue_messages_last_error_code_check',
+  );
+  const activitiesCheckIndex = migration.indexOf(
+    'ADD CONSTRAINT activitypub_activities_last_error_code_check',
+  );
+  assert.ok(backfillIndex >= 0);
+  assert.ok(queueCheckIndex > backfillIndex);
+  assert.ok(activitiesCheckIndex > backfillIndex);
+
+  const queueAllowlist = migration.match(
+    /ADD CONSTRAINT activitypub_queue_messages_last_error_code_check[\s\S]*?\) NOT VALID;/,
+  )?.[0];
+  const activitiesAllowlist = migration.match(
+    /ADD CONSTRAINT activitypub_activities_last_error_code_check[\s\S]*?\) NOT VALID;/,
+  )?.[0];
+  assert.ok(queueAllowlist);
+  assert.ok(activitiesAllowlist);
+  assert.equal(queueAllowlist.includes("'activitypub_delivery_failed'"), false);
+  assert.equal(activitiesAllowlist.includes("'activitypub_delivery_failed'"), false);
 });
 
 function extractTriggerFunctionBody(sql: string, functionName: string): string | undefined {

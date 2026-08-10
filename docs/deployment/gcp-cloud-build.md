@@ -90,6 +90,8 @@ pnpm infra:check --env production
 
 private PostgreSQL VM を使う場合、default Cloud Build worker pool から DB へ直接到達できない。`_RUN_DB_MIGRATIONS=true` の deploy では、Workflow Job image を使った Cloud Run Job `${_DB_MIGRATION_JOB}` が Direct VPC `${_VPC_NETWORK}` / `${_VPC_SUBNET}` 経由で PostgreSQL に接続し、`DATABASE_URL` secret reference だけを受け取る。Cloud Build worker 自身が DB に接続するわけではない。
 
+ActivityPub dispatcher を有効にする trigger は `_ACTIVITYPUB_CANONICAL_ORIGIN`、`_ACTIVITYPUB_DISPATCHER_JOB`、`_ACTIVITYPUB_DISPATCHER_SCHEDULER`、固定 Mastra service URL の `_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE`、designated Scheduler SA の numeric subject を指定する `_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT`、Actor key暗号化secret名の `_ACTIVITYPUB_ACTOR_KEY_SECRET` を必須にする。canonical origin は公開 Web / federation origin、OIDC audience は内部 route を提供する Mastra service の固定 URL であり、同一値とは限らない。どちらも request の Host や外部入力から組み立てない。secret実値やOIDC tokenをsubstitutionへ入れない。
+
 `_RUN_DB_MIGRATIONS=false` にして deploy 時 migration を skip する場合は、IAP tunnel を張った管理端末、private pool、または利用者環境のネットワーク設計に合わせて `pnpm db:migrate` を手動実行し、runtime rollout 前に schema を揃える。
 
 ## Trigger Model
@@ -121,6 +123,10 @@ PRODUCTION_DEPLOY_SA="projects/${PROJECT_ID}/serviceAccounts/cloud-build-deploy-
 
 RUNTIME_SA="mastra-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
 SCHEDULER_SA="scheduler-oidc@${PROJECT_ID}.iam.gserviceaccount.com"
+SCHEDULER_SUBJECT="<numeric-service-account-id>"
+ACTIVITYPUB_CANONICAL_ORIGIN="https://<public-web-origin>"
+ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE="https://<mastra-service-fixed-url>"
+ACTIVITYPUB_ACTOR_KEY_SECRET="ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY"
 ```
 
 1st gen GitHub connection を使う場合は、`--repository` の代わりに `--repo-owner` と `--repo-name` を使う。
@@ -138,7 +144,7 @@ gcloud builds triggers create github \
   --service-account "$PRODUCTION_DEPLOY_SA" \
   --require-approval \
   --included-files 'apps/**,packages/**,scripts/**,infra/**,deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml,.dockerignore,.firebaserc,firebase.json,pnpm-lock.yaml,pnpm-workspace.yaml,package.json,turbo.json,tsconfig*.json' \
-  --substitutions "_ENV=production,_REGION=${RUNTIME_REGION},_ARTIFACT_REPO=<artifact-repo>,_RUNTIME_SERVICE_ACCOUNT=${RUNTIME_SA},_SCHEDULER_SERVICE_ACCOUNT=${SCHEDULER_SA},_STORAGE_BUCKET=<storage-bucket>,_VPC_NETWORK=default,_VPC_SUBNET=<serverless-subnet>,_MASTRA_SERVICE=mastra-server,_MASTRA_IMAGE=mastra-server,_JOBS_IMAGE=workflow-job,_FIREBASE_DEPLOY=true,_FIREBASE_TOOLS_VERSION=15.25.1,_RUN_DB_MIGRATIONS=true,_DB_MIGRATION_JOB=db-migrate"
+  --substitutions "_ENV=production,_REGION=${RUNTIME_REGION},_ARTIFACT_REPO=<artifact-repo>,_RUNTIME_SERVICE_ACCOUNT=${RUNTIME_SA},_SCHEDULER_SERVICE_ACCOUNT=${SCHEDULER_SA},_STORAGE_BUCKET=<storage-bucket>,_VPC_NETWORK=default,_VPC_SUBNET=<serverless-subnet>,_MASTRA_SERVICE=mastra-server,_MASTRA_IMAGE=mastra-server,_JOBS_IMAGE=workflow-job,_FIREBASE_DEPLOY=true,_FIREBASE_TOOLS_VERSION=15.25.1,_RUN_DB_MIGRATIONS=true,_DB_MIGRATION_JOB=db-migrate,_SOURCE_SYNC_DISPATCHER_JOB=source-sync-dispatcher,_SOURCE_SYNC_SCHEDULER=source-sync-dispatcher,_REPORT_SCHEDULE_DISPATCHER_JOB=report-schedule-dispatcher,_REPORT_SCHEDULE_SCHEDULER=report-schedule-dispatcher,_ACTIVITYPUB_CANONICAL_ORIGIN=${ACTIVITYPUB_CANONICAL_ORIGIN},_ACTIVITYPUB_DISPATCHER_JOB=activitypub-dispatcher,_ACTIVITYPUB_DISPATCHER_SCHEDULER=activitypub-dispatcher,_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE=${ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE},_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT=${SCHEDULER_SUBJECT},_ACTIVITYPUB_ACTOR_KEY_SECRET=${ACTIVITYPUB_ACTOR_KEY_SECRET},_CHAT_MODEL=google/gemini-2.5-flash,_CHAT_API_KEY_ENV=GEMINI_API_KEY,_CHAT_API_KEY_SECRET=GEMINI_API_KEY,_EMBEDDING_PROVIDER=gemini,_EMBEDDING_MODEL=gemini-embedding-2,_EMBEDDING_DIMENSIONS=1536,_EMBEDDING_API_KEY_SECRET=GEMINI_API_KEY"
 ```
 
 既存 trigger を更新する場合も、同じ included files を設定する。
@@ -174,13 +180,13 @@ Cloud Console から作成する場合は、Cloud Build > Triggers で次を設�
 
 最小権限は organization policy によって変わるため、次を出発点として project / repository / resource scope を絞る。
 
-| principal              | permission area                                                                                                                                                                                                                                                                                                                                                                                            | note                                                                                                                       |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| CI Cloud Build SA      | Cloud Build 実行、log 書き込み                                                                                                                                                                                                                                                                                                                                                                             | Cloud Build で CI を使う利用者のみ。deploy 権限、Secret Manager accessor は不要                                            |
-| Deploy Cloud Build SA  | Artifact Registry writer、Cloud Run / Jobs deploy、Cloud Run Jobs create / update / execute（migration job 含む）、`cloudscheduler.jobs.create/get/update`、`cloudscheduler.locations.get`、Firebase App Hosting deploy、`gs://${PROJECT_ID}_cloudbuild/pufu-lens/deploy-state/${_ENV}/apphosting-last-success` の read/write、Service Account User、Service Usage Viewer、Browser または custom read role | 環境ごとに分離する。DB migrationと5分dispatcher Schedulerの更新権限が必要。App Hosting skip 判定用の GCS object 権限も必要 |
-| Runtime SA             | Secret Manager accessor（`DATABASE_URL` など）、GCS access、dispatcher Cloud Run Jobの`run.jobs.run` / `run.jobs.runWithOverrides`                                                                                                                                                                                                                                                                         | 対象dispatcher Jobに`roles/run.jobsExecutorWithOverrides`または同等custom roleをresource scopeで付与する                   |
-| App Hosting compute SA | Secret Manager accessor、GCS access、Cloud Run Invoker、App Hosting compute runner、Admin UI から workflow job を起動する権限                                                                                                                                                                                                                                                                              | backend に custom SA を使う場合は特に確認する。Admin UI ingest の Job 実行権限は下記を参照                                 |
-| Scheduler SA           | OIDC caller / Cloud Run Invoker                                                                                                                                                                                                                                                                                                                                                                            | build / deploy 権限は不要                                                                                                  |
+| principal              | permission area                                                                                                                                                                                                                                                                                                                                                                                            | note                                                                                                                                                                      |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CI Cloud Build SA      | Cloud Build 実行、log 書き込み                                                                                                                                                                                                                                                                                                                                                                             | Cloud Build で CI を使う利用者のみ。deploy 権限、Secret Manager accessor は不要                                                                                           |
+| Deploy Cloud Build SA  | Artifact Registry writer、Cloud Run / Jobs deploy、Cloud Run Jobs create / update / execute（migration job 含む）、`cloudscheduler.jobs.create/get/update`、`cloudscheduler.locations.get`、Firebase App Hosting deploy、`gs://${PROJECT_ID}_cloudbuild/pufu-lens/deploy-state/${_ENV}/apphosting-last-success` の read/write、Service Account User、Service Usage Viewer、Browser または custom read role | 環境ごとに分離する。DB migrationと5分dispatcher Schedulerの更新権限が必要。App Hosting skip 判定用の GCS object 権限も必要                                                |
+| Runtime SA             | Secret Manager accessor（`DATABASE_URL` など）、GCS access、dispatcher Cloud Run Jobの`run.jobs.run` / `run.jobs.runWithOverrides`、ActivityPub Job の execution 一覧取得                                                                                                                                                                                                                                  | 対象dispatcher Jobに`roles/run.jobsExecutorWithOverrides`または同等custom roleをresource scopeで付与する。ActivityPub Jobだけは同じresourceで`roles/run.viewer`も付与する |
+| App Hosting compute SA | Secret Manager accessor、GCS access、Cloud Run Invoker、App Hosting compute runner、Admin UI から workflow job を起動する権限                                                                                                                                                                                                                                                                              | backend に custom SA を使う場合は特に確認する。Admin UI ingest の Job 実行権限は下記を参照                                                                                |
+| Scheduler SA           | OIDC caller / Cloud Run Invoker                                                                                                                                                                                                                                                                                                                                                                            | build / deploy 権限は不要                                                                                                                                                 |
 
 Direct VPC subnet の `roles/compute.networkUser` が必要な場合は、Cloud Run service agent など provider の公式手順で指定される service agent に付与する。Runtime SA に一律付与せず、Shared VPC の host project / service project 境界に合わせて subnet scope に限定する。
 
@@ -237,15 +243,16 @@ gcloud run services add-iam-policy-binding "$MASTRA_SERVICE" \
   --role="roles/run.invoker"
 ```
 
-Mastra runtime SA から dispatcher Cloud Run Job を container override 付きで起動するため、source sync と定期 report の両方の Job resource に `roles/run.jobsExecutorWithOverrides` を付与する。
-`<environment>` には deploy substitution の `_ENV` と同じ値（例: `staging`、`production`）を指定する。片方だけに付与すると、権限がない側の Scheduler は Mastra Server から HTTP 503 を受け、Mastra log には `Cloud Run Jobs API HTTP 403` が記録される。
+Mastra runtime SA から dispatcher Cloud Run Job を container override 付きで起動するため、source sync、定期 report、ActivityPub の各 Job resource に `roles/run.jobsExecutorWithOverrides` を付与する。
+`<environment>` には deploy substitution の `_ENV` と同じ値（例: `staging`、`production`）を指定する。いずれかだけに付与すると、権限がない Scheduler route は HTTP 503 を返す。
 
 ```bash
 RUNTIME_SA="<mastra-runtime-service-account>"
 
 for DISPATCHER_JOB in \
   "<environment>-source-sync-dispatcher" \
-  "<environment>-report-schedule-dispatcher"; do
+  "<environment>-report-schedule-dispatcher" \
+  "<environment>-activitypub-dispatcher"; do
   gcloud run jobs add-iam-policy-binding "$DISPATCHER_JOB" \
     --project "$PROJECT_ID" \
     --region "$REGION" \
@@ -253,6 +260,8 @@ for DISPATCHER_JOB in \
     --role="roles/run.jobsExecutorWithOverrides"
 done
 ```
+
+ActivityPub用Schedulerは `POST /internal/schedules/activitypub-dispatcher:run` を空object bodyとOIDC tokenで呼ぶ。Mastra routeはGoogle issuer、deploy時に固定したaudience、numeric subject、Scheduler SA email、`email_verified`をすべて検証する。Cloud BuildはScheduler SAの`roles/run.invoker`を対象Mastra serviceだけに、Mastra runtime SAの`roles/run.jobsExecutorWithOverrides`を3つのdispatcher Jobへ、execution一覧取得用`roles/run.viewer`をActivityPub Jobだけにresource-level IAMとして付与する。Job timeoutは55分。コンテナ entrypoint は共通の `workflow-job` で、Scheduler route は container override で `WORKFLOW_ID=activitypub-dispatcher` と `WORKFLOW_INPUT_JSON={}` を渡し、`workflow-job` が `scripts/activitypub-dispatch-once.ts --once` を起動する。active execution検出時は新規実行を作らない。
 
 Deploy Cloud Build SA は runtime service account を attach するため、対象 runtime SA に対する Service Account User が必要になる。Cloud Build から `firebase deploy --only apphosting` を実行する場合、Firebase CLI が有効 API と project IAM policy を確認するため `serviceusage.services.get`、`resourcemanager.projects.get`、`resourcemanager.projects.getIamPolicy` も必要になる。project scope の `roles/serviceusage.serviceUsageViewer` と `roles/browser` を付与するか、最小権限を厳格にする環境では Resource Manager の読み取り権限だけを含む custom role を付与する。
 
@@ -415,8 +424,8 @@ deploy 後は次を確認する。
 - Cloud Run service / Jobs が `_RUNTIME_SERVICE_ACCOUNT`、Direct VPC network / subnet、`private-ranges-only` egress、Secret Manager reference を使い、Connector annotation を持たない。
 - App Hosting は backend に設定した runtime service account を使い、`apps/web/apphosting.yaml` の `runConfig.vpcAccess.networkInterfaces` と `PRIVATE_RANGES_ONLY` egress が生成後の Cloud Run revision に反映され、Connector annotation を持たない。
 - Cloud Run Jobs が deploy config の命名規則どおりに作成または更新されている。
-- 5分間隔のsource syncと定期reportのCloud Schedulerが各1件だけ存在し、Scheduler SAがMastra Cloud Run service resourceの`roles/run.invoker`を持ち、OIDCで各内部routeを呼べる。
-- Mastra runtime SAがsource syncと定期reportの両dispatcher Job resourceで`roles/run.jobsExecutorWithOverrides`を持ち、routeやJob logにtoken/secret/raw本文が出ていない。
+- source sync、定期report、ActivityPub dispatcherのCloud Schedulerが各1件だけ存在し、Scheduler SAがMastra Cloud Run service resourceの`roles/run.invoker`を持ち、固定audienceのOIDCで各内部routeを呼べる。
+- Mastra runtime SAが3つのdispatcher Job resourceで`roles/run.jobsExecutorWithOverrides`を持ち、ActivityPub Job resourceだけでactive execution確認用の`roles/run.viewer`も持つこと、ActivityPub権限が対象Job以外へ広がっていないことを確認する。routeやJob logにtoken、Actor private key、署名header、raw payload、credentialが出ていない。
 - Web runtime が正しい App Hosting backend、secret、bucket、Mastra URL を参照している。
 - Admin UI から data source ingest を実行し、Web runtime SA が対象 workflow job resource を起動できる（`run.jobs.run` / `run.jobs.runWithOverrides` 不足の 403 が出ていない）。
 - `pnpm deploy:smoke --env staging` または `pnpm deploy:smoke --env production` が通る。

@@ -265,6 +265,52 @@ test('production federation resolves public report articles when config is artic
   assert.equal(response.status, 200);
 });
 
+test('production federation escapes HTML in Article content', async () => {
+  const repository = createInMemoryActivityPubRepository({ encryptionKey, canonicalOrigin });
+  await repository.seedAggregateActor();
+  repository.seedProject({
+    id: projectId,
+    slug: projectSlug,
+    name: 'Sample Project',
+    visibility: 'public',
+  });
+  await repository.seedProjectActor({
+    projectId,
+    projectSlug,
+    preferredUsername: projectSlug,
+    visibility: 'public',
+    enabled: true,
+  });
+  repository.seedPublicReport({
+    reportId,
+    projectId,
+    projectSlug,
+    preferredUsername: projectSlug,
+    title: 'Quarterly Update',
+    summary: '<script>alert(1)</script> & "quotes"',
+    publishedAt: new Date('2026-08-01T00:00:00.000Z'),
+  });
+
+  const federation = await createProductionActivityPubFederation({
+    canonicalOrigin,
+    repository,
+    kv: new MemoryKvStore(),
+    queue: createQueue(),
+  });
+  const uri = buildActivityPubUriContract(canonicalOrigin);
+  const response = await federation.fetch(
+    new Request(uri.reportArticleUrl(reportId), {
+      headers: { Accept: 'application/activity+json' },
+    }),
+    { contextData: undefined },
+  );
+  assert.equal(response.status, 200);
+  const article = (await response.json()) as { content?: string };
+  assert.equal(article.content?.includes('<script>'), false);
+  assert.match(article.content ?? '', /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.match(article.content ?? '', /&amp; &quot;quotes&quot;/);
+});
+
 test('production federation followers and following expose accepted actor URIs only', async () => {
   const repository = createInMemoryActivityPubRepository({ encryptionKey, canonicalOrigin });
   await repository.seedAggregateActor();

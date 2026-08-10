@@ -41,6 +41,7 @@ test('activitypub-dispatch-once reports safe errors without leaking database cre
 
   const { exitCode, stderr } = await runDispatchCli(
     [
+      '--once',
       '--database-url',
       databaseUrl,
       '--actor-table',
@@ -66,6 +67,7 @@ test('activitypub-dispatch-once reports safe errors for malformed database URLs 
 
   const { exitCode, stderr } = await runDispatchCli(
     [
+      '--once',
       '--database-url',
       databaseUrl,
       '--actor-table',
@@ -88,6 +90,7 @@ test('activitypub-dispatch-once reports safe errors for malformed database URLs 
 test('activitypub-dispatch-once rejects actor arguments without ACTIVITYPUB_RUN_DB_TESTS', async () => {
   const { exitCode, stderr } = await runDispatchCli(
     [
+      '--once',
       '--database-url',
       'postgresql://user:pass@127.0.0.1:5432/test',
       '--actor-table',
@@ -107,35 +110,44 @@ test('activitypub-dispatch-once rejects actor arguments without ACTIVITYPUB_RUN_
 });
 
 test('activitypub-dispatch-once rejects production path without ACTIVITYPUB_CANONICAL_ORIGIN', async () => {
-  const { exitCode, stderr } = await runDispatchCli(
-    ['--database-url', 'postgresql://user:pass@127.0.0.1:5432/test'],
-    {
-      ...process.env,
-      ACTIVITYPUB_CANONICAL_ORIGIN: undefined,
-      ACTIVITYPUB_RUN_DB_TESTS: undefined,
-      ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'),
-    },
-  );
+  const { exitCode, stderr } = await runDispatchCli(['--once'], {
+    ...process.env,
+    ACTIVITYPUB_CANONICAL_ORIGIN: undefined,
+    ACTIVITYPUB_RUN_DB_TESTS: undefined,
+    NODE_ENV: 'production',
+    DATABASE_URL: 'postgresql://user:pass@127.0.0.1:5432/test',
+    ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'),
+  });
 
   assert.notEqual(exitCode, 0);
   assert.match(stderr, /missing ACTIVITYPUB_CANONICAL_ORIGIN/i);
   assert.doesNotMatch(stderr, /postgresql:\/\//);
 });
 
-test('activitypub-dispatch-once rejects partial actor arguments on production path', async () => {
+test('activitypub-dispatch-once rejects extra production arguments', async () => {
   const { exitCode, stderr } = await runDispatchCli(
-    [
-      '--database-url',
-      'postgresql://user:pass@127.0.0.1:5432/test',
-      '--actor-table',
-      'activitypub_contract_test_actor_keys',
-    ],
+    ['--once', '--database-url', 'postgresql://user:pass@127.0.0.1:5432/test'],
     {
       ...process.env,
       ACTIVITYPUB_RUN_DB_TESTS: undefined,
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgresql://user:pass@127.0.0.1:5432/test',
+      ACTIVITYPUB_CANONICAL_ORIGIN: 'https://lens.test',
+      ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'),
     },
   );
 
   assert.notEqual(exitCode, 0);
-  assert.match(stderr, /both --actor-table and --actor-id/i);
+  assert.match(stderr, /ACTIVITYPUB_RUN_DB_TESTS/i);
+});
+
+test('activitypub-dispatch-once rejects duplicate --once flag', async () => {
+  const { exitCode, stderr } = await runDispatchCli(['--once', '--once'], {
+    ...process.env,
+    ACTIVITYPUB_RUN_DB_TESTS: '1',
+    NODE_ENV: 'test',
+  });
+
+  assert.notEqual(exitCode, 0);
+  assert.match(stderr, /duplicate argument/i);
 });

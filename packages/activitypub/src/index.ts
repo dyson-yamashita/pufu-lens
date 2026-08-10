@@ -19,6 +19,13 @@ export {
   FEDIFY_SECURITY_VERSION_FLOORS,
   NODE_RUNTIME_MIN_MAJOR,
 } from './dependency-metadata.ts';
+export {
+  classifyDeliveryFailure,
+  DISPATCHER_DEFAULT_BATCH_SIZE,
+  DISPATCHER_MAX_ATTEMPTS,
+  DISPATCHER_MAX_RUNTIME_MS,
+  PREDECESSOR_FAILURE_CODE,
+} from './dispatcher.ts';
 export { createProductionActivityPubFederation } from './federation.ts';
 export {
   buildDeterministicAcceptActivityUri,
@@ -56,6 +63,7 @@ export {
   claimOnePostgresQueueMessage,
   createPostgresFedifyKvStore,
   createPostgresQueueAdapter,
+  heartbeatPostgresQueueMessage,
   type OneShotDispatchResult,
   type ProcessOneQueuedMessageInput,
   type ProcessOneQueuedOutboxMessageInput,
@@ -63,7 +71,14 @@ export {
   processOneQueuedMessage,
   processOneQueuedOutboxMessage,
   reloadTestActorKey,
+  terminalizeSuccessorAfterPredecessorFailure,
 } from './postgres.ts';
+export {
+  type ActivityPubDispatcherRunResult,
+  materializeActivityDeliveries,
+  type RunActivityPubDispatcherOnceInput,
+  runActivityPubDispatcherOnce,
+} from './postgres-dispatcher.ts';
 export {
   ACTIVITYPUB_URI_CONTRACT,
   type ActivityPubProtocolFixture,
@@ -104,6 +119,22 @@ export {
   type RemoteActorReadModel,
   type RemoteActorResolver,
 } from './remote-actor.ts';
+export {
+  buildStableAnnounceActivityUri,
+  buildStableCreateActivityUri,
+} from './report-activity-uris.ts';
+export {
+  dedupeRecipients,
+  parseReportActivityPayload,
+  reconstructReportDeliveryRecipients,
+  wasFollowAcceptedAt,
+} from './report-delivery.ts';
+export {
+  enqueueReportPublicationOutbox,
+  type ReportActivityPayload,
+  ReportPublicationAggregateActorError,
+  ReportPublicationOutboxError,
+} from './report-publication-outbox.ts';
 export {
   type ActivityPubActivity,
   type ActivityPubActor,

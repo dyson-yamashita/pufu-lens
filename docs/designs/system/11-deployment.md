@@ -153,12 +153,27 @@ for WF in curate-workflow ingest-workflow generate-report source-sync-dispatcher
     --set-secrets="DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
 done
 
-# Mastra runtime service accountにはsource-sync-dispatcherとreport-schedule-dispatcherの両Jobで
-# run.jobs.run / run.jobs.runWithOverrides権限を付与し、
+# ActivityPub dispatcherは公開originとActor鍵を必要とするため、通常Jobとは分けて設定する。
+gcloud run jobs deploy activitypub-dispatcher \
+  --image asia-east1-docker.pkg.dev/PROJECT/pufu-lens/workflow-job:latest \
+  --region asia-east1 \
+  --service-account=mastra-runtime@PROJECT.iam.gserviceaccount.com \
+  --clear-vpc-connector \
+  --network=default \
+  --subnet=pufu-lens-serverless \
+  --vpc-egress=private-ranges-only \
+  --tasks=1 --max-retries=0 --task-timeout=3300s \
+  --set-env-vars STORAGE_DRIVER=gcs,STORAGE_BUCKET=pufu-lens-prod,WORKFLOW_ID=activitypub-dispatcher,ACTIVITYPUB_ENABLED=1,ACTIVITYPUB_CANONICAL_ORIGIN=https://PUBLIC_WEB_ORIGIN \
+  --set-secrets="DATABASE_URL=DATABASE_URL:latest,ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY=ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY:latest"
+
+# Mastra runtime service accountにはsource-sync-dispatcher、report-schedule-dispatcher、activitypub-dispatcherの各Jobで
+# run.jobs.run / run.jobs.runWithOverrides権限を付与する。activitypub-dispatcherにはactive execution確認用の
+# run.executions.listも対象Jobだけに付与し、
 # scheduler OIDC service accountにはMastra Serverのrun.invokerを付与する。
-# Cloud Schedulerは5分ごとに source sync / report schedule の各 dispatcher routeへ空objectをPOSTする。
+# Cloud Schedulerは5分ごとに source sync / report schedule / ActivityPub の各 dispatcher routeへ空objectをPOSTする。
 # /internal/schedules/source-sync-dispatcher:run
 # /internal/schedules/report-schedule-dispatcher:run
+# /internal/schedules/activitypub-dispatcher:run
 
 # 7. Next.js デプロイ（Firebase App Hosting）
 #    Fedify 2.3.4 は Node.js >=22 を要求するため、ActivityPub を有効化する backend は nodejs22 以上を選ぶ。
@@ -167,9 +182,9 @@ done
 #    本番で設定しない。Step 2 の production endpoint は ACTIVITYPUB_ENABLED=1、固定の
 #    ACTIVITYPUB_CANONICAL_ORIGIN、Secret Manager 由来の ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY が揃う場合だけ有効化する。
 #    ACTIVITYPUB_DB_MAX_CONNECTIONS は process あたりの ActivityPub 用 DB pool 上限で、未指定時は5、指定時は1..20の10進整数とする。
-#    Step 3 の one-shot entrypoint は PostgreSQL queue の Follow / Accept / Undo inbox / outbox を処理できるが、
-#    production の Scheduler / Cloud Run Job rollout は行っていない。report の Create / Announce 配送 Job と
-#    production scheduling は Step 4 以降で実装・有効化する。
+#    Step 4 の activitypub-dispatcher Job は `--once` だけを受け付け、PostgreSQL queue の Follow / Accept / Undo と
+#    report Create / Announce delivery をboundedに処理する。Scheduler routeは固定OIDC audienceとdesignated SAを検証し、
+#    active execution時は202 no-opにする。repositoryにはrollout定義だけを含み、本番resourceへの適用は別途行う。
 #    Firebase CLI >= 15.25.1 のローカルソースデプロイを使うと GitHub 連携や push なしで rollout できる。
 #    apps/web/apphosting.yaml に runtime env / secrets / VPC access、リポジトリルートに firebase.json /
 #    .firebaserc を置き、`firebase deploy --only apphosting` でローカルの作業ツリーをそのままデプロイする。

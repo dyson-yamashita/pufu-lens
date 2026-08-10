@@ -13,6 +13,7 @@ COPY apps/mastra/package.json apps/mastra/
 COPY packages/storage/package.json packages/storage/
 COPY packages/ingestion/package.json packages/ingestion/
 COPY packages/project-tenancy/package.json packages/project-tenancy/
+COPY packages/activitypub/package.json packages/activitypub/
 
 RUN pnpm install --frozen-lockfile
 

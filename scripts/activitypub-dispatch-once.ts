@@ -2,44 +2,67 @@ import { parseCanonicalOrigin } from '@pufu-lens/activitypub';
 import { parseActorKeyEncryptionKey } from '@pufu-lens/activitypub/key-encryption';
 import postgres from 'postgres';
 
+const ACTIVITYPUB_DELIVERY_FAILED = 'activitypub_delivery_failed';
+const MISSING_CANONICAL_ORIGIN = 'missing ACTIVITYPUB_CANONICAL_ORIGIN';
+const INVALID_CANONICAL_ORIGIN = 'invalid ACTIVITYPUB_CANONICAL_ORIGIN';
+const MISSING_DATABASE_URL = 'missing DATABASE_URL';
+const ACTOR_ARGS_INCOMPLETE = 'actor arguments require both --actor-table and --actor-id';
+const ACTOR_ARGS_FORBIDDEN = 'actor arguments require ACTIVITYPUB_RUN_DB_TESTS=1';
+
 type ParsedArgs = {
+  once: boolean;
   databaseUrl?: string;
   actorTable?: string;
   actorId?: string;
 };
 
-const ACTIVITYPUB_DELIVERY_FAILED = 'activitypub_delivery_failed';
-const MISSING_CANONICAL_ORIGIN = 'missing ACTIVITYPUB_CANONICAL_ORIGIN';
-const INVALID_CANONICAL_ORIGIN = 'invalid ACTIVITYPUB_CANONICAL_ORIGIN';
-const ACTOR_ARGS_INCOMPLETE = 'actor arguments require both --actor-table and --actor-id';
-const ACTOR_ARGS_FORBIDDEN = 'actor arguments require ACTIVITYPUB_RUN_DB_TESTS=1';
-
-/** Parses the supported ActivityPub one-shot dispatch CLI arguments. */
+/** Parses the production ActivityPub one-shot dispatch CLI arguments. */
 function parseArgs(argv: string[]): ParsedArgs {
-  const parsed: ParsedArgs = {};
+  const flags = new Set<string>();
+  const parsed: ParsedArgs = { once: false };
   for (let index = 2; index < argv.length; index += 1) {
     const key = argv[index];
     if (!key?.startsWith('--')) {
-      continue;
+      throw new Error(`unsupported argument: ${key ?? '<empty>'}`);
     }
-    const value = argv[index + 1];
-    if (!value || value.startsWith('--')) {
-      throw new Error(`missing value for ${key}`);
+    if (flags.has(key)) {
+      throw new Error(`duplicate argument: ${key}`);
     }
+    flags.add(key);
     switch (key) {
-      case '--database-url':
+      case '--once':
+        parsed.once = true;
+        break;
+      case '--database-url': {
+        const value = argv[index + 1];
+        if (!value || value.startsWith('--')) {
+          throw new Error('missing value for --database-url');
+        }
         parsed.databaseUrl = value;
+        index += 1;
         break;
-      case '--actor-table':
+      }
+      case '--actor-table': {
+        const value = argv[index + 1];
+        if (!value || value.startsWith('--')) {
+          throw new Error('missing value for --actor-table');
+        }
         parsed.actorTable = value;
+        index += 1;
         break;
-      case '--actor-id':
+      }
+      case '--actor-id': {
+        const value = argv[index + 1];
+        if (!value || value.startsWith('--')) {
+          throw new Error('missing value for --actor-id');
+        }
         parsed.actorId = value;
+        index += 1;
         break;
+      }
       default:
         throw new Error(`unsupported argument: ${key}`);
     }
-    index += 1;
   }
   return parsed;
 }
@@ -68,12 +91,13 @@ try {
   process.exit(1);
 }
 
-if (!args.databaseUrl) {
-  writeSafeError('missing --database-url');
+if (!args.once) {
+  writeSafeError('missing --once');
   process.exit(1);
 }
 
-const isDbTestPath = process.env.ACTIVITYPUB_RUN_DB_TESTS === '1';
+const isDbTestPath =
+  process.env.ACTIVITYPUB_RUN_DB_TESTS === '1' && process.env.NODE_ENV === 'test';
 const hasActorTable = Boolean(args.actorTable);
 const hasActorId = Boolean(args.actorId);
 
@@ -82,14 +106,20 @@ if (hasActorTable !== hasActorId) {
   process.exit(1);
 }
 
-if ((hasActorTable || hasActorId) && !isDbTestPath) {
+if ((hasActorTable || hasActorId || args.databaseUrl) && !isDbTestPath) {
   writeSafeError(ACTOR_ARGS_FORBIDDEN);
+  process.exit(1);
+}
+
+const databaseUrl = args.databaseUrl ?? process.env.DATABASE_URL?.trim();
+if (!databaseUrl) {
+  writeSafeError(MISSING_DATABASE_URL);
   process.exit(1);
 }
 
 let canonicalOrigin: string;
 try {
-  canonicalOrigin = resolveCanonicalOrigin(hasActorTable && hasActorId);
+  canonicalOrigin = resolveCanonicalOrigin(isDbTestPath);
 } catch (error) {
   const message = error instanceof Error ? error.message : INVALID_CANONICAL_ORIGIN;
   writeSafeError(message);
@@ -100,7 +130,7 @@ let exitCode = 0;
 let sql: ReturnType<typeof postgres> | undefined;
 
 try {
-  sql = postgres(args.databaseUrl, { max: 1 });
+  sql = postgres(databaseUrl, { max: 1 });
 
   if (hasActorTable && hasActorId) {
     const { processOneQueuedOutboxMessage } = await import('@pufu-lens/activitypub/postgres');
@@ -113,11 +143,20 @@ try {
     });
     if (result.status === 'no-op') {
       console.log(JSON.stringify({ status: 'no-op' }));
-    } else {
+    } else if (result.status === 'processed') {
       console.log(
         JSON.stringify({
           processor: result.processor,
           messageId: result.messageId,
+          queueKind: result.queueKind,
+        }),
+      );
+    } else {
+      console.log(
+        JSON.stringify({
+          status: result.status,
+          messageId: result.messageId,
+          queueKind: result.queueKind,
         }),
       );
     }
@@ -125,7 +164,9 @@ try {
     const { createPostgresActivityPubRepository } = await import(
       '@pufu-lens/activitypub/actor-repository'
     );
-    const { processOneQueuedMessage } = await import('@pufu-lens/activitypub/postgres');
+    const { runActivityPubDispatcherOnce } = await import(
+      '@pufu-lens/activitypub/postgres-dispatcher'
+    );
     const encryptionKey = parseActorKeyEncryptionKey(
       process.env.ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY,
     );
@@ -133,23 +174,21 @@ try {
       sql,
       encryptionKey,
     });
-    const result = await processOneQueuedMessage({
+    const result = await runActivityPubDispatcherOnce({
       sql,
       canonicalOrigin,
       encryptionKey,
       actorRepository,
       testOnlyAllowPrivateAddress: isDbTestPath ? true : undefined,
     });
-    if (result.status === 'no-op') {
-      console.log(JSON.stringify({ status: 'no-op' }));
-    } else {
-      console.log(
-        JSON.stringify({
-          processor: result.processor,
-          messageId: result.messageId,
-        }),
-      );
-    }
+    console.log(
+      JSON.stringify({
+        status: result.status,
+        activitiesMaterialized: result.activitiesMaterialized,
+        queueProcessed: result.queueProcessed,
+        queueNoOps: result.queueNoOps,
+      }),
+    );
   }
 } catch {
   writeSafeError(ACTIVITYPUB_DELIVERY_FAILED);

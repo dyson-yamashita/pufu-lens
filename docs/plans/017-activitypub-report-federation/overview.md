@@ -62,10 +62,14 @@ https://{canonicalHost}/activitypub/actors/{preferredUsername}/outbox
 https://{canonicalHost}/activitypub/actors/{preferredUsername}/followers
 https://{canonicalHost}/activitypub/actors/{preferredUsername}/following
 https://{canonicalHost}/activitypub/reports/{reportId}
+https://{canonicalHost}/activitypub/activities/create/{reportId}
+https://{canonicalHost}/activitypub/activities/announce/{reportId}
 https://{canonicalHost}/activitypub/inbox
 ```
 
 WebFinger は `acct:` resource から Actor URL を返す。Actor と `Article` は `Accept` による content negotiation で ActivityStreams JSON-LD を返し、通常の HTML report URL は既存の `/reports/public/{projectSlug}/{reportId}` を canonical user-facing URL とする。
+
+Step 4 の Create / Announce Activity URI は再試行とremote dedupeのためのstable idempotency identifierであり、このStepではdereference routeを提供しない。signed POSTに埋め込んだActivityとobjectを配送時の正本とする。Activity URIのdereferenceが必要になった場合は、inbound dereferenceを扱うStep 5以降で公開範囲、認可、保存期間を設計する。
 
 ### 4.3 配信契約
 
@@ -215,7 +219,7 @@ outbound row は report 公開 transaction 内で `pending` として作る tran
 - `attempt_count`
 - `worker_token` nullable
 - `lease_expires_at` nullable
-- `last_error_code` nullable
+- `last_error_code` nullable。runtime serializer / row parser と DB CHECK が同じ固定 allowlist を強制する
 - `last_http_status` nullable
 - `created_at` / `started_at` / `completed_at` / `updated_at`
 
@@ -255,7 +259,7 @@ report 公開から remote delivery までは次の二段階に分ける。
 ### 7.2 起動と上限
 
 - Cloud Scheduler が1分または5分ごとに `POST /internal/schedules/activitypub-dispatcher:run` を designated Scheduler service account の OIDC token 付きで呼ぶ。OIDC audience は Mastra internal service の固定 URL とし、route は issuer、audience、subject / email allowlist を検証する。
-- Scheduler service account には対象 Mastra service だけの `roles/run.invoker` を付与する。Mastra runtime service account には対象 `activitypub-dispatcher` Job だけの `run.jobs.run` / `run.jobs.runWithOverrides` 相当権限を付与し、他 Job や resource への権限を広げない。
+- Scheduler service account には対象 Mastra service だけの `roles/run.invoker` を付与する。Mastra runtime service account には source sync、定期 report、ActivityPub の各 dispatcher Job だけの `run.jobs.run` / `run.jobs.runWithOverrides` 相当権限を付与し、active execution一覧取得権限は `activitypub-dispatcher` Job だけに付与する。deploy定義は3つの対象Job resourceに`roles/run.jobsExecutorWithOverrides`を、ActivityPub Jobだけに`roles/run.viewer`を付与し、他 Job や resource への権限を広げない。
 - Mastra Server は body が空 object であることを検証し、同じ Job の active execution を検出した場合は新規起動せず accepted no-op として扱い、active でなければ `activitypub-dispatcher` Cloud Run Job を起動する。active execution 検出と DB lease の両方で duplicate run を防ぐ。
 - Job entrypoint は `--once` だけを受け付け、それ以外の引数や常駐 queue consumer 起動を拒否する。1 run 最大100 messageまたは開始から45分の早い方で新規 claim を停止する。
 - Cloud Run Job timeout は55分とし、10分を後処理に確保する。
@@ -413,9 +417,13 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 - remote Actor resolver は WebFinger / Actor / inbox / shared inbox の HTTPS、SSRF guard、redirect 各 hop、domain block、5 秒 timeout、1 MiB response limit、Actor document ID の一致を検証する。private key、署名 header、raw remote payload、credential は queue 永続化、log、UI に出さない。
 - project admin settings に remote Actor address、Follow / Unfollow、状態、safe error を追加した。member settings は project-scoped read-only とし、server action で non-admin、project 越境、不正 slug、不正 Actor address を拒否する。
 - distinct origin の Pufu Lens A / B fixture bridge で片方向・相互 Follow、Accept、Undo、duplicate / reordered / stale generation を再現し、Mastodon 互換 fixture で project Actor / `@all` の WebFinger 検索、Actor lookup、follow / unfollowを外部 instance なしで確認した。desktop / mobile Playwright でも管理可否、pending、safe error を確認した。
-- report 公開時の Create / Announce、report 配送 scheduler / Cloud Run Job、外部 report 取り込み、本番デプロイは実施しておらず、Step 4 以降に残している。
+- Step 3 完了時点では report 公開時の Create / Announce と配送基盤を未実装として残し、Step 4 で transactional outbox、scheduler / Cloud Run Job 定義まで実装した。外部 report 取り込みと本番デプロイは引き続き後続 Step の対象である。
 
 ### Step 4: 公開 report の transactional enqueue と outbound delivery
+
+- status: `completed`
+- tracking Issue / PR: [#673](https://github.com/dyson-yamashita/pufu-lens/issues/673) / [#674](https://github.com/dyson-yamashita/pufu-lens/pull/674)
+- 更新日: 2026-08-09
 
 成果物:
 
@@ -434,6 +442,14 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 - ordering key が同じ後続 message は先行成功まで claim されず、先行の終端失敗後も配送されない
 - designated Scheduler identity / 固定 audience 以外を拒否し、active execution 時は no-op、Job は `--once` 以外を拒否する
 - crash、timeout、429、5xx、lease expiry、duplicate起動のfixtureで欠落・二重副作用がない
+
+実装結果:
+
+- report 公開状態、公開用 short summary snapshot、project Actor の `Create`、aggregate `@all` Actor の `Announce` を同じ DB transaction で更新する transactional outbox を実装した。private project、disabled Actor、rollback では outbound activity と representation lock を作らず、public / enabled の最初の outbound activity で Article / Note representation を固定する。
+- dispatcher は commit 済み activity から stable object / activity URI と公開時点の follower audience を再構築する。同一 remote Actor が project Actor と `@all` を follow する場合は Create を優先し、異なる remote Actor が同じ shared inbox を使う場合は Create / Announce の必要な audience を保持する。personal / shared inbox は delivery 単位の dedupe key、object URI の ordering key、正規化した recipient origin へ永続化する。
+- PostgreSQL queue の lease、重複しない heartbeat、最大100件 / 45分の bounded one-shot、fair claim、bounded Retry-After / backoff、retry exhausted / permanent failure、先行成功待ちと先行終端失敗の後続抑止を実装した。activity materialize の未知の一時失敗も同じattempt budgetとbackoffで再試行し、既知のprivate / disabled / representation不整合だけを即時終端にする。Fedify の再試行は無効化し、404 / 410 / 429 / 5xx / timeout を安全な allowlist code に写像して DB dispatcher だけが状態遷移を管理する。runtime type guard / row parser と queue / activity table の DB CHECK は同じ固定 allowlist を強制し、materialization retry exhausted は再試行へ戻さず終端化する。旧queue実装の `activitypub_delivery_failed` はCHECK追加前に `unknown_delivery_error` へ正規化する。
+- Web federation は `manuallyStartQueue: true` を維持し、queue consumer / manual task processor を開始しない。`activitypub-dispatcher` Cloud Run Job だけが `--once` で処理し、Cloud Scheduler は固定 audience と designated service account の issuer / subject / email allowlist を検証する内部 route を呼ぶ。active execution は `202` no-op とし、Scheduler SA の対象 service invoker、Mastra runtime SA の3つのdispatcher Job executor、ActivityPub Jobだけの viewer 権限をresource scopeで定義した。
+- localhost signed POST fixture、DB integration、仮想 clock / injected signal で commit / rollback、shared inbox、ordering、crash / lease expiry、heartbeat競合、timeout、429 / 5xx、retry exhausted、permanent failure、duplicate起動を外部 network なしで確認した。UI変更、本番deploy、Cloud resource操作、外部 Pufu Lens / Mastodon接続は行っていない。
 
 ### Step 5: inbound report と外部レポート表示
 

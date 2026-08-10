@@ -28,6 +28,12 @@ substitutions:
   _SOURCE_SYNC_SCHEDULER: source-sync-dispatcher
   _REPORT_SCHEDULE_DISPATCHER_JOB: report-schedule-dispatcher
   _REPORT_SCHEDULE_SCHEDULER: report-schedule-dispatcher
+  _ACTIVITYPUB_DISPATCHER_JOB: activitypub-dispatcher
+  _ACTIVITYPUB_DISPATCHER_SCHEDULER: activitypub-dispatcher
+  _ACTIVITYPUB_CANONICAL_ORIGIN: ''
+  _ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE: ''
+  _ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT: ''
+  _ACTIVITYPUB_ACTOR_KEY_SECRET: ''
   _CHAT_MODEL: google/gemini-2.5-flash
   _CHAT_API_KEY_ENV: GEMINI_API_KEY
   _CHAT_API_KEY_SECRET: GEMINI_API_KEY
@@ -112,6 +118,16 @@ steps:
 
         if [[ -z "${_REPORT_SCHEDULE_DISPATCHER_JOB}" || -z "${_REPORT_SCHEDULE_SCHEDULER}" ]]; then
           echo "_REPORT_SCHEDULE_DISPATCHER_JOB and _REPORT_SCHEDULE_SCHEDULER are required." >&2
+          exit 1
+        fi
+
+        if [[ -z "${_ACTIVITYPUB_DISPATCHER_JOB}" || -z "${_ACTIVITYPUB_DISPATCHER_SCHEDULER}" ]]; then
+          echo "_ACTIVITYPUB_DISPATCHER_JOB and _ACTIVITYPUB_DISPATCHER_SCHEDULER are required." >&2
+          exit 1
+        fi
+
+        if [[ -z "${_ACTIVITYPUB_CANONICAL_ORIGIN}" || -z "${_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE}" || -z "${_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT}" || -z "${_ACTIVITYPUB_ACTOR_KEY_SECRET}" ]]; then
+          echo "_ACTIVITYPUB_CANONICAL_ORIGIN, _ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE, _ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT, and _ACTIVITYPUB_ACTOR_KEY_SECRET are required." >&2
           exit 1
         fi
 
@@ -263,8 +279,8 @@ steps:
           --clear-vpc-connector \
           --no-allow-unauthenticated \
           --port 8080 \
-          --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},PUFU_LENS_CHAT_MODEL=${_CHAT_MODEL},PUFU_LENS_EMBEDDING_PROVIDER=${_EMBEDDING_PROVIDER},PUFU_LENS_EMBEDDING_MODEL=${_EMBEDDING_MODEL},PUFU_LENS_EMBEDDING_DIMENSIONS=${_EMBEDDING_DIMENSIONS},GEMINI_CHAT_MODEL=gemini-2.5-flash,GOOGLE_GENAI_USE_VERTEXAI=false,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},CLOUD_RUN_JOBS_REGION=${_REGION},SOURCE_SYNC_DISPATCHER_JOB_NAME=${_ENV}-${_SOURCE_SYNC_DISPATCHER_JOB},REPORT_SCHEDULE_DISPATCHER_JOB_NAME=${_ENV}-${_REPORT_SCHEDULE_DISPATCHER_JOB}" \
-          --set-secrets "DATABASE_URL=DATABASE_URL:latest,${_CHAT_API_KEY_ENV}=${_CHAT_API_KEY_SECRET}:latest,PUFU_LENS_EMBEDDING_API_KEY=${_EMBEDDING_API_KEY_SECRET}:latest"
+          --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},PUFU_LENS_CHAT_MODEL=${_CHAT_MODEL},PUFU_LENS_EMBEDDING_PROVIDER=${_EMBEDDING_PROVIDER},PUFU_LENS_EMBEDDING_MODEL=${_EMBEDDING_MODEL},PUFU_LENS_EMBEDDING_DIMENSIONS=${_EMBEDDING_DIMENSIONS},GEMINI_CHAT_MODEL=gemini-2.5-flash,GOOGLE_GENAI_USE_VERTEXAI=false,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},CLOUD_RUN_JOBS_REGION=${_REGION},SOURCE_SYNC_DISPATCHER_JOB_NAME=${_ENV}-${_SOURCE_SYNC_DISPATCHER_JOB},REPORT_SCHEDULE_DISPATCHER_JOB_NAME=${_ENV}-${_REPORT_SCHEDULE_DISPATCHER_JOB},ACTIVITYPUB_DISPATCHER_JOB_NAME=${_ENV}-${_ACTIVITYPUB_DISPATCHER_JOB},ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT=${_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT},ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE=${_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE},SCHEDULER_SERVICE_ACCOUNT=${_SCHEDULER_SERVICE_ACCOUNT},ACTIVITYPUB_CANONICAL_ORIGIN=${_ACTIVITYPUB_CANONICAL_ORIGIN},ACTIVITYPUB_ENABLED=1" \
+          --set-secrets "DATABASE_URL=DATABASE_URL:latest,${_CHAT_API_KEY_ENV}=${_CHAT_API_KEY_SECRET}:latest,PUFU_LENS_EMBEDDING_API_KEY=${_EMBEDDING_API_KEY_SECRET}:latest,ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY=${_ACTIVITYPUB_ACTOR_KEY_SECRET}:latest"
 
         mkdir -p /workspace/.cloudbuild
         gcloud run services describe "${_MASTRA_SERVICE}" \
@@ -282,8 +298,14 @@ steps:
       - |
         set -euo pipefail
 
-        for workflow_id in curate-workflow ingest-workflow generate-report source-sync-dispatcher report-schedule-dispatcher; do
+        for workflow_id in curate-workflow ingest-workflow generate-report source-sync-dispatcher report-schedule-dispatcher activitypub-dispatcher; do
           job_name="${_ENV}-$${workflow_id}"
+          env_vars="STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},WORKFLOW_ID=$${workflow_id},PUFU_LENS_CHAT_MODEL=${_CHAT_MODEL},PUFU_LENS_EMBEDDING_PROVIDER=${_EMBEDDING_PROVIDER},PUFU_LENS_EMBEDDING_MODEL=${_EMBEDDING_MODEL},PUFU_LENS_EMBEDDING_DIMENSIONS=${_EMBEDDING_DIMENSIONS},GEMINI_CHAT_MODEL=gemini-2.5-flash,GOOGLE_GENAI_USE_VERTEXAI=false"
+          secrets="DATABASE_URL=DATABASE_URL:latest,${_CHAT_API_KEY_ENV}=${_CHAT_API_KEY_SECRET}:latest,PUFU_LENS_EMBEDDING_API_KEY=${_EMBEDDING_API_KEY_SECRET}:latest,AUTH_SECRET=AUTH_SECRET:latest"
+          if [[ "$${workflow_id}" == "activitypub-dispatcher" ]]; then
+            env_vars="STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},WORKFLOW_ID=activitypub-dispatcher,ACTIVITYPUB_ENABLED=1,ACTIVITYPUB_CANONICAL_ORIGIN=${_ACTIVITYPUB_CANONICAL_ORIGIN},PUFU_LENS_CHAT_MODEL=${_CHAT_MODEL},PUFU_LENS_EMBEDDING_PROVIDER=${_EMBEDDING_PROVIDER},PUFU_LENS_EMBEDDING_MODEL=${_EMBEDDING_MODEL},PUFU_LENS_EMBEDDING_DIMENSIONS=${_EMBEDDING_DIMENSIONS},GEMINI_CHAT_MODEL=gemini-2.5-flash,GOOGLE_GENAI_USE_VERTEXAI=false"
+            secrets="DATABASE_URL=DATABASE_URL:latest,${_CHAT_API_KEY_ENV}=${_CHAT_API_KEY_SECRET}:latest,PUFU_LENS_EMBEDDING_API_KEY=${_EMBEDDING_API_KEY_SECRET}:latest,AUTH_SECRET=AUTH_SECRET:latest,ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY=${_ACTIVITYPUB_ACTOR_KEY_SECRET}:latest"
+          fi
           job_args=(
             "$${job_name}"
             --image "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_JOBS_IMAGE}:${SHORT_SHA}"
@@ -293,10 +315,10 @@ steps:
             --subnet "${_VPC_SUBNET}"
             --vpc-egress private-ranges-only
             --clear-vpc-connector
-            --set-env-vars "STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},WORKFLOW_ID=$${workflow_id},PUFU_LENS_CHAT_MODEL=${_CHAT_MODEL},PUFU_LENS_EMBEDDING_PROVIDER=${_EMBEDDING_PROVIDER},PUFU_LENS_EMBEDDING_MODEL=${_EMBEDDING_MODEL},PUFU_LENS_EMBEDDING_DIMENSIONS=${_EMBEDDING_DIMENSIONS},GEMINI_CHAT_MODEL=gemini-2.5-flash,GOOGLE_GENAI_USE_VERTEXAI=false"
-            --set-secrets "DATABASE_URL=DATABASE_URL:latest,${_CHAT_API_KEY_ENV}=${_CHAT_API_KEY_SECRET}:latest,PUFU_LENS_EMBEDDING_API_KEY=${_EMBEDDING_API_KEY_SECRET}:latest,AUTH_SECRET=AUTH_SECRET:latest"
+            --set-env-vars "$${env_vars}"
+            --set-secrets "$${secrets}"
           )
-          if [[ "$${workflow_id}" == "source-sync-dispatcher" || "$${workflow_id}" == "report-schedule-dispatcher" ]]; then
+          if [[ "$${workflow_id}" == "source-sync-dispatcher" || "$${workflow_id}" == "report-schedule-dispatcher" || "$${workflow_id}" == "activitypub-dispatcher" ]]; then
             job_args+=(--tasks 1 --max-retries 0 --task-timeout 3300s)
           fi
           if gcloud run jobs describe "$${job_name}" --region "${_REGION}" >/dev/null 2>&1; then
@@ -364,6 +386,66 @@ steps:
           gcloud scheduler jobs create http "$${scheduler_name}" "$${scheduler_args[@]}" --headers "Content-Type=application/json"
         fi
 
+  - id: deploy-activitypub-dispatcher-iam
+    name: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+    waitFor:
+      - deploy-mastra-server
+      - deploy-workflow-jobs
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+
+        mastra_service_name="$$(gcloud run services list --region "${_REGION}" --filter="metadata.name=${_MASTRA_SERVICE}" --format='value(metadata.name)')"
+        source_sync_job_name="${_ENV}-${_SOURCE_SYNC_DISPATCHER_JOB}"
+        report_schedule_job_name="${_ENV}-${_REPORT_SCHEDULE_DISPATCHER_JOB}"
+        activitypub_job_name="${_ENV}-${_ACTIVITYPUB_DISPATCHER_JOB}"
+        gcloud run services add-iam-policy-binding "$${mastra_service_name}" \
+          --region "${_REGION}" \
+          --member "serviceAccount:${_SCHEDULER_SERVICE_ACCOUNT}" \
+          --role "roles/run.invoker"
+        for dispatcher_job_name in "$${source_sync_job_name}" "$${report_schedule_job_name}" "$${activitypub_job_name}"; do
+          gcloud run jobs add-iam-policy-binding "$${dispatcher_job_name}" \
+            --region "${_REGION}" \
+            --member "serviceAccount:${_RUNTIME_SERVICE_ACCOUNT}" \
+            --role "roles/run.jobsExecutorWithOverrides"
+        done
+        gcloud run jobs add-iam-policy-binding "$${activitypub_job_name}" \
+          --region "${_REGION}" \
+          --member "serviceAccount:${_RUNTIME_SERVICE_ACCOUNT}" \
+          --role "roles/run.viewer"
+
+  - id: deploy-activitypub-dispatcher-scheduler
+    name: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+    waitFor:
+      - deploy-mastra-server
+      - deploy-workflow-jobs
+      - deploy-activitypub-dispatcher-iam
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+
+        service_url="$$(cat /workspace/.cloudbuild/mastra-server-url)"
+        scheduler_name="${_ENV}-${_ACTIVITYPUB_DISPATCHER_SCHEDULER}"
+        scheduler_args=(
+          --location "${_REGION}"
+          --schedule "*/5 * * * *"
+          --time-zone "Etc/UTC"
+          --uri "$${service_url}/internal/schedules/activitypub-dispatcher:run"
+          --http-method POST
+          --message-body '{}'
+          --oidc-service-account-email "${_SCHEDULER_SERVICE_ACCOUNT}"
+          --oidc-token-audience "${_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE}"
+        )
+        if gcloud scheduler jobs describe "$${scheduler_name}" --location "${_REGION}" >/dev/null 2>&1; then
+          gcloud scheduler jobs update http "$${scheduler_name}" "$${scheduler_args[@]}" --update-headers "Content-Type=application/json"
+        else
+          gcloud scheduler jobs create http "$${scheduler_name}" "$${scheduler_args[@]}" --headers "Content-Type=application/json"
+        fi
+
   - id: deploy-web-app-hosting
     name: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/firebase-tools:${_FIREBASE_TOOLS_VERSION}
     waitFor:
@@ -371,6 +453,7 @@ steps:
       - deploy-workflow-jobs
       - deploy-source-sync-scheduler
       - deploy-report-schedule-scheduler
+      - deploy-activitypub-dispatcher-scheduler
     entrypoint: bash
     args:
       - -c
@@ -429,6 +512,7 @@ steps:
       - deploy-workflow-jobs
       - deploy-source-sync-scheduler
       - deploy-report-schedule-scheduler
+      - deploy-activitypub-dispatcher-scheduler
       - deploy-web-app-hosting
     entrypoint: bash
     args:

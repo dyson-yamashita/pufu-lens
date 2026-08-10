@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { DELIVERY_ERROR_CODES } from './delivery-errors.ts';
 import {
   parseActivityPubActivityRow,
   parseActivityPubActorEncryptedKeyRow,
@@ -35,6 +36,7 @@ const validActivity = {
   payload_json: {},
   processing_status: 'pending',
   available_at: validActor.created_at,
+  attempt_count: 0,
   worker_token: null,
   lease_expires_at: null,
   occurred_at: validActor.created_at,
@@ -133,6 +135,7 @@ test('schema parsers accept valid rows', () => {
     'accepted',
   );
   assert.equal(parseActivityPubActivityRow(validActivity).direction, 'outbound');
+  assert.equal(parseActivityPubActivityRow(validActivity).attemptCount, 0);
   assert.equal(parseActivityPubQueueMessageRow(validQueueMessage).queueKind, 'outbox');
   assert.equal(parseFederatedReportRow(validFederatedReport).objectType, 'article');
   assert.equal(parsePublicReportArticleRow(validPublicReportArticle).title, 'Quarterly Update');
@@ -174,5 +177,27 @@ test('schema parsers reject malformed rows', () => {
   assert.throws(
     () => parsePublicReportArticleRow({ ...validPublicReportArticle, report_id: 1 }),
     /report_id/,
+  );
+});
+
+test('parseActivityPubQueueMessageRow accepts allowlisted last_error_code values', () => {
+  assert.equal(
+    parseActivityPubQueueMessageRow({
+      ...validQueueMessage,
+      last_error_code: DELIVERY_ERROR_CODES.http5xx,
+    }).lastErrorCode,
+    DELIVERY_ERROR_CODES.http5xx,
+  );
+  assert.equal(parseActivityPubQueueMessageRow(validQueueMessage).lastErrorCode, null);
+});
+
+test('parseActivityPubQueueMessageRow rejects unknown last_error_code values', () => {
+  assert.throws(
+    () =>
+      parseActivityPubQueueMessageRow({
+        ...validQueueMessage,
+        last_error_code: 'activitypub_delivery_failed',
+      }),
+    /last_error_code/,
   );
 });

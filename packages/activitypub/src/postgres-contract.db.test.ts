@@ -323,6 +323,7 @@ async function assertOneShotDispatchSignsAndDelivers() {
       [
         '--experimental-strip-types',
         dispatchScript,
+        '--once',
         '--database-url',
         resolvedDatabaseUrl,
         '--actor-table',

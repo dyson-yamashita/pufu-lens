@@ -51,7 +51,7 @@
     "scripts:test": "pnpm --filter @pufu-lens/ingestion build && node --experimental-strip-types --test \"scripts/**/*.test.ts\"",
     "scripts:test:coverage": "pnpm --filter @pufu-lens/ingestion build && node --experimental-strip-types --experimental-test-coverage --test \"scripts/**/*.test.ts\"",
     "scripts:typecheck": "tsc --noEmit -p tsconfig.scripts.json",
-    "activitypub:dispatch": "pnpm --filter @pufu-lens/activitypub build && node --experimental-strip-types scripts/activitypub-dispatch-once.ts",
+    "activitypub:dispatch": "pnpm --filter @pufu-lens/activitypub build && node --experimental-strip-types scripts/activitypub-dispatch-once.ts --once",
     "test": "pnpm scripts:test && turbo run test",
     "test:activitypub": "pnpm --filter @pufu-lens/activitypub test",
     "test:activitypub:db": "pnpm --filter @pufu-lens/activitypub test:db",
@@ -67,7 +67,8 @@
     "markdownlint-cli2": "^0.22.1",
     "prettier": "^3.6.2",
     "turbo": "^2.6.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "yaml": "^2.8.1"
   },
   "dependencies": {
     "@pufu-lens/activitypub": "workspace:*",

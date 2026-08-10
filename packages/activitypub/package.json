@@ -13,6 +13,10 @@
     "./schema": "./src/schema.ts",
     "./uri-contract": "./src/uri-contract.ts",
     "./postgres": "./src/postgres.ts",
+    "./postgres-dispatcher": "./src/postgres-dispatcher.ts",
+    "./report-publication-outbox": "./src/report-publication-outbox.ts",
+    "./report-delivery": "./src/report-delivery.ts",
+    "./dispatcher": "./src/dispatcher.ts",
     "./protocol": "./src/protocol.ts",
     "./queue": "./src/queue.ts",
     "./security": "./src/security.ts"
