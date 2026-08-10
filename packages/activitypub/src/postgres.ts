@@ -916,7 +916,14 @@ function toDeliveryProcessorError(error: unknown): {
   return mapped;
 }
 
-/** Exported for deterministic delivery failure boundary tests. */
+/**
+ * Returns whether a queue processor error is a fixed, safe delivery failure category.
+ *
+ * Returns `true` for materialization retry exhaustion, valid HTTP status failures,
+ * and timeout/network classifications. Returns `false` for `LeaseLostError` and unknown
+ * processor errors. Callers treat `true` as a handled `delivery_failed` outcome and
+ * rethrow when this returns `false`.
+ */
 export function isExpectedDeliveryFailure(error: unknown): boolean {
   if (error instanceof LeaseLostError) {
     return false;

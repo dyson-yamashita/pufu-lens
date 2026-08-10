@@ -124,6 +124,66 @@ function extractJobIamBindings(script: string): JobIamBinding[] {
   return bindings;
 }
 
+function extractWorkflowJobNameAssignment(script: string, workflowId: string): string | undefined {
+  const marker = `${workflowId})`;
+  const index = script.indexOf(marker);
+  if (index < 0) {
+    return undefined;
+  }
+  const slice = script.slice(index, index + 200);
+  const match = slice.match(/job_name="([^"]+)"/);
+  return match?.[1];
+}
+
+function extractDefaultWorkflowJobNameAssignment(script: string): string | undefined {
+  const marker = '*)';
+  const index = script.indexOf(marker);
+  if (index < 0) {
+    return undefined;
+  }
+  const slice = script.slice(index, index + 200);
+  const match = slice.match(/job_name="([^"]+)"/);
+  return match?.[1];
+}
+
+test('deploy-workflow-jobs uses substitution-derived dispatcher job names aligned with IAM bindings', () => {
+  const steps = collectSteps();
+  const workflowJobs = steps.find((step) => step.id === 'deploy-workflow-jobs');
+  const iam = steps.find((step) => step.id === 'deploy-activitypub-dispatcher-iam');
+  assert.ok(workflowJobs);
+  assert.ok(iam);
+
+  const dispatcherJobPatterns = {
+    'source-sync-dispatcher': `\${_ENV}-\${_SOURCE_SYNC_DISPATCHER_JOB}`,
+    'report-schedule-dispatcher': `\${_ENV}-\${_REPORT_SCHEDULE_DISPATCHER_JOB}`,
+    'activitypub-dispatcher': `\${_ENV}-\${_ACTIVITYPUB_DISPATCHER_JOB}`,
+  } as const;
+
+  for (const [workflowId, expectedJobName] of Object.entries(dispatcherJobPatterns)) {
+    assert.equal(
+      extractWorkflowJobNameAssignment(workflowJobs.script, workflowId),
+      expectedJobName,
+    );
+  }
+  assert.equal(
+    extractDefaultWorkflowJobNameAssignment(workflowJobs.script),
+    `\${_ENV}-$\${workflow_id}`,
+  );
+
+  assert.ok(workflowJobs.script.includes('gcloud run jobs describe "$${job_name}"'));
+  assert.ok(workflowJobs.script.includes('gcloud run jobs update "$${job_args[@]}"'));
+  assert.ok(workflowJobs.script.includes('gcloud run jobs create "$${job_args[@]}"'));
+  assert.ok(workflowJobs.script.includes('"$${job_name}"'));
+
+  const iamJobNames = extractJobNameAssignments(iam.script);
+  assert.equal(iamJobNames.source_sync_job_name, dispatcherJobPatterns['source-sync-dispatcher']);
+  assert.equal(
+    iamJobNames.report_schedule_job_name,
+    dispatcherJobPatterns['report-schedule-dispatcher'],
+  );
+  assert.equal(iamJobNames.activitypub_job_name, dispatcherJobPatterns['activitypub-dispatcher']);
+});
+
 test('deploy config scopes dispatcher IAM to environment-prefixed jobs and orders IAM before scheduler', () => {
   const steps = collectSteps();
   const iam = steps.find((step) => step.id === 'deploy-activitypub-dispatcher-iam');
