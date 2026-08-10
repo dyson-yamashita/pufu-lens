@@ -346,10 +346,12 @@ test('0020, 0021, and fresh schema share last_error_code allowlist constraints',
     'activitypub_queue_messages_last_error_code_check',
     'activitypub_activities_last_error_code_check',
   ]) {
-    assert.match(migration0020, new RegExp(`DROP CONSTRAINT IF EXISTS ${name}`));
-    assert.match(migration0020, new RegExp(`ADD CONSTRAINT ${name}[\\s\\S]*NOT VALID`));
-    assert.match(migration0021, new RegExp(`VALIDATE CONSTRAINT ${name}`));
-    assert.match(init, new RegExp(`CONSTRAINT ${name}`));
+    assert.ok(migration0020.includes(`DROP CONSTRAINT IF EXISTS ${name}`));
+    const addConstraintIndex = migration0020.indexOf(`ADD CONSTRAINT ${name}`);
+    assert.ok(addConstraintIndex >= 0);
+    assert.ok(migration0020.slice(addConstraintIndex).includes('NOT VALID'));
+    assert.ok(migration0021.includes(`VALIDATE CONSTRAINT ${name}`));
+    assert.ok(init.includes(`CONSTRAINT ${name}`));
   }
 
   for (const code of [
@@ -368,8 +370,8 @@ test('0020, 0021, and fresh schema share last_error_code allowlist constraints',
     'activitypub_materialization_representation',
     'activitypub_materialization_retry_exhausted',
   ]) {
-    assert.match(migration0020, new RegExp(`'${code}'`));
-    assert.match(init, new RegExp(`'${code}'`));
+    assert.ok(migration0020.includes(`'${code}'`));
+    assert.ok(init.includes(`'${code}'`));
   }
 });
 

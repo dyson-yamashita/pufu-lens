@@ -331,6 +331,12 @@ async function completeActivityMaterialization(input: {
 
 /**
  * Applies lease-aware failure handling for a claimed outbound activity row.
+ *
+ * Updates only when the claimed row still matches the same `worker_token`, is `running`,
+ * and has a lease that has not expired. Retryable failures return the row to `pending`
+ * with `available_at` backoff; terminal failures set `processing_status` to `failed`.
+ * `lease_lost`, ownership loss, or expired leases leave the row unchanged.
+ *
  * Exported for deterministic DB fixture tests that assert retry and lease semantics directly.
  */
 export async function failActivityMaterialization(input: {

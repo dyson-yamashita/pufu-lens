@@ -299,7 +299,20 @@ steps:
         set -euo pipefail
 
         for workflow_id in curate-workflow ingest-workflow generate-report source-sync-dispatcher report-schedule-dispatcher activitypub-dispatcher; do
-          job_name="${_ENV}-$${workflow_id}"
+          case "$${workflow_id}" in
+            source-sync-dispatcher)
+              job_name="${_ENV}-${_SOURCE_SYNC_DISPATCHER_JOB}"
+              ;;
+            report-schedule-dispatcher)
+              job_name="${_ENV}-${_REPORT_SCHEDULE_DISPATCHER_JOB}"
+              ;;
+            activitypub-dispatcher)
+              job_name="${_ENV}-${_ACTIVITYPUB_DISPATCHER_JOB}"
+              ;;
+            *)
+              job_name="${_ENV}-$${workflow_id}"
+              ;;
+          esac
           env_vars="STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},WORKFLOW_ID=$${workflow_id},PUFU_LENS_CHAT_MODEL=${_CHAT_MODEL},PUFU_LENS_EMBEDDING_PROVIDER=${_EMBEDDING_PROVIDER},PUFU_LENS_EMBEDDING_MODEL=${_EMBEDDING_MODEL},PUFU_LENS_EMBEDDING_DIMENSIONS=${_EMBEDDING_DIMENSIONS},GEMINI_CHAT_MODEL=gemini-2.5-flash,GOOGLE_GENAI_USE_VERTEXAI=false"
           secrets="DATABASE_URL=DATABASE_URL:latest,${_CHAT_API_KEY_ENV}=${_CHAT_API_KEY_SECRET}:latest,PUFU_LENS_EMBEDDING_API_KEY=${_EMBEDDING_API_KEY_SECRET}:latest,AUTH_SECRET=AUTH_SECRET:latest"
           if [[ "$${workflow_id}" == "activitypub-dispatcher" ]]; then

@@ -64,13 +64,25 @@ export function mapDeliveryError(error: unknown): MappedDeliveryError {
       return { code: DELIVERY_ERROR_CODES.inboxGone, httpStatus };
     }
     if (httpStatus === 408) {
-      return { code: DELIVERY_ERROR_CODES.http408, httpStatus, retryAfterMs };
+      return {
+        code: DELIVERY_ERROR_CODES.http408,
+        httpStatus,
+        ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+      };
     }
     if (httpStatus === 429) {
-      return { code: DELIVERY_ERROR_CODES.http429, httpStatus, retryAfterMs };
+      return {
+        code: DELIVERY_ERROR_CODES.http429,
+        httpStatus,
+        ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+      };
     }
     if (typeof httpStatus === 'number' && httpStatus >= 500) {
-      return { code: DELIVERY_ERROR_CODES.http5xx, httpStatus, retryAfterMs };
+      return {
+        code: DELIVERY_ERROR_CODES.http5xx,
+        httpStatus,
+        ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+      };
     }
     if (typeof httpStatus === 'number' && httpStatus >= 400 && httpStatus < 500) {
       return { code: DELIVERY_ERROR_CODES.http4xx, httpStatus };
@@ -89,23 +101,35 @@ export function mapDeliveryError(error: unknown): MappedDeliveryError {
 }
 
 function readHttpStatus(record: Record<string, unknown>): number | undefined {
-  if (typeof record.statusCode === 'number') {
-    return record.statusCode;
-  }
-  if (typeof record.httpStatus === 'number') {
-    return record.httpStatus;
-  }
-  if (typeof record.status === 'number') {
-    return record.status;
+  for (const field of ['statusCode', 'httpStatus', 'status'] as const) {
+    const value = record[field];
+    if (isValidHttpStatus(value)) {
+      return value;
+    }
   }
   return undefined;
 }
 
 function readRetryAfterMs(record: Record<string, unknown>): number | undefined {
-  if (typeof record.retryAfterMs === 'number') {
-    return record.retryAfterMs;
+  const directValue = record.retryAfterMs;
+  if (isValidRetryAfterMs(directValue)) {
+    return directValue;
   }
   return readRetryAfterFromHeaders(record.responseHeaders);
+}
+
+function isValidHttpStatus(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value >= 100 &&
+    value <= 599
+  );
+}
+
+function isValidRetryAfterMs(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
 function readRetryAfterFromHeaders(value: unknown): number | undefined {

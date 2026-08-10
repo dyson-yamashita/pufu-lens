@@ -244,7 +244,7 @@ gcloud run services add-iam-policy-binding "$MASTRA_SERVICE" \
 ```
 
 Mastra runtime SA から dispatcher Cloud Run Job を container override 付きで起動するため、source sync、定期 report、ActivityPub の各 Job resource に `roles/run.jobsExecutorWithOverrides` を付与する。
-`<environment>` には deploy substitution の `_ENV` と同じ値（例: `staging`、`production`）を指定する。いずれかだけに付与すると、権限がない Scheduler route は HTTP 503 を返す。
+次の例は既定 suffix を使う場合である。`<environment>` には deploy substitution の `_ENV` と同じ値（例: `staging`、`production`）を指定する。suffix を変更する場合は `_SOURCE_SYNC_DISPATCHER_JOB`、`_REPORT_SCHEDULE_DISPATCHER_JOB`、`_ACTIVITYPUB_DISPATCHER_JOB` と同じ値を Job 作成、Mastra runtime 設定、IAM のすべてで使う。いずれかだけに付与すると、権限がない Scheduler route は HTTP 503 を返す。
 
 ```bash
 RUNTIME_SA="<mastra-runtime-service-account>"

@@ -58,3 +58,80 @@ test('mapDeliveryError preserves known allowlist codes and rejects unknown codes
     JSON.stringify({ code: DELIVERY_ERROR_CODES.unknownDeliveryError }),
   );
 });
+
+test('mapDeliveryError ignores invalid HTTP status and retry numeric boundaries', () => {
+  assert.deepEqual(mapDeliveryError({ httpStatus: Number.NaN }), {
+    code: DELIVERY_ERROR_CODES.unknownDeliveryError,
+  });
+  assert.deepEqual(mapDeliveryError({ statusCode: Number.POSITIVE_INFINITY }), {
+    code: DELIVERY_ERROR_CODES.unknownDeliveryError,
+  });
+  assert.deepEqual(mapDeliveryError({ status: 99 }), {
+    code: DELIVERY_ERROR_CODES.unknownDeliveryError,
+  });
+  assert.deepEqual(mapDeliveryError({ httpStatus: 600 }), {
+    code: DELIVERY_ERROR_CODES.unknownDeliveryError,
+  });
+  assert.deepEqual(
+    mapDeliveryError({
+      statusCode: Number.NaN,
+      httpStatus: 429,
+      responseHeaders: { 'retry-after': '30' },
+    }),
+    {
+      code: DELIVERY_ERROR_CODES.http429,
+      httpStatus: 429,
+      retryAfterMs: 30_000,
+    },
+  );
+});
+
+test('mapDeliveryError rejects invalid retryAfterMs and falls back to Retry-After headers', () => {
+  assert.deepEqual(
+    mapDeliveryError({
+      statusCode: 429,
+      retryAfterMs: Number.NaN,
+      responseHeaders: { 'retry-after': '45' },
+    }),
+    {
+      code: DELIVERY_ERROR_CODES.http429,
+      httpStatus: 429,
+      retryAfterMs: 45_000,
+    },
+  );
+  assert.deepEqual(
+    mapDeliveryError({
+      statusCode: 503,
+      retryAfterMs: Number.POSITIVE_INFINITY,
+      responseHeaders: { 'retry-after': '60' },
+    }),
+    {
+      code: DELIVERY_ERROR_CODES.http5xx,
+      httpStatus: 503,
+      retryAfterMs: 60_000,
+    },
+  );
+  assert.deepEqual(mapDeliveryError({ statusCode: 503, retryAfterMs: -1 }), {
+    code: DELIVERY_ERROR_CODES.http5xx,
+    httpStatus: 503,
+  });
+  assert.deepEqual(mapDeliveryError({ statusCode: 429, retryAfterMs: 12.5 }), {
+    code: DELIVERY_ERROR_CODES.http429,
+    httpStatus: 429,
+    retryAfterMs: 12.5,
+  });
+});
+
+test('mapDeliveryError does not propagate invalid numerics for known allowlist codes', () => {
+  assert.deepEqual(
+    mapDeliveryError({
+      code: DELIVERY_ERROR_CODES.http5xx,
+      httpStatus: Number.NaN,
+      retryAfterMs: -1,
+      message: 'secret detail',
+    }),
+    {
+      code: DELIVERY_ERROR_CODES.http5xx,
+    },
+  );
+});
