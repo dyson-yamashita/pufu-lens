@@ -107,6 +107,7 @@ export type ActivityPubActivity = {
   readonly payloadJson: Readonly<Record<string, unknown>>;
   readonly processingStatus: ActivityPubActivityProcessingStatus;
   readonly availableAt: Date;
+  readonly attemptCount: number;
   readonly workerToken: string | null;
   readonly leaseExpiresAt: Date | null;
   readonly occurredAt: Date;
@@ -438,6 +439,7 @@ export function parseActivityPubActivityRow(row: unknown): ActivityPubActivity {
     payloadJson: parseJsonObject(row.payload_json, 'payload_json'),
     processingStatus: parseActivityProcessingStatus(row.processing_status),
     availableAt: parseRequiredDate(row.available_at, 'available_at'),
+    attemptCount: parseRequiredInteger(row.attempt_count, 'attempt_count'),
     workerToken: parseNullableString(row.worker_token, 'worker_token'),
     leaseExpiresAt: parseNullableDate(row.lease_expires_at, 'lease_expires_at'),
     occurredAt: parseRequiredDate(row.occurred_at, 'occurred_at'),

@@ -489,6 +489,14 @@ export async function processOneQueuedMessage(
       if (finalizeError instanceof LeaseLostError) {
         throw finalizeError;
       }
+      console.error(
+        JSON.stringify({
+          event: 'activitypub_queue_finalize_failure',
+          messageId: claimed.id,
+          queueKind: claimed.queue_kind,
+          errorCode: mapDeliveryError(error).code,
+        }),
+      );
     }
     if (isExpectedDeliveryFailure(error)) {
       return {
@@ -581,8 +589,17 @@ export async function processOneQueuedOutboxMessage(
         attemptCount: claimed.attempt_count,
         error,
       });
-    } catch {
-      // Preserve the original delivery error when queue finalization also fails.
+    } catch (finalizeError) {
+      if (!(finalizeError instanceof LeaseLostError)) {
+        console.error(
+          JSON.stringify({
+            event: 'activitypub_queue_finalize_failure',
+            messageId: claimed.id,
+            queueKind: claimed.queue_kind,
+            errorCode: mapDeliveryError(error).code,
+          }),
+        );
+      }
     }
     throw error;
   }
@@ -614,11 +631,7 @@ async function claimQueueRow(input: {
     `;
 
     const queueKinds: readonly ('inbox' | 'outbox')[] =
-      input.preferredQueueKind === undefined
-        ? (['inbox', 'outbox'] as const)
-        : input.preferredQueueKind === 'inbox'
-          ? (['inbox', 'outbox'] as const)
-          : (['outbox', 'inbox'] as const);
+      input.preferredQueueKind === 'outbox' ? ['outbox', 'inbox'] : ['inbox', 'outbox'];
 
     for (const queueKind of queueKinds) {
       const rows = await transaction<
@@ -671,7 +684,7 @@ async function claimQueueRow(input: {
         }
         const workerToken = randomUUID();
         const leaseExpiresAt = new Date(clock.now().getTime() + DISPATCHER_LEASE_MS);
-        const updated = await transaction<{ id: string; attempt_count: number }[]>`
+        const updatedRows = (await transaction`
           UPDATE public.activitypub_queue_messages
           SET status = 'running',
               worker_token = ${workerToken},
@@ -683,14 +696,15 @@ async function claimQueueRow(input: {
           WHERE id = ${row.id}
             AND status IN ('pending', 'retry_wait')
           RETURNING id, attempt_count
-        `;
-        if (updated.length === 0) {
+        `) as readonly unknown[];
+        if (updatedRows.length === 0) {
           continue;
         }
+        const claimedAttemptCount = parseClaimedQueueAttemptCount(updatedRows[0]);
         return {
           ...row,
           worker_token: workerToken,
-          attempt_count: updated[0]?.attempt_count ?? row.attempt_count + 1,
+          attempt_count: claimedAttemptCount,
         };
       }
     }
@@ -712,9 +726,7 @@ async function evaluateOrderingGate(
   if (row.queue_kind !== 'outbox' || !row.ordering_key || !row.recipient_origin) {
     return { kind: 'claim' };
   }
-  const predecessors = await transaction<
-    { status: string; id: string; created_at: Date; attempt_count: number }[]
-  >`
+  const predecessors = (await transaction`
     SELECT status, id::text AS id, created_at, attempt_count
     FROM public.activitypub_queue_messages
     WHERE queue_kind = 'outbox'
@@ -728,8 +740,8 @@ async function evaluateOrderingGate(
       AND status <> 'succeeded'
     ORDER BY created_at ASC, id ASC
     LIMIT 1
-  `;
-  const predecessor = predecessors[0];
+  `) as readonly unknown[];
+  const predecessor = predecessors[0] ? parseOrderingPredecessorRow(predecessors[0]) : undefined;
   if (!predecessor) {
     return { kind: 'claim' };
   }
@@ -843,6 +855,45 @@ async function finalizeQueueFailure(input: {
   if (updated.count === 0) {
     throw new LeaseLostError();
   }
+}
+
+function parseClaimedQueueAttemptCount(value: unknown): number {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid claimed queue attempt_count row.');
+  }
+  const attemptCount = Reflect.get(value, 'attempt_count');
+  if (typeof attemptCount !== 'number' || !Number.isInteger(attemptCount) || attemptCount < 0) {
+    throw new Error('Invalid claimed queue attempt_count.');
+  }
+  return attemptCount;
+}
+
+function parseOrderingPredecessorRow(value: unknown): {
+  readonly status: string;
+  readonly id: string;
+  readonly createdAt: Date;
+  readonly attemptCount: number;
+} {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid ordering predecessor row.');
+  }
+  const status = Reflect.get(value, 'status');
+  const id = Reflect.get(value, 'id');
+  const createdAt = Reflect.get(value, 'created_at');
+  const attemptCount = Reflect.get(value, 'attempt_count');
+  if (typeof status !== 'string' || status.length === 0) {
+    throw new Error('Invalid ordering predecessor status.');
+  }
+  if (typeof id !== 'string' || id.length === 0) {
+    throw new Error('Invalid ordering predecessor id.');
+  }
+  if (!(createdAt instanceof Date)) {
+    throw new Error('Invalid ordering predecessor created_at.');
+  }
+  if (typeof attemptCount !== 'number' || !Number.isInteger(attemptCount) || attemptCount < 0) {
+    throw new Error('Invalid ordering predecessor attempt_count.');
+  }
+  return { status, id, createdAt, attemptCount };
 }
 
 function toDeliveryProcessorError(error: unknown): {

@@ -36,11 +36,24 @@ function createAbortOnSignalFetch(): {
 }
 
 test('withTimedDeliveryFetch restores global fetch after success', async () => {
-  const originalFetch = globalThis.fetch;
-  await withTimedDeliveryFetch({ timeoutMs: 1_000 }, async () => {
-    await globalThis.fetch('https://example.test/inbox', { method: 'HEAD' }).catch(() => undefined);
-  });
-  assert.equal(globalThis.fetch, originalFetch);
+  const nativeFetch = globalThis.fetch;
+  let fetchCalls = 0;
+  globalThis.fetch = (async (url, init) => {
+    fetchCalls += 1;
+    assert.equal(String(url), 'https://example.test/inbox');
+    assert.equal(init?.method, 'HEAD');
+    return new Response(null, { status: 202 });
+  }) as typeof fetch;
+  const fetchBeforeTimedWrapper = globalThis.fetch;
+  try {
+    await withTimedDeliveryFetch({ timeoutMs: 1_000 }, async () => {
+      await globalThis.fetch('https://example.test/inbox', { method: 'HEAD' });
+    });
+    assert.equal(fetchCalls, 1);
+    assert.equal(globalThis.fetch, fetchBeforeTimedWrapper);
+  } finally {
+    globalThis.fetch = nativeFetch;
+  }
 });
 
 test('DeliveryTimeoutError maps to delivery_timeout code', () => {

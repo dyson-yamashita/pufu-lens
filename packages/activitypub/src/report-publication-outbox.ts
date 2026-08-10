@@ -17,8 +17,10 @@ export type ReportActivityPayload = {
   readonly projectSlug: string;
 };
 
+/** Raised when report publication outbox enqueue fails after validation. */
 export class ReportPublicationOutboxError extends Error {}
 
+/** Raised when a public enabled project requires an enabled aggregate Actor. */
 export class ReportPublicationAggregateActorError extends ReportPublicationOutboxError {}
 
 type LockedReportRow = {
@@ -27,6 +29,7 @@ type LockedReportRow = {
   readonly projectSlug: string;
   readonly visibility: 'public' | 'private';
   readonly isPublic: boolean;
+  readonly activitypubPublishedAt: Date | null;
 };
 
 type LockedActorRow = {
@@ -56,7 +59,7 @@ export async function enqueueReportPublicationOutbox(input: {
     projectId: input.projectId,
     reportId: input.reportId,
   });
-  if (report.isPublic) {
+  if (report.isPublic && report.activitypubPublishedAt !== null) {
     return;
   }
 
@@ -147,7 +150,8 @@ async function lockReportForPublication(input: {
       r.project_id::text AS project_id,
       p.slug AS project_slug,
       COALESCE(p.visibility, 'private') AS visibility,
-      r.is_public
+      r.is_public,
+      r.activitypub_published_at
     FROM public.reports r
     JOIN public.projects p
       ON p.id = r.project_id
@@ -168,6 +172,7 @@ function parseLockedReportRow(value: unknown): LockedReportRow {
   const projectSlug = row.project_slug;
   const visibility = row.visibility;
   const isPublic = row.is_public;
+  const activitypubPublishedAt = row.activitypub_published_at;
   if (typeof id !== 'string' || id.length === 0) {
     throw new Error('Invalid locked report row id.');
   }
@@ -183,7 +188,28 @@ function parseLockedReportRow(value: unknown): LockedReportRow {
   if (typeof isPublic !== 'boolean') {
     throw new Error('Invalid locked report row is_public.');
   }
-  return { id, projectId, projectSlug, visibility, isPublic };
+  let parsedActivitypubPublishedAt: Date | null = null;
+  if (activitypubPublishedAt !== null && activitypubPublishedAt !== undefined) {
+    if (!(activitypubPublishedAt instanceof Date) && typeof activitypubPublishedAt !== 'string') {
+      throw new Error('Invalid locked report row activitypub_published_at.');
+    }
+    const parsed =
+      activitypubPublishedAt instanceof Date
+        ? activitypubPublishedAt
+        : new Date(activitypubPublishedAt);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new Error('Invalid locked report row activitypub_published_at.');
+    }
+    parsedActivitypubPublishedAt = parsed;
+  }
+  return {
+    id,
+    projectId,
+    projectSlug,
+    visibility,
+    isPublic,
+    activitypubPublishedAt: parsedActivitypubPublishedAt,
+  };
 }
 
 async function lockInstanceConfig(
@@ -289,7 +315,10 @@ async function insertOutboundActivity(input: {
       ${input.actorUri},
       ${input.localActorId}::uuid,
       'outbound',
-      ${input.sql.json(input.payload as never)},
+      ${input.sql.json(
+        // postgres helper accepts only a mutable JSON value at the SQL boundary.
+        input.payload as never,
+      )},
       'pending',
       now(),
       ${input.occurredAt}

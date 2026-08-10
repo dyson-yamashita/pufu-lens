@@ -97,6 +97,11 @@ export interface ReportRepository {
     readonly reportId: string;
   }): Promise<ReportListItem | undefined>;
   deleteReport(input: { readonly projectId: string; readonly reportId: string }): Promise<void>;
+  /**
+   * Updates report public visibility. When ActivityPub is enabled and `isPublic` is true, this
+   * always routes through the publication outbox transaction and requires `publishedAt` and
+   * `publicSummary`.
+   */
   setReportPublicState?(input: {
     readonly isPublic: boolean;
     readonly projectId: string;
@@ -586,13 +591,26 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
       });
     },
     async setReportPublicState({ isPublic, projectId, reportId, publishedAt, publicSummary }) {
+      if (!isPublic) {
+        await sql`
+          UPDATE public.reports
+          SET is_public = false
+          WHERE project_id = ${projectId}
+            AND id = ${reportId}
+        `;
+        return;
+      }
+
       const activityPubEnabled = process.env.ACTIVITYPUB_ENABLED === '1';
       const canonicalOrigin = process.env.ACTIVITYPUB_CANONICAL_ORIGIN?.trim();
-      if (activityPubEnabled && isPublic && publishedAt !== undefined) {
+      if (activityPubEnabled) {
         if (!canonicalOrigin) {
           throw new Error(
             'ACTIVITYPUB_CANONICAL_ORIGIN is required when ACTIVITYPUB_ENABLED=1 and publishing publicly',
           );
+        }
+        if (publishedAt === undefined) {
+          throw new Error('publishedAt is required when publishing a report');
         }
         if (publicSummary === undefined) {
           throw new Error('publicSummary is required when publishing a report');
@@ -618,20 +636,12 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
         });
         return;
       }
-      if (isPublic) {
-        await sql`
-          UPDATE public.reports
-          SET is_public = true,
-              activitypub_published_at = COALESCE(${publishedAt ?? null}::timestamptz, activitypub_published_at),
-              activitypub_public_summary = COALESCE(${publicSummary ?? null}, activitypub_public_summary)
-          WHERE project_id = ${projectId}
-            AND id = ${reportId}
-        `;
-        return;
-      }
+
       await sql`
         UPDATE public.reports
-        SET is_public = false
+        SET is_public = true,
+            activitypub_published_at = COALESCE(${publishedAt ?? null}::timestamptz, activitypub_published_at),
+            activitypub_public_summary = COALESCE(${publicSummary ?? null}, activitypub_public_summary)
         WHERE project_id = ${projectId}
           AND id = ${reportId}
       `;

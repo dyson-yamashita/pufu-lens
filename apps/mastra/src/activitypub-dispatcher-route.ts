@@ -124,6 +124,7 @@ export const activityPubDispatcherRoute = registerApiRoute(
   '/internal/schedules/activitypub-dispatcher:run',
   {
     method: 'POST',
+    // Mastra auth is disabled so the route can verify the designated Scheduler OIDC token itself.
     requiresAuth: false,
     handler: async (context) => {
       const result = await handleActivityPubDispatcherHttpRequest(
@@ -191,10 +192,10 @@ function isActiveExecution(value: unknown): boolean {
   }
   const runningCount = Reflect.get(value, 'runningCount');
   const pendingCount = Reflect.get(value, 'pendingCount');
-  if (typeof runningCount === 'number' && runningCount > 0) {
-    return true;
-  }
-  if (typeof pendingCount === 'number' && pendingCount > 0) {
+  if (
+    (typeof runningCount === 'number' && runningCount > 0) ||
+    (typeof pendingCount === 'number' && pendingCount > 0)
+  ) {
     return true;
   }
   return completionTime === undefined || completionTime === null;

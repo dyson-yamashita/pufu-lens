@@ -67,7 +67,8 @@
     "markdownlint-cli2": "^0.22.1",
     "prettier": "^3.6.2",
     "turbo": "^2.6.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "yaml": "^2.8.1"
   },
   "dependencies": {
     "@pufu-lens/activitypub": "workspace:*",

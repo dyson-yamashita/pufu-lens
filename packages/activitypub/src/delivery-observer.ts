@@ -1,4 +1,8 @@
-import { type MappedDeliveryError, mapDeliveryError } from './delivery-errors.ts';
+import {
+  DELIVERY_ERROR_CODES,
+  type MappedDeliveryError,
+  mapDeliveryError,
+} from './delivery-errors.ts';
 import { parseRetryAfterHeader } from './dispatcher.ts';
 
 /** Records Fedify outbox delivery failures for dispatcher-owned PostgreSQL finalization. */
@@ -36,14 +40,39 @@ export function mapFedifyDeliveryError(error: unknown): MappedDeliveryError {
     const record = error as Record<string, unknown>;
     const statusCode = readHttpStatus(record);
     const retryAfterMs = readRetryAfterMs(record);
-    if (statusCode !== undefined || retryAfterMs !== undefined) {
+    if (statusCode !== undefined) {
       return mapDeliveryError({
         httpStatus: statusCode,
         retryAfterMs,
       });
     }
+    if (retryAfterMs !== undefined) {
+      const mapped = mapTransportNamedError(record) ?? mapDeliveryError(error);
+      return { ...mapped, retryAfterMs };
+    }
+    const named = mapTransportNamedError(record);
+    if (named) {
+      return named;
+    }
   }
   return mapDeliveryError(error);
+}
+
+function mapTransportNamedError(record: Record<string, unknown>): MappedDeliveryError | undefined {
+  const name = typeof record.name === 'string' ? record.name.toLowerCase() : '';
+  const message = typeof record.message === 'string' ? record.message.toLowerCase() : '';
+  if (name.includes('abort') || name.includes('timeout')) {
+    return { code: DELIVERY_ERROR_CODES.deliveryTimeout };
+  }
+  if (
+    name.includes('fetch') ||
+    name.includes('network') ||
+    message.includes('fetch') ||
+    message.includes('network')
+  ) {
+    return { code: DELIVERY_ERROR_CODES.networkError };
+  }
+  return undefined;
 }
 
 function readHttpStatus(record: Record<string, unknown>): number | undefined {

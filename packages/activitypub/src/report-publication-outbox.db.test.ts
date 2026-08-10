@@ -35,6 +35,9 @@ const disabledProjectId = '4f000000-0000-0000-0000-00000000db26';
 const disabledProjectSlug = 'activitypub-publication-disabled-fixture';
 const reportId = '4f000000-0000-0000-0000-00000000db27';
 const publishedAt = new Date('2026-01-15T12:00:00.000Z');
+let resolvedAggregateActorId = aggregateActorId;
+let createdFixtureAggregate = false;
+let savedAggregateEnabled: boolean | null = null;
 const encryptedPrivateKey = {
   version: 1,
   algorithm: 'aes-256-gcm',
@@ -52,6 +55,7 @@ async function main() {
     await seedBaseFixture(sql);
     await assertPublicProjectEnqueuesCreateAndAnnounce(sql);
     await assertIdempotentRepeat(sql);
+    await assertPublicWithoutApTimestampStillEnqueues(sql);
     await assertPrivateProjectUpdatesWithoutActivities(sql);
     await assertDisabledProjectActorUpdatesWithoutActivities(sql);
     await assertMissingAggregateRollsBack(sql);
@@ -68,18 +72,46 @@ async function main() {
 async function cleanup(sql: postgres.Sql) {
   await sql`
     DELETE FROM public.activitypub_activities
-    WHERE local_actor_id IN (${projectActorId}::uuid, ${aggregateActorId}::uuid, ${disabledProjectActorId}::uuid)
+    WHERE local_actor_id IN (${projectActorId}::uuid, ${resolvedAggregateActorId}::uuid, ${disabledProjectActorId}::uuid)
+      OR payload_json->>'reportId' IN (
+        SELECT id::text
+        FROM public.reports
+        WHERE project_id IN (${projectId}::uuid, ${privateProjectId}::uuid, ${disabledProjectId}::uuid)
+      )
   `;
   await sql`
     DELETE FROM public.reports
     WHERE project_id IN (${projectId}::uuid, ${privateProjectId}::uuid, ${disabledProjectId}::uuid)
   `;
-  await sql`DELETE FROM public.activitypub_actors WHERE id IN (${projectActorId}::uuid, ${aggregateActorId}::uuid, ${disabledProjectActorId}::uuid)`;
+  await sql`DELETE FROM public.activitypub_actors WHERE id IN (${projectActorId}::uuid, ${disabledProjectActorId}::uuid)`;
+  if (createdFixtureAggregate) {
+    await sql`DELETE FROM public.activitypub_actors WHERE id = ${resolvedAggregateActorId}::uuid`;
+  } else if (savedAggregateEnabled !== null) {
+    await sql`
+      UPDATE public.activitypub_actors
+      SET enabled = ${savedAggregateEnabled}
+      WHERE id = ${resolvedAggregateActorId}::uuid
+    `;
+  }
   await sql`DELETE FROM public.projects WHERE id IN (${projectId}::uuid, ${privateProjectId}::uuid, ${disabledProjectId}::uuid)`;
 }
 
 async function seedBaseFixture(sql: postgres.Sql) {
-  await sql`DELETE FROM public.activitypub_actors WHERE kind = 'aggregate'`;
+  const existingAggregate = await sql<{ id: string; enabled: boolean }[]>`
+    SELECT id::text AS id, enabled
+    FROM public.activitypub_actors
+    WHERE kind = 'aggregate'
+    LIMIT 1
+  `;
+  if (existingAggregate[0]) {
+    resolvedAggregateActorId = existingAggregate[0].id;
+    createdFixtureAggregate = false;
+    savedAggregateEnabled = existingAggregate[0].enabled;
+  } else {
+    resolvedAggregateActorId = aggregateActorId;
+    createdFixtureAggregate = true;
+    savedAggregateEnabled = true;
+  }
   await sql`
     INSERT INTO public.projects (id, slug, name, graph_name, storage_prefix, visibility)
     VALUES
@@ -97,9 +129,25 @@ async function seedBaseFixture(sql: postgres.Sql) {
     )
     VALUES
       (${projectActorId}::uuid, ${projectId}::uuid, 'project', ${projectSlug}, 'Project', true, '-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu1SU1LfVLPHCozMxH2\n4vl4Z2TLpqbb5CHmpSMgAS5KdEcTRL+RscJ0dHqN0NvdWT7qfB8xtB2LBvOkvUs\n7Y8YkPeDlaPk9N6pRSZ0WQgWwgQnR5UwP09NuoGfeDmGg8A32gs2WnLvvHQgkPw\nIDAQAB\n-----END PUBLIC KEY-----', ${sql.json(encryptedPrivateKey as never)}),
-      (${aggregateActorId}::uuid, NULL, 'aggregate', 'all', 'Aggregate', true, '-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu1SU1LfVLPHCozMxH2\n4vl4Z2TLpqbb5CHmpSMgAS5KdEcTRL+RscJ0dHqN0NvdWT7qfB8xtB2LBvOkvUs\n7Y8YkPeDlaPk9N6pRSZ0WQgWwgQnR5UwP09NuoGfeDmGg8A32gs2WnLvvHQgkPw\nIDAQAB\n-----END PUBLIC KEY-----', ${sql.json(encryptedPrivateKey as never)}),
       (${disabledProjectActorId}::uuid, ${disabledProjectId}::uuid, 'project', ${disabledProjectSlug}, 'Disabled', false, '-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu1SU1LfVLPHCozMxH2\n4vl4Z2TLpqbb5CHmpSMgAS5KdEcTRL+RscJ0dHqN0NvdWT7qfB8xtB2LBvOkvUs\n7Y8YkPeDlaPk9N6pRSZ0WQgWwgQnR5UwP09NuoGfeDmGg8A32gs2WnLvvHQgkPw\nIDAQAB\n-----END PUBLIC KEY-----', ${sql.json(encryptedPrivateKey as never)})
   `;
+  if (createdFixtureAggregate) {
+    await sql`
+      INSERT INTO public.activitypub_actors (
+        id, project_id, kind, preferred_username, display_name, enabled, public_key_pem, encrypted_private_key
+      )
+      VALUES (
+        ${resolvedAggregateActorId}::uuid,
+        NULL,
+        'aggregate',
+        'all',
+        'Aggregate',
+        true,
+        '-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu1SU1LfVLPHCozMxH2\n4vl4Z2TLpqbb5CHmpSMgAS5KdEcTRL+RscJ0dHqN0NvdWT7qfB8xtB2LBvOkvUs\n7Y8YkPeDlaPk9N6pRSZ0WQgWwgQnR5UwP09NuoGfeDmGg8A32gs2WnLvvHQgkPw\nIDAQAB\n-----END PUBLIC KEY-----',
+        ${sql.json(encryptedPrivateKey as never)}
+      )
+    `;
+  }
 }
 
 async function assertPublicProjectEnqueuesCreateAndAnnounce(sql: postgres.Sql) {
@@ -209,6 +257,43 @@ async function assertDisabledProjectActorUpdatesWithoutActivities(sql: postgres.
   assert.equal(activities[0]?.count, 0);
 }
 
+async function assertPublicWithoutApTimestampStillEnqueues(sql: postgres.Sql) {
+  const partialReportId = '4f000000-0000-0000-0000-00000000db33';
+  await sql`DELETE FROM public.activitypub_activities WHERE payload_json->>'reportId' = ${partialReportId}`;
+  await sql`DELETE FROM public.reports WHERE id = ${partialReportId}::uuid`;
+  await sql`
+    INSERT INTO public.reports (
+      id, project_id, title, storage_uri, is_public, activitypub_published_at, activitypub_public_summary
+    )
+    VALUES (
+      ${partialReportId}::uuid,
+      ${projectId}::uuid,
+      'Partial Public Report',
+      'gs://fixture/partial',
+      true,
+      NULL,
+      NULL
+    )
+  `;
+  await sql.begin(async (transaction) => {
+    await enqueueReportPublicationOutbox({
+      sql: transaction,
+      canonicalOrigin,
+      projectId,
+      reportId: partialReportId,
+      publishedAt,
+      publicSummary: 'recovered summary',
+    });
+  });
+  const activities = await sql`
+    SELECT count(*)::int AS count
+    FROM public.activitypub_activities
+    WHERE direction = 'outbound'
+      AND payload_json->>'reportId' = ${partialReportId}
+  `;
+  assert.equal(activities[0]?.count, 2);
+}
+
 async function assertMissingAggregateRollsBack(sql: postgres.Sql) {
   const rollbackReportId = '4f000000-0000-0000-0000-00000000db30';
   await sql`DELETE FROM public.reports WHERE id = ${rollbackReportId}::uuid`;
@@ -216,25 +301,44 @@ async function assertMissingAggregateRollsBack(sql: postgres.Sql) {
     INSERT INTO public.reports (id, project_id, title, storage_uri, is_public)
     VALUES (${rollbackReportId}::uuid, ${projectId}::uuid, 'Rollback Report', 'gs://fixture/rollback', false)
   `;
-  await sql`UPDATE public.activitypub_actors SET enabled = false WHERE id = ${aggregateActorId}::uuid`;
-  await assert.rejects(
-    () =>
-      sql.begin(async (transaction) => {
-        await enqueueReportPublicationOutbox({
-          sql: transaction,
-          canonicalOrigin,
-          projectId,
-          reportId: rollbackReportId,
-          publishedAt,
-          publicSummary: 'rollback summary',
-        });
-      }),
-    ReportPublicationAggregateActorError,
-  );
-  const report =
-    await sql`SELECT is_public FROM public.reports WHERE id = ${rollbackReportId}::uuid`;
-  assert.equal(report[0]?.is_public, false);
-  await sql`UPDATE public.activitypub_actors SET enabled = true WHERE id = ${aggregateActorId}::uuid`;
+  const previousEnabled =
+    (
+      await sql<{ enabled: boolean }[]>`
+        SELECT enabled
+        FROM public.activitypub_actors
+        WHERE id = ${resolvedAggregateActorId}::uuid
+      `
+    )[0]?.enabled ?? true;
+  await sql`
+    UPDATE public.activitypub_actors
+    SET enabled = false
+    WHERE id = ${resolvedAggregateActorId}::uuid
+  `;
+  try {
+    await assert.rejects(
+      () =>
+        sql.begin(async (transaction) => {
+          await enqueueReportPublicationOutbox({
+            sql: transaction,
+            canonicalOrigin,
+            projectId,
+            reportId: rollbackReportId,
+            publishedAt,
+            publicSummary: 'rollback summary',
+          });
+        }),
+      ReportPublicationAggregateActorError,
+    );
+    const report =
+      await sql`SELECT is_public FROM public.reports WHERE id = ${rollbackReportId}::uuid`;
+    assert.equal(report[0]?.is_public, false);
+  } finally {
+    await sql`
+      UPDATE public.activitypub_actors
+      SET enabled = ${previousEnabled}
+      WHERE id = ${resolvedAggregateActorId}::uuid
+    `;
+  }
 }
 
 async function assertEmptySummaryStillEnqueues(sql: postgres.Sql) {
@@ -352,22 +456,41 @@ async function assertRepresentationLockOnlyOnPublicEnabledSuccess(sql: postgres.
     INSERT INTO public.reports (id, project_id, title, storage_uri, is_public)
     VALUES (${rollbackReportId}::uuid, ${projectId}::uuid, 'Rollback Lock', 'gs://fixture/rollback-lock', false)
   `;
-  await sql`UPDATE public.activitypub_actors SET enabled = false WHERE id = ${aggregateActorId}::uuid`;
-  await assert.rejects(
-    () =>
-      sql.begin(async (transaction) => {
-        await enqueueReportPublicationOutbox({
-          sql: transaction,
-          canonicalOrigin,
-          projectId,
-          reportId: rollbackReportId,
-          publishedAt,
-          publicSummary: 'rollback lock summary',
-        });
-      }),
-    ReportPublicationAggregateActorError,
-  );
-  await sql`UPDATE public.activitypub_actors SET enabled = true WHERE id = ${aggregateActorId}::uuid`;
+  const previousAggregateEnabled =
+    (
+      await sql<{ enabled: boolean }[]>`
+        SELECT enabled
+        FROM public.activitypub_actors
+        WHERE id = ${resolvedAggregateActorId}::uuid
+      `
+    )[0]?.enabled ?? true;
+  await sql`
+    UPDATE public.activitypub_actors
+    SET enabled = false
+    WHERE id = ${resolvedAggregateActorId}::uuid
+  `;
+  try {
+    await assert.rejects(
+      () =>
+        sql.begin(async (transaction) => {
+          await enqueueReportPublicationOutbox({
+            sql: transaction,
+            canonicalOrigin,
+            projectId,
+            reportId: rollbackReportId,
+            publishedAt,
+            publicSummary: 'rollback lock summary',
+          });
+        }),
+      ReportPublicationAggregateActorError,
+    );
+  } finally {
+    await sql`
+      UPDATE public.activitypub_actors
+      SET enabled = ${previousAggregateEnabled}
+      WHERE id = ${resolvedAggregateActorId}::uuid
+    `;
+  }
   const rollbackLock = await sql<{ representation_locked_at: Date | null }[]>`
     SELECT representation_locked_at FROM public.activitypub_instance_config WHERE id = 1
   `;

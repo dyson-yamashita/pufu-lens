@@ -14,6 +14,10 @@ import {
 import type { ProjectLookupResult, ReportRepository } from './report-repository.ts';
 import type { PrivateReportJsonV1 } from './report-schema.ts';
 
+/**
+ * Writes public report artifacts to object storage and persists `publishedAt` and `publicSummary`
+ * through the repository publication contract.
+ */
 export async function publishGeneratedPublicReport(input: {
   readonly project: ProjectLookupResult;
   readonly publishedAt: string;

@@ -39,6 +39,23 @@ test('mapFedifyDeliveryError reads Retry-After from Fetch Headers instances', ()
   assert.equal(mapped503.retryAfterMs, 30_000);
 });
 
+test('mapFedifyDeliveryError preserves mapped code when only Retry-After is present', () => {
+  const mapped = mapFedifyDeliveryError({
+    name: 'TypeError',
+    message: 'fetch failed',
+    responseHeaders: { 'retry-after': '30' },
+  });
+  assert.equal(mapped.code, DELIVERY_ERROR_CODES.networkError);
+  assert.equal(mapped.retryAfterMs, 30_000);
+});
+
+test('mapFedifyDeliveryError keeps timeout and network codes without HTTP status', () => {
+  const timeout = mapFedifyDeliveryError({ name: 'AbortError', message: 'aborted' });
+  assert.equal(timeout.code, DELIVERY_ERROR_CODES.deliveryTimeout);
+  const network = mapFedifyDeliveryError({ name: 'TypeError', message: 'fetch failed' });
+  assert.equal(network.code, DELIVERY_ERROR_CODES.networkError);
+});
+
 test('createDeliveryErrorObserver records one failure and consumes it once', () => {
   const observer = createDeliveryErrorObserver();
   observer.record({ statusCode: 410, responseHeaders: {} });

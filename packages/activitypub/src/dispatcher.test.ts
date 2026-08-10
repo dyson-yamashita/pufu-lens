@@ -35,6 +35,7 @@ test('classifyDeliveryFailure retries network-like errors and exhausts after fiv
 
 test('resolveRetryDelayMs honors bounded Retry-After', () => {
   assert.equal(resolveRetryDelayMs({ attemptCount: 1, retryAfterMs: 30_000 }), 30_000);
+  assert.equal(resolveRetryDelayMs({ attemptCount: 1, retryAfterMs: 0 }), 1_000);
   assert.equal(
     resolveRetryDelayMs({ attemptCount: 1, retryAfterMs: 9_999_999_999 }),
     24 * 60 * 60 * 1000,
@@ -63,6 +64,13 @@ test('ordering predecessor gate blocks or terminalizes successors', () => {
       predecessorTerminalFailure: false,
     }),
     'claim',
+  );
+  assert.equal(
+    isBlockedByOrderingPredecessor({
+      hasOlderIncompletePredecessor: true,
+      predecessorTerminalFailure: false,
+    }),
+    'block',
   );
   assert.equal(
     isBlockedByOrderingPredecessor({

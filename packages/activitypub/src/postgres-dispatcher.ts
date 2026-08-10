@@ -7,7 +7,9 @@ import {
   type ActivityPubDispatcherClock,
   DISPATCHER_DEFAULT_BATCH_SIZE,
   DISPATCHER_LEASE_MS,
+  DISPATCHER_MAX_ATTEMPTS,
   DISPATCHER_MAX_RUNTIME_MS,
+  resolveRetryDelayMs,
   selectNextQueueKind,
 } from './dispatcher.ts';
 import {
@@ -55,8 +57,55 @@ export type RunActivityPubDispatcherOnceInput = {
 type ClaimedActivity = {
   readonly id: string;
   readonly workerToken: string;
+  readonly attemptCount: number;
   readonly activity: ReturnType<typeof parseActivityPubActivityRow>;
 };
+
+/**
+ * Outcome of classifying a materialization failure for lease-aware activity row updates.
+ *
+ * - `terminal_failed`: known domain errors that should not be retried.
+ * - `lease_lost`: the worker lost its lease; leave recovery to expired-lease reclaim.
+ * - `retry_pending`: transient failures that should return the row to `pending` with backoff.
+ * - `retry_exhausted`: retry budget reached; terminalize with a safe error code.
+ */
+export type MaterializationFailureDecision =
+  | { readonly kind: 'terminal_failed'; readonly code: string }
+  | { readonly kind: 'lease_lost' }
+  | { readonly kind: 'retry_pending'; readonly code: string; readonly delayMs: number }
+  | { readonly kind: 'retry_exhausted'; readonly code: string };
+
+/**
+ * Classifies materialization failures into terminal, retry, lease-lost, or exhausted outcomes
+ * without logging secrets or raw transport payloads.
+ */
+export function classifyMaterializationFailure(input: {
+  readonly attemptCount: number;
+  readonly error: unknown;
+}): MaterializationFailureDecision {
+  const code = resolveMaterializationErrorCode(input.error);
+  if (code === DELIVERY_ERROR_CODES.leaseLost) {
+    return { kind: 'lease_lost' };
+  }
+  if (
+    code === DELIVERY_ERROR_CODES.materializationPrivate ||
+    code === DELIVERY_ERROR_CODES.materializationDisabled ||
+    code === DELIVERY_ERROR_CODES.materializationRepresentation
+  ) {
+    return { kind: 'terminal_failed', code };
+  }
+  if (input.attemptCount >= DISPATCHER_MAX_ATTEMPTS) {
+    return {
+      kind: 'retry_exhausted',
+      code: DELIVERY_ERROR_CODES.materializationRetryExhausted,
+    };
+  }
+  return {
+    kind: 'retry_pending',
+    code,
+    delayMs: resolveRetryDelayMs({ attemptCount: input.attemptCount }),
+  };
+}
 
 type MaterializationReportRow = {
   readonly reportId: string;
@@ -211,22 +260,27 @@ async function claimDueActivity(input: {
     }
     const workerToken = randomUUID();
     const leaseExpiresAt = new Date(input.clock.now().getTime() + DISPATCHER_LEASE_MS);
-    const claimed = await transaction`
+    const claimedRows = (await transaction`
       UPDATE public.activitypub_activities
       SET processing_status = 'running',
           worker_token = ${workerToken},
           lease_expires_at = ${leaseExpiresAt},
           started_at = COALESCE(started_at, ${input.clock.now()}),
-          attempt_count = attempt_count + 1,
-          updated_at = ${input.clock.now()}
+          attempt_count = attempt_count + 1
       WHERE id = ${activity.id}::uuid
         AND processing_status = 'pending'
-      RETURNING id
-    `;
-    if (claimed.length === 0) {
+      RETURNING attempt_count
+    `) as readonly unknown[];
+    if (claimedRows.length === 0) {
       return null;
     }
-    return { id: activity.id, workerToken, activity };
+    const attemptCount = parseClaimedAttemptCount(claimedRows[0]);
+    return {
+      id: activity.id,
+      workerToken,
+      attemptCount,
+      activity: { ...activity, attemptCount },
+    };
   });
 }
 
@@ -262,8 +316,7 @@ async function completeActivityMaterialization(input: {
       SET processing_status = 'processed',
           worker_token = NULL,
           lease_expires_at = NULL,
-          processed_at = ${input.clock.now()},
-          updated_at = ${input.clock.now()}
+          processed_at = ${input.clock.now()}
       WHERE id = ${input.claimed.id}::uuid
         AND worker_token = ${input.claimed.workerToken}
         AND processing_status = 'running'
@@ -275,24 +328,65 @@ async function completeActivityMaterialization(input: {
   });
 }
 
-async function failActivityMaterialization(input: {
+/**
+ * Applies lease-aware failure handling for a claimed outbound activity row.
+ * Exported for deterministic DB fixture tests that assert retry and lease semantics directly.
+ */
+export async function failActivityMaterialization(input: {
   readonly sql: postgres.Sql;
   readonly clock: ActivityPubDispatcherClock;
   readonly claimed: ClaimedActivity;
   readonly error: unknown;
 }): Promise<void> {
-  const code = resolveMaterializationErrorCode(input.error);
-  await input.sql`
-    UPDATE public.activitypub_activities
-    SET processing_status = 'failed',
-        worker_token = NULL,
-        lease_expires_at = NULL,
-        last_error_code = ${code},
-        updated_at = ${input.clock.now()}
-    WHERE id = ${input.claimed.id}::uuid
-      AND worker_token = ${input.claimed.workerToken}
-      AND processing_status = 'running'
-  `;
+  const decision = classifyMaterializationFailure({
+    attemptCount: input.claimed.attemptCount,
+    error: input.error,
+  });
+  if (decision.kind === 'lease_lost') {
+    return;
+  }
+  const now = input.clock.now();
+  let updated: { count: number };
+  if (decision.kind === 'retry_pending') {
+    updated = await input.sql`
+      UPDATE public.activitypub_activities
+      SET processing_status = 'pending',
+          worker_token = NULL,
+          lease_expires_at = NULL,
+          available_at = ${new Date(now.getTime() + decision.delayMs)},
+          last_error_code = ${decision.code}
+      WHERE id = ${input.claimed.id}::uuid
+        AND worker_token = ${input.claimed.workerToken}
+        AND processing_status = 'running'
+        AND lease_expires_at > ${now}
+    `;
+  } else {
+    updated = await input.sql`
+      UPDATE public.activitypub_activities
+      SET processing_status = 'failed',
+          worker_token = NULL,
+          lease_expires_at = NULL,
+          last_error_code = ${decision.code}
+      WHERE id = ${input.claimed.id}::uuid
+        AND worker_token = ${input.claimed.workerToken}
+        AND processing_status = 'running'
+        AND lease_expires_at > ${now}
+    `;
+  }
+  if (updated.count === 0) {
+    return;
+  }
+}
+
+function parseClaimedAttemptCount(value: unknown): number {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid claimed activity attempt_count row.');
+  }
+  const attemptCount = Reflect.get(value, 'attempt_count');
+  if (typeof attemptCount !== 'number' || !Number.isInteger(attemptCount) || attemptCount < 0) {
+    throw new Error('Invalid claimed activity attempt_count.');
+  }
+  return attemptCount;
 }
 
 function resolveMaterializationErrorCode(error: unknown): string {
@@ -318,8 +412,7 @@ async function recoverExpiredActivityLeases(
     SET processing_status = 'pending',
         worker_token = NULL,
         lease_expires_at = NULL,
-        available_at = ${clock.now()},
-        updated_at = ${clock.now()}
+        available_at = ${clock.now()}
     WHERE direction = 'outbound'
       AND processing_status = 'running'
       AND lease_expires_at IS NOT NULL
@@ -441,6 +534,10 @@ export async function materializeActivityDeliveries(input: {
     projectPreferredUsername: projectActor.preferredUsername,
     aggregatePreferredUsername: aggregateActor.preferredUsername,
   };
+  const actorMaterializationCache = new Map<
+    string,
+    Awaited<ReturnType<typeof loadActorMaterialization>>
+  >();
 
   for (const recipient of recipients) {
     if (recipient.activityUri !== input.activity.activityUri) {
@@ -450,12 +547,14 @@ export async function materializeActivityDeliveries(input: {
       recipient.activityType === 'Create'
         ? projectActor.preferredUsername
         : aggregateActor.preferredUsername;
-    const actor = await input.actorRepository.findRemotelyVisibleActorByUsername(preferredUsername);
-    if (!actor) {
-      throw new Error(DELIVERY_ERROR_CODES.materializationDisabled);
+    let actorMaterialization = actorMaterializationCache.get(preferredUsername);
+    if (!actorMaterialization) {
+      actorMaterialization = await loadActorMaterialization(
+        input.actorRepository,
+        preferredUsername,
+      );
+      actorMaterializationCache.set(preferredUsername, actorMaterialization);
     }
-    const keyPair = await input.actorRepository.importActorCryptoKeyPair(actor.id);
-    const privateJwk = await exportJwk(keyPair.privateKey);
     const activityJson =
       recipient.activityType === 'Create'
         ? buildCreateActivityJsonLd({
@@ -478,7 +577,12 @@ export async function materializeActivityDeliveries(input: {
         type: 'outbox',
         id: randomUUID(),
         baseUrl: uri.canonicalOrigin,
-        keys: [{ keyId: uri.actorKeyId(preferredUsername), privateKey: privateJwk }],
+        keys: [
+          {
+            keyId: uri.actorKeyId(preferredUsername),
+            privateKey: actorMaterialization.privateJwk,
+          },
+        ],
         activity: activityJson,
         activityId: recipient.activityUri,
         activityType: recipient.activityType,
@@ -494,6 +598,19 @@ export async function materializeActivityDeliveries(input: {
       { dedupeKey, orderingKey: recipient.orderingKey },
     );
   }
+}
+
+async function loadActorMaterialization(
+  actorRepository: ActivityPubRepository,
+  preferredUsername: string,
+): Promise<{ readonly privateJwk: Awaited<ReturnType<typeof exportJwk>> }> {
+  const actor = await actorRepository.findRemotelyVisibleActorByUsername(preferredUsername);
+  if (!actor) {
+    throw new Error(DELIVERY_ERROR_CODES.materializationDisabled);
+  }
+  const keyPair = await actorRepository.importActorCryptoKeyPair(actor.id);
+  const privateJwk = await exportJwk(keyPair.privateKey);
+  return { privateJwk };
 }
 
 function parseMaterializationReportRow(value: unknown): MaterializationReportRow {

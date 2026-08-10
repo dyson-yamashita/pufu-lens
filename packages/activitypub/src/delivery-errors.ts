@@ -15,6 +15,7 @@ export const DELIVERY_ERROR_CODES = {
   materializationPrivate: 'activitypub_materialization_private',
   materializationDisabled: 'activitypub_materialization_disabled',
   materializationRepresentation: 'activitypub_materialization_representation',
+  materializationRetryExhausted: 'activitypub_materialization_retry_exhausted',
 } as const;
 
 export type DeliveryErrorCode = (typeof DELIVERY_ERROR_CODES)[keyof typeof DELIVERY_ERROR_CODES];

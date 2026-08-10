@@ -316,6 +316,7 @@ test('0020 adds report publication outbox columns, dispatcher lease fields, and 
   }
 
   assert.match(migration, /DROP CONSTRAINT IF EXISTS activitypub_follows_accepted_timestamp_check/);
+  assert.match(migration, /DROP CONSTRAINT IF EXISTS activitypub_activities_attempt_count_check/);
   assert.match(init, /'0020_activitypub_report_publication_outbox'/);
 });
 

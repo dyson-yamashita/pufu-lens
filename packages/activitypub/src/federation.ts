@@ -8,6 +8,7 @@ import type { DeliveryErrorObserver } from './delivery-observer.ts';
 import { registerFollowInboxListeners } from './federation-follow-listeners.ts';
 import { FOLLOW_COLLECTION_START_CURSOR, resolveFollowCollectionCursor } from './follow-model.ts';
 import type { ActivityPubFollowUseCases } from './follow-use-cases.ts';
+import { escapeNoteContentText } from './report-delivery.ts';
 import { createProductionSafeDocumentLoader } from './security.ts';
 import {
   assertActivityPubDbTestRuntime,
@@ -27,7 +28,7 @@ type FederationBuildInput = {
     startQueue?: () => void;
     processQueuedTask?: () => void;
   };
-  /** Scoped observer for one dispatcher-owned delivery attempt. */
+  /** Scoped observer for one dispatcher-owned delivery attempt; records safe mapped errors only. */
   deliveryObserver?: DeliveryErrorObserver;
   allowPrivateAddress: boolean;
 };
@@ -122,7 +123,7 @@ async function buildActivityPubFederation(
       id: new URL(uri.reportArticleUrl(report.reportId)),
       name: report.title,
       summary: report.summary,
-      content: report.summary,
+      content: escapeNoteContentText(report.summary),
       published: Temporal.Instant.from(report.publishedAt.toISOString()),
       attribution: projectActorUrl,
       url: new URL(uri.publicReportUrl(report.projectSlug, report.reportId)),

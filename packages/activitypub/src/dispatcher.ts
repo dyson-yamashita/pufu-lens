@@ -23,6 +23,9 @@ export const DISPATCHER_MAX_LEASE_FROM_ATTEMPT_MS = 60 * 60 * 1000;
 /** Maximum bounded Retry-After delay. */
 export const DISPATCHER_MAX_RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
 
+/** Minimum bounded Retry-After delay honored for transient retries. */
+export const DISPATCHER_MIN_RETRY_AFTER_MS = 1000;
+
 export const DISPATCHER_RETRY_DELAYS_MS = [
   60_000,
   5 * 60_000,
@@ -92,7 +95,10 @@ export function resolveRetryDelayMs(input: {
   if (!Number.isFinite(input.retryAfterMs) || input.retryAfterMs < 0) {
     return scheduleDelay;
   }
-  return Math.min(input.retryAfterMs, DISPATCHER_MAX_RETRY_AFTER_MS);
+  return Math.max(
+    DISPATCHER_MIN_RETRY_AFTER_MS,
+    Math.min(input.retryAfterMs, DISPATCHER_MAX_RETRY_AFTER_MS),
+  );
 }
 
 /** Computes the next lease expiry capped at 60 minutes from attempt lease start. */

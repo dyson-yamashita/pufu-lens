@@ -153,8 +153,22 @@ for WF in curate-workflow ingest-workflow generate-report source-sync-dispatcher
     --set-secrets="DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
 done
 
+# ActivityPub dispatcherは公開originとActor鍵を必要とするため、通常Jobとは分けて設定する。
+gcloud run jobs deploy activitypub-dispatcher \
+  --image asia-east1-docker.pkg.dev/PROJECT/pufu-lens/workflow-job:latest \
+  --region asia-east1 \
+  --service-account=mastra-runtime@PROJECT.iam.gserviceaccount.com \
+  --clear-vpc-connector \
+  --network=default \
+  --subnet=pufu-lens-serverless \
+  --vpc-egress=private-ranges-only \
+  --tasks=1 --max-retries=0 --task-timeout=3300s \
+  --set-env-vars STORAGE_DRIVER=gcs,STORAGE_BUCKET=pufu-lens-prod,WORKFLOW_ID=activitypub-dispatcher,ACTIVITYPUB_ENABLED=1,ACTIVITYPUB_CANONICAL_ORIGIN=https://PUBLIC_WEB_ORIGIN \
+  --set-secrets="DATABASE_URL=DATABASE_URL:latest,ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY=ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY:latest"
+
 # Mastra runtime service accountにはsource-sync-dispatcher、report-schedule-dispatcher、activitypub-dispatcherの各Jobで
-# run.jobs.run / run.jobs.runWithOverrides権限を付与し、
+# run.jobs.run / run.jobs.runWithOverrides権限を付与する。activitypub-dispatcherにはactive execution確認用の
+# run.executions.listも対象Jobだけに付与し、
 # scheduler OIDC service accountにはMastra Serverのrun.invokerを付与する。
 # Cloud Schedulerは5分ごとに source sync / report schedule / ActivityPub の各 dispatcher routeへ空objectをPOSTする。
 # /internal/schedules/source-sync-dispatcher:run

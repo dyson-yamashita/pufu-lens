@@ -258,6 +258,7 @@ test('processOneQueuedOutboxMessage rethrows original delivery error when finali
             message_json: stored,
             ordering_key: orderingKey,
             worker_token: workerToken,
+            attempt_count: 0,
           },
         ];
       }
@@ -265,7 +266,7 @@ test('processOneQueuedOutboxMessage rethrows original delivery error when finali
         query.includes('UPDATE public.activitypub_queue_messages') &&
         query.includes("'running'")
       ) {
-        return [{ id: 'queue-row-1' }];
+        return [{ id: 'queue-row-1', attempt_count: 1 }];
       }
       return [];
     },
@@ -415,11 +416,12 @@ test('processOneQueuedMessage rejects tampered outbox actorIds before private ke
           ordering_key: orderingKey,
           worker_token: workerToken,
           queue_kind: 'outbox',
+          attempt_count: 0,
         },
       ];
     }
     if (query.includes('UPDATE public.activitypub_queue_messages') && query.includes("'running'")) {
-      return [{ id: 'queue-row-outbox-tamper' }];
+      return [{ id: 'queue-row-outbox-tamper', attempt_count: 1 }];
     }
     return [];
   };

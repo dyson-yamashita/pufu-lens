@@ -89,37 +89,40 @@ async function seedFixture(sql: postgres.Sql) {
 
 async function assertSignedCreateIncludesObjectAudience(sql: postgres.Sql) {
   const fixture = await startFixtureServer();
-  const activityUri = `${canonicalOrigin}/activitypub/activities/create/${encodeURIComponent(reportId)}`;
-  const activity = buildCreateActivityJsonLd({
-    canonicalOrigin,
-    reportId,
-    projectSlug: fixtureProjectSlug,
-    title: 'Signed Report',
-    publicSummary: 'public summary',
-    publishedAt: new Date('2026-01-15T12:00:00.000Z'),
-    objectRepresentation: 'article',
-    projectPreferredUsername: fixtureProjectSlug,
-    aggregatePreferredUsername: 'pufu',
-    activityUri,
-  });
-  const object = activity.object as Record<string, unknown>;
-  assert.deepEqual(object.to, ['https://www.w3.org/ns/activitystreams#Public']);
-  assert.deepEqual(object.cc, [
-    `${canonicalOrigin}/activitypub/actors/${fixtureProjectSlug}/followers`,
-  ]);
-  await enqueueCreate(sql, fixture.inboxUrl, activityUri, activity, false);
-  const received = await deliverOnce(sql, fixture);
-  assert.ok(received.body.length > 0, 'signed POST body must be captured');
-  await assertSignedRequest(received, fixture.inboxUrl);
-  assert.match(received.body, /public summary/);
-  assert.doesNotMatch(received.body, /"d":/);
-  const stored = await sql<{ message_json: string }[]>`
-    SELECT message_json::text AS message_json
-    FROM public.activitypub_queue_messages
-    WHERE dedupe_key = ${buildOutboxDedupeKey({ activityId: activityUri, recipientInbox: fixture.inboxUrl })}
-  `;
-  assert.doesNotMatch(stored[0]?.message_json ?? '', /"d":/);
-  await fixture.close();
+  try {
+    const activityUri = `${canonicalOrigin}/activitypub/activities/create/${encodeURIComponent(reportId)}`;
+    const activity = buildCreateActivityJsonLd({
+      canonicalOrigin,
+      reportId,
+      projectSlug: fixtureProjectSlug,
+      title: 'Signed Report',
+      publicSummary: 'public summary',
+      publishedAt: new Date('2026-01-15T12:00:00.000Z'),
+      objectRepresentation: 'article',
+      projectPreferredUsername: fixtureProjectSlug,
+      aggregatePreferredUsername: 'pufu',
+      activityUri,
+    });
+    const object = activity.object as Record<string, unknown>;
+    assert.deepEqual(object.to, ['https://www.w3.org/ns/activitystreams#Public']);
+    assert.deepEqual(object.cc, [
+      `${canonicalOrigin}/activitypub/actors/${fixtureProjectSlug}/followers`,
+    ]);
+    await enqueueCreate(sql, fixture.inboxUrl, activityUri, activity, false);
+    const received = await deliverOnce(sql, fixture);
+    assert.ok(received.body.length > 0, 'signed POST body must be captured');
+    await assertSignedRequest(received, fixture.inboxUrl);
+    assert.match(received.body, /public summary/);
+    assert.doesNotMatch(received.body, /"d":/);
+    const stored = await sql<{ message_json: string }[]>`
+      SELECT message_json::text AS message_json
+      FROM public.activitypub_queue_messages
+      WHERE dedupe_key = ${buildOutboxDedupeKey({ activityId: activityUri, recipientInbox: fixture.inboxUrl })}
+    `;
+    assert.doesNotMatch(stored[0]?.message_json ?? '', /"d":/);
+  } finally {
+    await fixture.close();
+  }
 }
 
 async function assertSharedInboxDedupesRecipients(_sql: postgres.Sql) {

@@ -35,6 +35,7 @@ const validActivity = {
   payload_json: {},
   processing_status: 'pending',
   available_at: validActor.created_at,
+  attempt_count: 0,
   worker_token: null,
   lease_expires_at: null,
   occurred_at: validActor.created_at,
@@ -133,6 +134,7 @@ test('schema parsers accept valid rows', () => {
     'accepted',
   );
   assert.equal(parseActivityPubActivityRow(validActivity).direction, 'outbound');
+  assert.equal(parseActivityPubActivityRow(validActivity).attemptCount, 0);
   assert.equal(parseActivityPubQueueMessageRow(validQueueMessage).queueKind, 'outbox');
   assert.equal(parseFederatedReportRow(validFederatedReport).objectType, 'article');
   assert.equal(parsePublicReportArticleRow(validPublicReportArticle).title, 'Quarterly Update');

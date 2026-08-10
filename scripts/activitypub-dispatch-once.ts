@@ -111,11 +111,6 @@ if ((hasActorTable || hasActorId || args.databaseUrl) && !isDbTestPath) {
   process.exit(1);
 }
 
-if (!isDbTestPath && process.argv.length > 3) {
-  writeSafeError('production accepts only --once');
-  process.exit(1);
-}
-
 const databaseUrl = args.databaseUrl ?? process.env.DATABASE_URL?.trim();
 if (!databaseUrl) {
   writeSafeError(MISSING_DATABASE_URL);

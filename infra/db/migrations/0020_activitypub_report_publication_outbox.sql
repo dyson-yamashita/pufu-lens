@@ -11,6 +11,9 @@ ALTER TABLE public.activitypub_activities
   ADD COLUMN IF NOT EXISTS started_at timestamptz;
 
 ALTER TABLE public.activitypub_activities
+  DROP CONSTRAINT IF EXISTS activitypub_activities_attempt_count_check;
+
+ALTER TABLE public.activitypub_activities
   ADD CONSTRAINT activitypub_activities_attempt_count_check
   CHECK (attempt_count >= 0) NOT VALID;
 
