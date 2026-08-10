@@ -1,3 +1,6 @@
+import type { DeliveryErrorCode } from './delivery-errors.ts';
+import { isDeliveryErrorCode } from './delivery-errors.ts';
+
 export type ActivityPubQueueKind = 'inbox' | 'outbox';
 
 export type ActivityPubQueueStatus =
@@ -35,7 +38,7 @@ export type ActivityPubQueueMessage = {
   readonly attemptCount: number;
   readonly workerToken: string | null;
   readonly leaseExpiresAt: Date | null;
-  readonly lastErrorCode: string | null;
+  readonly lastErrorCode: DeliveryErrorCode | null;
   readonly lastHttpStatus: number | null;
   readonly createdAt: Date;
   readonly startedAt: Date | null;
@@ -308,6 +311,19 @@ function parseRequiredInteger(value: unknown, fieldName: string): number {
   throw new Error(`Invalid ActivityPub row field: ${fieldName}`);
 }
 
+function parseNullableDeliveryErrorCode(
+  value: unknown,
+  fieldName: string,
+): DeliveryErrorCode | null {
+  if (value === null) {
+    return null;
+  }
+  if (isDeliveryErrorCode(value)) {
+    return value;
+  }
+  throw new Error(`Invalid ActivityPub row field: ${fieldName}`);
+}
+
 /** Parses a locked project scope row from a SQL query result. */
 export function parseActivityPubProjectScopeRow(row: unknown): ActivityPubProjectScope {
   if (!isRecord(row)) {
@@ -351,7 +367,7 @@ export function parseActivityPubQueueMessageRow(row: unknown): ActivityPubQueueM
     attemptCount: parseRequiredInteger(row.attempt_count, 'attempt_count'),
     workerToken: parseNullableString(row.worker_token, 'worker_token'),
     leaseExpiresAt: parseNullableDate(row.lease_expires_at, 'lease_expires_at'),
-    lastErrorCode: parseNullableString(row.last_error_code, 'last_error_code'),
+    lastErrorCode: parseNullableDeliveryErrorCode(row.last_error_code, 'last_error_code'),
     lastHttpStatus: parseNullableInteger(row.last_http_status, 'last_http_status'),
     createdAt: parseRequiredDate(row.created_at, 'created_at'),
     startedAt: parseNullableDate(row.started_at, 'started_at'),

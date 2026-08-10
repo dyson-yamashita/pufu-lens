@@ -6,3 +6,9 @@ ALTER TABLE public.activitypub_activities
 
 ALTER TABLE public.activitypub_follows
   VALIDATE CONSTRAINT activitypub_follows_accepted_timestamp_check;
+
+ALTER TABLE public.activitypub_queue_messages
+  VALIDATE CONSTRAINT activitypub_queue_messages_last_error_code_check;
+
+ALTER TABLE public.activitypub_activities
+  VALIDATE CONSTRAINT activitypub_activities_last_error_code_check;

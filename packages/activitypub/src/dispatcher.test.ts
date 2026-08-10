@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { DELIVERY_ERROR_CODES } from './delivery-errors.ts';
 import {
   classifyDeliveryFailure,
   computeHeartbeatLeaseExpiry,
@@ -11,24 +12,58 @@ import {
   selectNextQueueKind,
 } from './dispatcher.ts';
 
-test('classifyDeliveryFailure retries network-like errors and exhausts after five retries', () => {
-  assert.deepEqual(classifyDeliveryFailure({ attemptCount: 1, error: { code: 'timeout' } }), {
-    kind: 'retry',
-    delayMs: 60_000,
-  });
-  assert.deepEqual(classifyDeliveryFailure({ attemptCount: 5, error: { code: 'timeout' } }), {
-    kind: 'retry',
-    delayMs: 12 * 60 * 60_000,
-  });
-  assert.deepEqual(classifyDeliveryFailure({ attemptCount: 6, error: { code: 'timeout' } }), {
-    kind: 'retry_exhausted',
-  });
+test('classifyDeliveryFailure treats materialization retry exhaustion as permanent failure', () => {
   assert.deepEqual(
-    classifyDeliveryFailure({ attemptCount: 1, error: { code: 'gone', httpStatus: 410 } }),
+    classifyDeliveryFailure({
+      attemptCount: 1,
+      error: { code: DELIVERY_ERROR_CODES.materializationRetryExhausted },
+    }),
+    { kind: 'permanent_failure' },
+  );
+});
+
+test('classifyDeliveryFailure retries network-like errors and exhausts after five retries', () => {
+  assert.deepEqual(
+    classifyDeliveryFailure({
+      attemptCount: 1,
+      error: { code: DELIVERY_ERROR_CODES.deliveryTimeout },
+    }),
+    {
+      kind: 'retry',
+      delayMs: 60_000,
+    },
+  );
+  assert.deepEqual(
+    classifyDeliveryFailure({
+      attemptCount: 5,
+      error: { code: DELIVERY_ERROR_CODES.deliveryTimeout },
+    }),
+    {
+      kind: 'retry',
+      delayMs: 12 * 60 * 60_000,
+    },
+  );
+  assert.deepEqual(
+    classifyDeliveryFailure({
+      attemptCount: 6,
+      error: { code: DELIVERY_ERROR_CODES.deliveryTimeout },
+    }),
+    {
+      kind: 'retry_exhausted',
+    },
+  );
+  assert.deepEqual(
+    classifyDeliveryFailure({
+      attemptCount: 1,
+      error: { code: DELIVERY_ERROR_CODES.inboxGone, httpStatus: 410 },
+    }),
     { kind: 'permanent_failure' },
   );
   assert.deepEqual(
-    classifyDeliveryFailure({ attemptCount: 1, error: { code: 'bad_request', httpStatus: 400 } }),
+    classifyDeliveryFailure({
+      attemptCount: 1,
+      error: { code: DELIVERY_ERROR_CODES.http4xx, httpStatus: 400 },
+    }),
     { kind: 'permanent_failure' },
   );
 });

@@ -90,16 +90,71 @@ test('deploy config sets ActivityPub dispatcher OIDC audience on first Mastra re
   );
 });
 
-test('deploy config scopes ActivityPub dispatcher IAM to the target job and orders IAM before scheduler', () => {
+type JobIamBinding = {
+  readonly jobRef: string;
+  readonly role: string;
+};
+
+function extractJobNameAssignments(script: string): Record<string, string> {
+  const assignments: Record<string, string> = {};
+  const pattern = /^([a-z_]+)="\$\{_ENV\}-\$\{(_[A-Z0-9_]+)\}"/gm;
+  for (const match of script.matchAll(pattern)) {
+    const variable = match[1];
+    const substitution = match[2];
+    if (!variable || !substitution) {
+      continue;
+    }
+    assignments[variable] = `\${_ENV}-\${${substitution}}`;
+  }
+  return assignments;
+}
+
+function extractJobIamBindings(script: string): JobIamBinding[] {
+  const bindings: JobIamBinding[] = [];
+  const commandPattern =
+    /gcloud run jobs add-iam-policy-binding "([^"]+)"[\s\S]*?--role "([^"]+)"/g;
+  for (const match of script.matchAll(commandPattern)) {
+    const jobRef = match[1];
+    const role = match[2];
+    if (!jobRef || !role) {
+      continue;
+    }
+    bindings.push({ jobRef, role });
+  }
+  return bindings;
+}
+
+test('deploy config scopes dispatcher IAM to environment-prefixed jobs and orders IAM before scheduler', () => {
   const steps = collectSteps();
   const iam = steps.find((step) => step.id === 'deploy-activitypub-dispatcher-iam');
   const scheduler = steps.find((step) => step.id === 'deploy-activitypub-dispatcher-scheduler');
   assert.ok(iam);
   assert.ok(scheduler);
-  assert.match(iam.script, /activitypub_job_name="\$\{_ENV\}-\$\{_ACTIVITYPUB_DISPATCHER_JOB\}"/);
-  assert.match(iam.script, /gcloud run jobs add-iam-policy-binding "\$\$\{activitypub_job_name\}"/);
-  assert.match(iam.script, /roles\/run\.jobsExecutorWithOverrides/);
-  assert.match(iam.script, /roles\/run\.viewer/);
+
+  const jobNames = extractJobNameAssignments(iam.script);
+  assert.deepEqual(jobNames, {
+    source_sync_job_name: `\${_ENV}-\${_SOURCE_SYNC_DISPATCHER_JOB}`,
+    report_schedule_job_name: `\${_ENV}-\${_REPORT_SCHEDULE_DISPATCHER_JOB}`,
+    activitypub_job_name: `\${_ENV}-\${_ACTIVITYPUB_DISPATCHER_JOB}`,
+  });
+  assert.match(
+    iam.script,
+    /for dispatcher_job_name in "\$\$\{source_sync_job_name\}" "\$\$\{report_schedule_job_name\}" "\$\$\{activitypub_job_name\}"; do[\s\S]*roles\/run\.jobsExecutorWithOverrides/,
+  );
+
+  const bindings = extractJobIamBindings(iam.script);
+  const executorJobs = bindings
+    .filter((binding) => binding.role === 'roles/run.jobsExecutorWithOverrides')
+    .map((binding) => binding.jobRef);
+  const viewerJobs = bindings
+    .filter((binding) => binding.role === 'roles/run.viewer')
+    .map((binding) => binding.jobRef);
+
+  assert.deepEqual(executorJobs, ['$${dispatcher_job_name}']);
+  assert.deepEqual(viewerJobs, ['$${activitypub_job_name}']);
+
+  assert.match(iam.script, /gcloud run services add-iam-policy-binding[\s\S]*roles\/run\.invoker/);
+
   const iamIndex = steps.findIndex((step) => step.id === 'deploy-activitypub-dispatcher-iam');
   const schedulerIndex = steps.findIndex(
     (step) => step.id === 'deploy-activitypub-dispatcher-scheduler',

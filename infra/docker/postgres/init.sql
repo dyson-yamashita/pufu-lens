@@ -779,7 +779,27 @@ CREATE TABLE IF NOT EXISTS public.activitypub_queue_messages (
   CONSTRAINT activitypub_queue_messages_outbox_ordering_check
     CHECK (queue_kind <> 'outbox' OR (queue_kind = 'outbox' AND ordering_key IS NOT NULL)),
   CONSTRAINT activitypub_queue_messages_outbox_recipient_check
-    CHECK (queue_kind <> 'outbox' OR (queue_kind = 'outbox' AND recipient_origin IS NOT NULL))
+    CHECK (queue_kind <> 'outbox' OR (queue_kind = 'outbox' AND recipient_origin IS NOT NULL)),
+  CONSTRAINT activitypub_queue_messages_last_error_code_check
+    CHECK (
+      last_error_code IS NULL
+      OR last_error_code IN (
+        'delivery_timeout',
+        'network_error',
+        'http_408',
+        'http_429',
+        'http_5xx',
+        'inbox_gone',
+        'http_4xx',
+        'unknown_delivery_error',
+        'lease_lost',
+        'activitypub_predecessor_failure',
+        'activitypub_materialization_private',
+        'activitypub_materialization_disabled',
+        'activitypub_materialization_representation',
+        'activitypub_materialization_retry_exhausted'
+      )
+    )
 );
 
 CREATE INDEX IF NOT EXISTS activitypub_queue_messages_due_idx
@@ -956,7 +976,27 @@ CREATE TABLE IF NOT EXISTS public.activitypub_activities (
   CONSTRAINT activitypub_activities_attempt_count_check
     CHECK (attempt_count >= 0),
   CONSTRAINT activitypub_activities_outbound_local_actor_check
-    CHECK (direction <> 'outbound' OR local_actor_id IS NOT NULL)
+    CHECK (direction <> 'outbound' OR local_actor_id IS NOT NULL),
+  CONSTRAINT activitypub_activities_last_error_code_check
+    CHECK (
+      last_error_code IS NULL
+      OR last_error_code IN (
+        'delivery_timeout',
+        'network_error',
+        'http_408',
+        'http_429',
+        'http_5xx',
+        'inbox_gone',
+        'http_4xx',
+        'unknown_delivery_error',
+        'lease_lost',
+        'activitypub_predecessor_failure',
+        'activitypub_materialization_private',
+        'activitypub_materialization_disabled',
+        'activitypub_materialization_representation',
+        'activitypub_materialization_retry_exhausted'
+      )
+    )
 );
 
 CREATE INDEX IF NOT EXISTS activitypub_activities_outbound_due_idx

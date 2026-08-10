@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DELIVERY_ERROR_CODES, mapDeliveryError } from './delivery-errors.ts';
+import { DELIVERY_ERROR_CODES, isDeliveryErrorCode, mapDeliveryError } from './delivery-errors.ts';
 
 test('mapDeliveryError never leaks secret-bearing error messages', () => {
   const secret = 'super-secret-token-abc123';
@@ -24,4 +24,37 @@ test('mapDeliveryError maps bounded Retry-After response headers', () => {
     responseHeaders: { 'retry-after': '90' },
   });
   assert.equal(mapped.retryAfterMs, 90_000);
+});
+
+test('isDeliveryErrorCode accepts only the fixed allowlist', () => {
+  assert.equal(isDeliveryErrorCode(DELIVERY_ERROR_CODES.inboxGone), true);
+  assert.equal(isDeliveryErrorCode('not_a_real_code'), false);
+  assert.equal(isDeliveryErrorCode(null), false);
+});
+
+test('mapDeliveryError preserves known allowlist codes and rejects unknown codes', () => {
+  assert.equal(
+    mapDeliveryError({ code: DELIVERY_ERROR_CODES.materializationRetryExhausted }).code,
+    DELIVERY_ERROR_CODES.materializationRetryExhausted,
+  );
+  assert.deepEqual(
+    mapDeliveryError({
+      code: DELIVERY_ERROR_CODES.http429,
+      httpStatus: 429,
+      retryAfterMs: 90_000,
+    }),
+    {
+      code: DELIVERY_ERROR_CODES.http429,
+      httpStatus: 429,
+      retryAfterMs: 90_000,
+    },
+  );
+  assert.equal(
+    mapDeliveryError({ code: 'custom_internal_failure', message: 'secret detail' }).code,
+    DELIVERY_ERROR_CODES.unknownDeliveryError,
+  );
+  assert.equal(
+    JSON.stringify(mapDeliveryError({ code: 'custom_internal_failure', message: 'secret detail' })),
+    JSON.stringify({ code: DELIVERY_ERROR_CODES.unknownDeliveryError }),
+  );
 });

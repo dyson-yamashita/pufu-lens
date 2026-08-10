@@ -219,7 +219,7 @@ outbound row は report 公開 transaction 内で `pending` として作る tran
 - `attempt_count`
 - `worker_token` nullable
 - `lease_expires_at` nullable
-- `last_error_code` nullable
+- `last_error_code` nullable。runtime serializer / row parser と DB CHECK が同じ固定 allowlist を強制する
 - `last_http_status` nullable
 - `created_at` / `started_at` / `completed_at` / `updated_at`
 
@@ -259,7 +259,7 @@ report 公開から remote delivery までは次の二段階に分ける。
 ### 7.2 起動と上限
 
 - Cloud Scheduler が1分または5分ごとに `POST /internal/schedules/activitypub-dispatcher:run` を designated Scheduler service account の OIDC token 付きで呼ぶ。OIDC audience は Mastra internal service の固定 URL とし、route は issuer、audience、subject / email allowlist を検証する。
-- Scheduler service account には対象 Mastra service だけの `roles/run.invoker` を付与する。Mastra runtime service account には対象 `activitypub-dispatcher` Job だけの `run.jobs.run` / `run.jobs.runWithOverrides` 相当権限とactive execution一覧取得権限を付与する。deploy定義は対象Job resourceに`roles/run.jobsExecutorWithOverrides`と`roles/run.viewer`を付与し、他 Job や resource への権限を広げない。
+- Scheduler service account には対象 Mastra service だけの `roles/run.invoker` を付与する。Mastra runtime service account には source sync、定期 report、ActivityPub の各 dispatcher Job だけの `run.jobs.run` / `run.jobs.runWithOverrides` 相当権限を付与し、active execution一覧取得権限は `activitypub-dispatcher` Job だけに付与する。deploy定義は3つの対象Job resourceに`roles/run.jobsExecutorWithOverrides`を、ActivityPub Jobだけに`roles/run.viewer`を付与し、他 Job や resource への権限を広げない。
 - Mastra Server は body が空 object であることを検証し、同じ Job の active execution を検出した場合は新規起動せず accepted no-op として扱い、active でなければ `activitypub-dispatcher` Cloud Run Job を起動する。active execution 検出と DB lease の両方で duplicate run を防ぐ。
 - Job entrypoint は `--once` だけを受け付け、それ以外の引数や常駐 queue consumer 起動を拒否する。1 run 最大100 messageまたは開始から45分の早い方で新規 claim を停止する。
 - Cloud Run Job timeout は55分とし、10分を後処理に確保する。
@@ -447,8 +447,8 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 
 - report 公開状態、公開用 short summary snapshot、project Actor の `Create`、aggregate `@all` Actor の `Announce` を同じ DB transaction で更新する transactional outbox を実装した。private project、disabled Actor、rollback では outbound activity と representation lock を作らず、public / enabled の最初の outbound activity で Article / Note representation を固定する。
 - dispatcher は commit 済み activity から stable object / activity URI と公開時点の follower audience を再構築する。同一 remote Actor が project Actor と `@all` を follow する場合は Create を優先し、異なる remote Actor が同じ shared inbox を使う場合は Create / Announce の必要な audience を保持する。personal / shared inbox は delivery 単位の dedupe key、object URI の ordering key、正規化した recipient origin へ永続化する。
-- PostgreSQL queue の lease、重複しない heartbeat、最大100件 / 45分の bounded one-shot、fair claim、bounded Retry-After / backoff、retry exhausted / permanent failure、先行成功待ちと先行終端失敗の後続抑止を実装した。activity materialize の未知の一時失敗も同じattempt budgetとbackoffで再試行し、既知のprivate / disabled / representation不整合だけを即時終端にする。Fedify の再試行は無効化し、404 / 410 / 429 / 5xx / timeout を安全な allowlist code に写像して DB dispatcher だけが状態遷移を管理する。
-- Web federation は `manuallyStartQueue: true` を維持し、queue consumer / manual task processor を開始しない。`activitypub-dispatcher` Cloud Run Job だけが `--once` で処理し、Cloud Scheduler は固定 audience と designated service account の issuer / subject / email allowlist を検証する内部 route を呼ぶ。active execution は `202` no-op とし、Scheduler SA の対象 service invoker と Mastra runtime SA の対象 Job executor / viewer 権限を resource scope で定義した。
+- PostgreSQL queue の lease、重複しない heartbeat、最大100件 / 45分の bounded one-shot、fair claim、bounded Retry-After / backoff、retry exhausted / permanent failure、先行成功待ちと先行終端失敗の後続抑止を実装した。activity materialize の未知の一時失敗も同じattempt budgetとbackoffで再試行し、既知のprivate / disabled / representation不整合だけを即時終端にする。Fedify の再試行は無効化し、404 / 410 / 429 / 5xx / timeout を安全な allowlist code に写像して DB dispatcher だけが状態遷移を管理する。runtime type guard / row parser と queue / activity table の DB CHECK は同じ固定 allowlist を強制し、materialization retry exhausted は再試行へ戻さず終端化する。旧queue実装の `activitypub_delivery_failed` はCHECK追加前に `unknown_delivery_error` へ正規化する。
+- Web federation は `manuallyStartQueue: true` を維持し、queue consumer / manual task processor を開始しない。`activitypub-dispatcher` Cloud Run Job だけが `--once` で処理し、Cloud Scheduler は固定 audience と designated service account の issuer / subject / email allowlist を検証する内部 route を呼ぶ。active execution は `202` no-op とし、Scheduler SA の対象 service invoker、Mastra runtime SA の3つのdispatcher Job executor、ActivityPub Jobだけの viewer 権限をresource scopeで定義した。
 - localhost signed POST fixture、DB integration、仮想 clock / injected signal で commit / rollback、shared inbox、ordering、crash / lease expiry、heartbeat競合、timeout、429 / 5xx、retry exhausted、permanent failure、duplicate起動を外部 network なしで確認した。UI変更、本番deploy、Cloud resource操作、外部 Pufu Lens / Mastodon接続は行っていない。
 
 ### Step 5: inbound report と外部レポート表示

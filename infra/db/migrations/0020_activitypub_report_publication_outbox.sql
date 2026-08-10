@@ -46,3 +46,61 @@ CREATE INDEX IF NOT EXISTS activitypub_queue_messages_running_lease_idx
 CREATE INDEX IF NOT EXISTS activitypub_queue_messages_outbox_claim_idx
   ON public.activitypub_queue_messages (queue_kind, available_at, created_at, id)
   WHERE status IN ('pending', 'retry_wait');
+
+UPDATE public.activitypub_queue_messages
+SET last_error_code = 'unknown_delivery_error'
+WHERE last_error_code = 'activitypub_delivery_failed';
+
+UPDATE public.activitypub_activities
+SET last_error_code = 'unknown_delivery_error'
+WHERE last_error_code = 'activitypub_delivery_failed';
+
+ALTER TABLE public.activitypub_queue_messages
+  DROP CONSTRAINT IF EXISTS activitypub_queue_messages_last_error_code_check;
+
+ALTER TABLE public.activitypub_queue_messages
+  ADD CONSTRAINT activitypub_queue_messages_last_error_code_check
+  CHECK (
+    last_error_code IS NULL
+    OR last_error_code IN (
+      'delivery_timeout',
+      'network_error',
+      'http_408',
+      'http_429',
+      'http_5xx',
+      'inbox_gone',
+      'http_4xx',
+      'unknown_delivery_error',
+      'lease_lost',
+      'activitypub_predecessor_failure',
+      'activitypub_materialization_private',
+      'activitypub_materialization_disabled',
+      'activitypub_materialization_representation',
+      'activitypub_materialization_retry_exhausted'
+    )
+  ) NOT VALID;
+
+ALTER TABLE public.activitypub_activities
+  DROP CONSTRAINT IF EXISTS activitypub_activities_last_error_code_check;
+
+ALTER TABLE public.activitypub_activities
+  ADD CONSTRAINT activitypub_activities_last_error_code_check
+  CHECK (
+    last_error_code IS NULL
+    OR last_error_code IN (
+      'delivery_timeout',
+      'network_error',
+      'http_408',
+      'http_429',
+      'http_5xx',
+      'inbox_gone',
+      'http_4xx',
+      'unknown_delivery_error',
+      'lease_lost',
+      'activitypub_predecessor_failure',
+      'activitypub_materialization_private',
+      'activitypub_materialization_disabled',
+      'activitypub_materialization_representation',
+      'activitypub_materialization_retry_exhausted'
+    )
+  ) NOT VALID;

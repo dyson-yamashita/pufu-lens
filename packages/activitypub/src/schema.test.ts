@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { DELIVERY_ERROR_CODES } from './delivery-errors.ts';
 import {
   parseActivityPubActivityRow,
   parseActivityPubActorEncryptedKeyRow,
@@ -176,5 +177,27 @@ test('schema parsers reject malformed rows', () => {
   assert.throws(
     () => parsePublicReportArticleRow({ ...validPublicReportArticle, report_id: 1 }),
     /report_id/,
+  );
+});
+
+test('parseActivityPubQueueMessageRow accepts allowlisted last_error_code values', () => {
+  assert.equal(
+    parseActivityPubQueueMessageRow({
+      ...validQueueMessage,
+      last_error_code: DELIVERY_ERROR_CODES.http5xx,
+    }).lastErrorCode,
+    DELIVERY_ERROR_CODES.http5xx,
+  );
+  assert.equal(parseActivityPubQueueMessageRow(validQueueMessage).lastErrorCode, null);
+});
+
+test('parseActivityPubQueueMessageRow rejects unknown last_error_code values', () => {
+  assert.throws(
+    () =>
+      parseActivityPubQueueMessageRow({
+        ...validQueueMessage,
+        last_error_code: 'activitypub_delivery_failed',
+      }),
+    /last_error_code/,
   );
 });

@@ -398,15 +398,19 @@ steps:
         set -euo pipefail
 
         mastra_service_name="$$(gcloud run services list --region "${_REGION}" --filter="metadata.name=${_MASTRA_SERVICE}" --format='value(metadata.name)')"
+        source_sync_job_name="${_ENV}-${_SOURCE_SYNC_DISPATCHER_JOB}"
+        report_schedule_job_name="${_ENV}-${_REPORT_SCHEDULE_DISPATCHER_JOB}"
         activitypub_job_name="${_ENV}-${_ACTIVITYPUB_DISPATCHER_JOB}"
         gcloud run services add-iam-policy-binding "$${mastra_service_name}" \
           --region "${_REGION}" \
           --member "serviceAccount:${_SCHEDULER_SERVICE_ACCOUNT}" \
           --role "roles/run.invoker"
-        gcloud run jobs add-iam-policy-binding "$${activitypub_job_name}" \
-          --region "${_REGION}" \
-          --member "serviceAccount:${_RUNTIME_SERVICE_ACCOUNT}" \
-          --role "roles/run.jobsExecutorWithOverrides"
+        for dispatcher_job_name in "$${source_sync_job_name}" "$${report_schedule_job_name}" "$${activitypub_job_name}"; do
+          gcloud run jobs add-iam-policy-binding "$${dispatcher_job_name}" \
+            --region "${_REGION}" \
+            --member "serviceAccount:${_RUNTIME_SERVICE_ACCOUNT}" \
+            --role "roles/run.jobsExecutorWithOverrides"
+        done
         gcloud run jobs add-iam-policy-binding "$${activitypub_job_name}" \
           --region "${_REGION}" \
           --member "serviceAccount:${_RUNTIME_SERVICE_ACCOUNT}" \

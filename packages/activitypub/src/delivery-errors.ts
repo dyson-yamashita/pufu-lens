@@ -18,6 +18,13 @@ export const DELIVERY_ERROR_CODES = {
   materializationRetryExhausted: 'activitypub_materialization_retry_exhausted',
 } as const;
 
+/** Runtime type guard for the fixed delivery error code allowlist. */
+export function isDeliveryErrorCode(value: unknown): value is DeliveryErrorCode {
+  return typeof value === 'string' && DELIVERY_ERROR_CODE_SET.has(value);
+}
+
+const DELIVERY_ERROR_CODE_SET = new Set<string>(Object.values(DELIVERY_ERROR_CODES));
+
 export type DeliveryErrorCode = (typeof DELIVERY_ERROR_CODES)[keyof typeof DELIVERY_ERROR_CODES];
 
 /** Thrown when a queue finalizer loses its lease before updating status. */
@@ -44,24 +51,15 @@ export function mapDeliveryError(error: unknown): MappedDeliveryError {
   }
   if (error && typeof error === 'object' && !Array.isArray(error)) {
     const record = error as Record<string, unknown>;
-    if (record.code === DELIVERY_ERROR_CODES.deliveryTimeout) {
-      return { code: DELIVERY_ERROR_CODES.deliveryTimeout };
+    const httpStatus = readHttpStatus(record);
+    const retryAfterMs = readRetryAfterMs(record);
+    if (isDeliveryErrorCode(record.code)) {
+      return {
+        code: record.code,
+        ...(httpStatus === undefined ? {} : { httpStatus }),
+        ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+      };
     }
-    if (record.code === DELIVERY_ERROR_CODES.networkError) {
-      return { code: DELIVERY_ERROR_CODES.networkError };
-    }
-    const httpStatus =
-      typeof record.statusCode === 'number'
-        ? record.statusCode
-        : typeof record.httpStatus === 'number'
-          ? record.httpStatus
-          : typeof record.status === 'number'
-            ? record.status
-            : undefined;
-    const retryAfterMs =
-      typeof record.retryAfterMs === 'number'
-        ? record.retryAfterMs
-        : readRetryAfterFromHeaders(record.responseHeaders);
     if (httpStatus === 404 || httpStatus === 410) {
       return { code: DELIVERY_ERROR_CODES.inboxGone, httpStatus };
     }
@@ -88,6 +86,26 @@ export function mapDeliveryError(error: unknown): MappedDeliveryError {
     }
   }
   return { code: DELIVERY_ERROR_CODES.unknownDeliveryError };
+}
+
+function readHttpStatus(record: Record<string, unknown>): number | undefined {
+  if (typeof record.statusCode === 'number') {
+    return record.statusCode;
+  }
+  if (typeof record.httpStatus === 'number') {
+    return record.httpStatus;
+  }
+  if (typeof record.status === 'number') {
+    return record.status;
+  }
+  return undefined;
+}
+
+function readRetryAfterMs(record: Record<string, unknown>): number | undefined {
+  if (typeof record.retryAfterMs === 'number') {
+    return record.retryAfterMs;
+  }
+  return readRetryAfterFromHeaders(record.responseHeaders);
 }
 
 function readRetryAfterFromHeaders(value: unknown): number | undefined {

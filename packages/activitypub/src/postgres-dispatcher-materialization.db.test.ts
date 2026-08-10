@@ -196,7 +196,7 @@ async function assertLeaseLostDoesNotOverwrite(sql: postgres.Sql) {
         lease_expires_at = ${expiredLease},
         available_at = ${availableAt},
         attempt_count = 2,
-        last_error_code = 'previous_code'
+        last_error_code = ${DELIVERY_ERROR_CODES.networkError}
     WHERE id = ${activityId}::uuid
   `;
   const rows =
@@ -219,6 +219,6 @@ async function assertLeaseLostDoesNotOverwrite(sql: postgres.Sql) {
     WHERE id = ${activityId}::uuid
   `;
   assert.equal(row[0]?.processing_status, 'running');
-  assert.equal(row[0]?.last_error_code, 'previous_code');
+  assert.equal(row[0]?.last_error_code, DELIVERY_ERROR_CODES.networkError);
   assert.equal(row[0]?.worker_token, workerToken);
 }

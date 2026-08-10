@@ -5,6 +5,7 @@ import { PostgresKvStore } from '@fedify/postgres';
 import type postgres from 'postgres';
 import type { ActivityPubRepository } from './actor-repository.ts';
 import { parseCanonicalOrigin } from './canonical-origin.ts';
+import type { DeliveryErrorCode } from './delivery-errors.ts';
 import { DELIVERY_ERROR_CODES, LeaseLostError, mapDeliveryError } from './delivery-errors.ts';
 import { withTimedDeliveryFetch } from './delivery-fetch.ts';
 import { createDeliveryHeartbeatController } from './delivery-heartbeat.ts';
@@ -897,7 +898,7 @@ function parseOrderingPredecessorRow(value: unknown): {
 }
 
 function toDeliveryProcessorError(error: unknown): {
-  code: string;
+  code: DeliveryErrorCode;
   httpStatus?: number;
   retryAfterMs?: number;
 } {
@@ -915,11 +916,15 @@ function toDeliveryProcessorError(error: unknown): {
   return mapped;
 }
 
-function isExpectedDeliveryFailure(error: unknown): boolean {
+/** Exported for deterministic delivery failure boundary tests. */
+export function isExpectedDeliveryFailure(error: unknown): boolean {
   if (error instanceof LeaseLostError) {
     return false;
   }
   const mapped = mapDeliveryError(error);
+  if (mapped.code === DELIVERY_ERROR_CODES.materializationRetryExhausted) {
+    return true;
+  }
   if (mapped.httpStatus !== undefined) {
     return true;
   }

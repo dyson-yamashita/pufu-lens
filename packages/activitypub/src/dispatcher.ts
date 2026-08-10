@@ -1,3 +1,5 @@
+import type { DeliveryErrorCode } from './delivery-errors.ts';
+
 export type ActivityPubDispatcherClock = {
   readonly now: () => Date;
 };
@@ -40,7 +42,7 @@ export type DeliveryFailureClassification =
   | { readonly kind: 'retry_exhausted' };
 
 export type DeliveryProcessorError = {
-  readonly code: string;
+  readonly code: DeliveryErrorCode;
   readonly httpStatus?: number;
   readonly retryAfterMs?: number;
 };
@@ -50,6 +52,9 @@ export function classifyDeliveryFailure(input: {
   readonly attemptCount: number;
   readonly error: DeliveryProcessorError;
 }): DeliveryFailureClassification {
+  if (input.error.code === 'activitypub_materialization_retry_exhausted') {
+    return { kind: 'permanent_failure' };
+  }
   if (input.attemptCount >= DISPATCHER_MAX_ATTEMPTS) {
     return { kind: 'retry_exhausted' };
   }

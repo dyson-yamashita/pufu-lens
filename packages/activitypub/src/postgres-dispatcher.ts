@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { exportJwk } from '@fedify/fedify';
 import type postgres from 'postgres';
 import type { ActivityPubRepository } from './actor-repository.ts';
+import type { DeliveryErrorCode } from './delivery-errors.ts';
 import { DELIVERY_ERROR_CODES } from './delivery-errors.ts';
 import {
   type ActivityPubDispatcherClock,
@@ -70,10 +71,10 @@ type ClaimedActivity = {
  * - `retry_exhausted`: retry budget reached; terminalize with a safe error code.
  */
 export type MaterializationFailureDecision =
-  | { readonly kind: 'terminal_failed'; readonly code: string }
+  | { readonly kind: 'terminal_failed'; readonly code: DeliveryErrorCode }
   | { readonly kind: 'lease_lost' }
-  | { readonly kind: 'retry_pending'; readonly code: string; readonly delayMs: number }
-  | { readonly kind: 'retry_exhausted'; readonly code: string };
+  | { readonly kind: 'retry_pending'; readonly code: DeliveryErrorCode; readonly delayMs: number }
+  | { readonly kind: 'retry_exhausted'; readonly code: DeliveryErrorCode };
 
 /**
  * Classifies materialization failures into terminal, retry, lease-lost, or exhausted outcomes
@@ -346,9 +347,8 @@ export async function failActivityMaterialization(input: {
     return;
   }
   const now = input.clock.now();
-  let updated: { count: number };
   if (decision.kind === 'retry_pending') {
-    updated = await input.sql`
+    await input.sql`
       UPDATE public.activitypub_activities
       SET processing_status = 'pending',
           worker_token = NULL,
@@ -361,7 +361,7 @@ export async function failActivityMaterialization(input: {
         AND lease_expires_at > ${now}
     `;
   } else {
-    updated = await input.sql`
+    await input.sql`
       UPDATE public.activitypub_activities
       SET processing_status = 'failed',
           worker_token = NULL,
@@ -372,9 +372,6 @@ export async function failActivityMaterialization(input: {
         AND processing_status = 'running'
         AND lease_expires_at > ${now}
     `;
-  }
-  if (updated.count === 0) {
-    return;
   }
 }
 
@@ -389,7 +386,7 @@ function parseClaimedAttemptCount(value: unknown): number {
   return attemptCount;
 }
 
-function resolveMaterializationErrorCode(error: unknown): string {
+function resolveMaterializationErrorCode(error: unknown): DeliveryErrorCode {
   if (error instanceof Error) {
     if (
       error.message === DELIVERY_ERROR_CODES.materializationPrivate ||
