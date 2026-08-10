@@ -72,6 +72,9 @@ test('mapDeliveryError ignores invalid HTTP status and retry numeric boundaries'
   assert.deepEqual(mapDeliveryError({ httpStatus: 600 }), {
     code: DELIVERY_ERROR_CODES.unknownDeliveryError,
   });
+  assert.deepEqual(mapDeliveryError({ httpStatus: 429.5 }), {
+    code: DELIVERY_ERROR_CODES.unknownDeliveryError,
+  });
   assert.deepEqual(
     mapDeliveryError({
       statusCode: Number.NaN,
