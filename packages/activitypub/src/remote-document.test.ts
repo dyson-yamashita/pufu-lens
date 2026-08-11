@@ -10,6 +10,21 @@ import {
 
 const canonicalOrigin = 'https://lens.test';
 
+test('isRemoteExampleFixtureUrl accepts exact remote.example hostname', () => {
+  assert.equal(isRemoteExampleFixtureUrl('https://remote.example/article/1'), true);
+});
+
+test('isRemoteExampleFixtureUrl rejects suffix hostname attacks', () => {
+  assert.equal(
+    isRemoteExampleFixtureUrl('https://remote.example.attacker.invalid/article/1'),
+    false,
+  );
+});
+
+function isRemoteExampleFixtureUrl(value: string): boolean {
+  return new URL(value).hostname === 'remote.example';
+}
+
 function createFetcher(input: {
   fetch?: typeof fetch;
   isDomainBlocked?: (host: string) => boolean;
@@ -70,7 +85,7 @@ test('bounded remote json fetcher rejects redirect targets that fail policy chec
   const fetcher = createFetcher({
     fetch: async (url) => {
       const current = url.toString();
-      if (current.startsWith('https://remote.example')) {
+      if (isRemoteExampleFixtureUrl(current)) {
         return new Response(null, {
           status: 302,
           headers: { location: 'https://127.0.0.1/private' },
