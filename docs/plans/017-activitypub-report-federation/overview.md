@@ -454,7 +454,7 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 ### Step 5: inbound report と外部レポート表示
 
 - status: `completed`
-- tracking Issue: [#676](https://github.com/dyson-yamashita/pufu-lens/issues/676)
+- tracking Issue / PR: [#676](https://github.com/dyson-yamashita/pufu-lens/issues/676) / [#677](https://github.com/dyson-yamashita/pufu-lens/pull/677)
 - 更新日: 2026-08-11
 
 成果物:
