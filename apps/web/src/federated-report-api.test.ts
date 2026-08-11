@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type postgres from 'postgres';
 import {
+  createFederatedReportsHttpResponse,
+  FEDERATED_REPORTS_CACHE_CONTROL,
   FederatedReportsForbiddenError,
   listProjectFederatedReports,
 } from './federated-report-api.ts';
@@ -58,6 +60,25 @@ test('FederatedReportsForbiddenError is a safe forbidden marker', () => {
   const error = new FederatedReportsForbiddenError();
   assert.equal(error.name, 'FederatedReportsForbiddenError');
   assert.match(error.message, /forbidden/i);
+});
+
+test('createFederatedReportsHttpResponse sets Cache-Control no-store for success', () => {
+  const response = createFederatedReportsHttpResponse({
+    status: 'ok',
+    reports: [],
+    blockedCount: 0,
+  });
+  assert.equal(response.headers['Cache-Control'], FEDERATED_REPORTS_CACHE_CONTROL);
+  assert.equal(response.status, 200);
+});
+
+test('createFederatedReportsHttpResponse sets Cache-Control no-store for errors', () => {
+  const response = createFederatedReportsHttpResponse(
+    { error: { code: 'forbidden', message: 'Forbidden' } },
+    403,
+  );
+  assert.equal(response.headers['Cache-Control'], FEDERATED_REPORTS_CACHE_CONTROL);
+  assert.equal(response.status, 403);
 });
 
 test('listProjectFederatedReports rejects non-members without querying federated reports', async () => {

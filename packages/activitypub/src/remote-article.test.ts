@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   ACTIVITYSTREAMS_PUBLIC_URI,
   assertRemoteArticleDocumentType,
+  assertRemoteArticleJsonLdContext,
   createRemoteArticleResolver,
   parseEmbeddedCreateArticle,
 } from './remote-article.ts';
@@ -47,6 +48,132 @@ test('assertRemoteArticleDocumentType rejects Note documents before Fedify parsi
       }),
     /not an Article/i,
   );
+});
+
+test('assertRemoteArticleJsonLdContext rejects unknown remote context URLs', () => {
+  assert.throws(
+    () =>
+      assertRemoteArticleJsonLdContext({
+        '@context': 'https://evil.example/context.jsonld',
+      }),
+    /@context URL is not permitted/i,
+  );
+});
+
+test('assertRemoteArticleJsonLdContext rejects nested @import in inline context', () => {
+  assert.throws(
+    () =>
+      assertRemoteArticleJsonLdContext({
+        '@context': [
+          'https://www.w3.org/ns/activitystreams',
+          {
+            '@import': 'https://evil.example/import.jsonld',
+          },
+        ],
+      }),
+    /@import is not permitted/i,
+  );
+});
+
+test('assertRemoteArticleJsonLdContext accepts Mastodon-compatible inline context', () => {
+  assert.doesNotThrow(() =>
+    assertRemoteArticleJsonLdContext({
+      '@context': [
+        'https://www.w3.org/ns/activitystreams',
+        {
+          sensitive: 'as:sensitive',
+          toot: 'http://joinmastodon.org/ns#',
+          Emoji: 'toot:Emoji',
+        },
+      ],
+    }),
+  );
+});
+
+test('assertRemoteArticleJsonLdContext rejects nested scoped @context with unknown URL', () => {
+  assert.throws(
+    () =>
+      assertRemoteArticleJsonLdContext({
+        '@context': [
+          'https://www.w3.org/ns/activitystreams',
+          {
+            Article: {
+              '@context': 'https://evil.example/context.jsonld',
+              '@id': 'as:Article',
+            },
+          },
+        ],
+      }),
+    /@context URL is not permitted/i,
+  );
+});
+
+test('assertRemoteArticleJsonLdContext rejects unknown URL in nested scoped @context array', () => {
+  assert.throws(
+    () =>
+      assertRemoteArticleJsonLdContext({
+        '@context': [
+          'https://www.w3.org/ns/activitystreams',
+          {
+            Article: {
+              '@context': ['https://evil.example/context.jsonld'],
+              '@id': 'as:Article',
+            },
+          },
+        ],
+      }),
+    /@context URL is not permitted/i,
+  );
+});
+
+test('assertRemoteArticleJsonLdContext accepts nested scoped @context with allowed URL or inline object', () => {
+  assert.doesNotThrow(() =>
+    assertRemoteArticleJsonLdContext({
+      '@context': [
+        'https://www.w3.org/ns/activitystreams',
+        {
+          Article: {
+            '@context': 'https://www.w3.org/ns/activitystreams',
+            '@id': 'as:Article',
+          },
+          name: {
+            '@context': {
+              name: 'as:name',
+            },
+            '@id': 'as:name',
+          },
+        },
+      ],
+    }),
+  );
+});
+
+test('parseEmbeddedCreateArticle rejects unknown @context before document loader', async () => {
+  await assert.rejects(
+    () =>
+      parseEmbeddedCreateArticle({
+        createActorUri: remoteActorUri,
+        isDomainBlocked: () => false,
+        object: buildEmbeddedArticle({
+          '@context': 'https://evil.example/context.jsonld',
+        }),
+      }),
+    /@context URL is not permitted/i,
+  );
+});
+
+test('remote article resolver rejects inline @import before document loader', async () => {
+  const resolver = createHermeticResolver(
+    buildArticleDocument({
+      '@context': [
+        'https://www.w3.org/ns/activitystreams',
+        {
+          '@import': 'https://evil.example/import.jsonld',
+        },
+      ],
+    }),
+  );
+  await assert.rejects(() => resolver.resolve(articleId), /@import is not permitted/i);
 });
 
 test('parseEmbeddedCreateArticle accepts coherent public Article metadata', async () => {

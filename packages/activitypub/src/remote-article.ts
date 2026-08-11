@@ -16,6 +16,9 @@ import { createProductionSafeDocumentLoader } from './security.ts';
 
 const PUBLIC = 'https://www.w3.org/ns/activitystreams#Public';
 
+/** Fedify-preloaded ActivityStreams context URLs permitted on inbound Article documents. */
+const ALLOWED_REMOTE_ARTICLE_CONTEXT_URLS = new Set(['https://www.w3.org/ns/activitystreams']);
+
 /** Resolved remote Article metadata for inbound report mapping. */
 export type RemoteArticleReadModel = {
   readonly articleId: string;
@@ -55,6 +58,71 @@ export function assertRemoteArticleDocumentType(
   }
   if (!includesArticleType(document.type)) {
     throw new Error('Remote document is not an Article');
+  }
+}
+
+/**
+ * Validates raw Article JSON-LD `@context` before Fedify parsing.
+ *
+ * Permits absent context, the ActivityStreams context URL preloaded by Fedify, and inline
+ * term mappings without remote `@import`. Rejects unknown context URLs at the root or in
+ * nested scoped `@context` values, and nested imports so `Article.fromJsonLd` cannot trigger
+ * a second unbounded document-loader fetch.
+ */
+export function assertRemoteArticleJsonLdContext(document: Record<string, unknown>): void {
+  const context = document['@context'];
+  if (context === undefined || context === null) {
+    return;
+  }
+  assertRemoteArticleContextValue(context);
+}
+
+function assertRemoteArticleContextValue(context: unknown): void {
+  for (const entry of normalizeRemoteArticleContextEntries(context)) {
+    if (typeof entry === 'string') {
+      if (!ALLOWED_REMOTE_ARTICLE_CONTEXT_URLS.has(entry)) {
+        throw new Error('Remote Article @context URL is not permitted');
+      }
+      continue;
+    }
+    if (isRecord(entry)) {
+      assertRemoteArticleInlineContextObject(entry);
+      continue;
+    }
+    throw new Error('Remote Article @context entry is not permitted');
+  }
+}
+
+function normalizeRemoteArticleContextEntries(context: unknown): unknown[] {
+  if (Array.isArray(context)) {
+    return context;
+  }
+  if (typeof context === 'string' || isRecord(context)) {
+    return [context];
+  }
+  throw new Error('Remote Article @context is not permitted');
+}
+
+function assertRemoteArticleInlineContextObject(context: Record<string, unknown>): void {
+  for (const [key, value] of Object.entries(context)) {
+    if (key === '@import') {
+      throw new Error('Remote Article @context @import is not permitted');
+    }
+    if (key === '@context') {
+      assertRemoteArticleContextValue(value);
+      continue;
+    }
+    if (isRecord(value)) {
+      assertRemoteArticleInlineContextObject(value);
+      continue;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (isRecord(item)) {
+          assertRemoteArticleInlineContextObject(item);
+        }
+      }
+    }
   }
 }
 
@@ -158,6 +226,7 @@ async function parseArticleDocument(
   isDomainBlocked: BlockedDomainPredicate,
 ): Promise<RemoteArticleReadModel> {
   assertRemoteArticleDocumentType(document);
+  assertRemoteArticleJsonLdContext(document);
   const loader = createProductionSafeDocumentLoader();
   const article = await Article.fromJsonLd(document, { documentLoader: loader });
   if (!(article instanceof Article)) {
@@ -219,6 +288,7 @@ export async function parseEmbeddedCreateArticle(input: {
   isDomainBlocked: BlockedDomainPredicate;
 }): Promise<RemoteArticleReadModel> {
   assertRemoteArticleDocumentType(input.object);
+  assertRemoteArticleJsonLdContext(input.object);
   const loader = createProductionSafeDocumentLoader();
   const article = await Article.fromJsonLd(input.object, { documentLoader: loader });
   if (!(article instanceof Article)) {

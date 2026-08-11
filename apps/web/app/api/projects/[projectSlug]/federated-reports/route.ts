@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getRequiredAdminSql } from '../../../../../src/admin-sql';
 import { AuthRequiredError, requireSessionUserId } from '../../../../../src/auth-session';
 import {
+  createFederatedReportsHttpResponse,
   FederatedReportsForbiddenError,
   listProjectFederatedReports,
 } from '../../../../../src/federated-report-api';
@@ -25,23 +26,46 @@ export async function GET(
       projectSlug,
       blockedDomainsEnv: process.env.ACTIVITYPUB_BLOCKED_DOMAINS,
     });
-    return NextResponse.json(response);
+    return toFederatedReportsNextResponse(createFederatedReportsHttpResponse(response));
   } catch (error) {
     if (error instanceof AuthRequiredError) {
-      return federatedReportErrorResponse('auth_required', error.message, 401);
+      return toFederatedReportsNextResponse(
+        createFederatedReportsHttpResponse(
+          { error: { code: 'auth_required', message: error.message } },
+          401,
+        ),
+      );
     }
     if (error instanceof FederatedReportsForbiddenError) {
-      return federatedReportErrorResponse('forbidden', 'Forbidden', 403);
+      return toFederatedReportsNextResponse(
+        createFederatedReportsHttpResponse(
+          { error: { code: 'forbidden', message: 'Forbidden' } },
+          403,
+        ),
+      );
     }
     console.error('federated_reports_api_error');
-    return federatedReportErrorResponse(
-      'federated_reports_internal_error',
-      'An unexpected error occurred',
-      500,
+    return toFederatedReportsNextResponse(
+      createFederatedReportsHttpResponse(
+        {
+          error: {
+            code: 'federated_reports_internal_error',
+            message: 'An unexpected error occurred',
+          },
+        },
+        500,
+      ),
     );
   }
 }
 
-function federatedReportErrorResponse(code: string, message: string, status: number) {
-  return NextResponse.json({ error: { code, message } }, { status });
+function toFederatedReportsNextResponse(response: {
+  readonly body: unknown;
+  readonly status: number;
+  readonly headers: Readonly<Record<string, string>>;
+}) {
+  return NextResponse.json(response.body, {
+    status: response.status,
+    headers: response.headers,
+  });
 }

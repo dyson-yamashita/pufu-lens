@@ -142,6 +142,8 @@ export {
   type RemoteActorResolver,
 } from './remote-actor.ts';
 export {
+  assertRemoteArticleDocumentType,
+  assertRemoteArticleJsonLdContext,
   createRemoteArticleResolver,
   type RemoteArticleReadModel,
   type RemoteArticleResolver,

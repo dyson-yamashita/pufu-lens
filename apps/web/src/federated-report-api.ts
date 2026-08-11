@@ -108,6 +108,27 @@ export async function listProjectFederatedReports(input: {
   return { status: 'ok', reports: visible, blockedCount };
 }
 
+/** Cache-Control applied to authenticated federated report API responses. */
+export const FEDERATED_REPORTS_CACHE_CONTROL = 'no-store' as const;
+
+/** Builds a JSON HTTP payload for federated report routes with private cache headers. */
+export function createFederatedReportsHttpResponse(
+  body: unknown,
+  status = 200,
+): {
+  readonly body: unknown;
+  readonly status: number;
+  readonly headers: Readonly<Record<string, string>>;
+} {
+  return {
+    body,
+    status,
+    headers: {
+      'Cache-Control': FEDERATED_REPORTS_CACHE_CONTROL,
+    },
+  };
+}
+
 /** Thrown when the caller lacks project membership for federated report listing. */
 export class FederatedReportsForbiddenError extends Error {
   constructor() {
