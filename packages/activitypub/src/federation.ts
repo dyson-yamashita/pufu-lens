@@ -5,9 +5,14 @@ import { Temporal } from '@js-temporal/polyfill';
 import type { ActivityPubRepository } from './actor-repository.ts';
 import { parseCanonicalOrigin } from './canonical-origin.ts';
 import type { DeliveryErrorObserver } from './delivery-observer.ts';
-import { registerFollowInboxListeners } from './federation-follow-listeners.ts';
+import {
+  createGlobalInboxListeners,
+  registerFollowInboxHandlers,
+} from './federation-follow-listeners.ts';
+import { registerReportInboxHandlers } from './federation-report-listeners.ts';
 import { FOLLOW_COLLECTION_START_CURSOR, resolveFollowCollectionCursor } from './follow-model.ts';
 import type { ActivityPubFollowUseCases } from './follow-use-cases.ts';
+import type { ActivityPubInboundReportUseCases } from './inbound-report-use-cases.ts';
 import { escapeNoteContentText } from './report-delivery.ts';
 import { createProductionSafeDocumentLoader } from './security.ts';
 import {
@@ -20,6 +25,7 @@ type FederationBuildInput = {
   canonicalOrigin: string;
   repository: ActivityPubRepository;
   followUseCases?: ActivityPubFollowUseCases;
+  inboundReportUseCases?: ActivityPubInboundReportUseCases;
   kv: KvStore;
   queue: MessageQueue;
   queueHooks?: {
@@ -38,6 +44,7 @@ export async function createProductionActivityPubFederation(input: {
   canonicalOrigin: string;
   repository: ActivityPubRepository;
   followUseCases?: ActivityPubFollowUseCases;
+  inboundReportUseCases?: ActivityPubInboundReportUseCases;
   kv: KvStore;
   queue: MessageQueue;
   queueHooks?: FederationBuildInput['queueHooks'];
@@ -218,12 +225,20 @@ async function buildActivityPubFederation(
     return FOLLOW_COLLECTION_START_CURSOR;
   });
 
-  if (input.followUseCases) {
-    registerFollowInboxListeners(builder, {
-      canonicalOrigin: origin,
-      actorRepository: input.repository,
-      followUseCases: input.followUseCases,
-    });
+  if (input.followUseCases || input.inboundReportUseCases) {
+    const listeners = createGlobalInboxListeners(builder);
+    if (input.followUseCases) {
+      registerFollowInboxHandlers(listeners, {
+        canonicalOrigin: origin,
+        actorRepository: input.repository,
+        followUseCases: input.followUseCases,
+      });
+    }
+    if (input.inboundReportUseCases) {
+      registerReportInboxHandlers(listeners, {
+        inboundReportUseCases: input.inboundReportUseCases,
+      });
+    }
   } else {
     builder.setInboxListeners('/activitypub/actors/{identifier}/inbox', '/activitypub/inbox');
   }

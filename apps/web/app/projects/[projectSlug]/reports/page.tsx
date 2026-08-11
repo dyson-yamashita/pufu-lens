@@ -9,6 +9,7 @@ import {
 import { resolveReportSchedulePageAccess } from '../../../../src/admin-report-schedule-runtime';
 import { getOptionalAdminSql } from '../../../../src/admin-sql';
 import { AuthRequiredError, requireSessionUserId } from '../../../../src/auth-session';
+import { FederatedReportsList } from '../../../../src/federated-report-client';
 import {
   createPostgresReportRepository,
   reportNowFromEnv,
@@ -117,7 +118,7 @@ export default async function ReportsPage({
       <section className="panel report-list-panel" data-testid="reports-list-panel">
         <div className="panel-heading">
           <div>
-            <h2>Private Reports</h2>
+            <h2>自分のレポート</h2>
             <p className="mono">GET /api/projects/{project.slug}/reports</p>
           </div>
           <ReportGenerateForm
@@ -128,6 +129,15 @@ export default async function ReportsPage({
           />
         </div>
         <ReportsList projectSlug={project.slug} />
+      </section>
+      <section className="panel federated-reports-panel" data-testid="federated-reports-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>外部レポート</h2>
+            <p className="mono">GET /api/projects/{project.slug}/federated-reports</p>
+          </div>
+        </div>
+        <FederatedReportsList projectSlug={project.slug} />
       </section>
       {scheduleSettings ? (
         <ReportSchedulePanel

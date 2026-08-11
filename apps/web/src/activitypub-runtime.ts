@@ -1,5 +1,6 @@
 import {
   createActivityPubFollowUseCases,
+  createActivityPubInboundReportUseCasesWithSql,
   createPostgresActivityPubRepository,
   createPostgresFedifyKvStore,
   createPostgresQueueAdapter,
@@ -205,10 +206,16 @@ async function initializeProductionFederation(input: {
       enqueueOutbox: resolveProductionFollowOutboxEnqueueEnabled(),
       isDomainBlocked: parseBlockedDomainsFromEnv(process.env.ACTIVITYPUB_BLOCKED_DOMAINS),
     });
+    const inboundReportUseCases = createActivityPubInboundReportUseCasesWithSql({
+      canonicalOrigin: input.config.canonicalOrigin,
+      sql,
+      isDomainBlocked: parseBlockedDomainsFromEnv(process.env.ACTIVITYPUB_BLOCKED_DOMAINS),
+    });
     return await createProductionActivityPubFederation({
       canonicalOrigin: input.config.canonicalOrigin,
       repository,
       followUseCases,
+      inboundReportUseCases,
       kv: createPostgresFedifyKvStore({ sql }),
       queue: createPostgresQueueAdapter({
         sql,

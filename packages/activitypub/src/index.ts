@@ -26,7 +26,18 @@ export {
   DISPATCHER_MAX_RUNTIME_MS,
   PREDECESSOR_FAILURE_CODE,
 } from './dispatcher.ts';
+export {
+  createPostgresFederatedReportRepository,
+  type FederatedReportRepository,
+  type MappedInboundReportInput,
+} from './federated-report-repository.ts';
 export { createProductionActivityPubFederation } from './federation.ts';
+export {
+  createGlobalInboxListeners,
+  registerFollowInboxHandlers,
+  registerFollowInboxListeners,
+} from './federation-follow-listeners.ts';
+export { registerReportInboxHandlers } from './federation-report-listeners.ts';
 export {
   buildDeterministicAcceptActivityUri,
   buildDeterministicUndoActivityUri,
@@ -54,6 +65,17 @@ export {
 } from './follow-use-cases.ts';
 export { createInMemoryActivityPubRepository } from './in-memory-actor-repository.ts';
 export { createInMemoryActivityPubFollowRepository } from './in-memory-follow-repository.ts';
+export {
+  assertInboundReportHttpsUrl,
+  assertInboundReportTitle,
+  sanitizeInboundReportSummaryHtml,
+} from './inbound-report-sanitizer.ts';
+export {
+  type ActivityPubInboundReportUseCases,
+  createActivityPubInboundReportUseCases,
+  createActivityPubInboundReportUseCasesWithSql,
+  type InboundReportProcessResult,
+} from './inbound-report-use-cases.ts';
 export {
   decryptPrivateJwk,
   encryptPrivateJwk,
@@ -119,6 +141,16 @@ export {
   type RemoteActorReadModel,
   type RemoteActorResolver,
 } from './remote-actor.ts';
+export {
+  createRemoteArticleResolver,
+  type RemoteArticleReadModel,
+  type RemoteArticleResolver,
+} from './remote-article.ts';
+export {
+  type BlockedDomainPredicate,
+  type BoundedRemoteJsonFetcher,
+  createBoundedRemoteJsonFetcher,
+} from './remote-document.ts';
 export {
   buildStableAnnounceActivityUri,
   buildStableCreateActivityUri,

@@ -2,6 +2,11 @@ import { isActor } from '@fedify/vocab';
 import { validatePublicUrl } from '@fedify/vocab-runtime';
 import { parseCanonicalOrigin } from './canonical-origin.ts';
 import { assertHttpsActivityPubUrl } from './follow-model.ts';
+import {
+  type BlockedDomainPredicate,
+  type CreateBoundedRemoteJsonFetcherInput,
+  createBoundedRemoteJsonFetcher,
+} from './remote-document.ts';
 
 /** Resolved remote actor endpoints for outbound federation. */
 export type RemoteActorReadModel = {
@@ -10,24 +15,12 @@ export type RemoteActorReadModel = {
   readonly sharedInboxUri: string | null;
 };
 
-/** Predicate that blocks federation to specific hostnames. */
-export type BlockedDomainPredicate = (hostname: string) => boolean;
+export type { BlockedDomainPredicate };
 
 const MAX_INPUT_LENGTH = 512;
-const MAX_REDIRECTS = 5;
-const TOTAL_TIMEOUT_MS = 5000;
-const MAX_RESPONSE_BYTES = 1024 * 1024;
-
-type FetchLike = typeof fetch;
 
 /** Input for creating a remote actor resolver with injected network boundaries. */
-export type CreateRemoteActorResolverInput = {
-  canonicalOrigin: string;
-  fetch: FetchLike;
-  isDomainBlocked: BlockedDomainPredicate;
-  /** Hermetic tests inject a no-op URL validator to avoid DNS lookups. */
-  validateUrl?: (url: string) => Promise<void>;
-};
+export type CreateRemoteActorResolverInput = CreateBoundedRemoteJsonFetcherInput;
 
 /** Remote actor resolver for WebFinger and Actor document lookup. */
 export type RemoteActorResolver = {
@@ -54,104 +47,6 @@ function isHostnameBlocked(hostname: string, blockedDomains: readonly string[]):
     }
   }
   return false;
-}
-
-async function resolveRemoteActor(
-  rawInput: string,
-  input: CreateRemoteActorResolverInput,
-): Promise<RemoteActorReadModel> {
-  const trimmed = rawInput.trim();
-  if (trimmed.length === 0 || trimmed.length > MAX_INPUT_LENGTH) {
-    throw new Error('Invalid remote actor input length');
-  }
-
-  const controller = new AbortController();
-  const deadline = setTimeout(() => controller.abort(), TOTAL_TIMEOUT_MS);
-  try {
-    const validateUrl = input.validateUrl ?? validatePublicUrl;
-    const actorUrl = await resolveActorUrl(trimmed, input, validateUrl, controller.signal);
-    assertNotCanonicalRemoteOrigin(actorUrl, input.canonicalOrigin);
-    const { document, finalUrl } = await fetchJsonDocument(
-      actorUrl,
-      input,
-      validateUrl,
-      controller.signal,
-    );
-    return await parseActorDocument(document, input, validateUrl, controller.signal, finalUrl);
-  } finally {
-    clearTimeout(deadline);
-  }
-}
-
-async function resolveActorUrl(
-  trimmed: string,
-  input: CreateRemoteActorResolverInput,
-  validateUrl: (url: string) => Promise<void>,
-  signal: AbortSignal,
-): Promise<string> {
-  if (trimmed.startsWith('https://')) {
-    const url = assertHttpsActivityPubUrl(trimmed, 'actor');
-    await assertRemoteUrlPolicy(url, input, validateUrl, signal);
-    return url;
-  }
-
-  const handle = parseHandle(trimmed);
-  const expectedSubject = `acct:${handle.user}@${handle.host}`;
-  const webfingerUrl = `https://${handle.host}/.well-known/webfinger?resource=${encodeURIComponent(
-    expectedSubject,
-  )}`;
-  await assertRemoteUrlPolicy(webfingerUrl, input, validateUrl, signal);
-
-  const webfinger = await fetchJsonDocument(webfingerUrl, input, validateUrl, signal);
-  if (
-    typeof webfinger.document.subject !== 'string' ||
-    webfinger.document.subject !== expectedSubject
-  ) {
-    throw new Error('WebFinger subject mismatch');
-  }
-  const links = webfinger.document.links;
-  if (!Array.isArray(links)) {
-    throw new Error('Invalid WebFinger document');
-  }
-  for (const link of links) {
-    if (!link || typeof link !== 'object') {
-      continue;
-    }
-    const record = link as Record<string, unknown>;
-    if (record.rel !== 'self') {
-      continue;
-    }
-    if (record.type !== 'application/activity+json' && record.type !== 'application/ld+json') {
-      continue;
-    }
-    if (typeof record.href !== 'string') {
-      continue;
-    }
-    const href = assertHttpsActivityPubUrl(record.href, 'WebFinger self link');
-    await assertRemoteUrlPolicy(href, input, validateUrl, signal);
-    return href;
-  }
-  throw new Error('WebFinger self ActivityPub link not found');
-}
-
-function parseHandle(trimmed: string): { user: string; host: string } {
-  let candidate = trimmed;
-  if (candidate.startsWith('acct:')) {
-    candidate = candidate.slice('acct:'.length);
-  }
-  if (candidate.startsWith('@')) {
-    candidate = candidate.slice(1);
-  }
-  const atIndex = candidate.lastIndexOf('@');
-  if (atIndex <= 0 || atIndex === candidate.length - 1) {
-    throw new Error('Invalid remote actor handle');
-  }
-  const user = candidate.slice(0, atIndex);
-  const host = candidate.slice(atIndex + 1);
-  if (!user || !host || host.includes('/')) {
-    throw new Error('Invalid remote actor handle');
-  }
-  return { user, host };
 }
 
 function assertHostnameAllowed(hostname: string, isDomainBlocked: BlockedDomainPredicate): void {
@@ -205,111 +100,94 @@ async function validateUrlWithDeadline(
   }
 }
 
-async function fetchJsonDocument(
-  url: string,
+async function resolveRemoteActor(
+  rawInput: string,
   input: CreateRemoteActorResolverInput,
-  validateUrl: (url: string) => Promise<void>,
-  signal: AbortSignal,
-): Promise<{ document: Record<string, unknown>; finalUrl: string }> {
-  await assertRemoteUrlPolicy(url, input, validateUrl, signal);
+): Promise<RemoteActorReadModel> {
+  const trimmed = rawInput.trim();
+  if (trimmed.length === 0 || trimmed.length > MAX_INPUT_LENGTH) {
+    throw new Error('Invalid remote actor input length');
+  }
 
-  const { response, finalUrl } = await fetchWithRedirects(
-    url,
-    input.fetch,
-    signal,
-    validateUrl,
-    input.isDomainBlocked,
-    input.canonicalOrigin,
-  );
-  if (!response.ok) {
-    throw new Error('Remote document fetch failed');
+  const fetcher = createBoundedRemoteJsonFetcher(input);
+  const validateUrl = input.validateUrl ?? validatePublicUrl;
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), 5000);
+  try {
+    if (trimmed.startsWith('https://')) {
+      const url = assertHttpsActivityPubUrl(trimmed, 'actor');
+      await assertRemoteUrlPolicy(url, input, validateUrl, controller.signal);
+      assertNotCanonicalRemoteOrigin(url, input.canonicalOrigin);
+      const { document, finalUrl } = await fetcher.fetchJsonDocument(url);
+      return parseActorDocument(document, input, validateUrl, controller.signal, finalUrl);
+    }
+
+    const handle = parseHandle(trimmed);
+    const expectedSubject = `acct:${handle.user}@${handle.host}`;
+    const webfingerUrl = `https://${handle.host}/.well-known/webfinger?resource=${encodeURIComponent(
+      expectedSubject,
+    )}`;
+    await assertRemoteUrlPolicy(webfingerUrl, input, validateUrl, controller.signal);
+    const webfinger = await fetcher.fetchJsonDocument(webfingerUrl);
+    if (
+      typeof webfinger.document.subject !== 'string' ||
+      webfinger.document.subject !== expectedSubject
+    ) {
+      throw new Error('WebFinger subject mismatch');
+    }
+    const links = webfinger.document.links;
+    if (!Array.isArray(links)) {
+      throw new Error('Invalid WebFinger document');
+    }
+    for (const link of links) {
+      if (!link || typeof link !== 'object') {
+        continue;
+      }
+      const record = link as Record<string, unknown>;
+      if (record.rel !== 'self') {
+        continue;
+      }
+      if (record.type !== 'application/activity+json' && record.type !== 'application/ld+json') {
+        continue;
+      }
+      if (typeof record.href !== 'string') {
+        continue;
+      }
+      const href = assertHttpsActivityPubUrl(record.href, 'WebFinger self link');
+      await assertRemoteUrlPolicy(href, input, validateUrl, controller.signal);
+      const actorDocument = await fetcher.fetchJsonDocument(href);
+      return parseActorDocument(
+        actorDocument.document,
+        input,
+        validateUrl,
+        controller.signal,
+        actorDocument.finalUrl,
+      );
+    }
+    throw new Error('WebFinger self ActivityPub link not found');
+  } finally {
+    clearTimeout(deadline);
   }
-  const bytes = await readBoundedBody(response, MAX_RESPONSE_BYTES);
-  const text = new TextDecoder().decode(bytes);
-  const parsed = JSON.parse(text) as unknown;
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('Remote document is not a JSON object');
-  }
-  return { document: parsed as Record<string, unknown>, finalUrl };
 }
 
-async function fetchWithRedirects(
-  url: string,
-  fetchImpl: FetchLike,
-  signal: AbortSignal,
-  validateUrl: (url: string) => Promise<void>,
-  isDomainBlocked: BlockedDomainPredicate,
-  canonicalOrigin: string,
-): Promise<{ response: Response; finalUrl: string }> {
-  let current = url;
-  for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
-    const parsed = new URL(current);
-    if (parsed.protocol !== 'https:') {
-      throw new Error('Remote URL must use HTTPS');
-    }
-    assertHostnameAllowed(parsed.hostname, isDomainBlocked);
-    assertNotCanonicalRemoteOrigin(current, canonicalOrigin);
-    await validateUrlWithDeadline(validateUrl, current, signal);
-    const response = await fetchImpl(current, {
-      method: 'GET',
-      headers: { Accept: 'application/activity+json, application/ld+json' },
-      redirect: 'manual',
-      signal,
-    });
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get('location');
-      if (!location) {
-        throw new Error('Redirect missing location');
-      }
-      const redirectTarget = new URL(location, current).toString();
-      if (redirectTarget !== current) {
-        await assertRemoteUrlPolicy(
-          redirectTarget,
-          { canonicalOrigin, fetch: fetchImpl, isDomainBlocked },
-          validateUrl,
-          signal,
-        );
-      }
-      current = redirectTarget;
-      continue;
-    }
-    return { response, finalUrl: current };
+function parseHandle(trimmed: string): { user: string; host: string } {
+  let candidate = trimmed;
+  if (candidate.startsWith('acct:')) {
+    candidate = candidate.slice('acct:'.length);
   }
-  throw new Error('Too many redirects');
-}
-
-async function readBoundedBody(response: Response, maxBytes: number): Promise<Uint8Array> {
-  const reader = response.body?.getReader();
-  if (!reader) {
-    const buffer = await response.arrayBuffer();
-    if (buffer.byteLength > maxBytes) {
-      throw new Error('Remote response exceeds size limit');
-    }
-    return new Uint8Array(buffer);
+  if (candidate.startsWith('@')) {
+    candidate = candidate.slice(1);
   }
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-    if (!value) {
-      continue;
-    }
-    total += value.byteLength;
-    if (total > maxBytes) {
-      throw new Error('Remote response exceeds size limit');
-    }
-    chunks.push(value);
+  const atIndex = candidate.lastIndexOf('@');
+  if (atIndex <= 0 || atIndex === candidate.length - 1) {
+    throw new Error('Invalid remote actor handle');
   }
-  const merged = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.byteLength;
+  const user = candidate.slice(0, atIndex);
+  const host = candidate.slice(atIndex + 1);
+  if (!user || !host || host.includes('/')) {
+    throw new Error('Invalid remote actor handle');
   }
-  return merged;
+  return { user, host };
 }
 
 function normalizeActorDocumentId(actorUri: string): string {

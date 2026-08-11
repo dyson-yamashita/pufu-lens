@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  buildAnnounceActivityFromJson,
+  buildCreateActivityFromJson,
   processStoredInboxViaVerifiedListenerHarness,
   UnsupportedStoredInboxActivityError,
 } from './follow-inbox-listener-harness.ts';
@@ -73,6 +75,44 @@ async function createHarnessFixture() {
   });
   return { actorRepository, followUseCases };
 }
+
+test('buildCreateActivityFromJson preserves audience from pinned payload', async () => {
+  const audience = 'https://remote.example/followers/only';
+  const activity = await buildCreateActivityFromJson({
+    '@context': 'https://www.w3.org/ns/activitystreams',
+    id: 'https://remote.example/activities/create/audience',
+    type: 'Create',
+    actor: remoteActorUri,
+    to: audience,
+    object: {
+      '@context': 'https://www.w3.org/ns/activitystreams',
+      type: 'Article',
+      id: 'https://remote.example/articles/audience',
+      attributedTo: remoteActorUri,
+      to: audience,
+      name: 'title',
+      content: '<p>hello</p>',
+      url: 'https://remote.example/articles/audience',
+    },
+  });
+  const json = (await activity.toJsonLd()) as { to?: unknown; object?: { to?: unknown } };
+  assert.deepEqual(json.to, audience);
+  assert.deepEqual(json.object?.to, audience);
+});
+
+test('buildAnnounceActivityFromJson preserves audience from pinned payload', async () => {
+  const audience = 'https://remote.example/followers/only';
+  const activity = await buildAnnounceActivityFromJson({
+    '@context': 'https://www.w3.org/ns/activitystreams',
+    id: 'https://remote.example/activities/announce/audience',
+    type: 'Announce',
+    actor: remoteActorUri,
+    to: audience,
+    object: 'https://remote.example/articles/audience',
+  });
+  const json = (await activity.toJsonLd()) as { to?: unknown };
+  assert.deepEqual(json.to, audience);
+});
 
 test('processStoredInboxViaVerifiedListenerHarness dispatches Accept activities', async () => {
   await withDbTestEnv(async () => {

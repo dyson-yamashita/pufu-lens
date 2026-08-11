@@ -1028,3 +1028,63 @@
     display: grid;
   }
 }
+
+.federated-reports-panel {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.federated-reports-list {
+  display: grid;
+  gap: 12px;
+}
+
+.federated-reports-items {
+  display: grid;
+  gap: 12px;
+}
+
+.federated-report-card {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.federated-report-card-header {
+  display: grid;
+  gap: 4px;
+}
+
+.federated-report-card-header h3 {
+  font-size: 16px;
+  line-height: 1.4;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.federated-report-summary {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.federated-report-summary img,
+.federated-report-summary iframe,
+.federated-report-summary script,
+.federated-report-summary svg,
+.federated-report-summary video {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .federated-report-card {
+    padding: 12px;
+  }
+
+  .federated-report-card-header h3 {
+    font-size: 15px;
+  }
+}
