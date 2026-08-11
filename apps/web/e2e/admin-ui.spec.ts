@@ -59,6 +59,13 @@ async function expectDataSourceCreatePanelLayout(page: Page): Promise<void> {
   }
 }
 
+/** Opens a public project card link and waits for client navigation to finish. */
+async function openPublicProjectFromList(page: Page, projectSlug: string): Promise<void> {
+  const destination = `/projects/${projectSlug}`;
+  await page.getByTestId(`public-project-open-${projectSlug}`).click();
+  await page.waitForURL(destination);
+}
+
 test('scenario: user can switch theme and keep it after reload', async ({ page }) => {
   await page.context().clearCookies();
   await page.goto('/projects');
@@ -108,7 +115,7 @@ test('scenario: public user discovers public projects without private admin link
     '/projects/sample-a',
   );
 
-  await page.getByTestId('public-project-open-sample-a').click();
+  await openPublicProjectFromList(page, 'sample-a');
   await expect(page.getByTestId('global-nav-overview')).toBeVisible();
   await expect(page.getByTestId('global-nav-overview')).toHaveAttribute(
     'href',
