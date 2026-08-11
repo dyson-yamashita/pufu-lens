@@ -19,7 +19,8 @@
     "./dispatcher": "./src/dispatcher.ts",
     "./protocol": "./src/protocol.ts",
     "./queue": "./src/queue.ts",
-    "./security": "./src/security.ts"
+    "./security": "./src/security.ts",
+    "./inbound-report-sanitizer": "./src/inbound-report-sanitizer.ts"
   },
   "scripts": {
     "build": "tsc --noEmit -p tsconfig.json",
@@ -33,9 +34,11 @@
     "@fedify/vocab": "2.3.4",
     "@fedify/vocab-runtime": "2.3.4",
     "@js-temporal/polyfill": "0.5.1",
-    "postgres": "3.4.9"
+    "postgres": "3.4.9",
+    "sanitize-html": "2.17.0"
   },
   "devDependencies": {
-    "@fedify/next": "2.3.4"
+    "@fedify/next": "2.3.4",
+    "@types/sanitize-html": "2.16.1"
   }
 }

@@ -25,6 +25,7 @@
 | `POST`  | `/api/public/reports/[reportId]/chat`                        | public         | compatibility | 旧 public chat alias。正規 API は project-scoped path   |
 | `POST`  | `/api/projects/[projectSlug]/chat`                           | project member | implemented   | private chat                                            |
 | `GET`   | `/api/projects/[projectSlug]/reports`                        | project member | implemented   | private report 一覧                                     |
+| `GET`   | `/api/projects/[projectSlug]/federated-reports`              | project member | implemented   | project-scoped 外部 report 一覧                         |
 | `GET`   | `/api/projects/[projectSlug]/reports/[reportId]`             | project member | implemented   | private report 取得                                     |
 | `PATCH` | `/api/projects/[projectSlug]/reports/[reportId]`             | project admin  | implemented   | report 公開/非公開 metadata 更新                        |
 | `PATCH` | `/api/projects/[projectSlug]/federation`                     | project admin  | implemented   | public project Actor の federation enable / disable     |
@@ -36,7 +37,9 @@
 
 ActivityPub public endpoint は `ACTIVITYPUB_ENABLED=1` と固定 canonical origin / Actor key encryption key が設定された production proxy で処理する。`/.well-known/webfinger`、`/activitypub/actors/[preferredUsername]`、その followers / following / outbox collection、`/activitypub/reports/[reportId]` を公開し、public かつ federation-enabled な project と public report だけを解決する。private / disabled / missing は endpoint 間で区別せず `404` とする。
 
-`/activitypub/actors/[preferredUsername]/inbox` と `/activitypub/inbox` は Follow / Accept / Undo を受け付け、Fedify が検証した署名 key owner と Activity actor、embedded Follow の actor / object が一致した場合だけ PostgreSQL-backed use-case へ渡す。followers / following は accepted relation の remote Actor URI だけを versioned opaque cursor で返し、inbox URI、follow status、内部 ID、時刻を公開しない。
+`/activitypub/actors/[preferredUsername]/inbox` と `/activitypub/inbox` は Follow / Accept / Undo / `Create(Article)` / `Announce(Article)` を受け付け、Fedify が検証した署名 key owner と Activity actor、embedded objectのactor / attribution / audienceが一致した場合だけ PostgreSQL-backed use-case へ渡す。followers / following は accepted relation の remote Actor URI だけを versioned opaque cursor で返し、inbox URI、follow status、内部 ID、時刻を公開しない。
+
+`GET /api/projects/[projectSlug]/federated-reports` はAuth.js sessionと`project_members`を検証し、認可済みproject IDだけでrepositoryを検索する。responseはtitle、source Actor、domain、published time、sanitized summary、original URLとblock件数だけを返し、内部ID、follow ID、raw payload、署名headerを含めない。保存後にdomain blockへ追加されたrowも表示時に再評価し、すべて非表示なら安全なblocked状態を返す。認証済みデータが共有cacheへ残らないよう、成功・認証失敗・認可失敗・内部エラーの全responseへ`Cache-Control: no-store`を付与する。
 
 `PATCH /api/projects/[projectSlug]/federation` は `{ "enabled": boolean, "preferredUsername"?: string }` だけを受理する。Auth.js session と既存 authz module で project admin を確認し、URL slug と認可済み project ID / slug を repository transaction で再検証する。不正 slug、未知 field、project 越境、non-admin、private project の enable を拒否する。route は認可・JSON validation・use-case 呼び出しだけを担い、SQL と鍵操作は repository / use-case 境界に置く。既知の validation / visibility / username conflict は固定した status・error code・安全な message へ写像し、予期しない repository error は内部 message を返さない generic `500` とする。
 

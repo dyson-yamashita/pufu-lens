@@ -24,7 +24,7 @@
 補足：
 
 - PostgreSQL は Apache AGE / pgvector / PGroonga を同梱したカスタム Docker イメージで運用する。
-- Fedify 関連 package は `2.3.4` へ完全固定し、Fedify 自体は Node.js `>=22` を要求する。repository root の engine は root scripts の `node --experimental-strip-types` 利用に合わせて `>=22.6.0` とする。Web は Next.js 16 `proxy.ts` convention と `manuallyStartQueue: true` を使い、Follow / Accept / Undo と report Create / Announce の受信・配送処理を PostgreSQL-backed one-shot process に分離する。production ActivityPub endpoint は `ACTIVITYPUB_ENABLED=1` の明示設定時だけ有効で、queue処理はCloud Scheduler経由の専用 Cloud Run Jobに限定する。外部 report 取り込みは後続 Step の対象である。
+- Fedify 関連 package は `2.3.4` へ完全固定し、Fedify 自体は Node.js `>=22` を要求する。repository root の engine は root scripts の `node --experimental-strip-types` 利用に合わせて `>=22.6.0` とする。Web は Next.js 16 `proxy.ts` convention と `manuallyStartQueue: true` を使い、Follow / Accept / Undo と report Create / Announce の受信・配送処理を PostgreSQL-backed one-shot process に分離する。production ActivityPub endpoint は `ACTIVITYPUB_ENABLED=1` の明示設定時だけ有効で、queue処理はCloud Scheduler経由の専用 Cloud Run Jobに限定する。外部reportはproject-scopedな参照表示に閉じ、ingestion / chat / graph / report生成へ流さない。
 - Cloud SQL は Apache AGE を前提にできないため、本番 DB の第一候補にはしない。
 - AGE を使う DB 接続では、接続確立時に `LOAD 'age'` と `SET search_path = ag_catalog, "$user", public` を実行する。
 - Chat回答とプ譜の生成モデルはMastra model routerの `PUFU_LENS_CHAT_MODEL` で選び、Google、OpenAI、Anthropicなどのprovider-qualified modelを指定する。

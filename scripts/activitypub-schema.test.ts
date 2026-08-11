@@ -31,6 +31,14 @@ const migration0021Path = join(
   import.meta.dirname,
   '../infra/db/migrations/0021_activitypub_validate_step4_constraints.sql',
 );
+const migration0022Path = join(
+  import.meta.dirname,
+  '../infra/db/migrations/0022_activitypub_inbound_reports.sql',
+);
+const migration0023Path = join(
+  import.meta.dirname,
+  '../infra/db/migrations/0023_activitypub_validate_inbound_report_constraints.sql',
+);
 const initPath = join(import.meta.dirname, '../infra/docker/postgres/init.sql');
 
 test('0015 creates ActivityPub Fedify KV and queue message tables', async () => {
@@ -402,6 +410,32 @@ test('0020 normalizes legacy activitypub_delivery_failed before last_error_code 
   assert.ok(activitiesAllowlist);
   assert.equal(queueAllowlist.includes("'activitypub_delivery_failed'"), false);
   assert.equal(activitiesAllowlist.includes("'activitypub_delivery_failed'"), false);
+});
+
+test('0022 inbound federated report constraints allow query strings and reject fragments', async () => {
+  const [migration, init] = await Promise.all([
+    readFile(migration0022Path, 'utf8'),
+    readFile(initPath, 'utf8'),
+  ]);
+  for (const sql of [migration, init]) {
+    assert.match(sql, /\^https:\/\/\[\^\[:space:\]#\]\+\$/);
+    assert.doesNotMatch(sql, /#\?/);
+    assert.match(sql, /federated_reports_validate_follow/);
+    assert.match(
+      sql,
+      /BEFORE INSERT OR UPDATE OF project_id, source_follow_id, remote_actor_uri ON public\.federated_reports/,
+    );
+    assert.match(sql, /TG_OP = 'UPDATE'/);
+    assert.match(sql, /OLD\.project_id IS DISTINCT FROM NEW\.project_id/);
+    assert.match(sql, /OLD\.source_follow_id IS DISTINCT FROM NEW\.source_follow_id/);
+    assert.match(sql, /OLD\.remote_actor_uri IS DISTINCT FROM NEW\.remote_actor_uri/);
+  }
+});
+
+test('0023 validates inbound federated report constraints', async () => {
+  const migration = await readFile(migration0023Path, 'utf8');
+  assert.match(migration, /VALIDATE CONSTRAINT federated_reports_remote_object_uri_https_check/);
+  assert.match(migration, /VALIDATE CONSTRAINT federated_reports_original_url_https_check/);
 });
 
 function extractTriggerFunctionBody(sql: string, functionName: string): string | undefined {

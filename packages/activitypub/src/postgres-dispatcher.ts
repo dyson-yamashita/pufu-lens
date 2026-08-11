@@ -19,6 +19,7 @@ import {
   processOneQueuedMessage,
 } from './postgres.ts';
 import { buildOutboxDedupeKey } from './queue.ts';
+import type { BlockedDomainPredicate } from './remote-document.ts';
 import {
   buildStableAnnounceActivityUri,
   buildStableCreateActivityUri,
@@ -49,6 +50,7 @@ export type RunActivityPubDispatcherOnceInput = {
   readonly canonicalOrigin: string;
   readonly encryptionKey: Buffer;
   readonly actorRepository: ActivityPubRepository;
+  readonly isDomainBlocked?: BlockedDomainPredicate;
   readonly clock?: ActivityPubDispatcherClock;
   readonly maxBatchSize?: number;
   readonly maxRuntimeMs?: number;
@@ -164,6 +166,7 @@ export async function runActivityPubDispatcherOnce(
       canonicalOrigin: input.canonicalOrigin,
       encryptionKey: input.encryptionKey,
       actorRepository: input.actorRepository,
+      isDomainBlocked: input.isDomainBlocked,
       testOnlyAllowPrivateAddress: input.testOnlyAllowPrivateAddress,
       preferredQueueKind: preferredKind,
       clock,

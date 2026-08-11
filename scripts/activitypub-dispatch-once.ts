@@ -164,6 +164,7 @@ try {
     const { createPostgresActivityPubRepository } = await import(
       '@pufu-lens/activitypub/actor-repository'
     );
+    const { parseBlockedDomainsFromEnv } = await import('@pufu-lens/activitypub');
     const { runActivityPubDispatcherOnce } = await import(
       '@pufu-lens/activitypub/postgres-dispatcher'
     );
@@ -179,6 +180,7 @@ try {
       canonicalOrigin,
       encryptionKey,
       actorRepository,
+      isDomainBlocked: parseBlockedDomainsFromEnv(process.env.ACTIVITYPUB_BLOCKED_DOMAINS),
       testOnlyAllowPrivateAddress: isDbTestPath ? true : undefined,
     });
     console.log(

@@ -453,6 +453,10 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 
 ### Step 5: inbound report と外部レポート表示
 
+- status: `completed`
+- tracking Issue / PR: [#676](https://github.com/dyson-yamashita/pufu-lens/issues/676) / [#677](https://github.com/dyson-yamashita/pufu-lens/pull/677)
+- 更新日: 2026-08-11
+
 成果物:
 
 - inbound `Create(Article)` / `Announce(Article)` の検証、dereference、内部mapping
@@ -466,6 +470,14 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 - `@all` のAnnounceからcanonical Articleを1回だけ保存できる
 - unrelated Actor、spoofed attribution、private address、unsafe HTMLを拒否する
 - 外部reportがchat / graph / report生成候補へ混入しない
+
+実装結果:
+
+- Fedify の personal / shared inbox と PostgreSQL inbox queue に `Create(Article)` / `Announce(Article)` listener を統合した。HTTP署名の key owner、Activity actor、Public audience、Article型、Createの `attributedTo`、acceptedかつ未解除の outbound followを検証し、不一致・未承認・解除済み・replay metadata不一致を副作用なしで拒否する。
+- Announceのcanonical objectはHTTPS限定のbounded fetchでdereferenceし、初回URLとredirect各hopに既存SSRF guard・domain blockを適用する。private / loopback / special-use / tunneling / NAT64、DNS rebinding、credential、fragment、過剰redirect、5秒timeout、1 MiB超過を拒否する。Fedify parser前にJSON-LD contextを検証して未知のremote context、nested scoped remote context、`@import`を拒否し、Create / Announceを共通mappingへ正規化する。
+- `federated_reports` はaccepted outbound followとproject Actorの対応をDB triggerとrepository transactionで固定し、`project_id + remote_object_uri` の一意制約で重複・順序逆転・再送・project越境を拒否する。`@all` AnnounceとCreateが同じcanonical objectを示す場合もprojectごとに1 rowだけ保存する。
+- HTML allowlist sanitizeをingestion・API・clientの境界で重ね、remote image / script / unsafe URLを除去した。project member認可済みの一覧APIとレポート画面は「自分のレポート」「外部レポート」を分離し、title、source Actor、domain、published time、sanitized summary、明示操作のoriginal URLだけを表示する。一覧APIの全responseは`Cache-Control: no-store`とし、外部リンクは新規タブで `noopener noreferrer` を付与して、loading / empty / error / blocked状態を固定した。
+- chat、graph、embedding、search candidate、report生成、ingestion queueから外部report storageを除外する境界test、unit / schema / DB integration / desktop・mobile Playwrightを外部networkなしのfixtureで通した。本番deploy、外部Pufu Lens / Mastodon接続、Step 6以降は実施していない。
 
 ### Step 6: hermetic 2-instance / Mastodon 互換 E2E
 

@@ -1,4 +1,4 @@
-import { Accept, Follow, Undo } from '@fedify/vocab';
+import { Accept, Announce, Create, Follow, Undo } from '@fedify/vocab';
 import type { ActivityPubRepository } from './actor-repository.ts';
 import {
   createVerifiedInboxContextForTest,
@@ -6,7 +6,12 @@ import {
   invokeVerifiedInboundFollowListenerForTest,
   invokeVerifiedInboundUndoListenerForTest,
 } from './federation-follow-listeners.ts';
+import {
+  invokeVerifiedInboundAnnounceListenerForTest,
+  invokeVerifiedInboundCreateListenerForTest,
+} from './federation-report-listeners.ts';
 import type { ActivityPubFollowUseCases } from './follow-use-cases.ts';
+import type { ActivityPubInboundReportUseCases } from './inbound-report-use-cases.ts';
 import type { StoredInboxMessage } from './queue.ts';
 import {
   assertActivityPubDbTestRuntime,
@@ -53,6 +58,16 @@ export async function buildUndoActivityFromJson(activity: unknown): Promise<Undo
   });
 }
 
+/** Builds a Create vocabulary object from a pinned ActivityStreams JSON payload. */
+export async function buildCreateActivityFromJson(activity: unknown): Promise<Create> {
+  return Create.fromJsonLd(activity);
+}
+
+/** Builds an Announce vocabulary object from a pinned ActivityStreams JSON payload. */
+export async function buildAnnounceActivityFromJson(activity: unknown): Promise<Announce> {
+  return Announce.fromJsonLd(activity);
+}
+
 /** Extracts the ActivityStreams activity object from a Fedify queue message fixture. */
 export function readActivityFromFedifyQueueMessage(message: unknown): unknown {
   if (!message || typeof message !== 'object') {
@@ -82,6 +97,7 @@ export async function processStoredInboxViaVerifiedListenerHarness(input: {
   canonicalOrigin: string;
   actorRepository: ActivityPubRepository;
   followUseCases: ActivityPubFollowUseCases;
+  inboundReportUseCases?: ActivityPubInboundReportUseCases;
   signedActorUri: string;
   recipientUsername?: string | null;
 }): Promise<void> {
@@ -114,6 +130,26 @@ export async function processStoredInboxViaVerifiedListenerHarness(input: {
       await invokeVerifiedInboundUndoListenerForTest({
         ...listenerInput,
         activity: await buildUndoActivityFromJson(input.stored.activity),
+      });
+      return;
+    case 'Create':
+      if (!input.inboundReportUseCases) {
+        throw new UnsupportedStoredInboxActivityError(activityType);
+      }
+      await invokeVerifiedInboundCreateListenerForTest({
+        inboundReportUseCases: input.inboundReportUseCases,
+        ctx,
+        activity: await buildCreateActivityFromJson(input.stored.activity),
+      });
+      return;
+    case 'Announce':
+      if (!input.inboundReportUseCases) {
+        throw new UnsupportedStoredInboxActivityError(activityType);
+      }
+      await invokeVerifiedInboundAnnounceListenerForTest({
+        inboundReportUseCases: input.inboundReportUseCases,
+        ctx,
+        activity: await buildAnnounceActivityFromJson(input.stored.activity),
       });
       return;
     default:

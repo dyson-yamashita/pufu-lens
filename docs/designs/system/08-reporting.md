@@ -10,6 +10,8 @@ Report API、Public Report API、signed URL の共通契約は [API デザイン
 
 PostgreSQL は常時稼働させ、DB 依存の report / chat 入口に時刻による利用制限を設けない。public report / public chat も表示・回答生成の処理は private report / private chat と同じ経路を使い、違いはアクセス権だけに限定する。public 入口は `projects.visibility = 'public'` かつ `reports.is_public = true` のときだけ未ログインで許可し、private project では public report / public chat のいずれも許可しない。
 
+ActivityPubから受信した外部reportは`federated_reports`に分離し、既存の`reports`、`report_chunks`、raw document、document chunkへ変換しない。外部reportはproject member向け一覧の参照表示だけに使い、chat、graph、embedding、search candidate、report生成、ingestion queueへ投入しない。
+
 Private report JSON スキーマ（`schema_version: "v1"`）：
 
 ```jsonc

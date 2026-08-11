@@ -1054,8 +1054,63 @@ CREATE TABLE IF NOT EXISTS public.federated_reports (
   remote_updated_at timestamptz,
   received_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT federated_reports_object_type_check CHECK (object_type IN ('article', 'note')),
-  CONSTRAINT federated_reports_project_remote_object_key UNIQUE (project_id, remote_object_uri)
+  CONSTRAINT federated_reports_project_remote_object_key UNIQUE (project_id, remote_object_uri),
+  CONSTRAINT federated_reports_remote_object_uri_https_check CHECK (remote_object_uri ~ '^https://[^[:space:]#]+$'),
+  CONSTRAINT federated_reports_remote_activity_uri_https_check CHECK (remote_activity_uri ~ '^https://[^[:space:]#]+$'),
+  CONSTRAINT federated_reports_remote_actor_uri_https_check CHECK (remote_actor_uri ~ '^https://[^[:space:]#]+$'),
+  CONSTRAINT federated_reports_original_url_https_check CHECK (original_url ~ '^https://[^[:space:]#]+$'),
+  CONSTRAINT federated_reports_title_length_check CHECK (char_length(title) > 0 AND char_length(title) <= 300),
+  CONSTRAINT federated_reports_summary_length_check CHECK (octet_length(summary_html_sanitized) <= 16384),
+  CONSTRAINT federated_reports_uri_length_check CHECK (
+    char_length(remote_object_uri) <= 2048
+    AND char_length(remote_activity_uri) <= 2048
+    AND char_length(remote_actor_uri) <= 2048
+    AND char_length(original_url) <= 2048
+  )
 );
+
+CREATE INDEX IF NOT EXISTS federated_reports_project_listing_idx
+  ON public.federated_reports (project_id, COALESCE(published_at, received_at) DESC, id DESC);
+
+CREATE OR REPLACE FUNCTION public.activitypub_validate_federated_report_follow()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    IF OLD.project_id IS DISTINCT FROM NEW.project_id
+      OR OLD.source_follow_id IS DISTINCT FROM NEW.source_follow_id
+      OR OLD.remote_actor_uri IS DISTINCT FROM NEW.remote_actor_uri
+    THEN
+      RAISE EXCEPTION 'invalid federated report follow binding';
+    END IF;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.activitypub_follows f
+    INNER JOIN public.activitypub_actors a ON a.id = f.local_actor_id
+    WHERE f.id = NEW.source_follow_id
+      AND f.direction = 'outbound'
+      AND f.status = 'accepted'
+      AND f.accepted_at IS NOT NULL
+      AND f.undone_at IS NULL
+      AND f.remote_actor_uri = NEW.remote_actor_uri
+      AND a.project_id = NEW.project_id
+      AND a.kind = 'project'
+      AND a.enabled = true
+  ) THEN
+    RAISE EXCEPTION 'invalid federated report follow binding';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS federated_reports_validate_follow ON public.federated_reports;
+CREATE TRIGGER federated_reports_validate_follow
+  BEFORE INSERT OR UPDATE OF project_id, source_follow_id, remote_actor_uri ON public.federated_reports
+  FOR EACH ROW
+  EXECUTE FUNCTION public.activitypub_validate_federated_report_follow();
 
 CREATE TABLE IF NOT EXISTS public.schema_migrations (
   version TEXT PRIMARY KEY,
@@ -1084,5 +1139,7 @@ VALUES
   ('0018_activitypub_follow_indexes'),
   ('0019_activitypub_follow_constraint_validation'),
   ('0020_activitypub_report_publication_outbox'),
-  ('0021_activitypub_validate_step4_constraints')
+  ('0021_activitypub_validate_step4_constraints'),
+  ('0022_activitypub_inbound_reports'),
+  ('0023_activitypub_validate_inbound_report_constraints')
 ON CONFLICT (version) DO NOTHING;

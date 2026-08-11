@@ -1,4 +1,4 @@
-import type { FederationBuilder, InboxContext } from '@fedify/fedify';
+import type { FederationBuilder, InboxContext, InboxListenerSetters } from '@fedify/fedify';
 import { Accept, Follow, Undo } from '@fedify/vocab';
 import type { ActivityPubRepository } from './actor-repository.ts';
 import { normalizeRemoteActorUri } from './follow-model.ts';
@@ -11,9 +11,18 @@ type InboxContextWithSignedKeyOwner = InboxContext<undefined> & {
   getSignedKeyOwner(): Promise<{ id?: URL | null } | null>;
 };
 
-/** Registers verified Follow/Accept/Undo inbox listeners on personal and shared inboxes. */
-export function registerFollowInboxListeners(
+/** Creates the shared personal/shared inbox listener set with global idempotency. */
+export function createGlobalInboxListeners(
   builder: FederationBuilder<undefined>,
+): InboxListenerSetters<undefined> {
+  return builder
+    .setInboxListeners('/activitypub/actors/{identifier}/inbox', '/activitypub/inbox')
+    .withIdempotency('global');
+}
+
+/** Registers verified Follow/Accept/Undo handlers on an existing inbox listener set. */
+export function registerFollowInboxHandlers(
+  listeners: InboxListenerSetters<undefined>,
   input: {
     canonicalOrigin: string;
     actorRepository: ActivityPubRepository;
@@ -21,10 +30,6 @@ export function registerFollowInboxListeners(
   },
 ): void {
   const uri = buildActivityPubUriContract(input.canonicalOrigin);
-  const listeners = builder
-    .setInboxListeners('/activitypub/actors/{identifier}/inbox', '/activitypub/inbox')
-    .withIdempotency('global');
-
   listeners.on(Follow, async (ctx, activity) => {
     await handleInboundFollow(ctx, activity, input, uri);
   });
@@ -34,6 +39,18 @@ export function registerFollowInboxListeners(
   listeners.on(Undo, async (ctx, activity) => {
     await handleInboundUndo(ctx, activity, input, uri);
   });
+}
+
+/** Registers verified Follow/Accept/Undo inbox listeners on personal and shared inboxes. */
+export function registerFollowInboxListeners(
+  builder: FederationBuilder<undefined>,
+  input: {
+    canonicalOrigin: string;
+    actorRepository: ActivityPubRepository;
+    followUseCases: ActivityPubFollowUseCases;
+  },
+): void {
+  registerFollowInboxHandlers(createGlobalInboxListeners(builder), input);
 }
 
 async function handleInboundFollow(

@@ -501,6 +501,19 @@ export function parsePublicReportArticleRow(row: unknown): PublicReportArticle {
   };
 }
 
+/** Coerces a postgres.js query result into unknown rows for runtime parsers. */
+export function readSqlRows(result: unknown): readonly unknown[] {
+  if (!Array.isArray(result)) {
+    throw new Error('Invalid SQL result rows.');
+  }
+  return result;
+}
+
+/** Returns whether a SQL insert RETURNING clause produced at least one row. */
+export function sqlInsertReturnedRow(result: unknown): boolean {
+  return readSqlRows(result).length > 0;
+}
+
 /** Parses the first row from a SQL result set or returns undefined when empty. */
 export function parseOptionalRow<T>(
   rows: readonly unknown[],

@@ -90,7 +90,7 @@
 
 ---
 
-### 2.1 ActivityPub Step 1 / Step 2 / Step 3 / Step 4 protocol boundary
+### 2.1 ActivityPub Step 1 / Step 2 / Step 3 / Step 4 / Step 5 protocol boundary
 
 Plan 017 Step 1 では `packages/activitypub` に Fedify 2.3.4 の protocol contract と PostgreSQL KV / outbox queue adapter を追加した。Next.js の `proxy.ts` は明示的に spike flag を設定した場合だけ WebFinger / Actor / Article fixture を処理し、Web process 内で queue worker を開始しない。delivery は別 Node process が PostgreSQL row を1件 claimし、永続化した key ID から test Actor key を再取得して `Federation.processQueuedTask()` を呼ぶ。
 
@@ -102,4 +102,6 @@ Plan 017 Step 3 では personal / shared inbox の Follow / Accept / Undo listen
 
 Web process が queue consumer を起動しない境界は維持し、受信 Activity と配送 Activity は PostgreSQL queue を別 process の one-shot processor が処理する。project settings では member が購読状態を読み取り、project admin だけが server action 経由で outbound Follow / Undo を変更できる。
 
-Plan 017 Step 4 では report 公開更新と project Actor の Create / aggregate `@all` Actor の Announce を同じ DB transaction に置き、commit 後だけ dispatcher が公開 snapshot と公開時点の follower audience を materialize する。Web は `manuallyStartQueue: true` のまま workerを起動せず、Cloud Scheduler → issuer / audience / subject / email allowlist 付き内部 OIDC route → `activitypub-dispatcher` Cloud Run Job → `--once` entrypoint の経路だけが queue を処理する。Job は最大100件 / 45分で新規 claim を止め、PostgreSQL lease / heartbeat / retry / ordering gate を正本とする。外部 report 取り込みとUIは Step 5 以降である。
+Plan 017 Step 4 では report 公開更新と project Actor の Create / aggregate `@all` Actor の Announce を同じ DB transaction に置き、commit 後だけ dispatcher が公開 snapshot と公開時点の follower audience を materialize する。Web は `manuallyStartQueue: true` のまま workerを起動せず、Cloud Scheduler → issuer / audience / subject / email allowlist 付き内部 OIDC route → `activitypub-dispatcher` Cloud Run Job → `--once` entrypoint の経路だけが queue を処理する。Job は最大100件 / 45分で新規 claim を止め、PostgreSQL lease / heartbeat / retry / ordering gate を正本とする。
+
+Plan 017 Step 5 では同じFedify inboxとPostgreSQL queueへ inbound `Create(Article)` / `Announce(Article)` を統合した。listenerはHTTP署名のkey owner、actor、Public audience、object typeを検証し、use-caseはacceptedかつ未解除のoutbound followだけをprojectへ対応付ける。Announce objectはredirect各hopを既存SSRF guardとdomain blockで検証するbounded fetchから共通Article mappingへ正規化し、repositoryとDB triggerがproject越境を拒否する。外部reportは`federated_reports`とmember-only一覧API/UIに閉じ、chat、graph、embedding、search candidate、report生成、ingestionへ接続しない。

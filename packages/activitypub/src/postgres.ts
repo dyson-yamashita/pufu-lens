@@ -25,6 +25,7 @@ import {
 } from './federation.ts';
 import { processStoredInboxViaVerifiedListenerHarness } from './follow-inbox-listener-harness.ts';
 import { createActivityPubFollowUseCases } from './follow-use-cases.ts';
+import { createActivityPubInboundReportUseCasesWithSql } from './inbound-report-use-cases.ts';
 import {
   assertStoredMessageHasNoPrivateJwk,
   buildInboxDedupeKey,
@@ -40,6 +41,7 @@ import {
   UnsupportedFedifyQueueMessageError,
 } from './queue.ts';
 import type { RemoteActorResolver } from './remote-actor.ts';
+import type { BlockedDomainPredicate } from './remote-document.ts';
 import {
   assertActivityPubDbTestRuntime,
   assertTestOnlyPrivateAddressAllowed,
@@ -316,6 +318,8 @@ export type ProcessOneQueuedMessageInput = {
   testOnlyAllowPrivateAddress?: boolean;
   /** Test-only remote actor resolver override for inbox queue contract tests. */
   testRemoteActorResolver?: RemoteActorResolver;
+  /** Blocked domain predicate for inbound report remote fetches. */
+  isDomainBlocked?: BlockedDomainPredicate;
   /** Optional queue kind preference for fair inbox/outbox claiming. */
   preferredQueueKind?: 'inbox' | 'outbox';
   /** Injectable clock for deterministic dispatcher tests. */
@@ -355,6 +359,11 @@ export async function processOneQueuedMessage(
         ? { remoteActorResolver: input.testRemoteActorResolver }
         : {}),
     });
+    const inboundReportUseCases = createActivityPubInboundReportUseCasesWithSql({
+      canonicalOrigin: input.canonicalOrigin,
+      sql: input.sql,
+      isDomainBlocked: input.isDomainBlocked ?? (() => false),
+    });
 
     const heartbeatIntervalMs = input.heartbeatIntervalMs ?? 30_000;
     const heartbeat =
@@ -389,6 +398,7 @@ export async function processOneQueuedMessage(
             canonicalOrigin: input.canonicalOrigin,
             actorRepository: input.actorRepository,
             followUseCases,
+            inboundReportUseCases,
             signedActorUri,
             recipientUsername: stored.identifier,
           });
@@ -405,6 +415,7 @@ export async function processOneQueuedMessage(
             canonicalOrigin: input.canonicalOrigin,
             repository: input.actorRepository,
             followUseCases,
+            inboundReportUseCases,
             kv: createPostgresFedifyKvStore({ sql: input.sql, initialized: true }),
             queue,
             deliveryObserver,

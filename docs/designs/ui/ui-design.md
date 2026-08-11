@@ -238,6 +238,12 @@ PDF レポートは Web のレポートと同じ情報階層を保ち、タイ�
 - Follow / Unfollow の送信中は既存 `PendingSubmitButton` の disabled / pending feedback を使い、resolver / DB の失敗は `role="alert"` の安全な短文で表示します。秘密情報や remote response 本文を error に含めません。
 - subscription list は既存 panel、stacked list、mono metadata、status badge のトークンを再利用します。desktop / mobile とも縦積みで overflow を避け、長い Actor URI は panel 幅内で折り返します。
 
+### 外部レポート
+
+- project memberのレポート一覧では、既存履歴を「自分のレポート」、受信したActivityPub Articleを「外部レポート」の別panelとして縦に分離します。外部側はtitle、source Actor、domain、published time、sanitized summary、original URLだけを表示し、内部ID、follow状態、raw payloadは表示しません。
+- loading、empty、error、domain blocked、visible rowとblocked rowの混在をそれぞれ安全な短文で表示します。長いActor URIとsummaryはdesktop/mobileともpanel内で折り返し、remote image / script / iframeを描画しません。
+- original URLは「元レポートを開く」の明示操作だけで新規タブへ開き、`noopener noreferrer`を必須とします。カード全体の自動遷移、remote HTMLの直接埋め込み、thumbnail / link previewは行いません。
+
 ### AI チャットとシステムレポート
 
 - **AI チャットバブル:** 控えめなグラスモーフィズム効果と、細い Amethyst の左ボーダーでスタイルを設定します。タイポグラフィには Inter を使用します。
