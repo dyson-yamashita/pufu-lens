@@ -483,6 +483,7 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 
 - status: `completed`
 - tracking Issue: [#678](https://github.com/dyson-yamashita/pufu-lens/issues/678)
+- implementation PR: [#679](https://github.com/dyson-yamashita/pufu-lens/pull/679)
 - 更新日: 2026-08-11
 
 成果物:
