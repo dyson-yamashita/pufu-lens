@@ -481,6 +481,10 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 
 ### Step 6: hermetic 2-instance / Mastodon 互換 E2E
 
+- status: `completed`
+- tracking Issue: [#678](https://github.com/dyson-yamashita/pufu-lens/issues/678)
+- 更新日: 2026-08-11
+
 成果物:
 
 - 1つの test process 内に、実装コードを共有しつつ PostgreSQL schema、canonical origin、Actor key を分離した Pufu Lens A / B context を構築する test harness
@@ -501,6 +505,14 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 - remote fixture の fault control で timeout、429、503、停止を再現し、retry schedule、復旧後配送、重複副作用なしを仮想時刻で確認できる
 - test transport の host router は test dependency injection だけで有効になり、本番 document loader の SSRF guard を無効化しない。別 security test で production loader が loopback / private address を拒否する
 - fixture が固定する Mastodon version / commit と contract 出典、実 Mastodon 未確認の残存リスクを test artifact とリリース記録に残す
+
+実装結果（2026-08-11）:
+
+- 1 process 内に PostgreSQL database、canonical origin、Actor key を分離した A / B context と、`lens-a.test` / `lens-b.test` / `mastodon.test` 以外を fail-closed にする test-only host router を追加した。host router と document loader の差し替えは `NODE_ENV=test`、DB test flag、hermetic E2E flag の三重 guard 配下に限定し、本番 loader の loopback / private address 拒否を維持した。
+- A / B の project Actor / `@all` の相互購読、Mastodon 互換 Actor の WebFinger、signed Follow / Undo、Accept、Create、Announce、shared inbox を、実 HTTP route、Fedify parser / HTTP Signature、PostgreSQL queue 経由で確認した。timeout、429、503、停止、応答後切断、重複、Undo-before-Follow、署名改ざんは fault control と仮想 clock で再試行・復旧・二重副作用なしを確認した。
+- Mastodon `v4.6.5` の commit `1440d55b139e39ec722c2a3db7f60b66cd889048` と WebFinger、inbox、署名、Create、status parser / serializer の公式 source contract を `packages/activitypub/fixtures/mastodon-v4.6.5/provenance.json` に固定した。golden Create / Announce と sanitize 済み protocol trace は raw body、署名 header、private key、secret / PII を保存しない。
+- `Article` の `name`、`summary`、`url` が Mastodon 互換 timeline の title、summary、Pufu Lens report URL を満たしたため、singleton representation は `Article` を維持した。最初の outbound 前の `Note` → `Article` 変更、最初の outbound 後の `Note` 切替拒否も E2E で確認した。
+- `pnpm test:activitypub:e2e` を PostgreSQL 付き CI job に追加した。外部 network、外部 Pufu Lens / Mastodon、本番 deploy は使用していない。fixture は公式 source から合成した互換モデルであり、実 Mastodon server 固有の挙動は未確認リスクとして残る。
 
 ### Step 7: 運用、観測、コスト、ドキュメント
 

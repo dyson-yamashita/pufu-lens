@@ -11,6 +11,8 @@ DB 接続を伴う migration / schema 検証は CI の `db-check` job で `pnpm 
 
 ActivityPub の Actor repository / DB 制約 / 暗号化鍵再読込 / representation lock は、local PostgreSQL に `DATABASE_URL` を設定して `pnpm test:activitypub:db` で検証する。test は固定した専用 fixture ID だけを cleanup し、各 DB 制約ケースを独立 rollback transaction で実行する。schema 変更時は `pnpm test:activitypub:schema`、`pnpm db:migrate --check`、`pnpm db:schema-drift` も併用する。Web runtime の unit test では production federation の初期化失敗後の再試行、DB pool 上限の入力 guard、project federation API の固定エラー契約と log sanitize も確認する。
 
+ActivityPub の instance 間互換性は、`pnpm test:activitypub:e2e` で検証する。`DATABASE_URL` 未指定時は local test PostgreSQL の標準 URL（`postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens`）を使い、CI などでは `DATABASE_URL` で上書きする。この command は1 process 内に database、canonical origin、Actor key を分離した Pufu Lens A / B と Mastodon v4.6.5 互換 fixture を起動し、外部 network を使わず実 route、HTTP署名、Fedify parser、PostgreSQL queue、retry / recoveryを通す。test-only host router / document loader は `NODE_ENV=test`、`ACTIVITYPUB_RUN_DB_TESTS=1`、`ACTIVITYPUB_RUN_HERMETIC_E2E=1` が揃う場合だけ有効とし、CI artifact `artifacts/activitypub-e2e/protocol-trace.json` にはraw body、署名header、秘密鍵、secret / PIIを含めない。fixtureの固定version、公式source provenance、実 Mastodon 未確認リスクは `packages/activitypub/fixtures/mastodon-v4.6.5/provenance.json` を正とする。
+
 Source sync の差分取り込みと定期実行、および定期レポート生成は、collector、chunk置換、dispatcher、Mastra内部API、report UI の決定的なunit / integration / E2E testを組み合わせて確認する。実providerや本番credentialをテストから呼ばない。ローカル・stagingの運用確認と障害時の判断は [Source Sync Scheduling 運用手順](source-sync-scheduling.md) と [定期レポート Scheduling 運用手順](report-scheduling.md) に従う。
 
 ## Turbo cache

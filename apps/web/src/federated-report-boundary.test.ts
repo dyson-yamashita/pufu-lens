@@ -65,6 +65,9 @@ function shouldScanFile(relativePath: string): boolean {
   if (relativePath.includes('/e2e/') || relativePath.includes('/dev/e2e/')) {
     return false;
   }
+  if (relativePath.startsWith('packages/activitypub/src/hermetic-e2e/')) {
+    return false;
+  }
   if (
     !relativePath.startsWith('apps/') &&
     !relativePath.startsWith('packages/') &&
@@ -132,4 +135,9 @@ test('federated report references are limited to explicit allowlisted production
     [],
     `Unexpected federated report references: ${offenders.join(', ')}`,
   );
+});
+
+test('production source scan excludes only the ActivityPub hermetic harness directory', () => {
+  assert.equal(shouldScanFile('packages/activitypub/src/hermetic-e2e/pufu-context.ts'), false);
+  assert.equal(shouldScanFile('packages/activitypub/src/postgres.ts'), true);
 });

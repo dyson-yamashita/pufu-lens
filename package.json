@@ -55,6 +55,7 @@
     "test": "pnpm scripts:test && turbo run test",
     "test:activitypub": "pnpm --filter @pufu-lens/activitypub test",
     "test:activitypub:db": "pnpm --filter @pufu-lens/activitypub test:db",
+    "test:activitypub:e2e": "pnpm --filter @pufu-lens/activitypub test:e2e",
     "test:activitypub:schema": "node --experimental-strip-types --test scripts/activitypub-schema.test.ts",
     "test:activitypub:web": "node --experimental-strip-types --test apps/web/src/activitypub-runtime.test.ts",
     "test:e2e:seed-chat": "node --experimental-strip-types scripts/seed-e2e-chat.ts",

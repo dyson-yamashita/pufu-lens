@@ -189,6 +189,17 @@ test('parseEmbeddedCreateArticle accepts coherent public Article metadata', asyn
   assert.equal(article.originalUrl, articleId);
 });
 
+test('parseEmbeddedCreateArticle inherits the enclosing Create ActivityStreams context', async () => {
+  const { '@context': _context, ...embedded } = buildEmbeddedArticle();
+  const article = await parseEmbeddedCreateArticle({
+    createActorUri: remoteActorUri,
+    isDomainBlocked: () => false,
+    object: embedded,
+  });
+  assert.equal(article.articleId, articleId);
+  assert.equal(article.title, 'Remote report title');
+});
+
 test('parseEmbeddedCreateArticle rejects attribution mismatch', async () => {
   await assert.rejects(
     () =>

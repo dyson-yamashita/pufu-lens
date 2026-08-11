@@ -143,6 +143,19 @@ test('outbound accept receipt accepts pending and ignores stale generation', asy
   assert.equal(stale, null);
 });
 
+test('shared inbox Accept resolves the outbound follow without a recipient actor hint', async () => {
+  const repository = createInMemoryActivityPubFollowRepository();
+  const follow = await repository.requestOutboundFollow(baseOutboundInput);
+  const accepted = await repository.recordOutboundAcceptReceipt({
+    canonicalOrigin,
+    remoteActorUri,
+    followActivityUri: follow.follow.followActivityUri,
+    activityUri: `${canonicalOrigin}/activitypub/activities/accept/${randomUUID()}`,
+  });
+  assert.equal(accepted?.follow.localActorId, localActorId);
+  assert.equal(accepted?.follow.status, 'accepted');
+});
+
 test('outbound accept after undo does not resurrect', async () => {
   const repository = createInMemoryActivityPubFollowRepository();
   const follow = await repository.requestOutboundFollow(baseOutboundInput);

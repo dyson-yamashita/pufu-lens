@@ -42,3 +42,42 @@ export function assertTestRemoteActorResolverAllowed(testRemoteActorResolver?: u
     assertActivityPubDbTestRuntime();
   }
 }
+
+/**
+ * Fail-closed guard for hermetic ActivityPub E2E harness entrypoints.
+ * Requires `NODE_ENV=test`, `ACTIVITYPUB_RUN_DB_TESTS=1`, and `ACTIVITYPUB_RUN_HERMETIC_E2E=1`.
+ */
+export function assertActivityPubHermeticE2eRuntime(): void {
+  if (process.env.NODE_ENV !== 'test') {
+    throw new ActivityPubTestRuntimeDisabledError();
+  }
+  if (process.env.ACTIVITYPUB_RUN_DB_TESTS !== '1') {
+    throw new ActivityPubTestRuntimeDisabledError();
+  }
+  if (process.env.ACTIVITYPUB_RUN_HERMETIC_E2E !== '1') {
+    throw new ActivityPubTestRuntimeDisabledError();
+  }
+}
+
+/** Ensures test-only remote Article resolver overrides stay inside DB test runtime. */
+export function assertTestRemoteArticleResolverAllowed(testRemoteArticleResolver?: unknown): void {
+  if (testRemoteArticleResolver) {
+    assertActivityPubDbTestRuntime();
+  }
+}
+
+/** Ensures delivery fetch timeout overrides are positive integers in hermetic E2E runtime only. */
+export function assertTestDeliveryFetchTimeoutMsAllowed(testDeliveryFetchTimeoutMs?: number): void {
+  if (testDeliveryFetchTimeoutMs === undefined) {
+    return;
+  }
+  assertActivityPubHermeticE2eRuntime();
+  if (!Number.isInteger(testDeliveryFetchTimeoutMs) || testDeliveryFetchTimeoutMs <= 0) {
+    throw new ActivityPubTestRuntimeDisabledError();
+  }
+}
+
+/** Returns true when inbox queue processing must use Federation.processQueuedTask instead of the listener harness. */
+export function shouldUseHermeticInboxQueueProcessor(): boolean {
+  return process.env.ACTIVITYPUB_RUN_HERMETIC_E2E === '1';
+}

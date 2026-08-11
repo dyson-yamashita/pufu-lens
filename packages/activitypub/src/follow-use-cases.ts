@@ -55,7 +55,7 @@ export type VerifiedInboundFollowInput = {
 
 /** Verified inbound Accept receipt input from federation listeners. */
 export type VerifiedInboundAcceptInput = {
-  localActorId: string;
+  localActorId?: string;
   remoteActorUri: string;
   followActivityUri: string;
   acceptActivityUri: string;
@@ -328,7 +328,7 @@ export function createActivityPubFollowUseCases(input: UseCaseInput): ActivityPu
       const result = await runTransactionalMutation((repo) =>
         repo.recordOutboundAcceptReceipt({
           canonicalOrigin,
-          localActorId: params.localActorId,
+          ...(params.localActorId ? { localActorId: params.localActorId } : {}),
           remoteActorUri: params.remoteActorUri,
           followActivityUri: params.followActivityUri,
           activityUri: params.acceptActivityUri,

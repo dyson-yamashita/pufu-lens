@@ -26,4 +26,5 @@ test-results/
 infra/volumes/
 **/infra/volumes/
 tmp/
+artifacts/activitypub-e2e/protocol-trace.json
 *.log

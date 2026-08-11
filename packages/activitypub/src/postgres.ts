@@ -1,7 +1,8 @@
 import { randomUUID, type webcrypto } from 'node:crypto';
-import type { MessageQueue, MessageQueueEnqueueOptions } from '@fedify/fedify';
+import type { KvStore, MessageQueue, MessageQueueEnqueueOptions } from '@fedify/fedify';
 import { createFederation, exportJwk } from '@fedify/fedify';
 import { PostgresKvStore } from '@fedify/postgres';
+import type { DocumentLoader } from '@fedify/vocab-runtime';
 import type postgres from 'postgres';
 import type { ActivityPubRepository } from './actor-repository.ts';
 import { parseCanonicalOrigin } from './canonical-origin.ts';
@@ -41,11 +42,16 @@ import {
   UnsupportedFedifyQueueMessageError,
 } from './queue.ts';
 import type { RemoteActorResolver } from './remote-actor.ts';
+import type { RemoteArticleResolver } from './remote-article.ts';
 import type { BlockedDomainPredicate } from './remote-document.ts';
 import {
   assertActivityPubDbTestRuntime,
+  assertActivityPubHermeticE2eRuntime,
+  assertTestDeliveryFetchTimeoutMsAllowed,
   assertTestOnlyPrivateAddressAllowed,
   assertTestRemoteActorResolverAllowed,
+  assertTestRemoteArticleResolverAllowed,
+  shouldUseHermeticInboxQueueProcessor,
 } from './test-runtime-guard.ts';
 import { buildActivityPubUriContract } from './uri-contract.ts';
 
@@ -66,14 +72,53 @@ type QueueRow = {
  * Creates the official Fedify PostgreSQL KV store for ActivityPub state.
  * Fedify 2.3.4 must pass `initialized: false` so the first-use `initialize()` call
  * probes postgres.js JSON serialization; `initialized: true` skips that probe and
- * stores object values as JSONB strings instead of objects.
+ * stores object values as JSONB strings instead of objects.  The wrapper also
+ * encodes JSON `null`, which postgres.js otherwise binds as SQL NULL and the
+ * official NOT NULL schema correctly rejects.
  */
-export function createPostgresFedifyKvStore(input: { sql: postgres.Sql; initialized?: boolean }) {
+export function createPostgresFedifyKvStore(input: {
+  sql: postgres.Sql;
+  initialized?: boolean;
+}): KvStore {
   void input.initialized;
-  return new PostgresKvStore(input.sql, {
+  const store = new PostgresKvStore(input.sql, {
     tableName: 'activitypub_fedify_kv',
     initialized: false,
   });
+  const nullSentinel = { __pufu_lens_fedify_json_null__: true } as const;
+  const decode = <T>(value: T): T | null => (isFedifyJsonNullSentinel(value) ? null : value);
+  return {
+    async get<T = unknown>(key: Parameters<KvStore['get']>[0]) {
+      return decode(await store.get<T>(key)) as T | undefined;
+    },
+    set(
+      key: Parameters<KvStore['set']>[0],
+      value: Parameters<KvStore['set']>[1],
+      options?: Parameters<KvStore['set']>[2],
+    ) {
+      return store.set(key, value === null ? nullSentinel : value, options);
+    },
+    delete(key: Parameters<KvStore['delete']>[0]) {
+      return store.delete(key);
+    },
+    async *list(prefix?: Parameters<KvStore['list']>[0]) {
+      for await (const entry of store.list(prefix)) {
+        yield { key: entry.key, value: decode(entry.value) };
+      }
+    },
+  };
+}
+
+function isFedifyJsonNullSentinel(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const entries = Object.entries(value);
+  return (
+    entries.length === 1 &&
+    entries[0]?.[0] === '__pufu_lens_fedify_json_null__' &&
+    entries[0]?.[1] === true
+  );
 }
 
 type QueueSql = postgres.Sql | postgres.TransactionSql;
@@ -318,6 +363,12 @@ export type ProcessOneQueuedMessageInput = {
   testOnlyAllowPrivateAddress?: boolean;
   /** Test-only remote actor resolver override for inbox queue contract tests. */
   testRemoteActorResolver?: RemoteActorResolver;
+  /** Test-only remote Article resolver override for inbound report queue tests. */
+  testRemoteArticleResolver?: RemoteArticleResolver;
+  /** Test-only delivery fetch timeout override for hermetic fault injection. */
+  testDeliveryFetchTimeoutMs?: number;
+  /** Test-only JSON-LD loader used by the hermetic in-memory host router. */
+  testDocumentLoaderFactory?: () => DocumentLoader;
   /** Blocked domain predicate for inbound report remote fetches. */
   isDomainBlocked?: BlockedDomainPredicate;
   /** Optional queue kind preference for fair inbox/outbox claiming. */
@@ -336,6 +387,11 @@ export async function processOneQueuedMessage(
 ): Promise<OneShotDispatchResult> {
   assertTestOnlyPrivateAddressAllowed(input.testOnlyAllowPrivateAddress);
   assertTestRemoteActorResolverAllowed(input.testRemoteActorResolver);
+  assertTestRemoteArticleResolverAllowed(input.testRemoteArticleResolver);
+  assertTestDeliveryFetchTimeoutMsAllowed(input.testDeliveryFetchTimeoutMs);
+  if (input.testDocumentLoaderFactory) {
+    assertActivityPubHermeticE2eRuntime();
+  }
 
   const claimed = await claimQueueRow({
     sql: input.sql,
@@ -363,6 +419,9 @@ export async function processOneQueuedMessage(
       canonicalOrigin: input.canonicalOrigin,
       sql: input.sql,
       isDomainBlocked: input.isDomainBlocked ?? (() => false),
+      ...(input.testRemoteArticleResolver
+        ? { remoteArticleResolver: input.testRemoteArticleResolver }
+        : {}),
     });
 
     const heartbeatIntervalMs = input.heartbeatIntervalMs ?? 30_000;
@@ -385,90 +444,114 @@ export async function processOneQueuedMessage(
     let heartbeatLost = false;
 
     try {
-      await withTimedDeliveryFetch({}, async () => {
-        if (stored.type === 'inbox' && input.testOnlyAllowPrivateAddress) {
-          const activityRecord = stored.activity as Record<string, unknown>;
-          const signedActorUri =
-            typeof activityRecord.actor === 'string' ? activityRecord.actor : '';
-          if (!signedActorUri) {
-            throw new Error('inbox activity missing actor');
-          }
-          await processStoredInboxViaVerifiedListenerHarness({
-            stored,
-            canonicalOrigin: input.canonicalOrigin,
-            actorRepository: input.actorRepository,
-            followUseCases,
-            inboundReportUseCases,
-            signedActorUri,
-            recipientUsername: stored.identifier,
-          });
-        } else {
-          const queue = createPostgresQueueAdapter({
-            sql: input.sql,
-            canonicalOrigin: input.canonicalOrigin,
-          });
-          const deliveryObserver = createDeliveryErrorObserver();
-          const federationBuilder = input.testOnlyAllowPrivateAddress
-            ? createTestActivityPubFederation
-            : createProductionActivityPubFederation;
-          const federation = await federationBuilder({
-            canonicalOrigin: input.canonicalOrigin,
-            repository: input.actorRepository,
-            followUseCases,
-            inboundReportUseCases,
-            kv: createPostgresFedifyKvStore({ sql: input.sql, initialized: true }),
-            queue,
-            deliveryObserver,
-            ...(input.testOnlyAllowPrivateAddress ? { allowPrivateAddress: true } : {}),
-          });
-
-          if (stored.type === 'inbox') {
-            try {
-              await federation.processQueuedTask(undefined, toFedifyMessage(stored));
-            } catch (deliveryError) {
-              const observed = deliveryObserver.consume();
-              if (observed) {
-                throw toObservedDeliveryError(observed);
-              }
-              throw deliveryError;
+      await withTimedDeliveryFetch(
+        {
+          ...(input.testDeliveryFetchTimeoutMs !== undefined
+            ? { timeoutMs: input.testDeliveryFetchTimeoutMs }
+            : {}),
+        },
+        async () => {
+          if (
+            stored.type === 'inbox' &&
+            input.testOnlyAllowPrivateAddress &&
+            !shouldUseHermeticInboxQueueProcessor()
+          ) {
+            const activityRecord = stored.activity as Record<string, unknown>;
+            const signedActorUri =
+              typeof activityRecord.actor === 'string' ? activityRecord.actor : '';
+            if (!signedActorUri) {
+              throw new Error('inbox activity missing actor');
             }
-          } else {
-            const uri = buildActivityPubUriContract(input.canonicalOrigin);
-            const rehydrated = await rehydrateStoredOutboxMessage(stored, async (keyId) => {
-              const username = extractPreferredUsernameFromKeyId(keyId);
-              const expectedKeyId = uri.actorKeyId(username);
-              const expectedActorUrl = uri.actorUrl(username);
-              if (keyId !== expectedKeyId) {
-                throw new Error('outbox queue message key binding rejected');
-              }
-              if (!stored.actorIds?.includes(expectedActorUrl)) {
-                throw new Error('outbox queue message actor binding rejected');
-              }
-              const actor =
-                await input.actorRepository.findRemotelyVisibleActorByUsername(username);
-              if (!actor) {
-                throw new Error('unknown actor for outbox queue key');
-              }
-              const keyPair = await input.actorRepository.importActorCryptoKeyPair(actor.id);
-              return exportJwk(keyPair.privateKey);
+            await processStoredInboxViaVerifiedListenerHarness({
+              stored,
+              canonicalOrigin: input.canonicalOrigin,
+              actorRepository: input.actorRepository,
+              followUseCases,
+              inboundReportUseCases,
+              signedActorUri,
+              recipientUsername: stored.identifier,
             });
-            try {
-              await federation.processQueuedTask(undefined, toFedifyMessage(rehydrated));
-            } catch (deliveryError) {
-              const observed = deliveryObserver.consume();
-              if (observed) {
-                throw toObservedDeliveryError(observed);
+          } else {
+            const queue = createPostgresQueueAdapter({
+              sql: input.sql,
+              canonicalOrigin: input.canonicalOrigin,
+            });
+            const deliveryObserver = createDeliveryErrorObserver();
+            const federationBuilder = input.testOnlyAllowPrivateAddress
+              ? createTestActivityPubFederation
+              : createProductionActivityPubFederation;
+            const testDocumentLoaderFactory = input.testDocumentLoaderFactory;
+            const federation = await federationBuilder({
+              canonicalOrigin: input.canonicalOrigin,
+              repository: input.actorRepository,
+              followUseCases,
+              inboundReportUseCases,
+              kv: createPostgresFedifyKvStore({
+                sql: input.sql,
+                initialized: true,
+              }),
+              queue,
+              deliveryObserver,
+              ...(testDocumentLoaderFactory
+                ? {
+                    testDocumentLoaderFactory,
+                    testContextLoaderFactory: testDocumentLoaderFactory,
+                    testAuthenticatedDocumentLoaderFactory: () => testDocumentLoaderFactory(),
+                  }
+                : {}),
+              ...(input.testOnlyAllowPrivateAddress
+                ? { allowPrivateAddress: !testDocumentLoaderFactory }
+                : {}),
+            });
+
+            if (stored.type === 'inbox') {
+              try {
+                await federation.processQueuedTask(undefined, toFedifyMessage(stored));
+              } catch (deliveryError) {
+                const observed = deliveryObserver.consume();
+                if (observed) {
+                  throw toObservedDeliveryError(observed);
+                }
+                throw deliveryError;
               }
-              throw deliveryError;
+            } else {
+              const uri = buildActivityPubUriContract(input.canonicalOrigin);
+              const rehydrated = await rehydrateStoredOutboxMessage(stored, async (keyId) => {
+                const username = extractPreferredUsernameFromKeyId(keyId);
+                const expectedKeyId = uri.actorKeyId(username);
+                const expectedActorUrl = uri.actorUrl(username);
+                if (keyId !== expectedKeyId) {
+                  throw new Error('outbox queue message key binding rejected');
+                }
+                if (!stored.actorIds?.includes(expectedActorUrl)) {
+                  throw new Error('outbox queue message actor binding rejected');
+                }
+                const actor =
+                  await input.actorRepository.findRemotelyVisibleActorByUsername(username);
+                if (!actor) {
+                  throw new Error('unknown actor for outbox queue key');
+                }
+                const keyPair = await input.actorRepository.importActorCryptoKeyPair(actor.id);
+                return exportJwk(keyPair.privateKey);
+              });
+              try {
+                await federation.processQueuedTask(undefined, toFedifyMessage(rehydrated));
+              } catch (deliveryError) {
+                const observed = deliveryObserver.consume();
+                if (observed) {
+                  throw toObservedDeliveryError(observed);
+                }
+                throw deliveryError;
+              }
+            }
+
+            const observed = deliveryObserver.consume();
+            if (observed) {
+              throw toObservedDeliveryError(observed);
             }
           }
-
-          const observed = deliveryObserver.consume();
-          if (observed) {
-            throw toObservedDeliveryError(observed);
-          }
-        }
-      });
+        },
+      );
     } finally {
       heartbeatLost = await heartbeatController.stop();
     }

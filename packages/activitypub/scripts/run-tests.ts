@@ -4,7 +4,10 @@ import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const testRoot = fileURLToPath(new URL('../src', import.meta.url));
-const excludedTestPaths = new Set(['postgres-contract.db.test.ts']);
+const excludedTestPaths = new Set([
+  'postgres-contract.db.test.ts',
+  'hermetic-e2e/hermetic-e2e.test.ts',
+]);
 
 function shouldSkipDirectory(name: string): boolean {
   return name === 'node_modules' || name.startsWith('.');

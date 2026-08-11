@@ -50,13 +50,18 @@ async function assertRemotelyVisibleActorContract(
 
   const actorResponse = await fetch(uri.actorUrl(preferredUsername), { headers });
   assert.equal(actorResponse.status, 200);
-  const actor = (await actorResponse.json()) as Record<string, string>;
+  const actor = (await actorResponse.json()) as Record<string, unknown> & {
+    publicKey?: { id?: string; owner?: string; publicKeyPem?: string };
+  };
   assert.equal(actor.id, uri.actorUrl(preferredUsername));
   assert.equal(actor.preferredUsername, preferredUsername);
   assert.equal(actor.inbox, uri.personalInboxUrl(preferredUsername));
   assert.equal(actor.outbox, uri.actorOutboxUrl(preferredUsername));
   assert.equal(actor.followers, uri.actorFollowersUrl(preferredUsername));
   assert.equal(actor.following, uri.actorFollowingUrl(preferredUsername));
+  assert.equal(actor.publicKey?.id, uri.actorKeyId(preferredUsername));
+  assert.equal(actor.publicKey?.owner, uri.actorUrl(preferredUsername));
+  assert.match(actor.publicKey?.publicKeyPem ?? '', /^-----BEGIN PUBLIC KEY-----/);
 
   const keyResponse = await fetch(uri.actorKeyId(preferredUsername), { headers });
   assert.equal(keyResponse.status, 200);
@@ -499,7 +504,7 @@ test('production federation followers collection paginates with opaque cursor an
   }
 });
 
-function restoreEnv(name: 'ACTIVITYPUB_RUN_DB_TESTS' | 'NODE_ENV', previous: string | undefined) {
+function restoreEnv(name: string, previous: string | undefined) {
   if (previous === undefined) {
     delete process.env[name];
     return;
@@ -549,5 +554,30 @@ test('createTestActivityPubFederation rejects allowPrivateAddress without ACTIVI
     );
   } finally {
     restoreEnv('ACTIVITYPUB_RUN_DB_TESTS', previousDbTests);
+  }
+});
+
+test('createTestActivityPubFederation rejects loader injection outside hermetic runtime', async () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousDbTests = process.env.ACTIVITYPUB_RUN_DB_TESTS;
+  const previousHermetic = process.env.ACTIVITYPUB_RUN_HERMETIC_E2E;
+  process.env.NODE_ENV = 'test';
+  process.env.ACTIVITYPUB_RUN_DB_TESTS = '1';
+  delete process.env.ACTIVITYPUB_RUN_HERMETIC_E2E;
+  try {
+    await assert.rejects(
+      () =>
+        createTestActivityPubFederation({
+          ...testFederationInput,
+          testDocumentLoaderFactory: () => async () => {
+            throw new Error('must not be invoked');
+          },
+        }),
+      (error: unknown) => error instanceof ActivityPubTestRuntimeDisabledError,
+    );
+  } finally {
+    restoreEnv('NODE_ENV', previousNodeEnv);
+    restoreEnv('ACTIVITYPUB_RUN_DB_TESTS', previousDbTests);
+    restoreEnv('ACTIVITYPUB_RUN_HERMETIC_E2E', previousHermetic);
   }
 });

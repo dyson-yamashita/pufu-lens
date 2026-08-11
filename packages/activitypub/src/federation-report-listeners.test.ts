@@ -15,10 +15,12 @@ function createTrackingInboundReportUseCases() {
   let createProcessed = false;
   let announceProcessed = false;
   let resolved = false;
+  let saved = false;
   const inboundReportUseCases = createActivityPubInboundReportUseCases({
     federatedReportRepository: {
       saveInboundReport: async () => {
-        throw new Error('repository must not be called');
+        saved = true;
+        return { saved: true };
       },
       listByProject: async () => [],
     },
@@ -39,6 +41,9 @@ function createTrackingInboundReportUseCases() {
     },
     get resolved() {
       return resolved;
+    },
+    get saved() {
+      return saved;
     },
     inboundReportUseCases: {
       processVerifiedInboundCreate: async (
@@ -112,6 +117,7 @@ test('create listener accepts embedded object from raw JSON-LD without calling g
   });
   assert.equal(tracking.createProcessed, true);
   assert.equal(tracking.resolved, false);
+  assert.equal(tracking.saved, true);
 });
 
 test('create listener rejects signed owner mismatch without calling use case', async () => {

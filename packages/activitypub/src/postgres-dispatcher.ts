@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { exportJwk } from '@fedify/fedify';
+import type { DocumentLoader } from '@fedify/vocab-runtime';
 import type postgres from 'postgres';
 import type { ActivityPubRepository } from './actor-repository.ts';
 import type { DeliveryErrorCode } from './delivery-errors.ts';
@@ -19,6 +20,8 @@ import {
   processOneQueuedMessage,
 } from './postgres.ts';
 import { buildOutboxDedupeKey } from './queue.ts';
+import type { RemoteActorResolver } from './remote-actor.ts';
+import type { RemoteArticleResolver } from './remote-article.ts';
 import type { BlockedDomainPredicate } from './remote-document.ts';
 import {
   buildStableAnnounceActivityUri,
@@ -55,6 +58,11 @@ export type RunActivityPubDispatcherOnceInput = {
   readonly maxBatchSize?: number;
   readonly maxRuntimeMs?: number;
   readonly testOnlyAllowPrivateAddress?: boolean;
+  /** Test-only dependency injection for the hermetic E2E transport. */
+  readonly testRemoteActorResolver?: RemoteActorResolver;
+  readonly testRemoteArticleResolver?: RemoteArticleResolver;
+  readonly testDocumentLoaderFactory?: () => DocumentLoader;
+  readonly testDeliveryFetchTimeoutMs?: number;
 };
 
 type ClaimedActivity = {
@@ -168,6 +176,10 @@ export async function runActivityPubDispatcherOnce(
       actorRepository: input.actorRepository,
       isDomainBlocked: input.isDomainBlocked,
       testOnlyAllowPrivateAddress: input.testOnlyAllowPrivateAddress,
+      testRemoteActorResolver: input.testRemoteActorResolver,
+      testRemoteArticleResolver: input.testRemoteArticleResolver,
+      testDocumentLoaderFactory: input.testDocumentLoaderFactory,
+      testDeliveryFetchTimeoutMs: input.testDeliveryFetchTimeoutMs,
       preferredQueueKind: preferredKind,
       clock,
     });

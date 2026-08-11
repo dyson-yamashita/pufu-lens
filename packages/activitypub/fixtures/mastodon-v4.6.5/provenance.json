@@ -1,0 +1,33 @@
+{
+  "mastodonVersion": "v4.6.5",
+  "mastodonCommit": "1440d55b139e39ec722c2a3db7f60b66cd889048",
+  "mastodonReleaseUrl": "https://github.com/mastodon/mastodon/releases/tag/v4.6.5",
+  "mastodonCommitUrl": "https://github.com/mastodon/mastodon/tree/1440d55b139e39ec722c2a3db7f60b66cd889048",
+  "contracts": [
+    {
+      "name": "WebFinger actor discovery",
+      "sourceUrl": "https://github.com/mastodon/mastodon/blob/1440d55b139e39ec722c2a3db7f60b66cd889048/app/lib/webfinger_resource.rb"
+    },
+    {
+      "name": "ActivityPub inbox delivery",
+      "sourceUrl": "https://github.com/mastodon/mastodon/blob/1440d55b139e39ec722c2a3db7f60b66cd889048/app/controllers/activitypub/inboxes_controller.rb"
+    },
+    {
+      "name": "Timeline Article normalization (name/title, summary body, url link)",
+      "sourceUrl": "https://github.com/mastodon/mastodon/blob/1440d55b139e39ec722c2a3db7f60b66cd889048/app/lib/activitypub/activity/create.rb"
+    },
+    {
+      "name": "Status serializer projection",
+      "sourceUrl": "https://github.com/mastodon/mastodon/blob/1440d55b139e39ec722c2a3db7f60b66cd889048/app/serializers/rest/status_serializer.rb"
+    },
+    {
+      "name": "Article status parsing and title/summary/url mapping",
+      "sourceUrl": "https://github.com/mastodon/mastodon/blob/1440d55b139e39ec722c2a3db7f60b66cd889048/app/lib/activitypub/parser/status_parser.rb"
+    },
+    {
+      "name": "HTTP Digest and signature verification",
+      "sourceUrl": "https://github.com/mastodon/mastodon/blob/1440d55b139e39ec722c2a3db7f60b66cd889048/app/controllers/concerns/signature_verification.rb"
+    }
+  ],
+  "residualRisk": "Fixture behavior is synthesized from public Mastodon v4.6.5 source references; no live Mastodon server was exercised in hermetic E2E."
+}

@@ -26,6 +26,7 @@
     "build": "tsc --noEmit -p tsconfig.json",
     "test": "tsc -p tsconfig.json && node --experimental-strip-types scripts/run-tests.ts",
     "test:db": "tsc -p tsconfig.json && ACTIVITYPUB_RUN_DB_TESTS=1 NODE_ENV=test node --experimental-strip-types scripts/run-db-tests.ts",
+    "test:e2e": "tsc -p tsconfig.json && ACTIVITYPUB_RUN_DB_TESTS=1 ACTIVITYPUB_RUN_HERMETIC_E2E=1 NODE_ENV=test node --experimental-strip-types src/hermetic-e2e/hermetic-e2e.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
