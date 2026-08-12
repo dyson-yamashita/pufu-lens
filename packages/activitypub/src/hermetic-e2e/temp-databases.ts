@@ -106,12 +106,22 @@ async function applyInitSql(databaseUrl: string, databaseName: string): Promise<
   }
 }
 
-/** Removes the template-database ALTER DATABASE statement from init.sql before temp DB bootstrap. */
+const TEMPLATE_DATABASE_ALTER_PATTERN =
+  /^\s*ALTER\s+DATABASE\s+pufu_lens\s+SET\s+search_path\s*=\s*ag_catalog,\s*"\$user",\s*public\s*;\s*$/gim;
+
+/**
+ * Removes the single expected template-database ALTER DATABASE statement from init.sql before temp DB bootstrap.
+ * Throws when the input contains zero or multiple matching statements.
+ */
 export function removeTemplateDatabaseAlterStatement(sqlText: string): string {
-  return sqlText.replace(
-    /^\s*ALTER\s+DATABASE\s+pufu_lens\s+SET\s+search_path\s*=\s*ag_catalog,\s*"\$user",\s*public\s*;\s*$/gim,
-    '',
-  );
+  const matches = sqlText.match(TEMPLATE_DATABASE_ALTER_PATTERN);
+  const matchCount = matches?.length ?? 0;
+  if (matchCount !== 1) {
+    throw new Error(
+      `Expected exactly one template-database ALTER DATABASE statement in init.sql, found ${matchCount}`,
+    );
+  }
+  return sqlText.replace(TEMPLATE_DATABASE_ALTER_PATTERN, '');
 }
 
 function databaseUrlFor(databaseUrl: string, databaseName: string): string {

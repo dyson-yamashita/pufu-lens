@@ -223,6 +223,28 @@ SET search_path = ag_catalog, "$user", public;
   assert.doesNotMatch(output, /ALTER\s+DATABASE\s+pufu_lens/i);
 });
 
+test('removeTemplateDatabaseAlterStatement rejects absent target ALTER statements', () => {
+  const input = `
+CREATE EXTENSION IF NOT EXISTS age;
+SET search_path = ag_catalog, "$user", public;
+`;
+  assert.throws(
+    () => removeTemplateDatabaseAlterStatement(input),
+    /Expected exactly one template-database ALTER DATABASE statement in init.sql, found 0/,
+  );
+});
+
+test('removeTemplateDatabaseAlterStatement rejects duplicated target ALTER statements', () => {
+  const input = `
+ALTER DATABASE pufu_lens SET search_path = ag_catalog, "$user", public;
+ALTER DATABASE pufu_lens SET search_path = ag_catalog, "$user", public;
+`;
+  assert.throws(
+    () => removeTemplateDatabaseAlterStatement(input),
+    /Expected exactly one template-database ALTER DATABASE statement in init.sql, found 2/,
+  );
+});
+
 test('ProtocolTraceCollector redacts PII-like metadata from every string field', () => {
   const trace = new ProtocolTraceCollector('/tmp/protocol-trace-redaction-test.json');
   const piiEmail = 'alice.secret@example.test';
@@ -241,8 +263,8 @@ test('ProtocolTraceCollector redacts PII-like metadata from every string field',
     audienceUri: piiEmail,
   });
   const serialized = JSON.stringify(trace.snapshot());
-  assert.doesNotMatch(serialized, new RegExp(piiEmail.replace('.', '\\.')));
-  assert.doesNotMatch(serialized, /70000000-0000-0000-0000-00000000000a/);
+  assert.equal(serialized.includes(piiEmail), false);
+  assert.equal(serialized.includes(piiUser), false);
   assert.equal(trace.snapshot()[0]?.host, '[redacted-host]');
   assert.equal(trace.snapshot()[0]?.path, '[redacted-path]');
   assert.equal(trace.snapshot()[0]?.activityType, '[redacted-type]');

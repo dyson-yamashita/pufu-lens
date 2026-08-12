@@ -167,9 +167,9 @@ function readOptionalSharedInboxUri(body: Record<string, unknown>): string | nul
   return value;
 }
 
-function readOptionalPublishedAt(body: Record<string, unknown>): Date | Response {
+function readOptionalPublishedAt(body: Record<string, unknown>, now: () => Date): Date | Response {
   if (!('publishedAt' in body)) {
-    return new Date();
+    return now();
   }
   const value = body.publishedAt;
   if (typeof value !== 'string') {
@@ -282,7 +282,7 @@ async function handlePublishReport(
   if (!reportId || !publicSummary) {
     return invalidControlRequest();
   }
-  const publishedAt = readOptionalPublishedAt(body);
+  const publishedAt = readOptionalPublishedAt(body, () => ctx.faultController.clock.now());
   if (publishedAt instanceof Response) {
     return publishedAt;
   }
