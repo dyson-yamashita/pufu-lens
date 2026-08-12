@@ -1,6 +1,11 @@
 import type { KvStore } from '@fedify/fedify';
 import { createFederationBuilder, type Federation, type MessageQueue } from '@fedify/fedify';
-import { Article, Endpoints, Service } from '@fedify/vocab';
+import { Article, CryptographicKey, Endpoints, Service } from '@fedify/vocab';
+import {
+  type AuthenticatedDocumentLoaderFactory,
+  type DocumentLoader,
+  importSpki,
+} from '@fedify/vocab-runtime';
 import { Temporal } from '@js-temporal/polyfill';
 import type { ActivityPubRepository } from './actor-repository.ts';
 import { parseCanonicalOrigin } from './canonical-origin.ts';
@@ -17,6 +22,7 @@ import { escapeNoteContentText } from './report-delivery.ts';
 import { createProductionSafeDocumentLoader } from './security.ts';
 import {
   assertActivityPubDbTestRuntime,
+  assertActivityPubHermeticE2eRuntime,
   assertActivityPubListenerHarnessRuntime,
 } from './test-runtime-guard.ts';
 import { buildActivityPubUriContract } from './uri-contract.ts';
@@ -37,6 +43,12 @@ type FederationBuildInput = {
   /** Scoped observer for one dispatcher-owned delivery attempt; records safe mapped errors only. */
   deliveryObserver?: DeliveryErrorObserver;
   allowPrivateAddress: boolean;
+  /** @internal Hermetic E2E-only document loader factory. */
+  testDocumentLoaderFactory?: () => DocumentLoader;
+  /** @internal Hermetic E2E-only context loader factory. */
+  testContextLoaderFactory?: () => DocumentLoader;
+  /** @internal Hermetic E2E-only authenticated loader factory. */
+  testAuthenticatedDocumentLoaderFactory?: AuthenticatedDocumentLoaderFactory;
 };
 
 /** Creates the production ActivityPub federation with Step 2 public dispatchers. */
@@ -66,6 +78,13 @@ export async function createTestActivityPubFederation(
   },
 ): Promise<Federation<undefined>> {
   assertActivityPubListenerHarnessRuntime();
+  if (
+    input.testDocumentLoaderFactory ||
+    input.testContextLoaderFactory ||
+    input.testAuthenticatedDocumentLoaderFactory
+  ) {
+    assertActivityPubHermeticE2eRuntime();
+  }
   if (input.allowPrivateAddress ?? false) {
     assertActivityPubDbTestRuntime();
   }
@@ -89,8 +108,10 @@ async function buildActivityPubFederation(
       if (!actor) {
         return null;
       }
+      const actorUrl = new URL(uri.actorUrl(actor.preferredUsername));
+      const publicKey = await importSpki(actor.publicKeyPem);
       return new Service({
-        id: new URL(uri.actorUrl(actor.preferredUsername)),
+        id: actorUrl,
         preferredUsername: actor.preferredUsername,
         name: actor.displayName,
         inbox: new URL(uri.personalInboxUrl(actor.preferredUsername)),
@@ -100,7 +121,12 @@ async function buildActivityPubFederation(
         endpoints: new Endpoints({
           sharedInbox: new URL(uri.sharedInboxUrl),
         }),
-        url: new URL(uri.actorUrl(actor.preferredUsername)),
+        url: actorUrl,
+        publicKey: new CryptographicKey({
+          id: new URL(uri.actorKeyId(actor.preferredUsername)),
+          owner: actorUrl,
+          publicKey,
+        }),
       });
     })
     .setKeyPairsDispatcher(async (_ctx, identifier: string) => {
@@ -252,12 +278,28 @@ async function buildActivityPubFederation(
     onOutboxError: (error) => {
       input.deliveryObserver?.record(error);
     },
-    ...(input.allowPrivateAddress
-      ? {}
-      : {
-          documentLoaderFactory: () => createProductionSafeDocumentLoader(),
-          contextLoaderFactory: () => createProductionSafeDocumentLoader(),
-        }),
+    ...(input.testDocumentLoaderFactory ||
+    input.testContextLoaderFactory ||
+    input.testAuthenticatedDocumentLoaderFactory
+      ? {
+          ...(input.testDocumentLoaderFactory
+            ? { documentLoaderFactory: input.testDocumentLoaderFactory }
+            : {}),
+          ...(input.testContextLoaderFactory
+            ? { contextLoaderFactory: input.testContextLoaderFactory }
+            : {}),
+          ...(input.testAuthenticatedDocumentLoaderFactory
+            ? {
+                authenticatedDocumentLoaderFactory: input.testAuthenticatedDocumentLoaderFactory,
+              }
+            : {}),
+        }
+      : input.allowPrivateAddress
+        ? {}
+        : {
+            documentLoaderFactory: () => createProductionSafeDocumentLoader(),
+            contextLoaderFactory: () => createProductionSafeDocumentLoader(),
+          }),
     origin,
   })) as Federation<undefined>;
 

@@ -44,6 +44,7 @@ const testActorId = '10000000-0000-0000-0000-000000000667';
 const testKeyId = `${canonicalOrigin}/activitypub/actors/pufu#main-key`;
 const orderingKey = `${canonicalOrigin}/activitypub/reports/report-db-1`;
 const testKvKey = ['activitypub-contract:kv'] as const;
+const testNullKvKey = ['activitypub-contract:kv:null'] as const;
 
 const { publicKey, privateKey } = await generateCryptoKeyPair('RSASSA-PKCS1-v1_5');
 const publicJwk = await exportJwk(publicKey);
@@ -196,8 +197,9 @@ async function assertQueuePersistenceAndIdempotency(sql: postgres.Sql) {
 async function assertKvAndQueueSurviveClientRestart() {
   const writerClient = postgres(resolvedDatabaseUrl, { max: 1 });
   try {
-    const kv = createPostgresFedifyKvStore({ sql: writerClient, initialized: true });
+    const kv = createPostgresFedifyKvStore({ sql: writerClient });
     await kv.set(testKvKey, { persisted: true });
+    await kv.set(testNullKvKey, null);
   } finally {
     await writerClient.end({ timeout: 5 });
   }
@@ -211,9 +213,10 @@ async function assertKvAndQueueSurviveClientRestart() {
     `;
     assert.equal(queueRows.length, 1);
 
-    const reopenedKv = createPostgresFedifyKvStore({ sql: readerClient, initialized: true });
+    const reopenedKv = createPostgresFedifyKvStore({ sql: readerClient });
     const value = await reopenedKv.get(testKvKey);
     assert.deepEqual(value, { persisted: true });
+    assert.equal(await reopenedKv.get(testNullKvKey), null);
 
     await readerClient`
       DELETE FROM public.activitypub_queue_messages

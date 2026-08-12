@@ -1,10 +1,13 @@
 import { spawn } from 'node:child_process';
 import { readdir } from 'node:fs/promises';
-import { relative, resolve } from 'node:path';
+import { relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const testRoot = fileURLToPath(new URL('../src', import.meta.url));
-const excludedTestPaths = new Set(['postgres-contract.db.test.ts']);
+const excludedTestPaths = new Set([
+  'postgres-contract.db.test.ts',
+  'hermetic-e2e/hermetic-e2e.test.ts',
+]);
 
 function shouldSkipDirectory(name: string): boolean {
   return name === 'node_modules' || name.startsWith('.');
@@ -24,7 +27,7 @@ async function collectTestFiles(directory: string): Promise<string[]> {
         return collectTestFiles(fullPath);
       }
 
-      const relativePath = relative(testRoot, fullPath);
+      const relativePath = relative(testRoot, fullPath).split(sep).join('/');
       return entry.isFile() &&
         entry.name.endsWith('.test.ts') &&
         !entry.name.endsWith('.db.test.ts') &&

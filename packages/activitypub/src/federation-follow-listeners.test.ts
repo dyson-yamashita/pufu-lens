@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { InboxContext } from '@fedify/fedify';
+import { Accept } from '@fedify/vocab';
 import {
   createVerifiedInboxContextForTest,
   invokeVerifiedInboundAcceptListenerForTest,
@@ -150,6 +151,111 @@ test('inbound accept listener rejects mismatched signed key owner from test harn
   const ctx = createVerifiedInboxContextForTest({
     recipient: projectSlug,
     signedActorUri: 'https://evil.example/users/not-alice',
+  });
+  await invokeVerifiedInboundAcceptListenerForTest({
+    canonicalOrigin,
+    actorRepository,
+    followUseCases: observingUseCases,
+    ctx,
+    activity,
+  });
+  assert.equal(processed, false);
+});
+
+test('shared inbox accept resolves the local actor from embedded Follow without recipient hint', async () => {
+  const { actorRepository, followUseCases } = await createListenerFixture();
+  let received: Parameters<typeof followUseCases.processVerifiedInboundAccept>[0] | undefined;
+  const observingUseCases = {
+    ...followUseCases,
+    processVerifiedInboundAccept: async (
+      input: Parameters<typeof followUseCases.processVerifiedInboundAccept>[0],
+    ) => {
+      received = input;
+      return { processed: true };
+    },
+  };
+  const activity = await buildAcceptActivityFromJson({
+    type: 'Accept',
+    id: acceptActivityUri,
+    actor: remoteActorUri,
+    object: {
+      type: 'Follow',
+      id: followActivityUri,
+      actor: localActorUri,
+      object: remoteActorUri,
+    },
+  });
+  const ctx = createVerifiedInboxContextForTest({
+    recipient: null,
+    signedActorUri: remoteActorUri,
+  });
+  await invokeVerifiedInboundAcceptListenerForTest({
+    canonicalOrigin,
+    actorRepository,
+    followUseCases: observingUseCases,
+    ctx,
+    activity,
+  });
+  assert.equal(received?.followActivityUri, followActivityUri);
+  assert.ok(received?.localActorId);
+});
+
+test('shared inbox accept supports a Follow URI without recipient actor hint', async () => {
+  const { actorRepository, followUseCases } = await createListenerFixture();
+  let received: Parameters<typeof followUseCases.processVerifiedInboundAccept>[0] | undefined;
+  const observingUseCases = {
+    ...followUseCases,
+    processVerifiedInboundAccept: async (
+      input: Parameters<typeof followUseCases.processVerifiedInboundAccept>[0],
+    ) => {
+      received = input;
+      return { processed: true };
+    },
+  };
+  const activity = new Accept({
+    id: new URL(acceptActivityUri),
+    actor: new URL(remoteActorUri),
+    object: new URL(followActivityUri),
+  });
+  const ctx = createVerifiedInboxContextForTest({
+    recipient: null,
+    signedActorUri: remoteActorUri,
+  });
+  await invokeVerifiedInboundAcceptListenerForTest({
+    canonicalOrigin,
+    actorRepository,
+    followUseCases: observingUseCases,
+    ctx,
+    activity,
+  });
+  assert.equal(received?.followActivityUri, followActivityUri);
+  assert.equal(received?.localActorId, undefined);
+});
+
+test('shared inbox accept rejects mismatched embedded Follow actor and object', async () => {
+  const { actorRepository, followUseCases } = await createListenerFixture();
+  let processed = false;
+  const observingUseCases = {
+    ...followUseCases,
+    processVerifiedInboundAccept: async () => {
+      processed = true;
+      return { processed: true };
+    },
+  };
+  const activity = await buildAcceptActivityFromJson({
+    type: 'Accept',
+    id: acceptActivityUri,
+    actor: remoteActorUri,
+    object: {
+      type: 'Follow',
+      id: followActivityUri,
+      actor: 'https://lens.test/activitypub/actors/not-local',
+      object: 'https://evil.example/users/not-alice',
+    },
+  });
+  const ctx = createVerifiedInboxContextForTest({
+    recipient: null,
+    signedActorUri: remoteActorUri,
   });
   await invokeVerifiedInboundAcceptListenerForTest({
     canonicalOrigin,

@@ -189,6 +189,17 @@ test('parseEmbeddedCreateArticle accepts coherent public Article metadata', asyn
   assert.equal(article.originalUrl, articleId);
 });
 
+test('parseEmbeddedCreateArticle inherits the enclosing Create ActivityStreams context', async () => {
+  const { '@context': _context, ...embedded } = buildEmbeddedArticle();
+  const article = await parseEmbeddedCreateArticle({
+    createActorUri: remoteActorUri,
+    isDomainBlocked: () => false,
+    object: embedded,
+  });
+  assert.equal(article.articleId, articleId);
+  assert.equal(article.title, 'Remote report title');
+});
+
 test('parseEmbeddedCreateArticle rejects attribution mismatch', async () => {
   await assert.rejects(
     () =>
@@ -313,6 +324,36 @@ test('remote article resolver rejects blocked attributedTo and original URL', as
     validateUrl: async () => {},
   });
   await assert.rejects(() => resolver.resolve(blockedArticleId), /blocked/i);
+});
+
+test('parseEmbeddedCreateArticle supplements undefined @context with ActivityStreams', async () => {
+  const article = await parseEmbeddedCreateArticle({
+    object: buildEmbeddedArticle({ '@context': undefined }),
+    createActorUri: remoteActorUri,
+    isDomainBlocked: () => false,
+  });
+  assert.equal(article.title, 'Remote report title');
+});
+
+test('parseEmbeddedCreateArticle supplements null @context with ActivityStreams', async () => {
+  const article = await parseEmbeddedCreateArticle({
+    object: buildEmbeddedArticle({ '@context': null }),
+    createActorUri: remoteActorUri,
+    isDomainBlocked: () => false,
+  });
+  assert.equal(article.title, 'Remote report title');
+});
+
+test('parseEmbeddedCreateArticle preserves explicit non-null @context for validation', async () => {
+  await assert.rejects(
+    () =>
+      parseEmbeddedCreateArticle({
+        object: buildEmbeddedArticle({ '@context': 'https://evil.example/context.jsonld' }),
+        createActorUri: remoteActorUri,
+        isDomainBlocked: () => false,
+      }),
+    /@context URL is not permitted/i,
+  );
 });
 
 test('remote article resolver sanitizes unsafe summary HTML', async () => {

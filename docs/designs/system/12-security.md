@@ -63,7 +63,7 @@ API は以下の認可をかける：
 - レート制限を Cloud Armor または Hono middleware で実装する。public chat は信頼プロキシが付与した `x-forwarded-for` を右端から走査し、private / local IP と無効値を除いた最初の有効値（なければ `x-real-ip`、最後に anonymous bucket）+ report id 単位で 1 時間 / 1 日 / 質問長の上限を設け、クライアントが任意に付与できる左端値は信用しない。private chat は user + project 単位で public より緩い上限にする。Mastra 側で使う rate limit 用 header は OIDC 検証済みの Next.js から来たものだけを信頼する
 - App Hosting の runtime env と secret は `apphosting.yaml` で参照し、secret 値をリポジトリに含めない。
 
-### 3.1 ActivityPub Step 1 / Step 2 / Step 3 / Step 4 / Step 5 security boundary
+### 3.1 ActivityPub Step 1 / Step 2 / Step 3 / Step 4 / Step 5 / Step 6 security boundary
 
 - canonical origin は server 設定だけを正とし、未信頼の `Host` / forwarded host header から Actor、object、activity ID を生成しない。通常 runtime は HTTPS origin だけを許可する。
 - remote document loader は private / loopback、IPv4-mapped IPv6、special-use IPv4、NAT64、Teredo、6to4 を拒否し、redirect の各 hop を再検証する。localhost HTTP は test-only の local protocol / DB fixture が `allowHttpLocalhost: true` を明示した場合だけ許可し、Web runtime は opt in しない。DB signed-delivery path はさらに `ACTIVITYPUB_RUN_DB_TESTS=1` を要求し、`NODE_ENV=production` では拒否する。本番 runtime で localhost HTTP を許可しない。
@@ -80,7 +80,8 @@ API は以下の認可をかける：
 - outbound report delivery は暗号化 private keyをclaim後にActor repositoryから読み、queueにはkey IDだけを保存する。配送失敗はHTTP status class、timeout、network、lease lossの固定codeだけを監査し、private key、署名header、raw payload、credential、response bodyを保存・logしない。
 - ActivityPub Scheduler route はGoogle issuer、固定audience、designated Scheduler SAのsubject / email / verified emailをすべて検証する。Scheduler SAの`roles/run.invoker`は対象Mastra service、Mastra runtime SAのJob実行権限は対象ActivityPub dispatcher Jobへresource scopeで限定する。
 - outbound Follow / Undo の server action は project admin だけに許可し、URL slug と認可済み project、project Actor、outbound follow rowを server side で同じ project scope に固定する。non-admin、project 越境、不正 slug、不正 Actor address を拒否し、member settings は read-only とする。予期しない auth / DB / resolver error は内部 message を捨てて固定 message へ変換する。
-- test-only private address、listener harness、remote resolver override は `NODE_ENV=production` で拒否し、DB fixture 経路はさらに `ACTIVITYPUB_RUN_DB_TESTS=1` を必須とする。本番 one-shot processor は test resolver を注入できない。
+- test-only private address、listener harness、remote resolver override は `NODE_ENV=production` で拒否し、DB fixture 経路はさらに `ACTIVITYPUB_RUN_DB_TESTS=1` を必須とする。Step 6のhost router、document / context / authenticated document loader、delivery timeout overrideは `ACTIVITYPUB_RUN_HERMETIC_E2E=1` も必須とし、許可hostを `lens-a.test` / `lens-b.test` / `mastodon.test` に固定してそれ以外をfail closedにする。本番 one-shot processorはこれらのtest dependencyを注入できず、production loaderのprivate / loopback拒否を維持する。
+- hermetic protocol traceはmethod、host、path、status、activity type / ID、署名検証結果、key owner、audience、digest種別だけを保存し、raw body、HTTP header、private key、secret / PIIを保存しない。fixtureはMastodon v4.6.5の固定commitと公式source provenanceを保持するが、実 Mastodon serverを使用しないため、その固有挙動は残存リスクとして扱う。
 
 ### 4. Admin data source content preview
 

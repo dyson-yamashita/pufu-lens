@@ -50,7 +50,7 @@ export type OutboundFollowInput = {
 
 export type OutboundAcceptReceiptInput = {
   canonicalOrigin: string;
-  localActorId: string;
+  localActorId?: string;
   remoteActorUri: string;
   followActivityUri: string;
   activityUri: string;
@@ -289,19 +289,31 @@ async function requestOutboundFollow(input: {
 async function recordOutboundAcceptReceipt(input: {
   sql: SqlExecutor;
   canonicalOrigin: string;
-  localActorId: string;
+  localActorId?: string;
   remoteActorUri: string;
   followActivityUri: string;
   activityUri: string;
 }): Promise<FollowTransitionResult | null> {
   const normalizedRemote = normalizeRemoteActorUri(input.remoteActorUri);
+  const existingRows = (await input.sql`
+    SELECT *
+    FROM public.activitypub_follows
+    WHERE direction = 'outbound'
+      AND remote_actor_uri = ${normalizedRemote}
+      AND follow_activity_uri = ${input.followActivityUri}
+    FOR UPDATE
+  `) as readonly unknown[];
+  const existing = parseOptionalRow(existingRows, parseActivityPubFollowRow);
+  if (!existing || (input.localActorId && existing.localActorId !== input.localActorId)) {
+    return null;
+  }
   const inserted = await insertActivityReceipt({
     sql: input.sql,
     activityUri: input.activityUri,
     objectUri: input.followActivityUri,
     activityType: 'Accept',
     actorUri: normalizedRemote,
-    localActorId: input.localActorId,
+    localActorId: existing.localActorId,
     direction: 'inbound',
     remoteActorUri: normalizedRemote,
   });
@@ -309,15 +321,6 @@ async function recordOutboundAcceptReceipt(input: {
     return null;
   }
 
-  const existing = await lockFollowRow({
-    sql: input.sql,
-    direction: 'outbound',
-    localActorId: input.localActorId,
-    remoteActorUri: normalizedRemote,
-  });
-  if (!existing || existing.followActivityUri !== input.followActivityUri) {
-    return null;
-  }
   if (existing.status === 'undone' || existing.status === 'rejected') {
     return { follow: existing };
   }
@@ -532,7 +535,7 @@ async function recordInboundFollow(input: {
       activityType: 'Accept',
       recipientInbox,
       sharedInbox,
-      orderingKey: input.followActivityUri,
+      orderingKey: acceptActivityUri,
       objectUri: input.followActivityUri,
       localActorUri: input.localActorUri,
       remoteActorUri: normalizedRemote,

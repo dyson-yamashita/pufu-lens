@@ -1,0 +1,9 @@
+{
+  "@context": "https://www.w3.org/ns/activitystreams",
+  "type": "Announce",
+  "id": "https://lens-a.test/activitypub/activities/announce/synthetic-report",
+  "actor": "https://lens-a.test/activitypub/actors/all",
+  "to": ["https://www.w3.org/ns/activitystreams#Public"],
+  "cc": ["https://lens-a.test/activitypub/actors/all/followers"],
+  "object": "https://lens-a.test/activitypub/reports/synthetic-report"
+}

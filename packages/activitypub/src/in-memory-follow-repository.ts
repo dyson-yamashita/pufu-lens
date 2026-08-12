@@ -168,12 +168,18 @@ export function createInMemoryActivityPubFollowRepository(): ActivityPubFollowRe
       };
     },
     async recordOutboundAcceptReceipt(input) {
-      if (!insertReceipt(input.activityUri)) {
+      const normalizedRemote = normalizeRemoteActorUri(input.remoteActorUri);
+      const existing = [...follows.values()].find(
+        (follow) =>
+          follow.direction === 'outbound' &&
+          follow.remoteActorUri === normalizedRemote &&
+          follow.followActivityUri === input.followActivityUri &&
+          (!input.localActorId || follow.localActorId === input.localActorId),
+      );
+      if (!existing) {
         return null;
       }
-      const normalizedRemote = normalizeRemoteActorUri(input.remoteActorUri);
-      const existing = lockFollow('outbound', input.localActorId, normalizedRemote);
-      if (!existing || existing.followActivityUri !== input.followActivityUri) {
+      if (!insertReceipt(input.activityUri)) {
         return null;
       }
       if (
@@ -301,7 +307,7 @@ export function createInMemoryActivityPubFollowRepository(): ActivityPubFollowRe
           activityType: 'Accept',
           recipientInbox,
           sharedInbox,
-          orderingKey: input.followActivityUri,
+          orderingKey: acceptActivityUri,
           objectUri: input.followActivityUri,
           localActorUri: input.localActorUri,
           remoteActorUri: normalizedRemote,

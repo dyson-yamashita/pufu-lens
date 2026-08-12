@@ -143,6 +143,19 @@ test('outbound accept receipt accepts pending and ignores stale generation', asy
   assert.equal(stale, null);
 });
 
+test('shared inbox Accept resolves the outbound follow without a recipient actor hint', async () => {
+  const repository = createInMemoryActivityPubFollowRepository();
+  const follow = await repository.requestOutboundFollow(baseOutboundInput);
+  const accepted = await repository.recordOutboundAcceptReceipt({
+    canonicalOrigin,
+    remoteActorUri,
+    followActivityUri: follow.follow.followActivityUri,
+    activityUri: `${canonicalOrigin}/activitypub/activities/accept/${randomUUID()}`,
+  });
+  assert.equal(accepted?.follow.localActorId, localActorId);
+  assert.equal(accepted?.follow.status, 'accepted');
+});
+
 test('outbound accept after undo does not resurrect', async () => {
   const repository = createInMemoryActivityPubFollowRepository();
   const follow = await repository.requestOutboundFollow(baseOutboundInput);
@@ -217,6 +230,18 @@ test('inbound follow after undo accepts new generation with different follow act
   });
   assert.equal(refollow?.follow.status, 'accepted');
   assert.equal(refollow?.outboxEnqueue?.activityType, 'Accept');
+});
+
+test('inbound follow Accept outbox uses deterministic accept activity URI as ordering key', async () => {
+  const repository = createInMemoryActivityPubFollowRepository();
+  const followActivityUri = `${canonicalOrigin}/activitypub/activities/follow/inbound-ordering`;
+  const result = await repository.recordInboundFollow({
+    ...baseInboundInput,
+    followActivityUri,
+  });
+  const acceptActivityUri = buildDeterministicAcceptActivityUri(canonicalOrigin, followActivityUri);
+  assert.equal(result?.outboxEnqueue?.orderingKey, acceptActivityUri);
+  assert.notEqual(result?.outboxEnqueue?.orderingKey, followActivityUri);
 });
 
 test('Accept outbox JSON embeds remote actor on Follow object', async () => {

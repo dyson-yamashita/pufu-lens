@@ -287,10 +287,14 @@ export async function parseEmbeddedCreateArticle(input: {
   createActorUri: string;
   isDomainBlocked: BlockedDomainPredicate;
 }): Promise<RemoteArticleReadModel> {
-  assertRemoteArticleDocumentType(input.object);
-  assertRemoteArticleJsonLdContext(input.object);
+  const object =
+    input.object['@context'] === undefined || input.object['@context'] === null
+      ? { ...input.object, '@context': 'https://www.w3.org/ns/activitystreams' }
+      : input.object;
+  assertRemoteArticleDocumentType(object);
+  assertRemoteArticleJsonLdContext(object);
   const loader = createProductionSafeDocumentLoader();
-  const article = await Article.fromJsonLd(input.object, { documentLoader: loader });
+  const article = await Article.fromJsonLd(object, { documentLoader: loader });
   if (!(article instanceof Article)) {
     throw new Error('Create object is not an Article');
   }
@@ -303,12 +307,12 @@ export async function parseEmbeddedCreateArticle(input: {
   if (attributedToUri !== assertInboundReportHttpsUrl(input.createActorUri, 'Create actor')) {
     throw new Error('Article attributedTo must match Create actor');
   }
-  if (!hasPublicAddressing(input.object.to)) {
+  if (!hasPublicAddressing(object.to)) {
     throw new Error('Article must be addressed to Public');
   }
-  const title = assertInboundReportTitle(readTextValue(input.object.name));
-  const summaryHtml = sanitizeInboundReportSummaryHtml(readSummaryHtmlFromRecord(input.object));
-  const originalUrl = readOriginalUrlFromRecord(input.object, articleId);
+  const title = assertInboundReportTitle(readTextValue(object.name));
+  const summaryHtml = sanitizeInboundReportSummaryHtml(readSummaryHtmlFromRecord(object));
+  const originalUrl = readOriginalUrlFromRecord(object, articleId);
   assertCoherentArticleOrigins({ articleId, attributedTo: attributedToUri, originalUrl });
   validateArticleUrls({
     articleId,

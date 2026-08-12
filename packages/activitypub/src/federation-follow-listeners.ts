@@ -34,7 +34,7 @@ export function registerFollowInboxHandlers(
     await handleInboundFollow(ctx, activity, input, uri);
   });
   listeners.on(Accept, async (ctx, activity) => {
-    await handleInboundAccept(ctx, activity, input, uri);
+    await handleInboundAccept(ctx, activity, input);
   });
   listeners.on(Undo, async (ctx, activity) => {
     await handleInboundUndo(ctx, activity, input, uri);
@@ -106,48 +106,75 @@ async function handleInboundAccept(
     actorRepository: ActivityPubRepository;
     followUseCases: ActivityPubFollowUseCases;
   },
-  uri: ReturnType<typeof buildActivityPubUriContract>,
 ): Promise<void> {
   const acceptActivityUri = readRequiredHttpsUrl(activity.id, 'Accept id');
   const remoteActorUri = normalizeRemoteActorUri(
     readRequiredHttpsUrl(activity.actorId, 'Accept actor'),
   );
-  const embeddedFollow = await activity.getObject();
-  if (!(embeddedFollow instanceof Follow)) {
-    return;
-  }
-  const followActivityUri = readRequiredHttpsUrl(embeddedFollow.id, 'Accept object Follow id');
-  const embeddedFollowActor = readRequiredHttpsUrl(
-    embeddedFollow.actorId,
-    'Accept embedded Follow actor',
-  );
-  const embeddedFollowObject = readRequiredHttpsUrl(
-    embeddedFollow.objectId,
-    'Accept embedded Follow object',
-  );
+  const followContract = await readAcceptFollowContract(activity);
 
   if (!(await assertVerifiedActor(ctx, remoteActorUri))) {
+    return;
+  }
+  if (
+    followContract.remoteActorUri &&
+    normalizeRemoteActorUri(followContract.remoteActorUri) !== remoteActorUri
+  ) {
     return;
   }
 
   const localActor = await resolveLocalActor(input.actorRepository, {
     recipient: ctx.recipient,
-    objectUrl: embeddedFollowActor,
+    objectUrl: followContract.localActorUri,
   });
-  if (!localActor || uri.actorUrl(localActor.preferredUsername) !== embeddedFollowActor) {
+  if (
+    followContract.localActorUri &&
+    (!localActor ||
+      buildActivityPubUriContract(input.canonicalOrigin).actorUrl(localActor.preferredUsername) !==
+        followContract.localActorUri)
+  ) {
     return;
   }
-
-  if (normalizeRemoteActorUri(embeddedFollowObject) !== remoteActorUri) {
+  if (!isLocalFollowActivityUri(followContract.followActivityUri, input.canonicalOrigin)) {
     return;
   }
 
   await input.followUseCases.processVerifiedInboundAccept({
-    localActorId: localActor.id,
+    ...(localActor ? { localActorId: localActor.id } : {}),
     remoteActorUri,
-    followActivityUri,
+    followActivityUri: followContract.followActivityUri,
     acceptActivityUri,
   });
+}
+
+async function readAcceptFollowContract(activity: Accept): Promise<{
+  followActivityUri: string;
+  localActorUri?: string;
+  remoteActorUri?: string;
+}> {
+  const activityJson = await activity.toJsonLd();
+  if (isRecord(activityJson) && isRecord(activityJson.object)) {
+    const embedded = activityJson.object;
+    if (!hasJsonLdType(embedded.type, 'Follow')) {
+      throw new Error('Accept object must be a Follow');
+    }
+    return {
+      followActivityUri: readRequiredJsonHttpsUrl(embedded.id, 'Accept object Follow id'),
+      localActorUri: readRequiredJsonHttpsUrl(embedded.actor, 'Accept embedded Follow actor'),
+      remoteActorUri: readRequiredJsonHttpsUrl(embedded.object, 'Accept embedded Follow object'),
+    };
+  }
+  return {
+    followActivityUri: readRequiredHttpsUrl(activity.objectId, 'Accept object Follow id'),
+  };
+}
+
+function isLocalFollowActivityUri(activityUri: string, canonicalOrigin: string): boolean {
+  const parsed = new URL(activityUri);
+  return (
+    parsed.origin === canonicalOrigin &&
+    parsed.pathname.startsWith('/activitypub/activities/follow/')
+  );
 }
 
 async function handleInboundUndo(
@@ -273,6 +300,30 @@ function readRequiredHttpsUrl(value: URL | null | undefined, label: string): str
   return parsed.toString();
 }
 
+function readRequiredJsonHttpsUrl(value: unknown, label: string): string {
+  if (typeof value !== 'string') {
+    throw new Error(`${label} is required`);
+  }
+  return readRequiredHttpsUrl(new URL(value), label);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasJsonLdType(value: unknown, expected: string): boolean {
+  if (typeof value === 'string') {
+    return value === expected || value === `https://www.w3.org/ns/activitystreams#${expected}`;
+  }
+  return (
+    Array.isArray(value) &&
+    value.some(
+      (entry) =>
+        entry === expected || entry === `https://www.w3.org/ns/activitystreams#${expected}`,
+    )
+  );
+}
+
 /** Test-only inbox context factory for verified listener contract tests. */
 export function createVerifiedInboxContextForTest(input: {
   recipient?: string | null;
@@ -308,8 +359,7 @@ export async function invokeVerifiedInboundAcceptListenerForTest(input: {
   activity: Accept;
 }): Promise<void> {
   assertActivityPubListenerHarnessRuntime();
-  const uri = buildActivityPubUriContract(input.canonicalOrigin);
-  await handleInboundAccept(input.ctx, input.activity, input, uri);
+  await handleInboundAccept(input.ctx, input.activity, input);
 }
 
 /** Test-only entrypoint for verified inbound Undo listener handling. */

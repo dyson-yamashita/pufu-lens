@@ -1,0 +1,17 @@
+{
+  "@context": "https://www.w3.org/ns/activitystreams",
+  "type": "Create",
+  "id": "https://lens-a.test/activitypub/activities/create/synthetic-report",
+  "actor": "https://lens-a.test/activitypub/actors/project-a",
+  "to": ["https://www.w3.org/ns/activitystreams#Public"],
+  "cc": ["https://lens-a.test/activitypub/actors/project-a/followers"],
+  "object": {
+    "type": "Article",
+    "id": "https://lens-a.test/activitypub/reports/synthetic-report",
+    "name": "Synthetic Hermetic Report",
+    "summary": "Synthetic public summary for fixture validation.",
+    "url": "https://lens-a.test/reports/public/project-a/synthetic-report",
+    "attributedTo": "https://lens-a.test/activitypub/actors/project-a",
+    "to": ["https://www.w3.org/ns/activitystreams#Public"]
+  }
+}

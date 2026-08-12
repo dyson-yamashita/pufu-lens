@@ -232,6 +232,27 @@ jobs:
         env:
           DATABASE_URL: postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens
 
+      - name: ActivityPub hermetic E2E
+        run: pnpm test:activitypub:e2e
+        env:
+          DATABASE_URL: postgres://pufu_lens:pufu_lens@localhost:5432/pufu_lens
+
+      - name: Upload ActivityPub protocol trace artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: activitypub-protocol-trace
+          path: artifacts/activitypub-e2e/protocol-trace.json
+          if-no-files-found: error
+
+      - name: Upload ActivityPub protocol trace artifact on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: activitypub-protocol-trace-failure
+          path: artifacts/activitypub-e2e/protocol-trace.json
+          if-no-files-found: ignore
+
   build:
     runs-on: ubuntu-latest
     steps:
