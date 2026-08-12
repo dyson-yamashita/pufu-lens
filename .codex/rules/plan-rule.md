@@ -15,7 +15,7 @@
 
 - plan の Step に着手するときは、Step ごとに独立した Codex タスク（thread / session）を先に作成する。
 - 1 つの Codex タスクで複数の Step を実装しない。前の Step の PR が merge され、次の Step へ進む場合は新しいタスクを作成する。
-- タスク作成時は、対象 plan のパスと Step、最新 `main` から開始すること、GitHub Issue / Step 用ブランチ / PR の作成要件をタスクの指示に含める。
+- タスク作成時は、対象 plan のパスと Step、最新 `main` から開始することを指示に含める。GitHub Issue / Step 用ブランチ / PR の作成要件は `.codex/rules/git-rule.md` を必須の参照先とし、Issue 番号付きブランチ、ready/open PR、PR 作成前セルフレビュー、検証結果と未検証リスクの記載を引き継ぐ。
 - タスクの作成に失敗した場合は、元のタスク内で Step 実装を開始せず、worktree、ホスト接続、同時実行状態を確認して再試行する。解消できない場合は、原因と未着手であることをユーザーに報告する。
 
 ## 4. 更新ルール
