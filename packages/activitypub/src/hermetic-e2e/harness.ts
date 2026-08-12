@@ -1,5 +1,5 @@
 import { HermeticFaultController } from './fault-controller.ts';
-import { createHermeticDocumentLoader, createHostRouter } from './host-router.ts';
+import { createHermeticCombinedLoader, createHostRouter } from './host-router.ts';
 import { MastodonHermeticFixture } from './mastodon-fixture.ts';
 import { ProtocolTraceCollector } from './protocol-trace.ts';
 import {
@@ -24,13 +24,14 @@ export async function createHermeticE2EHarness(databaseUrl: string): Promise<Her
   const trace = new ProtocolTraceCollector();
   const faultController = new HermeticFaultController();
   const databases = await createHermeticTempDatabasePair(databaseUrl);
-  const router = createHostRouter();
-  const routedFetch = ((input, init) => router.fetch(input, init)) as typeof fetch;
-  const documentLoader = createHermeticDocumentLoader(routedFetch);
   let lensA: PufuLensHermeticInstance | undefined;
   let lensB: PufuLensHermeticInstance | undefined;
   let restoreFetch: (() => void) | undefined;
   try {
+    const router = createHostRouter();
+    restoreFetch = router.install({ faultController, trace });
+    const routedFetch = ((input, init) => router.fetch(input, init)) as typeof fetch;
+    const documentLoader = createHermeticCombinedLoader(routedFetch);
     const mastodon = await MastodonHermeticFixture.create(trace, documentLoader);
     lensA = await createPufuLensHermeticInstance({
       label: 'a',
@@ -52,7 +53,6 @@ export async function createHermeticE2EHarness(databaseUrl: string): Promise<Her
     router.register(createdLensA.host, (request) => createdLensA.handleRequest(request));
     router.register(createdLensB.host, (request) => createdLensB.handleRequest(request));
     router.register('mastodon.test', (request) => mastodon.handleRequest(request));
-    restoreFetch = router.install({ faultController, trace });
     // Keep DB rows created with PostgreSQL now() immediately due under the injected virtual clock.
     faultController.advance(60_000);
 
@@ -87,6 +87,10 @@ export async function createHermeticE2EHarness(databaseUrl: string): Promise<Her
   }
 }
 
+/**
+ * Drains queued inbox/outbox messages across the given instances until no progress remains.
+ * Runs at most `maxRounds` drain cycles with a per-round limit of 5 messages per instance.
+ */
 export async function drainAllQueues(
   instances: readonly PufuLensHermeticInstance[],
   maxRounds = 100,
@@ -105,15 +109,16 @@ export async function drainAllQueues(
   }
 }
 
+/**
+ * Requests an outbound follow from `source` to `target` and drains both instances until idle.
+ * `targetUsername` must be a remotely visible actor on the target instance.
+ */
 export async function runFollowCycle(input: {
   source: PufuLensHermeticInstance;
   target: PufuLensHermeticInstance;
   targetUsername: 'project-a' | 'project-b' | 'all';
 }): Promise<void> {
-  const remoteAddress =
-    input.targetUsername === 'all'
-      ? `acct:all@${input.target.host}`
-      : `acct:${input.targetUsername}@${input.target.host}`;
+  const remoteAddress = `acct:${input.targetUsername}@${input.target.host}`;
   const followResponse = await input.source.control.follow({
     projectSlug: input.source.projectSlug,
     localActorPreferredUsername: input.source.projectSlug,

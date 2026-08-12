@@ -22,6 +22,7 @@ import { escapeNoteContentText } from './report-delivery.ts';
 import { createProductionSafeDocumentLoader } from './security.ts';
 import {
   assertActivityPubDbTestRuntime,
+  assertActivityPubHermeticE2eRuntime,
   assertActivityPubListenerHarnessRuntime,
 } from './test-runtime-guard.ts';
 import { buildActivityPubUriContract } from './uri-contract.ts';
@@ -82,7 +83,6 @@ export async function createTestActivityPubFederation(
     input.testContextLoaderFactory ||
     input.testAuthenticatedDocumentLoaderFactory
   ) {
-    const { assertActivityPubHermeticE2eRuntime } = await import('./test-runtime-guard.ts');
     assertActivityPubHermeticE2eRuntime();
   }
   if (input.allowPrivateAddress ?? false) {

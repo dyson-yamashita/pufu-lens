@@ -232,6 +232,18 @@ test('inbound follow after undo accepts new generation with different follow act
   assert.equal(refollow?.outboxEnqueue?.activityType, 'Accept');
 });
 
+test('inbound follow Accept outbox uses deterministic accept activity URI as ordering key', async () => {
+  const repository = createInMemoryActivityPubFollowRepository();
+  const followActivityUri = `${canonicalOrigin}/activitypub/activities/follow/inbound-ordering`;
+  const result = await repository.recordInboundFollow({
+    ...baseInboundInput,
+    followActivityUri,
+  });
+  const acceptActivityUri = buildDeterministicAcceptActivityUri(canonicalOrigin, followActivityUri);
+  assert.equal(result?.outboxEnqueue?.orderingKey, acceptActivityUri);
+  assert.notEqual(result?.outboxEnqueue?.orderingKey, followActivityUri);
+});
+
 test('Accept outbox JSON embeds remote actor on Follow object', async () => {
   const repository = createInMemoryActivityPubFollowRepository();
   const followActivityUri = `${canonicalOrigin}/activitypub/activities/follow/accept-json`;

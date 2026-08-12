@@ -326,6 +326,36 @@ test('remote article resolver rejects blocked attributedTo and original URL', as
   await assert.rejects(() => resolver.resolve(blockedArticleId), /blocked/i);
 });
 
+test('parseEmbeddedCreateArticle supplements undefined @context with ActivityStreams', async () => {
+  const article = await parseEmbeddedCreateArticle({
+    object: buildEmbeddedArticle({ '@context': undefined }),
+    createActorUri: remoteActorUri,
+    isDomainBlocked: () => false,
+  });
+  assert.equal(article.title, 'Remote report title');
+});
+
+test('parseEmbeddedCreateArticle supplements null @context with ActivityStreams', async () => {
+  const article = await parseEmbeddedCreateArticle({
+    object: buildEmbeddedArticle({ '@context': null }),
+    createActorUri: remoteActorUri,
+    isDomainBlocked: () => false,
+  });
+  assert.equal(article.title, 'Remote report title');
+});
+
+test('parseEmbeddedCreateArticle preserves explicit non-null @context for validation', async () => {
+  await assert.rejects(
+    () =>
+      parseEmbeddedCreateArticle({
+        object: buildEmbeddedArticle({ '@context': 'https://evil.example/context.jsonld' }),
+        createActorUri: remoteActorUri,
+        isDomainBlocked: () => false,
+      }),
+    /@context URL is not permitted/i,
+  );
+});
+
 test('remote article resolver sanitizes unsafe summary HTML', async () => {
   const resolver = createHermeticResolver(
     buildArticleDocument({

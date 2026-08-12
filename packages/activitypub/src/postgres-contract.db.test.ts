@@ -197,7 +197,7 @@ async function assertQueuePersistenceAndIdempotency(sql: postgres.Sql) {
 async function assertKvAndQueueSurviveClientRestart() {
   const writerClient = postgres(resolvedDatabaseUrl, { max: 1 });
   try {
-    const kv = createPostgresFedifyKvStore({ sql: writerClient, initialized: true });
+    const kv = createPostgresFedifyKvStore({ sql: writerClient });
     await kv.set(testKvKey, { persisted: true });
     await kv.set(testNullKvKey, null);
   } finally {
@@ -213,7 +213,7 @@ async function assertKvAndQueueSurviveClientRestart() {
     `;
     assert.equal(queueRows.length, 1);
 
-    const reopenedKv = createPostgresFedifyKvStore({ sql: readerClient, initialized: true });
+    const reopenedKv = createPostgresFedifyKvStore({ sql: readerClient });
     const value = await reopenedKv.get(testKvKey);
     assert.deepEqual(value, { persisted: true });
     assert.equal(await reopenedKv.get(testNullKvKey), null);

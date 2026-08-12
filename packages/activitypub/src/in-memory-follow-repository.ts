@@ -307,7 +307,7 @@ export function createInMemoryActivityPubFollowRepository(): ActivityPubFollowRe
           activityType: 'Accept',
           recipientInbox,
           sharedInbox,
-          orderingKey: input.followActivityUri,
+          orderingKey: acceptActivityUri,
           objectUri: input.followActivityUri,
           localActorUri: input.localActorUri,
           remoteActorUri: normalizedRemote,

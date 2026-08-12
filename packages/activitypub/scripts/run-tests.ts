@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { readdir } from 'node:fs/promises';
-import { relative, resolve } from 'node:path';
+import { relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const testRoot = fileURLToPath(new URL('../src', import.meta.url));
@@ -27,7 +27,7 @@ async function collectTestFiles(directory: string): Promise<string[]> {
         return collectTestFiles(fullPath);
       }
 
-      const relativePath = relative(testRoot, fullPath);
+      const relativePath = relative(testRoot, fullPath).split(sep).join('/');
       return entry.isFile() &&
         entry.name.endsWith('.test.ts') &&
         !entry.name.endsWith('.db.test.ts') &&

@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +25,7 @@ export type HermeticTempDatabasePair = {
 export async function createHermeticTempDatabasePair(
   databaseUrl: string,
 ): Promise<HermeticTempDatabasePair> {
-  const suffix = `${process.pid}_${Date.now().toString(36)}`;
+  const suffix = `${process.pid}_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`;
   const lensAName = `${TEMP_DB_PREFIX}a_${suffix}`;
   const lensBName = `${TEMP_DB_PREFIX}b_${suffix}`;
   assertSafeTempDatabaseName(lensAName);
@@ -93,10 +94,10 @@ async function dropDatabase(sql: postgres.Sql, databaseName: string): Promise<vo
 }
 
 async function applyInitSql(databaseUrl: string, databaseName: string): Promise<void> {
-  const sqlText = await readFile(INIT_SQL_PATH, 'utf8');
+  const sqlText = removeTemplateDatabaseAlterStatement(await readFile(INIT_SQL_PATH, 'utf8'));
   const sql = postgres(databaseUrl, { max: 1 });
   try {
-    await sql.unsafe(rewriteDatabaseName(sqlText, databaseName));
+    await sql.unsafe(sqlText);
     await sql.unsafe(
       `ALTER DATABASE ${quoteIdentifier(databaseName)} SET search_path = public, ag_catalog, "$user"`,
     );
@@ -105,10 +106,11 @@ async function applyInitSql(databaseUrl: string, databaseName: string): Promise<
   }
 }
 
-function rewriteDatabaseName(sqlText: string, databaseName: string): string {
+/** Removes the template-database ALTER DATABASE statement from init.sql before temp DB bootstrap. */
+export function removeTemplateDatabaseAlterStatement(sqlText: string): string {
   return sqlText.replace(
-    /ALTER\s+DATABASE\s+pufu_lens\s+SET\s+search_path/gi,
-    `ALTER DATABASE ${quoteIdentifier(databaseName)} SET search_path`,
+    /^\s*ALTER\s+DATABASE\s+pufu_lens\s+SET\s+search_path\s*=\s*ag_catalog,\s*"\$user",\s*public\s*;\s*$/gim,
+    '',
   );
 }
 

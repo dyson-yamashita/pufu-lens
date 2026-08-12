@@ -12,6 +12,8 @@ export type HermeticFaultTarget = {
   readonly pathPrefix?: string;
 };
 
+const HERMETIC_ABORT_WAIT_MS = 100;
+
 /** Virtual clock and network fault injection for hermetic ActivityPub E2E. */
 export class HermeticFaultController {
   #now: Date;
@@ -43,6 +45,7 @@ export class HermeticFaultController {
   }
 
   resolveFault(url: URL, method: string): HermeticFaultKind | null {
+    let bestMatch: { pathPrefix: string; kind: HermeticFaultKind } | null = null;
     for (const [key, kind] of this.#faults.entries()) {
       const [host, pathPrefix = ''] = key.split('|');
       if (url.hostname !== host) {
@@ -54,9 +57,11 @@ export class HermeticFaultController {
       if (kind === 'accept_then_fail' && method.toUpperCase() !== 'POST') {
         continue;
       }
-      return kind;
+      if (!bestMatch || pathPrefix.length > bestMatch.pathPrefix.length) {
+        bestMatch = { pathPrefix, kind };
+      }
     }
-    return null;
+    return bestMatch?.kind ?? null;
   }
 }
 
@@ -93,7 +98,19 @@ function waitForAbort(signal?: AbortSignal): Promise<void> {
   if (signal.aborted) {
     return Promise.resolve();
   }
-  return new Promise((resolve) =>
-    signal.addEventListener('abort', () => resolve(), { once: true }),
-  );
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      cleanup();
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('Hermetic abort wait timed out'));
+    }, HERMETIC_ABORT_WAIT_MS);
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
 }

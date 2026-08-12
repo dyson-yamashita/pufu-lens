@@ -167,10 +167,11 @@ export class MastodonHermeticFixture {
 
   async #handleWebFinger(url: URL): Promise<Response> {
     const resource = url.searchParams.get('resource');
-    if (!resource?.startsWith('acct:')) {
+    const match = resource?.match(/^acct:([^@]+)@mastodon\.test$/);
+    if (!match) {
       return new Response('not found', { status: 404 });
     }
-    const username = resource.split('@')[0]?.slice('acct:'.length) ?? '';
+    const username = match[1] ?? '';
     const actor = this.#resolveActor(username);
     if (!actor) {
       return new Response('not found', { status: 404 });
@@ -376,16 +377,7 @@ function jsonResponse(body: unknown, contentType: string): Response {
 }
 
 function readAudienceUri(bodyText: string): string | undefined {
-  try {
-    const parsed = JSON.parse(bodyText) as { to?: unknown; cc?: unknown };
-    const values = [
-      ...(Array.isArray(parsed.to) ? parsed.to : parsed.to ? [parsed.to] : []),
-      ...(Array.isArray(parsed.cc) ? parsed.cc : parsed.cc ? [parsed.cc] : []),
-    ];
-    return values.find((value) => typeof value === 'string');
-  } catch {
-    return undefined;
-  }
+  return readAllAudienceUris(bodyText)[0];
 }
 
 function hasPublicAudience(bodyText: string): boolean {

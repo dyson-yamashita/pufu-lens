@@ -76,16 +76,14 @@ type QueueRow = {
  * encodes JSON `null`, which postgres.js otherwise binds as SQL NULL and the
  * official NOT NULL schema correctly rejects.
  */
-export function createPostgresFedifyKvStore(input: {
-  sql: postgres.Sql;
-  initialized?: boolean;
-}): KvStore {
-  void input.initialized;
+export function createPostgresFedifyKvStore(input: { sql: postgres.Sql }): KvStore {
   const store = new PostgresKvStore(input.sql, {
     tableName: 'activitypub_fedify_kv',
     initialized: false,
   });
   const nullSentinel = { __pufu_lens_fedify_json_null__: true } as const;
+  // decode maps the JSON-null sentinel back to JavaScript null; undefined means missing key.
+  // Sentinel collision with legitimate stored values is assumed impossible in practice.
   const decode = <T>(value: T): T | null => (isFedifyJsonNullSentinel(value) ? null : value);
   return {
     async get<T = unknown>(key: Parameters<KvStore['get']>[0]) {
@@ -119,6 +117,17 @@ function isFedifyJsonNullSentinel(value: unknown): boolean {
     entries[0]?.[0] === '__pufu_lens_fedify_json_null__' &&
     entries[0]?.[1] === true
   );
+}
+
+function readInboxActivityActorUri(activity: unknown): string {
+  if (typeof activity !== 'object' || activity === null || Array.isArray(activity)) {
+    throw new Error('inbox activity missing actor');
+  }
+  const actor = Reflect.get(activity, 'actor');
+  if (typeof actor !== 'string' || actor.length === 0) {
+    throw new Error('inbox activity missing actor');
+  }
+  return actor;
 }
 
 type QueueSql = postgres.Sql | postgres.TransactionSql;
@@ -456,12 +465,7 @@ export async function processOneQueuedMessage(
             input.testOnlyAllowPrivateAddress &&
             !shouldUseHermeticInboxQueueProcessor()
           ) {
-            const activityRecord = stored.activity as Record<string, unknown>;
-            const signedActorUri =
-              typeof activityRecord.actor === 'string' ? activityRecord.actor : '';
-            if (!signedActorUri) {
-              throw new Error('inbox activity missing actor');
-            }
+            const signedActorUri = readInboxActivityActorUri(stored.activity);
             await processStoredInboxViaVerifiedListenerHarness({
               stored,
               canonicalOrigin: input.canonicalOrigin,
@@ -488,7 +492,6 @@ export async function processOneQueuedMessage(
               inboundReportUseCases,
               kv: createPostgresFedifyKvStore({
                 sql: input.sql,
-                initialized: true,
               }),
               queue,
               deliveryObserver,
@@ -660,7 +663,7 @@ export async function processOneQueuedOutboxMessage(
       canonicalOrigin: input.canonicalOrigin,
     });
     const federation = createFederation({
-      kv: createPostgresFedifyKvStore({ sql: input.sql, initialized: true }),
+      kv: createPostgresFedifyKvStore({ sql: input.sql }),
       queue,
       manuallyStartQueue: true,
       allowPrivateAddress: input.testOnlyAllowPrivateAddress ?? false,

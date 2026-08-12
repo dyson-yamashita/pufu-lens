@@ -43,18 +43,21 @@ export function assertTestRemoteActorResolverAllowed(testRemoteActorResolver?: u
   }
 }
 
+/** Returns true only when the hermetic ActivityPub E2E runtime is fully enabled. */
+export function isActivityPubHermeticE2eRuntimeEnabled(): boolean {
+  return (
+    process.env.NODE_ENV === 'test' &&
+    process.env.ACTIVITYPUB_RUN_DB_TESTS === '1' &&
+    process.env.ACTIVITYPUB_RUN_HERMETIC_E2E === '1'
+  );
+}
+
 /**
  * Fail-closed guard for hermetic ActivityPub E2E harness entrypoints.
  * Requires `NODE_ENV=test`, `ACTIVITYPUB_RUN_DB_TESTS=1`, and `ACTIVITYPUB_RUN_HERMETIC_E2E=1`.
  */
 export function assertActivityPubHermeticE2eRuntime(): void {
-  if (process.env.NODE_ENV !== 'test') {
-    throw new ActivityPubTestRuntimeDisabledError();
-  }
-  if (process.env.ACTIVITYPUB_RUN_DB_TESTS !== '1') {
-    throw new ActivityPubTestRuntimeDisabledError();
-  }
-  if (process.env.ACTIVITYPUB_RUN_HERMETIC_E2E !== '1') {
+  if (!isActivityPubHermeticE2eRuntimeEnabled()) {
     throw new ActivityPubTestRuntimeDisabledError();
   }
 }
@@ -77,7 +80,10 @@ export function assertTestDeliveryFetchTimeoutMsAllowed(testDeliveryFetchTimeout
   }
 }
 
-/** Returns true when inbox queue processing must use Federation.processQueuedTask instead of the listener harness. */
+/**
+ * Returns true when inbox queue processing must use Federation.processQueuedTask instead of the listener harness.
+ * This is an implementation switch only; it is not a standalone runtime guard.
+ */
 export function shouldUseHermeticInboxQueueProcessor(): boolean {
   return process.env.ACTIVITYPUB_RUN_HERMETIC_E2E === '1';
 }

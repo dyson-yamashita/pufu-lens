@@ -288,8 +288,8 @@ export async function parseEmbeddedCreateArticle(input: {
   isDomainBlocked: BlockedDomainPredicate;
 }): Promise<RemoteArticleReadModel> {
   const object =
-    input.object['@context'] === undefined
-      ? { '@context': 'https://www.w3.org/ns/activitystreams', ...input.object }
+    input.object['@context'] === undefined || input.object['@context'] === null
+      ? { ...input.object, '@context': 'https://www.w3.org/ns/activitystreams' }
       : input.object;
   assertRemoteArticleDocumentType(object);
   assertRemoteArticleJsonLdContext(object);

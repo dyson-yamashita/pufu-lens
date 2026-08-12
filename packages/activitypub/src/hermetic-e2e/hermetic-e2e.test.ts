@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createProductionSafeDocumentLoader } from '../security.ts';
+import { isActivityPubHermeticE2eRuntimeEnabled } from '../test-runtime-guard.ts';
 import {
   actorInboxFor,
   actorUriFor,
@@ -9,7 +10,7 @@ import {
 } from './harness.ts';
 import { buildRemoteLensActorAddress } from './mastodon-fixture.ts';
 
-const runHermetic = process.env.ACTIVITYPUB_RUN_HERMETIC_E2E === '1';
+const runHermetic = isActivityPubHermeticE2eRuntimeEnabled();
 const databaseUrl =
   process.env.DATABASE_URL?.trim() || 'postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens';
 
@@ -23,23 +24,26 @@ await main();
 async function main() {
   const harness = await createHermeticE2EHarness(databaseUrl);
   try {
-    await assertDistinctPublicKeys(harness.lensA, harness.lensB);
-    await assertWebFingerAndActorFetch(harness);
-    await assertRepresentationCanChangeBeforeOutbound(harness);
-    await assertLensSubscriptions(harness);
-    await assertMastodonFollowUndoOrdering(harness);
-    await assertInvalidSignatureRejected(harness);
-    await assertRepresentationLocksAfterOutbound(harness);
-    await assertReportPublicationDelivery(harness);
-    await assertMastodonTimelineProjection(harness);
-    await assertSharedInboxTraceAndDedupe(harness);
-    await assertFaultRecoveryScenarios(harness);
-    await assertAcceptThenFailIsIdempotent(harness);
-    await assertProductionLoaderRejectsPrivateAddresses();
-    assertSanitizedProtocolTrace(harness);
-    console.log('activitypub hermetic E2E passed');
+    try {
+      await assertDistinctPublicKeys(harness.lensA, harness.lensB);
+      await assertWebFingerAndActorFetch(harness);
+      await assertRepresentationCanChangeBeforeOutbound(harness);
+      await assertLensSubscriptions(harness);
+      await assertMastodonFollowUndoOrdering(harness);
+      await assertInvalidSignatureRejected(harness);
+      await assertRepresentationLocksAfterOutbound(harness);
+      await assertReportPublicationDelivery(harness);
+      await assertMastodonTimelineProjection(harness);
+      await assertSharedInboxTraceAndDedupe(harness);
+      await assertFaultRecoveryScenarios(harness);
+      await assertAcceptThenFailIsIdempotent(harness);
+      await assertProductionLoaderRejectsPrivateAddresses();
+      assertSanitizedProtocolTrace(harness);
+      console.log('activitypub hermetic E2E passed');
+    } finally {
+      await harness.trace.writeArtifact();
+    }
   } finally {
-    await harness.trace.writeArtifact();
     await harness.close();
   }
 }
@@ -220,7 +224,7 @@ async function assertReportPublicationDelivery(
   const dispatch = await dispatchResponse.json();
   await drainAllQueues([harness.lensA, harness.lensB]);
   const stateB = await readState(harness.lensB);
-  assert.ok((dispatch as { materialized?: number }).materialized === 2);
+  assert.equal((dispatch as { materialized?: number }).materialized, 2);
   const createReport = stateB.federatedReports.find((report) =>
     report.remote_activity_uri.includes('/activities/create/'),
   );
@@ -288,10 +292,7 @@ async function assertSharedInboxTraceAndDedupe(
     assert.equal(entry.digestKind, 'rfc9421');
     assert.equal(entry.signatureVerified, true);
     assert.equal(entry.audienceUri, 'https://www.w3.org/ns/activitystreams#Public');
-    assert.equal(
-      entry.keyOwnerUri,
-      actorUriFor(harness.lensA, entry.activityType === 'Create' ? 'project-a' : 'all'),
-    );
+    assert.equal(entry.keyOwnerUri, `${harness.lensA.origin}/activitypub/actors/:actor`);
   }
 
   const timelineCount = harness.mastodon.timeline.length;
@@ -485,6 +486,9 @@ function assertSanitizedProtocolTrace(
     '"privateKey"',
     'BEGIN PRIVATE KEY',
     '"key_ops"',
+    'project-a@hermetic.test',
+    '70000000-0000-0000-0000-00000000000a',
+    'acct:alice@mastodon.test',
   ]) {
     assert.equal(artifact.includes(forbidden), false, `trace leaked forbidden field: ${forbidden}`);
   }

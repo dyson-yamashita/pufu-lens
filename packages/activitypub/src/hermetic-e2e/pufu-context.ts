@@ -28,7 +28,7 @@ import {
   tryHandleHermeticControlRoute,
 } from './control-routes.ts';
 import type { HermeticFaultController } from './fault-controller.ts';
-import { createHermeticDocumentLoader } from './host-router.ts';
+import { createHermeticCombinedLoader, createHermeticContextLoader } from './host-router.ts';
 import type { HermeticTempDatabase } from './temp-databases.ts';
 
 export type PufuLensHermeticInstance = {
@@ -58,7 +58,7 @@ type CreatePufuLensInstanceInput = {
   readonly database: HermeticTempDatabase;
   readonly encryptionKeySeed: number;
   readonly faultController: HermeticFaultController;
-  readonly fetchImpl?: typeof fetch;
+  readonly fetchImpl: typeof fetch;
 };
 
 const INSTANCE_CONFIG = {
@@ -87,8 +87,12 @@ export async function createPufuLensHermeticInstance(
   assertActivityPubHermeticE2eRuntime();
   const config = INSTANCE_CONFIG[input.label];
   const encryptionKey = Buffer.alloc(32, input.encryptionKeySeed);
-  const fetchImpl = input.fetchImpl ?? globalThis.fetch;
-  const documentLoader = createHermeticDocumentLoader(fetchImpl);
+  const fetchImpl = input.fetchImpl;
+  // No-op URL/domain validation is safe here because hermetic E2E requires the three-part runtime
+  // guard and the fail-closed routed fetch supplied by the host router before any resolver or loader
+  // can reach the network.
+  const combinedLoader = createHermeticCombinedLoader(fetchImpl);
+  const contextLoader = createHermeticContextLoader();
   const sql = postgres(input.database.url, { max: 4 });
   await sql`SET search_path TO public, ag_catalog, "$user"`;
   const actorRepository = createPostgresActivityPubRepository({ sql, encryptionKey });
@@ -144,17 +148,19 @@ export async function createPufuLensHermeticInstance(
     inboundReportUseCases,
     kv: createPostgresFedifyKvStore({
       sql,
-      initialized: true,
     }),
     queue,
+    // Federation keeps allowPrivateAddress:false; queue/dispatcher use testOnlyAllowPrivateAddress
+    // only to activate injected loaders/resolvers under the hermetic runtime guard.
     allowPrivateAddress: false,
-    testDocumentLoaderFactory: () => documentLoader,
-    testContextLoaderFactory: () => documentLoader,
-    testAuthenticatedDocumentLoaderFactory: () => documentLoader,
+    testDocumentLoaderFactory: () => combinedLoader,
+    testContextLoaderFactory: () => contextLoader,
+    testAuthenticatedDocumentLoaderFactory: () => combinedLoader,
   });
 
   const hermeticClock: ActivityPubDispatcherClock = input.faultController.clock;
 
+  /** Drains up to `limit` queued messages (default 50) for this hermetic instance. */
   const drainQueue = async (limit = 50) => {
     let processed = 0;
     let failed = 0;
@@ -167,7 +173,7 @@ export async function createPufuLensHermeticInstance(
         testOnlyAllowPrivateAddress: true,
         testRemoteActorResolver: remoteActorResolver,
         testRemoteArticleResolver: remoteArticleResolver,
-        testDocumentLoaderFactory: () => documentLoader,
+        testDocumentLoaderFactory: () => combinedLoader,
         testDeliveryFetchTimeoutMs: 25,
         clock: hermeticClock,
       });
@@ -183,6 +189,7 @@ export async function createPufuLensHermeticInstance(
     return { processed, failed };
   };
 
+  /** Runs the report dispatcher up to `limit` times (default 50) for this hermetic instance. */
   const runDispatcher = async (limit = 50) => {
     let materialized = 0;
     let processed = 0;
@@ -195,7 +202,7 @@ export async function createPufuLensHermeticInstance(
         testOnlyAllowPrivateAddress: true,
         testRemoteActorResolver: remoteActorResolver,
         testRemoteArticleResolver: remoteArticleResolver,
-        testDocumentLoaderFactory: () => documentLoader,
+        testDocumentLoaderFactory: () => combinedLoader,
         testDeliveryFetchTimeoutMs: 25,
         clock: hermeticClock,
         maxBatchSize: 1,

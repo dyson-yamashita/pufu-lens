@@ -557,7 +557,7 @@ test('createTestActivityPubFederation rejects allowPrivateAddress without ACTIVI
   }
 });
 
-test('createTestActivityPubFederation rejects loader injection outside hermetic runtime', async () => {
+test('createTestActivityPubFederation rejects document loader injection outside hermetic runtime', async () => {
   const previousNodeEnv = process.env.NODE_ENV;
   const previousDbTests = process.env.ACTIVITYPUB_RUN_DB_TESTS;
   const previousHermetic = process.env.ACTIVITYPUB_RUN_HERMETIC_E2E;
@@ -570,6 +570,56 @@ test('createTestActivityPubFederation rejects loader injection outside hermetic 
         createTestActivityPubFederation({
           ...testFederationInput,
           testDocumentLoaderFactory: () => async () => {
+            throw new Error('must not be invoked');
+          },
+        }),
+      (error: unknown) => error instanceof ActivityPubTestRuntimeDisabledError,
+    );
+  } finally {
+    restoreEnv('NODE_ENV', previousNodeEnv);
+    restoreEnv('ACTIVITYPUB_RUN_DB_TESTS', previousDbTests);
+    restoreEnv('ACTIVITYPUB_RUN_HERMETIC_E2E', previousHermetic);
+  }
+});
+
+test('createTestActivityPubFederation rejects context loader injection outside hermetic runtime', async () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousDbTests = process.env.ACTIVITYPUB_RUN_DB_TESTS;
+  const previousHermetic = process.env.ACTIVITYPUB_RUN_HERMETIC_E2E;
+  process.env.NODE_ENV = 'test';
+  process.env.ACTIVITYPUB_RUN_DB_TESTS = '1';
+  delete process.env.ACTIVITYPUB_RUN_HERMETIC_E2E;
+  try {
+    await assert.rejects(
+      () =>
+        createTestActivityPubFederation({
+          ...testFederationInput,
+          testContextLoaderFactory: () => async () => {
+            throw new Error('must not be invoked');
+          },
+        }),
+      (error: unknown) => error instanceof ActivityPubTestRuntimeDisabledError,
+    );
+  } finally {
+    restoreEnv('NODE_ENV', previousNodeEnv);
+    restoreEnv('ACTIVITYPUB_RUN_DB_TESTS', previousDbTests);
+    restoreEnv('ACTIVITYPUB_RUN_HERMETIC_E2E', previousHermetic);
+  }
+});
+
+test('createTestActivityPubFederation rejects authenticated loader injection outside hermetic runtime', async () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousDbTests = process.env.ACTIVITYPUB_RUN_DB_TESTS;
+  const previousHermetic = process.env.ACTIVITYPUB_RUN_HERMETIC_E2E;
+  process.env.NODE_ENV = 'test';
+  process.env.ACTIVITYPUB_RUN_DB_TESTS = '1';
+  delete process.env.ACTIVITYPUB_RUN_HERMETIC_E2E;
+  try {
+    await assert.rejects(
+      () =>
+        createTestActivityPubFederation({
+          ...testFederationInput,
+          testAuthenticatedDocumentLoaderFactory: () => async () => {
             throw new Error('must not be invoked');
           },
         }),
