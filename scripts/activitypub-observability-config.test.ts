@@ -350,7 +350,7 @@ test('activitypub observability apply.sh update path uses positional metric and 
     assert.match(log, /--filter=name=activitypub_request_count/);
     assert.match(log, /logging metrics update activitypub_request_count /);
     assert.doesNotMatch(log, /logging metrics create/);
-    assert.match(log, new RegExp(`monitoring policies update ${policyName.replace(/\//g, '\\/')}`));
+    assert.equal(log.includes(`monitoring policies update ${policyName} `), true);
     assert.doesNotMatch(log, /monitoring policies create/);
     await assertCapturedPolicyNotificationChannels(
       fake.policyCaptureDir,
