@@ -74,8 +74,14 @@ Data Sources 詳細の content preview は初期実装では REST API を増や�
 | `scripts/source-sync-dispatcher.ts`                               | cli/job-entrypoint | due source scheduleをlease付きでone-shot実行                   |
 | `scripts/report-schedule-dispatcher.ts`                           | cli/job-entrypoint | due report periodをlease付きでmaterialize・生成                |
 | `scripts/activitypub-dispatch-once.ts --once`                     | cli/job-entrypoint | ActivityPub activity / delivery queueをbounded one-shot処理    |
+| `pnpm activitypub:queue -- inspect`                               | operator CLI       | queue本文を返さずretry exhausted候補の安全なmetadataを確認     |
+| `pnpm activitypub:queue -- requeue / discard`                     | operator CLI       | 二重確認・optimistic lock・監査付きで再投入または終端化        |
 | `scripts/generate-report.ts` / `scripts/publish-report.ts`        | cli                | report 生成 / 公開 artifact 更新                               |
 | `scripts/deploy-dry-run.ts` / `scripts/deploy-smoke.ts`           | cli                | deploy 前検査 / smoke                                          |
+
+ActivityPub queue operator CLIは`DATABASE_URL`をenvironmentからだけ受け取り、UUID、canonical UTC `updatedAt`、`issue|pr|change|incident|ticket-<id>`形式のchange ref、`--execute`、同一message IDのconfirmationを必須にする。inspect / mutation responseはqueue kind、recipient origin、status、attempt count、safe error code、HTTP status、時刻、audit action IDに限定し、message JSON、dedupe key、署名、credentialを返さない。mutationは`retry_exhausted`かつDB時刻より未来のactive leaseがないrowだけを対象とし、期限切れleaseはworker tokenと対で解除する。stale stateはfail closedにする。詳細は `docs/operations/activitypub-federation.md` に従う。
+
+ActivityPub public proxyは各requestの固定route kind、method、status / status classだけを本文なしで記録する。POST personal / shared inboxの401 / 403は署名・認証失敗signalとして別eventを出すが、host、raw path、query、header、Actor / report ID、例外本文は含めない。handler resolverを含む境界例外もsafe status 500 eventを記録して元の例外を再throwする。
 
 ### 5. Planned API
 

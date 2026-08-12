@@ -7,7 +7,9 @@ Pufu Lens の公開レポートを ActivityPub で配送し、別の Pufu Lens �
 ActivityPub のプロトコル処理には Fedify を利用する。Actor、follow、activity、外部 report、配送状態の正本は Pufu Lens の PostgreSQL に置き、配送は既存の source sync / report schedule dispatcher と同じ one-shot、DB lease、heartbeat、bounded retry の運用モデルへ統合する。
 
 - tracking Issue: [#665](https://github.com/dyson-yamashita/pufu-lens/issues/665)
-- status: `active`
+- Step 7 Issue: [#682](https://github.com/dyson-yamashita/pufu-lens/issues/682)
+- Step 7 PR: [#683](https://github.com/dyson-yamashita/pufu-lens/pull/683)
+- status: `completed`
 - 対象 runtime: Next.js 16 on Firebase App Hosting、Cloud Run Jobs、PostgreSQL
 
 ## 2. ゴール
@@ -530,6 +532,14 @@ project report 一覧に「自分のレポート」と「外部レポート」�
 - operatorがretry exhaustedを安全に再投入または破棄できる
 - 月間request、Job実行時間、DB増分、network egressを計測できる
 - production deploy checklistにcanonical origin、NTP、signature、SSRF、queue永続性が含まれる
+
+実装結果（2026-08-12）:
+
+- one-shot dispatcherにqueue total / pending / running / retry_wait depth、oldest age、24時間のsuccess / retry exhausted / permanent failure / remote 429 / 5xx、dispatcher duration、ActivityPub business table bytesの本文なしsnapshotを追加した。origin別failureはretry_wait / retry exhausted / permanent failure / 429 / 5xxを同じrolling 24時間で集計し、保存済みrecipient originの上位20件と固定`other`へ制限する。Web proxyも固定route kind / method / status / status classとPOST inbox 401 / 403だけを記録する。
+- Cloud Logging user metric 14件とCloud Monitoring alert 9件、fail-closedなdry-run / apply scriptを追加した。queue total / oldest age / retry_wait / retry exhausted / permanent failure / 429 / 5xx / origin / inbox authentication failureをCloud Run Jobまたはrevisionの正しいresource typeで監視し、metric / policy検索失敗・重複・名前不一致では適用を停止する。実GCP projectへの適用は行っていない。
+- retry exhaustedの安全なmetadata inspect、row lock / active lease / status / `updated_at`再検証、期限切れleaseの対解除、message ID二重確認、固定形式change ref、queue更新と監査INSERTの同一transactionを持つrequeue / discard CLIを追加した。監査schemaはmigration `0024_activitypub_operations`とfresh `init.sql`へ同期し、DB triggerでUPDATE / DELETEを拒否する。payload / dedupe key / signature / response bodyをinspect / auditへ出さない。
+- `docs/operations/activitypub-federation.md`にActor key backup / restore / rotation、domain block、retry exhausted、canonical origin変更禁止、Fedify dependency / advisory、月次request / Job / DB / egress計測を集約した。system architecture、API、data model、security、deployment、cost、tech stack、testing、production deploy checklistを同期した。
+- production checklistへ固定canonical origin、UTC / NTP、HTTP Signature、SSRF / redirect / DNS rebinding、domain block、PostgreSQL queue永続性 / restart、Actor key復旧、本文なしmetrics / alert、月次cost baselineを追加した。本番deploy、外部ActivityPub serverへの送信、実GCP observability resource適用は実施していない。
 
 ## 11. テスト戦略
 

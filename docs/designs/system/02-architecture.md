@@ -90,7 +90,7 @@
 
 ---
 
-### 2.1 ActivityPub Step 1 / Step 2 / Step 3 / Step 4 / Step 5 / Step 6 protocol boundary
+### 2.1 ActivityPub Step 1 / Step 2 / Step 3 / Step 4 / Step 5 / Step 6 / Step 7 protocol boundary
 
 Plan 017 Step 1 では `packages/activitypub` に Fedify 2.3.4 の protocol contract と PostgreSQL KV / outbox queue adapter を追加した。Next.js の `proxy.ts` は明示的に spike flag を設定した場合だけ WebFinger / Actor / Article fixture を処理し、Web process 内で queue worker を開始しない。delivery は別 Node process が PostgreSQL row を1件 claimし、永続化した key ID から test Actor key を再取得して `Federation.processQueuedTask()` を呼ぶ。
 
@@ -107,3 +107,5 @@ Plan 017 Step 4 では report 公開更新と project Actor の Create / aggrega
 Plan 017 Step 5 では同じFedify inboxとPostgreSQL queueへ inbound `Create(Article)` / `Announce(Article)` を統合した。listenerはHTTP署名のkey owner、actor、Public audience、object typeを検証し、use-caseはacceptedかつ未解除のoutbound followだけをprojectへ対応付ける。Announce objectはredirect各hopを既存SSRF guardとdomain blockで検証するbounded fetchから共通Article mappingへ正規化し、repositoryとDB triggerがproject越境を拒否する。外部reportは`federated_reports`とmember-only一覧API/UIに閉じ、chat、graph、embedding、search candidate、report生成、ingestionへ接続しない。
 
 Plan 017 Step 6 では実装コードを共有するPufu Lens A / Bをdatabase、canonical origin、Actor keyごとに分離し、Mastodon v4.6.5互換fixtureとtest-only in-memory HTTP transportで接続した。WebFinger、Actor、personal / shared inbox、Follow / Accept / Undo、Create / Announceをservice直接呼出しではなく実route、HTTP署名、Fedify parser、PostgreSQL queue経由で完走し、fault controlと仮想clockでtimeout、429、503、停止・復旧、応答後切断、重複、順序逆転を再現する。host routerとdocument loader差し替えはtest dependency injectionだけに閉じ、production loaderのSSRF guardとWeb process / one-shot processor境界は変更しない。
+
+Plan 017 Step 7 では Web proxy と one-shot dispatcher が本文なしの low-cardinality structured log を出し、Cloud Logging の user metric と Cloud Monitoring alertへ接続する。queue snapshotは depth、oldest age、24時間の success / retry / retry exhausted / permanent failure / 429 / 5xx、ActivityPub table bytesだけを読み、originは上位20件と固定`other`へ制限する。運用者のretry exhausted操作は専用CLIからmetadataだけをinspectし、row lock、lease / status / `updated_at`再検証、queue更新、監査行を同一transactionで行う。Web processがqueue consumerを起動しない境界、PostgreSQLをqueue正本とする境界、remote body / signature / secretをlogへ出さない境界は維持する。正規runbookは `docs/operations/activitypub-federation.md` とする。

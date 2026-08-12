@@ -1,0 +1,32 @@
+{
+  "displayName": "ActivityPub retry exhausted queue messages",
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "Retry exhausted current count above threshold",
+      "conditionThreshold": {
+        "filter": "resource.type=\"cloud_run_job\" AND metric.type=\"logging.googleapis.com/user/activitypub_retry_exhausted_current\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0,
+        "duration": "300s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_PERCENTILE_95",
+            "crossSeriesReducer": "REDUCE_MAX"
+          }
+        ]
+      }
+    }
+  ],
+  "alertStrategy": {
+    "autoClose": "604800s",
+    "notificationRateLimit": {
+      "period": "300s"
+    }
+  },
+  "userLabels": {
+    "pufu_lens_component": "activitypub",
+    "pufu_lens_alert": "retry_exhausted"
+  }
+}

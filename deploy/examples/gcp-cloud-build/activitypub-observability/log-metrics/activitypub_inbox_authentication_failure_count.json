@@ -1,0 +1,13 @@
+{
+  "name": "activitypub_inbox_authentication_failure_count",
+  "description": "ActivityPub inbox authentication rejection count for POST inbox routes.",
+  "filter": "resource.type=\"cloud_run_revision\" AND jsonPayload.event=\"activitypub_inbox_authentication_failure\" AND jsonPayload.bodyless=true",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "INT64",
+    "labels": [{ "key": "route_kind", "valueType": "STRING" }]
+  },
+  "labelExtractors": {
+    "route_kind": "EXTRACT(jsonPayload.routeKind)"
+  }
+}

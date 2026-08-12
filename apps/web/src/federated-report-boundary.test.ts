@@ -22,6 +22,7 @@ const federatedReportAllowlist = new Set([
   'packages/activitypub/src/follow-inbox-listener-harness.ts',
   'packages/activitypub/src/postgres.ts',
   'packages/activitypub/src/postgres-dispatcher.ts',
+  'packages/activitypub/src/operations.ts',
   'packages/activitypub/src/remote-article.ts',
   'packages/activitypub/src/remote-document.ts',
   'packages/activitypub/src/inbound-report-sanitizer.ts',

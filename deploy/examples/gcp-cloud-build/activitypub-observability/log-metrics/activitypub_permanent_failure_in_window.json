@@ -1,0 +1,18 @@
+{
+  "name": "activitypub_permanent_failure_in_window",
+  "description": "ActivityPub permanent failures in the rolling metrics window.",
+  "filter": "resource.type=\"cloud_run_job\" AND jsonPayload.event=\"activitypub_queue_metrics\" AND jsonPayload.bodyless=true",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "DISTRIBUTION",
+    "unit": "1"
+  },
+  "valueExtractor": "EXTRACT(jsonPayload.permanentFailuresInWindow)",
+  "bucketOptions": {
+    "linearBuckets": {
+      "numFiniteBuckets": 10,
+      "width": 2,
+      "offset": 0
+    }
+  }
+}

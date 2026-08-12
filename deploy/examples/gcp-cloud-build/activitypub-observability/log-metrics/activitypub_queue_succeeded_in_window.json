@@ -1,0 +1,18 @@
+{
+  "name": "activitypub_queue_succeeded_in_window",
+  "description": "ActivityPub queue successes in the rolling metrics window.",
+  "filter": "resource.type=\"cloud_run_job\" AND jsonPayload.event=\"activitypub_queue_metrics\" AND jsonPayload.bodyless=true",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "DISTRIBUTION",
+    "unit": "1"
+  },
+  "valueExtractor": "EXTRACT(jsonPayload.succeededInWindow)",
+  "bucketOptions": {
+    "linearBuckets": {
+      "numFiniteBuckets": 10,
+      "width": 25,
+      "offset": 0
+    }
+  }
+}

@@ -1,3 +1,141 @@
+export type ActivityPubProxyRouteKind =
+  | 'webfinger'
+  | 'actor'
+  | 'inbox'
+  | 'shared_inbox'
+  | 'report'
+  | 'collection'
+  | 'other';
+
+export const ACTIVITYPUB_REQUEST_EVENT = 'activitypub_request';
+export const ACTIVITYPUB_INBOX_AUTHENTICATION_FAILURE_EVENT =
+  'activitypub_inbox_authentication_failure';
+export const ACTIVITYPUB_PROXY_OBSERVABILITY_SCHEMA_VERSION = 1;
+
+type ActivityPubRequestObservabilityInput = {
+  readonly routeKind: ActivityPubProxyRouteKind;
+  readonly method: string;
+  readonly status: number;
+};
+
+type ActivityPubInboxAuthenticationFailureInput = {
+  readonly routeKind: 'inbox' | 'shared_inbox';
+  readonly status: 401 | 403;
+};
+
+/**
+ * Classifies an ActivityPub proxy request into a fixed low-cardinality route kind.
+ * Uses only pathname shape and never returns host, query, identifiers, or payload data.
+ */
+export function classifyActivityPubProxyRouteKind(request: Request): ActivityPubProxyRouteKind {
+  const pathname = new URL(request.url).pathname;
+  if (pathname === '/.well-known/webfinger') {
+    return 'webfinger';
+  }
+  if (pathname === '/activitypub/inbox') {
+    return 'shared_inbox';
+  }
+  if (/^\/activitypub\/actors\/[^/]+\/inbox\/?$/.test(pathname)) {
+    return 'inbox';
+  }
+  if (/^\/activitypub\/actors\/[^/]+\/?$/.test(pathname)) {
+    return 'actor';
+  }
+  if (/^\/activitypub\/reports\/[^/]+\/?$/.test(pathname)) {
+    return 'report';
+  }
+  if (/^\/activitypub\/actors\/[^/]+\/(followers|following|outbox)\/?$/.test(pathname)) {
+    return 'collection';
+  }
+  if (pathname.startsWith('/activitypub/')) {
+    return 'collection';
+  }
+  return 'other';
+}
+
+function httpStatusClass(status: number): string {
+  if (!Number.isInteger(status) || status < 100 || status > 599) {
+    return 'other';
+  }
+  return `${Math.floor(status / 100)}xx`;
+}
+
+/**
+ * Emits a bodyless ActivityPub request observability event for proxy traffic.
+ * Never logs host, raw path, query, identifiers, headers, or body content.
+ */
+export function emitActivityPubRequestObservability(
+  input: ActivityPubRequestObservabilityInput,
+): void {
+  console.log(
+    JSON.stringify({
+      event: ACTIVITYPUB_REQUEST_EVENT,
+      bodyless: true,
+      schemaVersion: ACTIVITYPUB_PROXY_OBSERVABILITY_SCHEMA_VERSION,
+      routeKind: input.routeKind,
+      method: input.method.toUpperCase(),
+      status: input.status,
+      statusClass: httpStatusClass(input.status),
+    }),
+  );
+}
+
+/**
+ * Emits a bodyless inbox authentication failure signal for POST inbox rejections.
+ * Only 401 and 403 responses are treated as authentication/signature failures.
+ */
+export function emitActivityPubInboxAuthenticationFailure(
+  input: ActivityPubInboxAuthenticationFailureInput,
+): void {
+  console.log(
+    JSON.stringify({
+      event: ACTIVITYPUB_INBOX_AUTHENTICATION_FAILURE_EVENT,
+      bodyless: true,
+      schemaVersion: ACTIVITYPUB_PROXY_OBSERVABILITY_SCHEMA_VERSION,
+      routeKind: input.routeKind,
+      status: input.status,
+    }),
+  );
+}
+
+/**
+ * Observes an ActivityPub proxy request boundary with bodyless request metrics.
+ * The run closure may resolve the handler and invoke it; resolver failures are covered.
+ * Emits status 500 when run throws, then rethrows without logging exception text.
+ */
+export async function observeActivityPubProxyHandler(
+  request: Request,
+  run: () => Response | Promise<Response>,
+): Promise<Response> {
+  const routeKind = classifyActivityPubProxyRouteKind(request);
+  try {
+    const response = await run();
+    emitActivityPubRequestObservability({
+      routeKind,
+      method: request.method,
+      status: response.status,
+    });
+    if (
+      request.method.toUpperCase() === 'POST' &&
+      (routeKind === 'inbox' || routeKind === 'shared_inbox') &&
+      (response.status === 401 || response.status === 403)
+    ) {
+      emitActivityPubInboxAuthenticationFailure({
+        routeKind,
+        status: response.status as 401 | 403,
+      });
+    }
+    return response;
+  } catch (error) {
+    emitActivityPubRequestObservability({
+      routeKind,
+      method: request.method,
+      status: 500,
+    });
+    throw error;
+  }
+}
+
 export type ActivityPubProxyEnv = {
   ACTIVITYPUB_ENABLED?: string;
   ACTIVITYPUB_SPIKE_ENABLED?: string;

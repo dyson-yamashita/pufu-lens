@@ -1,0 +1,32 @@
+{
+  "displayName": "ActivityPub queue oldest backlog age",
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "Oldest backlog age above threshold",
+      "conditionThreshold": {
+        "filter": "resource.type=\"cloud_run_job\" AND metric.type=\"logging.googleapis.com/user/activitypub_queue_oldest_backlog_age_seconds\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 3600,
+        "duration": "900s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_PERCENTILE_95",
+            "crossSeriesReducer": "REDUCE_MAX"
+          }
+        ]
+      }
+    }
+  ],
+  "alertStrategy": {
+    "autoClose": "604800s",
+    "notificationRateLimit": {
+      "period": "300s"
+    }
+  },
+  "userLabels": {
+    "pufu_lens_component": "activitypub",
+    "pufu_lens_alert": "queue_oldest_backlog_age"
+  }
+}

@@ -63,11 +63,11 @@ API は以下の認可をかける：
 - レート制限を Cloud Armor または Hono middleware で実装する。public chat は信頼プロキシが付与した `x-forwarded-for` を右端から走査し、private / local IP と無効値を除いた最初の有効値（なければ `x-real-ip`、最後に anonymous bucket）+ report id 単位で 1 時間 / 1 日 / 質問長の上限を設け、クライアントが任意に付与できる左端値は信用しない。private chat は user + project 単位で public より緩い上限にする。Mastra 側で使う rate limit 用 header は OIDC 検証済みの Next.js から来たものだけを信頼する
 - App Hosting の runtime env と secret は `apphosting.yaml` で参照し、secret 値をリポジトリに含めない。
 
-### 3.1 ActivityPub Step 1 / Step 2 / Step 3 / Step 4 / Step 5 / Step 6 security boundary
+### 3.1 ActivityPub Step 1 / Step 2 / Step 3 / Step 4 / Step 5 / Step 6 / Step 7 security boundary
 
 - canonical origin は server 設定だけを正とし、未信頼の `Host` / forwarded host header から Actor、object、activity ID を生成しない。通常 runtime は HTTPS origin だけを許可する。
 - remote document loader は private / loopback、IPv4-mapped IPv6、special-use IPv4、NAT64、Teredo、6to4 を拒否し、redirect の各 hop を再検証する。localhost HTTP は test-only の local protocol / DB fixture が `allowHttpLocalhost: true` を明示した場合だけ許可し、Web runtime は opt in しない。DB signed-delivery path はさらに `ACTIVITYPUB_RUN_DB_TESTS=1` を要求し、`NODE_ENV=production` では拒否する。本番 runtime で localhost HTTP を許可しない。
-- queue JSON から private JWK を除去し、key ID だけを保存する。Step 2 の本番 Actor 秘密鍵は `ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY` の canonical base64 32-byte key で AES-256-GCM 暗号化し、Actor row ごとに保存する。秘密 JWK、暗号文、PEM 全文、署名 header を log / response / trace に出さない。rotation と backup runbook は後続 Step の対象とする。
+- queue JSON から private JWK を除去し、key ID だけを保存する。Step 2 の本番 Actor 秘密鍵は `ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY` の canonical base64 32-byte key で AES-256-GCM 暗号化し、Actor row ごとに保存する。秘密 JWK、暗号文、PEM 全文、署名 header を log / response / trace に出さない。DB snapshotとSecret Manager versionは同一復旧単位として扱い、secretだけの先行rotation、単一鍵schemaへの手動in-place署名鍵置換を禁止する。backup / restore / rotationは `docs/operations/activitypub-federation.md` に従う。
 - Web process は queue consumer と manual task processor を起動しない。Step 1 protocol fixture は `ACTIVITYPUB_SPIKE_ENABLED=1` の明示設定時だけ有効で、本番環境には設定しない。
 - production federation は `ACTIVITYPUB_ENABLED=1` のときだけ初期化し、設定・DB・鍵の初期化失敗は secret や例外本文を含まない generic log と `503` で fail closed にする。失敗した初期化結果は cache せず、作成済み DB client を閉じて次の request で再試行する。private / disabled / missing project と非公開 report は WebFinger、Actor、collection、Article の全経路で `404` に統一する。
 - project federation 設定 API は Auth.js session と既存 project-admin authz を必須とし、repository transaction 内で project ID + slug を `FOR UPDATE` して public visibility を再検証する。request から graph name、project ID、鍵素材を受け取らない。既知の業務エラーだけを固定 code / message へ写像し、予期しない例外本文を response や診断 log へ出さない。
@@ -82,6 +82,9 @@ API は以下の認可をかける：
 - outbound Follow / Undo の server action は project admin だけに許可し、URL slug と認可済み project、project Actor、outbound follow rowを server side で同じ project scope に固定する。non-admin、project 越境、不正 slug、不正 Actor address を拒否し、member settings は read-only とする。予期しない auth / DB / resolver error は内部 message を捨てて固定 message へ変換する。
 - test-only private address、listener harness、remote resolver override は `NODE_ENV=production` で拒否し、DB fixture 経路はさらに `ACTIVITYPUB_RUN_DB_TESTS=1` を必須とする。Step 6のhost router、document / context / authenticated document loader、delivery timeout overrideは `ACTIVITYPUB_RUN_HERMETIC_E2E=1` も必須とし、許可hostを `lens-a.test` / `lens-b.test` / `mastodon.test` に固定してそれ以外をfail closedにする。本番 one-shot processorはこれらのtest dependencyを注入できず、production loaderのprivate / loopback拒否を維持する。
 - hermetic protocol traceはmethod、host、path、status、activity type / ID、署名検証結果、key owner、audience、digest種別だけを保存し、raw body、HTTP header、private key、secret / PIIを保存しない。fixtureはMastodon v4.6.5の固定commitと公式source provenanceを保持するが、実 Mastodon serverを使用しないため、その固有挙動は残存リスクとして扱う。
+- Step 7のmetrics / alertは`bodyless=true`の固定schemaだけを対象にする。Webはroute kind / method / status / status class、dispatcherはqueue件数 / age / safe error class / table bytes、origin failureはrolling 24時間の上位20 originと`other`だけを出す。raw path、query、Activity / Actor / report ID、payload、signature、private key、response body、例外本文をlog-based metricへ参照しない。
+- retry exhaustedのoperator操作はstrict UUID、canonical UTC timestamp、固定形式change ref、message ID二重確認を要求する。DB transaction内でrowをlockし、status、DB時刻基準のactive lease、`updated_at`を再検証してからqueue更新と監査INSERTを行う。監査rowのUPDATE / DELETEはDB triggerで拒否する。任意SQLやpayload閲覧を運用入口にしない。
+- `ACTIVITYPUB_CANONICAL_ORIGIN` は最初のoutbound後に変更しない。障害復旧も同一originで行い、domain移行はActor ID、旧URL、remote cache / follower、Tombstoneを扱う別planとする。
 
 ### 4. Admin data source content preview
 

@@ -1,0 +1,18 @@
+{
+  "name": "activitypub_retry_exhausted_current",
+  "description": "Current ActivityPub retry exhausted queue messages.",
+  "filter": "resource.type=\"cloud_run_job\" AND jsonPayload.event=\"activitypub_queue_metrics\" AND jsonPayload.bodyless=true",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "DISTRIBUTION",
+    "unit": "1"
+  },
+  "valueExtractor": "EXTRACT(jsonPayload.retryExhaustedCurrentCount)",
+  "bucketOptions": {
+    "linearBuckets": {
+      "numFiniteBuckets": 10,
+      "width": 2,
+      "offset": 0
+    }
+  }
+}
