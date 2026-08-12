@@ -9,6 +9,7 @@
 - ユーザーによる変更を勝手に戻さない。
 - 変更前に関連する設計書、ルール、既存ファイルを確認する。
 - plan を参照する前に `docs/plans/plan-status.md` を確認し、`completed` / `deprecated` の plan はユーザーが明示した場合を除き参照しない。
+- plan の Step は Step ごとに独立した Codex タスクを作成し、前の Step と同じタスク内で次の Step を続行しない。詳細は `.codex/rules/plan-rule.md` に従う。
 - plan の Step に着手するときは、先に `main` を最新化し、その最新 `main` から Step 用ブランチを作成する。
 - Step に着手するときは GitHub Issue を作成し、作業完了時は対応 PR を作成する。
 - plan 外の機能修正、バグ修正、ドキュメント修正、設定変更など、変更をリポジトリに入れる作業でも、原則として先に `main` を最新化し、GitHub Issue を作成して、Issue 番号を含むブランチで作業し、作業完了時は対応 PR を作成する。
