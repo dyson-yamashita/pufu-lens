@@ -169,7 +169,8 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 
 ActivityPubを無効のままdeployする場合も、将来有効化する環境では値と責任者を記録する。本番有効化、Actor key変更、domain block変更、observability適用は通常のproduction change approvalを必要とする。
 
-- [ ] Web、ActivityPub dispatcher、Scheduler audienceのcanonical originが同じ固定HTTPS URLである。request headerから導出せず、最初のoutbound後に変更していない。
+- [ ] WebとActivityPub dispatcherの `ACTIVITYPUB_CANONICAL_ORIGIN` が同じ固定の公開HTTPS originである。request headerから導出せず、最初のoutbound後に変更していない。
+- [ ] `ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE` が固定Mastra service URLであり、公開canonical originとは独立した内部Scheduler token audienceとして検証される。
 - [ ] DNS、TLS certificate、旧URL継続責任者を記録した。domain障害時に別canonical originへ書き換えない。
 - [ ] Web / Job / PostgreSQL VMのUTC時刻同期を確認し、NTP異常alertまたはprovider時刻同期の運用責任を記録した。古い / 未来のSignature `Date`を拒否するcontract testが通る。
 - [ ] HTTP Signatureのkey owner、Activity actor、embedded actor / attribution / audience一致を確認し、raw Signature headerやprivate keyをlogへ出さない。
@@ -177,7 +178,7 @@ ActivityPubを無効のままdeployする場合も、将来有効化する環境
 - [ ] `ACTIVITYPUB_BLOCKED_DOMAINS`がWebとdispatcherで一致し、exact host / subdomain / redirect先を拒否し、無関係domainを拒否しない。
 - [ ] PostgreSQLがqueue / lease / retry / dedupe / operator auditの正本であり、Web processがconsumerを起動せず、container restart後もqueueが保持される。restart / expired lease / duplicateのDB test結果を記録した。
 - [ ] Actor keyのDB snapshotとSecret Manager versionを同一時点でbackupし、隔離環境の復元試験日・責任者を記録した。secretだけの先行rotationや手動in-place署名鍵置換を行わない。
-- [ ] migration `0024_activitypub_operations`をplanし、`activitypub_queue_operator_actions`の固定transition / change ref / safe error制約とfresh schema seedを確認した。
+- [ ] migration `0024_activitypub_operations`をplanし、`activitypub_queue_operator_actions`の固定transition / change ref / safe error制約、UPDATE / DELETE拒否trigger、fresh schema seedを確認した。
 - [ ] retry exhaustedのinspect / requeue / discardをstaging fixtureで確認し、二重message ID、canonical UTC `updatedAt`、固定change-ref、同一transaction監査、後続ordering影響を確認した。
 - [ ] queue total / pending depth、oldest age、success、retry_wait、retry exhausted、permanent failure、429 / 5xx、origin別failure、inbox 401 / 403の本文なしmetrics / alertをdry-runで確認した。
 - [ ] metric / alert適用後、resource typeがWeb=`cloud_run_revision`、dispatcher=`cloud_run_job`で、origin labelが上位20 + `other`に制限されている。

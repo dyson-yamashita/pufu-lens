@@ -110,8 +110,9 @@ async function listJsonFiles(relativeDirectory: string): Promise<string[]> {
 async function runApply(
   args: string[],
   env: NodeJS.ProcessEnv = process.env,
+  bashExecutable = 'bash',
 ): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
-  const child = spawn('bash', [applyScript, ...args], {
+  const child = spawn(bashExecutable, [applyScript, ...args], {
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -208,7 +209,57 @@ test('activitypub observability definitions include required metrics and bounded
   }
 });
 
+function extractMetricNameFromAlertFilter(filter: string): string | undefined {
+  const match = filter.match(/metric\.type="logging\.googleapis\.com\/user\/([^"]+)"/);
+  return match?.[1];
+}
+
+async function loadMetricValueTypes(): Promise<Map<string, string>> {
+  const metricFiles = await listJsonFiles('log-metrics');
+  const valueTypes = new Map<string, string>();
+  for (const fileName of metricFiles) {
+    const raw = await readFile(join(observabilityRoot, 'log-metrics', fileName), 'utf8');
+    const parsed = JSON.parse(raw) as {
+      name?: string;
+      metricDescriptor?: { valueType?: string };
+    };
+    if (parsed.name && parsed.metricDescriptor?.valueType) {
+      valueTypes.set(parsed.name, parsed.metricDescriptor.valueType);
+    }
+  }
+  return valueTypes;
+}
+
+function collectPolicyAligners(payload: Record<string, unknown>): string[] {
+  const aligners: string[] = [];
+  const conditions = payload.conditions;
+  if (!Array.isArray(conditions)) {
+    return aligners;
+  }
+  for (const condition of conditions) {
+    if (!condition || typeof condition !== 'object') {
+      continue;
+    }
+    const aggregations = (condition as { conditionThreshold?: { aggregations?: unknown[] } })
+      .conditionThreshold?.aggregations;
+    if (!Array.isArray(aggregations)) {
+      continue;
+    }
+    for (const aggregation of aggregations) {
+      if (!aggregation || typeof aggregation !== 'object') {
+        continue;
+      }
+      const aligner = (aggregation as { perSeriesAligner?: string }).perSeriesAligner;
+      if (aligner) {
+        aligners.push(aligner);
+      }
+    }
+  }
+  return aligners;
+}
+
 test('activitypub observability alert policies use safe Cloud Run resource filters', async () => {
+  const metricValueTypes = await loadMetricValueTypes();
   const alertFiles = await listJsonFiles('alert-policies');
   assert.deepEqual(
     alertFiles.map((file) => file.replace(/\.json$/, '')).sort(),
@@ -255,6 +306,14 @@ test('activitypub observability alert policies use safe Cloud Run resource filte
         assert.match(aggregationJson, /ALIGN_PERCENTILE_95/);
         assert.doesNotMatch(aggregationJson, /ALIGN_DELTA/);
       }
+
+      const metricName = extractMetricNameFromAlertFilter(filter);
+      if (metricName && metricValueTypes.get(metricName) === 'DISTRIBUTION') {
+        for (const aligner of collectPolicyAligners(parsed)) {
+          assert.equal(aligner, 'ALIGN_PERCENTILE_95');
+          assert.notEqual(aligner, 'ALIGN_MAX');
+        }
+      }
     }
   }
 });
@@ -288,6 +347,16 @@ test('activitypub observability apply.sh dry-run validates project and invokes g
     assert.equal(log.trim(), '');
     const tempEntries = await readdir(tempRoot);
     assert.deepEqual(tempEntries, []);
+
+    const macOsDryRun = await runApply(
+      ['--project', 'pufu-lens-test'],
+      fakeGcloudEnv(fake, { TMPDIR: tempRoot }),
+      '/bin/bash',
+    );
+    assert.equal(macOsDryRun.exitCode, 0);
+    assert.match(macOsDryRun.stdout, /Dry run only/i);
+    const macOsLog = await readFile(fake.logPath, 'utf8');
+    assert.equal(macOsLog.trim(), '');
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
     await fake.cleanup();

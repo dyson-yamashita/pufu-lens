@@ -183,9 +183,10 @@ gcloud run jobs deploy activitypub-dispatcher \
 #    ACTIVITYPUB_CANONICAL_ORIGIN、Secret Manager 由来の ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY が揃う場合だけ有効化する。
 #    ACTIVITYPUB_DB_MAX_CONNECTIONS は process あたりの ActivityPub 用 DB pool 上限で、未指定時は5、指定時は1..20の10進整数とする。
 #    Step 4 の activitypub-dispatcher Job は `--once` だけを受け付け、PostgreSQL queue の Follow / Accept / Undo と
-#    report Create / Announce delivery をboundedに処理する。Scheduler routeは固定OIDC audienceとdesignated SAを検証し、
+#    report Create / Announce delivery をboundedに処理する。Scheduler routeは固定Mastra service URLのOIDC audienceとdesignated SAを検証し、
+#    公開federation用ACTIVITYPUB_CANONICAL_ORIGINと内部ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCEを同一値とはみなさない。
 #    active execution時は202 no-opにする。repositoryにはrollout定義だけを含み、本番resourceへの適用は別途行う。
-#    Step 7 の dispatcherは各run後に本文なしqueue / origin metricsを出し、Web proxyは固定route kind / statusだけを出す。
+#    Step 7 の dispatcherは各run後に本文なしqueue / rolling 24時間のorigin metricsを出し、Web proxyは固定route kind / method / status / status classだけを出す。
 #    deploy/examples/gcp-cloud-build/activitypub-observability/apply.sh はlog-based metricsとalert policyをdry-runできる。
 #    本番適用は通常のchange approvalを必須とし、lookup失敗・重複をfail closedにする。runbookは
 #    docs/operations/activitypub-federation.md、production gateはdocs/operations/deploy-checklist.mdを正とする。

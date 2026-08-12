@@ -18,18 +18,25 @@ function captureConsoleLog(run: () => void | Promise<void>): Promise<string[]> {
   console.log = (value?: unknown) => {
     lines.push(String(value));
   };
-  return Promise.resolve(run())
-    .then(
-      () => lines,
-      (error) => {
-        console.log = original;
-        throw error;
-      },
-    )
+  return Promise.resolve()
+    .then(run)
+    .then(() => lines)
     .finally(() => {
       console.log = original;
     });
 }
+
+test('captureConsoleLog restores console.log after synchronous throws', async () => {
+  const original = console.log;
+  await assert.rejects(
+    () =>
+      captureConsoleLog(() => {
+        throw new Error('sync throw');
+      }),
+    /sync throw/,
+  );
+  assert.equal(console.log, original);
+});
 
 test('classifyActivityPubProxyRouteKind normalizes federation routes without exposing identifiers', () => {
   assert.equal(

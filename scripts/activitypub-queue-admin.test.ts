@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 const adminScript = join(import.meta.dirname, 'activitypub-queue-admin.ts');
+const ERROR_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]{0,79}$/;
 
 async function runQueueAdmin(
   args: string[],
@@ -113,6 +114,49 @@ test('activitypub-queue-admin rejects invalid UUID without leaking database URL'
   assert.notEqual(exitCode, 0);
   assert.match(stderr, /activitypub_queue_admin_invalid_arguments/);
   assert.doesNotMatch(stderr, /super-secret/);
+});
+
+test('activitypub-queue-admin safe error name pattern rejects unsafe values', () => {
+  assert.equal(ERROR_NAME_PATTERN.test('Error'), true);
+  assert.equal(ERROR_NAME_PATTERN.test('PostgresError'), true);
+  assert.equal(ERROR_NAME_PATTERN.test('E12345'), true);
+  assert.equal(ERROR_NAME_PATTERN.test(''), false);
+  assert.equal(ERROR_NAME_PATTERN.test('9Invalid'), false);
+  assert.equal(ERROR_NAME_PATTERN.test('Error with spaces'), false);
+  assert.equal(ERROR_NAME_PATTERN.test('postgresql://user:pass@127.0.0.1:5432/test'), false);
+  assert.equal(ERROR_NAME_PATTERN.test('a'.repeat(81)), false);
+});
+
+test('activitypub-queue-admin operation failure omits unsafe diagnostics', async () => {
+  const messageId = '10000000-0000-4000-8000-000000000905';
+  const databaseUrl = 'postgresql://queue-admin:super-secret@127.0.0.1:1/unreachable';
+  const { exitCode, stderr } = await runQueueAdmin(['inspect', '--message-id', messageId], {
+    ...process.env,
+    DATABASE_URL: databaseUrl,
+  });
+
+  assert.notEqual(exitCode, 0);
+  assert.doesNotMatch(stderr, /super-secret/);
+  assert.doesNotMatch(stderr, /postgresql:\/\//);
+  assert.match(stderr, /activitypub_queue_admin_failed/);
+
+  const payloadLine = stderr
+    .trim()
+    .split('\n')
+    .find((line) => line.startsWith('{'));
+  assert.ok(payloadLine);
+  const payload = JSON.parse(payloadLine) as {
+    error?: string;
+    errorName?: string;
+    postgresCode?: string;
+  };
+  assert.equal(payload.error, 'activitypub_queue_admin_failed');
+  if (payload.errorName !== undefined) {
+    assert.match(payload.errorName, ERROR_NAME_PATTERN);
+  }
+  if (payload.postgresCode !== undefined) {
+    assert.match(payload.postgresCode, /^[0-9A-Z]{5}$/);
+  }
 });
 
 test('activitypub-queue-admin requires DATABASE_URL from env only', async () => {

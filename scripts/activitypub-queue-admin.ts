@@ -1,3 +1,5 @@
+import { parseScriptArgv } from './lib/cli.ts';
+
 const MISSING_DATABASE_URL = 'missing DATABASE_URL';
 const INVALID_ARGUMENTS = 'activitypub_queue_admin_invalid_arguments';
 const CONFIRMATION_REQUIRED = 'activitypub_queue_admin_confirmation_required';
@@ -6,8 +8,11 @@ const STALE_STATE = 'activitypub_queue_admin_stale_state';
 const INVALID_STATUS = 'activitypub_queue_admin_invalid_status';
 const ACTIVE_LEASE = 'activitypub_queue_admin_active_lease';
 const OPERATION_FAILED = 'activitypub_queue_admin_failed';
+const CLEANUP_FAILED = 'activitypub_queue_admin_connection_close_failed';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const POSTGRES_CODE_PATTERN = /^[0-9A-Z]{5}$/;
+const ERROR_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]{0,79}$/;
 
 type QueueAdminCommand = 'inspect' | 'requeue' | 'discard';
 
@@ -20,66 +25,79 @@ type ParsedArgs = {
   changeRef?: string;
 };
 
+type SafeErrorDiagnostics = {
+  errorName?: string;
+  postgresCode?: string;
+};
+
+type ValidatedInspectArgs =
+  | { readonly ok: false; readonly error: string }
+  | { readonly ok: true; readonly messageId: string };
+
+type ValidatedMutationArgs =
+  | { readonly ok: false; readonly error: string }
+  | {
+      readonly ok: true;
+      readonly messageId: string;
+      readonly expectedUpdatedAt: Date;
+      readonly changeRef: string;
+    };
+
 /** Parses ActivityPub queue admin CLI arguments without accepting DATABASE_URL overrides. */
 function parseArgs(argv: string[]): ParsedArgs {
-  const flags = new Set<string>();
-  const parsed: ParsedArgs = {};
-  const positional = argv[2];
-  if (positional && !positional.startsWith('--')) {
-    if (positional === 'inspect' || positional === 'requeue' || positional === 'discard') {
-      parsed.command = positional;
-    } else {
-      throw new Error(`unsupported command: ${positional}`);
-    }
-  }
-
-  for (
-    let index = positional && !positional.startsWith('--') ? 3 : 2;
-    index < argv.length;
-    index += 1
-  ) {
-    const key = argv[index];
-    if (!key?.startsWith('--')) {
-      throw new Error(`unsupported argument: ${key ?? '<empty>'}`);
-    }
-    if (flags.has(key)) {
-      throw new Error(`duplicate argument: ${key}`);
-    }
-    flags.add(key);
-    switch (key) {
-      case '--execute':
-        parsed.execute = true;
-        break;
-      case '--message-id':
-      case '--confirm-message-id':
-      case '--expected-updated-at':
-      case '--change-ref': {
-        const value = argv[index + 1];
-        if (!value || value.startsWith('--')) {
-          throw new Error(`missing value for ${key}`);
-        }
-        if (key === '--message-id') {
-          parsed.messageId = value;
-        } else if (key === '--confirm-message-id') {
-          parsed.confirmMessageId = value;
-        } else if (key === '--expected-updated-at') {
-          parsed.expectedUpdatedAt = value;
-        } else {
-          parsed.changeRef = value;
-        }
-        index += 1;
-        break;
-      }
-      default:
-        throw new Error(`unsupported argument: ${key}`);
-    }
-  }
-
-  return parsed;
+  const parsed = parseScriptArgv(
+    argv,
+    {
+      commands: ['inspect', 'requeue', 'discard'],
+      booleanFlags: ['--execute'],
+      valueOptions: [
+        '--message-id',
+        '--confirm-message-id',
+        '--expected-updated-at',
+        '--change-ref',
+      ],
+    },
+    2,
+  );
+  return {
+    command: parsed.command,
+    messageId: parsed.valueOptions.get('--message-id'),
+    execute: parsed.booleanFlags.has('--execute'),
+    confirmMessageId: parsed.valueOptions.get('--confirm-message-id'),
+    expectedUpdatedAt: parsed.valueOptions.get('--expected-updated-at'),
+    changeRef: parsed.valueOptions.get('--change-ref'),
+  };
 }
 
-function writeSafeError(code: string): void {
-  console.error(JSON.stringify({ error: code }));
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isSafeErrorName(value: string): boolean {
+  const trimmed = value.trim();
+  return trimmed.length > 0 && ERROR_NAME_PATTERN.test(trimmed);
+}
+
+function writeSafeError(code: string, diagnostics: SafeErrorDiagnostics = {}): void {
+  const payload: Record<string, string> = { error: code };
+  if (diagnostics.errorName && isSafeErrorName(diagnostics.errorName)) {
+    payload.errorName = diagnostics.errorName.trim();
+  }
+  if (diagnostics.postgresCode && POSTGRES_CODE_PATTERN.test(diagnostics.postgresCode)) {
+    payload.postgresCode = diagnostics.postgresCode;
+  }
+  console.error(JSON.stringify(payload));
+}
+
+function extractSafeDiagnostics(error: unknown): SafeErrorDiagnostics {
+  const diagnostics: SafeErrorDiagnostics = {};
+  if (error instanceof Error && isSafeErrorName(error.name)) {
+    diagnostics.errorName = error.name.trim();
+  }
+  if (isRecord(error) && typeof error.code === 'string' && POSTGRES_CODE_PATTERN.test(error.code)) {
+    diagnostics.postgresCode = error.code;
+  }
+  return diagnostics;
 }
 
 function isUuid(value: string): boolean {
@@ -115,29 +133,41 @@ async function loadValidationHelpers() {
   return { isValidActivityPubQueueAdminChangeRef, parseCanonicalActivityPubQueueAdminTimestamp };
 }
 
+function validateInspectArgs(args: ParsedArgs): ValidatedInspectArgs {
+  if (!args.messageId || !isUuid(args.messageId)) {
+    return { ok: false, error: INVALID_ARGUMENTS };
+  }
+  return { ok: true, messageId: args.messageId };
+}
+
 function validateMutationArgs(
   args: ParsedArgs,
   helpers: Awaited<ReturnType<typeof loadValidationHelpers>>,
-): string | undefined {
+): ValidatedMutationArgs {
   if (!args.messageId || !isUuid(args.messageId)) {
-    return INVALID_ARGUMENTS;
+    return { ok: false, error: INVALID_ARGUMENTS };
   }
-  if (
-    !args.expectedUpdatedAt ||
-    !helpers.parseCanonicalActivityPubQueueAdminTimestamp(args.expectedUpdatedAt)
-  ) {
-    return INVALID_ARGUMENTS;
+  const expectedUpdatedAt = args.expectedUpdatedAt
+    ? helpers.parseCanonicalActivityPubQueueAdminTimestamp(args.expectedUpdatedAt)
+    : undefined;
+  if (!expectedUpdatedAt) {
+    return { ok: false, error: INVALID_ARGUMENTS };
   }
   if (!args.changeRef || !helpers.isValidActivityPubQueueAdminChangeRef(args.changeRef)) {
-    return INVALID_ARGUMENTS;
+    return { ok: false, error: INVALID_ARGUMENTS };
   }
   if (!args.execute) {
-    return CONFIRMATION_REQUIRED;
+    return { ok: false, error: CONFIRMATION_REQUIRED };
   }
   if (args.confirmMessageId !== args.messageId) {
-    return CONFIRMATION_REQUIRED;
+    return { ok: false, error: CONFIRMATION_REQUIRED };
   }
-  return undefined;
+  return {
+    ok: true,
+    messageId: args.messageId,
+    expectedUpdatedAt,
+    changeRef: args.changeRef,
+  };
 }
 
 let args: ParsedArgs;
@@ -155,15 +185,19 @@ if (!args.command) {
 
 const validationHelpers = await loadValidationHelpers();
 
+let validatedInspect: ValidatedInspectArgs | undefined;
+let validatedMutation: ValidatedMutationArgs | undefined;
+
 if (args.command === 'inspect') {
-  if (!args.messageId || !isUuid(args.messageId)) {
-    writeSafeError(INVALID_ARGUMENTS);
+  validatedInspect = validateInspectArgs(args);
+  if (!validatedInspect.ok) {
+    writeSafeError(validatedInspect.error);
     process.exit(1);
   }
 } else {
-  const validationError = validateMutationArgs(args, validationHelpers);
-  if (validationError) {
-    writeSafeError(validationError);
+  validatedMutation = validateMutationArgs(args, validationHelpers);
+  if (!validatedMutation.ok) {
+    writeSafeError(validatedMutation.error);
     process.exit(1);
   }
 }
@@ -188,25 +222,23 @@ try {
 
   try {
     if (args.command === 'inspect') {
-      const message = await inspectActivityPubQueueMessage(sql, args.messageId as string);
-      if (!message) {
-        writeSafeError(MESSAGE_NOT_FOUND);
+      if (!validatedInspect?.ok) {
+        writeSafeError(INVALID_ARGUMENTS);
         exitCode = 1;
       } else {
-        console.log(JSON.stringify({ status: 'ok', message: serializeInspectView(message) }));
+        const message = await inspectActivityPubQueueMessage(sql, validatedInspect.messageId);
+        if (!message) {
+          writeSafeError(MESSAGE_NOT_FOUND);
+          exitCode = 1;
+        } else {
+          console.log(JSON.stringify({ status: 'ok', message: serializeInspectView(message) }));
+        }
       }
-    } else {
-      const mutationInput = {
-        messageId: args.messageId as string,
-        expectedUpdatedAt: validationHelpers.parseCanonicalActivityPubQueueAdminTimestamp(
-          args.expectedUpdatedAt as string,
-        ) as Date,
-        changeRef: args.changeRef as string,
-      };
+    } else if (validatedMutation?.ok) {
       const result =
         args.command === 'requeue'
-          ? await requeueRetryExhaustedActivityPubQueueMessage(sql, mutationInput)
-          : await discardRetryExhaustedActivityPubQueueMessage(sql, mutationInput);
+          ? await requeueRetryExhaustedActivityPubQueueMessage(sql, validatedMutation)
+          : await discardRetryExhaustedActivityPubQueueMessage(sql, validatedMutation);
 
       switch (result.status) {
         case 'updated':
@@ -244,12 +276,11 @@ try {
     try {
       await sql.end({ timeout: 5 });
     } catch {
-      writeSafeError(OPERATION_FAILED);
-      exitCode = 1;
+      writeSafeError(CLEANUP_FAILED);
     }
   }
-} catch {
-  writeSafeError(OPERATION_FAILED);
+} catch (error) {
+  writeSafeError(OPERATION_FAILED, extractSafeDiagnostics(error));
   exitCode = 1;
 }
 

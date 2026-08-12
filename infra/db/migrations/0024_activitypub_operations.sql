@@ -55,3 +55,20 @@ CREATE TABLE IF NOT EXISTS public.activitypub_queue_operator_actions (
 
 CREATE INDEX IF NOT EXISTS activitypub_queue_operator_actions_message_created_idx
   ON public.activitypub_queue_operator_actions (queue_message_id, created_at DESC);
+
+CREATE OR REPLACE FUNCTION public.activitypub_guard_queue_operator_actions_append_only()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RAISE EXCEPTION 'activitypub_queue_operator_actions rows are append-only';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS activitypub_queue_operator_actions_append_only_guard
+  ON public.activitypub_queue_operator_actions;
+
+CREATE TRIGGER activitypub_queue_operator_actions_append_only_guard
+  BEFORE UPDATE OR DELETE ON public.activitypub_queue_operator_actions
+  FOR EACH ROW
+  EXECUTE FUNCTION public.activitypub_guard_queue_operator_actions_append_only();

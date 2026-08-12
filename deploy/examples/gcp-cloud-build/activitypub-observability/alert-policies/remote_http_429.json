@@ -12,7 +12,7 @@
         "aggregations": [
           {
             "alignmentPeriod": "300s",
-            "perSeriesAligner": "ALIGN_MAX",
+            "perSeriesAligner": "ALIGN_PERCENTILE_95",
             "crossSeriesReducer": "REDUCE_MAX"
           }
         ]

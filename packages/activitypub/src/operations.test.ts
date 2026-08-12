@@ -13,14 +13,26 @@ import {
   serializeActivityPubQueueMetricsEvent,
 } from './operations.ts';
 
-function buildSummary(origin: string, count: number): ActivityPubOriginFailureSummary {
+function buildSummary(
+  origin: string,
+  counts: Partial<
+    Pick<
+      ActivityPubOriginFailureSummary,
+      | 'retryCount'
+      | 'retryExhaustedCount'
+      | 'permanentFailureCount'
+      | 'http429Count'
+      | 'http5xxCount'
+    >
+  > = {},
+): ActivityPubOriginFailureSummary {
   return {
     origin,
-    retryCount: count,
-    retryExhaustedCount: 0,
-    permanentFailureCount: 0,
-    http429Count: 0,
-    http5xxCount: 0,
+    retryCount: counts.retryCount ?? 0,
+    retryExhaustedCount: counts.retryExhaustedCount ?? 0,
+    permanentFailureCount: counts.permanentFailureCount ?? 0,
+    http429Count: counts.http429Count ?? 0,
+    http5xxCount: counts.http5xxCount ?? 0,
   };
 }
 
@@ -80,12 +92,46 @@ test('queue admin validation helpers enforce operational change refs and canonic
 });
 
 test('capActivityPubOriginFailureSummaries keeps top twenty origins and aggregates the rest', () => {
-  const summaries = Array.from({ length: ACTIVITYPUB_ORIGIN_FAILURE_TOP_N + 3 }, (_, index) =>
-    buildSummary(`https://origin-${index}.example`, ACTIVITYPUB_ORIGIN_FAILURE_TOP_N + 3 - index),
+  const tailSummaries = [
+    buildSummary('https://tail-a.example', {
+      retryCount: 1,
+      retryExhaustedCount: 1,
+      permanentFailureCount: 1,
+      http429Count: 1,
+      http5xxCount: 1,
+    }),
+    buildSummary('https://tail-b.example', {
+      retryCount: 2,
+      retryExhaustedCount: 1,
+      permanentFailureCount: 1,
+      http429Count: 1,
+      http5xxCount: 1,
+    }),
+    buildSummary('https://tail-c.example', {
+      retryCount: 1,
+      retryExhaustedCount: 2,
+      permanentFailureCount: 1,
+      http429Count: 1,
+      http5xxCount: 1,
+    }),
+  ];
+  const topSummaries = Array.from({ length: ACTIVITYPUB_ORIGIN_FAILURE_TOP_N }, (_, index) =>
+    buildSummary(`https://origin-${index}.example`, {
+      retryCount: ACTIVITYPUB_ORIGIN_FAILURE_TOP_N + 10 - index,
+    }),
   );
+  const summaries = [...topSummaries, ...tailSummaries];
 
   const capped = capActivityPubOriginFailureSummaries(summaries);
   assert.equal(capped.length, ACTIVITYPUB_ORIGIN_FAILURE_TOP_N + 1);
   assert.equal(capped.at(-1)?.origin, ACTIVITYPUB_ORIGIN_FAILURE_OTHER_LABEL);
   assert.equal(capped[0]?.origin, 'https://origin-0.example');
+
+  const other = capped.at(-1);
+  assert.ok(other);
+  assert.equal(other.retryCount, 4);
+  assert.equal(other.retryExhaustedCount, 4);
+  assert.equal(other.permanentFailureCount, 3);
+  assert.equal(other.http429Count, 3);
+  assert.equal(other.http5xxCount, 3);
 });

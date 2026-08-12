@@ -62,12 +62,14 @@ if ! [[ "${PROJECT_ID}" =~ ${PROJECT_ID_PATTERN} ]]; then
   exit 1
 fi
 
-for channel in "${NOTIFICATION_CHANNELS[@]}"; do
-  if ! [[ "${channel}" =~ ${CHANNEL_PATTERN} ]]; then
-    echo "error: invalid --notification-channel value" >&2
-    exit 1
-  fi
-done
+if [[ ${#NOTIFICATION_CHANNELS[@]} -gt 0 ]]; then
+  for channel in "${NOTIFICATION_CHANNELS[@]}"; do
+    if ! [[ "${channel}" =~ ${CHANNEL_PATTERN} ]]; then
+      echo "error: invalid --notification-channel value" >&2
+      exit 1
+    fi
+  done
+fi
 
 METRIC_FILES=("${ROOT_DIR}"/log-metrics/*.json)
 POLICY_FILES=("${ROOT_DIR}"/alert-policies/*.json)
@@ -139,7 +141,8 @@ done
 render_policy_file() {
   local source_file="$1"
   local rendered_file="$2"
-  python3 - "$source_file" "$rendered_file" "${NOTIFICATION_CHANNELS[@]}" <<'PY'
+  if [[ ${#NOTIFICATION_CHANNELS[@]} -gt 0 ]]; then
+    python3 - "$source_file" "$rendered_file" "${NOTIFICATION_CHANNELS[@]}" <<'PY'
 import json
 import sys
 
@@ -152,6 +155,18 @@ if channels:
 with open(rendered_path, "w", encoding="utf-8") as handle:
     json.dump(policy, handle)
 PY
+  else
+    python3 - "$source_file" "$rendered_file" <<'PY'
+import json
+import sys
+
+source_path, rendered_path = sys.argv[1], sys.argv[2]
+with open(source_path, "r", encoding="utf-8") as handle:
+    policy = json.load(handle)
+with open(rendered_path, "w", encoding="utf-8") as handle:
+    json.dump(policy, handle)
+PY
+  fi
 }
 
 read_alert_key() {

@@ -1,6 +1,7 @@
 import { parseCanonicalOrigin } from '@pufu-lens/activitypub';
 import { parseActorKeyEncryptionKey } from '@pufu-lens/activitypub/key-encryption';
 import postgres from 'postgres';
+import { parseScriptArgv } from './lib/cli.ts';
 
 const ACTIVITYPUB_DELIVERY_FAILED = 'activitypub_delivery_failed';
 const ACTIVITYPUB_OPERATIONS_SNAPSHOT_FAILED = 'activitypub_operations_snapshot_failed';
@@ -19,53 +20,20 @@ type ParsedArgs = {
 
 /** Parses the production ActivityPub one-shot dispatch CLI arguments. */
 function parseArgs(argv: string[]): ParsedArgs {
-  const flags = new Set<string>();
-  const parsed: ParsedArgs = { once: false };
-  for (let index = 2; index < argv.length; index += 1) {
-    const key = argv[index];
-    if (!key?.startsWith('--')) {
-      throw new Error(`unsupported argument: ${key ?? '<empty>'}`);
-    }
-    if (flags.has(key)) {
-      throw new Error(`duplicate argument: ${key}`);
-    }
-    flags.add(key);
-    switch (key) {
-      case '--once':
-        parsed.once = true;
-        break;
-      case '--database-url': {
-        const value = argv[index + 1];
-        if (!value || value.startsWith('--')) {
-          throw new Error('missing value for --database-url');
-        }
-        parsed.databaseUrl = value;
-        index += 1;
-        break;
-      }
-      case '--actor-table': {
-        const value = argv[index + 1];
-        if (!value || value.startsWith('--')) {
-          throw new Error('missing value for --actor-table');
-        }
-        parsed.actorTable = value;
-        index += 1;
-        break;
-      }
-      case '--actor-id': {
-        const value = argv[index + 1];
-        if (!value || value.startsWith('--')) {
-          throw new Error('missing value for --actor-id');
-        }
-        parsed.actorId = value;
-        index += 1;
-        break;
-      }
-      default:
-        throw new Error(`unsupported argument: ${key}`);
-    }
-  }
-  return parsed;
+  const parsed = parseScriptArgv(
+    argv,
+    {
+      booleanFlags: ['--once'],
+      valueOptions: ['--database-url', '--actor-table', '--actor-id'],
+    },
+    2,
+  );
+  return {
+    once: parsed.booleanFlags.has('--once'),
+    databaseUrl: parsed.valueOptions.get('--database-url'),
+    actorTable: parsed.valueOptions.get('--actor-table'),
+    actorId: parsed.valueOptions.get('--actor-id'),
+  };
 }
 
 function writeSafeError(message: string): void {

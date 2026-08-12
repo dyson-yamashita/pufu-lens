@@ -19,7 +19,11 @@ const proxyHandlerResolver =
     fallbackResponse: () => NextResponse.next(),
   });
 
-/** Routes federation requests through production ActivityPub or the Step 1 spike when enabled. */
+/**
+ * Routes federation requests through production ActivityPub or the Step 1 spike when enabled.
+ * The boundary emits bodyless ActivityPub request observability and records status 500 before
+ * rethrowing resolver or handler exceptions.
+ */
 export async function proxy(request: Request): Promise<Response> {
   return observeActivityPubProxyHandler(request, async () => {
     const handler = await proxyHandlerResolver.resolve();

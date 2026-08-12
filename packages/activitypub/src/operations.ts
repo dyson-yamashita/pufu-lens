@@ -74,7 +74,7 @@ export type ActivityPubQueueDepthByStatus = {
   readonly retryWait: number;
 };
 
-/** Safe per-origin outbox failure counters used for observability. */
+/** Safe per-origin outbox failure counters within the rolling window used for observability. */
 export type ActivityPubOriginFailureSummary = {
   readonly origin: string;
   readonly retryCount: number;
@@ -214,6 +214,13 @@ function parseQueueStatus(value: unknown): ActivityPubQueueStatus {
     return status;
   }
   throw new Error('Invalid ActivityPub operations row field: status');
+}
+
+function parseRequiredBoolean(value: unknown, fieldName: string): boolean {
+  if (value === true || value === false) {
+    return value;
+  }
+  throw new Error(`Invalid ActivityPub operations row field: ${fieldName}`);
 }
 
 function parseNullableDeliveryErrorCode(
@@ -494,9 +501,18 @@ export async function fetchActivityPubOperationsSnapshot(
     await sql`
     SELECT
       recipient_origin AS origin,
-      COUNT(*) FILTER (WHERE status = 'retry_wait')::bigint AS retry_count,
-      COUNT(*) FILTER (WHERE status = 'retry_exhausted')::bigint AS retry_exhausted_count,
-      COUNT(*) FILTER (WHERE status = 'permanent_failure')::bigint AS permanent_failure_count,
+      COUNT(*) FILTER (
+        WHERE status = 'retry_wait'
+          AND updated_at >= now() - make_interval(hours => ${ACTIVITYPUB_OPERATIONS_SNAPSHOT_WINDOW_HOURS})
+      )::bigint AS retry_count,
+      COUNT(*) FILTER (
+        WHERE status = 'retry_exhausted'
+          AND updated_at >= now() - make_interval(hours => ${ACTIVITYPUB_OPERATIONS_SNAPSHOT_WINDOW_HOURS})
+      )::bigint AS retry_exhausted_count,
+      COUNT(*) FILTER (
+        WHERE status = 'permanent_failure'
+          AND completed_at >= now() - make_interval(hours => ${ACTIVITYPUB_OPERATIONS_SNAPSHOT_WINDOW_HOURS})
+      )::bigint AS permanent_failure_count,
       COUNT(*) FILTER (
         WHERE last_error_code = 'http_429'
           AND updated_at >= now() - make_interval(hours => ${ACTIVITYPUB_OPERATIONS_SNAPSHOT_WINDOW_HOURS})
@@ -598,7 +614,8 @@ async function mutateRetryExhaustedQueueMessage(input: {
         completed_at,
         updated_at,
         worker_token::text AS worker_token,
-        lease_expires_at
+        lease_expires_at,
+        COALESCE(lease_expires_at > now(), false) AS has_active_lease
       FROM public.activitypub_queue_messages
       WHERE id = ${input.messageId}::uuid
       FOR UPDATE
@@ -613,13 +630,8 @@ async function mutateRetryExhaustedQueueMessage(input: {
     if (!isRecord(lockedRecord)) {
       throw new Error('Invalid ActivityPub queue mutation row.');
     }
-    const workerToken = lockedRecord.worker_token;
-    const leaseExpiresAt = lockedRecord.lease_expires_at;
-    if (
-      (typeof workerToken === 'string' && workerToken.length > 0) ||
-      leaseExpiresAt instanceof Date ||
-      (typeof leaseExpiresAt === 'string' && leaseExpiresAt.length > 0)
-    ) {
+    parseNullableDate(lockedRecord.lease_expires_at, 'lease_expires_at');
+    if (parseRequiredBoolean(lockedRecord.has_active_lease, 'has_active_lease')) {
       return { status: 'active_lease' };
     }
 

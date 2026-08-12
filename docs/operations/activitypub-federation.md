@@ -4,7 +4,7 @@
 
 ## 監視とアラート
 
-ActivityPub dispatcher は実行後に `activitypub_queue_metrics` と、failure 上位20 originおよび固定 `other` の `activitypub_origin_failure_metrics` を structured log へ出す。Web proxy は route kind と status class だけの `activitypub_request`、POST inbox の 401 / 403 に `activitypub_inbox_authentication_failure` を出す。すべて `bodyless=true` で、host、path、query、Actor / report ID、header、bodyを含めない。
+ActivityPub dispatcher は実行後に `activitypub_queue_metrics` と、rolling 24時間のfailure上位20 originおよび固定 `other` の `activitypub_origin_failure_metrics` を structured log へ出す。Web proxy は固定allowlistのroute kind、method、status、status classだけを持つ `activitypub_request`、POST inbox の 401 / 403 に `activitypub_inbox_authentication_failure` を出す。すべて `bodyless=true` で、host、path、query、Actor / report ID、header、bodyを含めない。log-based metricのlabelは `route_kind` と `status_class` だけを抽出し、methodとstatusは安全な切り分け用structured fieldとして保持する。
 
 `deploy/examples/gcp-cloud-build/activitypub-observability/` は次を定義する。
 
@@ -17,7 +17,7 @@ ActivityPub dispatcher は実行後に `activitypub_queue_metrics` と、failure
 | inbound         | inbox 401 / 403                                             | 5分のrateが0超                                                         |
 | capacity / cost | request count、dispatcher duration、ActivityPub table bytes | monthly baselineと比較し、予算アラートはBilling側で設定                |
 
-しきい値は初期値であり、最低1か月のbaseline後に traffic とSLOに合わせて変更する。origin label は保存済み `recipient_origin` のみ、上位20件以外は `other` へ畳み、本文やrecipient URIをlabelにしない。
+しきい値は初期値であり、最低1か月のbaseline後に traffic とSLOに合わせて変更する。origin label は保存済み `recipient_origin` のみ、rolling 24時間のretry_wait / retry exhausted / permanent failure / 429 / 5xxを同じwindowで集計し、上位20件以外は `other` へ畳む。本文やrecipient URIをlabelにしない。
 
 設定はまずdry-runする。dry-runは `gcloud` を呼ばない。
 
@@ -41,8 +41,9 @@ bash deploy/examples/gcp-cloud-build/activitypub-observability/apply.sh \
 
 対象message IDは本文を表示しない安全なmetadata queryまたはアラートから取得する。最初にinspectし、出力の `updatedAt` をoptimistic lockに使う。
 
+`DATABASE_URL` は実行前にSecret Manager連携、保護されたprocess環境、またはshell historyへ残らない承認済みのenv fileから注入する。コマンド行へ値を直接書かず、標準出力やticketにも記録しない。
+
 ```bash
-DATABASE_URL='<injected-at-runtime>' \
 pnpm activitypub:queue -- inspect \
   --message-id '<queue-message-uuid>'
 ```
@@ -52,7 +53,6 @@ inspectはqueue kind、recipient origin、status、attempt count、safe error co
 remote復旧、domain block解除、設定修正など原因を除去し、再配送が許容される場合だけ再投入する。`change-ref` は `issue-682`、`incident-20260812` のような固定形式にする。
 
 ```bash
-DATABASE_URL='<injected-at-runtime>' \
 pnpm activitypub:queue -- requeue \
   --message-id '<queue-message-uuid>' \
   --confirm-message-id '<queue-message-uuid>' \
@@ -64,7 +64,6 @@ pnpm activitypub:queue -- requeue \
 再送が不要、remoteが恒久拒否、誤配送を止める必要がある場合は破棄する。破棄はpayloadを削除せず `permanent_failure` へ終端化し、safe error metadataを保持する。
 
 ```bash
-DATABASE_URL='<injected-at-runtime>' \
 pnpm activitypub:queue -- discard \
   --message-id '<queue-message-uuid>' \
   --confirm-message-id '<queue-message-uuid>' \
@@ -73,7 +72,7 @@ pnpm activitypub:queue -- discard \
   --execute
 ```
 
-両操作はrow lock、status / lease / `updated_at` 再検証、queue更新、`activitypub_queue_operator_actions` 監査行を同一transactionで処理する。先行messageのterminal failureにより後続messageも終端化済みの場合、先行messageの再投入だけでは後続を復活させない。ordering key単位で影響範囲を調査し、後続を個別に操作する場合も別change-refとinspectを必須にする。
+両操作はrow lock、status / lease / `updated_at` 再検証、queue更新、`activitypub_queue_operator_actions` 監査行を同一transactionで処理する。`lease_expires_at` がDB時刻より未来の場合だけactive leaseとして拒否し、期限切れleaseはworker tokenと対で解除して操作を続行できる。監査tableはDB triggerでUPDATE / DELETEを拒否する。先行messageのterminal failureにより後続messageも終端化済みの場合、先行messageの再投入だけでは後続を復活させない。ordering key単位で影響範囲を調査し、後続を個別に操作する場合も別change-refとinspectを必須にする。
 
 ## Domain block
 
@@ -110,11 +109,12 @@ Actor identityの復旧には、同一時点のPostgreSQL backupに含まれる 
 
 鍵漏えい時は外部送信を停止し、影響Actor、公開期間、queueを保全してsecurity incidentとして扱う。安全なrotation実装がない状態で復旧不能な置換を行わず、backup restoreまたはforward fixを選ぶ。
 
-## Canonical origin
+## Canonical origin と Scheduler OIDC audience
 
 `ACTIVITYPUB_CANONICAL_ORIGIN` はrequest headerから導出せず、productionで固定する。最初のoutbound activity以後はActor ID、activity ID、report object ID、署名key IDのoriginとして外部に永続化されるため、変更を禁止する。
 
-- deploy前にWeb、dispatcher、Scheduler audienceが同じHTTPS originを参照することを確認する。
+- deploy前にWebとdispatcherの `ACTIVITYPUB_CANONICAL_ORIGIN` が同じ公開federation用HTTPS originを参照することを確認する。
+- `ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE` はSchedulerが内部routeへ送るID tokenのaudienceであり、固定Mastra service URLへ設定する。公開canonical originとは役割が異なり、同じ値である必要はない。
 - domain障害時も別originへ書き換えず、DNS / certificate / routingを元のoriginで復旧する。
 - domain移行はActor移行、旧URL継続、remote follower、署名key、Tombstoneを設計する別planとし、環境変数変更だけで実施しない。
 
@@ -123,10 +123,11 @@ Actor identityの復旧には、同一時点のPostgreSQL backupに含まれる 
 Fedify関連packageは同一patchへ厳密固定する。更新は通常のdependency PRとして次を実施する。
 
 1. Fedify公式changelog、GitHub Security Advisories、npm advisory、Node.js要件を確認し、対象CVE / GHSAと影響範囲をIssueへ記録する。
-2. `package.json` 内の `@fedify/*` / `fedify` を同じversionへ更新し、lockfileの解決先が混在していないことを確認する。
-3. `pnpm install --frozen-lockfile`、`pnpm audit --prod`、`pnpm test:activitypub`、`pnpm test:activitypub:db`、`pnpm test:activitypub:e2e`、`pnpm test:activitypub:web` を実行する。
-4. WebFinger、HTTP Signature / Date、Follow / Accept / Undo、Create / Announce、queue serializer、SSRF / redirect / domain block、本文なしlogのcontract差分をレビューする。
-5. stagingでproduction runtimeと同じNode.js versionを使い、外部送信なしのself-check後に通常のdeploy approvalへ進む。
+2. `packages/activitypub/package.json` と `apps/web/package.json` の `@fedify/*`、`pnpm-workspace.yaml` のoverride、`pnpm-lock.yaml` の直接・転移依存を同じversionへ更新し、Webの `next` versionとpeer dependencyの組合せも確認する。root `package.json` のNode engine契約も更新版の要件を満たすことを確認する。
+3. local、Cloud Build CI（`node:24-bookworm`）、deploy / Job image（`node:22-bookworm`）、Firebase App Hosting（nodejs22以上）で `node --version` を確認し、root engine `>=22.6.0` または更新後Fedifyの要件を満たさないruntimeが1つでもあれば停止する。
+4. `pnpm install --frozen-lockfile`、`pnpm audit --prod`、`pnpm test:activitypub`、`pnpm test:activitypub:db`、`pnpm test:activitypub:e2e`、`pnpm test:activitypub:web` を実行する。
+5. WebFinger、HTTP Signature / Date、Follow / Accept / Undo、Create / Announce、queue serializer、SSRF / redirect / domain block、本文なしlogのcontract差分をレビューする。
+6. stagingでproduction runtimeと同じNode.js versionを使い、外部送信なしのself-check後に通常のdeploy approvalへ進む。
 
 advisory確認不能、breaking serializer変更、署名検証弱化、未解決high / criticalがある場合は更新またはrolloutを停止する。
 

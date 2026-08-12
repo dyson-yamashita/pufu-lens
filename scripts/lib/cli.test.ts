@@ -1,6 +1,65 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { requiredEnv, validateGraphName } from './cli.ts';
+import { parseScriptArgv, requiredEnv, validateGraphName } from './cli.ts';
+
+test('parseScriptArgv parses positional commands, boolean flags, and value options', () => {
+  const parsed = parseScriptArgv(
+    ['inspect', '--execute', '--message-id', '10000000-0000-4000-8000-000000000901'],
+    {
+      commands: ['inspect', 'requeue', 'discard'],
+      booleanFlags: ['--execute'],
+      valueOptions: ['--message-id', '--change-ref'],
+    },
+  );
+
+  assert.equal(parsed.command, 'inspect');
+  assert.equal(parsed.booleanFlags.has('--execute'), true);
+  assert.equal(parsed.valueOptions.get('--message-id'), '10000000-0000-4000-8000-000000000901');
+});
+
+test('parseScriptArgv rejects duplicate, missing, unknown, and malformed arguments', () => {
+  assert.throws(
+    () =>
+      parseScriptArgv(['--once', '--once'], {
+        booleanFlags: ['--once'],
+        valueOptions: [],
+      }),
+    /duplicate argument: --once/,
+  );
+  assert.throws(
+    () =>
+      parseScriptArgv(['--database-url'], {
+        booleanFlags: [],
+        valueOptions: ['--database-url'],
+      }),
+    /missing value for --database-url/,
+  );
+  assert.throws(
+    () =>
+      parseScriptArgv(['--unknown'], {
+        booleanFlags: [],
+        valueOptions: [],
+      }),
+    /unsupported argument: --unknown/,
+  );
+  assert.throws(
+    () =>
+      parseScriptArgv(['not-a-command'], {
+        commands: ['inspect'],
+        booleanFlags: [],
+        valueOptions: [],
+      }),
+    /unsupported command: not-a-command/,
+  );
+  assert.throws(
+    () =>
+      parseScriptArgv(['positional'], {
+        booleanFlags: [],
+        valueOptions: [],
+      }),
+    /unsupported argument: positional/,
+  );
+});
 
 test('requiredEnv returns configured environment values', () => {
   const previous = process.env.PUFU_LENS_TEST_REQUIRED_ENV;
