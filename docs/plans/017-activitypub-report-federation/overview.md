@@ -8,6 +8,7 @@ ActivityPub のプロトコル処理には Fedify を利用する。Actor、foll
 
 - tracking Issue: [#665](https://github.com/dyson-yamashita/pufu-lens/issues/665)
 - Step 7 Issue: [#682](https://github.com/dyson-yamashita/pufu-lens/issues/682)
+- Step 7 PR: [#683](https://github.com/dyson-yamashita/pufu-lens/pull/683)
 - status: `completed`
 - 対象 runtime: Next.js 16 on Firebase App Hosting、Cloud Run Jobs、PostgreSQL
 
