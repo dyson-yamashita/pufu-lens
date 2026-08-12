@@ -20,7 +20,8 @@
     "./protocol": "./src/protocol.ts",
     "./queue": "./src/queue.ts",
     "./security": "./src/security.ts",
-    "./inbound-report-sanitizer": "./src/inbound-report-sanitizer.ts"
+    "./inbound-report-sanitizer": "./src/inbound-report-sanitizer.ts",
+    "./operations": "./src/operations.ts"
   },
   "scripts": {
     "build": "tsc --noEmit -p tsconfig.json",

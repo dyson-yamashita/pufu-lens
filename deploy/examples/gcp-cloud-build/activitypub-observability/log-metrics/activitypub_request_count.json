@@ -1,0 +1,17 @@
+{
+  "name": "activitypub_request_count",
+  "description": "ActivityPub proxy request count by route kind and HTTP status class.",
+  "filter": "resource.type=\"cloud_run_revision\" AND jsonPayload.event=\"activitypub_request\" AND jsonPayload.bodyless=true",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "INT64",
+    "labels": [
+      { "key": "route_kind", "valueType": "STRING" },
+      { "key": "status_class", "valueType": "STRING" }
+    ]
+  },
+  "labelExtractors": {
+    "route_kind": "EXTRACT(jsonPayload.routeKind)",
+    "status_class": "EXTRACT(jsonPayload.statusClass)"
+  }
+}

@@ -41,4 +41,15 @@ public report / public chat は private report / private chat と同じ処理を
 - 失敗 raw を fixture 化し、parser 修正後に failed queue を retry する
 - テスト時は deterministic embedding provider を既定にし、外部 embedding provider は明示指定時だけ使う
 
+### 3. ActivityPub 増分の実測
+
+ActivityPubは常時稼働processを増やさず、Firebase App Hosting request、ActivityPub dispatcher Cloud Run Job、PostgreSQL relation、remote inbox向けinternet egressを従量増分とする。毎月同じUTC期間で次を記録する。
+
+- request: `logging.googleapis.com/user/activitypub_request_count`をroute kind / status class別に集計し、必要に応じて`run.googleapis.com/request_count`と照合する。
+- Job: `logging.googleapis.com/user/activitypub_dispatcher_duration_ms`のp50 / p95、`run.googleapis.com/container/billable_instance_time`、`run.googleapis.com/job/completed_execution_count`を記録する。
+- DB: `logging.googleapis.com/user/activitypub_total_business_table_bytes`の月初 / 月末最大値から増分を計算する。queue、Fedify KV、instance config、actors、follows、activities、federated reports、operator audit tableを対象とする。
+- egress: ActivityPub dispatcher Jobの`run.googleapis.com/container/network/sent_bytes_count`を`kind=internet`で集計する。
+
+前月とrolling 3か月baselineに対してrequest、retry、429 / 5xx、queue depth、DB増分、egressの増加理由を記録する。最適化はdispatcher頻度、batch size、retention、shared inbox率の順に評価し、配送契約やSLOを変える場合は別changeとして扱う。具体的なmetric / alertと月次記録手順は `docs/operations/activitypub-federation.md` を正とする。
+
 ---

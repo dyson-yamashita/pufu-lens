@@ -1,0 +1,22 @@
+{
+  "name": "activitypub_origin_failure_count",
+  "description": "ActivityPub origin failure counters from capped bodyless dispatcher metrics.",
+  "filter": "resource.type=\"cloud_run_job\" AND jsonPayload.event=\"activitypub_origin_failure_metrics\" AND jsonPayload.bodyless=true",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "DISTRIBUTION",
+    "unit": "1",
+    "labels": [{ "key": "origin", "valueType": "STRING" }]
+  },
+  "labelExtractors": {
+    "origin": "EXTRACT(jsonPayload.origin)"
+  },
+  "valueExtractor": "EXTRACT(jsonPayload.totalFailureCount)",
+  "bucketOptions": {
+    "linearBuckets": {
+      "numFiniteBuckets": 10,
+      "width": 5,
+      "offset": 0
+    }
+  }
+}

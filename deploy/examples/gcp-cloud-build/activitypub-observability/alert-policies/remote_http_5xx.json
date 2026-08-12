@@ -1,0 +1,32 @@
+{
+  "displayName": "ActivityPub remote HTTP 5xx failures",
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "Remote HTTP 5xx failures in window",
+      "conditionThreshold": {
+        "filter": "resource.type=\"cloud_run_job\" AND metric.type=\"logging.googleapis.com/user/activitypub_remote_http_5xx_in_window\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0,
+        "duration": "300s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_MAX",
+            "crossSeriesReducer": "REDUCE_MAX"
+          }
+        ]
+      }
+    }
+  ],
+  "alertStrategy": {
+    "autoClose": "604800s",
+    "notificationRateLimit": {
+      "period": "300s"
+    }
+  },
+  "userLabels": {
+    "pufu_lens_component": "activitypub",
+    "pufu_lens_alert": "remote_http_5xx"
+  }
+}

@@ -165,6 +165,28 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 - 失敗時の判断: restore / forward fix / 再実行 / deploy 停止
 - 記録先: PR、Issue、release note、または環境別運用ログの URL
 
+## ActivityPub production gate
+
+ActivityPubを無効のままdeployする場合も、将来有効化する環境では値と責任者を記録する。本番有効化、Actor key変更、domain block変更、observability適用は通常のproduction change approvalを必要とする。
+
+- [ ] Web、ActivityPub dispatcher、Scheduler audienceのcanonical originが同じ固定HTTPS URLである。request headerから導出せず、最初のoutbound後に変更していない。
+- [ ] DNS、TLS certificate、旧URL継続責任者を記録した。domain障害時に別canonical originへ書き換えない。
+- [ ] Web / Job / PostgreSQL VMのUTC時刻同期を確認し、NTP異常alertまたはprovider時刻同期の運用責任を記録した。古い / 未来のSignature `Date`を拒否するcontract testが通る。
+- [ ] HTTP Signatureのkey owner、Activity actor、embedded actor / attribution / audience一致を確認し、raw Signature headerやprivate keyをlogへ出さない。
+- [ ] remote Actor / Article loaderがHTTPS限定、credential / fragment拒否、redirect各hop再検証、private / loopback / link-local / special-use / IPv4-mapped / NAT64 / Teredo / 6to4拒否、DNS rebinding防止、5秒timeout、1 MiB上限を維持する。
+- [ ] `ACTIVITYPUB_BLOCKED_DOMAINS`がWebとdispatcherで一致し、exact host / subdomain / redirect先を拒否し、無関係domainを拒否しない。
+- [ ] PostgreSQLがqueue / lease / retry / dedupe / operator auditの正本であり、Web processがconsumerを起動せず、container restart後もqueueが保持される。restart / expired lease / duplicateのDB test結果を記録した。
+- [ ] Actor keyのDB snapshotとSecret Manager versionを同一時点でbackupし、隔離環境の復元試験日・責任者を記録した。secretだけの先行rotationや手動in-place署名鍵置換を行わない。
+- [ ] migration `0024_activitypub_operations`をplanし、`activitypub_queue_operator_actions`の固定transition / change ref / safe error制約とfresh schema seedを確認した。
+- [ ] retry exhaustedのinspect / requeue / discardをstaging fixtureで確認し、二重message ID、canonical UTC `updatedAt`、固定change-ref、同一transaction監査、後続ordering影響を確認した。
+- [ ] queue total / pending depth、oldest age、success、retry_wait、retry exhausted、permanent failure、429 / 5xx、origin別failure、inbox 401 / 403の本文なしmetrics / alertをdry-runで確認した。
+- [ ] metric / alert適用後、resource typeがWeb=`cloud_run_revision`、dispatcher=`cloud_run_job`で、origin labelが上位20 + `other`に制限されている。
+- [ ] 月間ActivityPub request、dispatcher duration / billable time / execution count、DB bytes増分、dispatcher internet egressのbaseline記録先と予算alertを設定した。
+- [ ] Fedify公式changelog / security advisory / npm auditの確認日、固定version、Node.js要件、protocol / DB / hermetic E2E結果を記録した。
+- [ ] production deploy後の外部送信を伴わないWebFinger / Actor / route / metrics self-check手順とrollback判断を記録した。
+
+詳細手順: [ActivityPub Federation 運用手順](activitypub-federation.md)
+
 ## 未完了項目
 
 - [ ] なし

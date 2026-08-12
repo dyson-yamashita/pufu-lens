@@ -426,10 +426,23 @@ deploy 後は次を確認する。
 - Cloud Run Jobs が deploy config の命名規則どおりに作成または更新されている。
 - source sync、定期report、ActivityPub dispatcherのCloud Schedulerが各1件だけ存在し、Scheduler SAがMastra Cloud Run service resourceの`roles/run.invoker`を持ち、固定audienceのOIDCで各内部routeを呼べる。
 - Mastra runtime SAが3つのdispatcher Job resourceで`roles/run.jobsExecutorWithOverrides`を持ち、ActivityPub Job resourceだけでactive execution確認用の`roles/run.viewer`も持つこと、ActivityPub権限が対象Job以外へ広がっていないことを確認する。routeやJob logにtoken、Actor private key、署名header、raw payload、credentialが出ていない。
+- ActivityPub Web / dispatcherが同一の固定HTTPS `ACTIVITYPUB_CANONICAL_ORIGIN`、同じdomain block、Secret Manager由来のActor key encryption secretを参照し、最初のoutbound後にoriginを変更していないことを確認する。
+- ActivityPub dispatcher再起動後もPostgreSQL queue depth / oldest ageが保持され、running lease回収とone-shot再実行で重複配送しないことを確認する。container filesystemやprocess memoryをqueue正本にしない。
+- Web / dispatcher logの`activitypub_request`、`activitypub_queue_metrics`、`activitypub_origin_failure_metrics`が`bodyless=true`で、payload、raw path / query、署名header、private key、response bodyを含まないことを確認する。
 - Web runtime が正しい App Hosting backend、secret、bucket、Mastra URL を参照している。
 - Admin UI から data source ingest を実行し、Web runtime SA が対象 workflow job resource を起動できる（`run.jobs.run` / `run.jobs.runWithOverrides` 不足の 403 が出ていない）。
 - `pnpm deploy:smoke --env staging` または `pnpm deploy:smoke --env production` が通る。
 - build log / runtime log に secret、token、PII が出ていない。
+
+ActivityPub log-based metrics / alert policyはdeploy pipelineから自動適用しない。対象projectとnotification channelを確認してdry-runし、承認済みchangeだけに`--apply`を付ける。
+
+```bash
+bash deploy/examples/gcp-cloud-build/activitypub-observability/apply.sh \
+  --project "$PROJECT_ID" \
+  --notification-channel "projects/${PROJECT_ID}/notificationChannels/<channel-id>"
+```
+
+適用後はqueue total depth / oldest age / retry_wait / retry exhausted / permanent failure / 429 / 5xx / origin failure / inbox authentication failureのpolicyが一意で有効なことを確認する。monthly request、Job duration / billable time、DB増分、internet egressの記録と障害対応は `docs/operations/activitypub-federation.md` に従う。
 
 ## Deploy Duration Notes
 

@@ -3,6 +3,7 @@ import { parseActorKeyEncryptionKey } from '@pufu-lens/activitypub/key-encryptio
 import postgres from 'postgres';
 
 const ACTIVITYPUB_DELIVERY_FAILED = 'activitypub_delivery_failed';
+const ACTIVITYPUB_OPERATIONS_SNAPSHOT_FAILED = 'activitypub_operations_snapshot_failed';
 const MISSING_CANONICAL_ORIGIN = 'missing ACTIVITYPUB_CANONICAL_ORIGIN';
 const INVALID_CANONICAL_ORIGIN = 'invalid ACTIVITYPUB_CANONICAL_ORIGIN';
 const MISSING_DATABASE_URL = 'missing DATABASE_URL';
@@ -165,9 +166,15 @@ try {
       '@pufu-lens/activitypub/actor-repository'
     );
     const { parseBlockedDomainsFromEnv } = await import('@pufu-lens/activitypub');
+    const {
+      fetchActivityPubOperationsSnapshot,
+      serializeActivityPubOriginFailureMetricsEvent,
+      serializeActivityPubQueueMetricsEvent,
+    } = await import('@pufu-lens/activitypub/operations');
     const { runActivityPubDispatcherOnce } = await import(
       '@pufu-lens/activitypub/postgres-dispatcher'
     );
+    const dispatcherStartedAt = Date.now();
     const encryptionKey = parseActorKeyEncryptionKey(
       process.env.ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY,
     );
@@ -191,9 +198,31 @@ try {
         queueNoOps: result.queueNoOps,
       }),
     );
+
+    let snapshot: Awaited<ReturnType<typeof fetchActivityPubOperationsSnapshot>>;
+    try {
+      snapshot = await fetchActivityPubOperationsSnapshot(sql);
+    } catch {
+      throw new Error(ACTIVITYPUB_OPERATIONS_SNAPSHOT_FAILED);
+    }
+    console.log(
+      JSON.stringify(
+        serializeActivityPubQueueMetricsEvent({
+          snapshot,
+          dispatcherDurationMs: Date.now() - dispatcherStartedAt,
+        }),
+      ),
+    );
+    for (const originSummary of snapshot.originFailureSummaries) {
+      console.log(JSON.stringify(serializeActivityPubOriginFailureMetricsEvent(originSummary)));
+    }
   }
-} catch {
-  writeSafeError(ACTIVITYPUB_DELIVERY_FAILED);
+} catch (error) {
+  if (error instanceof Error && error.message === ACTIVITYPUB_OPERATIONS_SNAPSHOT_FAILED) {
+    writeSafeError(ACTIVITYPUB_OPERATIONS_SNAPSHOT_FAILED);
+  } else {
+    writeSafeError(ACTIVITYPUB_DELIVERY_FAILED);
+  }
   exitCode = 1;
 } finally {
   if (sql) {

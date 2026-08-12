@@ -1,0 +1,18 @@
+{
+  "name": "activitypub_queue_oldest_backlog_age_seconds",
+  "description": "Oldest ActivityPub backlog age in seconds from bodyless dispatcher metrics.",
+  "filter": "resource.type=\"cloud_run_job\" AND jsonPayload.event=\"activitypub_queue_metrics\" AND jsonPayload.bodyless=true AND jsonPayload.oldestBacklogAgeSeconds!=null",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "DISTRIBUTION",
+    "unit": "s"
+  },
+  "valueExtractor": "EXTRACT(jsonPayload.oldestBacklogAgeSeconds)",
+  "bucketOptions": {
+    "exponentialBuckets": {
+      "numFiniteBuckets": 12,
+      "growthFactor": 2,
+      "scale": 30
+    }
+  }
+}

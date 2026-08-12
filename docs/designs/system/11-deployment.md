@@ -185,6 +185,10 @@ gcloud run jobs deploy activitypub-dispatcher \
 #    Step 4 の activitypub-dispatcher Job は `--once` だけを受け付け、PostgreSQL queue の Follow / Accept / Undo と
 #    report Create / Announce delivery をboundedに処理する。Scheduler routeは固定OIDC audienceとdesignated SAを検証し、
 #    active execution時は202 no-opにする。repositoryにはrollout定義だけを含み、本番resourceへの適用は別途行う。
+#    Step 7 の dispatcherは各run後に本文なしqueue / origin metricsを出し、Web proxyは固定route kind / statusだけを出す。
+#    deploy/examples/gcp-cloud-build/activitypub-observability/apply.sh はlog-based metricsとalert policyをdry-runできる。
+#    本番適用は通常のchange approvalを必須とし、lookup失敗・重複をfail closedにする。runbookは
+#    docs/operations/activitypub-federation.md、production gateはdocs/operations/deploy-checklist.mdを正とする。
 #    Firebase CLI >= 15.25.1 のローカルソースデプロイを使うと GitHub 連携や push なしで rollout できる。
 #    apps/web/apphosting.yaml に runtime env / secrets / VPC access、リポジトリルートに firebase.json /
 #    .firebaserc を置き、`firebase deploy --only apphosting` でローカルの作業ツリーをそのままデプロイする。

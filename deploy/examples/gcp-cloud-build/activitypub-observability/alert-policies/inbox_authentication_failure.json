@@ -1,0 +1,33 @@
+{
+  "displayName": "ActivityPub inbox authentication failure",
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "Inbox authentication rejection",
+      "conditionThreshold": {
+        "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"logging.googleapis.com/user/activitypub_inbox_authentication_failure_count\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0,
+        "duration": "300s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_RATE",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "groupByFields": ["metric.label.route_kind"]
+          }
+        ]
+      }
+    }
+  ],
+  "alertStrategy": {
+    "autoClose": "604800s",
+    "notificationRateLimit": {
+      "period": "300s"
+    }
+  },
+  "userLabels": {
+    "pufu_lens_component": "activitypub",
+    "pufu_lens_alert": "inbox_authentication_failure"
+  }
+}

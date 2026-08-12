@@ -1,0 +1,33 @@
+{
+  "displayName": "ActivityPub per-origin delivery failures",
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "Per-origin failure count above threshold",
+      "conditionThreshold": {
+        "filter": "resource.type=\"cloud_run_job\" AND metric.type=\"logging.googleapis.com/user/activitypub_origin_failure_count\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 10,
+        "duration": "900s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_PERCENTILE_95",
+            "crossSeriesReducer": "REDUCE_MAX",
+            "groupByFields": ["metric.label.origin"]
+          }
+        ]
+      }
+    }
+  ],
+  "alertStrategy": {
+    "autoClose": "604800s",
+    "notificationRateLimit": {
+      "period": "300s"
+    }
+  },
+  "userLabels": {
+    "pufu_lens_component": "activitypub",
+    "pufu_lens_alert": "origin_failure_by_origin"
+  }
+}
