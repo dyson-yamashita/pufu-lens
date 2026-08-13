@@ -179,3 +179,105 @@ test('deploy config uses fixed ActivityPub dispatcher scheduler OIDC audience su
   assert.doesNotMatch(scheduler.script, /--oidc-token-audience "\$\{service_url\}"/);
   assert.match(deployYaml, /mastra-server-url/);
 });
+
+const productionAppHostingPath = new URL('../apps/web/apphosting.yaml', import.meta.url);
+const exampleAppHostingPath = new URL(
+  '../deploy/examples/gcp-cloud-build/apphosting.example.yaml',
+  import.meta.url,
+);
+const productionAppHosting = await readFile(productionAppHostingPath, 'utf8');
+const exampleAppHosting = await readFile(exampleAppHostingPath, 'utf8');
+
+type AppHostingEnvEntry = {
+  readonly variable: string;
+  readonly value?: string;
+  readonly secret?: string;
+  readonly availability?: readonly string[];
+};
+
+type AppHostingConfig = {
+  readonly env?: readonly AppHostingEnvEntry[];
+};
+
+function parseAppHostingConfig(contents: string): AppHostingConfig {
+  return parseYaml(contents) as AppHostingConfig;
+}
+
+function findAppHostingEnvEntry(
+  config: AppHostingConfig,
+  variable: string,
+): AppHostingEnvEntry | undefined {
+  return config.env?.find((entry) => entry.variable === variable);
+}
+
+function assertRuntimeAvailability(entry: AppHostingEnvEntry, variable: string): void {
+  assert.deepEqual(
+    entry.availability,
+    ['RUNTIME'],
+    `${variable} availability must be exactly RUNTIME`,
+  );
+}
+
+function assertAppHostingActivityPubConfig(contents: string, canonicalOrigin: string): void {
+  const config = parseAppHostingConfig(contents);
+
+  const enabled = findAppHostingEnvEntry(config, 'ACTIVITYPUB_ENABLED');
+  assert.ok(enabled, 'ACTIVITYPUB_ENABLED env entry is required');
+  assert.equal(enabled.value, '1');
+  assertRuntimeAvailability(enabled, 'ACTIVITYPUB_ENABLED');
+
+  const origin = findAppHostingEnvEntry(config, 'ACTIVITYPUB_CANONICAL_ORIGIN');
+  assert.ok(origin, 'ACTIVITYPUB_CANONICAL_ORIGIN env entry is required');
+  assert.equal(origin.value, canonicalOrigin);
+  assertRuntimeAvailability(origin, 'ACTIVITYPUB_CANONICAL_ORIGIN');
+
+  const dbMaxConnections = findAppHostingEnvEntry(config, 'ACTIVITYPUB_DB_MAX_CONNECTIONS');
+  assert.ok(dbMaxConnections, 'ACTIVITYPUB_DB_MAX_CONNECTIONS env entry is required');
+  assert.equal(dbMaxConnections.value, '5');
+  assertRuntimeAvailability(dbMaxConnections, 'ACTIVITYPUB_DB_MAX_CONNECTIONS');
+
+  const encryptionKey = findAppHostingEnvEntry(config, 'ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY');
+  assert.ok(encryptionKey, 'ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY env entry is required');
+  assert.equal(encryptionKey.secret, 'ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY');
+  assert.equal(encryptionKey.value, undefined);
+  assertRuntimeAvailability(encryptionKey, 'ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY');
+}
+
+test('production App Hosting configures ActivityPub runtime env and encryption secret', () => {
+  assertAppHostingActivityPubConfig(
+    productionAppHosting,
+    'https://pufu-lens-web--pufu-lens.asia-east1.hosted.app',
+  );
+});
+
+test('OSS App Hosting example documents ActivityPub runtime env placeholders', () => {
+  assertAppHostingActivityPubConfig(exampleAppHosting, '<web-public-origin>');
+});
+
+test('deploy config validates ActivityPub substitutions and passes canonical origin to smoke', () => {
+  const validate = collectSteps().find((step) => step.id === 'validate-deploy-substitutions');
+  const smoke = collectSteps().find((step) => step.id === 'smoke');
+  assert.ok(validate);
+  assert.ok(smoke);
+
+  assert.match(validate.script, /validate_https_origin/);
+  assert.match(validate.script, /_ACTIVITYPUB_CANONICAL_ORIGIN/);
+  assert.match(validate.script, /_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE/);
+  assert.match(
+    validate.script,
+    /\[\[ "\$\{_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT\}" =~ \^\[0-9\]\+\$ \]\]/,
+  );
+  assert.match(
+    validate.script,
+    /gcloud iam service-accounts describe "\$\{_SCHEDULER_SERVICE_ACCOUNT\}"/,
+  );
+  assert.match(validate.script, /uniqueId/);
+  assert.match(validate.script, /gcloud secrets describe "\$\{_ACTIVITYPUB_ACTOR_KEY_SECRET\}"/);
+  assert.match(
+    validate.script,
+    /gcloud secrets versions list "\$\{_ACTIVITYPUB_ACTOR_KEY_SECRET\}" --filter='state:ENABLED'/,
+  );
+  assert.doesNotMatch(validate.script, /gcloud secrets versions access/);
+
+  assert.match(smoke.script, /ACTIVITYPUB_CANONICAL_ORIGIN="\$\{_ACTIVITYPUB_CANONICAL_ORIGIN\}"/);
+});
