@@ -313,6 +313,8 @@ ActivityPub用Schedulerは `POST /internal/schedules/activitypub-dispatcher:run`
 
 Deploy Cloud Build SA は runtime service account を attach するため、対象 runtime SA に対する Service Account User が必要になる。Cloud Build から `firebase deploy --only apphosting` を実行する場合、Firebase CLI が有効 API と project IAM policy を確認するため `serviceusage.services.get`、`resourcemanager.projects.get`、`resourcemanager.projects.getIamPolicy` も必要になる。project scope の `roles/serviceusage.serviceUsageViewer` と `roles/browser` を付与するか、最小権限を厳格にする環境では Resource Manager の読み取り権限だけを含む custom role を付与する。
 
+Firebase CLI 15.25.1 は既存 backend のローカルソース deploy でも、既定 App Hosting compute SA の作成 API と project IAM policy の再設定を毎回実行する。Deploy Cloud Build SA に `roles/iam.serviceAccountCreator` や `roles/resourcemanager.projectIamAdmin` を追加すると権限が過大になるため、専用 builder は exact-match patch を適用し、`deploy-web-app-hosting` の `firebase deploy` だけで `PUFU_LENS_FIREBASE_SKIP_DEFAULT_COMPUTE_SA_PROVISIONING=true` を指定する。backend と runtime / compute SA の初期作成・role 付与は、trigger 有効化前に bootstrap principal で完了させる。この opt-out を `firebase apphosting:backends:create` や通常の workstation CLI に設定しない。
+
 Firebase App Hosting で custom service account を使う場合は、App Hosting source bucket の read 権限、`roles/firebaseapphosting.computeRunner`、参照 secret への access grant を確認する。
 
 Admin UI の data source ingest は Web runtime から Cloud Run Jobs API の `jobs/{job}:run` を呼び、`WORKFLOW_INPUT_JSON` を container override として渡す。Web runtime SA が workflow job を起動する環境では、対象 Job resource に対して `roles/run.jobsExecutorWithOverrides` を付与するか、`run.jobs.run` と `run.jobs.runWithOverrides` を含む custom role を付与する。Cloud Run の predefined role は project scope でも付与できるが、Admin UI が起動する対象 Job に scope を絞る。Job を作成 / 更新して runtime service account を attach する deploy principal には、別途その runtime service account への `iam.serviceAccounts.actAs`（Service Account User）が必要になる。
@@ -380,7 +382,7 @@ gcloud builds submit \
   infra/docker/firebase-tools
 ```
 
-`_FIREBASE_TOOLS_VERSION` を更新した場合は、substitution・image tag・build arg を同じ値に揃えて builder image を再 build する。この builder image は Cloud Build step 用のため root で実行する（`/workspace` への書き込みと deploy SA の credentials 利用のため）。
+`_FIREBASE_TOOLS_VERSION` を更新した場合は、substitution・image tag・build arg を同じ値に揃えて builder image を再 build する。この builder image は Cloud Build step 用のため root で実行する（`/workspace` への書き込みと deploy SA の credentials 利用のため）。image build は `patch-apphosting-compute-sa.mjs` が Firebase CLI 内部の対象行をちょうど1件見つけた場合だけ成功する。Firebase CLI 更新で一致しなくなった場合は、強い IAM role を追加せず、上流実装を再確認して patch の削除または更新を同じ PR で行う。
 
 `deploy-web-app-hosting` は成功した App Hosting deploy の `COMMIT_SHA` を
 `gs://${PROJECT_ID}_cloudbuild/pufu-lens/deploy-state/${_ENV}/apphosting-last-success`
@@ -547,15 +549,16 @@ gcloud run services update-traffic mastra-server \
 
 ## Troubleshooting
 
-| symptom                                   | check                                                                                                                                     |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Cloud Build が deploy 権限で失敗する      | trigger の service account、Artifact Registry / Cloud Run / Firebase 権限                                                                 |
-| Cloud Run が DB に接続できない            | Direct VPC network / subnet、専用 CIDR の firewall、Private Google Access、`DATABASE_URL` secret、Cloud Run service agent の network user |
-| DB migration job が失敗する               | `${_DB_MIGRATION_JOB}` の execute log、Workflow Job image tag、`DATABASE_URL` secret reference、Direct VPC annotation                     |
-| App Hosting が build / rollout で失敗する | `apps/web/package.json` の Next.js version、App Hosting source bucket、backend SA、生成 revision の Direct VPC network interface / egress |
-| secret 参照で失敗する                     | Secret Manager accessor、App Hosting secret grant、secret 名の typo                                                                       |
-| docs-only 変更で deploy が走る            | trigger の included files                                                                                                                 |
-| production が勝手に走りそう               | branch pattern、approval required、deploy SA 分離                                                                                         |
+| symptom                                                       | check                                                                                                                                                                                         |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cloud Build が deploy 権限で失敗する                          | trigger の service account、Artifact Registry / Cloud Run / Firebase 権限                                                                                                                     |
+| Cloud Run が DB に接続できない                                | Direct VPC network / subnet、専用 CIDR の firewall、Private Google Access、`DATABASE_URL` secret、Cloud Run service agent の network user                                                     |
+| DB migration job が失敗する                                   | `${_DB_MIGRATION_JOB}` の execute log、Workflow Job image tag、`DATABASE_URL` secret reference、Direct VPC annotation                                                                         |
+| App Hosting が build / rollout で失敗する                     | `apps/web/package.json` の Next.js version、App Hosting source bucket、backend SA、生成 revision の Direct VPC network interface / egress                                                     |
+| App Hosting deploy が `iam.serviceAccounts.create` で失敗する | current commit から Firebase builder image を再 build / push したか、trigger の `_FIREBASE_TOOLS_VERSION` と image tag が一致するか。Service Account Creator / Project IAM Admin は追加しない |
+| secret 参照で失敗する                                         | Secret Manager accessor、App Hosting secret grant、secret 名の typo                                                                                                                           |
+| docs-only 変更で deploy が走る                                | trigger の included files                                                                                                                                                                     |
+| production が勝手に走りそう                                   | branch pattern、approval required、deploy SA 分離                                                                                                                                             |
 
 Cloud Run Job の log は次のように確認する。DB migration job（`${_DB_MIGRATION_JOB}`）の失敗調査にも使う。
 

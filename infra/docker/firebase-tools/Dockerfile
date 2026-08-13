@@ -9,5 +9,8 @@ RUN apt-get update \
 
 ARG FIREBASE_TOOLS_VERSION
 RUN test -n "${FIREBASE_TOOLS_VERSION}"
+COPY patch-apphosting-compute-sa.mjs /tmp/patch-apphosting-compute-sa.mjs
 RUN npm install --global "firebase-tools@${FIREBASE_TOOLS_VERSION}" \
+  && node /tmp/patch-apphosting-compute-sa.mjs "$(npm root -g)/firebase-tools/lib/apphosting/backend.js" \
+  && rm /tmp/patch-apphosting-compute-sa.mjs \
   && npm cache clean --force

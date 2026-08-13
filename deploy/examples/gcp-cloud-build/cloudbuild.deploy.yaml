@@ -560,7 +560,7 @@ steps:
           echo "Git metadata unavailable. Deploying App Hosting."
         fi
 
-        firebase deploy --only apphosting --project "${PROJECT_ID}" --non-interactive
+        PUFU_LENS_FIREBASE_SKIP_DEFAULT_COMPUTE_SA_PROVISIONING=true firebase deploy --only apphosting --project "${PROJECT_ID}" --non-interactive
 
         node --experimental-strip-types scripts/apphosting-deploy-state.ts write \
           --bucket "$${state_bucket}" \

@@ -10,6 +10,7 @@
 > - **App Hosting の Next.js アダプタの CVE ゲートは `package.json` の version 文字列をそのまま `semver.satisfies` に渡す**。`"next": "^16.2.x"`（キャレット付き）だと誤って "vulnerable" 判定でブロックされるため、`apps/web/package.json` では **キャレット無しの厳密バージョン**（例 `"next": "16.2.9"`）で固定する。
 > - **`--no-address` の PostgreSQL VM を使う場合、サブネットで Private Google Access を有効化**しないと起動スクリプトから Secret Manager / Artifact Registry に到達できない。
 > - **App Hosting backend に custom service account を割り当てた場合**、その SA に App Hosting ソースバケットの閲覧権 + `roles/firebaseapphosting.computeRunner` を付与し、参照する secret に `firebase apphosting:secrets:grantaccess` を実行する。
+> - **Cloud Build の既存 App Hosting backend deploy では Firebase CLI の SA 再作成処理を限定的に回避する**。Firebase CLI 15.25.1 はローカルソース deploy のたびに既定 compute SA の作成と project IAM policy 再設定を試みるため、専用 builder の exact-match patch と deploy command だけの opt-out を使う。backend 初期作成には適用せず、deploy SA に Service Account Creator / Project IAM Admin を付与しない。
 > - Cloud Build が Compute default SA を使う構成では `roles/cloudbuild.builds.builder` の付与が必要。
 > - production deploy trigger は runtime / deploy config path だけを included files に設定し、`docs/**` や README だけの変更では本番 deploy を起動しない。必要な場合は manual trigger を明示的に実行する。
 > - Cloud Build deploy は substitution 検証後に Mastra image build と Workflow Job image build を並列実行し、Docker build は `docker buildx` registry cache（各 image の `:buildcache` tag）を使う。Workflow Job image push 後に `_RUN_DB_MIGRATIONS=true` の場合は Cloud Run Job `${_DB_MIGRATION_JOB}` で `pnpm db:migrate` を `--wait` 付きで実行し、Mastra Server / Workflow Jobs / Firebase App Hosting deploy はその完了後に開始する。`_RUN_DB_MIGRATIONS=false` の場合も migration step は即時成功して deploy barrier として残る。Firebase App Hosting deploy は backend deploy 完了後に実行する。smoke は全 deploy 完了後に実行する。`options.machineType` は指定せず、標準 worker のまま不要な直列待ちと再 build を減らす。
@@ -193,6 +194,8 @@ gcloud run jobs deploy activitypub-dispatcher \
 #    Firebase CLI >= 15.25.1 のローカルソースデプロイを使うと GitHub 連携や push なしで rollout できる。
 #    apps/web/apphosting.yaml に runtime env / secrets / VPC access、リポジトリルートに firebase.json /
 #    .firebaserc を置き、`firebase deploy --only apphosting` でローカルの作業ツリーをそのままデプロイする。
+#    Cloud Build は事前作成済み backend への deploy に限り専用 builder の opt-out を使う。下記の workstation 手順や
+#    apphosting:backends:create では opt-out を設定しない。
 #    NOTE: apps/web/package.json の next は CVE ゲート回避のため厳密バージョンで固定すること（冒頭の注記参照）。
 firebase apphosting:backends:create \
   --project PROJECT \
