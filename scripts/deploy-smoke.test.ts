@@ -110,8 +110,9 @@ test('remote deploy smoke does not use network when required env is missing', as
 test('remote deploy smoke passes WebFinger and aggregate Actor checks', async () => {
   const webfingerUrl = `${canonicalOrigin}/.well-known/webfinger?resource=${encodeURIComponent(expectedSubject)}`;
   const { fetch, methods } = createFetchMock({
-    [webfingerUrl]: () =>
-      Response.json({
+    [webfingerUrl]: (init) => {
+      assert.equal(new Headers(init?.headers).get('accept'), 'application/jrd+json');
+      return Response.json({
         subject: expectedSubject,
         links: [
           {
@@ -120,13 +121,16 @@ test('remote deploy smoke passes WebFinger and aggregate Actor checks', async ()
             href: actorUrl,
           },
         ],
-      }),
-    [actorUrl]: () =>
-      Response.json({
+      });
+    },
+    [actorUrl]: (init) => {
+      assert.equal(new Headers(init?.headers).get('accept'), 'application/activity+json');
+      return Response.json({
         id: actorUrl,
         type: 'Service',
         preferredUsername: 'all',
-      }),
+      });
+    },
   });
 
   const result = await runRemoteDeploySmoke({

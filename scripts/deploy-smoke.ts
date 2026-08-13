@@ -88,7 +88,8 @@ export function parseDeploySmokeArgs(argv: readonly string[]): {
 
 /**
  * Runs read-only ActivityPub federation smoke checks against the public canonical origin.
- * Uses GET-only requests and never performs writes, dispatcher triggers, or external delivery.
+ * Its GET-only checks send protocol-specific Accept headers for WebFinger JRD and ActivityPub.
+ * Never performs writes, dispatcher triggers, or external delivery.
  */
 export async function runRemoteDeploySmoke(input: {
   env: 'production' | 'staging';
@@ -138,7 +139,9 @@ export async function runRemoteDeploySmoke(input: {
   const expectedActorUrl = `${origin}/activitypub/actors/all`;
   const webfingerUrl = `${origin}/.well-known/webfinger?resource=${encodeURIComponent(expectedSubject)}`;
 
-  const webfingerFetch = await safeFetchJsonWithTimeout(fetchImpl, webfingerUrl, timeoutMs);
+  const webfingerFetch = await safeFetchJsonWithTimeout(fetchImpl, webfingerUrl, timeoutMs, {
+    accept: 'application/jrd+json',
+  });
   if (webfingerFetch.status === 'failed') {
     checks.push({
       id: 'webfinger',
