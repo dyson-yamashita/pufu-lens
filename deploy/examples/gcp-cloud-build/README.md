@@ -228,6 +228,11 @@ The deploy service account generally needs:
   `resourcemanager.projects.get` and `resourcemanager.projects.getIamPolicy`,
   when `_FIREBASE_DEPLOY=true`; Firebase CLI reads project IAM policy during
   deploy.
+- Do not grant `iam.serviceAccounts.create` or
+  `resourcemanager.projects.setIamPolicy` only to satisfy Firebase CLI's
+  existing-backend preparation. The pinned builder bypasses that redundant
+  provisioning call only for the scoped App Hosting deploy command described
+  below.
 - Permission to attach Secret Manager secret references to Cloud Run resources.
 - Read-only access to the configured Scheduler service account numeric ID and Actor key secret metadata / enabled-version list. The deploy service account does not read the secret payload.
 - Logging permissions required by Cloud Build in the project.
@@ -268,12 +273,15 @@ gcloud builds submit \
   infra/docker/firebase-tools
 ```
 
-This image is a Cloud Build step builder and intentionally runs as root so it can write to `/workspace` and use the deploy service account credentials that Cloud Build injects.
+This image is a Cloud Build step builder and intentionally runs as root so it can write to `/workspace` and use the deploy service account credentials that Cloud Build injects. During the image build, `patch-apphosting-compute-sa.mjs` applies an exact-match, fail-closed patch to Firebase CLI 15.25.1. The patch leaves normal CLI behavior unchanged unless `PUFU_LENS_FIREBASE_SKIP_DEFAULT_COMPUTE_SA_PROVISIONING=true` is set.
 
-The example uses:
+Firebase CLI 15.25.1 otherwise calls the default App Hosting compute service-account create API and rewrites the project IAM policy on every local-source deploy, even when the backend and account already exist. `cloudbuild.deploy.yaml` sets the opt-out variable only for `firebase deploy --only apphosting`. Provision the backend and its service accounts once with an authorized bootstrap principal before enabling the trigger; do not use the opt-out for `apphosting:backends:create`. If the pinned CLI source no longer matches, the builder image build fails instead of silently skipping an unknown code path. Rebuild this image whenever `_FIREBASE_TOOLS_VERSION` or the patch changes.
+
+The effective deploy command is scoped as follows:
 
 ```bash
-firebase deploy --only apphosting --project "$PROJECT_ID" --non-interactive
+PUFU_LENS_FIREBASE_SKIP_DEFAULT_COMPUTE_SA_PROVISIONING=true \
+  firebase deploy --only apphosting --project "$PROJECT_ID" --non-interactive
 ```
 
 Before enabling ActivityPub, copy the example runtime entries for `ACTIVITYPUB_ENABLED`, `ACTIVITYPUB_CANONICAL_ORIGIN`, `ACTIVITYPUB_DB_MAX_CONNECTIONS`, and `ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY` into the environment-specific `apps/web/apphosting.yaml`. Create the 32-byte canonical-base64 secret without printing it, then grant the backend access:

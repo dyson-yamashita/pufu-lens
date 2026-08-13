@@ -25,6 +25,8 @@ API key、DB password は記録しない。
 - [ ] PostgreSQL VM を `infra/gcp/postgres-startup.sh` で作成し、`gce-container-declaration` metadata に依存していないことを確認した。
 - [ ] PostgreSQL VM の deletion protection が有効で、boot disk は `autoDelete=true`、DB data disk は `autoDelete=false` であることを確認した。
 - [ ] Cloud Run / Cloud Run Jobs / Firebase App Hosting の service account を確認した。
+- [ ] Firebase App Hosting backend と runtime / compute service account の初期作成・role 付与を bootstrap principal で完了し、Cloud Build deploy SA には App Hosting deploy のためだけに Service Account Creator / Project IAM Admin を付与していない。
+- [ ] current commit の `infra/docker/firebase-tools` から `_FIREBASE_TOOLS_VERSION` と同じ tag の builder image を再 build / push した。
 - [ ] Admin UI から Cloud Run Job を起動する App Hosting runtime service account に、対象 Job resource の `run.jobs.run` / `run.jobs.runWithOverrides` 権限を付与した（正準の IAM 要件は `docs/deployment/gcp-cloud-build.md` の IAM 節を参照）。
 - [ ] Secret Manager に runtime secret を作成した。
 - [ ] Google AI API key または Vertex AI 認証方式を設定した。
@@ -96,7 +98,7 @@ gcloud compute instances list --filter="metadata.items.key:gce-container-declara
 - `db:migrate --check`: migration file の命名、番号重複、本文 parse、履歴との整合を検査する。`DATABASE_URL` がある場合は online check として `schema_migrations` も照合する。
 - `db:migrate --plan`: staging / production の `DATABASE_URL` に対して、適用予定 migration を表示する。ここではまだ適用しない。
 - `db:migrate`: `infra/db/migrations/*.sql` を番号順に適用し、`auth_accounts`、`auth_password_credentials`、project scoped `oauth_connections` など既存 DB に必要な schema を用意する。migration version はファイル名から `.sql` を除いた値、`public.schema_migrations` に未登録のものが pending として順番に適用される。既存互換の `auth:migrate` も同じ migration runner を呼び出す。
-- GCP Cloud Build deploy（`deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml`）: Workflow Job image push 後に Cloud Run Job `${_DB_MIGRATION_JOB}`（既定 `db-migrate`）で `pnpm db:migrate` を `--wait` 付き実行し、Mastra Server / Workflow Jobs / Firebase App Hosting deploy の前に schema migration を完了させる。`_RUN_DB_MIGRATIONS=false` の場合は migration step を skip するが、runtime rollout 前の barrier として同じ位置に残す。
+- GCP Cloud Build deploy（`deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml`）: Workflow Job image push 後に Cloud Run Job `${_DB_MIGRATION_JOB}`（既定 `db-migrate`）で `pnpm db:migrate` を `--wait` 付き実行し、Mastra Server / Workflow Jobs / Firebase App Hosting deploy の前に schema migration を完了させる。`_RUN_DB_MIGRATIONS=false` の場合は migration step を skip するが、runtime rollout 前の barrier として同じ位置に残す。App Hosting deploy は専用 Firebase builder の fail-closed patch と scoped opt-out を使い、既存 backend の deploy SA に `iam.serviceAccounts.create` / `resourcemanager.projects.setIamPolicy` を要求しない。
 - `auth:create-user`: OAuth を使わない環境で Credentials login 用 user と password hash を作成する。実 password は DB / docs / log に保存しない。
 - `report:backfill-project-manifests`: 既存の `projects.visibility = 'public'` project に対して、公開レポート API が参照する `project-public-state.json` を Object Storage に作成する。初回は `--dry-run` で対象を確認し、問題なければ `--dry-run` なしで一度だけ実行する。
 - `infra:check`:

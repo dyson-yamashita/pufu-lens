@@ -217,6 +217,8 @@ firebase deploy --only apphosting --project "$PROJECT_ID"
 
 `apps/web/apphosting.yaml`（env/secrets/vpcAccess）+ ルートの `firebase.json` / `.firebaserc` が必要。env-specific 値（Mastra URL 等）は当該環境の実値を書く。
 
+初回 backend 作成は bootstrap principal で通常の Firebase CLI を使い、`PUFU_LENS_FIREBASE_SKIP_DEFAULT_COMPUTE_SA_PROVISIONING` を設定しない。Cloud Build の既存 backend deploy は `infra/docker/firebase-tools` の fail-closed patch 済み builder が deploy command だけにこの opt-out を設定する。Firebase CLI 15.25.1 の冗長な SA 作成 / project IAM 再設定を理由に、deploy SA へ Service Account Creator / Project IAM Admin を追加しない。
+
 ## Phase 11 — 初期アカウント登録（Credentials login）
 
 OAuth を使わない環境、または初回管理者を Credentials login で用意する場合は、PostgreSQL VM に IAP トンネルで接続して `auth:create-user` を実行する。`PGPASS` は Phase 6 で PostgreSQL VM 作成時に使った値を一時的な shell 変数として用意し、実 password / `DATABASE_URL` は shell history / log / docs / コミットに出さない。
@@ -242,9 +244,10 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 1. **App Hosting の Next.js アダプタの CVE ゲートは `package.json` の version 文字列を `semver.satisfies` にそのまま渡す**。`"next": "^16.2.x"`（キャレット）は誤って vulnerable 判定 → ブロック。**キャレット無しの厳密版に固定**する。
 2. **`--no-address` VM はサブネットの Private Google Access が必須**（無効だと起動スクリプトから Secret Manager / Artifact Registry に到達できない）。VM 専用 SA には `cloud-platform` scope、secret 単位の accessor、repository 単位の reader を付ける。
 3. **App Hosting backend に custom SA を使う場合**、その SA に App Hosting ソースバケット閲覧権 + `roles/firebaseapphosting.computeRunner` を付与し、secret には `firebase apphosting:secrets:grantaccess` を実行。
-4. **Cloud Build = Compute default SA** 構成では `roles/cloudbuild.builds.builder` を付与。
-5. **Mastra / Jobs は `--source .`(buildpacks) では pnpm workspace を解決できない** → 専用 Dockerfile + Artifact Registry。
-6. **`mastra build` の storage 解決は ADR-004 の修正が前提**。
+4. **Firebase CLI 15.25.1 の既存 backend deploy は default compute SA の create と project IAM set を毎回試す**。Cloud Build 専用 builder の guarded patch を使い、強い IAM role で回避しない。CLI 更新時は builder build の exact-match failure を停止条件として上流挙動を再確認する。
+5. **Cloud Build = Compute default SA** 構成では `roles/cloudbuild.builds.builder` を付与。
+6. **Mastra / Jobs は `--source .`(buildpacks) では pnpm workspace を解決できない** → 専用 Dockerfile + Artifact Registry。
+7. **`mastra build` の storage 解決は ADR-004 の修正が前提**。
 
 ## 失敗時の調べ方
 
