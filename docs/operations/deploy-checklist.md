@@ -100,7 +100,7 @@ gcloud compute instances list --filter="metadata.items.key:gce-container-declara
 - `auth:create-user`: OAuth を使わない環境で Credentials login 用 user と password hash を作成する。実 password は DB / docs / log に保存しない。
 - `report:backfill-project-manifests`: 既存の `projects.visibility = 'public'` project に対して、公開レポート API が参照する `project-public-state.json` を Object Storage に作成する。初回は `--dry-run` で対象を確認し、問題なければ `--dry-run` なしで一度だけ実行する。
 - `infra:check`:
-- `deploy:smoke`: `MASTRA_SERVER_URL`、`SCHEDULER_SERVICE_ACCOUNT`、`ACTIVITYPUB_CANONICAL_ORIGIN`の設定を確認し、ActivityPub aggregate ActorのWebFinger / Actor JSONをGETで検証する。Follow、Inbox POST、dispatcher起動、外部配送は行わない。
+- `deploy:smoke`: `MASTRA_SERVER_URL`、`SCHEDULER_SERVICE_ACCOUNT`、`ACTIVITYPUB_CANONICAL_ORIGIN`の設定を確認し、ActivityPub aggregate ActorのWebFinger / Actor JSONをGETで検証する。各GETはbody読取を含め15秒、JSON bodyは1 MiBを上限とする。Follow、Inbox POST、dispatcher起動、外部配送は行わない。
 - Admin UI data source ingest: App Hosting runtime service account で workflow job execution が作成され、`run.jobs.run` / `run.jobs.runWithOverrides` 不足の 403 が出ないことを確認する。
 - Cloud Run Job 単発実行:
 - Cloud Scheduler OIDC 実行:

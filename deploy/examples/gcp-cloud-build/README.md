@@ -171,7 +171,7 @@ Set these trigger substitutions in the user's GCP project:
 7. Create or update the source sync and report schedule five-minute Cloud Scheduler jobs. Grant the designated Scheduler service account `roles/run.invoker` on the Mastra service, and grant the Mastra runtime service account `roles/run.jobsExecutorWithOverrides` on all three dispatcher Jobs (source sync, report schedule, and ActivityPub) before creating the ActivityPub Scheduler with the fixed OIDC audience. Grant `roles/run.viewer` on only the ActivityPub Job.
 8. Create or update the ActivityPub five-minute Cloud Scheduler job after its resource-scoped IAM is ready. Each Scheduler POSTs `{}` with an OIDC token to its Mastra Server dispatcher route.
 9. Deploy the Web app with Firebase App Hosting after Mastra Server, Workflow Jobs, and Scheduler finish when `_FIREBASE_DEPLOY=true`. The step uses a prebuilt `firebase-tools` builder image from Artifact Registry instead of installing Firebase CLI on every deploy. It skips App Hosting deploy when there are no web-related changes since the last successful App Hosting deploy SHA stored in GCS.
-10. Read the deployed Mastra Server URL dynamically and run `deploy:smoke` after all deploy steps finish.
+10. Read the deployed Mastra Server URL dynamically and run `deploy:smoke` from the immutable `SHORT_SHA` Workflow Job image after all deploy steps finish.
 
 The deploy config keeps the default Cloud Build worker and uses `waitFor` only to remove avoidable serial waits. Docker image builds use `docker buildx` registry caches at each image's `:buildcache` tag so unchanged layers, including multi-stage intermediate layers, can be reused without pulling the full previous runtime image first. App Hosting deploy still waits for backend deploy completion so the Web rollout does not expose a newer frontend before the matching backend is live. Runtime deploy steps wait for the migration barrier so new Cloud Run / App Hosting code is not rolled out before pending schema migrations are applied. Cost-sensitive environments should keep this default-worker shape unless they explicitly accept higher per-minute build costs.
 
@@ -320,7 +320,7 @@ pnpm infra:check --env production
 pnpm deploy:smoke --env production
 ```
 
-`deploy:smoke`には、デプロイ後に取得した`MASTRA_SERVER_URL`と、固定の公開Web originである`ACTIVITYPUB_CANONICAL_ORIGIN`を渡す。ActivityPub検査は`acct:all@<host>`のWebFingerとaggregate ActorへのGETだけで、Follow、Inbox POST、dispatcher起動、外部配送は行わない。
+`deploy:smoke`には、デプロイ後に取得した`MASTRA_SERVER_URL`と、固定の公開Web originである`ACTIVITYPUB_CANONICAL_ORIGIN`を渡す。依存関係を含むimmutable Workflow Job image内の`/app/scripts/deploy-smoke.ts`を実行する。ActivityPub検査は`acct:all@<host>`のWebFingerとaggregate ActorへのGETだけで、Follow、Inbox POST、dispatcher起動、外部配送は行わない。各GETはresponse bodyの読取を含め15秒でtimeoutし、JSON bodyを1 MiBに制限する。
 
 Confirm after deploy that:
 

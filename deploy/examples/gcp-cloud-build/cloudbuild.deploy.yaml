@@ -155,6 +155,14 @@ steps:
             if not parsed.hostname:
                 print(f"{name} must include a hostname.", file=sys.stderr)
                 sys.exit(1)
+            try:
+                port = parsed.port
+            except ValueError:
+                print(f"{name} must be a valid HTTPS origin.", file=sys.stderr)
+                sys.exit(1)
+            if port is not None and (port < 1 or port > 65535):
+                print(f"{name} must be a valid HTTPS origin.", file=sys.stderr)
+                sys.exit(1)
 
         validate_https_origin(
             os.environ["_ACTIVITYPUB_CANONICAL_ORIGIN"],
@@ -563,7 +571,7 @@ steps:
         echo "Recorded App Hosting last-success SHA $${commit_sha} at gs://$${state_bucket}/$${state_object}"
 
   - id: smoke
-    name: node:22-bookworm
+    name: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_JOBS_IMAGE}:${SHORT_SHA}
     waitFor:
       - deploy-mastra-server
       - deploy-workflow-jobs
@@ -580,4 +588,4 @@ steps:
         MASTRA_SERVER_URL="$$(cat /workspace/.cloudbuild/mastra-server-url)" \
           SCHEDULER_SERVICE_ACCOUNT="${_SCHEDULER_SERVICE_ACCOUNT}" \
           ACTIVITYPUB_CANONICAL_ORIGIN="${_ACTIVITYPUB_CANONICAL_ORIGIN}" \
-          node --experimental-strip-types scripts/deploy-smoke.ts --env "${_ENV}"
+          node --experimental-strip-types /app/scripts/deploy-smoke.ts --env "${_ENV}"

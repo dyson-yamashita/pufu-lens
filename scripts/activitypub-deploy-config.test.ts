@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { parse as parseYaml } from 'yaml';
@@ -200,7 +201,36 @@ type AppHostingConfig = {
 };
 
 function parseAppHostingConfig(contents: string): AppHostingConfig {
-  return parseYaml(contents) as AppHostingConfig;
+  const parsed: unknown = parseYaml(contents);
+  assert.ok(
+    parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed),
+    'App Hosting config root must be an object',
+  );
+  const root = parsed as Record<string, unknown>;
+  if (root.env !== undefined) {
+    assert.ok(Array.isArray(root.env), 'env must be an array');
+    for (const entry of root.env) {
+      assert.ok(
+        entry !== null && typeof entry === 'object' && !Array.isArray(entry),
+        'env entry must be an object',
+      );
+      const record = entry as Record<string, unknown>;
+      assert.equal(typeof record.variable, 'string', 'env entry variable must be a string');
+      if (record.value !== undefined) {
+        assert.equal(typeof record.value, 'string', 'env entry value must be a string');
+      }
+      if (record.secret !== undefined) {
+        assert.equal(typeof record.secret, 'string', 'env entry secret must be a string');
+      }
+      if (record.availability !== undefined) {
+        assert.ok(Array.isArray(record.availability), 'availability must be an array');
+        for (const item of record.availability) {
+          assert.equal(typeof item, 'string', 'availability entry must be a string');
+        }
+      }
+    }
+  }
+  return parsed as AppHostingConfig;
 }
 
 function findAppHostingEnvEntry(
@@ -280,4 +310,84 @@ test('deploy config validates ActivityPub substitutions and passes canonical ori
   assert.doesNotMatch(validate.script, /gcloud secrets versions access/);
 
   assert.match(smoke.script, /ACTIVITYPUB_CANONICAL_ORIGIN="\$\{_ACTIVITYPUB_CANONICAL_ORIGIN\}"/);
+  assert.match(
+    deployYaml,
+    /- id: smoke\n\s+name: \$\{_REGION\}-docker\.pkg\.dev\/\$\{PROJECT_ID\}\/\$\{_ARTIFACT_REPO\}\/\$\{_JOBS_IMAGE\}:\$\{SHORT_SHA\}/,
+  );
+  assert.match(smoke.script, /node --experimental-strip-types \/app\/scripts\/deploy-smoke\.ts/);
+});
+
+test('parseAppHostingConfig rejects invalid env shape with explicit assertion message', () => {
+  assert.throws(
+    () => parseAppHostingConfig('env: true\n'),
+    (error: unknown) => {
+      assert.ok(error instanceof assert.AssertionError);
+      assert.equal(error.message, 'env must be an array');
+      return true;
+    },
+  );
+});
+
+function extractValidateHttpsOriginPython(script: string): string {
+  const match = script.match(/python3 - <<'PY'\n([\s\S]*?)\n\s*PY/);
+  assert.ok(match?.[1], 'validate_https_origin Python heredoc not found');
+  return match[1];
+}
+
+function runValidateHttpsOriginScript(input: { canonicalOrigin: string; oidcAudience: string }): {
+  exitCode: number;
+  stderr: string;
+} {
+  const validate = collectSteps().find((step) => step.id === 'validate-deploy-substitutions');
+  assert.ok(validate);
+  const pythonScript = extractValidateHttpsOriginPython(validate.script);
+  try {
+    execFileSync('python3', ['-c', pythonScript], {
+      env: {
+        ...process.env,
+        _ACTIVITYPUB_CANONICAL_ORIGIN: input.canonicalOrigin,
+        _ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE: input.oidcAudience,
+      },
+      encoding: 'utf8',
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    return { exitCode: 0, stderr: '' };
+  } catch (error: unknown) {
+    if (
+      error !== null &&
+      typeof error === 'object' &&
+      'status' in error &&
+      typeof (error as { status?: unknown }).status === 'number'
+    ) {
+      const execError = error as { status: number; stderr?: string | Buffer };
+      const stderr =
+        typeof execError.stderr === 'string'
+          ? execError.stderr
+          : (execError.stderr?.toString('utf8') ?? '');
+      return { exitCode: execError.status, stderr };
+    }
+    throw error;
+  }
+}
+
+test('deploy config validate_https_origin rejects malformed ports and accepts valid HTTPS origins', () => {
+  const valid = runValidateHttpsOriginScript({
+    canonicalOrigin: 'https://example.test',
+    oidcAudience: 'https://example.test',
+  });
+  assert.equal(valid.exitCode, 0, valid.stderr);
+
+  const nonNumericPort = runValidateHttpsOriginScript({
+    canonicalOrigin: 'https://example.test:not-a-port',
+    oidcAudience: 'https://example.test',
+  });
+  assert.notEqual(nonNumericPort.exitCode, 0);
+  assert.match(nonNumericPort.stderr, /must be a valid HTTPS origin/);
+
+  const outOfRangePort = runValidateHttpsOriginScript({
+    canonicalOrigin: 'https://example.test',
+    oidcAudience: 'https://example.test:65536',
+  });
+  assert.notEqual(outOfRangePort.exitCode, 0);
+  assert.match(outOfRangePort.stderr, /must be a valid HTTPS origin/);
 });

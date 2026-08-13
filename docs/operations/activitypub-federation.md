@@ -126,7 +126,7 @@ Actor identityの復旧には、同一時点のPostgreSQL backupに含まれる 
 4. Cloud Build triggerへcanonical origin、Mastra audience、Scheduler subject、Actor key secret名を設定する。substitutionにはsecret名だけを置き、payloadを置かない。
 5. `apps/web/apphosting.yaml`の`ACTIVITYPUB_ENABLED=1`、canonical origin、DB pool上限、Actor key secret referenceがMastra Serverとdispatcherの設定に一致することを確認する。
 6. 最新`main`と一致するpending buildだけを承認する。validationはHTTPS origin、Scheduler identity、secret metadata / ENABLED versionをruntime変更前にfail closedで検証する。
-7. deploy成功後、Cloud BuildのGET-only smokeで`@all` WebFingerとActorを確認する。Follow、Inbox POST、dispatcher手動実行、外部配送はこの確認では行わない。
+7. deploy成功後、Cloud BuildのGET-only smokeで`@all` WebFingerとActorを確認する。各GETはbody読取を含め15秒、JSON bodyは1 MiBを上限とする。Follow、Inbox POST、dispatcher手動実行、外部配送はこの確認では行わない。
 8. 最初のActor作成またはoutbound前に、DB snapshotとsecret versionを同一復旧単位として記録する。失敗時もcanonical originやsecretを別値へ変更せず、forward fixまたは同一設定でrollbackする。
 
 Cloud Buildがruntime変更前のvalidationで失敗した場合は、失敗buildを再承認せず、trigger、Scheduler identity、secret metadataを修正して最新`main`から新しいbuildを開始する。runtime rollout後に失敗した場合は、作成済みActor、queue、migration、revisionを確認してrollback判断を記録する。

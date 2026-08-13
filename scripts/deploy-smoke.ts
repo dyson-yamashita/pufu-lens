@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { parseCanonicalOrigin } from '../packages/activitypub/src/canonical-origin.ts';
+import { parseCanonicalOrigin } from '@pufu-lens/activitypub';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
+const MAX_RESPONSE_BYTES = 1024 * 1024;
 const REMOTE_SMOKE_REQUIRED_ENV = [
   'MASTRA_SERVER_URL',
   'SCHEDULER_SERVICE_ACCOUNT',
@@ -112,17 +113,7 @@ export async function runRemoteDeploySmoke(input: {
   const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const checks: RemoteSmokeCheckResult[] = [];
 
-  const canonicalOrigin = input.envVars.ACTIVITYPUB_CANONICAL_ORIGIN?.trim();
-  if (!canonicalOrigin) {
-    return {
-      checkedAt,
-      env: input.env,
-      mode: 'remote_smoke',
-      status: 'blocked',
-      missing: ['ACTIVITYPUB_CANONICAL_ORIGIN'],
-      checks: [],
-    };
-  }
+  const canonicalOrigin = input.envVars.ACTIVITYPUB_CANONICAL_ORIGIN?.trim() ?? '';
 
   let origin: string;
   let host: string;
@@ -147,45 +138,25 @@ export async function runRemoteDeploySmoke(input: {
   const expectedActorUrl = `${origin}/activitypub/actors/all`;
   const webfingerUrl = `${origin}/.well-known/webfinger?resource=${encodeURIComponent(expectedSubject)}`;
 
-  const webfingerFetch = await safeFetchWithTimeout(fetchImpl, webfingerUrl, timeoutMs);
+  const webfingerFetch = await safeFetchJsonWithTimeout(fetchImpl, webfingerUrl, timeoutMs);
   if (webfingerFetch.status === 'failed') {
     checks.push({
       id: 'webfinger',
       status: 'failed',
       reason: webfingerFetch.reason,
-    });
-    return finalizeRemoteSmokeResult(checkedAt, input.env, checks);
-  }
-  const webfingerResponse = webfingerFetch.response;
-  if (webfingerResponse.status !== 200) {
-    checks.push({
-      id: 'webfinger',
-      status: 'failed',
-      reason: 'unexpected_status',
-      httpStatus: webfingerResponse.status,
+      httpStatus: webfingerFetch.httpStatus,
     });
     return finalizeRemoteSmokeResult(checkedAt, input.env, checks);
   }
 
-  let webfinger: WebFingerDocument;
-  try {
-    webfinger = (await webfingerResponse.json()) as WebFingerDocument;
-  } catch {
-    checks.push({
-      id: 'webfinger',
-      status: 'failed',
-      reason: 'invalid_json',
-      httpStatus: webfingerResponse.status,
-    });
-    return finalizeRemoteSmokeResult(checkedAt, input.env, checks);
-  }
+  const webfinger = webfingerFetch.data as WebFingerDocument;
 
   if (webfinger.subject !== expectedSubject) {
     checks.push({
       id: 'webfinger',
       status: 'failed',
       reason: 'subject_mismatch',
-      httpStatus: webfingerResponse.status,
+      httpStatus: webfingerFetch.httpStatus,
     });
     return finalizeRemoteSmokeResult(checkedAt, input.env, checks);
   }
@@ -196,7 +167,7 @@ export async function runRemoteDeploySmoke(input: {
       id: 'webfinger',
       status: 'failed',
       reason: 'self_link_mismatch',
-      httpStatus: webfingerResponse.status,
+      httpStatus: webfingerFetch.httpStatus,
     });
     return finalizeRemoteSmokeResult(checkedAt, input.env, checks);
   }
@@ -204,10 +175,10 @@ export async function runRemoteDeploySmoke(input: {
   checks.push({
     id: 'webfinger',
     status: 'passed',
-    httpStatus: webfingerResponse.status,
+    httpStatus: webfingerFetch.httpStatus,
   });
 
-  const actorFetch = await safeFetchWithTimeout(fetchImpl, expectedActorUrl, timeoutMs, {
+  const actorFetch = await safeFetchJsonWithTimeout(fetchImpl, expectedActorUrl, timeoutMs, {
     accept: 'application/activity+json',
   });
   if (actorFetch.status === 'failed') {
@@ -215,39 +186,19 @@ export async function runRemoteDeploySmoke(input: {
       id: 'aggregate_actor',
       status: 'failed',
       reason: actorFetch.reason,
-    });
-    return finalizeRemoteSmokeResult(checkedAt, input.env, checks);
-  }
-  const actorResponse = actorFetch.response;
-  if (actorResponse.status !== 200) {
-    checks.push({
-      id: 'aggregate_actor',
-      status: 'failed',
-      reason: 'unexpected_status',
-      httpStatus: actorResponse.status,
+      httpStatus: actorFetch.httpStatus,
     });
     return finalizeRemoteSmokeResult(checkedAt, input.env, checks);
   }
 
-  let actor: ActorDocument;
-  try {
-    actor = (await actorResponse.json()) as ActorDocument;
-  } catch {
-    checks.push({
-      id: 'aggregate_actor',
-      status: 'failed',
-      reason: 'invalid_json',
-      httpStatus: actorResponse.status,
-    });
-    return finalizeRemoteSmokeResult(checkedAt, input.env, checks);
-  }
+  const actor = actorFetch.data as ActorDocument;
 
   if (actor.id !== expectedActorUrl) {
     checks.push({
       id: 'aggregate_actor',
       status: 'failed',
       reason: 'id_mismatch',
-      httpStatus: actorResponse.status,
+      httpStatus: actorFetch.httpStatus,
     });
     return finalizeRemoteSmokeResult(checkedAt, input.env, checks);
   }
@@ -257,7 +208,7 @@ export async function runRemoteDeploySmoke(input: {
       id: 'aggregate_actor',
       status: 'failed',
       reason: 'preferred_username_mismatch',
-      httpStatus: actorResponse.status,
+      httpStatus: actorFetch.httpStatus,
     });
     return finalizeRemoteSmokeResult(checkedAt, input.env, checks);
   }
@@ -267,7 +218,7 @@ export async function runRemoteDeploySmoke(input: {
       id: 'aggregate_actor',
       status: 'failed',
       reason: 'invalid_actor_type',
-      httpStatus: actorResponse.status,
+      httpStatus: actorFetch.httpStatus,
     });
     return finalizeRemoteSmokeResult(checkedAt, input.env, checks);
   }
@@ -275,7 +226,7 @@ export async function runRemoteDeploySmoke(input: {
   checks.push({
     id: 'aggregate_actor',
     status: 'passed',
-    httpStatus: actorResponse.status,
+    httpStatus: actorFetch.httpStatus,
   });
 
   return finalizeRemoteSmokeResult(checkedAt, input.env, checks);
@@ -331,24 +282,66 @@ function finalizeRemoteSmokeResult(
   };
 }
 
-type SafeFetchResult =
-  | { readonly status: 'ok'; readonly response: Response }
+type SafeJsonFetchResult =
+  | { readonly status: 'ok'; readonly data: unknown; readonly httpStatus: number }
   | {
       readonly status: 'failed';
-      readonly reason: 'request_timeout' | 'network_error';
+      readonly reason:
+        | 'request_timeout'
+        | 'network_error'
+        | 'response_too_large'
+        | 'invalid_json'
+        | 'unexpected_status';
+      readonly httpStatus?: number;
     };
 
-async function safeFetchWithTimeout(
+async function safeFetchJsonWithTimeout(
   fetchImpl: DeploySmokeFetch,
   url: string,
   timeoutMs: number,
   headers: Record<string, string> = {},
-): Promise<SafeFetchResult> {
+): Promise<SafeJsonFetchResult> {
   try {
     const response = await fetchWithTimeout(fetchImpl, url, timeoutMs, headers);
-    return { status: 'ok', response };
+    if (response.status !== 200) {
+      return {
+        status: 'failed',
+        reason: 'unexpected_status',
+        httpStatus: response.status,
+      };
+    }
+    const bodyResult = await readBoundedBody(response, MAX_RESPONSE_BYTES);
+    if (bodyResult.status === 'failed') {
+      return {
+        status: 'failed',
+        reason: 'response_too_large',
+        httpStatus: response.status,
+      };
+    }
+    try {
+      const text = new TextDecoder().decode(bodyResult.bytes);
+      const parsed: unknown = JSON.parse(text);
+      if (!isJsonObject(parsed)) {
+        return {
+          status: 'failed',
+          reason: 'invalid_json',
+          httpStatus: response.status,
+        };
+      }
+      return {
+        status: 'ok',
+        data: parsed,
+        httpStatus: response.status,
+      };
+    } catch {
+      return {
+        status: 'failed',
+        reason: 'invalid_json',
+        httpStatus: response.status,
+      };
+    }
   } catch (error: unknown) {
-    if (error instanceof Error && error.message === 'request_timeout') {
+    if (isTimeoutError(error)) {
       return { status: 'failed', reason: 'request_timeout' };
     }
     return { status: 'failed', reason: 'network_error' };
@@ -361,22 +354,72 @@ async function fetchWithTimeout(
   timeoutMs: number,
   headers: Record<string, string> = {},
 ): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetchImpl(url, {
-      method: 'GET',
-      headers,
-      signal: controller.signal,
-    });
-  } catch (error: unknown) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('request_timeout');
+  return fetchImpl(url, {
+    method: 'GET',
+    headers,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+}
+
+function isTimeoutError(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError');
+}
+
+type BoundedBodyResult =
+  | { readonly status: 'ok'; readonly bytes: Uint8Array }
+  | { readonly status: 'failed'; readonly reason: 'response_too_large' };
+
+async function readBoundedBody(response: Response, maxBytes: number): Promise<BoundedBodyResult> {
+  const contentLength = response.headers.get('content-length');
+  if (contentLength) {
+    const parsedLength = Number(contentLength);
+    if (Number.isFinite(parsedLength) && parsedLength > maxBytes) {
+      return { status: 'failed', reason: 'response_too_large' };
     }
-    throw error;
-  } finally {
-    clearTimeout(timer);
   }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength > maxBytes) {
+      return { status: 'failed', reason: 'response_too_large' };
+    }
+    return { status: 'ok', bytes: new Uint8Array(buffer) };
+  }
+
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    if (!value) {
+      continue;
+    }
+    total += value.byteLength;
+    if (total > maxBytes) {
+      try {
+        await reader.cancel();
+      } catch {
+        // Ignore cancellation errors; response_too_large is the actionable result.
+      }
+      return { status: 'failed', reason: 'response_too_large' };
+    }
+    chunks.push(value);
+  }
+
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { status: 'ok', bytes: merged };
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function findWebFingerSelfHref(links: unknown): string | null {

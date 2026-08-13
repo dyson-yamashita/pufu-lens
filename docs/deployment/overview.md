@@ -161,7 +161,7 @@ pnpm infra:check --env staging
 pnpm deploy:smoke --env staging
 ```
 
-`deploy:smoke` の `--env` は `staging` または `production` に限定する。provider 固有の deploy URL が実行後に決まる場合は、provider CLI で URL を取得して `MASTRA_SERVER_URL` に注入する。現行のremote smokeでは公開Web originを`ACTIVITYPUB_CANONICAL_ORIGIN`へ必ず注入する。`acct:all@<host>`のWebFingerとaggregate ActorをGETで検証するだけで、Follow、Inbox POST、dispatcher起動、外部配送は行わない。
+`deploy:smoke` の `--env` は `staging` または `production` に限定する。provider 固有の deploy URL が実行後に決まる場合は、provider CLI で URL を取得して `MASTRA_SERVER_URL` に注入する。現行のremote smokeでは公開Web originを`ACTIVITYPUB_CANONICAL_ORIGIN`へ必ず注入する。`acct:all@<host>`のWebFingerとaggregate ActorをGETで検証するだけで、Follow、Inbox POST、dispatcher起動、外部配送は行わない。各GETはresponse bodyの読取を含め15秒でtimeoutし、JSON bodyを1 MiBに制限する。
 
 ## Provider Expansion Checklist
 

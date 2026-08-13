@@ -481,7 +481,7 @@ deploy 後は次を確認する。
 - Web / dispatcher logの`activitypub_request`、`activitypub_queue_metrics`、`activitypub_origin_failure_metrics`が`bodyless=true`で、payload、raw path / query、署名header、private key、response bodyを含まないことを確認する。
 - Web runtime が正しい App Hosting backend、secret、bucket、Mastra URL を参照している。
 - Admin UI から data source ingest を実行し、Web runtime SA が対象 workflow job resource を起動できる（`run.jobs.run` / `run.jobs.runWithOverrides` 不足の 403 が出ていない）。
-- `ACTIVITYPUB_CANONICAL_ORIGIN`を指定した`pnpm deploy:smoke --env staging`または`pnpm deploy:smoke --env production`が通る。remote smokeは`acct:all@<host>`のWebFingerとaggregate ActorをGETで検証するだけで、Follow、Inbox POST、dispatcher起動、外部配送を行わない。
+- `ACTIVITYPUB_CANONICAL_ORIGIN`を指定した`pnpm deploy:smoke --env staging`または`pnpm deploy:smoke --env production`が通る。Cloud Buildは依存関係を含むimmutable Workflow Job imageからsmoke scriptを実行する。remote smokeは`acct:all@<host>`のWebFingerとaggregate ActorをGETで検証するだけで、Follow、Inbox POST、dispatcher起動、外部配送を行わない。各GETはresponse bodyの読取を含め15秒でtimeoutし、JSON bodyを1 MiBに制限する。
 - build log / runtime log に secret、token、PII が出ていない。
 
 ActivityPub log-based metrics / alert policyはdeploy pipelineから自動適用しない。対象projectとnotification channelを確認してdry-runし、承認済みchangeだけに`--apply`を付ける。
