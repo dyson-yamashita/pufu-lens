@@ -295,7 +295,6 @@ steps:
           --network "${_VPC_NETWORK}"
           --subnet "${_VPC_SUBNET}"
           --vpc-egress private-ranges-only
-          --clear-vpc-connector
           --command pnpm
           --args db:migrate
           --tasks 1
@@ -306,7 +305,7 @@ steps:
         not_found_pattern='NOT_FOUND|not found|cannot find job|could not be found|does not exist'
         describe_error="$$(mktemp)"
         if gcloud run jobs describe "${_DB_MIGRATION_JOB}" --region "${_REGION}" >/dev/null 2>"$${describe_error}"; then
-          gcloud run jobs update "${job_args[@]}"
+          gcloud run jobs update "${job_args[@]}" --clear-vpc-connector
         else
           describe_status="$${?}"
           if grep -Eiq "$${not_found_pattern}" "$${describe_error}"; then
@@ -379,7 +378,6 @@ steps:
             --network "${_VPC_NETWORK}"
             --subnet "${_VPC_SUBNET}"
             --vpc-egress private-ranges-only
-            --clear-vpc-connector
             --set-env-vars "$${env_vars}"
             --set-secrets "$${secrets}"
           )
@@ -387,7 +385,7 @@ steps:
             job_args+=(--tasks 1 --max-retries 0 --task-timeout 3300s)
           fi
           if gcloud run jobs describe "$${job_name}" --region "${_REGION}" >/dev/null 2>&1; then
-            gcloud run jobs update "$${job_args[@]}"
+            gcloud run jobs update "$${job_args[@]}" --clear-vpc-connector
           else
             gcloud run jobs create "$${job_args[@]}"
           fi
