@@ -20,21 +20,63 @@ const deployPath = fileURLToPath(
   new URL('../deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml', import.meta.url),
 );
 
+function readExecErrorStatus(error: object): number | null {
+  if (!('status' in error)) {
+    return null;
+  }
+  const status = Reflect.get(error, 'status');
+  if (typeof status === 'number' || status === null || status === undefined) {
+    return status ?? null;
+  }
+  return null;
+}
+
+function readExecErrorStderr(error: object): string {
+  if (!('stderr' in error)) {
+    return '';
+  }
+  const stderr = Reflect.get(error, 'stderr');
+  if (typeof stderr === 'string') {
+    return stderr;
+  }
+  if (Buffer.isBuffer(stderr)) {
+    return stderr.toString();
+  }
+  return '';
+}
+
+function parseExecFileSyncError(error: unknown): { status: number | null; stderr: string } {
+  if (typeof error !== 'object' || error === null) {
+    return { status: null, stderr: '' };
+  }
+  return {
+    status: readExecErrorStatus(error),
+    stderr: readExecErrorStderr(error),
+  };
+}
+
 function runPatcher(fixturePath: string): { status: number | null; stderr: string } {
   try {
     execFileSync(process.execPath, [patcherPath, fixturePath], { stdio: 'pipe' });
     return { status: 0, stderr: '' };
   } catch (error) {
-    const execError = error as NodeJS.ErrnoException & {
-      status?: number | null;
-      stderr?: Buffer | string;
-    };
-    return {
-      status: execError.status ?? null,
-      stderr: execError.stderr?.toString() ?? '',
-    };
+    return parseExecFileSyncError(error);
   }
 }
+
+test('parseExecFileSyncError falls back when exec error properties are invalid', () => {
+  assert.deepEqual(parseExecFileSyncError('not-an-object'), { status: null, stderr: '' });
+  assert.deepEqual(parseExecFileSyncError({ status: '1' }), { status: null, stderr: '' });
+  assert.deepEqual(parseExecFileSyncError({ status: 1, stderr: 'fail' }), {
+    status: 1,
+    stderr: 'fail',
+  });
+  assert.deepEqual(parseExecFileSyncError({ status: null, stderr: Buffer.from('buf') }), {
+    status: null,
+    stderr: 'buf',
+  });
+  assert.deepEqual(parseExecFileSyncError({ stderr: 123 }), { status: null, stderr: '' });
+});
 
 test('patcher replaces a single target statement with an environment-gated conditional', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'firebase-patcher-'));
@@ -58,6 +100,24 @@ test('patcher replaces a single target statement with an environment-gated condi
       1,
     );
     assert.notEqual(after, before);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('patcher fails without modifying fixtures that contain the target statement twice', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'firebase-patcher-'));
+  try {
+    const fixturePath = join(dir, 'backend.js');
+    const before = `async function deploy(projectId) {\n${TARGET}\n${TARGET}\n}\n`;
+    await writeFile(fixturePath, before, 'utf8');
+
+    const result = runPatcher(fixturePath);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /found 2/);
+
+    const after = await readFile(fixturePath, 'utf8');
+    assert.equal(after, before);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
