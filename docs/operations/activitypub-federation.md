@@ -118,6 +118,19 @@ Actor identityの復旧には、同一時点のPostgreSQL backupに含まれる 
 - domain障害時も別originへ書き換えず、DNS / certificate / routingを元のoriginで復旧する。
 - domain移行はActor移行、旧URL継続、remote follower、署名key、Tombstoneを設計する別planとし、環境変数変更だけで実施しない。
 
+## 初回production rollout
+
+1. 公開WebのHTTPS originをcanonical originとして固定し、DNS、TLS、障害復旧の責任者を記録する。`AUTH_URL`と同じ公開originを使う場合も、request Hostから導出しない。
+2. Mastra Cloud Run serviceの`status.url`とdesignated Scheduler SAの`uniqueId`をGCPから取得する。OIDC audienceやnumeric subjectを手入力で推測しない。
+3. canonical base64の32-byte `ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY` secretをstdinから作成し、ENABLED version、replication、runtime access、App Hosting backend accessを確認する。値を表示・記録しない。
+4. Cloud Build triggerへcanonical origin、Mastra audience、Scheduler subject、Actor key secret名を設定する。substitutionにはsecret名だけを置き、payloadを置かない。
+5. `apps/web/apphosting.yaml`の`ACTIVITYPUB_ENABLED=1`、canonical origin、DB pool上限、Actor key secret referenceがMastra Serverとdispatcherの設定に一致することを確認する。
+6. 最新`main`と一致するpending buildだけを承認する。validationはHTTPS origin、Scheduler identity、secret metadata / ENABLED versionをruntime変更前にfail closedで検証する。
+7. deploy成功後、Cloud BuildのGET-only smokeで`@all` WebFingerとActorを確認する。各GETはbody読取を含め15秒、JSON bodyは1 MiBを上限とする。Follow、Inbox POST、dispatcher手動実行、外部配送はこの確認では行わない。
+8. 最初のActor作成またはoutbound前に、DB snapshotとsecret versionを同一復旧単位として記録する。失敗時もcanonical originやsecretを別値へ変更せず、forward fixまたは同一設定でrollbackする。
+
+Cloud Buildがruntime変更前のvalidationで失敗した場合は、失敗buildを再承認せず、trigger、Scheduler identity、secret metadataを修正して最新`main`から新しいbuildを開始する。runtime rollout後に失敗した場合は、作成済みActor、queue、migration、revisionを確認してrollback判断を記録する。
+
 ## Fedify dependency / security advisory
 
 Fedify関連packageは同一patchへ厳密固定する。更新は通常のdependency PRとして次を実施する。

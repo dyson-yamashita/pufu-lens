@@ -131,6 +131,71 @@ steps:
           exit 1
         fi
 
+        export _ACTIVITYPUB_CANONICAL_ORIGIN="${_ACTIVITYPUB_CANONICAL_ORIGIN}"
+        export _ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE="${_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE}"
+        python3 - <<'PY'
+        import os
+        import sys
+        from urllib.parse import urlparse
+
+        def validate_https_origin(value: str, name: str) -> None:
+            parsed = urlparse(value)
+            if parsed.scheme != "https":
+                print(f"{name} must be an HTTPS origin.", file=sys.stderr)
+                sys.exit(1)
+            if parsed.username or parsed.password:
+                print(f"{name} must not include credentials.", file=sys.stderr)
+                sys.exit(1)
+            if parsed.query or parsed.fragment:
+                print(f"{name} must not include query or fragment.", file=sys.stderr)
+                sys.exit(1)
+            if parsed.path not in ("", "/"):
+                print(f"{name} must not include a path.", file=sys.stderr)
+                sys.exit(1)
+            if not parsed.hostname:
+                print(f"{name} must include a hostname.", file=sys.stderr)
+                sys.exit(1)
+            try:
+                port = parsed.port
+            except ValueError:
+                print(f"{name} must be a valid HTTPS origin.", file=sys.stderr)
+                sys.exit(1)
+            if port is not None and (port < 1 or port > 65535):
+                print(f"{name} must be a valid HTTPS origin.", file=sys.stderr)
+                sys.exit(1)
+
+        validate_https_origin(
+            os.environ["_ACTIVITYPUB_CANONICAL_ORIGIN"],
+            "_ACTIVITYPUB_CANONICAL_ORIGIN",
+        )
+        validate_https_origin(
+            os.environ["_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE"],
+            "_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE",
+        )
+        PY
+
+        if ! [[ "${_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT}" =~ ^[0-9]+$ ]]; then
+          echo "_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT must contain ASCII digits only." >&2
+          exit 1
+        fi
+
+        scheduler_unique_id="$$(gcloud iam service-accounts describe "${_SCHEDULER_SERVICE_ACCOUNT}" --format='value(uniqueId)')"
+        if [[ "$${scheduler_unique_id}" != "${_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT}" ]]; then
+          echo "_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT must match the scheduler service account uniqueId." >&2
+          exit 1
+        fi
+
+        if ! gcloud secrets describe "${_ACTIVITYPUB_ACTOR_KEY_SECRET}" >/dev/null 2>&1; then
+          echo "_ACTIVITYPUB_ACTOR_KEY_SECRET secret not found." >&2
+          exit 1
+        fi
+
+        enabled_secret_versions="$$(gcloud secrets versions list "${_ACTIVITYPUB_ACTOR_KEY_SECRET}" --filter='state:ENABLED' --format='value(name)' | wc -l | tr -d ' ')"
+        if [[ "$${enabled_secret_versions}" -lt 1 ]]; then
+          echo "_ACTIVITYPUB_ACTOR_KEY_SECRET must have at least one ENABLED version." >&2
+          exit 1
+        fi
+
         case "${_RUN_DB_MIGRATIONS}" in
           true|false) ;;
           *)
@@ -506,7 +571,7 @@ steps:
         echo "Recorded App Hosting last-success SHA $${commit_sha} at gs://$${state_bucket}/$${state_object}"
 
   - id: smoke
-    name: node:22-bookworm
+    name: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_JOBS_IMAGE}:${SHORT_SHA}
     waitFor:
       - deploy-mastra-server
       - deploy-workflow-jobs
@@ -522,4 +587,5 @@ steps:
 
         MASTRA_SERVER_URL="$$(cat /workspace/.cloudbuild/mastra-server-url)" \
           SCHEDULER_SERVICE_ACCOUNT="${_SCHEDULER_SERVICE_ACCOUNT}" \
-          node --experimental-strip-types scripts/deploy-smoke.ts --env "${_ENV}"
+          ACTIVITYPUB_CANONICAL_ORIGIN="${_ACTIVITYPUB_CANONICAL_ORIGIN}" \
+          node --experimental-strip-types /app/scripts/deploy-smoke.ts --env "${_ENV}"

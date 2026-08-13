@@ -129,6 +129,34 @@ ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE="https://<mastra-service-fixed-url>"
 ACTIVITYPUB_ACTOR_KEY_SECRET="ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY"
 ```
 
+既存環境では値を推測せず、公開Web originを運用上固定したうえで、Mastra service URLとScheduler SAのnumeric subjectをGCPから取得する。
+
+```bash
+ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE="$(gcloud run services describe mastra-server \
+  --project "$PROJECT_ID" \
+  --region "$RUNTIME_REGION" \
+  --format='value(status.url)')"
+SCHEDULER_SUBJECT="$(gcloud iam service-accounts describe "$SCHEDULER_SA" \
+  --project "$PROJECT_ID" \
+  --format='value(uniqueId)')"
+```
+
+Actor key暗号化secretはcanonical base64の32-byte keyを1 versionだけ作成する。値をshell変数、標準出力、Issue、PR、Cloud Build substitutionへ保存しない。
+
+```bash
+openssl rand -base64 32 | gcloud secrets create "$ACTIVITYPUB_ACTOR_KEY_SECRET" \
+  --project "$PROJECT_ID" \
+  --replication-policy=automatic \
+  --data-file=-
+
+firebase apphosting:secrets:grantaccess "$ACTIVITYPUB_ACTOR_KEY_SECRET" \
+  --backend pufu-lens-web \
+  --location "$RUNTIME_REGION" \
+  --project "$PROJECT_ID"
+```
+
+同名secretがすでに存在する場合は新規versionを無条件に追加しない。DB内の暗号化済みActor private keyと現在のsecret versionは同一復旧単位であり、既存Actor作成後のsecret差し替えはrotation手順なしでは行わない。
+
 1st gen GitHub connection を使う場合は、`--repository` の代わりに `--repo-owner` と `--repo-name` を使う。
 
 ### Production Deploy Trigger
@@ -147,14 +175,34 @@ gcloud builds triggers create github \
   --substitutions "_ENV=production,_REGION=${RUNTIME_REGION},_ARTIFACT_REPO=<artifact-repo>,_RUNTIME_SERVICE_ACCOUNT=${RUNTIME_SA},_SCHEDULER_SERVICE_ACCOUNT=${SCHEDULER_SA},_STORAGE_BUCKET=<storage-bucket>,_VPC_NETWORK=default,_VPC_SUBNET=<serverless-subnet>,_MASTRA_SERVICE=mastra-server,_MASTRA_IMAGE=mastra-server,_JOBS_IMAGE=workflow-job,_FIREBASE_DEPLOY=true,_FIREBASE_TOOLS_VERSION=15.25.1,_RUN_DB_MIGRATIONS=true,_DB_MIGRATION_JOB=db-migrate,_SOURCE_SYNC_DISPATCHER_JOB=source-sync-dispatcher,_SOURCE_SYNC_SCHEDULER=source-sync-dispatcher,_REPORT_SCHEDULE_DISPATCHER_JOB=report-schedule-dispatcher,_REPORT_SCHEDULE_SCHEDULER=report-schedule-dispatcher,_ACTIVITYPUB_CANONICAL_ORIGIN=${ACTIVITYPUB_CANONICAL_ORIGIN},_ACTIVITYPUB_DISPATCHER_JOB=activitypub-dispatcher,_ACTIVITYPUB_DISPATCHER_SCHEDULER=activitypub-dispatcher,_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE=${ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE},_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT=${SCHEDULER_SUBJECT},_ACTIVITYPUB_ACTOR_KEY_SECRET=${ACTIVITYPUB_ACTOR_KEY_SECRET},_CHAT_MODEL=google/gemini-2.5-flash,_CHAT_API_KEY_ENV=GEMINI_API_KEY,_CHAT_API_KEY_SECRET=GEMINI_API_KEY,_EMBEDDING_PROVIDER=gemini,_EMBEDDING_MODEL=gemini-embedding-2,_EMBEDDING_DIMENSIONS=1536,_EMBEDDING_API_KEY_SECRET=GEMINI_API_KEY"
 ```
 
-既存 trigger を更新する場合も、同じ included files を設定する。
+既存 trigger を更新する場合も、同じincluded filesとActivityPub substitutionを設定する。Cloud Build repository connection（`repositoryEventConfig`）を使う2nd gen triggerでは、`--update-substitutions`だけの更新が`INVALID_ARGUMENT`になるCLI versionがあるため、現在の完全なtrigger configを一時ファイルへexportし、接続、branch、approval、service account、included files、既存substitutionを保持したまま6つのActivityPub substitutionを追加する。値を編集したファイルにはsecret payloadを含めず、作業後は組織の一時ファイル処理規程に従う。
 
 ```bash
-gcloud builds triggers update github "<trigger-id-or-name>" \
+TRIGGER_ID="<trigger-id-or-name>"
+TRIGGER_CONFIG="<protected-temporary-path>/pufu-lens-production-trigger.yaml"
+
+gcloud builds triggers describe "$TRIGGER_ID" \
   --project "$PROJECT_ID" \
   --region "$BUILD_REGION" \
-  --included-files 'apps/**,packages/**,scripts/**,infra/**,deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml,.dockerignore,.firebaserc,firebase.json,pnpm-lock.yaml,pnpm-workspace.yaml,package.json,turbo.json,tsconfig*.json'
+  --format=yaml > "$TRIGGER_CONFIG"
+
+# $TRIGGER_CONFIG の substitutions に以下を追加し、他のfieldを変更しない。
+# _ACTIVITYPUB_CANONICAL_ORIGIN: ${ACTIVITYPUB_CANONICAL_ORIGIN}
+# _ACTIVITYPUB_DISPATCHER_JOB: activitypub-dispatcher
+# _ACTIVITYPUB_DISPATCHER_SCHEDULER: activitypub-dispatcher
+# _ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE: ${ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE}
+# _ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT: '${SCHEDULER_SUBJECT}'
+# _ACTIVITYPUB_ACTOR_KEY_SECRET: ${ACTIVITYPUB_ACTOR_KEY_SECRET}
+
+gcloud builds triggers update github "$TRIGGER_ID" \
+  --project "$PROJECT_ID" \
+  --region "$BUILD_REGION" \
+  --trigger-config "$TRIGGER_CONFIG"
 ```
+
+更新後に`gcloud builds triggers describe`で、trigger ID、repository、`^main$`、approval required、deploy service account、included files、既存substitutionが変わらず、ActivityPub値だけが追加されたことを確認する。CLIではなくCloud Consoleから編集する場合も同じ差分だけを適用する。
+
+deployの最初のvalidation stepは、2つのURLがHTTPS originだけであること、subjectがScheduler SAの`uniqueId`と一致すること、Actor key secretとENABLED versionが存在することをpayloadへアクセスせず検証する。ここで失敗したbuildはruntime resourceを変更していないため、値と権限を直して最新`main`から新しいbuildを開始する。
 
 `docs/**`、`README.md`、`deploy/examples/gcp-cloud-build/README.md` だけの変更は production deploy の対象外にする。deploy 手順書の変更を本番反映の契機にしたい場合は、manual trigger を明示的に実行する。
 
@@ -278,6 +326,8 @@ printf '%s' "$DATABASE_URL_VALUE" | gcloud secrets create DATABASE_URL --project
 printf '%s' "$AUTH_SECRET_VALUE" | gcloud secrets create AUTH_SECRET --project "$PROJECT_ID" --data-file=-
 printf '%s' "$GEMINI_API_KEY_VALUE" | gcloud secrets create GEMINI_API_KEY --project "$PROJECT_ID" --data-file=-
 ```
+
+ActivityPubを有効にする環境では、上記Trigger Creationの手順で`ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY`も作成する。App Hosting、Mastra Server、ActivityPub dispatcherは同じsecret名とversion系列を参照し、secret値はCloud Buildから読み出さない。Deploy Cloud Build SAにはsecret metadataとENABLED versionの存在確認に必要なread権限、runtime SAにはpayload accessを最小scopeで付与する。
 
 OpenAIまたはAnthropicを選ぶ場合は、同じstdin方式で `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` を作成し、deploy triggerの `_CHAT_API_KEY_SECRET` / `_EMBEDDING_API_KEY_SECRET` にsecret名だけを指定する。
 
@@ -431,7 +481,7 @@ deploy 後は次を確認する。
 - Web / dispatcher logの`activitypub_request`、`activitypub_queue_metrics`、`activitypub_origin_failure_metrics`が`bodyless=true`で、payload、raw path / query、署名header、private key、response bodyを含まないことを確認する。
 - Web runtime が正しい App Hosting backend、secret、bucket、Mastra URL を参照している。
 - Admin UI から data source ingest を実行し、Web runtime SA が対象 workflow job resource を起動できる（`run.jobs.run` / `run.jobs.runWithOverrides` 不足の 403 が出ていない）。
-- `pnpm deploy:smoke --env staging` または `pnpm deploy:smoke --env production` が通る。
+- `ACTIVITYPUB_CANONICAL_ORIGIN`を指定した`pnpm deploy:smoke --env staging`または`pnpm deploy:smoke --env production`が通る。Cloud Buildは依存関係を含むimmutable Workflow Job imageからsmoke scriptを実行する。remote smokeは`acct:all@<host>`のWebFingerとaggregate ActorをGETで検証するだけで、Follow、Inbox POST、dispatcher起動、外部配送を行わない。各GETはresponse bodyの読取を含め15秒でtimeoutし、JSON bodyを1 MiBに制限する。
 - build log / runtime log に secret、token、PII が出ていない。
 
 ActivityPub log-based metrics / alert policyはdeploy pipelineから自動適用しない。対象projectとnotification channelを確認してdry-runし、承認済みchangeだけに`--apply`を付ける。

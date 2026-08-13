@@ -162,7 +162,7 @@ Set these trigger substitutions in the user's GCP project:
 
 `cloudbuild.deploy.yaml` performs:
 
-1. Validate required substitutions and `_ENV`.
+1. Validate required substitutions and `_ENV`. ActivityPub values are additionally checked as HTTPS-only origins, the Scheduler numeric subject must match the configured service account, and the Actor key secret must exist with an enabled version. The validation reads secret metadata only, never its payload.
 2. In parallel, build the Mastra Server image and build the Workflow Job image.
 3. Push each image after its build finishes.
 4. Create or update the DB migration Cloud Run Job from the Workflow Job image, then execute `pnpm db:migrate` with `--wait` when `_RUN_DB_MIGRATIONS=true`. When `_RUN_DB_MIGRATIONS=false`, this step exits immediately and still acts as the deploy barrier for later steps.
@@ -171,7 +171,7 @@ Set these trigger substitutions in the user's GCP project:
 7. Create or update the source sync and report schedule five-minute Cloud Scheduler jobs. Grant the designated Scheduler service account `roles/run.invoker` on the Mastra service, and grant the Mastra runtime service account `roles/run.jobsExecutorWithOverrides` on all three dispatcher Jobs (source sync, report schedule, and ActivityPub) before creating the ActivityPub Scheduler with the fixed OIDC audience. Grant `roles/run.viewer` on only the ActivityPub Job.
 8. Create or update the ActivityPub five-minute Cloud Scheduler job after its resource-scoped IAM is ready. Each Scheduler POSTs `{}` with an OIDC token to its Mastra Server dispatcher route.
 9. Deploy the Web app with Firebase App Hosting after Mastra Server, Workflow Jobs, and Scheduler finish when `_FIREBASE_DEPLOY=true`. The step uses a prebuilt `firebase-tools` builder image from Artifact Registry instead of installing Firebase CLI on every deploy. It skips App Hosting deploy when there are no web-related changes since the last successful App Hosting deploy SHA stored in GCS.
-10. Read the deployed Mastra Server URL dynamically and run `deploy:smoke` after all deploy steps finish.
+10. Read the deployed Mastra Server URL dynamically and run `deploy:smoke` from the immutable `SHORT_SHA` Workflow Job image after all deploy steps finish.
 
 The deploy config keeps the default Cloud Build worker and uses `waitFor` only to remove avoidable serial waits. Docker image builds use `docker buildx` registry caches at each image's `:buildcache` tag so unchanged layers, including multi-stage intermediate layers, can be reused without pulling the full previous runtime image first. App Hosting deploy still waits for backend deploy completion so the Web rollout does not expose a newer frontend before the matching backend is live. Runtime deploy steps wait for the migration barrier so new Cloud Run / App Hosting code is not rolled out before pending schema migrations are applied. Cost-sensitive environments should keep this default-worker shape unless they explicitly accept higher per-minute build costs.
 
@@ -183,12 +183,13 @@ The Pufu Lens GCP project currently sets `_FIREBASE_DEPLOY=true`, so Cloud Build
 
 The deploy service account needs access to these Secret Manager secret names because the Cloud Run resources reference them:
 
-| secret name                          | used by                                          |
-| ------------------------------------ | ------------------------------------------------ |
-| `DATABASE_URL`                       | Mastra Server, Workflow Jobs, DB migration job   |
-| `AUTH_SECRET`                        | Workflow Jobs through connection secret fallback |
-| `_CHAT_API_KEY_SECRET` の指定値      | Mastra Server, Workflow Jobs                     |
-| `_EMBEDDING_API_KEY_SECRET` の指定値 | Mastra Server, Workflow Jobs                     |
+| secret name                              | used by                                            |
+| ---------------------------------------- | -------------------------------------------------- |
+| `DATABASE_URL`                           | Mastra Server, Workflow Jobs, DB migration job     |
+| `AUTH_SECRET`                            | Workflow Jobs through connection secret fallback   |
+| `_CHAT_API_KEY_SECRET` の指定値          | Mastra Server, Workflow Jobs                       |
+| `_EMBEDDING_API_KEY_SECRET` の指定値     | Mastra Server, Workflow Jobs                       |
+| `_ACTIVITYPUB_ACTOR_KEY_SECRET` の指定値 | App Hosting, Mastra Server, ActivityPub dispatcher |
 
 The secret values are not read into the build log. Cloud Run receives secret references such as `DATABASE_URL=DATABASE_URL:latest`.
 
@@ -228,6 +229,7 @@ The deploy service account generally needs:
   when `_FIREBASE_DEPLOY=true`; Firebase CLI reads project IAM policy during
   deploy.
 - Permission to attach Secret Manager secret references to Cloud Run resources.
+- Read-only access to the configured Scheduler service account numeric ID and Actor key secret metadata / enabled-version list. The deploy service account does not read the secret payload.
 - Logging permissions required by Cloud Build in the project.
 
 The runtime service account generally needs:
@@ -274,6 +276,22 @@ The example uses:
 firebase deploy --only apphosting --project "$PROJECT_ID" --non-interactive
 ```
 
+Before enabling ActivityPub, copy the example runtime entries for `ACTIVITYPUB_ENABLED`, `ACTIVITYPUB_CANONICAL_ORIGIN`, `ACTIVITYPUB_DB_MAX_CONNECTIONS`, and `ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY` into the environment-specific `apps/web/apphosting.yaml`. Create the 32-byte canonical-base64 secret without printing it, then grant the backend access:
+
+```bash
+openssl rand -base64 32 | gcloud secrets create ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY \
+  --project "$PROJECT_ID" \
+  --replication-policy=automatic \
+  --data-file=-
+
+firebase apphosting:secrets:grantaccess ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY \
+  --backend '<app-hosting-backend>' \
+  --location "${_REGION}" \
+  --project "$PROJECT_ID"
+```
+
+Do not replace this secret after Actor rows have been created. Back up its version metadata together with the PostgreSQL ActivityPub tables and follow the rotation runbook for later changes.
+
 `deploy-web-app-hosting` records the successful deploy `COMMIT_SHA` at
 `gs://${PROJECT_ID}_cloudbuild/pufu-lens/deploy-state/${_ENV}/apphosting-last-success`
 and skips the next App Hosting deploy when `last-success..HEAD` does not touch `apps/web/`, `firebase.json`, root workspace manifests, `packages/`, `infra/docker/firebase-tools/`, or `deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml`. If the marker is missing or the SHA is not in git history, the step deploys. Cloud Build performs a shallow clone by default, so the step deepens history before comparing. For trigger-level filtering, a dedicated Web deploy trigger with `includedFiles` remains an alternative.
@@ -301,6 +319,8 @@ pnpm db:migrate
 pnpm infra:check --env production
 pnpm deploy:smoke --env production
 ```
+
+`deploy:smoke`には、デプロイ後に取得した`MASTRA_SERVER_URL`と、固定の公開Web originである`ACTIVITYPUB_CANONICAL_ORIGIN`を渡す。依存関係を含むimmutable Workflow Job image内の`/app/scripts/deploy-smoke.ts`を実行する。ActivityPub検査は`acct:all@<host>`のWebFingerとaggregate ActorへのGETだけで、Follow、Inbox POST、dispatcher起動、外部配送は行わない。各GETはresponse bodyの読取を含め15秒でtimeoutし、JSON bodyを1 MiBに制限する。
 
 Confirm after deploy that:
 

@@ -49,7 +49,7 @@ Before turning this placeholder into an implemented example, document:
 - how object storage maps to local volumes or an external object store
 - how recurring jobs are scheduled
 - how `pnpm db:migrate --check`, `pnpm db:migrate --plan`, and `pnpm db:migrate` are run
-- how `pnpm deploy:smoke --env <env>` reaches the deployed Mastra Server
+- how `pnpm deploy:smoke --env <env>` reaches the deployed Mastra Server and the fixed HTTPS `ACTIVITYPUB_CANONICAL_ORIGIN`
 - how backups, restore, and rollback are performed
 
 ## References

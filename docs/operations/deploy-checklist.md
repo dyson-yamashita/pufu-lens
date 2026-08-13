@@ -92,7 +92,7 @@ bash -n infra/gcp/postgres-startup.sh
 gcloud compute instances list --filter="metadata.items.key:gce-container-declaration"
 ```
 
-- `deploy:dry-run`: `pnpm db:migrate --check` と、`curate-workflow`、`ingest-workflow`、`generate-report`、`source-sync-dispatcher`、`report-schedule-dispatcher` の `WORKFLOW_ID` / `WORKFLOW_INPUT_JSON` entrypoint 計画をローカル dry-run で検査する。PGroonga migration を含む DB 変更では、dry-run 前に PostgreSQL イメージ更新 → `pnpm db:migrate` の順序を deploy checklist の DB Migration 記録へ残す。
+- `deploy:dry-run`: `pnpm db:migrate --check` と、`curate-workflow`、`ingest-workflow`、`generate-report`、`source-sync-dispatcher`、`report-schedule-dispatcher`、`activitypub-dispatcher` の `WORKFLOW_ID` / `WORKFLOW_INPUT_JSON` entrypoint 計画をローカル dry-run で検査する。PGroonga migration を含む DB 変更では、dry-run 前に PostgreSQL イメージ更新 → `pnpm db:migrate` の順序を deploy checklist の DB Migration 記録へ残す。
 - `db:migrate --check`: migration file の命名、番号重複、本文 parse、履歴との整合を検査する。`DATABASE_URL` がある場合は online check として `schema_migrations` も照合する。
 - `db:migrate --plan`: staging / production の `DATABASE_URL` に対して、適用予定 migration を表示する。ここではまだ適用しない。
 - `db:migrate`: `infra/db/migrations/*.sql` を番号順に適用し、`auth_accounts`、`auth_password_credentials`、project scoped `oauth_connections` など既存 DB に必要な schema を用意する。migration version はファイル名から `.sql` を除いた値、`public.schema_migrations` に未登録のものが pending として順番に適用される。既存互換の `auth:migrate` も同じ migration runner を呼び出す。
@@ -100,7 +100,7 @@ gcloud compute instances list --filter="metadata.items.key:gce-container-declara
 - `auth:create-user`: OAuth を使わない環境で Credentials login 用 user と password hash を作成する。実 password は DB / docs / log に保存しない。
 - `report:backfill-project-manifests`: 既存の `projects.visibility = 'public'` project に対して、公開レポート API が参照する `project-public-state.json` を Object Storage に作成する。初回は `--dry-run` で対象を確認し、問題なければ `--dry-run` なしで一度だけ実行する。
 - `infra:check`:
-- `deploy:smoke`:
+- `deploy:smoke`: `MASTRA_SERVER_URL`、`SCHEDULER_SERVICE_ACCOUNT`、`ACTIVITYPUB_CANONICAL_ORIGIN`の設定を確認し、ActivityPub aggregate ActorのWebFinger / Actor JSONをGETで検証する。各GETはbody読取を含め15秒、JSON bodyは1 MiBを上限とする。Follow、Inbox POST、dispatcher起動、外部配送は行わない。
 - Admin UI data source ingest: App Hosting runtime service account で workflow job execution が作成され、`run.jobs.run` / `run.jobs.runWithOverrides` 不足の 403 が出ないことを確認する。
 - Cloud Run Job 単発実行:
 - Cloud Scheduler OIDC 実行:
@@ -171,6 +171,9 @@ ActivityPubを無効のままdeployする場合も、将来有効化する環境
 
 - [ ] WebとActivityPub dispatcherの `ACTIVITYPUB_CANONICAL_ORIGIN` が同じ固定の公開HTTPS originである。request headerから導出せず、最初のoutbound後に変更していない。
 - [ ] `ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE` が固定Mastra service URLであり、公開canonical originとは独立した内部Scheduler token audienceとして検証される。
+- [ ] Cloud Build triggerの`_ACTIVITYPUB_CANONICAL_ORIGIN`、`_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE`、`_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT`、`_ACTIVITYPUB_ACTOR_KEY_SECRET`が空でなく、Scheduler subjectがdesignated SAの`uniqueId`と一致する。
+- [ ] `ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY`にENABLED versionがあり、App Hosting、Mastra Server、dispatcherのruntime identityだけが必要なpayload accessを持つ。Deploy SAのvalidationはmetadata / version一覧だけを読み、secret payloadを読まない。
+- [ ] App Hostingで`ACTIVITYPUB_ENABLED=1`、固定canonical origin、`ACTIVITYPUB_DB_MAX_CONNECTIONS`、Actor key secret referenceが設定され、Mastra Server / dispatcherと一致する。
 - [ ] DNS、TLS certificate、旧URL継続責任者を記録した。domain障害時に別canonical originへ書き換えない。
 - [ ] Web / Job / PostgreSQL VMのUTC時刻同期を確認し、NTP異常alertまたはprovider時刻同期の運用責任を記録した。古い / 未来のSignature `Date`を拒否するcontract testが通る。
 - [ ] HTTP Signatureのkey owner、Activity actor、embedded actor / attribution / audience一致を確認し、raw Signature headerやprivate keyをlogへ出さない。
@@ -184,7 +187,7 @@ ActivityPubを無効のままdeployする場合も、将来有効化する環境
 - [ ] metric / alert適用後、resource typeがWeb=`cloud_run_revision`、dispatcher=`cloud_run_job`で、origin labelが上位20 + `other`に制限されている。
 - [ ] 月間ActivityPub request、dispatcher duration / billable time / execution count、DB bytes増分、dispatcher internet egressのbaseline記録先と予算alertを設定した。
 - [ ] Fedify公式changelog / security advisory / npm auditの確認日、固定version、Node.js要件、protocol / DB / hermetic E2E結果を記録した。
-- [ ] production deploy後の外部送信を伴わないWebFinger / Actor / route / metrics self-check手順とrollback判断を記録した。
+- [ ] production deploy後のGET-only smokeで`acct:all@<host>`のWebFingerとaggregate Actorが成功した。Follow、Inbox POST、dispatcher起動、外部配送を行わないroute / metrics self-check手順とrollback判断を記録した。
 
 詳細手順: [ActivityPub Federation 運用手順](activitypub-federation.md)
 
@@ -195,7 +198,7 @@ ActivityPubを無効のままdeployする場合も、将来有効化する環境
 ## Step 14 初期実装メモ
 
 - Cloud Run Job の共通 entrypoint は `scripts/workflow-job.ts`。
-- Job コンテナは `WORKFLOW_ID` と `WORKFLOW_INPUT_JSON` を受け取り、`curate-workflow`、`ingest-workflow`、`generate-report`、`source-sync-dispatcher`、`report-schedule-dispatcher` を個別に計画・実行する。
+- Job コンテナは `WORKFLOW_ID` と `WORKFLOW_INPUT_JSON` を受け取り、`curate-workflow`、`ingest-workflow`、`generate-report`、`source-sync-dispatcher`、`report-schedule-dispatcher`、`activitypub-dispatcher` を個別に計画・実行する。
 - `DRY_RUN=true` または input の `dryRun: true` では DB / Storage / 外部 API に接続せず、secret 値を出さない計画ログだけを出す。
 - Cloud Run Job 用 Dockerfile は `infra/docker/jobs/Dockerfile`。
 - ローカルでは `docker build -f infra/docker/jobs/Dockerfile -t pufu-lens-workflow-job:local .` の後、`docker run --rm -e WORKFLOW_ID=generate-report -e WORKFLOW_INPUT_JSON='{"projectSlug":"sample-a","period":"weekly","dryRun":true}' pufu-lens-workflow-job:local` のように entrypoint dry-run を確認できる。

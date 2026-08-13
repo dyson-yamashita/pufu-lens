@@ -89,3 +89,19 @@ env:
     secret: GEMINI_API_KEY
     availability:
       - RUNTIME
+  - variable: ACTIVITYPUB_ENABLED
+    value: '1'
+    availability:
+      - RUNTIME
+  - variable: ACTIVITYPUB_CANONICAL_ORIGIN
+    value: <web-public-origin>
+    availability:
+      - RUNTIME
+  - variable: ACTIVITYPUB_DB_MAX_CONNECTIONS
+    value: '5'
+    availability:
+      - RUNTIME
+  - variable: ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY
+    secret: ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY
+    availability:
+      - RUNTIME

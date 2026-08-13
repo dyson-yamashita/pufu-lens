@@ -201,11 +201,13 @@ firebase apphosting:backends:create \
   --root-dir apps/web \
   --service-account mastra-runtime@PROJECT.iam.gserviceaccount.com \
   --non-interactive
-firebase apphosting:secrets:grantaccess DATABASE_URL,AUTH_SECRET,GEMINI_API_KEY \
+firebase apphosting:secrets:grantaccess DATABASE_URL,AUTH_SECRET,GEMINI_API_KEY,ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY \
   --backend pufu-lens-web --location asia-east1 --project PROJECT
 firebase deploy --only apphosting --project PROJECT
 
-# apps/web/apphosting.yaml に runtime env / secrets / VPC access を定義する。
+# apps/web/apphosting.yaml に ACTIVITYPUB_ENABLED=1、公開Webと同じ固定ACTIVITYPUB_CANONICAL_ORIGIN、
+# ACTIVITYPUB_DB_MAX_CONNECTIONS、ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY secret referenceを含む
+# runtime env / secrets / VPC accessを定義する。Mastra Serverとdispatcherも同じoriginとsecret系列を参照する。
 # Web API が GCS / PostgreSQL / Mastra にアクセスするため、App Hosting backend service account に
 # Secret Manager、GCS、Cloud Run Invoker の権限を付与する。Direct VPC network user が必要な
 # Shared VPC 構成では、runtime SA ではなく provider が指定する service agent へ subnet scope で付与する。
