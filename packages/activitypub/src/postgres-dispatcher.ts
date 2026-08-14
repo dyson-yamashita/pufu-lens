@@ -2,7 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { exportJwk } from '@fedify/fedify';
 import type { DocumentLoader } from '@fedify/vocab-runtime';
 import type postgres from 'postgres';
-import type { ActivityPubRepository } from './actor-repository.ts';
+import {
+  type ActivityPubRepository,
+  createPostgresActivityPubTransactionRepository,
+} from './actor-repository.ts';
 import type { DeliveryErrorCode } from './delivery-errors.ts';
 import { DELIVERY_ERROR_CODES } from './delivery-errors.ts';
 import {
@@ -158,7 +161,7 @@ export async function runActivityPubDispatcherOnce(
       const materialized = await materializeOneDueActivity({
         sql: input.sql,
         canonicalOrigin: input.canonicalOrigin,
-        actorRepository: input.actorRepository,
+        encryptionKey: input.encryptionKey,
         clock,
       });
       if (materialized) {
@@ -198,7 +201,7 @@ export async function runActivityPubDispatcherOnce(
       const materialized = await materializeOneDueActivity({
         sql: input.sql,
         canonicalOrigin: input.canonicalOrigin,
-        actorRepository: input.actorRepository,
+        encryptionKey: input.encryptionKey,
         clock,
       });
       if (materialized) {
@@ -223,11 +226,13 @@ export async function runActivityPubDispatcherOnce(
 /**
  * Claims one due outbound activity in a committed transaction, then materializes deliveries
  * in a separate lease-guarded transaction so crash recovery can reclaim expired claims.
+ * Actor lookups and key decryption during materialization use a transaction-bound repository
+ * so a single-connection pool is not deadlocked by nested connection requests.
  */
 async function materializeOneDueActivity(input: {
   readonly sql: postgres.Sql;
   readonly canonicalOrigin: string;
-  readonly actorRepository: ActivityPubRepository;
+  readonly encryptionKey: Buffer;
   readonly clock: ActivityPubDispatcherClock;
 }): Promise<boolean> {
   const claimed = await claimDueActivity(input);
@@ -238,7 +243,7 @@ async function materializeOneDueActivity(input: {
     await completeActivityMaterialization({
       sql: input.sql,
       canonicalOrigin: input.canonicalOrigin,
-      actorRepository: input.actorRepository,
+      encryptionKey: input.encryptionKey,
       clock: input.clock,
       claimed,
     });
@@ -303,7 +308,7 @@ async function claimDueActivity(input: {
 async function completeActivityMaterialization(input: {
   readonly sql: postgres.Sql;
   readonly canonicalOrigin: string;
-  readonly actorRepository: ActivityPubRepository;
+  readonly encryptionKey: Buffer;
   readonly clock: ActivityPubDispatcherClock;
   readonly claimed: ClaimedActivity;
 }): Promise<void> {
@@ -320,10 +325,14 @@ async function completeActivityMaterialization(input: {
     if (leaseRows.length === 0) {
       throw new Error(DELIVERY_ERROR_CODES.leaseLost);
     }
+    const actorRepository = createPostgresActivityPubTransactionRepository({
+      sql: transaction,
+      encryptionKey: input.encryptionKey,
+    });
     await materializeActivityDeliveries({
       sql: transaction,
       canonicalOrigin: input.canonicalOrigin,
-      actorRepository: input.actorRepository,
+      actorRepository,
       activity: input.claimed.activity,
       clock: input.clock,
     });
