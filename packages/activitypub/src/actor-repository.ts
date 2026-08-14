@@ -79,8 +79,11 @@ export function createPostgresActivityPubRepository(input: {
 }
 
 /**
- * Creates a transaction-bound ActivityPub repository for rollback-safe integration tests.
- * Mutations run on the supplied transaction and never start a nested root transaction.
+ * Creates a transaction-bound ActivityPub repository that executes all queries on the
+ * supplied PostgreSQL transaction. Use this inside an open transaction (for example
+ * dispatcher materialization) so actor lookups and key decryption do not request a
+ * second connection from the pool. Mutations run on the supplied transaction and never
+ * start a nested root transaction.
  */
 export function createPostgresActivityPubTransactionRepository(input: {
   sql: postgres.TransactionSql;
