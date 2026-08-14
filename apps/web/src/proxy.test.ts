@@ -30,6 +30,24 @@ const runAppOrigin = 'https://pufu-lens-web-abc123.run.app';
 const runAppHost = 'pufu-lens-web-abc123.run.app';
 const encryptionKey = Buffer.alloc(32, 4);
 
+function isActivityPubCollectionResponse(value: unknown): value is { id: string; first: string } {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  if (!('id' in value) || !('first' in value)) {
+    return false;
+  }
+  return typeof value.id === 'string' && typeof value.first === 'string';
+}
+
+function assertActivityPubCollectionResponse(value: unknown): { id: string; first: string } {
+  assert.ok(
+    isActivityPubCollectionResponse(value),
+    'expected ActivityPub collection response with string id and first',
+  );
+  return value;
+}
+
 function createQueue() {
   return {
     nativeRetrial: true as const,
@@ -220,9 +238,10 @@ test('canonical request wrapper emits canonical collection links for internal fo
 
   const directResponse = await federation.fetch(internalRequest, { contextData: undefined });
   assert.equal(directResponse.status, 200);
-  const directCollection = (await directResponse.json()) as { id?: string; first?: string };
+  const directJson: unknown = await directResponse.json();
+  const directCollection = assertActivityPubCollectionResponse(directJson);
   assert.equal(directCollection.id, uri.actorFollowersUrl('all'));
-  assert.match(directCollection.first ?? '', new RegExp(`^${internalOrigin}`));
+  assert.match(directCollection.first, new RegExp(`^${internalOrigin}`));
 
   let observedRequestUrl = '';
   const wrappedHandler = wrapActivityPubHandlerWithCanonicalRequest(canonicalOrigin, (request) => {
@@ -232,10 +251,11 @@ test('canonical request wrapper emits canonical collection links for internal fo
   const wrappedResponse = await wrappedHandler(internalRequest);
   assert.equal(observedRequestUrl, uri.actorFollowersUrl('all'));
   assert.equal(wrappedResponse.status, 200);
-  const wrappedCollection = (await wrappedResponse.json()) as { id?: string; first?: string };
+  const wrappedJson: unknown = await wrappedResponse.json();
+  const wrappedCollection = assertActivityPubCollectionResponse(wrappedJson);
   assert.equal(wrappedCollection.id, uri.actorFollowersUrl('all'));
-  assert.match(wrappedCollection.first ?? '', new RegExp(`^${canonicalOrigin}`));
-  assert.equal(wrappedCollection.first?.includes(internalOrigin), false);
+  assert.match(wrappedCollection.first, new RegExp(`^${canonicalOrigin}`));
+  assert.equal(wrappedCollection.first.includes(internalOrigin), false);
 });
 
 test('resolveActivityPubProxyHandler returns 503 when production init fails', async () => {
