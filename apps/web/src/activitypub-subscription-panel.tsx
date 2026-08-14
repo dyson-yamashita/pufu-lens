@@ -5,6 +5,7 @@ import {
   activityPubSubscriptionStatusLabel,
   type ProjectActivityPubSubscriptionSettingsView,
 } from './activitypub-subscription-presentation.ts';
+import { setProjectFederationEnabled } from './admin-activitypub-federation-actions.ts';
 import {
   followRemoteActor,
   unfollowRemoteActor,
@@ -13,21 +14,28 @@ import { ActionForm, PendingSubmitButton } from './form-buttons';
 
 type SubscriptionAction = (formData: FormData) => Promise<void>;
 
+const DISABLE_FEDERATION_CONFIRM_MESSAGE =
+  'Disable ActivityPub for this project? Future federation and outbound subscriptions will stop.';
+
 /**
  * Public ActivityPub subscription panel for project settings.
- * Admins may follow/unfollow remote actors; members see sanitized read-only status.
+ * Admins may enable/disable federation and follow/unfollow remote actors; members see read-only status.
  */
 export function ActivityPubSubscriptionPanel({
   canManage,
+  canEnableFederation = true,
   projectSlug,
   settings,
+  federationAction = setProjectFederationEnabled,
   followAction = followRemoteActor,
   unfollowAction = unfollowRemoteActor,
   errorMessage,
 }: {
   readonly canManage: boolean;
+  readonly canEnableFederation?: boolean;
   readonly projectSlug: string;
   readonly settings: ProjectActivityPubSubscriptionSettingsView;
+  readonly federationAction?: SubscriptionAction;
   readonly followAction?: SubscriptionAction;
   readonly unfollowAction?: SubscriptionAction;
   readonly errorMessage?: string | null;
@@ -61,6 +69,50 @@ export function ActivityPubSubscriptionPanel({
           </dd>
         </div>
       </dl>
+      {canManage ? (
+        <ActionForm
+          action={federationAction}
+          className="detail-edit-form"
+          confirmMessage={
+            settings.federationEnabled ? DISABLE_FEDERATION_CONFIRM_MESSAGE : undefined
+          }
+          testId="activitypub-federation-form"
+        >
+          <input name="projectSlug" type="hidden" value={projectSlug} />
+          <input
+            name="enabled"
+            type="hidden"
+            value={settings.federationEnabled ? 'false' : 'true'}
+          />
+          {!settings.federationEnabled && !canEnableFederation ? (
+            <p className="muted" data-testid="activitypub-federation-public-required-hint">
+              This project must be public before ActivityPub can be enabled.
+            </p>
+          ) : null}
+          <div className="action-row">
+            {settings.federationEnabled ? (
+              <PendingSubmitButton
+                className="secondary-button"
+                pendingLabel="Disabling..."
+                testId="activitypub-federation-disable-button"
+                title="Disable ActivityPub federation"
+              >
+                Disable ActivityPub
+              </PendingSubmitButton>
+            ) : (
+              <PendingSubmitButton
+                className="primary-button"
+                disabled={!canEnableFederation}
+                pendingLabel="Enabling..."
+                testId="activitypub-federation-enable-button"
+                title="Enable ActivityPub federation"
+              >
+                Enable ActivityPub
+              </PendingSubmitButton>
+            )}
+          </div>
+        </ActionForm>
+      ) : null}
       {canManage && settings.federationEnabled ? (
         <ActionForm
           action={followAction}
