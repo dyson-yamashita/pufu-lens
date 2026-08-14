@@ -184,6 +184,12 @@ importers:
         specifier: ^4.5.7
         version: 4.5.7(@types/react@19.2.15)(react@19.2.6)
     devDependencies:
+      '@fedify/fedify':
+        specifier: 2.3.4
+        version: 2.3.4
+      '@fedify/vocab-runtime':
+        specifier: 2.3.4
+        version: 2.3.4
       '@playwright/test':
         specifier: ^1.60.0
         version: 1.60.0

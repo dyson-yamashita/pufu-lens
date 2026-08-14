@@ -65,7 +65,7 @@ API は以下の認可をかける：
 
 ### 3.1 ActivityPub Step 1 / Step 2 / Step 3 / Step 4 / Step 5 / Step 6 / Step 7 security boundary
 
-- canonical origin は server 設定だけを正とし、未信頼の `Host` / forwarded host header から Actor、object、activity ID を生成しない。通常 runtime は HTTPS origin だけを許可する。
+- canonical origin は server 設定だけを正とし、未信頼の `Host` / forwarded host header から Actor、object、activity ID を生成しない。通常 runtime は HTTPS origin だけを許可する。reverse proxy 後の内部 URL / `Host` は、path / query / method / body / 署名 header を保持したまま設定済み canonical origin へ再構築してから Fedify の HTTP signature 検証と collection 応答生成へ渡し、network-path 形式の path でも canonical authority から逸脱させない。
 - remote document loader は private / loopback、IPv4-mapped IPv6、special-use IPv4、NAT64、Teredo、6to4 を拒否し、redirect の各 hop を再検証する。localhost HTTP は test-only の local protocol / DB fixture が `allowHttpLocalhost: true` を明示した場合だけ許可し、Web runtime は opt in しない。DB signed-delivery path はさらに `ACTIVITYPUB_RUN_DB_TESTS=1` を要求し、`NODE_ENV=production` では拒否する。本番 runtime で localhost HTTP を許可しない。
 - queue JSON から private JWK を除去し、key ID だけを保存する。Step 2 の本番 Actor 秘密鍵は `ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY` の canonical base64 32-byte key で AES-256-GCM 暗号化し、Actor row ごとに保存する。秘密 JWK、暗号文、PEM 全文、署名 header を log / response / trace に出さない。DB snapshotとSecret Manager versionは同一復旧単位として扱い、secretだけの先行rotation、単一鍵schemaへの手動in-place署名鍵置換を禁止する。backup / restore / rotationは `docs/operations/activitypub-federation.md` に従う。
 - Web process は queue consumer と manual task processor を起動しない。Step 1 protocol fixture は `ACTIVITYPUB_SPIKE_ENABLED=1` の明示設定時だけ有効で、本番環境には設定しない。

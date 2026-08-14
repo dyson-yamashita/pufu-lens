@@ -1,3 +1,5 @@
+import { parseCanonicalOrigin } from '@pufu-lens/activitypub';
+
 export type ActivityPubProxyRouteKind =
   | 'webfinger'
   | 'actor'
@@ -146,6 +148,54 @@ type FederationFetchCapable = {
 };
 
 type ActivityPubProxyHandler = (request: Request) => Response | Promise<Response>;
+
+/**
+ * Rebuilds an inbound request against an already-validated canonical origin URL.
+ * Assigns pathname and search separately so network-path references cannot change authority.
+ */
+function rebuildActivityPubCanonicalRequestWithValidatedOrigin(
+  canonicalOriginUrl: URL,
+  canonicalHost: string,
+  request: Request,
+): Request {
+  const inboundUrl = new URL(request.url);
+  const headers = new Headers(request.headers);
+  headers.set('host', canonicalHost);
+  const copied = new Request(request, { headers });
+  const canonicalUrl = new URL(canonicalOriginUrl.href);
+  canonicalUrl.pathname = inboundUrl.pathname;
+  canonicalUrl.search = inboundUrl.search;
+  return new Request(canonicalUrl, copied);
+}
+
+/**
+ * Rebuilds an inbound ActivityPub request against a configured canonical origin.
+ * Preserves standard Request semantics and signature-related headers while replacing
+ * `Host` with the canonical host. Never derives the origin from request Host or forwarded headers.
+ */
+export function rebuildActivityPubCanonicalRequest(
+  request: Request,
+  canonicalOrigin: string,
+): Request {
+  const { origin, host } = parseCanonicalOrigin(canonicalOrigin);
+  return rebuildActivityPubCanonicalRequestWithValidatedOrigin(new URL(origin), host, request);
+}
+
+/**
+ * Wraps an ActivityPub proxy handler so Fedify sees canonical request URLs and hosts.
+ * The canonical origin is parsed once at wrap time and must come from trusted configuration.
+ */
+export function wrapActivityPubHandlerWithCanonicalRequest(
+  canonicalOrigin: string,
+  handler: ActivityPubProxyHandler,
+): ActivityPubProxyHandler {
+  const { origin, host } = parseCanonicalOrigin(canonicalOrigin);
+  const canonicalOriginUrl = new URL(origin);
+  return (request: Request) =>
+    handler(
+      rebuildActivityPubCanonicalRequestWithValidatedOrigin(canonicalOriginUrl, host, request),
+    );
+}
 
 type ActivityPubProxyHandlerInput<
   TFederation extends FederationFetchCapable = FederationFetchCapable,

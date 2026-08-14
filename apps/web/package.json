@@ -20,7 +20,7 @@
     "start": "next start",
     "test": "node --experimental-strip-types scripts/run-tests.ts",
     "test:db": "pnpm --filter @pufu-lens/ingestion --filter @pufu-lens/project-tenancy build && node --experimental-strip-types scripts/run-db-tests.ts",
-    "test:activitypub": "node --experimental-strip-types --test src/activitypub-runtime.test.ts src/activitypub-subscription-settings.test.ts src/activitypub-subscription-errors.test.ts src/activitypub-subscription-service.test.ts src/activitypub-subscription-validation.test.ts",
+    "test:activitypub": "node --experimental-strip-types --test src/activitypub-runtime.test.ts src/activitypub-subscription-settings.test.ts src/activitypub-subscription-errors.test.ts src/activitypub-subscription-service.test.ts src/activitypub-subscription-validation.test.ts src/proxy.test.ts",
     "test:e2e": "playwright test",
     "typecheck": "next typegen && tsc --noEmit -p tsconfig.json"
   },
@@ -57,6 +57,8 @@
     "zustand": "^4.5.7"
   },
   "devDependencies": {
+    "@fedify/fedify": "2.3.4",
+    "@fedify/vocab-runtime": "2.3.4",
     "@playwright/test": "^1.60.0",
     "@types/dom-to-image": "2.6.7",
     "@types/react": "^19.2.15",
