@@ -43,6 +43,14 @@ env:
     value: production-ingest-workflow
     availability:
       - RUNTIME
+  - variable: ACTIVITYPUB_INBOX_DISPATCHER_TRIGGER_ENABLED
+    value: '1'
+    availability:
+      - RUNTIME
+  - variable: PUFU_LENS_ACTIVITYPUB_DISPATCHER_JOB_NAME
+    value: production-activitypub-dispatcher
+    availability:
+      - RUNTIME
   - variable: PUFU_LENS_ADMIN_INGEST_DRAIN_MAX_BATCHES
     value: '100'
     availability:

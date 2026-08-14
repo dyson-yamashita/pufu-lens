@@ -176,12 +176,14 @@ ActivityPubを無効のままdeployする場合も、将来有効化する環境
 - [ ] Cloud Build triggerの`_ACTIVITYPUB_CANONICAL_ORIGIN`、`_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE`、`_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT`、`_ACTIVITYPUB_ACTOR_KEY_SECRET`が空でなく、Scheduler subjectがdesignated SAの`uniqueId`と一致する。
 - [ ] `ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY`にENABLED versionがあり、App Hosting、Mastra Server、dispatcherのruntime identityだけが必要なpayload accessを持つ。Deploy SAのvalidationはmetadata / version一覧だけを読み、secret payloadを読まない。
 - [ ] App Hostingで`ACTIVITYPUB_ENABLED=1`、固定canonical origin、`ACTIVITYPUB_DB_MAX_CONNECTIONS`、Actor key secret referenceが設定され、Mastra Server / dispatcherと一致する。
+- [ ] App Hostingで`ACTIVITYPUB_INBOX_DISPATCHER_TRIGGER_ENABLED=1`、GCP project、Jobs region、environment付きActivityPub dispatcher Job名が設定され、backend service accountが対象Jobだけの`run.jobs.run` / `run.jobs.runWithOverrides`を持つ。
 - [ ] DNS、TLS certificate、旧URL継続責任者を記録した。domain障害時に別canonical originへ書き換えない。
 - [ ] Web / Job / PostgreSQL VMのUTC時刻同期を確認し、NTP異常alertまたはprovider時刻同期の運用責任を記録した。古い / 未来のSignature `Date`を拒否するcontract testが通る。
 - [ ] HTTP Signatureのkey owner、Activity actor、embedded actor / attribution / audience一致を確認し、raw Signature headerやprivate keyをlogへ出さない。
 - [ ] remote Actor / Article loaderがHTTPS限定、credential / fragment拒否、redirect各hop再検証、private / loopback / link-local / special-use / IPv4-mapped / NAT64 / Teredo / 6to4拒否、DNS rebinding防止、5秒timeout、1 MiB上限を維持する。
 - [ ] `ACTIVITYPUB_BLOCKED_DOMAINS`がWebとdispatcherで一致し、exact host / subdomain / redirect先を拒否し、無関係domainを拒否しない。
 - [ ] PostgreSQLがqueue / lease / retry / dedupe / operator auditの正本であり、Web processがconsumerを起動せず、container restart後もqueueが保持される。restart / expired lease / duplicateのDB test結果を記録した。
+- [ ] stagingの新規Follow / Accept / UndoでInbox commit後にdispatcher Jobが起動し、重複activityとCreate / Announceでは起動しない。認証・timeout・非2xx時はInbox受信が成功し、5分Schedulerでqueueが処理される。
 - [ ] Actor keyのDB snapshotとSecret Manager versionを同一時点でbackupし、隔離環境の復元試験日・責任者を記録した。secretだけの先行rotationや手動in-place署名鍵置換を行わない。
 - [ ] migration `0024_activitypub_operations`をplanし、`activitypub_queue_operator_actions`の固定transition / change ref / safe error制約、UPDATE / DELETE拒否trigger、fresh schema seedを確認した。
 - [ ] retry exhaustedのinspect / requeue / discardをstaging fixtureで確認し、二重message ID、canonical UTC `updatedAt`、固定change-ref、同一transaction監査、後続ordering影響を確認した。

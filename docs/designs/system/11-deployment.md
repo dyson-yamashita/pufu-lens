@@ -183,6 +183,11 @@ gcloud run jobs deploy activitypub-dispatcher \
 #    本番で設定しない。Step 2 の production endpoint は ACTIVITYPUB_ENABLED=1、固定の
 #    ACTIVITYPUB_CANONICAL_ORIGIN、Secret Manager 由来の ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY が揃う場合だけ有効化する。
 #    ACTIVITYPUB_DB_MAX_CONNECTIONS は process あたりの ActivityPub 用 DB pool 上限で、未指定時は5、指定時は1..20の10進整数とする。
+#    Follow / Accept / Undo inboxを即時処理する環境では、App Hostingに
+#    ACTIVITYPUB_INBOX_DISPATCHER_TRIGGER_ENABLED=1、PUFU_LENS_GCP_PROJECT_ID、
+#    PUFU_LENS_CLOUD_RUN_JOBS_REGION、PUFU_LENS_ACTIVITYPUB_DISPATCHER_JOB_NAMEをruntime設定する。
+#    Web runtimeはInbox rowのcommit後に対象Jobのrun APIだけを呼び、queue consumerにはならない。
+#    token取得は2秒、Job APIは3秒で打ち切り、失敗時は5分Schedulerへフォールバックする。
 #    Step 4 の activitypub-dispatcher Job は `--once` だけを受け付け、PostgreSQL queue の Follow / Accept / Undo と
 #    report Create / Announce delivery をboundedに処理する。Scheduler routeは固定Mastra service URLのOIDC audienceとdesignated SAを検証し、
 #    公開federation用ACTIVITYPUB_CANONICAL_ORIGINと内部ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCEを同一値とはみなさない。
@@ -209,13 +214,16 @@ firebase apphosting:secrets:grantaccess DATABASE_URL,AUTH_SECRET,GEMINI_API_KEY,
 firebase deploy --only apphosting --project PROJECT
 
 # apps/web/apphosting.yaml に ACTIVITYPUB_ENABLED=1、公開Webと同じ固定ACTIVITYPUB_CANONICAL_ORIGIN、
-# ACTIVITYPUB_DB_MAX_CONNECTIONS、ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY secret referenceを含む
+# ACTIVITYPUB_DB_MAX_CONNECTIONS、ACTIVITYPUB_INBOX_DISPATCHER_TRIGGER_ENABLED=1、
+# PUFU_LENS_GCP_PROJECT_ID、PUFU_LENS_CLOUD_RUN_JOBS_REGION、PUFU_LENS_ACTIVITYPUB_DISPATCHER_JOB_NAME、
+# ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY secret referenceを含む
 # runtime env / secrets / VPC accessを定義する。Mastra Serverとdispatcherも同じoriginとsecret系列を参照する。
 # Web API が GCS / PostgreSQL / Mastra にアクセスするため、App Hosting backend service account に
 # Secret Manager、GCS、Cloud Run Invoker の権限を付与する。Direct VPC network user が必要な
 # Shared VPC 構成では、runtime SA ではなく provider が指定する service agent へ subnet scope で付与する。
-# Admin UI から workflow job を起動する場合は、App Hosting backend service account に
-# 対象 Cloud Run Job resource の run.jobs.run / run.jobs.runWithOverrides 権限を付与する。
+# Admin UI から workflow job を起動する場合、およびActivityPub inboxからdispatcherを即時起動する場合は、
+# App Hosting backend service account に対象 Cloud Run Job resource の
+# run.jobs.run / run.jobs.runWithOverrides 権限を付与する。
 # 正準の IAM 要件は docs/deployment/gcp-cloud-build.md の IAM 節に従う。
 
 gcloud run services add-iam-policy-binding mastra-server \

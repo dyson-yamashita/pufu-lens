@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createFedifyOutboxMessageFixture } from './fedify-message-fixture.ts';
+import {
+  createFedifyInboxMessageFixture,
+  createFedifyOutboxMessageFixture,
+} from './fedify-message-fixture.ts';
 import {
   claimOnePostgresQueueMessage,
   createPostgresQueueAdapter,
@@ -463,4 +466,116 @@ test('processOneQueuedMessage rejects tampered outbox actorIds before private ke
     /actor binding rejected/,
   );
   assert.equal(importCalled, false);
+});
+
+function createFollowInboxMessage() {
+  return createFedifyInboxMessageFixture({
+    baseUrl: canonicalOrigin,
+    activity: {
+      id: 'https://remote.example/activities/follow-1',
+      type: 'Follow',
+      actor: 'https://remote.example/users/alice',
+      object: `${canonicalOrigin}/activitypub/actors/sample-project`,
+    },
+  });
+}
+
+function createInboxEnqueueSql(input: { insertReturnsRow: boolean }) {
+  let hookEligibleInsert = false;
+  const fakeSql = Object.assign(
+    async (strings: TemplateStringsArray) => {
+      const query = strings.join('?');
+      if (query.includes("'inbox'") && query.includes('RETURNING id')) {
+        hookEligibleInsert = true;
+        return input.insertReturnsRow ? [{ id: 'queue-row-inbox-1' }] : [];
+      }
+      return [];
+    },
+    { json: (value: unknown) => value },
+  );
+  return {
+    fakeSql: fakeSql as never,
+    wasInboxInsert: () => hookEligibleInsert,
+  };
+}
+
+test('createPostgresQueueAdapter invokes inbox enqueued hook once for a new Follow inbox row', async () => {
+  const hookCalls: Array<{ activityType: string | null }> = [];
+  const { fakeSql } = createInboxEnqueueSql({ insertReturnsRow: true });
+  const queue = createPostgresQueueAdapter({
+    sql: fakeSql,
+    canonicalOrigin,
+    onInboxEnqueued: async (event) => {
+      hookCalls.push(event);
+    },
+  });
+
+  await queue.enqueue(createFollowInboxMessage());
+  assert.deepEqual(hookCalls, [{ activityType: 'Follow' }]);
+});
+
+test('createPostgresQueueAdapter awaits async onInboxEnqueued before resolving inbox enqueue', async () => {
+  let hookStarted = false;
+  let hookResolved = false;
+  let enqueueResolved = false;
+  let releaseHook!: () => void;
+  const hookGate = new Promise<void>((resolve) => {
+    releaseHook = resolve;
+  });
+  const { fakeSql } = createInboxEnqueueSql({ insertReturnsRow: true });
+  const queue = createPostgresQueueAdapter({
+    sql: fakeSql,
+    canonicalOrigin,
+    onInboxEnqueued: async () => {
+      hookStarted = true;
+      await hookGate;
+      hookResolved = true;
+    },
+  });
+
+  const enqueuePromise = queue.enqueue(createFollowInboxMessage()).then(() => {
+    enqueueResolved = true;
+  });
+  await Promise.resolve();
+
+  assert.equal(hookStarted, true);
+  assert.equal(hookResolved, false);
+  assert.equal(enqueueResolved, false);
+
+  releaseHook();
+  await enqueuePromise;
+
+  assert.equal(hookResolved, true);
+  assert.equal(enqueueResolved, true);
+});
+
+test('createPostgresQueueAdapter does not invoke inbox enqueued hook for duplicate inbox rows', async () => {
+  const hookCalls: Array<{ activityType: string | null }> = [];
+  const { fakeSql } = createInboxEnqueueSql({ insertReturnsRow: false });
+  const queue = createPostgresQueueAdapter({
+    sql: fakeSql,
+    canonicalOrigin,
+    onInboxEnqueued: async (event) => {
+      hookCalls.push(event);
+    },
+  });
+
+  await queue.enqueue(createFollowInboxMessage());
+  assert.deepEqual(hookCalls, []);
+});
+
+test('createPostgresQueueAdapter does not invoke inbox enqueued hook for outbox enqueue', async () => {
+  const hookCalls: Array<{ activityType: string | null }> = [];
+  const { fakeSql, wasTouched } = createFakeSql();
+  const queue = createPostgresQueueAdapter({
+    sql: fakeSql,
+    canonicalOrigin,
+    onInboxEnqueued: async (event) => {
+      hookCalls.push(event);
+    },
+  });
+
+  await queue.enqueue(createValidOutboxMessage());
+  assert.equal(wasTouched(), true);
+  assert.deepEqual(hookCalls, []);
 });

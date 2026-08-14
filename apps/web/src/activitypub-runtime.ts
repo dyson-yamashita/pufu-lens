@@ -14,6 +14,7 @@ import {
   createActivityPubProtocolFixture,
 } from '@pufu-lens/activitypub/protocol';
 import postgres from 'postgres';
+import { triggerActivityPubInboxDispatcher } from './activitypub-dispatcher-trigger.ts';
 
 const DEFAULT_SPIKE_REPORT: ActivityPubReportFixture = {
   reportId: 'spike-report',
@@ -220,6 +221,9 @@ async function initializeProductionFederation(input: {
       queue: createPostgresQueueAdapter({
         sql,
         canonicalOrigin: input.config.canonicalOrigin,
+        onInboxEnqueued: async (event) => {
+          await triggerActivityPubInboxDispatcher(event);
+        },
       }),
       queueHooks: input.queueHooks,
     });

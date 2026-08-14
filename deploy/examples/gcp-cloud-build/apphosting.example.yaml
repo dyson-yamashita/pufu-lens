@@ -41,6 +41,14 @@ env:
     value: <env>-ingest-workflow
     availability:
       - RUNTIME
+  - variable: ACTIVITYPUB_INBOX_DISPATCHER_TRIGGER_ENABLED
+    value: '1'
+    availability:
+      - RUNTIME
+  - variable: PUFU_LENS_ACTIVITYPUB_DISPATCHER_JOB_NAME
+    value: <env>-activitypub-dispatcher
+    availability:
+      - RUNTIME
   - variable: GEMINI_CHAT_MODEL
     value: gemini-2.5-flash
     availability:

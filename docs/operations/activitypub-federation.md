@@ -109,6 +109,16 @@ Actor identityの復旧には、同一時点のPostgreSQL backupに含まれる 
 
 鍵漏えい時は外部送信を停止し、影響Actor、公開期間、queueを保全してsecurity incidentとして扱う。安全なrotation実装がない状態で復旧不能な置換を行わず、backup restoreまたはforward fixを選ぶ。
 
+## Follow / Accept / Undo の即時dispatcher起動
+
+production Webは、新規Follow / Accept / UndoをPostgreSQL inbox queueへ保存した直後に、同じrequest内でActivityPub dispatcher Cloud Run Jobの起動を試みる。Webはqueueをclaimせず、Job API呼出しだけを行う。重複activity、Create / Announce、outbox enqueueでは即時起動しない。
+
+- App Hosting runtimeに`ACTIVITYPUB_INBOX_DISPATCHER_TRIGGER_ENABLED=1`、`PUFU_LENS_GCP_PROJECT_ID`、`PUFU_LENS_CLOUD_RUN_JOBS_REGION`、`PUFU_LENS_ACTIVITYPUB_DISPATCHER_JOB_NAME`を設定する。
+- App Hosting backend service accountが対象ActivityPub Job resourceで`run.jobs.run` / `run.jobs.runWithOverrides`を持つことを確認する。project全体へ権限を広げない。
+- 正常時はInbox受信後にJob executionが開始し、Follow / Accept / Undoが5分Schedulerを待たず処理される。Mastodon側の表示更新やキャッシュには別の遅延があり得る。
+- `activitypub_inbox_dispatcher_trigger`の`fallback`が出た場合は、固定`errorCode`（設定、token、timeout、network、HTTP）とJob IAM / API状態だけを調べる。Activity / Actor ID、payload、token、response body、例外本文をlogへ追加しない。
+- 即時起動に失敗してもInbox rowは保持される。5分Schedulerでqueue depthが減ることを確認し、即時triggerを手動再送しない。同じFollowを利用者へ繰り返し送らせない。
+
 ## Canonical origin と Scheduler OIDC audience
 
 `ACTIVITYPUB_CANONICAL_ORIGIN` はrequest headerから導出せず、productionで固定する。最初のoutbound activity以後はActor ID、activity ID、report object ID、署名key IDのoriginとして外部に永続化されるため、変更を禁止する。
@@ -124,7 +134,7 @@ Actor identityの復旧には、同一時点のPostgreSQL backupに含まれる 
 2. Mastra Cloud Run serviceの`status.url`とdesignated Scheduler SAの`uniqueId`をGCPから取得する。OIDC audienceやnumeric subjectを手入力で推測しない。
 3. canonical base64の32-byte `ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY` secretをstdinから作成し、ENABLED version、replication、runtime access、App Hosting backend accessを確認する。値を表示・記録しない。
 4. Cloud Build triggerへcanonical origin、Mastra audience、Scheduler subject、Actor key secret名を設定する。substitutionにはsecret名だけを置き、payloadを置かない。
-5. `apps/web/apphosting.yaml`の`ACTIVITYPUB_ENABLED=1`、canonical origin、DB pool上限、Actor key secret referenceがMastra Serverとdispatcherの設定に一致することを確認する。
+5. `apps/web/apphosting.yaml`の`ACTIVITYPUB_ENABLED=1`、canonical origin、DB pool上限、Actor key secret referenceに加え、Inbox即時trigger flag、GCP project、Jobs region、ActivityPub dispatcher Job名が対象environmentと一致することを確認する。
 6. 最新`main`と一致するpending buildだけを承認する。validationはHTTPS origin、Scheduler identity、secret metadata / ENABLED versionをruntime変更前にfail closedで検証する。
 7. deploy成功後、Cloud BuildのGET-only smokeで`@all` WebFingerとActorを確認する。各GETはbody読取を含め15秒、JSON bodyは1 MiBを上限とする。Follow、Inbox POST、dispatcher手動実行、外部配送はこの確認では行わない。
 8. 最初のActor作成またはoutbound前に、DB snapshotとsecret versionを同一復旧単位として記録する。失敗時もcanonical originやsecretを別値へ変更せず、forward fixまたは同一設定でrollbackする。

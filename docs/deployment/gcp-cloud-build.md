@@ -291,7 +291,7 @@ gcloud run services add-iam-policy-binding "$MASTRA_SERVICE" \
   --role="roles/run.invoker"
 ```
 
-Mastra runtime SA から dispatcher Cloud Run Job を container override 付きで起動するため、source sync、定期 report、ActivityPub の各 Job resource に `roles/run.jobsExecutorWithOverrides` を付与する。
+Mastra runtime SA から dispatcher Cloud Run Job を container override 付きで起動するため、source sync、定期 report、ActivityPub の各 Job resource に `roles/run.jobsExecutorWithOverrides` を付与する。App Hosting backendにも同じruntime SAを設定する構成では、新規Follow / Accept / Undo inbox rowのcommit後にWebからActivityPub Jobを即時起動する際にも、このActivityPub Job resource scopeの権限を利用する。別のApp Hosting compute SAを使う場合は、そのSAにも対象ActivityPub Jobだけの同等権限を付与する。
 `<environment>` には deploy substitution の `_ENV` と同じ値（例: `staging`、`production`）を指定する。いずれかだけに付与すると、権限がない Scheduler route は HTTP 503 を返す。
 
 ```bash
@@ -309,7 +309,7 @@ for DISPATCHER_JOB in \
 done
 ```
 
-ActivityPub用Schedulerは `POST /internal/schedules/activitypub-dispatcher:run` を空object bodyとOIDC tokenで呼ぶ。Mastra routeはGoogle issuer、deploy時に固定したaudience、numeric subject、Scheduler SA email、`email_verified`をすべて検証する。Cloud BuildはScheduler SAの`roles/run.invoker`を対象Mastra serviceだけに、Mastra runtime SAの`roles/run.jobsExecutorWithOverrides`を3つのdispatcher Jobへ、execution一覧取得用`roles/run.viewer`をActivityPub Jobだけにresource-level IAMとして付与する。Job timeoutは55分。コンテナ entrypoint は共通の `workflow-job` で、Scheduler route は container override で `WORKFLOW_ID=activitypub-dispatcher` と `WORKFLOW_INPUT_JSON={}` を渡し、`workflow-job` が `scripts/activitypub-dispatch-once.ts --once` を起動する。active execution検出時は新規実行を作らない。
+ActivityPub用Schedulerは `POST /internal/schedules/activitypub-dispatcher:run` を空object bodyとOIDC tokenで呼ぶ。Mastra routeはGoogle issuer、deploy時に固定したaudience、numeric subject、Scheduler SA email、`email_verified`をすべて検証する。Cloud BuildはScheduler SAの`roles/run.invoker`を対象Mastra serviceだけに、Mastra runtime SAの`roles/run.jobsExecutorWithOverrides`を3つのdispatcher Jobへ、execution一覧取得用`roles/run.viewer`をActivityPub Jobだけにresource-level IAMとして付与する。Job timeoutは55分。コンテナ entrypoint は共通の `workflow-job` で、Scheduler route とWebの即時Inbox triggerはいずれもcontainer overrideで `WORKFLOW_ID=activitypub-dispatcher` と `WORKFLOW_INPUT_JSON={}` を渡し、`workflow-job` が `scripts/activitypub-dispatch-once.ts --once` を起動する。Scheduler routeはactive execution検出時に新規実行を作らず、Web triggerが失敗した場合も5分Schedulerがqueueを回収する。
 
 Deploy Cloud Build SA は runtime service account を attach するため、対象 runtime SA に対する Service Account User が必要になる。Cloud Build から `firebase deploy --only apphosting` を実行する場合、Firebase CLI が有効 API と project IAM policy を確認するため `serviceusage.services.get`、`resourcemanager.projects.get`、`resourcemanager.projects.getIamPolicy` も必要になる。project scope の `roles/serviceusage.serviceUsageViewer` と `roles/browser` を付与するか、最小権限を厳格にする環境では Resource Manager の読み取り権限だけを含む custom role を付与する。
 

@@ -57,6 +57,8 @@ ActivityPub 購読管理は `followRemoteActor` / `unfollowRemoteActor` server a
 
 `POST /internal/schedules/activitypub-dispatcher:run` は空 JSON object だけを受理し、Google OIDC token の issuer、固定 audience、designated Scheduler service account の subject / email / verified emailを検証する。active Cloud Run Job execution があれば `202` no-op、なければ対象 `activitypub-dispatcher` Jobだけを起動する。token、Cloud access token、raw body、署名headerはlogへ出さない。
 
+新規 Follow / Accept / Undo を PostgreSQL inbox queueへ保存した production Web runtimeは、Cloud Run Jobs v2の対象Job `:run` APIへ `WORKFLOW_ID=activitypub-dispatcher` と空の `WORKFLOW_INPUT_JSON` overrideを送り、受信request内でboundedに完了を待つ。この経路は `ACTIVITYPUB_INBOX_DISPATCHER_TRIGGER_ENABLED=1` の明示設定時だけ有効で、Activity / Actor / queue IDやpayloadを渡さない。起動失敗は固定low-cardinality codeだけをlogに残してinbox受信を成功させ、Scheduler routeが後からqueueを処理する。
+
 Data Sources 詳細の content preview は初期実装では REST API を増やさず、`apps/web/src/admin-db.ts` の server-side loader と Next.js server component から読む。`projectSlug` と `dataSourceId` の組み合わせを DB で検証し、他 project の data source を返さない。
 
 ### 4. CLI / Job 入口
