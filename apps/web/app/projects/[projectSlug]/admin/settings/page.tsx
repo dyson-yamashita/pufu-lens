@@ -318,6 +318,7 @@ export default async function ProjectSettingsPage({
         </div>
       </section>
       <ActivityPubSubscriptionPanel
+        canEnableFederation={project.visibility === 'public'}
         canManage
         projectSlug={project.slug}
         settings={subscriptionSettings}

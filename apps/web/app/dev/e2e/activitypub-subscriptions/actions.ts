@@ -67,3 +67,36 @@ export async function failActivityPubSubscriptionUnfollowForE2e(
     'The remote actor address could not be resolved.',
   );
 }
+
+/**
+ * Delays federation enable/disable submission so Playwright can observe pending UI state.
+ * {@link assertActivityPubSubscriptionE2eHarnessAllowed} rejects production, unset fixture
+ * fallback flag, and non-fixture runtimes by throwing Error before any timer wait.
+ * When allowed, waits via `setTimeout` for the configured E2E delay duration.
+ */
+export async function delayActivityPubSubscriptionFederationForE2e(
+  _formData: FormData,
+): Promise<void> {
+  assertActivityPubSubscriptionE2eHarnessAllowed();
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, E2E_ACTIVITYPUB_SUBSCRIPTION_DELAY_MS);
+  });
+}
+
+/**
+ * Simulates federation mutation failure for ActivityPub federation E2E error rendering.
+ * {@link assertActivityPubSubscriptionE2eHarnessAllowed} rejects production, unset fixture
+ * fallback flag, and non-fixture runtimes by throwing Error before dynamic import.
+ * When allowed, throws `ActivityPubAdminError` with a sanitized public-project message.
+ */
+export async function failActivityPubSubscriptionFederationForE2e(
+  _formData: FormData,
+): Promise<void> {
+  assertActivityPubSubscriptionE2eHarnessAllowed();
+  const { ActivityPubAdminError } = await import('../../../../src/activitypub-admin.ts');
+  throw new ActivityPubAdminError(
+    'project_not_public',
+    'Project must be public to enable ActivityPub federation',
+    400,
+  );
+}
