@@ -53,6 +53,29 @@ test('scenario: activitypub federation enable shows pending submit state', async
   await expect(enableButton).toBeDisabled();
 });
 
+test('scenario: activitypub federation disable confirms and shows pending submit state', async ({
+  page,
+}) => {
+  await page.goto('/dev/e2e/activitypub-subscriptions');
+
+  const enabledAdmin = page.getByTestId('activitypub-subscription-e2e-admin-enabled');
+  const disableButton = enabledAdmin.getByTestId('activitypub-federation-disable-button');
+  const confirmMessage =
+    'Disable ActivityPub for this project? Future federation and outbound subscriptions will stop.';
+
+  await Promise.all([
+    page.waitForEvent('dialog').then(async (dialog) => {
+      expect(dialog.type()).toBe('confirm');
+      expect(dialog.message()).toBe(confirmMessage);
+      await dialog.accept();
+    }),
+    disableButton.click(),
+  ]);
+
+  await expect(disableButton).toBeDisabled();
+  await expect(disableButton).toHaveText('Disabling...');
+});
+
 test('scenario: activitypub federation enable shows safe action error from failing action', async ({
   page,
 }) => {

@@ -31,6 +31,7 @@ export default function ActivityPubSubscriptionsE2eHarnessPage() {
       <div data-testid="activitypub-subscription-e2e-admin-enabled">
         <ActivityPubSubscriptionPanel
           canManage
+          federationAction={delayActivityPubSubscriptionFederationForE2e}
           projectSlug="sample-a"
           settings={enabledSettings}
           followAction={delayActivityPubSubscriptionFollowForE2e}
