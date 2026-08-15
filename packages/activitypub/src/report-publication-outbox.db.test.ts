@@ -327,12 +327,15 @@ async function assertDisabledAggregateStillPublishesCreateOnly(sql: postgres.Sql
       await sql`SELECT is_public FROM public.reports WHERE id = ${rollbackReportId}::uuid`;
     assert.equal(report[0]?.is_public, true);
     const activities = await sql`
-      SELECT count(*)::int AS count
+      SELECT activity_type, count(*)::int AS count
       FROM public.activitypub_activities
       WHERE direction = 'outbound'
         AND payload_json->>'reportId' = ${rollbackReportId}
+      GROUP BY activity_type
     `;
+    assert.equal(activities.length, 1);
     assert.equal(activities[0]?.count, 1);
+    assert.equal(activities[0]?.activity_type, 'Create');
   } finally {
     await sql`
       UPDATE public.activitypub_actors
@@ -483,12 +486,15 @@ async function assertRepresentationLockOnlyOnPublicEnabledSuccess(sql: postgres.
       });
     });
     const activities = await sql`
-      SELECT count(*)::int AS count
+      SELECT activity_type, count(*)::int AS count
       FROM public.activitypub_activities
       WHERE direction = 'outbound'
         AND payload_json->>'reportId' = ${rollbackReportId}
+      GROUP BY activity_type
     `;
+    assert.equal(activities.length, 1);
     assert.equal(activities[0]?.count, 1);
+    assert.equal(activities[0]?.activity_type, 'Create');
   } finally {
     await sql`
       UPDATE public.activitypub_actors

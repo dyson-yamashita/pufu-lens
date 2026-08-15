@@ -1,4 +1,5 @@
 import {
+  ActivityPubActorNotFoundError,
   ActivityPubActorProfileError,
   createActivityPubUseCases,
   parseActorKeyEncryptionKey,
@@ -26,15 +27,12 @@ export function mapActivityPubProfileAdminError(error: unknown): ActivityPubProf
   if (error instanceof ActivityPubActorProfileError) {
     return new ActivityPubProfileAdminError('invalid_profile', error.message, 400);
   }
-  if (error instanceof Error && /not found/i.test(error.message)) {
+  if (error instanceof ActivityPubActorNotFoundError) {
     return new ActivityPubProfileAdminError(
       'actor_not_found',
       'ActivityPub actor was not found.',
       404,
     );
-  }
-  if (error instanceof Error && /access|admin|authentication/i.test(error.message)) {
-    return new ActivityPubProfileAdminError('forbidden', 'Admin access is required.', 403);
   }
   return new ActivityPubProfileAdminError(
     'activitypub_internal_error',
@@ -44,6 +42,8 @@ export function mapActivityPubProfileAdminError(error: unknown): ActivityPubProf
 }
 
 function resolveActivityPubUseCases(sql: postgres.Sql | postgres.TransactionSql) {
+  // TransactionSql exposes the same tagged-template execution interface as createActivityPubUseCases;
+  // no connection-management-only Sql API is used, so this cast is safe.
   return createActivityPubUseCases({
     sql: sql as postgres.Sql,
     encryptionKey: parseActorKeyEncryptionKey(process.env.ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY),

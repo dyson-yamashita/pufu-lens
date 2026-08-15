@@ -148,7 +148,7 @@ test('readActivityPubPostPrompts returns both prompts for enabled project actors
   });
 });
 
-test('readActivityPubPostPrompts keeps serverPrompt when aggregate actor is disabled', async () => {
+test('readActivityPubPostPrompts returns serverPrompt from project actor row without aggregate enabled check', async () => {
   const repository = createPostgresReportRepository(
     Object.assign(
       async (strings: TemplateStringsArray) => {

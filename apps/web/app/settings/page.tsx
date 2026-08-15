@@ -21,7 +21,9 @@ export default async function AppSettingsPage() {
   if (!adminUserId) {
     redirect('/projects');
   }
-  const profileSettings = await readServerActivityPubProfileSettings(sql);
+  const profileSettings = await readServerActivityPubProfileSettings(sql, {
+    canManage: Boolean(adminUserId),
+  });
 
   return (
     <AppShell active="app-settings">

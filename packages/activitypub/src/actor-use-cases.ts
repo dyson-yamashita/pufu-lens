@@ -12,14 +12,27 @@ import type {
 
 export type ActivityPubUseCases = {
   ensureAggregateActor(): Promise<ActivityPubActor>;
+  /** Returns the aggregate `@all` actor row, or undefined when no aggregate actor exists. */
   findAggregateActor(): Promise<ActivityPubActor | undefined>;
+  /** Returns the project actor for `projectId`, or undefined when no project actor exists. */
   findProjectActorByProjectId(projectId: string): Promise<ActivityPubActor | undefined>;
+  /**
+   * Normalizes profile input and updates the aggregate actor.
+   * Rejects with {@link ActivityPubActorNotFoundError} when the aggregate actor is missing.
+   */
   updateAggregateActorProfile(input: {
     displayName: string;
     iconUrl?: string | null;
     additionalPrompt?: string | null;
   }): Promise<ActivityPubActor>;
+  /**
+   * Sets aggregate federation enabled state, creating the aggregate actor when missing.
+   */
   setAggregateActorEnabled(enabled: boolean): Promise<ActivityPubActor>;
+  /**
+   * Normalizes profile input, validates project scope (`projectId` / `projectSlug`), and updates the project actor.
+   * Rejects with {@link ActivityPubActorNotFoundError} when the project actor is missing.
+   */
   updateProjectActorProfile(input: {
     projectId: string;
     projectSlug: string;
@@ -69,6 +82,9 @@ function resolveActivityPubRepository(
 
 /**
  * Creates ActivityPub use cases backed by the repository transaction boundary.
+ * Returned profile updates are normalized; missing aggregate/project actors reject with
+ * {@link ActivityPubActorNotFoundError}; project profile updates validate transactional
+ * project scope; aggregate enable-state mutation creates the aggregate actor when absent.
  * Project scope and visibility guards execute inside repository transactions.
  * Representation updates read the current config inside `runInTransaction`,
  * reject locked values, no-op when unchanged, and persist changes through the

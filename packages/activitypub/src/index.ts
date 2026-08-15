@@ -1,4 +1,6 @@
 export {
+  type ActivityPubActorKind,
+  ActivityPubActorNotFoundError,
   ActivityPubPreferredUsernameConflictError,
   ActivityPubProjectNotPublicError,
 } from './activitypub-errors.ts';

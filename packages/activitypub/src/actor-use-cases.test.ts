@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { ActivityPubActorNotFoundError } from './activitypub-errors.ts';
 import type { ActivityPubRepository } from './actor-repository.ts';
 import { createActivityPubUseCases } from './actor-use-cases.ts';
 import type { ActivityPubActor, ActivityPubInstanceConfig } from './schema.ts';
@@ -66,7 +67,7 @@ test('updateAggregateActorProfile requires an existing aggregate actor', async (
         return {} as ActivityPubActor;
       },
       updateAggregateActorProfile: async () => {
-        throw new Error('Aggregate ActivityPub actor was not found.');
+        throw new ActivityPubActorNotFoundError('aggregate');
       },
     }),
   });
@@ -78,7 +79,7 @@ test('updateAggregateActorProfile requires an existing aggregate actor', async (
         iconUrl: '/logo.png',
         additionalPrompt: null,
       }),
-    /not found/i,
+    (error: unknown) => error instanceof ActivityPubActorNotFoundError,
   );
   assert.equal(ensureCalls, 0);
 });

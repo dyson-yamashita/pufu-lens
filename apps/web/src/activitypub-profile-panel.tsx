@@ -19,6 +19,9 @@ function resolveIconPreviewUrl(iconUrl: string | null): string | null {
   if (!iconUrl) {
     return null;
   }
+  if (iconUrl.startsWith('//')) {
+    return null;
+  }
   if (iconUrl.startsWith('https://') || iconUrl.startsWith('/')) {
     return iconUrl;
   }

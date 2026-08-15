@@ -73,10 +73,12 @@ export function parseProjectActivityPubProfileRow(row: unknown): ProjectProfileR
 }
 
 /**
- * Reads server-wide aggregate `@all` ActivityPub profile settings for global admins.
+ * Reads server-wide aggregate `@all` ActivityPub profile settings.
+ * When `canManage` is false, `additionalPrompt` is masked and profile editing flags are disabled.
  */
 export async function readServerActivityPubProfileSettings(
   sql: SqlExecutor,
+  input: { readonly canManage: boolean },
 ): Promise<ServerActivityPubProfileSettingsView> {
   const rows = (await sql`
     SELECT
@@ -99,8 +101,8 @@ export async function readServerActivityPubProfileSettings(
       iconUrl: null,
       additionalPrompt: null,
       federationEnabled: false,
-      canEditProfile: true,
-      canEditPrompt: true,
+      canEditProfile: input.canManage,
+      canEditPrompt: input.canManage,
       profileSavePendingHint: 'Enable the aggregate actor before saving profile settings.',
       deploymentMasterSwitchNote:
         'ACTIVITYPUB_ENABLED remains the deployment master switch. This control changes the aggregate actor only.',
@@ -111,10 +113,10 @@ export async function readServerActivityPubProfileSettings(
     preferredUsername: actor.preferred_username,
     displayName: actor.display_name,
     iconUrl: actor.icon_url,
-    additionalPrompt: actor.additional_prompt,
+    additionalPrompt: input.canManage ? actor.additional_prompt : null,
     federationEnabled: actor.enabled,
-    canEditProfile: true,
-    canEditPrompt: true,
+    canEditProfile: input.canManage,
+    canEditPrompt: input.canManage,
     profileSavePendingHint: null,
     deploymentMasterSwitchNote:
       'ACTIVITYPUB_ENABLED remains the deployment master switch. This control changes the aggregate actor only.',

@@ -1,6 +1,7 @@
 import { exportJwk, type generateCryptoKeyPair, importJwk } from '@fedify/fedify';
 import type postgres from 'postgres';
 import {
+  ActivityPubActorNotFoundError,
   ActivityPubPreferredUsernameConflictError,
   ActivityPubProjectNotPublicError,
 } from './activitypub-errors.ts';
@@ -50,10 +51,24 @@ type RepositoryExecutorConfig =
 export type ActivityPubRepository = {
   runInTransaction<T>(callback: (repository: ActivityPubRepository) => Promise<T>): Promise<T>;
   ensureAggregateActor(): Promise<ActivityPubActor>;
+  /** Returns the aggregate `@all` actor row, or undefined when no aggregate actor exists. */
   findAggregateActor(): Promise<ActivityPubActor | undefined>;
+  /** Returns the project actor for `projectId`, or undefined when no project actor exists. */
   findProjectActorByProjectId(projectId: string): Promise<ActivityPubActor | undefined>;
+  /**
+   * Updates aggregate profile fields on the existing aggregate actor.
+   * Throws {@link ActivityPubActorNotFoundError} when the aggregate actor row is absent.
+   */
   updateAggregateActorProfile(input: NormalizedActivityPubActorProfile): Promise<ActivityPubActor>;
+  /**
+   * Sets aggregate federation enabled state and returns the resulting aggregate actor.
+   * Creates the aggregate actor when missing before applying the enabled change.
+   */
   setAggregateActorEnabled(enabled: boolean): Promise<ActivityPubActor>;
+  /**
+   * Updates project profile fields after locking and validating project scope (`projectId` / `projectSlug`).
+   * Throws {@link ActivityPubActorNotFoundError} when the project actor row is absent.
+   */
   updateProjectActorProfile(
     input: {
       projectId: string;
@@ -337,7 +352,7 @@ async function disableProjectActorInLockedScope(input: {
 }): Promise<ActivityPubActor> {
   const existing = await findProjectActorByProjectId(input.sql, input.projectId);
   if (!existing) {
-    throw new Error('Project ActivityPub actor was not found.');
+    throw new ActivityPubActorNotFoundError('project');
   }
   if (!existing.enabled) {
     return existing;
@@ -634,7 +649,7 @@ async function updateAggregateActorProfileOnExecutor(input: {
 }): Promise<ActivityPubActor> {
   const existing = await findAggregateActor(input.sql);
   if (!existing) {
-    throw new Error('Aggregate ActivityPub actor was not found.');
+    throw new ActivityPubActorNotFoundError('aggregate');
   }
   const rows = (await input.sql`
     UPDATE public.activitypub_actors
@@ -710,7 +725,7 @@ async function updateProjectActorProfileOnExecutor(input: {
   });
   const existing = await findProjectActorByProjectId(input.sql, scope.id);
   if (!existing) {
-    throw new Error('Project ActivityPub actor was not found.');
+    throw new ActivityPubActorNotFoundError('project');
   }
   const rows = (await input.sql`
     UPDATE public.activitypub_actors

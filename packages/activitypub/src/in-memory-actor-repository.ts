@@ -1,5 +1,6 @@
 import { exportJwk, type generateCryptoKeyPair, importJwk } from '@fedify/fedify';
 import {
+  ActivityPubActorNotFoundError,
   ActivityPubPreferredUsernameConflictError,
   ActivityPubProjectNotPublicError,
 } from './activitypub-errors.ts';
@@ -102,7 +103,7 @@ export function createInMemoryActivityPubRepository(input: {
     async updateAggregateActorProfile(profile) {
       const existing = [...actors.values()].find((entry) => entry.actor.kind === 'aggregate');
       if (!existing) {
-        throw new Error('Aggregate ActivityPub actor was not found.');
+        throw new ActivityPubActorNotFoundError('aggregate');
       }
       existing.actor = {
         ...existing.actor,
@@ -120,7 +121,7 @@ export function createInMemoryActivityPubRepository(input: {
         existing = [...actors.values()].find((entry) => entry.actor.kind === 'aggregate');
       }
       if (!existing) {
-        throw new Error('Aggregate ActivityPub actor was not found.');
+        throw new ActivityPubActorNotFoundError('aggregate');
       }
       existing.actor = { ...existing.actor, enabled, updatedAt: new Date() };
       return existing.actor;
@@ -129,11 +130,11 @@ export function createInMemoryActivityPubRepository(input: {
       lockProjectScope(params.projectId, params.projectSlug);
       const existingId = actorsByProjectId.get(params.projectId);
       if (!existingId) {
-        throw new Error('Project ActivityPub actor was not found.');
+        throw new ActivityPubActorNotFoundError('project');
       }
       const existing = actors.get(existingId);
       if (!existing) {
-        throw new Error('Project ActivityPub actor was not found.');
+        throw new ActivityPubActorNotFoundError('project');
       }
       existing.actor = {
         ...existing.actor,
@@ -183,11 +184,11 @@ export function createInMemoryActivityPubRepository(input: {
       lockProjectScope(params.projectId, params.projectSlug);
       const existingId = actorsByProjectId.get(params.projectId);
       if (!existingId) {
-        throw new Error('Project ActivityPub actor was not found.');
+        throw new ActivityPubActorNotFoundError('project');
       }
       const existing = actors.get(existingId);
       if (!existing) {
-        throw new Error('Project ActivityPub actor was not found.');
+        throw new ActivityPubActorNotFoundError('project');
       }
       existing.actor = { ...existing.actor, enabled: false, updatedAt: new Date() };
       return existing.actor;

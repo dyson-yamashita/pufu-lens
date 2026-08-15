@@ -24,7 +24,7 @@ test('parseAggregateActivityPubProfileRow parses nullable profile columns', () =
   assert.equal(parsed.additional_prompt, 'server tone');
 });
 
-test('readServerActivityPubProfileSettings keeps disabled aggregate profile editable', async () => {
+test('readServerActivityPubProfileSettings keeps disabled aggregate profile editable for managers', async () => {
   const settings = await readServerActivityPubProfileSettings(
     createSqlMock([
       {
@@ -36,15 +36,47 @@ test('readServerActivityPubProfileSettings keeps disabled aggregate profile edit
         enabled: false,
       },
     ]),
+    { canManage: true },
   );
   assert.equal(settings.federationEnabled, false);
   assert.equal(settings.profileSavePendingHint, null);
   assert.equal(settings.canEditProfile, true);
+  assert.equal(settings.additionalPrompt, 'server tone');
+});
+
+test('readServerActivityPubProfileSettings masks prompt and disables editing when canManage is false', async () => {
+  const settings = await readServerActivityPubProfileSettings(
+    createSqlMock([
+      {
+        id: 'aggregate-id',
+        preferred_username: 'all',
+        display_name: 'All Projects',
+        icon_url: '/logo.png',
+        additional_prompt: 'server tone',
+        enabled: true,
+      },
+    ]),
+    { canManage: false },
+  );
+  assert.equal(settings.additionalPrompt, null);
+  assert.equal(settings.canEditProfile, false);
+  assert.equal(settings.canEditPrompt, false);
 });
 
 test('readServerActivityPubProfileSettings pending save only when aggregate actor is missing', async () => {
-  const settings = await readServerActivityPubProfileSettings(createSqlMock([]));
+  const settings = await readServerActivityPubProfileSettings(createSqlMock([]), {
+    canManage: true,
+  });
   assert.match(settings.profileSavePendingHint ?? '', /before saving profile settings/i);
+});
+
+test('readServerActivityPubProfileSettings masks missing aggregate defaults when canManage is false', async () => {
+  const settings = await readServerActivityPubProfileSettings(createSqlMock([]), {
+    canManage: false,
+  });
+  assert.equal(settings.additionalPrompt, null);
+  assert.equal(settings.canEditProfile, false);
+  assert.equal(settings.canEditPrompt, false);
 });
 
 test('readProjectActivityPubProfileSettings hides prompt from members', async () => {
