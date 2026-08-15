@@ -44,6 +44,7 @@ import {
 import type { RemoteActorResolver } from './remote-actor.ts';
 import type { RemoteArticleResolver } from './remote-article.ts';
 import type { BlockedDomainPredicate } from './remote-document.ts';
+import { sqlInsertReturnedRow } from './schema.ts';
 import {
   assertActivityPubDbTestRuntime,
   assertActivityPubHermeticE2eRuntime,
@@ -119,6 +120,17 @@ function isFedifyJsonNullSentinel(value: unknown): boolean {
   );
 }
 
+function readInboxActivityType(activity: unknown): string | null {
+  if (typeof activity !== 'object' || activity === null || Array.isArray(activity)) {
+    return null;
+  }
+  const activityType = Reflect.get(activity, 'type');
+  if (typeof activityType !== 'string' || activityType.length === 0) {
+    return null;
+  }
+  return activityType;
+}
+
 function readInboxActivityActorUri(activity: unknown): string {
   if (typeof activity !== 'object' || activity === null || Array.isArray(activity)) {
     throw new Error('inbox activity missing actor');
@@ -132,8 +144,22 @@ function readInboxActivityActorUri(activity: unknown): string {
 
 type QueueSql = postgres.Sql | postgres.TransactionSql;
 
-/** Creates the custom PostgreSQL-backed Fedify queue adapter for outbox delivery. */
-export function createPostgresQueueAdapter(input: { sql: QueueSql; canonicalOrigin: string }) {
+/** Event payload for a newly inserted inbox queue row; excludes actor, activity, and payload identifiers. */
+export type PostgresQueueInboxEnqueuedEvent = {
+  readonly activityType: string | null;
+};
+
+/**
+ * Creates the custom PostgreSQL-backed Fedify queue adapter for inbox persistence and outbox delivery.
+ * `onInboxEnqueued` runs only after a new inbox row is inserted and is awaited before `enqueue()` resolves.
+ * If `onInboxEnqueued` throws or rejects, `enqueue()` rejects as well.
+ * Callers that want inbox receipt to succeed must keep the callback non-throwing.
+ */
+export function createPostgresQueueAdapter(input: {
+  sql: QueueSql;
+  canonicalOrigin: string;
+  onInboxEnqueued?: (event: PostgresQueueInboxEnqueuedEvent) => void | Promise<void>;
+}) {
   const { origin: canonicalOrigin } = parseCanonicalOrigin(input.canonicalOrigin);
 
   const queue: MessageQueue & {
@@ -148,7 +174,7 @@ export function createPostgresQueueAdapter(input: { sql: QueueSql; canonicalOrig
       if (stored.type === 'inbox') {
         const activityId = extractHttpsActivityId(stored.activity);
         const dedupeKey = buildInboxDedupeKey({ activityId });
-        await input.sql`
+        const insertResult = await input.sql`
           INSERT INTO public.activitypub_queue_messages (
             id,
             dedupe_key,
@@ -176,7 +202,13 @@ export function createPostgresQueueAdapter(input: { sql: QueueSql; canonicalOrig
             now()
           )
           ON CONFLICT (dedupe_key) DO NOTHING
+          RETURNING id
         `;
+        if (sqlInsertReturnedRow(insertResult) && input.onInboxEnqueued) {
+          await input.onInboxEnqueued({
+            activityType: readInboxActivityType(stored.activity),
+          });
+        }
         return;
       }
 

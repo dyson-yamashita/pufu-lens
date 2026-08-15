@@ -248,13 +248,42 @@ function assertRuntimeAvailability(entry: AppHostingEnvEntry, variable: string):
   );
 }
 
-function assertAppHostingActivityPubConfig(contents: string, canonicalOrigin: string): void {
+function assertAppHostingActivityPubConfig(
+  contents: string,
+  canonicalOrigin: string,
+  dispatcherJobName: string,
+  expectedProjectId: string,
+  expectedJobsRegion: string,
+): void {
   const config = parseAppHostingConfig(contents);
 
   const enabled = findAppHostingEnvEntry(config, 'ACTIVITYPUB_ENABLED');
   assert.ok(enabled, 'ACTIVITYPUB_ENABLED env entry is required');
   assert.equal(enabled.value, '1');
   assertRuntimeAvailability(enabled, 'ACTIVITYPUB_ENABLED');
+
+  const triggerEnabled = findAppHostingEnvEntry(
+    config,
+    'ACTIVITYPUB_INBOX_DISPATCHER_TRIGGER_ENABLED',
+  );
+  assert.ok(triggerEnabled, 'ACTIVITYPUB_INBOX_DISPATCHER_TRIGGER_ENABLED env entry is required');
+  assert.equal(triggerEnabled.value, '1');
+  assertRuntimeAvailability(triggerEnabled, 'ACTIVITYPUB_INBOX_DISPATCHER_TRIGGER_ENABLED');
+
+  const dispatcherJob = findAppHostingEnvEntry(config, 'PUFU_LENS_ACTIVITYPUB_DISPATCHER_JOB_NAME');
+  assert.ok(dispatcherJob, 'PUFU_LENS_ACTIVITYPUB_DISPATCHER_JOB_NAME env entry is required');
+  assert.equal(dispatcherJob.value, dispatcherJobName);
+  assertRuntimeAvailability(dispatcherJob, 'PUFU_LENS_ACTIVITYPUB_DISPATCHER_JOB_NAME');
+
+  const projectId = findAppHostingEnvEntry(config, 'PUFU_LENS_GCP_PROJECT_ID');
+  assert.ok(projectId, 'PUFU_LENS_GCP_PROJECT_ID env entry is required');
+  assert.equal(projectId.value, expectedProjectId);
+  assertRuntimeAvailability(projectId, 'PUFU_LENS_GCP_PROJECT_ID');
+
+  const jobsRegion = findAppHostingEnvEntry(config, 'PUFU_LENS_CLOUD_RUN_JOBS_REGION');
+  assert.ok(jobsRegion, 'PUFU_LENS_CLOUD_RUN_JOBS_REGION env entry is required');
+  assert.equal(jobsRegion.value, expectedJobsRegion);
+  assertRuntimeAvailability(jobsRegion, 'PUFU_LENS_CLOUD_RUN_JOBS_REGION');
 
   const origin = findAppHostingEnvEntry(config, 'ACTIVITYPUB_CANONICAL_ORIGIN');
   assert.ok(origin, 'ACTIVITYPUB_CANONICAL_ORIGIN env entry is required');
@@ -277,11 +306,20 @@ test('production App Hosting configures ActivityPub runtime env and encryption s
   assertAppHostingActivityPubConfig(
     productionAppHosting,
     'https://pufu-lens-web--pufu-lens.asia-east1.hosted.app',
+    'production-activitypub-dispatcher',
+    'pufu-lens',
+    'asia-east1',
   );
 });
 
 test('OSS App Hosting example documents ActivityPub runtime env placeholders', () => {
-  assertAppHostingActivityPubConfig(exampleAppHosting, '<web-public-origin>');
+  assertAppHostingActivityPubConfig(
+    exampleAppHosting,
+    '<web-public-origin>',
+    '<env>-activitypub-dispatcher',
+    '<gcp-project-id>',
+    '<gcp-region>',
+  );
 });
 
 test('deploy config validates ActivityPub substitutions and passes canonical origin to smoke', () => {

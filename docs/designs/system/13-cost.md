@@ -43,7 +43,7 @@ public report / public chat は private report / private chat と同じ処理を
 
 ### 3. ActivityPub 増分の実測
 
-ActivityPubは常時稼働processを増やさず、Firebase App Hosting request、ActivityPub dispatcher Cloud Run Job、PostgreSQL relation、remote inbox向けinternet egressを従量増分とする。毎月同じUTC期間で次を記録する。
+ActivityPubは常時稼働processを増やさず、Firebase App Hosting request、ActivityPub dispatcher Cloud Run Job、PostgreSQL relation、remote inbox向けinternet egressを従量増分とする。新規Follow / Accept / Undoの各inbox activityは受信直後のJob起動候補になるため、5分Schedulerだけでまとめて処理する構成よりJob execution数が増え得る。重複activityとCreate / Announceでは即時起動せず、実行回数とqueue latencyの両方を月次で確認する。毎月同じUTC期間で次を記録する。
 
 - request: `logging.googleapis.com/user/activitypub_request_count`をroute kind / status class別に集計し、必要に応じて`run.googleapis.com/request_count`と照合する。
 - Job: `logging.googleapis.com/user/activitypub_dispatcher_duration_ms`のp50 / p95、`run.googleapis.com/container/billable_instance_time`、`run.googleapis.com/job/completed_execution_count`を記録する。
