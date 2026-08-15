@@ -22,6 +22,7 @@ export async function publishGeneratedPublicReport(input: {
   readonly project: ProjectLookupResult;
   readonly publishedAt: string;
   readonly report: PrivateReportJsonV1;
+  readonly activityPubSummary?: string;
   readonly repository: ReportRepository;
   readonly signal?: AbortSignal;
   readonly storage: ObjectStorage;
@@ -88,7 +89,7 @@ export async function publishGeneratedPublicReport(input: {
     projectId: input.project.id,
     reportId: input.report.report_id,
     publishedAt: input.publishedAt,
-    publicSummary: publicReport.summary,
+    publicSummary: input.activityPubSummary ?? publicReport.summary,
   });
   throwIfPublicationAborted(input.signal);
   return { manifest, publicReport };

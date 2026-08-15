@@ -137,3 +137,55 @@ test('scenario: activitypub subscription unfollow resolver error shows safe aler
     'The remote actor address could not be resolved.',
   );
 });
+
+test('scenario: activitypub profile panel shows icon preview, prompt, and pending save state', async ({
+  page,
+}) => {
+  await page.goto('/dev/e2e/activitypub-subscriptions');
+
+  const adminProfile = page.getByTestId('activitypub-profile-e2e-admin-enabled');
+  await expect(adminProfile.getByTestId('activitypub-project-profile-icon-preview')).toBeVisible();
+  await expect(
+    adminProfile.getByTestId('activitypub-project-profile-prompt-textarea'),
+  ).toBeVisible();
+  await expect(adminProfile.getByTestId('activitypub-project-profile-federation-form')).toHaveCount(
+    0,
+  );
+
+  const pendingProfile = page.getByTestId('activitypub-profile-e2e-admin-pending');
+  await expect(
+    pendingProfile.getByTestId('activitypub-project-profile-save-button'),
+  ).toBeDisabled();
+  await expect(
+    pendingProfile.getByTestId('activitypub-project-profile-save-pending-hint'),
+  ).toBeVisible();
+
+  const disabledEditableProfile = page.getByTestId(
+    'activitypub-profile-e2e-admin-disabled-editable',
+  );
+  await expect(
+    disabledEditableProfile.getByTestId('activitypub-project-profile-save-button'),
+  ).toBeEnabled();
+  await expect(
+    disabledEditableProfile.getByTestId('activitypub-project-profile-save-pending-hint'),
+  ).toHaveCount(0);
+  await expect(
+    disabledEditableProfile.getByTestId('activitypub-project-profile-federation-form'),
+  ).toHaveCount(0);
+
+  const memberProfile = page.getByTestId('activitypub-profile-e2e-member');
+  await expect(
+    memberProfile.getByTestId('activitypub-project-profile-prompt-textarea'),
+  ).toHaveCount(0);
+  await expect(
+    memberProfile.getByTestId('activitypub-project-profile-federation-form'),
+  ).toHaveCount(0);
+
+  const aggregateProfile = page.getByTestId('activitypub-profile-e2e-aggregate');
+  await expect(
+    aggregateProfile.getByTestId('activitypub-aggregate-profile-deployment-note'),
+  ).toBeVisible();
+  await expect(
+    aggregateProfile.getByTestId('activitypub-aggregate-profile-federation-form'),
+  ).toBeVisible();
+});

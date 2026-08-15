@@ -77,6 +77,7 @@ Pufu Lens はプロジェクト単位で Gmail / Drive / GitHub / Web 由来の�
 | ルート                                       | 画面                       | レイアウト                         |
 | -------------------------------------------- | -------------------------- | ---------------------------------- |
 | `/projects`                                  | プロジェクト一覧           | 管理シェル                         |
+| `/settings`                                  | サーバー全体設定           | 管理シェル                         |
 | `/projects/[projectSlug]/chat`               | プロジェクトチャット       | プロジェクトシェル + AI パネル     |
 | `/projects/[projectSlug]/graph`              | Graph Viewer               | プロジェクトシェル                 |
 | `/projects/[projectSlug]/reports`            | レポート一覧               | プロジェクトシェル                 |
@@ -93,6 +94,8 @@ Pufu Lens はプロジェクト単位で Gmail / Drive / GitHub / Web 由来の�
 ### 4.2 Global Nav
 
 Global Nav はプロジェクト配下で次の順に並べる。
+
+プロジェクト外の管理シェルではProjects、Accounts、Settingsの順に並べる。Settingsはglobal adminだけに表示し、`/settings`でaggregate `@all` Actorのprofile、投稿追加prompt、有効状態を管理する。
 
 1. プロジェクトスイッチャー
 2. 主要機能
@@ -340,6 +343,10 @@ Actor 統合は特殊操作として通常は折りたたみ、展開後に acti
 ```
 
 OAuth scope はユーザーが収集範囲を理解できるよう、プロバイダー別に分けて表示する。token や secret の値は画面に出さず、状態、期限、最終更新だけを表示する。
+
+### 5.11 ActivityPub設定
+
+global adminの`/settings`ではaggregate `@all`、project adminのProject Settingsではproject Actorのprofile panelを縦積みで表示する。profile panelは固定federated username、status badge、display name、icon URL / preview、投稿追加prompt、保存actionを持つ。global側だけaggregateのEnable / Disable actionを同じpanelに置き、project側のEnable / Disableは後続のRemote subscriptions panelに集約する。一般project memberはprofileと購読状態をread-only表示し、追加promptや変更actionを受け取らない。mobileではフォームとaction rowを1カラムにし、長いURLやpromptがpanel幅を越えないよう折り返す。
 
 ## 6. 共通パターン
 

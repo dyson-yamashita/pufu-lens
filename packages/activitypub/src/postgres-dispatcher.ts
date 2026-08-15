@@ -483,6 +483,20 @@ export async function materializeActivityDeliveries(input: {
     throw new Error(DELIVERY_ERROR_CODES.materializationRepresentation);
   }
 
+  const createActivityUri = buildStableCreateActivityUri({
+    canonicalOrigin: input.canonicalOrigin,
+    reportId: payload.reportId,
+  });
+  const announceActivityUri = buildStableAnnounceActivityUri({
+    canonicalOrigin: input.canonicalOrigin,
+    reportId: payload.reportId,
+  });
+  const isCreateActivity = input.activity.activityUri === createActivityUri;
+  const isAnnounceActivity = input.activity.activityUri === announceActivityUri;
+  if (!isCreateActivity && !isAnnounceActivity) {
+    throw new Error(DELIVERY_ERROR_CODES.materializationRepresentation);
+  }
+
   const actorRows = (await input.sql`
     SELECT a.id::text AS id, a.kind, a.preferred_username, a.enabled
     FROM public.activitypub_actors a
@@ -501,37 +515,35 @@ export async function materializeActivityDeliveries(input: {
   const aggregateActor = actorRows
     .map(parseMaterializationActorRow)
     .find((row) => row.kind === 'aggregate');
-  if (!projectActor || !aggregateActor) {
+  if (isCreateActivity && !projectActor) {
+    throw new Error(DELIVERY_ERROR_CODES.materializationDisabled);
+  }
+  if (isAnnounceActivity && !aggregateActor) {
+    throw new Error(DELIVERY_ERROR_CODES.materializationDisabled);
+  }
+  if (!projectActor && !aggregateActor) {
     throw new Error(DELIVERY_ERROR_CODES.materializationDisabled);
   }
 
-  const projectFollowers = await loadFollowAudience(input.sql, projectActor.id);
-  const aggregateFollowers = await loadFollowAudience(input.sql, aggregateActor.id);
+  const projectFollowers = projectActor ? await loadFollowAudience(input.sql, projectActor.id) : [];
+  const aggregateFollowers = aggregateActor
+    ? await loadFollowAudience(input.sql, aggregateActor.id)
+    : [];
   const uri = buildActivityPubUriContract(input.canonicalOrigin);
   const objectUri = input.activity.objectUri ?? '';
   const expectedObjectUri = uri.reportArticleUrl(payload.reportId);
-  const createActivityUri = buildStableCreateActivityUri({
-    canonicalOrigin: input.canonicalOrigin,
-    reportId: payload.reportId,
-  });
-  const announceActivityUri = buildStableAnnounceActivityUri({
-    canonicalOrigin: input.canonicalOrigin,
-    reportId: payload.reportId,
-  });
   if (objectUri !== expectedObjectUri) {
     throw new Error(DELIVERY_ERROR_CODES.materializationRepresentation);
   }
-  if (
-    input.activity.activityUri !== createActivityUri &&
-    input.activity.activityUri !== announceActivityUri
-  ) {
-    throw new Error(DELIVERY_ERROR_CODES.materializationRepresentation);
+  const fallbackActorId = projectActor?.id ?? aggregateActor?.id;
+  if (!fallbackActorId) {
+    throw new Error(DELIVERY_ERROR_CODES.materializationDisabled);
   }
   const recipients = dedupeRecipients(
     reconstructReportDeliveryRecipients({
       publicationOccurredAt: input.activity.occurredAt,
-      projectActorId: projectActor.id,
-      aggregateActorId: aggregateActor.id,
+      projectActorId: projectActor?.id ?? fallbackActorId,
+      aggregateActorId: aggregateActor?.id ?? fallbackActorId,
       createActivityUri,
       announceActivityUri,
       objectUri,
@@ -544,17 +556,6 @@ export async function materializeActivityDeliveries(input: {
     sql: input.sql,
     canonicalOrigin: input.canonicalOrigin,
   });
-  const materializationContext = {
-    canonicalOrigin: input.canonicalOrigin,
-    reportId: payload.reportId,
-    projectSlug: report.projectSlug,
-    title: report.title,
-    publicSummary: report.publicSummary,
-    publishedAt: report.publishedAt,
-    objectRepresentation: representation,
-    projectPreferredUsername: projectActor.preferredUsername,
-    aggregatePreferredUsername: aggregateActor.preferredUsername,
-  };
   const actorMaterializationCache = new Map<
     string,
     Awaited<ReturnType<typeof loadActorMaterialization>>
@@ -564,10 +565,68 @@ export async function materializeActivityDeliveries(input: {
     if (recipient.activityUri !== input.activity.activityUri) {
       continue;
     }
-    const preferredUsername =
-      recipient.activityType === 'Create'
-        ? projectActor.preferredUsername
-        : aggregateActor.preferredUsername;
+    if (recipient.activityType === 'Create') {
+      if (!projectActor) {
+        throw new Error(DELIVERY_ERROR_CODES.materializationDisabled);
+      }
+      const preferredUsername = projectActor.preferredUsername;
+      let actorMaterialization = actorMaterializationCache.get(preferredUsername);
+      if (!actorMaterialization) {
+        actorMaterialization = await loadActorMaterialization(
+          input.actorRepository,
+          preferredUsername,
+        );
+        actorMaterializationCache.set(preferredUsername, actorMaterialization);
+      }
+      const activityJson = buildCreateActivityJsonLd({
+        canonicalOrigin: input.canonicalOrigin,
+        reportId: payload.reportId,
+        projectSlug: report.projectSlug,
+        title: report.title,
+        publicSummary: report.publicSummary,
+        publishedAt: report.publishedAt,
+        objectRepresentation: representation,
+        projectPreferredUsername: projectActor.preferredUsername,
+        aggregatePreferredUsername:
+          aggregateActor?.preferredUsername ?? projectActor.preferredUsername,
+        activityUri: recipient.activityUri,
+      });
+      const dedupeKey = buildOutboxDedupeKey({
+        activityId: recipient.activityUri,
+        recipientInbox: recipient.inboxUri,
+      });
+      await queue.enqueue(
+        {
+          type: 'outbox',
+          id: randomUUID(),
+          baseUrl: uri.canonicalOrigin,
+          keys: [
+            {
+              keyId: uri.actorKeyId(preferredUsername),
+              privateKey: actorMaterialization.privateJwk,
+            },
+          ],
+          activity: activityJson,
+          activityId: recipient.activityUri,
+          activityType: recipient.activityType,
+          inbox: recipient.inboxUri,
+          sharedInbox: recipient.sharedInbox,
+          actorIds: [uri.actorUrl(preferredUsername)],
+          started: input.clock.now().toISOString(),
+          attempt: 0,
+          headers: {},
+          orderingKey: recipient.orderingKey,
+          traceContext: {},
+        },
+        { dedupeKey, orderingKey: recipient.orderingKey },
+      );
+      continue;
+    }
+
+    if (!aggregateActor) {
+      throw new Error(DELIVERY_ERROR_CODES.materializationDisabled);
+    }
+    const preferredUsername = aggregateActor.preferredUsername;
     let actorMaterialization = actorMaterializationCache.get(preferredUsername);
     if (!actorMaterialization) {
       actorMaterialization = await loadActorMaterialization(
@@ -576,19 +635,13 @@ export async function materializeActivityDeliveries(input: {
       );
       actorMaterializationCache.set(preferredUsername, actorMaterialization);
     }
-    const activityJson =
-      recipient.activityType === 'Create'
-        ? buildCreateActivityJsonLd({
-            ...materializationContext,
-            activityUri: recipient.activityUri,
-          })
-        : buildAnnounceActivityJsonLd({
-            canonicalOrigin: input.canonicalOrigin,
-            activityUri: recipient.activityUri,
-            objectUri,
-            publishedAt: report.publishedAt,
-            aggregatePreferredUsername: aggregateActor.preferredUsername,
-          });
+    const activityJson = buildAnnounceActivityJsonLd({
+      canonicalOrigin: input.canonicalOrigin,
+      activityUri: recipient.activityUri,
+      objectUri,
+      publishedAt: report.publishedAt,
+      aggregatePreferredUsername: aggregateActor.preferredUsername,
+    });
     const dedupeKey = buildOutboxDedupeKey({
       activityId: recipient.activityUri,
       recipientInbox: recipient.inboxUri,

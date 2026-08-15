@@ -943,6 +943,8 @@ CREATE TABLE IF NOT EXISTS public.activitypub_actors (
   kind text NOT NULL,
   preferred_username text NOT NULL,
   display_name text NOT NULL DEFAULT '',
+  icon_url text,
+  additional_prompt text,
   enabled boolean NOT NULL DEFAULT false,
   public_key_pem text NOT NULL,
   encrypted_private_key jsonb NOT NULL,
@@ -961,7 +963,11 @@ CREATE TABLE IF NOT EXISTS public.activitypub_actors (
   CONSTRAINT activitypub_actors_preferred_username_syntax_check
     CHECK (preferred_username ~ '^[a-z0-9][a-z0-9._-]*[a-z0-9]$'),
   CONSTRAINT activitypub_actors_encrypted_private_key_object_check
-    CHECK (jsonb_typeof(encrypted_private_key) = 'object')
+    CHECK (jsonb_typeof(encrypted_private_key) = 'object'),
+  CONSTRAINT activitypub_actors_icon_url_length_check
+    CHECK (icon_url IS NULL OR char_length(icon_url) <= 2048),
+  CONSTRAINT activitypub_actors_additional_prompt_length_check
+    CHECK (additional_prompt IS NULL OR char_length(additional_prompt) <= 2000)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS activitypub_actors_preferred_username_key
@@ -1214,5 +1220,6 @@ VALUES
   ('0021_activitypub_validate_step4_constraints'),
   ('0022_activitypub_inbound_reports'),
   ('0023_activitypub_validate_inbound_report_constraints'),
-  ('0024_activitypub_operations')
+  ('0024_activitypub_operations'),
+  ('0025_activitypub_actor_profiles')
 ON CONFLICT (version) DO NOTHING;

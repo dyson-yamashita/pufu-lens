@@ -4,6 +4,7 @@ import {
   ActivityPubPreferredUsernameConflictError,
   ActivityPubProjectNotPublicError,
 } from './activitypub-errors.ts';
+import type { NormalizedActivityPubActorProfile } from './actor-profile.ts';
 import {
   createActorKeyMaterial,
   decryptPrivateJwk,
@@ -49,6 +50,16 @@ type RepositoryExecutorConfig =
 export type ActivityPubRepository = {
   runInTransaction<T>(callback: (repository: ActivityPubRepository) => Promise<T>): Promise<T>;
   ensureAggregateActor(): Promise<ActivityPubActor>;
+  findAggregateActor(): Promise<ActivityPubActor | undefined>;
+  findProjectActorByProjectId(projectId: string): Promise<ActivityPubActor | undefined>;
+  updateAggregateActorProfile(input: NormalizedActivityPubActorProfile): Promise<ActivityPubActor>;
+  setAggregateActorEnabled(enabled: boolean): Promise<ActivityPubActor>;
+  updateProjectActorProfile(
+    input: {
+      projectId: string;
+      projectSlug: string;
+    } & NormalizedActivityPubActorProfile,
+  ): Promise<ActivityPubActor>;
   enableProjectActor(input: {
     projectId: string;
     projectSlug: string;
@@ -115,6 +126,21 @@ function createRepositoryExecutor(config: RepositoryExecutorConfig): ActivityPub
       ) as Promise<T>;
     },
     ensureAggregateActor: () => ensureAggregateActor({ sql: config.sql, encryptionKey }),
+    findAggregateActor: () => findAggregateActor(config.sql),
+    findProjectActorByProjectId: (projectId) => findProjectActorByProjectId(config.sql, projectId),
+    updateAggregateActorProfile: (params) =>
+      updateAggregateActorProfileOnExecutor({ sql: config.sql, profile: params }),
+    setAggregateActorEnabled: (enabled) =>
+      setAggregateActorEnabledOnExecutor({ sql: config.sql, encryptionKey, enabled }),
+    updateProjectActorProfile: (params) =>
+      runProjectActorMutation(config, (sql) =>
+        updateProjectActorProfileOnExecutor({
+          sql,
+          projectId: params.projectId,
+          projectSlug: params.projectSlug,
+          profile: params,
+        }),
+      ),
     enableProjectActor: (params) =>
       runProjectActorMutation(config, (sql) =>
         enableProjectActorOnExecutor({
@@ -244,6 +270,8 @@ async function enableProjectActorInLockedScope(input: {
       kind,
       preferred_username,
       display_name,
+      icon_url,
+      additional_prompt,
       enabled,
       public_key_pem,
       encrypted_private_key,
@@ -255,6 +283,8 @@ async function enableProjectActorInLockedScope(input: {
       'project',
       ${preferredUsername},
       ${input.scope.name},
+      NULL,
+      NULL,
       true,
       ${keyMaterial.publicKeyPem},
       ${bindEncryptedPrivateKey(input.sql, keyMaterial.encryptedPrivateKey)},
@@ -268,6 +298,8 @@ async function enableProjectActorInLockedScope(input: {
       kind,
       preferred_username,
       display_name,
+      icon_url,
+      additional_prompt,
       enabled,
       public_key_pem,
       created_at,
@@ -322,6 +354,8 @@ async function disableProjectActorInLockedScope(input: {
       kind,
       preferred_username,
       display_name,
+      icon_url,
+      additional_prompt,
       enabled,
       public_key_pem,
       created_at,
@@ -336,9 +370,6 @@ async function ensureAggregateActor(input: {
 }): Promise<ActivityPubActor> {
   const existing = await findAggregateActor(input.sql);
   if (existing) {
-    if (!existing.enabled) {
-      return enableExistingActor(input.sql, existing.id);
-    }
     return existing;
   }
 
@@ -349,6 +380,8 @@ async function ensureAggregateActor(input: {
       kind,
       preferred_username,
       display_name,
+      icon_url,
+      additional_prompt,
       enabled,
       public_key_pem,
       encrypted_private_key,
@@ -360,6 +393,8 @@ async function ensureAggregateActor(input: {
       'aggregate',
       ${AGGREGATE_USERNAME},
       'All Projects',
+      NULL,
+      NULL,
       true,
       ${keyMaterial.publicKeyPem},
       ${bindEncryptedPrivateKey(input.sql, keyMaterial.encryptedPrivateKey)},
@@ -373,6 +408,8 @@ async function ensureAggregateActor(input: {
       kind,
       preferred_username,
       display_name,
+      icon_url,
+      additional_prompt,
       enabled,
       public_key_pem,
       created_at,
@@ -388,9 +425,6 @@ async function ensureAggregateActor(input: {
   if (!reloaded) {
     throw new Error('Failed to ensure aggregate ActivityPub actor.');
   }
-  if (!reloaded.enabled) {
-    return enableExistingActor(input.sql, reloaded.id);
-  }
   return reloaded;
 }
 
@@ -405,6 +439,8 @@ async function findRemotelyVisibleActorByUsername(input: {
       a.kind,
       a.preferred_username,
       a.display_name,
+      a.icon_url,
+      a.additional_prompt,
       a.enabled,
       a.public_key_pem,
       a.created_at,
@@ -511,6 +547,8 @@ async function findActorByPreferredUsername(
       kind,
       preferred_username,
       display_name,
+      icon_url,
+      additional_prompt,
       enabled,
       public_key_pem,
       created_at,
@@ -530,6 +568,8 @@ async function findAggregateActor(sql: SqlExecutor): Promise<ActivityPubActor | 
       kind,
       preferred_username,
       display_name,
+      icon_url,
+      additional_prompt,
       enabled,
       public_key_pem,
       created_at,
@@ -552,6 +592,8 @@ async function findProjectActorByProjectId(
       kind,
       preferred_username,
       display_name,
+      icon_url,
+      additional_prompt,
       enabled,
       public_key_pem,
       created_at,
@@ -576,6 +618,117 @@ async function enableExistingActor(sql: SqlExecutor, actorId: string): Promise<A
       kind,
       preferred_username,
       display_name,
+      icon_url,
+      additional_prompt,
+      enabled,
+      public_key_pem,
+      created_at,
+      updated_at
+  `) as readonly unknown[];
+  return parseRequiredRow(rows, parseActivityPubActorRow);
+}
+
+async function updateAggregateActorProfileOnExecutor(input: {
+  sql: SqlExecutor;
+  profile: NormalizedActivityPubActorProfile;
+}): Promise<ActivityPubActor> {
+  const existing = await findAggregateActor(input.sql);
+  if (!existing) {
+    throw new Error('Aggregate ActivityPub actor was not found.');
+  }
+  const rows = (await input.sql`
+    UPDATE public.activitypub_actors
+    SET display_name = ${input.profile.displayName},
+        icon_url = ${input.profile.iconUrl},
+        additional_prompt = ${input.profile.additionalPrompt},
+        updated_at = now()
+    WHERE id = ${existing.id}::uuid
+      AND kind = 'aggregate'
+    RETURNING
+      id::text AS id,
+      project_id::text AS project_id,
+      kind,
+      preferred_username,
+      display_name,
+      icon_url,
+      additional_prompt,
+      enabled,
+      public_key_pem,
+      created_at,
+      updated_at
+  `) as readonly unknown[];
+  return parseRequiredRow(rows, parseActivityPubActorRow);
+}
+
+async function setAggregateActorEnabledOnExecutor(input: {
+  sql: SqlExecutor;
+  encryptionKey: Buffer;
+  enabled: boolean;
+}): Promise<ActivityPubActor> {
+  let existing = await findAggregateActor(input.sql);
+  if (!existing) {
+    existing = await ensureAggregateActor({
+      sql: input.sql,
+      encryptionKey: input.encryptionKey,
+    });
+  }
+  if (existing.enabled === input.enabled) {
+    return existing;
+  }
+  const rows = (await input.sql`
+    UPDATE public.activitypub_actors
+    SET enabled = ${input.enabled},
+        updated_at = now()
+    WHERE id = ${existing.id}::uuid
+      AND kind = 'aggregate'
+    RETURNING
+      id::text AS id,
+      project_id::text AS project_id,
+      kind,
+      preferred_username,
+      display_name,
+      icon_url,
+      additional_prompt,
+      enabled,
+      public_key_pem,
+      created_at,
+      updated_at
+  `) as readonly unknown[];
+  return parseRequiredRow(rows, parseActivityPubActorRow);
+}
+
+async function updateProjectActorProfileOnExecutor(input: {
+  sql: SqlExecutor;
+  projectId: string;
+  projectSlug: string;
+  profile: NormalizedActivityPubActorProfile;
+}): Promise<ActivityPubActor> {
+  const scope = await lockProjectScopeForUpdate({
+    sql: input.sql,
+    projectId: input.projectId,
+    projectSlug: input.projectSlug,
+  });
+  const existing = await findProjectActorByProjectId(input.sql, scope.id);
+  if (!existing) {
+    throw new Error('Project ActivityPub actor was not found.');
+  }
+  const rows = (await input.sql`
+    UPDATE public.activitypub_actors
+    SET display_name = ${input.profile.displayName},
+        icon_url = ${input.profile.iconUrl},
+        additional_prompt = ${input.profile.additionalPrompt},
+        updated_at = now()
+    WHERE id = ${existing.id}::uuid
+      AND project_id = ${scope.id}::uuid
+      AND kind = 'project'
+    RETURNING
+      id::text AS id,
+      project_id::text AS project_id,
+      kind,
+      preferred_username,
+      display_name,
+      icon_url,
+      additional_prompt,
       enabled,
       public_key_pem,
       created_at,

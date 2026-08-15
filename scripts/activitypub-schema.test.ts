@@ -438,6 +438,30 @@ test('0023 validates inbound federated report constraints', async () => {
   assert.match(migration, /VALIDATE CONSTRAINT federated_reports_original_url_https_check/);
 });
 
+const migration0025Path = join(
+  import.meta.dirname,
+  '../infra/db/migrations/0025_activitypub_actor_profiles.sql',
+);
+
+test('0025 adds ActivityPub actor profile columns with fresh schema parity', async () => {
+  const [migration, init] = await Promise.all([
+    readFile(migration0025Path, 'utf8'),
+    readFile(initPath, 'utf8'),
+  ]);
+
+  for (const name of [
+    'icon_url',
+    'additional_prompt',
+    'activitypub_actors_icon_url_length_check',
+    'activitypub_actors_additional_prompt_length_check',
+  ]) {
+    assert.ok(migration.includes(name), `${name} is missing from migration`);
+    assert.ok(init.includes(name), `${name} is missing from fresh schema`);
+  }
+
+  assert.match(init, /'0025_activitypub_actor_profiles'/);
+});
+
 function extractTriggerFunctionBody(sql: string, functionName: string): string | undefined {
   const pattern = new RegExp(
     `CREATE OR REPLACE FUNCTION public\\.${functionName}\\(\\)[\\s\\S]*?\\$\\$;`,

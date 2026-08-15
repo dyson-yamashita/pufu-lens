@@ -1,4 +1,5 @@
 import type postgres from 'postgres';
+import { normalizeActivityPubActorProfile } from './actor-profile.ts';
 import {
   type ActivityPubRepository,
   createPostgresActivityPubRepository,
@@ -11,6 +12,21 @@ import type {
 
 export type ActivityPubUseCases = {
   ensureAggregateActor(): Promise<ActivityPubActor>;
+  findAggregateActor(): Promise<ActivityPubActor | undefined>;
+  findProjectActorByProjectId(projectId: string): Promise<ActivityPubActor | undefined>;
+  updateAggregateActorProfile(input: {
+    displayName: string;
+    iconUrl?: string | null;
+    additionalPrompt?: string | null;
+  }): Promise<ActivityPubActor>;
+  setAggregateActorEnabled(enabled: boolean): Promise<ActivityPubActor>;
+  updateProjectActorProfile(input: {
+    projectId: string;
+    projectSlug: string;
+    displayName: string;
+    iconUrl?: string | null;
+    additionalPrompt?: string | null;
+  }): Promise<ActivityPubActor>;
   enableProjectActor(input: {
     projectId: string;
     projectSlug: string;
@@ -65,6 +81,17 @@ export function createActivityPubUseCases(
 
   return {
     ensureAggregateActor: () => repository.ensureAggregateActor(),
+    findAggregateActor: () => repository.findAggregateActor(),
+    findProjectActorByProjectId: (projectId) => repository.findProjectActorByProjectId(projectId),
+    updateAggregateActorProfile: (params) =>
+      repository.updateAggregateActorProfile(normalizeActivityPubActorProfile(params)),
+    setAggregateActorEnabled: (enabled) => repository.setAggregateActorEnabled(enabled),
+    updateProjectActorProfile: (params) =>
+      repository.updateProjectActorProfile({
+        projectId: params.projectId,
+        projectSlug: params.projectSlug,
+        ...normalizeActivityPubActorProfile(params),
+      }),
     enableProjectActor: (params) => repository.enableProjectActor(params),
     disableProjectActor: (params) => repository.disableProjectActor(params),
     getInstanceConfig: () => repository.getInstanceConfig(),

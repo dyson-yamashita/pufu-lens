@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import type postgres from 'postgres';
 import {
   ActivityPubPreferredUsernameConflictError,
@@ -25,6 +27,8 @@ type ActorRow = {
   kind: 'project';
   preferred_username: string;
   display_name: string;
+  icon_url: string | null;
+  additional_prompt: string | null;
   enabled: boolean;
   public_key_pem: string;
   created_at: Date;
@@ -75,6 +79,8 @@ test('disableProjectActor requires exact locked scope but allows private project
         kind: 'project' as const,
         preferred_username: projectSlug,
         display_name: 'Scope Project',
+        icon_url: null,
+        additional_prompt: null,
         enabled: true,
         public_key_pem: 'pem',
         created_at: new Date(),
@@ -272,6 +278,38 @@ test('in-memory runInTransaction rolls back actor mutations on rejection', async
   );
 });
 
+test('findRemotelyVisibleActorByUsername SELECT includes actor profile columns', () => {
+  const source = readFileSync(
+    fileURLToPath(new URL('./actor-repository.ts', import.meta.url)),
+    'utf8',
+  );
+  const match = source.match(
+    /async function findRemotelyVisibleActorByUsername[\s\S]*?SELECT([\s\S]*?)FROM public\.activitypub_actors a/,
+  );
+  assert.ok(match, 'findRemotelyVisibleActorByUsername SELECT must exist');
+  const selectClause = match[1] ?? '';
+  assert.match(selectClause, /\ba\.icon_url\b/);
+  assert.match(selectClause, /\ba\.additional_prompt\b/);
+});
+
+test('in-memory findRemotelyVisibleActorByUsername returns stored profile fields', async () => {
+  const repository = createInMemoryActivityPubRepository({
+    encryptionKey,
+    canonicalOrigin: 'https://lens.test',
+  });
+  await repository.seedAggregateActor();
+  await repository.updateAggregateActorProfile({
+    displayName: 'All Streams',
+    iconUrl: '/icons/all.png',
+    additionalPrompt: 'server tone',
+  });
+
+  const lookup = await repository.findRemotelyVisibleActorByUsername('all');
+  assert.equal(lookup?.displayName, 'All Streams');
+  assert.equal(lookup?.iconUrl, '/icons/all.png');
+  assert.equal(lookup?.additionalPrompt, 'server tone');
+});
+
 test('postgres transaction repository does not start a nested root transaction', async () => {
   let beginCalls = 0;
   const state = {
@@ -282,6 +320,8 @@ test('postgres transaction repository does not start a nested root transaction',
         kind: 'project' as const,
         preferred_username: projectSlug,
         display_name: 'Scope Project',
+        icon_url: null,
+        additional_prompt: null,
         enabled: true,
         public_key_pem: 'pem',
         created_at: new Date(),

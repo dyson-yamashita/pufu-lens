@@ -34,6 +34,7 @@ async function assertRemotelyVisibleActorContract(
   fetch: (input: string, init?: RequestInit) => Promise<Response>,
   uri: ReturnType<typeof buildActivityPubUriContract>,
   preferredUsername: string,
+  expected?: { readonly displayName?: string; readonly iconUrl?: string | null },
 ) {
   const headers = { Accept: 'application/activity+json' };
   const webfingerResponse = await fetch(
@@ -55,6 +56,15 @@ async function assertRemotelyVisibleActorContract(
   };
   assert.equal(actor.id, uri.actorUrl(preferredUsername));
   assert.equal(actor.preferredUsername, preferredUsername);
+  if (expected?.displayName !== undefined) {
+    assert.equal(actor.name, expected.displayName);
+  }
+  if (expected?.iconUrl) {
+    const icon = actor.icon as { url?: string } | undefined;
+    assert.equal(icon?.url, expected.iconUrl);
+  } else if (expected?.iconUrl === null) {
+    assert.equal(actor.icon, undefined);
+  }
   assert.equal(actor.inbox, uri.personalInboxUrl(preferredUsername));
   assert.equal(actor.outbox, uri.actorOutboxUrl(preferredUsername));
   assert.equal(actor.followers, uri.actorFollowersUrl(preferredUsername));
@@ -101,8 +111,12 @@ test('production federation resolves aggregate and project actors with endpoint 
     federation.fetch(new Request(input, init), { contextData: undefined });
   const uri = buildActivityPubUriContract(canonicalOrigin);
 
-  await assertRemotelyVisibleActorContract(fetch, uri, 'all');
-  await assertRemotelyVisibleActorContract(fetch, uri, projectSlug);
+  await assertRemotelyVisibleActorContract(fetch, uri, 'all', {
+    displayName: 'All Projects',
+  });
+  await assertRemotelyVisibleActorContract(fetch, uri, projectSlug, {
+    displayName: 'Sample Project',
+  });
 
   const headers = { Accept: 'application/activity+json' };
   for (const collectionUrl of [
@@ -112,6 +126,31 @@ test('production federation resolves aggregate and project actors with endpoint 
   ]) {
     assert.equal((await fetch(collectionUrl, { headers })).status, 200);
   }
+});
+
+test('production federation resolves actor icon URLs against canonical origin', async () => {
+  const repository = createInMemoryActivityPubRepository({ encryptionKey, canonicalOrigin });
+  await repository.seedAggregateActor();
+  await repository.updateAggregateActorProfile({
+    displayName: 'All Streams',
+    iconUrl: '/icons/all.png',
+    additionalPrompt: null,
+  });
+
+  const federation = await createProductionActivityPubFederation({
+    canonicalOrigin,
+    repository,
+    kv: new MemoryKvStore(),
+    queue: createQueue(),
+  });
+  const fetch = (input: string, init?: RequestInit) =>
+    federation.fetch(new Request(input, init), { contextData: undefined });
+  const uri = buildActivityPubUriContract(canonicalOrigin);
+
+  await assertRemotelyVisibleActorContract(fetch, uri, 'all', {
+    displayName: 'All Streams',
+    iconUrl: `${canonicalOrigin}/icons/all.png`,
+  });
 });
 
 test('production federation returns 404 for disabled, private, and missing actors across all endpoints', async () => {

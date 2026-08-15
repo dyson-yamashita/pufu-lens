@@ -197,6 +197,15 @@ test.describe('authenticated admin operation controls', () => {
     await expect(page.getByTestId('public-project-sample-a')).toHaveCount(0);
   });
 
+  test('scenario: global admin can open app settings from global navigation', async ({ page }) => {
+    await page.goto('/projects');
+    await expect(page.getByTestId('global-nav-app-settings')).toBeVisible();
+    await page.getByTestId('global-nav-app-settings').click();
+    await expect(page).toHaveURL('/settings');
+    await expect(page.getByTestId('activitypub-aggregate-profile-panel')).toBeVisible();
+    await expect(page.getByTestId('activitypub-aggregate-profile-prompt-textarea')).toBeVisible();
+  });
+
   test('scenario: admin user can inspect stable operation controls', async ({ page }) => {
     await page.goto('/projects/sample-a/admin/data-sources');
     await expect(page.getByTestId('data-source-table')).toBeVisible();

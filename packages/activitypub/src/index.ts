@@ -3,6 +3,15 @@ export {
   ActivityPubProjectNotPublicError,
 } from './activitypub-errors.ts';
 export {
+  ActivityPubActorProfileError,
+  type NormalizedActivityPubActorProfile,
+  normalizeActivityPubActorProfile,
+  normalizeActivityPubAdditionalPrompt,
+  normalizeActivityPubDisplayName,
+  normalizeActivityPubIconUrl,
+  resolveActivityPubIconUrl,
+} from './actor-profile.ts';
+export {
   type ActivityPubRepository,
   createPostgresActivityPubRepository,
   createPostgresActivityPubTransactionRepository,
@@ -193,7 +202,6 @@ export {
 export {
   enqueueReportPublicationOutbox,
   type ReportActivityPayload,
-  ReportPublicationAggregateActorError,
   ReportPublicationOutboxError,
 } from './report-publication-outbox.ts';
 export {

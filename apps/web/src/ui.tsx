@@ -58,6 +58,7 @@ export async function AppShell({
 }: {
   readonly project?: ProjectSummary;
   readonly active?:
+    | 'app-settings'
     | 'chat'
     | 'custom-report-templates'
     | 'projects'
@@ -204,6 +205,17 @@ export async function AppShell({
         >
           <Users size={18} />
           Accounts
+        </Link>
+      ) : null}
+      {!projectSlug && appRole === 'admin' ? (
+        <Link
+          aria-current={active === 'app-settings' ? 'page' : undefined}
+          className={navClass(active === 'app-settings')}
+          href="/settings"
+          data-testid="global-nav-app-settings"
+        >
+          <Settings size={18} />
+          Settings
         </Link>
       ) : null}
     </>

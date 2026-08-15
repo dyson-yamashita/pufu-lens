@@ -18,6 +18,8 @@ const actor: ActivityPubActor = {
   kind: 'project',
   preferredUsername: projectSlug,
   displayName: projectSlug,
+  iconUrl: null,
+  additionalPrompt: null,
   enabled: true,
   publicKeyPem: 'test',
   createdAt: new Date(),
@@ -27,6 +29,11 @@ const actor: ActivityPubActor = {
 function createUseCases(overrides?: Partial<ActivityPubUseCases>): ActivityPubUseCases {
   return {
     ensureAggregateActor: async () => actor,
+    findAggregateActor: async () => undefined,
+    findProjectActorByProjectId: async () => undefined,
+    updateAggregateActorProfile: async () => actor,
+    setAggregateActorEnabled: async () => actor,
+    updateProjectActorProfile: async () => actor,
     enableProjectActor: async () => actor,
     disableProjectActor: async () => ({ ...actor, enabled: false }),
     getInstanceConfig: async () => ({

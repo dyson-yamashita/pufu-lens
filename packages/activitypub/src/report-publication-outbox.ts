@@ -20,9 +20,6 @@ export type ReportActivityPayload = {
 /** Raised when report publication outbox enqueue fails after validation. */
 export class ReportPublicationOutboxError extends Error {}
 
-/** Raised when a public enabled project requires an enabled aggregate Actor. */
-export class ReportPublicationAggregateActorError extends ReportPublicationOutboxError {}
-
 type LockedReportRow = {
   readonly id: string;
   readonly projectId: string;
@@ -81,12 +78,6 @@ export async function enqueueReportPublicationOutbox(input: {
   const config = await lockInstanceConfig(input.sql);
   const aggregateActor = await findAggregateActor(input.sql);
 
-  if (!aggregateActor?.enabled) {
-    throw new ReportPublicationAggregateActorError(
-      'aggregate Actor is required for enabled project report publication',
-    );
-  }
-
   const uri = buildActivityPubUriContract(input.canonicalOrigin);
   const objectUri = uri.reportArticleUrl(input.reportId);
   const payload: ReportActivityPayload = {
@@ -115,25 +106,31 @@ export async function enqueueReportPublicationOutbox(input: {
     occurredAt: input.publishedAt,
     payload,
   });
-  const announceInserted = await insertOutboundActivity({
-    sql: input.sql,
-    activityUri: announceActivityUri,
-    objectUri,
-    activityType: 'Announce',
-    actorUri: uri.actorUrl(aggregateActor.preferredUsername),
-    localActorId: aggregateActor.id,
-    occurredAt: input.publishedAt,
-    payload,
-  });
 
-  if (!createInserted || !announceInserted) {
-    const existingCreate = await countOutboundActivities(input.sql, [
-      createActivityUri,
-      announceActivityUri,
-    ]);
-    if (existingCreate !== 2) {
+  let announceInserted = false;
+  if (aggregateActor?.enabled) {
+    announceInserted = await insertOutboundActivity({
+      sql: input.sql,
+      activityUri: announceActivityUri,
+      objectUri,
+      activityType: 'Announce',
+      actorUri: uri.actorUrl(aggregateActor.preferredUsername),
+      localActorId: aggregateActor.id,
+      occurredAt: input.publishedAt,
+      payload,
+    });
+  }
+
+  const expectedActivityUris = aggregateActor?.enabled
+    ? [createActivityUri, announceActivityUri]
+    : [createActivityUri];
+  const expectedCount = expectedActivityUris.length;
+  const insertedCount = Number(createInserted) + Number(announceInserted);
+  if (insertedCount < expectedCount) {
+    const existingCount = await countOutboundActivities(input.sql, expectedActivityUris);
+    if (existingCount !== expectedCount) {
       throw new ReportPublicationOutboxError(
-        'Create and Announce outbound activities must be inserted atomically',
+        'Expected outbound report activities must be inserted atomically',
       );
     }
   }
