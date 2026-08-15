@@ -207,7 +207,7 @@ firebase apphosting:backends:create \
   --primary-region asia-east1 \
   --backend pufu-lens-web \
   --root-dir apps/web \
-  --service-account mastra-runtime@PROJECT.iam.gserviceaccount.com \
+  --service-account pufu-lens-web-runtime@PROJECT.iam.gserviceaccount.com \
   --non-interactive
 firebase apphosting:secrets:grantaccess DATABASE_URL,AUTH_SECRET,GEMINI_API_KEY,ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY \
   --backend pufu-lens-web --location asia-east1 --project PROJECT
@@ -218,22 +218,25 @@ firebase deploy --only apphosting --project PROJECT
 # PUFU_LENS_GCP_PROJECT_ID、PUFU_LENS_CLOUD_RUN_JOBS_REGION、PUFU_LENS_ACTIVITYPUB_DISPATCHER_JOB_NAME、
 # ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY secret referenceを含む
 # runtime env / secrets / VPC accessを定義する。Mastra Serverとdispatcherも同じoriginとsecret系列を参照する。
-# Web API が GCS / PostgreSQL / Mastra にアクセスするため、App Hosting backend service account に
+# Web API が GCS / PostgreSQL / Mastra にアクセスするため、Mastra runtime SAとは分離した
+# 専用App Hosting Web runtime SAに
 # Secret Manager、GCS、Cloud Run Invoker の権限を付与する。Direct VPC network user が必要な
 # Shared VPC 構成では、runtime SA ではなく provider が指定する service agent へ subnet scope で付与する。
 # Admin UI から workflow job を起動する場合、およびActivityPub inboxからdispatcherを即時起動する場合は、
-# App Hosting backend service account に対象 Cloud Run Job resource の
+# 専用App Hosting Web runtime SAに対象 Cloud Run Job resource の
 # run.jobs.run / run.jobs.runWithOverrides 権限を付与する。
+# Admin ingestは対象ingest Jobだけ、ActivityPub即時起動は対象activitypub-dispatcher Jobだけに限定し、
+# source-sync-dispatcher / report-schedule-dispatcherへ付与しない。
 # 正準の IAM 要件は docs/deployment/gcp-cloud-build.md の IAM 節に従う。
 
 gcloud run services add-iam-policy-binding mastra-server \
   --region asia-east1 \
-  --member="serviceAccount:firebase-app-hosting-compute@PROJECT.iam.gserviceaccount.com" \
+  --member="serviceAccount:pufu-lens-web-runtime@PROJECT.iam.gserviceaccount.com" \
   --role="roles/run.invoker"
 
 # GCS 権限
 gsutil iam ch serviceAccount:mastra-runtime@PROJECT.iam.gserviceaccount.com:objectAdmin gs://pufu-lens-prod
-gsutil iam ch serviceAccount:firebase-app-hosting-compute@PROJECT.iam.gserviceaccount.com:objectViewer gs://pufu-lens-prod
+gsutil iam ch serviceAccount:pufu-lens-web-runtime@PROJECT.iam.gserviceaccount.com:objectViewer gs://pufu-lens-prod
 ```
 
 本番 PostgreSQL VM は deletion protection を有効にする。boot disk は再構築可能なため `autoDelete=true`、DB の正である `pg-ai-data` は `autoDelete=false` とし、誤って VM を削除しても data disk が残る構成にする。意図的な VM 削除では、対象 project / zone / instance、backup、`pg-ai-data` の接続先と `autoDelete=false` を確認した後にだけ deletion protection を解除する。

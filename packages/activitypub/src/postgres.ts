@@ -152,6 +152,8 @@ export type PostgresQueueInboxEnqueuedEvent = {
 /**
  * Creates the custom PostgreSQL-backed Fedify queue adapter for inbox persistence and outbox delivery.
  * `onInboxEnqueued` runs only after a new inbox row is inserted and is awaited before `enqueue()` resolves.
+ * If `onInboxEnqueued` throws or rejects, `enqueue()` rejects as well.
+ * Callers that want inbox receipt to succeed must keep the callback non-throwing.
  */
 export function createPostgresQueueAdapter(input: {
   sql: QueueSql;

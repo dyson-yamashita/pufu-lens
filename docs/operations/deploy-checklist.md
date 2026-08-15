@@ -27,7 +27,7 @@ API key、DB password は記録しない。
 - [ ] Cloud Run / Cloud Run Jobs / Firebase App Hosting の service account を確認した。
 - [ ] Firebase App Hosting backend と runtime / compute service account の初期作成・role 付与を bootstrap principal で完了し、Cloud Build deploy SA には App Hosting deploy のためだけに Service Account Creator / Project IAM Admin を付与していない。
 - [ ] current commit の `infra/docker/firebase-tools` から `_FIREBASE_TOOLS_VERSION` と同じ tag の builder image を再 build / push した。
-- [ ] Admin UI から Cloud Run Job を起動する App Hosting runtime service account に、対象 Job resource の `run.jobs.run` / `run.jobs.runWithOverrides` 権限を付与した（正準の IAM 要件は `docs/deployment/gcp-cloud-build.md` の IAM 節を参照）。
+- [ ] Mastra runtime SAとは分離した専用App Hosting Web runtime SAをbackendへ割り当て、Admin UI用の対象ingest JobとActivityPub dispatcher Jobだけに`run.jobs.run` / `run.jobs.runWithOverrides`を付与した。source sync / report schedule dispatcherには付与していない（正準のIAM要件は`docs/deployment/gcp-cloud-build.md`のIAM節を参照）。
 - [ ] Secret Manager に runtime secret を作成した。
 - [ ] Google AI API key または Vertex AI 認証方式を設定した。
 - [ ] Auth.js アプリログイン用の GitHub OAuth callback URL を設定した。
@@ -176,7 +176,7 @@ ActivityPubを無効のままdeployする場合も、将来有効化する環境
 - [ ] Cloud Build triggerの`_ACTIVITYPUB_CANONICAL_ORIGIN`、`_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE`、`_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT`、`_ACTIVITYPUB_ACTOR_KEY_SECRET`が空でなく、Scheduler subjectがdesignated SAの`uniqueId`と一致する。
 - [ ] `ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY`にENABLED versionがあり、App Hosting、Mastra Server、dispatcherのruntime identityだけが必要なpayload accessを持つ。Deploy SAのvalidationはmetadata / version一覧だけを読み、secret payloadを読まない。
 - [ ] App Hostingで`ACTIVITYPUB_ENABLED=1`、固定canonical origin、`ACTIVITYPUB_DB_MAX_CONNECTIONS`、Actor key secret referenceが設定され、Mastra Server / dispatcherと一致する。
-- [ ] App Hostingで`ACTIVITYPUB_INBOX_DISPATCHER_TRIGGER_ENABLED=1`、GCP project、Jobs region、environment付きActivityPub dispatcher Job名が設定され、backend service accountが対象Jobだけの`run.jobs.run` / `run.jobs.runWithOverrides`を持つ。
+- [ ] App Hostingで`ACTIVITYPUB_INBOX_DISPATCHER_TRIGGER_ENABLED=1`、GCP project、Jobs region、environment付きActivityPub dispatcher Job名が設定され、専用Web runtime SAが対象ActivityPub Jobだけの`run.jobs.run` / `run.jobs.runWithOverrides`を持つ。
 - [ ] DNS、TLS certificate、旧URL継続責任者を記録した。domain障害時に別canonical originへ書き換えない。
 - [ ] Web / Job / PostgreSQL VMのUTC時刻同期を確認し、NTP異常alertまたはprovider時刻同期の運用責任を記録した。古い / 未来のSignature `Date`を拒否するcontract testが通る。
 - [ ] HTTP Signatureのkey owner、Activity actor、embedded actor / attribution / audience一致を確認し、raw Signature headerやprivate keyをlogへ出さない。
@@ -207,6 +207,6 @@ ActivityPubを無効のままdeployする場合も、将来有効化する環境
 - Cloud Run Job 用 Dockerfile は `infra/docker/jobs/Dockerfile`。
 - ローカルでは `docker build -f infra/docker/jobs/Dockerfile -t pufu-lens-workflow-job:local .` の後、`docker run --rm -e WORKFLOW_ID=generate-report -e WORKFLOW_INPUT_JSON='{"projectSlug":"sample-a","period":"weekly","dryRun":true}' pufu-lens-workflow-job:local` のように entrypoint dry-run を確認できる。
 - `infra:check` は GCP identifier と Secret Manager の secret 名だけを検査し、secret の実値は出力しない。
-- scheduler OIDC service accountがMastra Cloud Run service resourceの`roles/run.invoker`、Mastra runtime service accountがsource syncと定期reportの両dispatcher Job resourceで`run.jobs.run` / `run.jobs.runWithOverrides`（`roles/run.jobsExecutorWithOverrides`または同等custom role）を持つことを確認する。Deploy Cloud Build SAの`iam.serviceAccounts.actAs`や片方のdispatcher Jobへのbindingだけではruntime呼び出し権限にならない。
+- scheduler OIDC service accountがMastra Cloud Run service resourceの`roles/run.invoker`、Mastra runtime service accountがsource sync、定期report、ActivityPubの3つのdispatcher Job resourceで`run.jobs.run` / `run.jobs.runWithOverrides`（`roles/run.jobsExecutorWithOverrides`または同等custom role）を持つことを確認する。専用Web runtime SAはAdmin ingestとActivityPubの対象Job以外を実行できない。Deploy Cloud Build SAの`iam.serviceAccounts.actAs`や片方のdispatcher Jobへのbindingだけではruntime呼び出し権限にならない。
 - ローカルではローカル専用DB/Storage/credentialsを設定し、source sync は `pnpm schedule:dispatch --once`、定期 report は `pnpm report-schedule:dispatch --once` を明示実行する。`pnpm dev`や`docker compose up`からは自動起動しない。
 - 定期 report dispatcher の状態確認、retry / lease / skipped の切り分けは [定期レポート Scheduling 運用手順](report-scheduling.md) に従う。

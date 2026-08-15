@@ -252,6 +252,8 @@ function assertAppHostingActivityPubConfig(
   contents: string,
   canonicalOrigin: string,
   dispatcherJobName: string,
+  expectedProjectId: string,
+  expectedJobsRegion: string,
 ): void {
   const config = parseAppHostingConfig(contents);
 
@@ -275,10 +277,12 @@ function assertAppHostingActivityPubConfig(
 
   const projectId = findAppHostingEnvEntry(config, 'PUFU_LENS_GCP_PROJECT_ID');
   assert.ok(projectId, 'PUFU_LENS_GCP_PROJECT_ID env entry is required');
+  assert.equal(projectId.value, expectedProjectId);
   assertRuntimeAvailability(projectId, 'PUFU_LENS_GCP_PROJECT_ID');
 
   const jobsRegion = findAppHostingEnvEntry(config, 'PUFU_LENS_CLOUD_RUN_JOBS_REGION');
   assert.ok(jobsRegion, 'PUFU_LENS_CLOUD_RUN_JOBS_REGION env entry is required');
+  assert.equal(jobsRegion.value, expectedJobsRegion);
   assertRuntimeAvailability(jobsRegion, 'PUFU_LENS_CLOUD_RUN_JOBS_REGION');
 
   const origin = findAppHostingEnvEntry(config, 'ACTIVITYPUB_CANONICAL_ORIGIN');
@@ -303,6 +307,8 @@ test('production App Hosting configures ActivityPub runtime env and encryption s
     productionAppHosting,
     'https://pufu-lens-web--pufu-lens.asia-east1.hosted.app',
     'production-activitypub-dispatcher',
+    'pufu-lens',
+    'asia-east1',
   );
 });
 
@@ -311,6 +317,8 @@ test('OSS App Hosting example documents ActivityPub runtime env placeholders', (
     exampleAppHosting,
     '<web-public-origin>',
     '<env>-activitypub-dispatcher',
+    '<gcp-project-id>',
+    '<gcp-region>',
   );
 });
 

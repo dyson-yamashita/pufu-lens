@@ -114,7 +114,7 @@ Actor identityの復旧には、同一時点のPostgreSQL backupに含まれる 
 production Webは、新規Follow / Accept / UndoをPostgreSQL inbox queueへ保存した直後に、同じrequest内でActivityPub dispatcher Cloud Run Jobの起動を試みる。Webはqueueをclaimせず、Job API呼出しだけを行う。重複activity、Create / Announce、outbox enqueueでは即時起動しない。
 
 - App Hosting runtimeに`ACTIVITYPUB_INBOX_DISPATCHER_TRIGGER_ENABLED=1`、`PUFU_LENS_GCP_PROJECT_ID`、`PUFU_LENS_CLOUD_RUN_JOBS_REGION`、`PUFU_LENS_ACTIVITYPUB_DISPATCHER_JOB_NAME`を設定する。
-- App Hosting backend service accountが対象ActivityPub Job resourceで`run.jobs.run` / `run.jobs.runWithOverrides`を持つことを確認する。project全体へ権限を広げない。
+- Mastra runtime SAとは分離した専用App Hosting Web runtime SAが、対象ActivityPub Job resourceだけで`run.jobs.run` / `run.jobs.runWithOverrides`を持つことを確認する。source sync / report schedule dispatcherやproject全体へ権限を広げない。
 - 正常時はInbox受信後にJob executionが開始し、Follow / Accept / Undoが5分Schedulerを待たず処理される。Mastodon側の表示更新やキャッシュには別の遅延があり得る。
 - `activitypub_inbox_dispatcher_trigger`の`fallback`が出た場合は、固定`errorCode`（設定、token、timeout、network、HTTP）とJob IAM / API状態だけを調べる。Activity / Actor ID、payload、token、response body、例外本文をlogへ追加しない。
 - 即時起動に失敗してもInbox rowは保持される。5分Schedulerでqueue depthが減ることを確認し、即時triggerを手動再送しない。同じFollowを利用者へ繰り返し送らせない。
