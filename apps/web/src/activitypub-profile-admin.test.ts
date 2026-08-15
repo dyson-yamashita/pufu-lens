@@ -96,13 +96,20 @@ test('setAggregateActivityPubEnabled rejects non-global admins before use cases 
 });
 
 test('updateProjectActivityPubProfile rejects users without project or global admin access', async () => {
+  const validKey = Buffer.alloc(32, 7).toString('base64');
   const previousKey = process.env.ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY;
-  delete process.env.ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY;
+  process.env.ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY = validKey;
+  const { sql, getBeginCalls } = createProjectAccessSql({
+    id: 'sample-project-id',
+    slug: 'sample-project',
+    appRole: 'member',
+    projectRole: 'member',
+  });
   try {
     await assert.rejects(
       () =>
         updateProjectActivityPubProfile({
-          sql: createNoProjectAdminSql(),
+          sql,
           userId: 'user-1',
           projectSlug: 'sample-project',
           displayName: 'Sample Project',
@@ -112,21 +119,31 @@ test('updateProjectActivityPubProfile rejects users without project or global ad
         error.code === 'forbidden' &&
         error.status === 403,
     );
+    assert.equal(getBeginCalls(), 0);
   } finally {
     if (previousKey !== undefined) {
       process.env.ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY = previousKey;
+    } else {
+      delete process.env.ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY;
     }
   }
 });
 
 test('updateProjectActivityPubProfile rejects project admins for a different project slug', async () => {
+  const validKey = Buffer.alloc(32, 7).toString('base64');
   const previousKey = process.env.ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY;
-  delete process.env.ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY;
+  process.env.ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY = validKey;
+  const { sql, getBeginCalls } = createProjectAccessSql({
+    id: 'project-a-id',
+    slug: 'project-a',
+    appRole: 'member',
+    projectRole: 'admin',
+  });
   try {
     await assert.rejects(
       () =>
         updateProjectActivityPubProfile({
-          sql: createProjectAdminSql({ id: 'project-a-id', slug: 'project-a' }),
+          sql,
           userId: 'user-1',
           projectSlug: 'project-b',
           displayName: 'Project B',
@@ -136,9 +153,12 @@ test('updateProjectActivityPubProfile rejects project admins for a different pro
         error.code === 'forbidden' &&
         error.status === 403,
     );
+    assert.equal(getBeginCalls(), 0);
   } finally {
     if (previousKey !== undefined) {
       process.env.ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY = previousKey;
+    } else {
+      delete process.env.ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY;
     }
   }
 });
@@ -156,27 +176,18 @@ function createNoGlobalAdminSql() {
   ) as never;
 }
 
-function createNoProjectAdminSql() {
-  return Object.assign(
-    async (strings: TemplateStringsArray) => {
-      const query = String(strings[0] ?? '');
-      if (query.includes('FROM public.projects p')) {
-        return [];
-      }
-      throw new Error(`Unexpected SQL in test: ${query}`);
-    },
-    { begin: async () => [] },
-  ) as never;
-}
-
-function createProjectAdminSql(access: { id: string; slug: string }) {
-  return Object.assign(
+function createProjectAccessSql(access: {
+  id: string;
+  slug: string;
+  appRole: 'admin' | 'member';
+  projectRole: 'admin' | 'member';
+}) {
+  let beginCalls = 0;
+  const sql = Object.assign(
     async (strings: TemplateStringsArray, ...values: unknown[]) => {
       const query = String.raw({ raw: strings }, ...values);
       if (query.includes('FROM public.projects p')) {
-        const requestedSlug = values.find(
-          (value) => typeof value === 'string' && value.startsWith('project-'),
-        );
+        const requestedSlug = values.at(-1);
         if (requestedSlug !== access.slug) {
           return [];
         }
@@ -189,13 +200,20 @@ function createProjectAdminSql(access: { id: string; slug: string }) {
             graphName: `graph_${access.slug.replaceAll('-', '_')}`,
             settings: {},
             visibility: 'public',
-            appRole: 'member',
-            projectRole: 'admin',
+            appRole: access.appRole,
+            projectRole: access.projectRole,
           },
         ];
       }
       throw new Error(`Unexpected SQL in test: ${query}`);
     },
-    { begin: async () => [] },
+    {
+      begin: async () => {
+        beginCalls += 1;
+        return [];
+      },
+    },
   ) as never;
+
+  return { sql, getBeginCalls: () => beginCalls };
 }
