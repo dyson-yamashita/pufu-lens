@@ -136,9 +136,15 @@ export async function runGenerateReport(input: {
     signal,
   });
   throwIfReportGenerationAborted(signal);
+  const promptRow = input.options.repository.readActivityPubPostPrompts
+    ? await input.options.repository.readActivityPubPostPrompts({ projectId: project.id })
+    : null;
+  const activityPubPostPrompts =
+    promptRow && (promptRow.serverPrompt || promptRow.projectPrompt) ? promptRow : undefined;
   const includeProjectOverview = Boolean(scheduledDispatch);
   const generated = await input.options.provider.generate({
     documents: providerDocuments,
+    ...(activityPubPostPrompts ? { activityPubPostPrompts } : {}),
     includeProjectOverview,
     ...(hasOverflow ? { materialGroups: editedMaterials.materialGroups } : {}),
     period,
@@ -265,6 +271,7 @@ export async function runGenerateReport(input: {
         project,
         publishedAt: now.toISOString(),
         report: existingReport,
+        activityPubSummary: undefined,
         repository: input.options.repository,
         ...(signal ? { signal } : {}),
         storage: input.options.storage,
@@ -282,6 +289,7 @@ export async function runGenerateReport(input: {
       project,
       publishedAt: now.toISOString(),
       report,
+      activityPubSummary: generated.activitypub_summary,
       repository: input.options.repository,
       ...(signal ? { signal } : {}),
       storage: input.options.storage,

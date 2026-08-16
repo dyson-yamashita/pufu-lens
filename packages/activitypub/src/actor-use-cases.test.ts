@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { ActivityPubActorNotFoundError } from './activitypub-errors.ts';
 import type { ActivityPubRepository } from './actor-repository.ts';
 import { createActivityPubUseCases } from './actor-use-cases.ts';
 import type { ActivityPubActor, ActivityPubInstanceConfig } from './schema.ts';
@@ -16,6 +17,11 @@ function createMockRepository(overrides?: Partial<ActivityPubRepository>): Activ
   return {
     runInTransaction: async (callback) => callback(createMockRepository(overrides)),
     ensureAggregateActor: async () => ({}) as ActivityPubActor,
+    findAggregateActor: async () => undefined,
+    findProjectActorByProjectId: async () => undefined,
+    updateAggregateActorProfile: async () => ({}) as ActivityPubActor,
+    setAggregateActorEnabled: async () => ({}) as ActivityPubActor,
+    updateProjectActorProfile: async () => ({}) as ActivityPubActor,
     enableProjectActor: async () => ({}) as ActivityPubActor,
     disableProjectActor: async () => ({}) as ActivityPubActor,
     findRemotelyVisibleActorByUsername: async () => undefined,
@@ -49,6 +55,72 @@ test('updateInstanceRepresentation rejects changes after lock in use case', asyn
   });
 
   await assert.rejects(() => useCases.updateInstanceRepresentation('note'), /locked/i);
+});
+
+test('updateAggregateActorProfile requires an existing aggregate actor', async () => {
+  let ensureCalls = 0;
+  const useCases = createActivityPubUseCases({
+    encryptionKey: Buffer.alloc(32),
+    repository: createMockRepository({
+      ensureAggregateActor: async () => {
+        ensureCalls += 1;
+        return {} as ActivityPubActor;
+      },
+      updateAggregateActorProfile: async () => {
+        throw new ActivityPubActorNotFoundError('aggregate');
+      },
+    }),
+  });
+
+  await assert.rejects(
+    () =>
+      useCases.updateAggregateActorProfile({
+        displayName: 'All Streams',
+        iconUrl: '/logo.png',
+        additionalPrompt: null,
+      }),
+    (error: unknown) => error instanceof ActivityPubActorNotFoundError,
+  );
+  assert.equal(ensureCalls, 0);
+});
+
+test('updateAggregateActorProfile updates disabled aggregate actors without re-enabling them', async () => {
+  const disabledAggregate: ActivityPubActor = {
+    id: 'aggregate-id',
+    kind: 'aggregate',
+    preferredUsername: 'all',
+    displayName: 'All Projects',
+    iconUrl: null,
+    additionalPrompt: null,
+    enabled: false,
+    projectId: null,
+    publicKeyPem: '-----BEGIN PUBLIC KEY-----\nMIIB\n-----END PUBLIC KEY-----',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  let updatedProfile: { displayName: string; enabled: boolean } | undefined;
+  const useCases = createActivityPubUseCases({
+    encryptionKey: Buffer.alloc(32),
+    repository: createMockRepository({
+      updateAggregateActorProfile: async (profile) => {
+        updatedProfile = {
+          displayName: profile.displayName,
+          enabled: disabledAggregate.enabled,
+        };
+        return { ...disabledAggregate, ...profile };
+      },
+    }),
+  });
+
+  await useCases.updateAggregateActorProfile({
+    displayName: 'All Streams',
+    iconUrl: '/icons/all.png',
+    additionalPrompt: 'server tone',
+  });
+  assert.deepEqual(updatedProfile, {
+    displayName: 'All Streams',
+    enabled: false,
+  });
 });
 
 test('updateInstanceRepresentation is idempotent for same value', async () => {

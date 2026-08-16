@@ -81,6 +81,100 @@ test('setReportPublicState rejects missing publishedAt before starting a transac
   }
 });
 
+test('readActivityPubPostPrompts returns null when project actor is missing or disabled', async () => {
+  const missingRepository = createPostgresReportRepository(
+    Object.assign(
+      async (strings: TemplateStringsArray) => {
+        const query = String(strings[0] ?? '');
+        if (query.includes('project_actor.enabled')) {
+          return [];
+        }
+        return [];
+      },
+      { begin: async () => [] },
+    ) as never,
+  );
+  const readMissing = missingRepository.readActivityPubPostPrompts;
+  assert.ok(readMissing);
+  assert.equal(await readMissing({ projectId: 'project-id' }), null);
+
+  const disabledRepository = createPostgresReportRepository(
+    Object.assign(
+      async (strings: TemplateStringsArray) => {
+        const query = String(strings[0] ?? '');
+        if (query.includes('project_actor.enabled')) {
+          return [
+            {
+              project_enabled: false,
+              project_prompt: 'project tone',
+              server_prompt: 'server tone',
+            },
+          ];
+        }
+        return [];
+      },
+      { begin: async () => [] },
+    ) as never,
+  );
+  const readDisabled = disabledRepository.readActivityPubPostPrompts;
+  assert.ok(readDisabled);
+  assert.equal(await readDisabled({ projectId: 'project-id' }), null);
+});
+
+test('readActivityPubPostPrompts returns both prompts for enabled project actors', async () => {
+  const repository = createPostgresReportRepository(
+    Object.assign(
+      async (strings: TemplateStringsArray) => {
+        const query = String(strings[0] ?? '');
+        if (query.includes('project_actor.enabled')) {
+          return [
+            {
+              project_enabled: true,
+              project_prompt: 'project tone',
+              server_prompt: 'server tone',
+            },
+          ];
+        }
+        return [];
+      },
+      { begin: async () => [] },
+    ) as never,
+  );
+  const readActivityPubPostPrompts = repository.readActivityPubPostPrompts;
+  assert.ok(readActivityPubPostPrompts);
+  assert.deepEqual(await readActivityPubPostPrompts({ projectId: 'project-id' }), {
+    serverPrompt: 'server tone',
+    projectPrompt: 'project tone',
+  });
+});
+
+test('readActivityPubPostPrompts returns serverPrompt from project actor row without aggregate enabled check', async () => {
+  const repository = createPostgresReportRepository(
+    Object.assign(
+      async (strings: TemplateStringsArray) => {
+        const query = String(strings[0] ?? '');
+        if (query.includes('project_actor.enabled')) {
+          return [
+            {
+              project_enabled: true,
+              project_prompt: 'project tone',
+              server_prompt: 'server tone from disabled aggregate',
+            },
+          ];
+        }
+        return [];
+      },
+      { begin: async () => [] },
+    ) as never,
+  );
+  const readActivityPubPostPrompts = repository.readActivityPubPostPrompts;
+  assert.ok(readActivityPubPostPrompts);
+  assert.deepEqual(await readActivityPubPostPrompts({ projectId: 'project-id' }), {
+    serverPrompt: 'server tone from disabled aggregate',
+    projectPrompt: 'project tone',
+  });
+});
+
 test('setReportPublicState rejects missing publicSummary before starting a transaction', async () => {
   const previousEnabled = process.env.ACTIVITYPUB_ENABLED;
   const previousOrigin = process.env.ACTIVITYPUB_CANONICAL_ORIGIN;

@@ -98,6 +98,14 @@ export interface ReportRepository {
   }): Promise<ReportListItem | undefined>;
   deleteReport(input: { readonly projectId: string; readonly reportId: string }): Promise<void>;
   /**
+   * Reads ActivityPub post-generation prompts for an enabled project actor.
+   * Returns null when the project actor is missing or disabled.
+   */
+  readActivityPubPostPrompts?(input: { readonly projectId: string }): Promise<{
+    readonly serverPrompt: string | null;
+    readonly projectPrompt: string | null;
+  } | null>;
+  /**
    * Updates report public visibility. When ActivityPub is enabled and `isPublic` is true, this
    * always routes through the publication outbox transaction and requires `publishedAt` and
    * `publicSummary`.
@@ -589,6 +597,41 @@ export function createPostgresReportRepository(sql: postgres.Sql): ReportReposit
             AND id = ${reportId}
         `;
       });
+    },
+    async readActivityPubPostPrompts({ projectId }) {
+      const rows = (await sql`
+        SELECT
+          project_actor.enabled AS project_enabled,
+          project_actor.additional_prompt AS project_prompt,
+          aggregate_actor.additional_prompt AS server_prompt
+        FROM public.activitypub_actors project_actor
+        LEFT JOIN public.activitypub_actors aggregate_actor
+          ON aggregate_actor.kind = 'aggregate'
+        WHERE project_actor.project_id = ${projectId}::uuid
+          AND project_actor.kind = 'project'
+        LIMIT 1
+      `) as readonly unknown[];
+      const row = rows[0];
+      if (!row || typeof row !== 'object' || Array.isArray(row)) {
+        return null;
+      }
+      const record = row as Record<string, unknown>;
+      if (record.project_enabled !== true) {
+        return null;
+      }
+      const serverPrompt =
+        record.server_prompt === null || record.server_prompt === undefined
+          ? null
+          : typeof record.server_prompt === 'string'
+            ? record.server_prompt
+            : null;
+      const projectPrompt =
+        record.project_prompt === null || record.project_prompt === undefined
+          ? null
+          : typeof record.project_prompt === 'string'
+            ? record.project_prompt
+            : null;
+      return { serverPrompt, projectPrompt };
     },
     async setReportPublicState({ isPublic, projectId, reportId, publishedAt, publicSummary }) {
       if (!isPublic) {

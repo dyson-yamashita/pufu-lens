@@ -196,13 +196,28 @@ export function validatePrivateReportJson(value: unknown): asserts value is Priv
 
 export function validateGeneratedReport(
   value: Pick<PrivateReportJsonV1, 'sections' | 'summary' | 'title'> &
-    Partial<ProviderRecurrenceDelta>,
-  options?: { readonly requireRecurrence?: boolean },
+    Partial<ProviderRecurrenceDelta> & { readonly activitypub_summary?: string },
+  options?: { readonly requireRecurrence?: boolean; readonly requireActivityPubSummary?: boolean },
 ): void {
   if (options?.requireRecurrence) {
     assertProviderRecurrenceDeltaShape(value);
   } else if (hasProviderRecurrenceFields(value)) {
     assertProviderRecurrenceDeltaShape(value);
+  }
+  if (options?.requireActivityPubSummary) {
+    if (
+      typeof value.activitypub_summary !== 'string' ||
+      value.activitypub_summary.trim().length === 0
+    ) {
+      throw new Error('Generated activitypub_summary must be a non-empty string.');
+    }
+    if ([...value.activitypub_summary].length > 500) {
+      throw new Error('Generated activitypub_summary exceeds the maximum length.');
+    }
+  } else if (value.activitypub_summary !== undefined) {
+    throw new Error(
+      'Generated activitypub_summary must not be returned without ActivityPub prompts.',
+    );
   }
   const { sections, summary, title } = value;
   validatePrivateReportJson({

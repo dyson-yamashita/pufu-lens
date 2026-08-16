@@ -438,6 +438,52 @@ test('0023 validates inbound federated report constraints', async () => {
   assert.match(migration, /VALIDATE CONSTRAINT federated_reports_original_url_https_check/);
 });
 
+const migration0025Path = join(
+  import.meta.dirname,
+  '../infra/db/migrations/0025_activitypub_actor_profiles.sql',
+);
+
+test('0025 adds ActivityPub actor profile columns with fresh schema parity', async () => {
+  const [migration, init] = await Promise.all([
+    readFile(migration0025Path, 'utf8'),
+    readFile(initPath, 'utf8'),
+  ]);
+
+  assert.match(
+    migration,
+    /ALTER TABLE public\.activitypub_actors[\s\S]*?ADD COLUMN IF NOT EXISTS icon_url text,[\s\S]*?ADD COLUMN IF NOT EXISTS additional_prompt text/,
+  );
+  assert.match(
+    migration,
+    /ALTER TABLE public\.activitypub_actors[\s\S]*?ADD CONSTRAINT activitypub_actors_icon_url_length_check[\s\S]*?char_length\(icon_url\) <= 2048/,
+  );
+  assert.match(
+    migration,
+    /ALTER TABLE public\.activitypub_actors[\s\S]*?ADD CONSTRAINT activitypub_actors_additional_prompt_length_check[\s\S]*?char_length\(additional_prompt\) <= 2000/,
+  );
+
+  const createTableMatch = init.match(
+    /CREATE TABLE IF NOT EXISTS public\.activitypub_actors \([\s\S]*?\);/,
+  );
+  assert.ok(createTableMatch);
+  const createBody = createTableMatch[0];
+  assert.match(createBody, /icon_url text/);
+  assert.match(createBody, /additional_prompt text/);
+  assert.match(
+    createBody,
+    /CONSTRAINT activitypub_actors_icon_url_length_check[\s\S]*?char_length\(icon_url\) <= 2048/,
+  );
+  assert.match(
+    createBody,
+    /CONSTRAINT activitypub_actors_additional_prompt_length_check[\s\S]*?char_length\(additional_prompt\) <= 2000/,
+  );
+
+  assert.match(
+    init,
+    /INSERT INTO public\.schema_migrations[\s\S]*?'0025_activitypub_actor_profiles'/,
+  );
+});
+
 function extractTriggerFunctionBody(sql: string, functionName: string): string | undefined {
   const pattern = new RegExp(
     `CREATE OR REPLACE FUNCTION public\\.${functionName}\\(\\)[\\s\\S]*?\\$\\$;`,

@@ -2,6 +2,14 @@
 
 この runbook は Plan 017 Step 7 の production 運用境界を定める。コマンド例は対象環境と change record を確認してから実行し、本番 deploy、外部 ActivityPub server への送信、Secret Manager 更新は通常の change approval に従う。message body、Activity payload、HTTP Signature、Actor private key、暗号文、token、`DATABASE_URL` は監視・Issue・PR・運用ログへ記録しない。
 
+## Actor profileとaggregate停止
+
+- global adminは`/settings`でaggregate `@all`のdisplay name、icon、server-wide投稿追加promptとEnabled / Disabledを管理する。project adminは対象Project Settingsでproject Actorのdisplay name、icon、project投稿追加promptを管理する。preferred username、Actor URL、ID、署名鍵は変更しない。
+- aggregate `@all`をDisabledにすると以後のAnnounceを作成・配送しないが、enabledなproject ActorのCreateとproject followerへの配送は継続する。全federationを止める操作ではない。全体停止は通常のdeploy changeとしてWeb / dispatcherの`ACTIVITYPUB_ENABLED`とqueue影響を確認して行う。
+- profile保存後のActor endpointは即時に新しいname / iconを返すが、remote instanceのcache更新時刻は制御できない。iconは公開HTTPS URLまたはcanonical origin内pathを使い、private URL、credential付きURL、secretを入力しない。
+- 投稿追加promptは公開投稿の文体・persona guidanceであり、秘密、個人情報、内部URL、運用credentialを記載しない。prompt本文はlog、ticket、監視labelへ転記しない。
+- migration `0025_activitypub_actor_profiles`適用後にprofile設定を使う。rollbackはcolumn削除ではなくbackup restoreまたはforward-fix migrationを標準とする。
+
 ## 監視とアラート
 
 ActivityPub dispatcher は実行後に `activitypub_queue_metrics` と、rolling 24時間のfailure上位20 originおよび固定 `other` の `activitypub_origin_failure_metrics` を structured log へ出す。Web proxy は固定allowlistのroute kind、method、status、status classだけを持つ `activitypub_request`、POST inbox の 401 / 403 に `activitypub_inbox_authentication_failure` を出す。すべて `bodyless=true` で、host、path、query、Actor / report ID、header、bodyを含めない。log-based metricのlabelは `route_kind` と `status_class` だけを抽出し、methodとstatusは安全な切り分け用structured fieldとして保持する。

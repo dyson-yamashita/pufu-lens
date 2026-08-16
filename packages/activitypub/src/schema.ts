@@ -76,6 +76,8 @@ export type ActivityPubActor = {
   readonly kind: ActivityPubActorKind;
   readonly preferredUsername: string;
   readonly displayName: string;
+  readonly iconUrl: string | null;
+  readonly additionalPrompt: string | null;
   readonly enabled: boolean;
   readonly publicKeyPem: string;
   readonly createdAt: Date;
@@ -408,6 +410,8 @@ export function parseActivityPubActorRow(row: unknown): ActivityPubActor {
     kind: parseActorKind(row.kind),
     preferredUsername: parseRequiredString(row.preferred_username, 'preferred_username'),
     displayName: parseRequiredString(row.display_name, 'display_name'),
+    iconUrl: parseNullableString(row.icon_url, 'icon_url'),
+    additionalPrompt: parseNullableString(row.additional_prompt, 'additional_prompt'),
     enabled: parseRequiredBoolean(row.enabled, 'enabled'),
     publicKeyPem: parseRequiredString(row.public_key_pem, 'public_key_pem'),
     createdAt: parseRequiredDate(row.created_at, 'created_at'),

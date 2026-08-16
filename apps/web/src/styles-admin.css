@@ -1137,3 +1137,25 @@
     grid-template-columns: 1fr;
   }
 }
+
+.activitypub-icon-preview {
+  margin-top: 0.5rem;
+}
+
+.activitypub-icon-preview img {
+  display: block;
+  max-height: 4rem;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.activitypub-profile-form textarea {
+  min-height: 6rem;
+}
+
+@media (max-width: 640px) {
+  .activitypub-profile-panel .action-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

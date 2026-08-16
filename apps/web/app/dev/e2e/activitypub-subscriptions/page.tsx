@@ -1,4 +1,9 @@
 import { notFound } from 'next/navigation';
+import { ActivityPubProfilePanel } from '../../../../src/activitypub-profile-panel';
+import {
+  createDefaultProjectActivityPubProfileSettingsView,
+  createDefaultServerActivityPubProfileSettingsView,
+} from '../../../../src/activitypub-profile-presentation';
 import { isActivityPubSubscriptionE2eHarnessAllowed } from '../../../../src/activitypub-subscription-e2e-guard.ts';
 import { ActivityPubSubscriptionPanel } from '../../../../src/activitypub-subscription-panel';
 import { createDefaultActivityPubSubscriptionSettingsView } from '../../../../src/activitypub-subscription-presentation';
@@ -20,6 +25,28 @@ export default function ActivityPubSubscriptionsE2eHarnessPage() {
   }
 
   const enabledSettings = createDefaultActivityPubSubscriptionSettingsView();
+  const enabledProfileSettings = createDefaultProjectActivityPubProfileSettingsView();
+  const pendingProfileSettings = {
+    ...enabledProfileSettings,
+    actorId: null,
+    displayName: '',
+    iconUrl: null,
+    additionalPrompt: null,
+    federationEnabled: false,
+    profileSavePendingHint: 'Enable ActivityPub for this project before saving profile settings.',
+  };
+  const disabledEditableProfileSettings = {
+    ...enabledProfileSettings,
+    federationEnabled: false,
+    profileSavePendingHint: null,
+  };
+  const memberProfileSettings = {
+    ...enabledProfileSettings,
+    canEditProfile: false,
+    canEditPrompt: false,
+    additionalPrompt: null,
+  };
+  const aggregateProfileSettings = createDefaultServerActivityPubProfileSettingsView();
   const disabledSettings = {
     ...enabledSettings,
     federationEnabled: false,
@@ -77,6 +104,37 @@ export default function ActivityPubSubscriptionsE2eHarnessPage() {
           projectSlug="sample-a"
           settings={disabledSettings}
         />
+      </div>
+      <div data-testid="activitypub-profile-e2e-admin-enabled">
+        <ActivityPubProfilePanel
+          projectSlug="sample-a"
+          scope="project"
+          settings={enabledProfileSettings}
+        />
+      </div>
+      <div data-testid="activitypub-profile-e2e-admin-pending">
+        <ActivityPubProfilePanel
+          projectSlug="sample-a"
+          scope="project"
+          settings={pendingProfileSettings}
+        />
+      </div>
+      <div data-testid="activitypub-profile-e2e-admin-disabled-editable">
+        <ActivityPubProfilePanel
+          projectSlug="sample-a"
+          scope="project"
+          settings={disabledEditableProfileSettings}
+        />
+      </div>
+      <div data-testid="activitypub-profile-e2e-member">
+        <ActivityPubProfilePanel
+          projectSlug="sample-a"
+          scope="project"
+          settings={memberProfileSettings}
+        />
+      </div>
+      <div data-testid="activitypub-profile-e2e-aggregate">
+        <ActivityPubProfilePanel scope="aggregate" settings={aggregateProfileSettings} />
       </div>
     </main>
   );

@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { ActivityPubProfilePanel } from '../../../../../src/activitypub-profile-panel';
+import { readProjectActivityPubProfileSettings } from '../../../../../src/activitypub-profile-settings';
 import { ActivityPubSubscriptionPanel } from '../../../../../src/activitypub-subscription-panel';
 import { readProjectActivityPubSubscriptionSettings } from '../../../../../src/activitypub-subscription-settings';
 import {
@@ -41,6 +43,10 @@ export default async function ProjectSettingsPage({
   const sql = getRequiredAdminSql();
   const subscriptionSettings = await readProjectActivityPubSubscriptionSettings(sql, {
     projectSlug: project.slug,
+  });
+  const profileSettings = await readProjectActivityPubProfileSettings(sql, {
+    projectSlug: project.slug,
+    canManage: true,
   });
 
   return (
@@ -317,6 +323,11 @@ export default async function ProjectSettingsPage({
           ))}
         </div>
       </section>
+      <ActivityPubProfilePanel
+        projectSlug={project.slug}
+        scope="project"
+        settings={profileSettings}
+      />
       <ActivityPubSubscriptionPanel
         canEnableFederation={project.visibility === 'public'}
         canManage

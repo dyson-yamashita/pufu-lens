@@ -1,3 +1,5 @@
+import { ActivityPubProfilePanel } from '../../../../src/activitypub-profile-panel';
+import { readProjectActivityPubProfileSettings } from '../../../../src/activitypub-profile-settings';
 import { ActivityPubSubscriptionPanel } from '../../../../src/activitypub-subscription-panel';
 import { readProjectActivityPubSubscriptionSettings } from '../../../../src/activitypub-subscription-settings';
 import { getRequiredAdminSql } from '../../../../src/admin-sql';
@@ -18,12 +20,21 @@ export default async function ProjectMemberSettingsPage({
   const subscriptionSettings = await readProjectActivityPubSubscriptionSettings(sql, {
     projectSlug: project.slug,
   });
+  const profileSettings = await readProjectActivityPubProfileSettings(sql, {
+    projectSlug: project.slug,
+    canManage: false,
+  });
 
   return (
     <AppShell active="settings" project={project}>
       <PageHeader
         title={`${project.name} Settings`}
         subtitle="プロジェクトの ActivityPub 購読状態を確認できます。"
+      />
+      <ActivityPubProfilePanel
+        projectSlug={project.slug}
+        scope="project"
+        settings={profileSettings}
       />
       <ActivityPubSubscriptionPanel
         canManage={false}

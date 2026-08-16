@@ -19,6 +19,8 @@ const validActor = {
   kind: 'project',
   preferred_username: 'sample-project',
   display_name: 'Sample Project',
+  icon_url: null,
+  additional_prompt: null,
   enabled: true,
   public_key_pem: '-----BEGIN PUBLIC KEY-----\nabc\n-----END PUBLIC KEY-----',
   created_at: new Date('2026-01-01T00:00:00.000Z'),

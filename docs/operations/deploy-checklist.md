@@ -186,6 +186,9 @@ ActivityPubを無効のままdeployする場合も、将来有効化する環境
 - [ ] stagingの新規Follow / Accept / UndoでInbox commit後にdispatcher Jobが起動し、重複activityとCreate / Announceでは起動しない。認証・timeout・非2xx時はInbox受信が成功し、5分Schedulerでqueueが処理される。
 - [ ] Actor keyのDB snapshotとSecret Manager versionを同一時点でbackupし、隔離環境の復元試験日・責任者を記録した。secretだけの先行rotationや手動in-place署名鍵置換を行わない。
 - [ ] migration `0024_activitypub_operations`をplanし、`activitypub_queue_operator_actions`の固定transition / change ref / safe error制約、UPDATE / DELETE拒否trigger、fresh schema seedを確認した。
+- [ ] migration `0025_activitypub_actor_profiles`をplanし、`activitypub_actors.icon_url` / `additional_prompt`、2,048 / 2,000文字のDB制約、fresh schema seedを確認した。profileやprompt本文をmigration logへ出さない。
+- [ ] stagingでaggregate `@all`をDisabledにした状態でもenabledなproject ActorのCreateがenqueue / 配送され、Announceだけが作成されないことを確認した。`ACTIVITYPUB_ENABLED`によるdeployment全体停止と取り違えない。
+- [ ] global / project settingsでname / icon / promptの認可とvalidation、disabled Actorのprofile編集、memberへのprompt非表示、Actor endpointのname / icon反映を確認した。remote cache遅延を失敗と誤判定しない。
 - [ ] retry exhaustedのinspect / requeue / discardをstaging fixtureで確認し、二重message ID、canonical UTC `updatedAt`、固定change-ref、同一transaction監査、後続ordering影響を確認した。
 - [ ] queue total / pending depth、oldest age、success、retry_wait、retry exhausted、permanent failure、429 / 5xx、origin別failure、inbox 401 / 403の本文なしmetrics / alertをdry-runで確認した。
 - [ ] metric / alert適用後、resource typeがWeb=`cloud_run_revision`、dispatcher=`cloud_run_job`で、origin labelが上位20 + `other`に制限されている。

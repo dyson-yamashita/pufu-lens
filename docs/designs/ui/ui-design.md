@@ -231,10 +231,12 @@ PDF レポートは Web のレポートと同じ情報階層を保ち、タイ�
 - **Syncing:** Amethyst の背景（不透明度 10%）に、控えめなパルスアニメーションを組み合わせます。
 - **Failed:** Red の背景（不透明度 10%）に Red のテキストを組み合わせます。
 
-### ActivityPub 購読管理
+### ActivityPub profile・購読管理
 
-- Project Settings の ActivityPub panel は federation の Enabled / Disabled、federated username、outbound subscription の remote Actor URI と Pending / Accepted / Undone / Rejected 状態を表示します。remote inbox / shared inbox、内部 follow ID、Activity ID、鍵、raw payload は表示しません。
+- global admin向け`/settings`はaggregate `@all` ActorのEnabled / Disabled、固定federated username、display name、icon URL / preview、server-wide投稿追加promptを表示します。Project Settingsはproject Actorの同じprofile項目とproject投稿追加promptを表示し、購読panelにはoutbound subscriptionのremote Actor URIとPending / Accepted / Undone / Rejected状態を表示します。remote inbox / shared inbox、内部follow ID、Activity ID、鍵、raw payloadは表示しません。
+- global navigationはproject外でProjects、Accounts、Settingsの順に並べ、Settingsはglobal adminだけに表示します。project profileのenable / disableは既存購読panelだけに置き、profile panelへ重複表示しません。aggregate `@all`のenable / disableはglobal Settingsのprofile panelに置きます。
 - project admin には federation の Enable / Disable action と remote Actor address 入力、Follow / Unfollow action を表示し、project member には同じ project scope の状態だけを read-only で表示します。member 向けナビゲーションは `/projects/{projectSlug}/settings` に限定し、管理操作を描画しません。
+- project memberにはdisplay nameとiconだけをread-only表示し、投稿追加promptと保存actionは描画しません。既存のdisabled Actorはprofile編集を許可し、Actor未作成時だけ先にActivityPubを有効化する案内とdisabledな保存buttonを表示します。
 - federation を有効化できるのは public project だけです。private project では Enable action を disabled にし、先に project を public にする必要があることを表示します。Disable action は確認ダイアログを経て実行します。
 - Enable / Disable / Follow / Unfollow の送信中は既存 `PendingSubmitButton` の disabled / pending feedback を使い、認可、validation、resolver、DB の失敗は `role="alert"` の安全な短文で表示します。秘密情報や remote response 本文を error に含めません。
 - subscription list は既存 panel、stacked list、mono metadata、status badge のトークンを再利用します。desktop / mobile とも縦積みで overflow を避け、長い Actor URI は panel 幅内で折り返します。

@@ -1,12 +1,13 @@
 import type { KvStore } from '@fedify/fedify';
 import { createFederationBuilder, type Federation, type MessageQueue } from '@fedify/fedify';
-import { Article, CryptographicKey, Endpoints, Service } from '@fedify/vocab';
+import { Article, CryptographicKey, Endpoints, Image, Service } from '@fedify/vocab';
 import {
   type AuthenticatedDocumentLoaderFactory,
   type DocumentLoader,
   importSpki,
 } from '@fedify/vocab-runtime';
 import { Temporal } from '@js-temporal/polyfill';
+import { resolveActivityPubIconUrl } from './actor-profile.ts';
 import type { ActivityPubRepository } from './actor-repository.ts';
 import { parseCanonicalOrigin } from './canonical-origin.ts';
 import type { DeliveryErrorObserver } from './delivery-observer.ts';
@@ -114,6 +115,18 @@ async function buildActivityPubFederation(
         id: actorUrl,
         preferredUsername: actor.preferredUsername,
         name: actor.displayName,
+        ...(actor.iconUrl
+          ? {
+              icon: new Image({
+                url: new URL(
+                  resolveActivityPubIconUrl({
+                    canonicalOrigin: origin,
+                    iconUrl: actor.iconUrl,
+                  }),
+                ),
+              }),
+            }
+          : {}),
         inbox: new URL(uri.personalInboxUrl(actor.preferredUsername)),
         outbox: new URL(uri.actorOutboxUrl(actor.preferredUsername)),
         followers: new URL(uri.actorFollowersUrl(actor.preferredUsername)),

@@ -4,10 +4,7 @@ import {
   buildStableAnnounceActivityUri,
   buildStableCreateActivityUri,
 } from './report-activity-uris.ts';
-import {
-  enqueueReportPublicationOutbox,
-  ReportPublicationAggregateActorError,
-} from './report-publication-outbox.ts';
+import { enqueueReportPublicationOutbox } from './report-publication-outbox.ts';
 
 const runDbTests = process.env.ACTIVITYPUB_RUN_DB_TESTS === '1';
 const databaseUrl = process.env.DATABASE_URL?.trim();
@@ -58,7 +55,7 @@ async function main() {
     await assertPublicWithoutApTimestampStillEnqueues(sql);
     await assertPrivateProjectUpdatesWithoutActivities(sql);
     await assertDisabledProjectActorUpdatesWithoutActivities(sql);
-    await assertMissingAggregateRollsBack(sql);
+    await assertDisabledAggregateStillPublishesCreateOnly(sql);
     await assertEmptySummaryStillEnqueues(sql);
     await assertForcedRollbackAfterEnqueue(sql);
     await assertRepresentationLockOnlyOnPublicEnabledSuccess(sql);
@@ -294,8 +291,9 @@ async function assertPublicWithoutApTimestampStillEnqueues(sql: postgres.Sql) {
   assert.equal(activities[0]?.count, 2);
 }
 
-async function assertMissingAggregateRollsBack(sql: postgres.Sql) {
+async function assertDisabledAggregateStillPublishesCreateOnly(sql: postgres.Sql) {
   const rollbackReportId = '4f000000-0000-0000-0000-00000000db30';
+  await sql`DELETE FROM public.activitypub_activities WHERE payload_json->>'reportId' = ${rollbackReportId}`;
   await sql`DELETE FROM public.reports WHERE id = ${rollbackReportId}::uuid`;
   await sql`
     INSERT INTO public.reports (id, project_id, title, storage_uri, is_public)
@@ -315,23 +313,29 @@ async function assertMissingAggregateRollsBack(sql: postgres.Sql) {
     WHERE id = ${resolvedAggregateActorId}::uuid
   `;
   try {
-    await assert.rejects(
-      () =>
-        sql.begin(async (transaction) => {
-          await enqueueReportPublicationOutbox({
-            sql: transaction,
-            canonicalOrigin,
-            projectId,
-            reportId: rollbackReportId,
-            publishedAt,
-            publicSummary: 'rollback summary',
-          });
-        }),
-      ReportPublicationAggregateActorError,
-    );
+    await sql.begin(async (transaction) => {
+      await enqueueReportPublicationOutbox({
+        sql: transaction,
+        canonicalOrigin,
+        projectId,
+        reportId: rollbackReportId,
+        publishedAt,
+        publicSummary: 'rollback summary',
+      });
+    });
     const report =
       await sql`SELECT is_public FROM public.reports WHERE id = ${rollbackReportId}::uuid`;
-    assert.equal(report[0]?.is_public, false);
+    assert.equal(report[0]?.is_public, true);
+    const activities = await sql`
+      SELECT activity_type, count(*)::int AS count
+      FROM public.activitypub_activities
+      WHERE direction = 'outbound'
+        AND payload_json->>'reportId' = ${rollbackReportId}
+      GROUP BY activity_type
+    `;
+    assert.equal(activities.length, 1);
+    assert.equal(activities[0]?.count, 1);
+    assert.equal(activities[0]?.activity_type, 'Create');
   } finally {
     await sql`
       UPDATE public.activitypub_actors
@@ -451,6 +455,7 @@ async function assertRepresentationLockOnlyOnPublicEnabledSuccess(sql: postgres.
   assert.equal(disabledLock[0]?.representation_locked_at?.toISOString(), lockedAt?.toISOString());
 
   const rollbackReportId = '4f000000-0000-0000-0000-00000000db35';
+  await sql`DELETE FROM public.activitypub_activities WHERE payload_json->>'reportId' = ${rollbackReportId}`;
   await sql`DELETE FROM public.reports WHERE id = ${rollbackReportId}::uuid`;
   await sql`
     INSERT INTO public.reports (id, project_id, title, storage_uri, is_public)
@@ -470,20 +475,26 @@ async function assertRepresentationLockOnlyOnPublicEnabledSuccess(sql: postgres.
     WHERE id = ${resolvedAggregateActorId}::uuid
   `;
   try {
-    await assert.rejects(
-      () =>
-        sql.begin(async (transaction) => {
-          await enqueueReportPublicationOutbox({
-            sql: transaction,
-            canonicalOrigin,
-            projectId,
-            reportId: rollbackReportId,
-            publishedAt,
-            publicSummary: 'rollback lock summary',
-          });
-        }),
-      ReportPublicationAggregateActorError,
-    );
+    await sql.begin(async (transaction) => {
+      await enqueueReportPublicationOutbox({
+        sql: transaction,
+        canonicalOrigin,
+        projectId,
+        reportId: rollbackReportId,
+        publishedAt,
+        publicSummary: 'rollback lock summary',
+      });
+    });
+    const activities = await sql`
+      SELECT activity_type, count(*)::int AS count
+      FROM public.activitypub_activities
+      WHERE direction = 'outbound'
+        AND payload_json->>'reportId' = ${rollbackReportId}
+      GROUP BY activity_type
+    `;
+    assert.equal(activities.length, 1);
+    assert.equal(activities[0]?.count, 1);
+    assert.equal(activities[0]?.activity_type, 'Create');
   } finally {
     await sql`
       UPDATE public.activitypub_actors

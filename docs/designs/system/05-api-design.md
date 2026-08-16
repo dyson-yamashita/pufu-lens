@@ -37,6 +37,8 @@
 
 ActivityPub public endpoint は `ACTIVITYPUB_ENABLED=1` と固定 canonical origin / Actor key encryption key が設定された production proxy で処理する。App Hosting などの reverse proxy が公開 URL / `Host` を内部 runtime の値へ置き換えても、production proxy は request の path / query / method / body / 署名 header を保持し、設定済み canonical origin の URL と `Host` に再構築してから Fedify へ渡す。canonical origin の決定に `Host` / forwarded host header は使わない。`/.well-known/webfinger`、`/activitypub/actors/[preferredUsername]`、その followers / following / outbox collection、`/activitypub/reports/[reportId]` を公開し、public かつ federation-enabled な project と public report だけを解決する。private / disabled / missing は endpoint 間で区別せず `404` とする。
 
+Actor responseの`name`は保存済みdisplay name、`icon`は保存済みHTTPS URLまたはcanonical originへ解決したsite pathから生成する。profile更新でActor ID、preferred username、inbox / outbox URL、公開鍵を変更せず、remote instanceのcache更新は別途遅延し得る。
+
 `/activitypub/actors/[preferredUsername]/inbox` と `/activitypub/inbox` は Follow / Accept / Undo / `Create(Article)` / `Announce(Article)` を受け付け、Fedify が検証した署名 key owner と Activity actor、embedded objectのactor / attribution / audienceが一致した場合だけ PostgreSQL-backed use-case へ渡す。followers / following は accepted relation の remote Actor URI だけを versioned opaque cursor で返し、inbox URI、follow status、内部 ID、時刻を公開しない。
 
 `GET /api/projects/[projectSlug]/federated-reports` はAuth.js sessionと`project_members`を検証し、認可済みproject IDだけでrepositoryを検索する。responseはtitle、source Actor、domain、published time、sanitized summary、original URLとblock件数だけを返し、内部ID、follow ID、raw payload、署名headerを含めない。保存後にdomain blockへ追加されたrowも表示時に再評価し、すべて非表示なら安全なblocked状態を返す。認証済みデータが共有cacheへ残らないよう、成功・認証失敗・認可失敗・内部エラーの全responseへ`Cache-Control: no-store`を付与する。
@@ -45,15 +47,18 @@ ActivityPub public endpoint は `ACTIVITYPUB_ENABLED=1` と固定 canonical orig
 
 ### 3. Server Action / UI 内部入口
 
-| 入口                                           | 認可                  | 実装状況      | 用途                                                                    |
-| ---------------------------------------------- | --------------------- | ------------- | ----------------------------------------------------------------------- |
-| `apps/web/src/admin-actions.ts`                | project admin         | server-action | project、member、data source、parser、report、collection 実行の管理操作 |
-| `apps/web/src/ui.tsx` 内 server action         | session / action ごと | server-action | UI からの軽量操作                                                       |
-| `apps/web/app/login/page.tsx` 内 server action | public                | server-action | credentials sign-in                                                     |
+| 入口                                                | 認可                   | 実装状況      | 用途                                                                    |
+| --------------------------------------------------- | ---------------------- | ------------- | ----------------------------------------------------------------------- |
+| `apps/web/src/admin-actions.ts`                     | project admin          | server-action | project、member、data source、parser、report、collection 実行の管理操作 |
+| `apps/web/src/admin-activitypub-profile-actions.ts` | global / project admin | server-action | aggregate / project Actorのprofile・投稿追加prompt更新とaggregate有効化 |
+| `apps/web/src/ui.tsx` 内 server action              | session / action ごと  | server-action | UI からの軽量操作                                                       |
+| `apps/web/app/login/page.tsx` 内 server action      | public                 | server-action | credentials sign-in                                                     |
 
 管理 API として REST 化されていない操作は、現状では server action を正規入口として扱う。将来 REST API を追加する場合は、server action と同じ認可 SQL / runtime validation を共有する。
 
 ActivityPub 購読管理は `followRemoteActor` / `unfollowRemoteActor` server action を正規入口とする。入力は project slug と remote Actor address または保存済み Actor URI に限定し、project admin 認可、project-scoped Actor / follow lookup、HTTPS / handle validation を server side で行う。remote inbox / shared inbox は client から受け取らず、安全な remote resolver または保存済み follow rowから解決する。予期しない resolver / DB error は固定した汎用 message へ写像し、raw payload、署名 header、credential、内部 SQL error を UI へ返さない。project member 用 settings は同じ project scope の購読状態だけを read-only で表示する。
+
+ActivityPub profile管理はREST APIを増やさずserver actionを正規入口とする。`/settings`のaggregate profileと有効化はglobal admin、project settingsのprofileはproject adminまたはglobal adminだけが変更できる。入力はdisplay name、icon URL、追加promptと固定のenable booleanに限定し、preferred username、Actor ID、canonical URL、project ID、鍵素材をformから受け取らない。project scopeは認可済みproject IDとURL slugをrepository transactionで再検証し、validation / not-found / auth errorだけを安全な固定errorへ写像する。
 
 `POST /internal/schedules/activitypub-dispatcher:run` は空 JSON object だけを受理し、Google OIDC token の issuer、固定 audience、designated Scheduler service account の subject / email / verified emailを検証する。active Cloud Run Job execution があれば `202` no-op、なければ対象 `activitypub-dispatcher` Jobだけを起動する。token、Cloud access token、raw body、署名headerはlogへ出さない。
 

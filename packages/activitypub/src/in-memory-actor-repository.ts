@@ -1,5 +1,6 @@
 import { exportJwk, type generateCryptoKeyPair, importJwk } from '@fedify/fedify';
 import {
+  ActivityPubActorNotFoundError,
   ActivityPubPreferredUsernameConflictError,
   ActivityPubProjectNotPublicError,
 } from './activitypub-errors.ts';
@@ -84,12 +85,65 @@ export function createInMemoryActivityPubRepository(input: {
     async ensureAggregateActor() {
       const existing = [...actors.values()].find((entry) => entry.actor.kind === 'aggregate');
       if (existing) {
-        if (!existing.actor.enabled) {
-          existing.actor = { ...existing.actor, enabled: true, updatedAt: new Date() };
-        }
         return existing.actor;
       }
       return seedAggregateActorInternal();
+    },
+    async findAggregateActor() {
+      const existing = [...actors.values()].find((entry) => entry.actor.kind === 'aggregate');
+      return existing?.actor;
+    },
+    async findProjectActorByProjectId(projectId) {
+      const existingId = actorsByProjectId.get(projectId);
+      if (!existingId) {
+        return undefined;
+      }
+      return actors.get(existingId)?.actor;
+    },
+    async updateAggregateActorProfile(profile) {
+      const existing = [...actors.values()].find((entry) => entry.actor.kind === 'aggregate');
+      if (!existing) {
+        throw new ActivityPubActorNotFoundError('aggregate');
+      }
+      existing.actor = {
+        ...existing.actor,
+        displayName: profile.displayName,
+        iconUrl: profile.iconUrl,
+        additionalPrompt: profile.additionalPrompt,
+        updatedAt: new Date(),
+      };
+      return existing.actor;
+    },
+    async setAggregateActorEnabled(enabled) {
+      let existing = [...actors.values()].find((entry) => entry.actor.kind === 'aggregate');
+      if (!existing) {
+        await seedAggregateActorInternal();
+        existing = [...actors.values()].find((entry) => entry.actor.kind === 'aggregate');
+      }
+      if (!existing) {
+        throw new ActivityPubActorNotFoundError('aggregate');
+      }
+      existing.actor = { ...existing.actor, enabled, updatedAt: new Date() };
+      return existing.actor;
+    },
+    async updateProjectActorProfile(params) {
+      lockProjectScope(params.projectId, params.projectSlug);
+      const existingId = actorsByProjectId.get(params.projectId);
+      if (!existingId) {
+        throw new ActivityPubActorNotFoundError('project');
+      }
+      const existing = actors.get(existingId);
+      if (!existing) {
+        throw new ActivityPubActorNotFoundError('project');
+      }
+      existing.actor = {
+        ...existing.actor,
+        displayName: params.displayName,
+        iconUrl: params.iconUrl,
+        additionalPrompt: params.additionalPrompt,
+        updatedAt: new Date(),
+      };
+      return existing.actor;
     },
     async enableProjectActor(params) {
       const scope = lockProjectScope(params.projectId, params.projectSlug);
@@ -130,11 +184,11 @@ export function createInMemoryActivityPubRepository(input: {
       lockProjectScope(params.projectId, params.projectSlug);
       const existingId = actorsByProjectId.get(params.projectId);
       if (!existingId) {
-        throw new Error('Project ActivityPub actor was not found.');
+        throw new ActivityPubActorNotFoundError('project');
       }
       const existing = actors.get(existingId);
       if (!existing) {
-        throw new Error('Project ActivityPub actor was not found.');
+        throw new ActivityPubActorNotFoundError('project');
       }
       existing.actor = { ...existing.actor, enabled: false, updatedAt: new Date() };
       return existing.actor;
@@ -316,6 +370,8 @@ export function createInMemoryActivityPubRepository(input: {
       kind: 'project',
       preferredUsername: actor.preferredUsername,
       displayName: actor.projectName ?? actor.projectSlug,
+      iconUrl: null,
+      additionalPrompt: null,
       enabled: actor.enabled,
       publicKeyPem: keyMaterial.publicKeyPem,
       createdAt: new Date(),
@@ -336,6 +392,8 @@ export function createInMemoryActivityPubRepository(input: {
       kind: 'aggregate',
       preferredUsername: 'all',
       displayName: 'All Projects',
+      iconUrl: null,
+      additionalPrompt: null,
       enabled: true,
       publicKeyPem: keyMaterial.publicKeyPem,
       createdAt: new Date(),
