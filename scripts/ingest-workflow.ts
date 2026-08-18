@@ -24,7 +24,7 @@ import {
 } from './lib/ingest-workflow-reprocess.ts';
 import { normalizeReprocessWorkflowSteps } from './lib/ingest-workflow-reprocess-steps.ts';
 
-const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
+const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive', 'x'] as const;
 const STEP_ORDER = ['collect', 'parse', 'resolve', 'chunk', 'graph'] as const;
 const DEFAULT_DRAIN_MAX_BATCHES = 100;
 const DEFAULT_DRAIN_MAX_RUNTIME_SECONDS = 540;

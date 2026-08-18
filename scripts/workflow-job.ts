@@ -10,7 +10,7 @@ const WORKFLOW_IDS = [
   'report-schedule-dispatcher',
   'source-sync-dispatcher',
 ] as const;
-const SOURCE_TYPES = ['drive', 'github', 'gmail', 'web'] as const;
+const SOURCE_TYPES = ['drive', 'github', 'gmail', 'web', 'x'] as const;
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 type WorkflowId = (typeof WORKFLOW_IDS)[number];

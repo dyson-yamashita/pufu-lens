@@ -650,6 +650,8 @@ function documentLabel(docType: ParsedDocumentType): string {
       return 'PullRequest';
     case 'web_page':
       return 'WebPage';
+    case 'social_post':
+      return 'SocialPost';
   }
 }
 

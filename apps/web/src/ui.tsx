@@ -1,4 +1,5 @@
 import {
+  AtSign,
   Clock3,
   Contact,
   Database,
@@ -40,6 +41,7 @@ const sourceLabels: Record<SourceType, string> = {
   drive: 'Drive',
   github: 'GitHub',
   gmail: 'Gmail',
+  x: 'X',
   web: 'Web',
 };
 
@@ -341,7 +343,9 @@ export function SourceIcon({ sourceType }: { readonly sourceType: SourceType }) 
         ? GitBranch
         : sourceType === 'drive'
           ? HardDrive
-          : Mail;
+          : sourceType === 'x'
+            ? AtSign
+            : Mail;
   return <Icon aria-hidden="true" size={18} />;
 }
 
@@ -365,7 +369,7 @@ export function SourceTypeTabs({
       >
         All
       </Link>
-      {(['gmail', 'drive', 'github', 'web'] as const).map((sourceType) => {
+      {(['gmail', 'drive', 'github', 'x', 'web'] as const).map((sourceType) => {
         const available = availability?.[sourceType] ?? true;
         if (!available) {
           return (

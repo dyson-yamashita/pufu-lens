@@ -16,6 +16,7 @@ export const BUILT_IN_SOURCE_TYPES = [
   'web',
   'gmail',
   'drive',
+  'x',
 ] as const satisfies readonly SourceType[];
 
 /** Minimal SQL executor surface used to seed built-in parser profiles without depending on postgres types. */

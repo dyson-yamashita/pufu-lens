@@ -9,7 +9,7 @@ test('dispatcher claim uses due checks and skip-locked lease acquisition', () =>
   assert.match(source, /FOR UPDATE OF schedule SKIP LOCKED/);
   assert.match(source, /schedule\.enabled = true/);
   assert.match(source, /source\.enabled = true/);
-  assert.match(source, /source\.source_type IN \('drive', 'github', 'gmail'\)/);
+  assert.match(source, /source\.source_type IN \('drive', 'github', 'gmail', 'x'\)/);
 });
 
 test('heartbeat and completion use worker-token compare-and-set', () => {

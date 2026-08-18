@@ -9,7 +9,7 @@ import {
 import { LocalFsObjectStorage } from '../packages/storage/dist/local-fs.js';
 import { requiredEnv } from './lib/cli.ts';
 
-const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
+const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive', 'x'] as const;
 
 type ValidateParserVersionOptions = {
   dryRun?: boolean;

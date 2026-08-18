@@ -14,6 +14,7 @@ import {
   collectGitHubSource,
   collectGmailSource,
   collectWebUrlSource,
+  collectXSource,
   parseCollectionDataSourceRecordRows,
   parseOptionalCollectionRawDocumentRecordRow,
 } from '../packages/ingestion/dist/index.js';
@@ -27,7 +28,7 @@ import {
   requiredCollectionToken,
 } from './lib/collection-connection.ts';
 
-const SOURCE_TYPES = ['drive', 'github', 'gmail', 'web'] as const;
+const SOURCE_TYPES = ['drive', 'github', 'gmail', 'web', 'x'] as const;
 const DEFAULT_COLLECT_LIMIT = 100;
 
 type RealSourceType = (typeof SOURCE_TYPES)[number];
@@ -36,7 +37,7 @@ async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sourceType = requiredOption(options.source, '--source');
-  const limit = options.limit ?? DEFAULT_COLLECT_LIMIT;
+  const limit = options.limit ?? (sourceType === 'x' ? 3_200 : DEFAULT_COLLECT_LIMIT);
 
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   const storage = createObjectStorageForCollection();
@@ -56,7 +57,7 @@ async function main(): Promise<void> {
                 '--connection-id is supported only for gmail, drive, and github sources.',
               );
             })(),
-          sourceType: sourceType as Exclude<RealSourceType, 'web'>,
+          sourceType: sourceType as Exclude<RealSourceType, 'web' | 'x'>,
           sql,
         })
       : provider
@@ -64,13 +65,17 @@ async function main(): Promise<void> {
             dataSourceId: options.dataSourceId,
             projectSlug,
             provider,
-            sourceType: sourceType as Exclude<RealSourceType, 'web'>,
+            sourceType: sourceType as Exclude<RealSourceType, 'web' | 'x'>,
             sql,
           })
         : undefined;
 
     const connectionToken =
-      sourceType === 'web' ? undefined : requiredCollectionToken(sourceType, connection);
+      sourceType === 'web'
+        ? undefined
+        : sourceType === 'x'
+          ? requiredEnv('X_BEARER_TOKEN')
+          : requiredCollectionToken(sourceType, connection);
 
     if (sourceType === 'web' && options.urls.length > 0) {
       await ensureWebUrlDataSource({ projectSlug, sql, urls: options.urls });
@@ -137,14 +142,23 @@ async function main(): Promise<void> {
                 storage,
                 token: connectionToken,
               })
-            : await collectWebUrlSource({
-                dataSourceId: options.dataSourceId,
-                dryRun: options.dryRun,
-                limit,
-                projectSlug,
-                repository,
-                storage,
-              });
+            : sourceType === 'x'
+              ? await collectXSource({
+                  dataSourceId: options.dataSourceId,
+                  limit,
+                  projectSlug,
+                  repository,
+                  storage,
+                  token: requiredEnv('X_BEARER_TOKEN'),
+                })
+              : await collectWebUrlSource({
+                  dataSourceId: options.dataSourceId,
+                  dryRun: options.dryRun,
+                  limit,
+                  projectSlug,
+                  repository,
+                  storage,
+                });
 
     console.log(JSON.stringify(result, null, 2));
   } finally {

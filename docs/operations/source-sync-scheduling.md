@@ -108,3 +108,9 @@ pnpm --filter @pufu-lens/mastra test
 ```
 
 主な保証範囲は、due / enabled条件と `SKIP LOCKED`、lease / heartbeat / retry、source単位のcollect→ingest、safe error、raw複数版、document ID維持、最新版chunk置換、旧chunk履歴である。実provider、OIDC、Cloud Run、検索品質はstaging smokeとして別途確認する。
+
+## X データソース
+
+- Cloud Run Job / ローカル dispatcher の実行環境に `X_BEARER_TOKEN` を secret として設定する。
+- Data Source 作成時に初回 collect / ingest が走り、その後は既存の日次 schedule dispatcher が前日分を収集する。
+- token、投稿本文、対象アカウントを構造化ログへ出力しない。API の履歴範囲と quota は契約 tier に依存するため、初回件数と失敗状況を確認する。

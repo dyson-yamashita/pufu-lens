@@ -459,7 +459,13 @@ function requireArtifactVersion(
 }
 
 function requireSourceType(value: unknown): SourceType {
-  if (value === 'drive' || value === 'github' || value === 'gmail' || value === 'web') {
+  if (
+    value === 'drive' ||
+    value === 'github' ||
+    value === 'gmail' ||
+    value === 'web' ||
+    value === 'x'
+  ) {
     return value;
   }
   throw new Error('sourceType is invalid.');

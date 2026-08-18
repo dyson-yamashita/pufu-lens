@@ -12,8 +12,14 @@ import {
   type TopicExtractionAgent,
 } from './topic-extraction-agent.js';
 
-export type SourceType = 'github' | 'web' | 'gmail' | 'drive';
-export type ParsedDocumentType = 'issue' | 'pull_request' | 'web_page' | 'email' | 'drive_doc';
+export type SourceType = 'github' | 'web' | 'gmail' | 'drive' | 'x';
+export type ParsedDocumentType =
+  | 'issue'
+  | 'pull_request'
+  | 'web_page'
+  | 'email'
+  | 'drive_doc'
+  | 'social_post';
 
 export interface RawDocumentContract {
   projectSlug: string;
@@ -123,6 +129,14 @@ interface DriveRaw {
   bodyText: string;
 }
 
+interface XRaw {
+  id: string;
+  text: string;
+  created_at: string;
+  author: { id: string; username: string; name: string };
+  conversation_id?: string;
+}
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const fixturesRoot = join(repoRoot, 'fixtures/ingestion');
 
@@ -175,7 +189,49 @@ export async function parseRawContent(
       return parseGmail(fixtureCase, JSON.parse(rawText) as GmailRaw);
     case 'drive':
       return parseDrive(fixtureCase, JSON.parse(rawText) as DriveRaw, options.topicExtractionAgent);
+    case 'x':
+      return parseX(fixtureCase, JSON.parse(rawText) as XRaw, options.topicExtractionAgent);
   }
+}
+
+function parseX(
+  fixtureCase: Pick<IngestionFixtureCase, 'raw'>,
+  raw: XRaw,
+  topicExtractionAgent?: TopicExtractionAgent,
+): Promise<ParsedDocument> | ParsedDocument {
+  const canonicalUri = `https://x.com/${raw.author.username}/status/${raw.id}`;
+  const base: ParsedDocument = {
+    actors: [
+      {
+        displayName: raw.author.name || raw.author.username,
+        role: 'author',
+      },
+    ],
+    bodyText: raw.text,
+    canonicalUri,
+    docType: 'social_post',
+    metadata: {
+      authorId: raw.author.id,
+      conversationId: raw.conversation_id ?? raw.id,
+      username: raw.author.username,
+    },
+    occurredAt: raw.created_at,
+    relations: [],
+    schemaVersion: 1,
+    sourceId: fixtureCase.raw.sourceId,
+    sourceType: 'x',
+    title: `@${raw.author.username}: ${raw.text.slice(0, 80)}`,
+  };
+  return topicExtractionAgent
+    ? topicExtractionAgent
+        .extractTopics({
+          bodyText: base.bodyText,
+          canonicalUri,
+          html: '',
+          title: base.title,
+        })
+        .then((topics) => ({ ...base, topics }))
+    : base;
 }
 
 export function validateParsedDocument(parsed: ParsedDocument): ParsedDocument {

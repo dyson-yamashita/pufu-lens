@@ -626,10 +626,33 @@ export async function listProjectConnections(
   return withOptionalSql(async (sql) => {
     const rows = await listProjectConnectionRowsBySlug(sql, projectSlug);
     if (await refreshExpiredGoogleConnectionSummary(sql, rows, { projectSlug })) {
-      return projectConnectionsFromRows(await listProjectConnectionRowsBySlug(sql, projectSlug));
+      return withXConnection(
+        projectConnectionsFromRows(await listProjectConnectionRowsBySlug(sql, projectSlug)),
+      );
     }
-    return projectConnectionsFromRows(rows);
-  }, notConnectedProjectConnections());
+    return withXConnection(projectConnectionsFromRows(rows));
+  }, withXConnection(notConnectedProjectConnections()));
+}
+
+function withXConnection(
+  connections: readonly ProjectConnectionSummary[],
+): readonly ProjectConnectionSummary[] {
+  const withoutX = connections.filter((connection) => connection.provider !== 'x');
+  const configured = Boolean(process.env.X_BEARER_TOKEN?.trim());
+  return [
+    ...withoutX,
+    {
+      accountLabel: configured ? 'X API application' : null,
+      configuration: {},
+      grantedScopes: configured ? ['tweet.read', 'users.read'] : [],
+      metadataLabels: ['server-managed bearer token'],
+      permissionsSummary: configured ? 'Read public posts' : 'Set X_BEARER_TOKEN on the server',
+      provider: 'x',
+      scopesSummary: configured ? 'tweet.read, users.read' : 'No scopes granted',
+      status: configured ? 'connected' : 'not_connected',
+      updatedAt: configured ? 'configured' : 'not yet',
+    },
+  ];
 }
 
 export async function listProjectConnectionsForProjectId(
@@ -1030,7 +1053,7 @@ export function getSourceTypeCounts(project: ProjectSummary): Record<SourceType,
       counts[source.sourceType] += 1;
       return counts;
     },
-    { drive: 0, github: 0, gmail: 0, web: 0 },
+    { drive: 0, github: 0, gmail: 0, web: 0, x: 0 },
   );
 }
 
@@ -1471,6 +1494,8 @@ function summarizeScope(sourceType: SourceType, config: unknown): string {
   if (sourceType === 'gmail' && typeof object.query === 'string') {
     return object.query;
   }
+  if (sourceType === 'x' && Array.isArray(object.accounts))
+    return object.accounts.map(String).join(', ');
   return typeof object.source === 'string' ? object.source : 'configured';
 }
 
@@ -1488,6 +1513,8 @@ function editableScopeFromConfig(sourceType: SourceType, config: unknown): strin
   if (sourceType === 'gmail' && typeof object.query === 'string') {
     return object.query;
   }
+  if (sourceType === 'x' && Array.isArray(object.accounts))
+    return object.accounts.map(String).join('\n');
   return '';
 }
 

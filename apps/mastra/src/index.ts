@@ -346,7 +346,7 @@ const crossProjectDataSourceStatusSchema = z.object({
 
 const optionalProjectSlugFilterSchema = z.array(z.string().min(1)).max(20).optional();
 const optionalSourceTypeFilterSchema = z
-  .array(z.enum(['drive', 'github', 'gmail', 'web']))
+  .array(z.enum(['drive', 'github', 'gmail', 'web', 'x']))
   .max(4)
   .optional();
 

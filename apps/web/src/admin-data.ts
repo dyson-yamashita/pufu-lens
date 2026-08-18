@@ -1,10 +1,10 @@
-export const SOURCE_TYPES = ['gmail', 'drive', 'github', 'web'] as const;
+export const SOURCE_TYPES = ['gmail', 'drive', 'github', 'x', 'web'] as const;
 export type SourceType = (typeof SOURCE_TYPES)[number];
 export type SourceStatus = 'healthy' | 'syncing' | 'failed' | 'held';
 export type ParserProfileStatus = 'approved' | 'review_requested' | 'draft' | 'rejected';
 export const PROJECT_VISIBILITIES = ['private', 'public'] as const;
 export type ProjectVisibility = (typeof PROJECT_VISIBILITIES)[number];
-export type ConnectionProvider = 'google' | 'github';
+export type ConnectionProvider = 'google' | 'github' | 'x';
 export type ProjectConnectionStatus =
   | 'connected'
   | 'not_connected'
@@ -32,7 +32,7 @@ export interface ProjectConnectionConfiguration {
 
 export type ProjectSourceAvailability = Record<SourceType, boolean>;
 
-const CONNECTION_PROVIDERS: readonly ConnectionProvider[] = ['google', 'github'];
+const CONNECTION_PROVIDERS: readonly ConnectionProvider[] = ['google', 'github', 'x'];
 
 export function isSourceType(value: unknown): value is SourceType {
   return typeof value === 'string' && SOURCE_TYPES.includes(value as SourceType);
@@ -49,6 +49,7 @@ export function requiredProviderForSourceType(sourceType: SourceType): Connectio
   if (sourceType === 'github') {
     return 'github';
   }
+  if (sourceType === 'x') return 'x';
   if (sourceType === 'gmail' || sourceType === 'drive') {
     return 'google';
   }
@@ -87,6 +88,7 @@ export function availabilityFromConnections(
     drive: isSourceTypeAvailable('drive', connections),
     github: isSourceTypeAvailable('github', connections),
     gmail: isSourceTypeAvailable('gmail', connections),
+    x: isSourceTypeAvailable('x', connections),
     web: true,
   };
 }
@@ -96,7 +98,8 @@ export function isAdminUiCollectionSupported(sourceType: SourceType): boolean {
     sourceType === 'web' ||
     sourceType === 'drive' ||
     sourceType === 'gmail' ||
-    sourceType === 'github'
+    sourceType === 'github' ||
+    sourceType === 'x'
   );
 }
 
@@ -105,7 +108,8 @@ export function isAdminUiIngestSupported(sourceType: SourceType): boolean {
     sourceType === 'web' ||
     sourceType === 'drive' ||
     sourceType === 'gmail' ||
-    sourceType === 'github'
+    sourceType === 'github' ||
+    sourceType === 'x'
   );
 }
 
@@ -416,7 +420,7 @@ export function getSourceTypeCounts(project: ProjectSummary): Record<SourceType,
       counts[source.sourceType] += 1;
       return counts;
     },
-    { drive: 0, github: 0, gmail: 0, web: 0 },
+    { drive: 0, github: 0, gmail: 0, web: 0, x: 0 },
   );
 }
 

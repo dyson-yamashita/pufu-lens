@@ -105,7 +105,7 @@ test('schedule repository scopes reads and updates by project and data source', 
   assert.match(source, /schedule\.project_id = \$\{input\.projectId\}/);
   assert.match(source, /schedule\.data_source_id = \$\{input\.dataSourceId\}/);
   assert.match(source, /source\.project_id = schedule\.project_id/);
-  assert.match(source, /source\.source_type IN \('github', 'drive', 'gmail'\)/);
+  assert.match(source, /source\.source_type IN \('github', 'drive', 'gmail', 'x'\)/);
 });
 
 test('data source creation inserts the default schedule inside its transaction', async () => {

@@ -19,7 +19,7 @@ import { createObjectStorageFromEnv } from '../packages/storage/dist/factory.js'
 import { ensureIngestionQueueLeaseColumn } from './ingestion-queue-lease.ts';
 import { requiredEnv } from './lib/cli.ts';
 
-const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
+const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive', 'x'] as const;
 const DEFAULT_PARSE_LEASE_SECONDS = 15 * 60;
 
 async function main(): Promise<void> {

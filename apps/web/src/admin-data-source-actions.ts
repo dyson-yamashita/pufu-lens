@@ -11,6 +11,7 @@ import {
   collectGitHubSource,
   collectGmailSource,
   collectWebUrlSource,
+  collectXSource,
   type DataSourceRecord,
   ensureBuiltInParserProfileForDataSource,
   type LinkDataSourceInput,
@@ -97,7 +98,8 @@ async function assertDataSourceConnectionReady(
     sourceType,
     connectionId,
   );
-  if (!connection && requiredProviderForSourceType(sourceType)) {
+  const serverManagedXReady = sourceType === 'x' && Boolean(process.env.X_BEARER_TOKEN?.trim());
+  if (!connection && requiredProviderForSourceType(sourceType) && !serverManagedXReady) {
     throw new Error(dataSourceConnectionRequiredMessage(sourceType));
   }
   return connection;
@@ -117,6 +119,7 @@ async function lookupReadyDataSourceConnection(
   if (!provider) {
     return undefined;
   }
+  if (provider === 'x') return undefined;
   if (connectionId === null) {
     return undefined;
   }
@@ -823,6 +826,19 @@ async function collectProjectDataSource(
     });
     return;
   }
+  if (dataSource.source_type === 'x') {
+    const token = process.env.X_BEARER_TOKEN?.trim();
+    if (!token)
+      throw new Error('X_BEARER_TOKEN is required. Configure the X connection in Settings.');
+    await collectXSource({
+      dataSourceId,
+      projectSlug,
+      repository: new AdminCollectionRepository(sql, dataSourceId),
+      storage: createCollectionStorageFromEnv(),
+      token,
+    });
+    return;
+  }
   await collectWebUrlSource({
     dataSourceId,
     projectSlug,
@@ -1340,6 +1356,7 @@ function buildDataSourceConfig(sourceType: SourceType, scope: string): Record<st
       source: 'admin-ui',
     };
   }
+  if (sourceType === 'x') return { accounts: splitScopeList(scope), source: 'admin-ui' };
   return {
     query: scope,
     source: 'admin-ui',
