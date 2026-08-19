@@ -222,16 +222,29 @@ Step 1 では次の責務を provider-neutral input / output に固定する。�
 
 | capability                    | 最小責務                                                                                             | interface に出さないもの                               |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `ProjectResolver`             | slug と access context から検証済み `projectId` / project record を得る限定的 bootstrap lookup       | graph / search query、provider 名、任意 SQL            |
 | `GraphReadRepository`         | relation 別 1-hop / 2-hop related document、Viewer preset 用 normalized graph、node / relation count | graph name、Cypher、agtype、table name                 |
 | `GraphMutationRepository`     | node / edge upsert、Actor merge、document graph cleanup                                              | AGE label syntax、raw SQL、provider transaction object |
+| `GraphIndexingRepository`     | graph 対象取得、Actor / Document 解決、email quote 更新、indexing status 更新                        | graph traversal、node / edge storage API               |
 | `SemanticCandidateRepository` | project / embedding model scoped の ranked chunk candidate                                           | pgvector distance operator、Vectorize raw score        |
 | `KeywordCandidateRepository`  | normalized query に対する ranked chunk candidate                                                     | PGroonga operator / score、FTS5 rank                   |
 | Core retrieval policy         | RRF、dedupe、document diversity、score-aware cutoff、graph coverage evidence、final limit            | provider connection / SQL dialect                      |
 
 `ChatRepository` は既存 call site と test seam を保つ facade とし、内部で上記 capability と relational
-chat repository を合成する。`GraphRelationsRepository` は `GraphMutationRepository` の domain input
-として再利用する。`GraphViewerRepository` は `executePreset({ cypher, ... })` を廃止し、preset ID と
-project scope を受ける capability に狭める。
+chat repository を合成する。既存 `GraphRelationsRepository` は project lookup、graph 対象 read、
+Actor / Document lookup、indexing status、email quote、node / edge mutation が混在するため、
+`GraphMutationRepository` として直接再利用しない。移行 adapter で既存 method を次の境界へ写像し、
+call site の移行完了後に legacy interface を廃止する。
+
+- `lookupProjectBySlug` は `ProjectResolver` に分離する。
+- `readGraphTargets`、Actor / Document lookup、`replaceEmailQuotes`、`markIndexed` / `markFailed` は
+  `GraphIndexingRepository` に分離する。
+- `upsertGraphNode` / `upsertGraphEdge` は `GraphMutationRepository` に写像する。同 repository へ
+  Actor merge と document cleanup を追加するが、read、project lookup、indexing status は持たせない。
+- graph traversal / count は `GraphReadRepository` に置く。
+- `GraphViewerRepository` は access lookup と chunk fetch を relational app repository へ分離し、
+  `executePreset({ cypher, ... })` を preset ID、検証済み `projectId`、filter を受ける
+  `GraphReadRepository` operation に置き換える。
 
 Candidate は少なくとも `chunkId`、`documentId`、`rank`、snippet provenance を持つ。semantic の
 raw distance / similarity、keyword の provider score は adapter 内 diagnostics に閉じ、Core の
@@ -250,7 +263,10 @@ acceptance criteria は rank と relevance で評価する。
 
 ## 6. 全 Step 共通の不変条件
 
-1. 全 read / write は `projectId` を必須にし、provider 側の query / filter / namespace に適用する。
+1. graph / search / mutation の全 read / write は検証済み `projectId` を必須にし、provider 側の
+   query / filter / namespace に適用する。例外は `ProjectResolver.lookupProjectBySlug(slug)` 等、
+   `projectId` を得る前の限定的な bootstrap lookup だけとする。解決後は slug を query scope として
+   直接使わず、必ず resolver が返した `projectId` へ切り替える。
 2. request 由来の graph name、SQL、Cypher、index 名を受け取らない。
 3. raw content、embedding、OAuth token、DB URL、Cloudflare token を log / fixture / PR に出さない。
 4. shadow comparison は document / chunk ID、rank、safe category、latency だけを記録する。
@@ -336,6 +352,8 @@ rollback、acceptance criteria を記載する。1 Step が review 可能な大�
 - PostgreSQL roundtrip、graph coverage DB、Actor merge DB、Synthetic Monitor DB、Graph Viewer
 - 同一 fixture に対する旧 / 新 facade の candidate ID、rank、snippet chunk ID、status の完全一致
 - `pnpm format:check`、`pnpm lint`、`pnpm typecheck`、`pnpm test`
+- 変更 Markdown に対する `pnpm exec markdownlint-cli2 <changed-files>`。root の `pnpm lint` も
+  `markdownlint-cli2` を含むため、targeted check と repository 全体 check の両方で coverage を確認する。
 
 ### observability
 
@@ -406,6 +424,7 @@ graph_nodes
 - properties        # provider-neutral JSON / JSONB
 - created_at / updated_at
 - PRIMARY KEY (project_id, node_key)
+- FOREIGN KEY (project_id) -> projects(id) ON DELETE CASCADE
 
 graph_edges
 - project_id
@@ -415,9 +434,18 @@ graph_edges
 - properties
 - created_at / updated_at
 - PRIMARY KEY (project_id, source_node_key, target_node_key, relation_type)
-- FOREIGN KEY (project_id, source_node_key / target_node_key) -> graph_nodes
+- FOREIGN KEY (project_id, source_node_key)
+    -> graph_nodes(project_id, node_key) ON DELETE CASCADE
+- FOREIGN KEY (project_id, target_node_key)
+    -> graph_nodes(project_id, node_key) ON DELETE CASCADE
 ```
 
+- project deletion は `projects` から `graph_nodes`、両 endpoint FK から `graph_edges` への cascade で
+  project 内 graph を削除する。
+- Document cleanup は exclusivity 判定と同じ transaction で対象 `graph_nodes` を削除し、incident edge は
+  endpoint FK の cascade で削除する。
+- Actor merge は同じ transaction 内で primary node へ edge を upsert / dedupe し、旧 incident edge を
+  明示削除してから secondary node を削除する。node delete の cascade を merge の edge 移送手段にはしない。
 - outgoing `(project_id, source_node_key, relation_type, target_node_key)` と incoming
   `(project_id, target_node_key, relation_type, source_node_key)` index を作る。
 - `relation_type` 単独 project index と Viewer の recent document selection 用 index を計測する。
@@ -427,6 +455,9 @@ graph_edges
   `SAME_AS` は読取契約が無向なので、両 endpoint を `node_key` 順に canonicalize して reverse duplicate を
   作らない。既存 AGE の双方向 duplicate は canonical comparison で一件へ正規化する。
 - label を可変 table にせず `kind` / `subtype` の許可値を guard する。
+- 9 種の edge type を列挙する `GRAPH_EDGE_TYPES` を canonical registry とし、`GraphEdgeType` は同定数から
+  導出する。PostgreSQL / D1 migration の `relation_type` CHECK、adapter の write validation、upsert / query、
+  parity test fixture は同じ registry から生成または drift test し、未知の値を保存境界で拒否する。
 - Graph query は任意 traversal ではなく capability ごとの bounded SQL とする。
 
 ### 実装内容
@@ -453,10 +484,12 @@ migration transaction で graph 全体を移さない。
 
 ### test / evaluation
 
-- 9 edge type の upsert / dedupe / incoming / outgoing / delete
+- 9 edge type の upsert / dedupe / incoming / outgoing / delete、未知の `relation_type` の拒否と
+  canonical registry / DB CHECK の drift
 - SAME_AS / RELATED_TO / MENTIONS の candidate set、relation pool、hop count、deterministic order
 - Actor merge の edge rewire、duplicate suppression、secondary node delete と transaction rollback
-- Document cleanup、Viewer presets、Synthetic Monitor、project isolation、orphan FK
+- project deletion、Document cleanup、Actor merge の transaction / cascade、Viewer presets、
+  Synthetic Monitor、project isolation、orphan FK
 - AGE / relational の project 別 node / edge count、canonical edge set、representative query parity
 - 10x production row 相当 fixture で 1-hop / 2-hop p50 / p95 と index usage
 
