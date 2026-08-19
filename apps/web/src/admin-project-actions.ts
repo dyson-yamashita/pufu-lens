@@ -1,5 +1,6 @@
 'use server';
 
+import { createPostgresAgeGraphMutationRepository } from '@pufu-lens/graph/postgres-age-mutation';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import type postgres from 'postgres';
@@ -90,9 +91,6 @@ export async function createProject(formData: FormData): Promise<void> {
   await withSql(async (sql) => {
     const adminUserId = await requireGlobalAdmin(sql);
     await sql.begin(async (tx) => {
-      await tx`LOAD 'age'`;
-      await tx`SET LOCAL search_path = ag_catalog, "$user", public`;
-
       if (await projectSlugExists(tx, slug)) {
         throw new Error(`Project slug already exists: ${slug}`);
       }
@@ -115,12 +113,9 @@ export async function createProject(formData: FormData): Promise<void> {
         ON CONFLICT (project_id, user_id) DO UPDATE SET role = 'admin'
       `;
 
-      await tx`
-        SELECT create_graph(${identifiers.graphName})
-        WHERE NOT EXISTS (
-          SELECT 1 FROM ag_catalog.ag_graph WHERE name = ${identifiers.graphName}
-        )
-      `;
+      await createPostgresAgeGraphMutationRepository(tx).ensureProjectGraph({
+        projectId: project.id,
+      });
     });
   });
 
@@ -212,7 +207,15 @@ export async function deleteProject(formData: FormData): Promise<void> {
       throw new Error('Project name confirmation does not match.');
     }
 
-    ({ storageCleanupWarning } = await deleteProjectUseCase(sql, project));
+    ({ storageCleanupWarning } = await deleteProjectUseCase(
+      sql,
+      {
+        id: project.id,
+        slug: project.slug,
+        visibility: project.visibility,
+      },
+      (tx) => createPostgresAgeGraphMutationRepository(tx),
+    ));
   });
 
   if (storageCleanupWarning) {

@@ -36,8 +36,8 @@ keyword search、RRF、Chat source selection の意味と project isolation を 
 - Chat / retrieval: `apps/web/src/chat.ts`、`apps/web/src/private-chat-search.ts`、
   `apps/web/src/private-chat-graph-coverage.ts`
 - Graph ingestion / mutation: `packages/ingestion/src/graph-relations.ts`、
-  `scripts/index-graph-relations.ts`、`apps/web/src/graph-actor-reconcile.ts`、
-  `apps/web/src/graph-document-cleanup.ts`
+  `scripts/index-graph-relations.ts`、`packages/graph/src/postgres-age-mutation.ts`、
+  `apps/web/src/actor-merge-use-case.ts`、`apps/web/src/admin-data-source-actions.ts`
 - Graph read / Viewer: `apps/web/src/graph-viewer.ts`、Graph API routes
 - tests: PostgreSQL roundtrip、graph coverage DB、Actor merge DB、Synthetic Monitor DB、
   Graph Viewer、private chat、chat eval fixtures
@@ -83,17 +83,17 @@ wrapper とされているため、現行 SQL 使用状況だけなら pgcrypto 
 
 ### 3.2 AGE の実利用箇所
 
-| 責務                    | 現行の入口                                                                     | 守るべき契約                                                                                 |
-| ----------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| project graph lifecycle | `admin-project-actions.ts`、`delete-project-use-case.ts`、`project-tenancy.ts` | project 作成 / 削除と graph lifecycle、slug 由来 graph name の検証                           |
-| graph materialize       | `GraphRelationsRepository` と `PostgresGraphRelationsRepository`               | Document / Actor / Topic upsert、全 edge type、idempotent MERGE、失敗時 status               |
-| related document lookup | `ChatRepository.graphCoverageQuery` / `graphQueryWithStatus`                   | SAME_AS 1-hop、RELATED_TO 1-hop、MENTIONS shared Topic 2-hop、relation 別上限、project scope |
-| graph-query fallback    | `apps/web/src/chat.ts`                                                         | traversal 失敗と成功 0 件を区別し、title / summary fallback を別 status にする               |
-| Viewer presets          | Step 1B 前の `GraphViewerRepository.executePreset`                             | server-owned preset、eligible document 制限、read-only / timeout、normalized node / edge     |
-| Actor merge             | `executeActorMerge` / `mergeActorGraphElements`                                | relational reassignment と graph edge 統合 / secondary node 削除の原子性、重複 edge 抑止     |
-| Document cleanup        | `deleteExclusiveDocumentGraphNodes`                                            | project / graph scope、Document node の DETACH DELETE、失敗時の degraded behavior            |
-| monitor / tests         | Synthetic Monitor と DB tests                                                  | node presence、9 relation type count、tenant 越境拒否、rollback                              |
-| operator CLI            | `query-graph.ts`、`index-graph-relations.ts`                                   | graph name 検証、bounded batch、再実行、smoke / maintenance                                  |
+| 責務                    | 現行の入口                                                           | 守るべき契約                                                                                 |
+| ----------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| project graph lifecycle | `GraphMutationRepository` と project composition root                | project 作成 / 削除と graph lifecycle、adapter 内の graph name 解決 / 検証                   |
+| graph materialize       | `GraphIndexingRepository` と `GraphMutationRepository`               | Document / Actor / Topic upsert、全 edge type、idempotent MERGE、失敗時 status               |
+| related document lookup | `ChatRepository.graphCoverageQuery` / `graphQueryWithStatus`         | SAME_AS 1-hop、RELATED_TO 1-hop、MENTIONS shared Topic 2-hop、relation 別上限、project scope |
+| graph-query fallback    | `apps/web/src/chat.ts`                                               | traversal 失敗と成功 0 件を区別し、title / summary fallback を別 status にする               |
+| Viewer presets          | Step 1B 前の `GraphViewerRepository.executePreset`                   | server-owned preset、eligible document 制限、read-only / timeout、normalized node / edge     |
+| Actor merge             | `executeActorMerge` / `GraphMutationRepository.mergeActorGraphNodes` | relational reassignment と graph edge 統合 / secondary node 削除の原子性、重複 edge 抑止     |
+| Document cleanup        | `GraphMutationRepository.deleteDocumentGraphNodes`                   | project scope、Document node の DETACH DELETE、失敗時の degraded behavior                    |
+| monitor / tests         | Synthetic Monitor と DB tests                                        | node presence、9 relation type count、tenant 越境拒否、rollback                              |
+| operator CLI            | `query-graph.ts`、`index-graph-relations.ts`                         | project resolver、adapter 内 graph name 検証、bounded batch、再実行、smoke / maintenance     |
 
 AGE の参照は Dockerfile / init SQL だけではない。runtime の `LOAD 'age'`、`cypher(...)`、agtype
 parser、test graph create / drop、operations docs まで Step 1 / 2 の移行対象に含める。
@@ -122,11 +122,10 @@ parser、test graph create / drop、operations docs まで Step 1 / 2 の移行�
 
 - `ChatRepository` は access、history、raw、timeline、semantic、keyword、graph を一つに持つ。
   Core test seam としては有効だが provider boundary としては広すぎる。
-- `GraphRelationsRepository` は node / edge mutation を domain input で受け、Cypher / agtype を
-  interface に露出していない。一方で project lookup、indexing target read、status 更新、email quote、
-  node / edge mutation が混在するため、新しい capability として直接再利用しない。Step 1B / 1C で
-  `ProjectResolver`、`GraphIndexingRepository`、`GraphReadRepository`、
-  `GraphMutationRepository` へ責務を分離し、既存実装は移行 adapter の内部でのみ利用する。
+- Step 1 前の `GraphRelationsRepository` は node / edge mutation を domain input で受けていたが、
+  project lookup、indexing target read、status 更新、email quote、node / edge mutation が混在していた。
+  Step 1B / 1C で `ProjectResolver`、`GraphIndexingRepository`、`GraphReadRepository`、
+  `GraphMutationRepository` へ責務を分離し、legacy interface / 実装は廃止した。
 - Step 1B 前の `GraphViewerRepository.executePreset` は `cypher`、`graphName`、AGE record definition を
   上位へ露出するため provider boundary としては不適切である。Step 1B で preset ID と normalized result を
   受ける capability に変更する。

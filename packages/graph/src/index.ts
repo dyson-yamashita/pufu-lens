@@ -196,6 +196,316 @@ export function parseGraphRelationTypes(value: unknown): readonly GraphRelationT
   return [...new Set(value)] as GraphRelationType[];
 }
 
+/** Bootstrap project identity resolved before project-scoped graph operations. */
+export interface ProjectResolverResult {
+  readonly projectId: string;
+  readonly projectSlug: string;
+}
+
+/** Resolves validated project identifiers from a slug without exposing provider details. */
+export interface ProjectResolver {
+  resolveBySlug(slug: string): Promise<ProjectResolverResult | undefined>;
+}
+
+/** Document types supported by graph indexing lookups. */
+export const GRAPH_INDEXING_DOCUMENT_TYPES = [
+  'drive_doc',
+  'email',
+  'issue',
+  'pull_request',
+  'web_page',
+] as const;
+
+/** Finite document type union used by graph indexing document records. */
+export type GraphIndexingDocumentType = (typeof GRAPH_INDEXING_DOCUMENT_TYPES)[number];
+
+/** Actor alias kinds supported by graph indexing lookups. */
+export type GraphIndexingActorAliasType = 'email' | 'github_login' | 'domain';
+
+/** Actor row returned by graph indexing lookups. */
+export interface GraphIndexingActorRecord {
+  readonly displayName: string;
+  readonly graphNodeId: string;
+  readonly id: string;
+}
+
+/** Document row returned by graph indexing lookups. */
+export interface GraphIndexingDocumentRecord {
+  readonly docType: GraphIndexingDocumentType;
+  readonly graphNodeId: string;
+  readonly id: string;
+  readonly rawDocumentId: string;
+  readonly sourceId: string;
+}
+
+/** Graph indexing target with provider-neutral document metadata and unparsed payload. */
+export interface GraphIndexingTarget {
+  readonly document: GraphIndexingDocumentRecord;
+  readonly parsed: unknown;
+  readonly rawContentHash: string;
+  readonly rawDocumentId: string;
+}
+
+/** Email quote row stored by graph indexing workflows. */
+export interface GraphIndexingEmailQuoteInput {
+  readonly bodyText: string;
+  readonly prevQuoteIndex?: number;
+  readonly quoteIndex: number;
+  readonly quotedMessageId: string;
+  readonly senderActorId?: string;
+  readonly senderAlias: string;
+  readonly sentAt: string;
+}
+
+/** Provider-neutral email quote replacement input scoped by project. */
+export interface ReplaceGraphIndexingEmailQuotesInput {
+  readonly documentId: string;
+  readonly projectId: string;
+  readonly quotes: readonly GraphIndexingEmailQuoteInput[];
+}
+
+/**
+ * Relational graph indexing responsibilities formerly mixed into legacy graph repositories.
+ *
+ * Node/edge mutation, graph traversal, and slug bootstrap lookup stay outside this boundary.
+ */
+export interface GraphIndexingRepository {
+  findActorByAlias(input: {
+    readonly aliasType: GraphIndexingActorAliasType;
+    readonly aliasValue: string;
+    readonly projectId: string;
+  }): Promise<GraphIndexingActorRecord | undefined>;
+  findActorByGraphNodeId(input: {
+    readonly graphNodeId: string;
+    readonly projectId: string;
+  }): Promise<GraphIndexingActorRecord | undefined>;
+  findDocumentsBySourceIds(input: {
+    readonly projectId: string;
+    readonly sourceIds: readonly string[];
+  }): Promise<readonly GraphIndexingDocumentRecord[]>;
+  findSameAsDocuments(input: {
+    readonly projectId: string;
+    readonly rawContentHash: string;
+    readonly rawDocumentId: string;
+    readonly sourceType: string;
+  }): Promise<readonly GraphIndexingDocumentRecord[]>;
+  markFailed(input: {
+    readonly errorMessage: string;
+    readonly projectId: string;
+    readonly rawDocumentId: string;
+  }): Promise<void>;
+  markIndexed(input: { readonly projectId: string; readonly rawDocumentId: string }): Promise<void>;
+  readGraphTargets(input: {
+    readonly limit: number;
+    readonly projectId: string;
+  }): Promise<readonly GraphIndexingTarget[]>;
+  replaceEmailQuotes(input: ReplaceGraphIndexingEmailQuotesInput): Promise<void>;
+}
+
+/** Provider-neutral node upsert input scoped by validated project identifier. */
+export interface GraphMutationNodeInput {
+  readonly graphNodeId: string;
+  readonly labels: readonly string[];
+  readonly projectId: string;
+  readonly properties: Readonly<Record<string, unknown>>;
+}
+
+/** Provider-neutral edge upsert input with allowlisted relation types. */
+export interface GraphMutationEdgeInput {
+  readonly fromGraphNodeId: string;
+  readonly projectId: string;
+  readonly properties: Readonly<Record<string, unknown>>;
+  readonly relationType: GraphRelationType;
+  readonly toGraphNodeId: string;
+}
+
+/** Provider-neutral actor merge input scoped by validated project identifier. */
+export interface GraphActorMergeInput {
+  readonly primaryActorId: string;
+  readonly primaryGraphNodeId: string;
+  readonly projectId: string;
+  readonly secondaryGraphNodeId: string;
+}
+
+/** Actor merge outcome with parsed counts or safe skip/unavailable reasons. */
+export type GraphActorMergeResult =
+  | { readonly deletedCount: number; readonly status: 'merged' }
+  | { readonly reason: string; readonly status: 'skipped' }
+  | { readonly status: 'unavailable' };
+
+/** Bounded document graph cleanup input scoped by validated project identifier. */
+export interface GraphDocumentCleanupInput {
+  readonly graphNodeIds: readonly string[];
+  readonly projectId: string;
+}
+
+/** Project-scoped graph lifecycle mutation input validated at adapter boundaries. */
+export interface GraphProjectMutationInput {
+  readonly projectId: string;
+}
+
+/**
+ * Project-scoped graph mutation capability without provider graph names or query languages.
+ */
+export interface GraphMutationRepository {
+  deleteDocumentGraphNodes(input: GraphDocumentCleanupInput): Promise<number>;
+  deleteProjectGraph(input: GraphProjectMutationInput): Promise<void>;
+  ensureProjectGraph(input: GraphProjectMutationInput): Promise<void>;
+  mergeActorGraphNodes(input: GraphActorMergeInput): Promise<GraphActorMergeResult>;
+  upsertEdge(input: GraphMutationEdgeInput): Promise<void>;
+  upsertNode(input: GraphMutationNodeInput): Promise<void>;
+}
+
+/** Parses a graph indexing document type at an adapter boundary. */
+export function parseGraphIndexingDocumentType(value: unknown): GraphIndexingDocumentType {
+  if (
+    typeof value !== 'string' ||
+    !(GRAPH_INDEXING_DOCUMENT_TYPES as readonly string[]).includes(value)
+  ) {
+    throw new Error('Invalid graph indexing document type.');
+  }
+  return value as GraphIndexingDocumentType;
+}
+
+/** Parses bootstrap project resolver output without provider-specific fields. */
+export function parseGraphProjectResolverResult(value: unknown): ProjectResolverResult {
+  const record = requireExactRecord(value, 'graph project resolver result', [
+    'projectId',
+    'projectSlug',
+  ]);
+  return {
+    projectId: requireNonEmptyString(record.projectId, 'projectId'),
+    projectSlug: requireNonEmptyString(record.projectSlug, 'projectSlug'),
+  };
+}
+
+/** Parses a project-scoped graph node mutation input at an adapter boundary. */
+export function parseGraphMutationNodeInput(value: unknown): GraphMutationNodeInput {
+  const record = requireExactRecord(value, 'graph mutation node input', [
+    'graphNodeId',
+    'labels',
+    'projectId',
+    'properties',
+  ]);
+  if (!Array.isArray(record.labels) || record.labels.length === 0) {
+    throw new Error('Invalid graph mutation node input field: labels');
+  }
+  if (!record.labels.every(isNonEmptyString)) {
+    throw new Error('Invalid graph mutation node input field: labels');
+  }
+  return {
+    graphNodeId: requireNonEmptyString(record.graphNodeId, 'graphNodeId'),
+    labels: [...record.labels],
+    projectId: requireNonEmptyString(record.projectId, 'projectId'),
+    properties: requireSafeJsonRecord(record.properties, 'graph mutation node properties'),
+  };
+}
+
+/** Parses a project-scoped graph edge mutation input at an adapter boundary. */
+export function parseGraphMutationEdgeInput(value: unknown): GraphMutationEdgeInput {
+  const record = requireExactRecord(value, 'graph mutation edge input', [
+    'fromGraphNodeId',
+    'projectId',
+    'properties',
+    'relationType',
+    'toGraphNodeId',
+  ]);
+  const relationType = record.relationType;
+  if (!isGraphRelationType(relationType)) {
+    throw new Error('Invalid graph mutation edge input field: relationType');
+  }
+  return {
+    fromGraphNodeId: requireNonEmptyString(record.fromGraphNodeId, 'fromGraphNodeId'),
+    projectId: requireNonEmptyString(record.projectId, 'projectId'),
+    properties: requireSafeJsonRecord(record.properties, 'graph mutation edge properties'),
+    relationType,
+    toGraphNodeId: requireNonEmptyString(record.toGraphNodeId, 'toGraphNodeId'),
+  };
+}
+
+/** Parses a project-scoped actor merge input at an adapter boundary. */
+export function parseGraphActorMergeInput(value: unknown): GraphActorMergeInput {
+  const record = requireExactRecord(value, 'graph actor merge input', [
+    'primaryActorId',
+    'primaryGraphNodeId',
+    'projectId',
+    'secondaryGraphNodeId',
+  ]);
+  return {
+    primaryActorId: requireNonEmptyString(record.primaryActorId, 'primaryActorId'),
+    primaryGraphNodeId: requireNonEmptyString(record.primaryGraphNodeId, 'primaryGraphNodeId'),
+    projectId: requireNonEmptyString(record.projectId, 'projectId'),
+    secondaryGraphNodeId: requireNonEmptyString(
+      record.secondaryGraphNodeId,
+      'secondaryGraphNodeId',
+    ),
+  };
+}
+
+/** Parses an actor merge mutation result without provider row encodings. */
+export function parseGraphActorMergeResult(value: unknown): GraphActorMergeResult {
+  const record = requireRecord(value, 'graph actor merge result');
+  const status = record.status;
+  if (status === 'merged') {
+    const exact = requireExactRecord(value, 'graph actor merge result', ['deletedCount', 'status']);
+    return {
+      deletedCount: parseGraphCountResult(exact.deletedCount),
+      status: 'merged',
+    };
+  }
+  if (status === 'skipped') {
+    const exact = requireExactRecord(value, 'graph actor merge result', ['reason', 'status']);
+    return {
+      reason: requireNonEmptyString(exact.reason, 'reason'),
+      status: 'skipped',
+    };
+  }
+  if (status === 'unavailable') {
+    requireExactRecord(value, 'graph actor merge result', ['status']);
+    return { status: 'unavailable' };
+  }
+  throw new Error('Invalid graph actor merge result field: status');
+}
+
+/** Parses project-scoped graph lifecycle mutation input at an adapter boundary. */
+export function parseGraphProjectMutationInput(value: unknown): GraphProjectMutationInput {
+  const record = requireExactRecord(value, 'graph project mutation input', ['projectId']);
+  return {
+    projectId: requireNonEmptyString(record.projectId, 'projectId'),
+  };
+}
+
+/** Parses bounded document graph cleanup input scoped by project identifier. */
+export function parseGraphDocumentCleanupInput(value: unknown): GraphDocumentCleanupInput {
+  const record = requireExactRecord(value, 'graph document cleanup input', [
+    'graphNodeIds',
+    'projectId',
+  ]);
+  if (!Array.isArray(record.graphNodeIds)) {
+    throw new Error('Invalid graph document cleanup input field: graphNodeIds');
+  }
+  if (record.graphNodeIds.length === 0) {
+    throw new Error('Invalid graph document cleanup input field: graphNodeIds');
+  }
+  if (!record.graphNodeIds.every(isNonEmptyString)) {
+    throw new Error('Invalid graph document cleanup input field: graphNodeIds');
+  }
+  return {
+    graphNodeIds: [...record.graphNodeIds],
+    projectId: requireNonEmptyString(record.projectId, 'projectId'),
+  };
+}
+
+/** Parses a document cleanup mutation result and returns the deleted node count. */
+export function parseGraphDocumentCleanupResult(value: unknown): number {
+  const record = requireExactRecord(value, 'graph document cleanup result', ['deletedCount']);
+  return parseGraphCountResult(record.deletedCount);
+}
+
+function isGraphRelationType(value: unknown): value is GraphRelationType {
+  return typeof value === 'string' && (GRAPH_RELATION_TYPES as readonly string[]).includes(value);
+}
+
 function isGraphRelatedRelationType(value: unknown): value is GraphRelatedRelationType {
   return (
     typeof value === 'string' && (GRAPH_RELATED_RELATION_TYPES as readonly string[]).includes(value)
@@ -220,17 +530,42 @@ function requireRecord(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function requireSafeJsonRecord(value: unknown, label: string): Record<string, unknown> {
+function requireExactRecord(
+  value: unknown,
+  label: string,
+  allowedKeys: readonly string[],
+): Record<string, unknown> {
   const record = requireRecord(value, label);
-  for (const nested of Object.values(record)) {
-    if (!isSafeJsonValue(nested)) {
-      throw new Error(`Invalid ${label}.`);
+  for (const key of Object.keys(record)) {
+    if (!allowedKeys.includes(key)) {
+      throw new Error(`Invalid ${label} field: ${key}`);
     }
   }
   return record;
 }
 
-function isSafeJsonValue(value: unknown): boolean {
+function requireSafeJsonRecord(value: unknown, label: string): Record<string, unknown> {
+  const record = requireRecord(value, label);
+  const seen = new WeakSet<object>();
+  seen.add(record);
+  for (const nested of Object.values(record)) {
+    if (!isSafeJsonValue(nested, seen)) {
+      throw new Error(`Invalid ${label}.`);
+    }
+  }
+  seen.delete(record);
+  return record;
+}
+
+/** Validates a JSON-serializable graph property value without leaking unsafe encodings. */
+export function requireSafeJsonValue(value: unknown, label: string): unknown {
+  if (!isSafeJsonValue(value)) {
+    throw new Error(`Invalid ${label}.`);
+  }
+  return value;
+}
+
+function isSafeJsonValue(value: unknown, seen = new WeakSet<object>()): boolean {
   if (
     value === null ||
     typeof value === 'string' ||
@@ -240,10 +575,24 @@ function isSafeJsonValue(value: unknown): boolean {
     return true;
   }
   if (Array.isArray(value)) {
-    return value.every(isSafeJsonValue);
+    if (seen.has(value)) {
+      return false;
+    }
+    seen.add(value);
+    const safe = value.every((entry) => isSafeJsonValue(entry, seen));
+    seen.delete(value);
+    return safe;
   }
   if (value && typeof value === 'object') {
-    return Object.values(value as Record<string, unknown>).every(isSafeJsonValue);
+    if (seen.has(value)) {
+      return false;
+    }
+    seen.add(value);
+    const safe = Object.values(value as Record<string, unknown>).every((entry) =>
+      isSafeJsonValue(entry, seen),
+    );
+    seen.delete(value);
+    return safe;
   }
   return false;
 }

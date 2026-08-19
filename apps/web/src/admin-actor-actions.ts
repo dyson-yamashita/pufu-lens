@@ -1,5 +1,6 @@
 'use server';
 
+import { createPostgresAgeGraphMutationRepository } from '@pufu-lens/graph/postgres-age-mutation';
 import { revalidatePath } from 'next/cache';
 import { executeActorMerge } from './actor-merge-use-case.ts';
 import {
@@ -28,9 +29,8 @@ export async function mergeActors(formData: FormData): Promise<void> {
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
     await sql.begin(async (tx) => {
-      await executeActorMerge(tx, {
+      await executeActorMerge(tx, createPostgresAgeGraphMutationRepository(tx), {
         adminUserId: project.adminUserId,
-        graphName: project.graphName,
         primaryActorId,
         projectId: project.id,
         reason,

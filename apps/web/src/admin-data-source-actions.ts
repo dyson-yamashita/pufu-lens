@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createPostgresAgeGraphMutationRepository } from '@pufu-lens/graph/postgres-age-mutation';
 import type postgres from 'postgres';
 import {
   type CollectionRepository,
@@ -32,7 +33,6 @@ import {
   parseAdminActionDataSourceRow,
   parseAdminActionDocumentGraphNodeRow,
   parseAdminActionIdRow,
-  parseAdminActionProjectGraphNameRow,
   parseAdminActionProjectRecordRow,
   parseAdminActionRawDocumentRecordRow,
   parseAdminActionSameHashCandidateRow,
@@ -53,7 +53,6 @@ import {
 } from './admin-data';
 import { resolveAdminIngestEmbeddingProvider } from './admin-ingest-runtime.ts';
 import { insertDefaultDataSourceSchedule } from './data-source-schedules.ts';
-import { deleteExclusiveDocumentGraphNodes } from './graph-document-cleanup.ts';
 import {
   createGitHubInstallationAccessToken,
   readProjectConnectionAccessToken,
@@ -301,40 +300,24 @@ export async function deleteDataSource(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
   const dataSourceId = requireFormValue(formData, 'dataSourceId');
 
-  let graphCleanup: { graphName: string | null; graphNodeIds: readonly string[] } = {
-    graphName: null,
-    graphNodeIds: [],
-  };
+  let graphNodeIds: readonly string[] = [];
   let storageObjectUris: readonly string[] = [];
 
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
     await lookupProjectDataSourceForDeletion(sql, project.id, dataSourceId);
 
-    const graphNameRows = (await sql`
-      SELECT graph_name AS "graphName"
-      FROM public.projects
-      WHERE id = ${project.id}
-    `) as readonly unknown[];
-    const projectGraph = parseOptionalAdminActionRow(
-      graphNameRows,
-      parseAdminActionProjectGraphNameRow,
-    );
-    if (!projectGraph) {
-      throw new Error('Project not found.');
-    }
-
-    graphCleanup = await sql.begin(async (tx) => {
+    ({ graphNodeIds, storageObjectUris } = await sql.begin(async (tx) => {
       const exclusiveRawDocumentIds = await listExclusiveRawDocumentIds(
         tx,
         project.id,
         dataSourceId,
       );
-      const graphNodeIds =
+      const resolvedGraphNodeIds =
         exclusiveRawDocumentIds.length === 0
           ? []
           : await listDocumentGraphNodeIds(tx, project.id, exclusiveRawDocumentIds);
-      storageObjectUris =
+      const resolvedStorageObjectUris =
         exclusiveRawDocumentIds.length === 0
           ? []
           : await listStorageObjectUris(tx, project.id, exclusiveRawDocumentIds);
@@ -360,12 +343,17 @@ export async function deleteDataSource(formData: FormData): Promise<void> {
       }
 
       return {
-        graphName: projectGraph.graphName,
-        graphNodeIds,
+        graphNodeIds: resolvedGraphNodeIds,
+        storageObjectUris: resolvedStorageObjectUris,
       };
-    });
+    }));
 
-    await deleteExclusiveDocumentGraphNodes(sql, graphCleanup);
+    if (graphNodeIds.length > 0) {
+      await createPostgresAgeGraphMutationRepository(sql).deleteDocumentGraphNodes({
+        projectId: project.id,
+        graphNodeIds,
+      });
+    }
   });
 
   await deleteStorageObjectsBestEffort(storageObjectUris);

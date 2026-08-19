@@ -36,6 +36,8 @@ pnpm ingest:index --project sample-a --limit 10
 
 `SAME_AS` は Step 8 時点では `content_hash` が一致する別 source type の Document だけを対象にする。埋め込み類似度による同一性判定は未実装である。
 
+実装境界では、CLI は `ProjectResolver` で slug を検証済み `projectId` に解決し、relational lookup / status 更新を `GraphIndexingRepository`、AGE node / edge mutation を `GraphMutationRepository` へ委譲する。CLI と ingestion workflow は graph name、Cypher、agtype、provider transaction を受け渡さず、現行 PostgreSQL + AGE 固有処理は adapter 内に閉じる。Actor merge、Document cleanup、project graph lifecycle も同じ mutation capability を使い、public contract は常に `projectId` で scope する。
+
 ## 確認
 
 ```bash

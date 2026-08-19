@@ -1,10 +1,9 @@
+import type { GraphMutationRepository } from '@pufu-lens/graph';
 import type postgres from 'postgres';
 import { type AdminActionActorRow, parseAdminActionActorRow } from './admin-actions-guards.ts';
-import { type ActorGraphReconcileInput, mergeActorGraphElements } from './graph-actor-reconcile.ts';
 
 export interface ExecuteActorMergeInput {
   readonly adminUserId: string;
-  readonly graphName: string | null;
   readonly primaryActorId: string;
   readonly projectId: string;
   readonly reason: string | null;
@@ -14,16 +13,18 @@ export interface ExecuteActorMergeInput {
 /**
  * Merges a secondary actor into a primary actor within the caller's open transaction.
  *
- * Relational reassignment, merge decision recording, and AGE graph reconciliation run
- * atomically. AGE syntax or reconciliation errors reject the transaction so relational
- * updates roll back with the graph work.
+ * Relational reassignment, merge decision recording, and graph mutation reconciliation run
+ * atomically. Graph mutation unavailable results or invariant failures reject the transaction
+ * so relational updates roll back with the graph work.
  *
  * @param tx - Open postgres.js transaction that must remain uncommitted until this returns.
+ * @param mutationRepository - Project-scoped graph mutation capability bound to the same transaction.
  * @param input - Project-scoped actor pair and merge metadata already validated by the caller.
- * @throws When either actor is missing, inactive, or graph reconciliation fails.
+ * @throws When either actor is missing, inactive, graph merge is unavailable, or reconciliation fails.
  */
 export async function executeActorMerge(
   tx: postgres.TransactionSql,
+  mutationRepository: GraphMutationRepository,
   input: ExecuteActorMergeInput,
 ): Promise<void> {
   const { primaryActor, secondaryActor } = await lookupProjectActorPairForUpdate(tx, {
@@ -79,13 +80,15 @@ export async function executeActorMerge(
     secondaryActorId: secondaryActor.id,
   });
 
-  const graphReconcileInput: ActorGraphReconcileInput = {
-    graphName: input.graphName,
+  const mergeResult = await mutationRepository.mergeActorGraphNodes({
+    projectId: input.projectId,
     primaryActorId: primaryActor.id,
     primaryGraphNodeId: primaryActor.graphNodeId,
     secondaryGraphNodeId: secondaryActor.graphNodeId,
-  };
-  await mergeActorGraphElements(tx, graphReconcileInput);
+  });
+  if (mergeResult.status === 'unavailable') {
+    throw new Error('Actor graph merge unavailable.');
+  }
 }
 
 async function lookupProjectActorPairForUpdate(

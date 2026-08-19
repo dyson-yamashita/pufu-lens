@@ -34,6 +34,9 @@ importers:
       '@pufu-lens/activitypub':
         specifier: workspace:*
         version: link:packages/activitypub
+      '@pufu-lens/graph':
+        specifier: workspace:*
+        version: link:packages/graph
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
@@ -240,10 +243,20 @@ importers:
         specifier: 2.16.1
         version: 2.16.1
 
-  packages/graph: {}
+  packages/graph:
+    dependencies:
+      '@pufu-lens/project-tenancy':
+        specifier: workspace:*
+        version: link:../project-tenancy
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
 
   packages/ingestion:
     dependencies:
+      '@pufu-lens/graph':
+        specifier: workspace:*
+        version: link:../graph
       sudachi-ts:
         specifier: ^0.1.22
         version: 0.1.22(typescript@5.9.3)
