@@ -1,4 +1,5 @@
-import { createHash } from 'node:crypto';
+import type { GraphReadRepository, GraphRelatedRelationType } from '@pufu-lens/graph';
+import { GRAPH_RELATED_DOCUMENT_POOL_LIMITS } from '@pufu-lens/graph';
 import type {
   CandidateRepositories,
   FusedChunkCandidate,
@@ -20,6 +21,7 @@ import {
 import type { GitHubDocumentLifecycle } from './github-lifecycle-contract.ts';
 import { parseGitHubDocumentLifecycle } from './github-lifecycle-contract.ts';
 import { createGcpPostgresCandidateRepositories } from './postgres-chat-candidate-adapters.ts';
+import { createPostgresAgeGraphReadRepository } from './postgres-graph-read-adapter.ts';
 import { jsonParameter } from './postgres-json.ts';
 import {
   type AgentRawReadViewEnvelope,
@@ -82,7 +84,7 @@ export interface ChatSource {
   readonly keywordRank?: number;
 }
 
-export type ChatGraphRelationType = 'MENTIONS' | 'RELATED_TO' | 'SAME_AS';
+export type ChatGraphRelationType = GraphRelatedRelationType;
 
 /** Workflow graph coverage pass outcome (`success` includes zero adopted candidates). */
 export type ChatGraphCoverageStatus = 'success' | 'unavailable';
@@ -97,11 +99,7 @@ export type ChatGraphRelatedSource = ChatSource & {
 };
 
 /** Per-relation bounded candidate pool for graph traversal (Issue #648). */
-export const GRAPH_RELATION_POOL_LIMITS = {
-  MENTIONS: 5,
-  RELATED_TO: 5,
-  SAME_AS: 2,
-} as const satisfies Record<ChatGraphRelationType, number>;
+export const GRAPH_RELATION_POOL_LIMITS = GRAPH_RELATED_DOCUMENT_POOL_LIMITS;
 
 /** Runtime guard for graph provenance fields kept in synthesis context only. */
 export function isChatGraphRelatedSource(source: ChatSource): source is ChatGraphRelatedSource {
@@ -266,7 +264,6 @@ export interface ChatRepository {
     projectId: string;
   }): Promise<ChatSource[]>;
   graphCoverageQuery(input: {
-    graphName: string;
     projectId: string;
     question: string;
     seedDocumentIds: readonly string[];
@@ -276,7 +273,6 @@ export interface ChatRepository {
     readonly relationCandidateCounts: Readonly<Record<ChatGraphRelationType, number>>;
   }>;
   graphQuery(input: {
-    graphName?: string | null;
     limit: number;
     projectId: string;
     query: string;
@@ -284,7 +280,6 @@ export interface ChatRepository {
     skipTitleFallback?: boolean;
   }): Promise<ChatSource[]>;
   graphQueryWithStatus(input: {
-    graphName?: string | null;
     limit: number;
     projectId: string;
     query: string;
@@ -296,7 +291,6 @@ export interface ChatRepository {
   }>;
   lookupProjectMember(input: { projectSlug: string; userId: string }): Promise<
     | {
-        readonly graphName: string | null;
         readonly hybridSearchDocumentLimit: number;
         readonly id: string;
         readonly slug: string;
@@ -741,7 +735,6 @@ export async function runPrivateChat(
     : Promise.resolve([] satisfies ChatSource[]);
   const [graphSources, timelineSources, rawSources, parsedSources] = await Promise.all([
     options.repository.graphQuery({
-      graphName: project.graphName,
       limit: sourceLimit,
       projectId: project.id,
       query: request.question,
@@ -1174,11 +1167,14 @@ export function createPostgresChatRepository(
   sql: postgres.Sql,
   options: {
     readonly candidateRepositories?: CandidateRepositories;
+    readonly graphReadRepository?: GraphReadRepository;
     readonly rawStorage?: Pick<ObjectStorage, 'getText'>;
   } = {},
 ): ChatRepository {
   const candidateRepositories =
     options.candidateRepositories ?? createGcpPostgresCandidateRepositories(sql);
+  const graphReadRepository =
+    options.graphReadRepository ?? createPostgresAgeGraphReadRepository(sql);
   const rawReadViewRepository = options.rawStorage
     ? createPostgresRawReadViewRepository({ sql, storage: options.rawStorage })
     : undefined;
@@ -1187,7 +1183,6 @@ export function createPostgresChatRepository(
       const access = await lookupProjectMemberAccess(sql, { projectSlug, userId });
       return access
         ? {
-            graphName: access.graphName,
             hybridSearchDocumentLimit: access.hybridSearchDocumentLimit,
             id: access.id,
             slug: access.slug,
@@ -1227,20 +1222,19 @@ export function createPostgresChatRepository(
         semanticCandidates,
       }).map(sourceFromFusedCandidate);
     },
-    async graphCoverageQuery({ graphName, projectId, question, seedDocumentIds }) {
-      return resolveGraphRelatedSources(sql, {
-        graphName,
+    async graphCoverageQuery({ projectId, question, seedDocumentIds }) {
+      return resolveGraphRelatedSources(sql, graphReadRepository, {
         projectId,
         question,
         seedDocumentIds,
       });
     },
     async graphQuery(input) {
-      const result = await executeGraphQueryWithStatus(sql, input);
+      const result = await executeGraphQueryWithStatus(sql, graphReadRepository, input);
       return [...result.sources];
     },
     async graphQueryWithStatus(input) {
-      return executeGraphQueryWithStatus(sql, input);
+      return executeGraphQueryWithStatus(sql, graphReadRepository, input);
     },
     async timelineSearch({ limit, period, projectId, query }) {
       if (period) {
@@ -2275,80 +2269,13 @@ async function fetchChatSourcesByDocumentIds(
   return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
 }
 
-export interface GraphRelatedDocumentCandidate {
-  readonly documentId: string;
-  readonly hopCount: 1 | 2;
-  readonly relationType: ChatGraphRelationType;
-  readonly seedDocumentId: string;
-}
-
-export interface GraphRelatedDocumentRows {
-  readonly hopCount: 1 | 2;
-  readonly relationType: ChatGraphRelationType;
-  readonly rows: readonly unknown[];
-}
-
-/** Oversamples AGE rows so per-relation unique pools survive multi-seed duplicate rows. */
-export function graphRelationQueryRowLimit(
-  relationLimit: number,
-  seedDocumentCount: number,
-): number {
-  return Math.min(Math.max(1, relationLimit) * Math.max(1, seedDocumentCount), 50);
-}
-
-/**
- * Selects bounded, deduplicated graph-related document candidates from AGE query rows.
- *
- * Default per-relation limits come from {@link GRAPH_RELATION_POOL_LIMITS}. Each relation keeps
- * the first unseen `documentId` only. Oversampled AGE rows are expected upstream.
- */
-export function selectGraphRelatedDocumentCandidates(input: {
-  relationLimits?: Partial<Record<ChatGraphRelationType, number>>;
-  relationRows: readonly GraphRelatedDocumentRows[];
-}): GraphRelatedDocumentCandidate[] {
-  const relationLimits = { ...GRAPH_RELATION_POOL_LIMITS, ...input.relationLimits };
-  const candidates: GraphRelatedDocumentCandidate[] = [];
-  const perRelationCount: Record<ChatGraphRelationType, number> = {
-    MENTIONS: 0,
-    RELATED_TO: 0,
-    SAME_AS: 0,
-  };
-  for (const relationRows of input.relationRows) {
-    const relationType = relationRows.relationType;
-    const relationLimit = relationLimits[relationType];
-    const seenInRelation = new Set<string>();
-    for (const row of relationRows.rows) {
-      if (perRelationCount[relationType] >= relationLimit) {
-        break;
-      }
-      if (!isRecord(row)) {
-        continue;
-      }
-      const seedDocumentId = documentIdFromAgeVertex(row.seed);
-      const documentId = documentIdFromAgeVertex(row.related);
-      if (!seedDocumentId || !documentId || seenInRelation.has(documentId)) {
-        continue;
-      }
-      seenInRelation.add(documentId);
-      perRelationCount[relationType] += 1;
-      candidates.push({
-        documentId,
-        hopCount: relationRows.hopCount,
-        relationType,
-        seedDocumentId,
-      });
-    }
-  }
-  return candidates;
-}
-
 /**
  * Resolves graph-related document candidates and enriches them with chat source metadata.
  */
 export async function resolveGraphRelatedSources(
   sql: postgres.Sql,
+  graphReadRepository: Pick<GraphReadRepository, 'findRelatedDocuments'>,
   input: {
-    graphName: string;
     projectId: string;
     question: string;
     seedDocumentIds: readonly string[];
@@ -2364,13 +2291,16 @@ export async function resolveGraphRelatedSources(
     RELATED_TO: 0,
     SAME_AS: 0,
   };
+  const graphResult = await graphReadRepository.findRelatedDocuments({
+    projectId: input.projectId,
+    relationLimits: { ...GRAPH_RELATION_POOL_LIMITS, ...input.relationLimits },
+    seedDocumentIds: input.seedDocumentIds,
+  });
+  if (graphResult.status === 'unavailable') {
+    return { candidates: [], queryFailed: true, relationCandidateCounts: emptyCounts };
+  }
   try {
-    const relatedDocumentIds = await queryGraphRelatedDocumentIds(sql, {
-      graphName: input.graphName,
-      projectId: input.projectId,
-      relationLimits: input.relationLimits,
-      seedDocumentIds: input.seedDocumentIds,
-    });
+    const relatedDocumentIds = graphResult.candidates;
     const relationCandidateCounts = { ...emptyCounts };
     for (const candidate of relatedDocumentIds) {
       relationCandidateCounts[candidate.relationType] += 1;
@@ -2400,95 +2330,6 @@ export async function resolveGraphRelatedSources(
   } catch {
     return { candidates: [], queryFailed: true, relationCandidateCounts: emptyCounts };
   }
-}
-
-/**
- * Queries AGE for graph-related document candidates within a read-only transaction.
- *
- * Uses at most ten unique seed document IDs, applies the relation allowlist
- * (`SAME_AS`, `RELATED_TO`, `MENTIONS`), sets `statement_timeout` to 5s, and delegates
- * per-relation dedupe and default limits to {@link selectGraphRelatedDocumentCandidates}.
- */
-export async function queryGraphRelatedDocumentIds(
-  sql: postgres.Sql,
-  input: {
-    graphName: string;
-    projectId: string;
-    seedDocumentIds: readonly string[];
-    relationLimits?: Partial<Record<ChatGraphRelationType, number>>;
-  },
-): Promise<readonly GraphRelatedDocumentCandidate[]> {
-  const safeGraphName = validateAgeGraphName(input.graphName);
-  const seedDocumentIds = [...new Set(input.seedDocumentIds)].slice(0, 10);
-  if (seedDocumentIds.length === 0) {
-    return [];
-  }
-  const relationLimits = { ...GRAPH_RELATION_POOL_LIMITS, ...input.relationLimits };
-  const projectIdLiteral = cypherString(input.projectId);
-  const seedIdList = seedDocumentIds.map(cypherString).join(', ');
-  const whereBase = `seed.projectId = ${projectIdLiteral}
-  AND related.projectId = ${projectIdLiteral}
-  AND seed.documentId IN [${seedIdList}]
-  AND NOT related.documentId IN [${seedIdList}]`;
-  const relationQueries: Array<{
-    cypher: string;
-    hopCount: 1 | 2;
-    relationType: ChatGraphRelationType;
-  }> = [
-    {
-      cypher: `MATCH (seed:Document)-[:SAME_AS]-(related:Document)
-WHERE ${whereBase}
-RETURN seed, related
-ORDER BY seed.documentId, related.documentId`,
-      hopCount: 1,
-      relationType: 'SAME_AS',
-    },
-    {
-      cypher: `MATCH (seed:Document)-[:RELATED_TO]-(related:Document)
-WHERE ${whereBase}
-RETURN seed, related
-ORDER BY seed.documentId, related.documentId`,
-      hopCount: 1,
-      relationType: 'RELATED_TO',
-    },
-    {
-      cypher: `MATCH (seed:Document)-[:MENTIONS]-(topic:Topic)-[:MENTIONS]-(related:Document)
-WHERE seed.projectId = ${projectIdLiteral}
-  AND topic.projectId = ${projectIdLiteral}
-  AND related.projectId = ${projectIdLiteral}
-  AND seed.documentId IN [${seedIdList}]
-  AND NOT related.documentId IN [${seedIdList}]
-RETURN seed, related
-ORDER BY seed.documentId, related.documentId`,
-      hopCount: 2,
-      relationType: 'MENTIONS',
-    },
-  ];
-  const relationRows: GraphRelatedDocumentRows[] = [];
-  await sql.begin(async (transaction) => {
-    await transaction`SET TRANSACTION READ ONLY`;
-    await transaction`LOAD 'age'`;
-    await transaction`SET LOCAL search_path = ag_catalog, "$user", public`;
-    await transaction`SET LOCAL statement_timeout = '5000ms'`;
-    for (const relationQuery of relationQueries) {
-      const cypher = `${relationQuery.cypher}
-LIMIT ${graphRelationQueryRowLimit(
-        relationLimits[relationQuery.relationType],
-        seedDocumentIds.length,
-      )}`;
-      const rows = (await transaction.unsafe(
-        `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
-          cypher,
-        )}) AS (seed agtype, related agtype)`,
-      )) as readonly unknown[];
-      relationRows.push({
-        hopCount: relationQuery.hopCount,
-        relationType: relationQuery.relationType,
-        rows,
-      });
-    }
-  });
-  return selectGraphRelatedDocumentCandidates({ relationLimits, relationRows });
 }
 
 async function fetchGraphTitleFallbackSources(
@@ -2530,8 +2371,8 @@ async function fetchGraphTitleFallbackSources(
  */
 export async function executeGraphQueryWithStatus(
   sql: postgres.Sql,
+  graphReadRepository: Pick<GraphReadRepository, 'findRelatedDocuments'>,
   input: {
-    graphName?: string | null;
     limit: number;
     projectId: string;
     query: string;
@@ -2540,7 +2381,7 @@ export async function executeGraphQueryWithStatus(
   },
 ): Promise<{ sources: ChatSource[]; status: ChatGraphQueryStatus }> {
   const seedIds = input.seedDocumentIds ?? [];
-  if (!input.graphName || seedIds.length === 0) {
+  if (seedIds.length === 0) {
     if (input.skipTitleFallback) {
       return { sources: [], status: 'unavailable' };
     }
@@ -2552,8 +2393,7 @@ export async function executeGraphQueryWithStatus(
     });
   }
 
-  const graphResult = await resolveGraphRelatedSources(sql, {
-    graphName: input.graphName,
+  const graphResult = await resolveGraphRelatedSources(sql, graphReadRepository, {
     projectId: input.projectId,
     question: input.query,
     seedDocumentIds: seedIds,
@@ -2614,42 +2454,6 @@ async function resolveGraphTitleFallbackStatus(
     sources: [],
     status: input.graphUnavailable ? 'unavailable' : 'success',
   };
-}
-
-function documentIdFromAgeVertex(value: unknown): string | undefined {
-  if (typeof value !== 'string' || !value.endsWith('::vertex')) {
-    return undefined;
-  }
-  try {
-    const parsed = JSON.parse(value.slice(0, -'::vertex'.length)) as unknown;
-    if (!isRecord(parsed) || !isRecord(parsed.properties)) {
-      return undefined;
-    }
-    const documentId = parsed.properties.documentId;
-    return typeof documentId === 'string' && documentId ? documentId : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function validateAgeGraphName(graphName: string): string {
-  if (!/^graph_[a-z0-9_]+$/.test(graphName) || graphName.length > 63) {
-    throw new Error(`Invalid AGE graph name: ${graphName}`);
-  }
-  return graphName;
-}
-
-function dollarQuote(value: string): string {
-  const tag = `$pufu_${createHash('sha256').update(value).digest('hex')}$`;
-  return `${tag}${value}${tag}`;
-}
-
-function sqlString(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
-}
-
-function cypherString(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

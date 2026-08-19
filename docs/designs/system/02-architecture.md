@@ -87,6 +87,19 @@ policy は引き続き Core / Workflow が所有する。
 返す。access、history、raw read、timeline、graph の契約は candidate interface に含めず、private / public
 Chat API、tool 名、source response、schema、data は変更しない。
 
+#### Graph read capability 境界
+
+Plan 018 Step 1B では `@pufu-lens/graph` が provider-neutral な `GraphReadRepository`、related document / normalized
+node・edge DTO、preset / relation allowlist、runtime guard を所有する。Chat graph coverage、Graph Viewer preset、Synthetic
+Monitor の node / relation count は検証済み `projectId` だけを同 contract へ渡す。access lookup、eligible document
+選択、document chunk 取得、schedule / raw / history は relational app repository に残し、Graph contract へ混ぜない。
+
+現行 `gcp-postgres` profile の Web composition は PostgreSQL + Apache AGE adapter を注入する。adapter が
+`projects.graph_name` の解決、Cypher、agtype parsing、read-only transaction、5 秒 timeout、relation / row 上限を
+内部に閉じ、`success` / `unavailable` または normalized result へ変換する。Graph API の既存 `graphName` / preset
+preview / `rawRows` response は互換性のため維持するが、request や Graph repository input には graph name、Cypher、
+record definition を受け取らない。
+
 ### 2. コンポーネント役割
 
 | コンポーネント      | 役割                                                                                                         | デプロイ先                              |

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { AuthRequiredError, requireSessionUserId } from '../../../../../src/auth-session';
 import {
-  createPostgresGraphViewerRepository,
+  createPostgresGraphViewerDependencies,
   GraphAccessDeniedError,
   GraphLimitError,
   GraphPeriodError,
@@ -75,9 +75,10 @@ export async function POST(
   }
 
   try {
+    const dependencies = createPostgresGraphViewerDependencies();
     const response = await runGraphPresetQuery(
       { limit, periodEnd, periodStart, projectSlug, queryId, userId },
-      { repository: createPostgresGraphViewerRepository() },
+      dependencies,
     );
     return NextResponse.json(response);
   } catch (error) {

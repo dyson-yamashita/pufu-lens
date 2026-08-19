@@ -89,7 +89,7 @@ wrapper とされているため、現行 SQL 使用状況だけなら pgcrypto 
 | graph materialize       | `GraphRelationsRepository` と `PostgresGraphRelationsRepository`               | Document / Actor / Topic upsert、全 edge type、idempotent MERGE、失敗時 status               |
 | related document lookup | `ChatRepository.graphCoverageQuery` / `graphQueryWithStatus`                   | SAME_AS 1-hop、RELATED_TO 1-hop、MENTIONS shared Topic 2-hop、relation 別上限、project scope |
 | graph-query fallback    | `apps/web/src/chat.ts`                                                         | traversal 失敗と成功 0 件を区別し、title / summary fallback を別 status にする               |
-| Viewer presets          | `GraphViewerRepository.executePreset`                                          | server-owned preset、eligible document 制限、read-only / timeout、normalized node / edge     |
+| Viewer presets          | Step 1B 前の `GraphViewerRepository.executePreset`                             | server-owned preset、eligible document 制限、read-only / timeout、normalized node / edge     |
 | Actor merge             | `executeActorMerge` / `mergeActorGraphElements`                                | relational reassignment と graph edge 統合 / secondary node 削除の原子性、重複 edge 抑止     |
 | Document cleanup        | `deleteExclusiveDocumentGraphNodes`                                            | project / graph scope、Document node の DETACH DELETE、失敗時の degraded behavior            |
 | monitor / tests         | Synthetic Monitor と DB tests                                                  | node presence、9 relation type count、tenant 越境拒否、rollback                              |
@@ -127,9 +127,9 @@ parser、test graph create / drop、operations docs まで Step 1 / 2 の移行�
   node / edge mutation が混在するため、新しい capability として直接再利用しない。Step 1B / 1C で
   `ProjectResolver`、`GraphIndexingRepository`、`GraphReadRepository`、
   `GraphMutationRepository` へ責務を分離し、既存実装は移行 adapter の内部でのみ利用する。
-- `GraphViewerRepository.executePreset` は `cypher`、`graphName`、AGE record definition を上位へ
-  露出するため provider boundary としては不適切である。preset ID と normalized result を受ける
-  capability に変更する。
+- Step 1B 前の `GraphViewerRepository.executePreset` は `cypher`、`graphName`、AGE record definition を
+  上位へ露出するため provider boundary としては不適切である。Step 1B で preset ID と normalized result を
+  受ける capability に変更する。
 - `ObjectStorage`、ActivityPub repositories、ingestion repositories には既存 adapter pattern がある。
   data backend 全体を一つの汎用 repository に統合しない。
 

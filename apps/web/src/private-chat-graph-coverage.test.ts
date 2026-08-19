@@ -112,17 +112,20 @@ test('shouldPrioritizeGraphCoverageSupplement is true for relation / comparison 
   assert.equal(shouldPrioritizeGraphCoverageSupplement({ primaryOperation: 'general' }), false);
 });
 
-test('runPrivateChatGraphCoveragePass marks missing graph prerequisites as unavailable', async () => {
+test('runPrivateChatGraphCoveragePass maps repository unavailability to unavailable', async () => {
   const result = await runPrivateChatGraphCoveragePass({
     classification: { primaryOperation: 'relation' },
     embeddingProvider: testEmbeddingProvider,
-    graphName: null,
     plan: buildPrivateChatSearchQueryPlan('関連資料'),
     projectId: 'project-a',
     question: '関連資料',
     repository: {
       async graphCoverageQuery() {
-        throw new Error('graphCoverageQuery should not run without graphName.');
+        return {
+          candidates: [],
+          queryFailed: true,
+          relationCandidateCounts: { MENTIONS: 0, RELATED_TO: 0, SAME_AS: 0 },
+        };
       },
     } as never,
     seedDocumentIds: [sampleSource.documentId],
@@ -135,7 +138,6 @@ test('runPrivateChatGraphCoveragePass distinguishes query failure from empty suc
   const failed = await runPrivateChatGraphCoveragePass({
     classification: { primaryOperation: 'relation' },
     embeddingProvider: testEmbeddingProvider,
-    graphName: 'graph-a',
     plan: buildPrivateChatSearchQueryPlan('関連資料'),
     projectId: 'project-a',
     question: '関連資料',
@@ -155,7 +157,6 @@ test('runPrivateChatGraphCoveragePass distinguishes query failure from empty suc
   const empty = await runPrivateChatGraphCoveragePass({
     classification: { primaryOperation: 'relation' },
     embeddingProvider: testEmbeddingProvider,
-    graphName: 'graph-a',
     plan: buildPrivateChatSearchQueryPlan('関連資料'),
     projectId: 'project-a',
     question: '関連資料',
@@ -229,7 +230,6 @@ test('runPrivateChatGraphCoveragePass records duplicate exclusions and relation 
   const result = await runPrivateChatGraphCoveragePass({
     classification: { primaryOperation: 'relation' },
     embeddingProvider: testEmbeddingProvider,
-    graphName: 'graph-a',
     plan: buildPrivateChatSearchQueryPlan('関連資料を比較して'),
     projectId: 'project-a',
     question: '関連資料を比較して',

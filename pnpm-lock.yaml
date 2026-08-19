@@ -105,6 +105,9 @@ importers:
       '@pufu-lens/activitypub':
         specifier: workspace:*
         version: link:../../packages/activitypub
+      '@pufu-lens/graph':
+        specifier: workspace:*
+        version: link:../../packages/graph
       '@pufu-lens/ingestion':
         specifier: workspace:*
         version: link:../../packages/ingestion
@@ -236,6 +239,8 @@ importers:
       '@types/sanitize-html':
         specifier: 2.16.1
         version: 2.16.1
+
+  packages/graph: {}
 
   packages/ingestion:
     dependencies:

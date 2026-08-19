@@ -11,6 +11,9 @@
       "path": "./packages/storage"
     },
     {
+      "path": "./packages/graph"
+    },
+    {
       "path": "./packages/ingestion"
     },
     {

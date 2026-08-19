@@ -1,11 +1,8 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import postgres from 'postgres';
-import {
-  createPostgresChatRepository,
-  GRAPH_RELATION_POOL_LIMITS,
-  queryGraphRelatedDocumentIds,
-} from './chat.ts';
+import { createPostgresChatRepository, GRAPH_RELATION_POOL_LIMITS } from './chat.ts';
+import { createPostgresAgeGraphReadRepository } from './postgres-graph-read-adapter.ts';
 
 const databaseUrl = process.env.DATABASE_URL?.trim();
 if (!databaseUrl) {
@@ -13,6 +10,7 @@ if (!databaseUrl) {
 }
 
 const sql = postgres(databaseUrl, { max: 1 });
+const graphReadRepository = createPostgresAgeGraphReadRepository(sql);
 const projectId = '10000000-0000-0000-0000-000000000648';
 const graphName = 'graph_issue_648_coverage';
 const seedDocumentId = '10000000-0000-0000-0000-0000000006481';
@@ -35,11 +33,12 @@ async function main() {
     await resetFixture();
     await ensureGraph(graphName);
     await seedGraphVertices();
-    const candidates = await queryGraphRelatedDocumentIds(sql, {
-      graphName,
+    const result = await graphReadRepository.findRelatedDocuments({
       projectId,
       seedDocumentIds: [seedDocumentId],
     });
+    assert.equal(result.status, 'success');
+    const candidates = result.candidates;
     assert.equal(
       candidates.filter((candidate) => candidate.relationType === 'SAME_AS').length,
       GRAPH_RELATION_POOL_LIMITS.SAME_AS,
@@ -165,12 +164,12 @@ async function seedGraphVertices(): Promise<void> {
 }
 
 async function assertUndirectedMatchFindsDirectedEdges(): Promise<void> {
-  const sameAsCandidates = await queryGraphRelatedDocumentIds(sql, {
-    graphName,
+  const result = await graphReadRepository.findRelatedDocuments({
     projectId,
     relationLimits: { MENTIONS: 0, RELATED_TO: 0, SAME_AS: 1 },
     seedDocumentIds: [seedDocumentId],
   });
+  const sameAsCandidates = result.candidates;
   assert.equal(sameAsCandidates.length, 1);
   assert.equal(sameAsCandidates[0]?.relationType, 'SAME_AS');
 }
@@ -227,7 +226,6 @@ async function assertGraphQueryWithStatusFallback(): Promise<void> {
   `;
   const repository = createPostgresChatRepository(sql);
   const traversalMiss = await repository.graphQueryWithStatus({
-    graphName,
     limit: 3,
     projectId,
     query: 'Issue 648 Graph Coverage fallback title',
@@ -258,7 +256,6 @@ async function assertGraphQueryWithStatusEmptyFallback(): Promise<void> {
   );
 
   const unavailable = await repository.graphQueryWithStatus({
-    graphName: null,
     limit: 3,
     projectId,
     query: missingTitleQuery,
@@ -267,7 +264,6 @@ async function assertGraphQueryWithStatusEmptyFallback(): Promise<void> {
   assert.equal(unavailable.sources.length, 0);
 
   const successEmpty = await repository.graphQueryWithStatus({
-    graphName,
     limit: 3,
     projectId,
     query: missingTitleQuery,

@@ -1288,7 +1288,6 @@ export async function runPrivateChatRelatingStep(
   const coverage = await runPrivateChatGraphCoveragePass({
     classification: state.classification,
     embeddingProvider,
-    graphName: state.graphName,
     plan: state.plan,
     projectId: state.projectId,
     question: state.question,

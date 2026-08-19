@@ -8,12 +8,11 @@ import {
   parseSyntheticMonitorScheduleRows,
 } from './synthetic-monitor-repository-rows.ts';
 
-test('parseSyntheticMonitorProjectRow validates UUID, slug, and graph name', () => {
+test('parseSyntheticMonitorProjectRow validates provider-neutral UUID and slug', () => {
   const project = parseSyntheticMonitorProjectRow([
     {
       id: '11111111-1111-4111-8111-111111111111',
       slug: 'sample-a',
-      graphName: 'graph_sample_a',
     },
   ]);
   assert.equal(project?.slug, 'sample-a');
@@ -21,15 +20,11 @@ test('parseSyntheticMonitorProjectRow validates UUID, slug, and graph name', () 
     {
       id: '00000000-0000-0000-0000-000000000101',
       slug: 'local-dev',
-      graphName: 'graph_local_dev',
     },
   ]);
   assert.equal(nilUuidProject?.id, '00000000-0000-0000-0000-000000000101');
   assert.throws(
-    () =>
-      parseSyntheticMonitorProjectRow([
-        { id: 'not-a-uuid', slug: 'sample-a', graphName: 'graph_sample_a' },
-      ]),
+    () => parseSyntheticMonitorProjectRow([{ id: 'not-a-uuid', slug: 'sample-a' }]),
     /expected UUID string/,
   );
 });

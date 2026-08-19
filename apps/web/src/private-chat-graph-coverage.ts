@@ -288,7 +288,6 @@ function countRelationAdoptions(
 export async function runPrivateChatGraphCoveragePass(input: {
   readonly classification: { readonly primaryOperation: string };
   readonly embeddingProvider: ChatEmbeddingProvider;
-  readonly graphName: string | null;
   readonly plan: {
     readonly expandedQueries: ReadonlyArray<{ readonly query: string }>;
     readonly primaryQuery: string;
@@ -311,7 +310,7 @@ export async function runPrivateChatGraphCoveragePass(input: {
     sourceLimitExcluded: 0,
   };
 
-  if (!input.graphName || seedDocumentIds.length === 0) {
+  if (seedDocumentIds.length === 0) {
     return {
       diagnostics: emptyDiagnostics,
       graphSources: [],
@@ -320,7 +319,6 @@ export async function runPrivateChatGraphCoveragePass(input: {
   }
 
   const graphResult = await input.repository.graphCoverageQuery({
-    graphName: input.graphName,
     projectId: input.projectId,
     question: input.question,
     seedDocumentIds,

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createPostgresGraphViewerRepository } from '../../../../../../src/graph-viewer';
+import { createPostgresGraphViewerDependencies } from '../../../../../../src/graph-viewer';
 import {
   type PublicGraphRequestBodyParseResult,
   parsePublicGraphRequestBody,
@@ -44,7 +44,7 @@ export async function POST(
         projectSlug,
         queryId: parsedBody.queryId,
       },
-      { repository: createPostgresGraphViewerRepository() },
+      createPostgresGraphViewerDependencies(),
     );
     if (result.status === 200) {
       return NextResponse.json(result.body);

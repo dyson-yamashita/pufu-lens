@@ -1,11 +1,5 @@
-import { createHash } from 'node:crypto';
-import { validateGraphName } from '@pufu-lens/project-tenancy';
 import type postgres from 'postgres';
-import { parseSyntheticMonitorAgeCountRows } from './synthetic-monitor-age.ts';
-import {
-  SYNTHETIC_MONITOR_RELATION_TYPES,
-  SYNTHETIC_MONITOR_STATEMENT_TIMEOUT_MS,
-} from './synthetic-monitor-contract.ts';
+import { SYNTHETIC_MONITOR_STATEMENT_TIMEOUT_MS } from './synthetic-monitor-contract.ts';
 import {
   parseSyntheticMonitorChunkCountRow,
   parseSyntheticMonitorDocumentRow,
@@ -31,7 +25,7 @@ export function createPostgresSyntheticMonitorRepository(
     async lookupProject(slug) {
       return withReadOnlyQuery(sql, async (tx) => {
         const rows = (await tx`
-          SELECT id::text AS id, slug, graph_name AS "graphName"
+          SELECT id::text AS id, slug
           FROM public.projects
           WHERE slug = ${slug}
           LIMIT 1
@@ -115,38 +109,6 @@ export function createPostgresSyntheticMonitorRepository(
         return parseSyntheticMonitorChunkCountRow(rows);
       });
     },
-    countGraphDocumentNode(input) {
-      const graphName = validateGraphName(input.graphName);
-      return withReadOnlyQuery(sql, async (tx) => {
-        const rows = (await tx.unsafe(
-          `SELECT * FROM cypher(${sqlString(graphName)}, ${dollarQuote(
-            'MATCH (node:Document {graphNodeId: $graphNodeId}) RETURN count(node) AS nodeCount',
-          )}, $1::agtype) AS (value agtype)`,
-          [JSON.stringify({ graphNodeId: input.graphNodeId })],
-        )) as readonly unknown[];
-        return parseSyntheticMonitorAgeCountRows(rows, 'nodeCount');
-      });
-    },
-    countGraphRelations(input) {
-      const graphName = validateGraphName(input.graphName);
-      return withReadOnlyQuery(sql, async (tx) => {
-        const counts: Record<string, number> = {};
-        for (const relationType of SYNTHETIC_MONITOR_RELATION_TYPES) {
-          const rows = (await tx.unsafe(
-            `SELECT * FROM cypher(${sqlString(graphName)}, ${dollarQuote(
-              [
-                'MATCH (node:Document {graphNodeId: $graphNodeId})',
-                `MATCH (node)-[relation:${relationType}]-()`,
-                'RETURN count(relation) AS relationCount',
-              ].join(' '),
-            )}, $1::agtype) AS (value agtype)`,
-            [JSON.stringify({ graphNodeId: input.graphNodeId })],
-          )) as readonly unknown[];
-          counts[relationType] = parseSyntheticMonitorAgeCountRows(rows, 'relationCount');
-        }
-        return counts;
-      });
-    },
     lookupSchedulesForLogicalSource(input) {
       return withReadOnlyQuery(sql, async (tx) => {
         const rows = (await tx`
@@ -219,17 +181,6 @@ async function withReadOnlyQuery<T>(
   return sql.begin(async (tx) => {
     await tx`SET TRANSACTION READ ONLY`;
     await tx.unsafe(`SET LOCAL statement_timeout = '${SYNTHETIC_MONITOR_STATEMENT_TIMEOUT_MS}ms'`);
-    await tx.unsafe(`LOAD 'age'`);
-    await tx`SET LOCAL search_path = ag_catalog, "$user", public`;
     return callback(tx);
   }) as Promise<T>;
-}
-
-function sqlString(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
-}
-
-function dollarQuote(value: string): string {
-  const tag = `$pufu_${createHash('sha256').update(value).digest('hex')}$`;
-  return `${tag}${value}${tag}`;
 }

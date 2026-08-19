@@ -1,3 +1,4 @@
+import type { GraphReadRepository } from '@pufu-lens/graph';
 import {
   GraphAccessDeniedError,
   GraphLimitError,
@@ -92,7 +93,10 @@ export async function runPublicGraphApi(
     projectSlug: string;
     queryId: string;
   },
-  options: { repository: GraphViewerRepository },
+  options: {
+    graphReadRepository: Pick<GraphReadRepository, 'readPreset'>;
+    repository: GraphViewerRepository;
+  },
 ): Promise<PublicGraphApiResult> {
   try {
     const body = await runPublicGraphPresetQuery(input, options);

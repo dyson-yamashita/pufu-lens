@@ -5,9 +5,6 @@ import { createPostgresGraphViewerRepository, type GraphViewerRepository } from 
 
 function createRepository(): GraphViewerRepository {
   return {
-    async executePreset() {
-      throw new Error('not used');
-    },
     async fetchDocumentChunks({ documentIds, projectId }) {
       assert.equal(projectId, 'project-a');
       assert.deepEqual(documentIds, ['doc-a']);

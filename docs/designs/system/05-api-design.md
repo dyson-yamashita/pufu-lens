@@ -119,10 +119,10 @@ ActivityPub public proxyは各requestの固定route kind、method、status / sta
 - request では `queryId`、optional な `limit`（Documents 上限）、optional な `periodStart` / `periodEnd`（`YYYY-MM-DD`）だけを受け取り、Cypher 文字列や graph name は受け取らない。
 - `limit` は返却 Cypher 行数ではなく、対象 Document 数の上限として解釈する。選択肢は 50 / 100 / 200 / 500。Actor / Topic ノードは上限に含めない。
 - `periodStart` / `periodEnd` は blank 省略可。両方 blank のときは occurred_at による絞り込みを行わない。片側 blank はその側を unbounded とする。両方指定時は `periodStart <= periodEnd` を要求する。`periodEnd` は inclusive（`occurred_at < periodEnd + 1 day`）として解釈する。
-- server side registry の preset だけを実行する。
-- project membership を検証し、`projects.graph_name` から対象 graph を解決する。
-- eligible Document は `public.documents` から `project_id`、optional な occurred_at 境界、決定論的 ORDER（`occurred_at DESC NULLS LAST`、tie-breaker 付き）、`LIMIT` で `graph_node_id` を選び、固定 preset Cypher へ agtype パラメータとして渡す。
-- response では `documentCount` を normalized graph 内の Document ノード数（`labels` に `Document` を含む node 数、`limit` 以下）、`rowCount` / `rawRows` を AGE 生結果行数として返す。固定 preset Cypher には server-owned な raw result-row 安全上限（現行 preset では `maxEdges = 500` の `LIMIT`）を付与し、request 入力から制御できない。normalize 後の node / edge 安全上限と statement timeout も持つ。
+- server side registry の provider-neutral preset ID だけを実行する。
+- project membership / public visibility を relational repository で検証し、Graph read contract には検証済み `projectId`、preset ID、eligible document graph node ID だけを渡す。現行 AGE adapter が `projects.graph_name` を内部で解決する。
+- eligible Document は relational repository が `public.documents` から `project_id`、optional な occurred_at 境界、決定論的 ORDER（`occurred_at DESC NULLS LAST`、tie-breaker 付き）、`LIMIT` で `graph_node_id` を選ぶ。Graph Viewer use case は Cypher、agtype parameter、record definition を扱わない。
+- response では `documentCount` を normalized graph 内の Document ノード数（`labels` に `Document` を含む node 数、`limit` 以下）、`rowCount` / `rawRows` を bounded compatibility field として従来どおり返す。現行 AGE adapter は provider query に raw result-row 安全上限（500）、normalize 後の node / edge 安全上限、statement timeout を適用し、request 入力から制御させない。
 
 `POST /api/public/projects/[projectSlug]/graph` は public project 用の同等 API である。未ログインで利用できるが、`projects.visibility = 'public'` の project だけを許可し、request から Cypher 文字列や graph name は受け取らない。Documents 上限と occurred_at 期間フィルタの意味論は private API と同じ。公開 UI では graph node / edge / property を表示する一方、document chunk 一覧と chunk 詳細は取得・表示しない。
 

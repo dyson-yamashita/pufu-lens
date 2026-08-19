@@ -126,6 +126,8 @@ Optional report 観測:
 ```
 
 任意 query 文字列、storage URI、provider path、SQL、Cypher は request に含めません。
+Graph stage は server-side で認可済み project ID を `GraphReadRepository` へ渡し、provider graph 名や
+query language は AGE adapter 内で解決します。request / response / monitor log には露出しません。
 
 ## Response 例
 
