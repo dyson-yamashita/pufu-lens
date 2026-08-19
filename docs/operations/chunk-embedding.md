@@ -56,6 +56,12 @@ pnpm ingest:chunk --project sample-a --limit 3 --embedding-provider openai --dry
 
 Private Chat のquery embeddingとdocument ingestionは、同じ `PUFU_LENS_EMBEDDING_PROVIDER` / `PUFU_LENS_EMBEDDING_MODEL` / `PUFU_LENS_EMBEDDING_DIMENSIONS=1536` を使う。workflow引数とruntime providerが異なる場合は処理を拒否する。pgvector検索は同じ `document_chunks.embedding_model` のchunkだけを候補にし、異なるembedding spaceを比較しない。PGroongaのkeyword候補はembedding modelに依存しないため、再生成中も本文一致候補として利用できる。
 
+Plan 018 Step 1A 以降、pgvector の operator と PGroonga の operator / function / raw score は現行
+`gcp-postgres` candidate adapter の内部に閉じる。semantic adapter は既存 cutoff policy が使う cosine
+distance へ正規化した順位付き候補を返し、keyword adapter は provider score を除いた順位付き候補を返す。
+Core は両者を `k=60` の RRF で統合するため、embedding model scope、候補順位、chunk provenance、
+private / public Chat の source response は移行前から変更しない。
+
 Chat回答生成モデルはEmbeddingとは独立して `PUFU_LENS_CHAT_MODEL` で選ぶ。Mastraのprovider-qualified model IDを指定する。
 
 ```yaml

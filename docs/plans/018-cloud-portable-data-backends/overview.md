@@ -1,6 +1,6 @@
 # Cloud-portable data backends 7 Step 移行計画
 
-- status: `planned`
+- status: `active`
 - 作成日: 2026-08-19
 - 親 Issue: [#704](https://github.com/dyson-yamashita/pufu-lens/issues/704)
 - 対象: GCP PostgreSQL VM の継続利用、data / retrieval boundary、Cloudflare adapter、backend parity 評価
@@ -123,7 +123,10 @@ parser、test graph create / drop、operations docs まで Step 1 / 2 の移行�
 - `ChatRepository` は access、history、raw、timeline、semantic、keyword、graph を一つに持つ。
   Core test seam としては有効だが provider boundary としては広すぎる。
 - `GraphRelationsRepository` は node / edge mutation を domain input で受け、Cypher / agtype を
-  interface に露出していない。Step 1 ではこれを捨てず、graph mutation capability の基礎にする。
+  interface に露出していない。一方で project lookup、indexing target read、status 更新、email quote、
+  node / edge mutation が混在するため、新しい capability として直接再利用しない。Step 1B / 1C で
+  `ProjectResolver`、`GraphIndexingRepository`、`GraphReadRepository`、
+  `GraphMutationRepository` へ責務を分離し、既存実装は移行 adapter の内部でのみ利用する。
 - `GraphViewerRepository.executePreset` は `cypher`、`graphName`、AGE record definition を上位へ
   露出するため provider boundary としては不適切である。preset ID と normalized result を受ける
   capability に変更する。
@@ -319,9 +322,10 @@ rollback、acceptance criteria を記載する。1 Step が review 可能な大�
 
 ### 設計判断と根拠
 
-- 新規 interface は Graph read、Graph mutation、Semantic candidate、Keyword candidate の 4 capability
-  に限定する。既存 `ChatRepository` は facade、既存 `GraphRelationsRepository` は mutation contract
-  として再利用する。
+- 検索 provider interface は `SemanticCandidateRepository` と `KeywordCandidateRepository` に限定し、
+  access / history / raw / timeline を混ぜない。Graph は `ProjectResolver`、
+  `GraphIndexingRepository`、`GraphReadRepository`、`GraphMutationRepository` に分け、既存
+  `GraphRelationsRepository` を新 contract として直接再利用しない。既存 `ChatRepository` は facade とする。
 - RRF `k=60`、document dedupe、diversity、confidence、graph coverage policy は Pufu Lens 固有 logic
   なので Core に移す。
 - provider adapter は rank 付き候補を返し、raw score を application contract にしない。
@@ -1039,20 +1043,20 @@ CI では hermetic contract / metric testsを毎回実行し、remote GCP / Clou
 
 ## 15. Decision Log
 
-| Decision                     | 状態               | 判断 / decision gate                                                                                |
-| ---------------------------- | ------------------ | --------------------------------------------------------------------------------------------------- |
-| Graph repository 境界        | decided            | Graph read / mutation を分け、既存 `GraphRelationsRepository` を mutation contract の基礎にする     |
-| graph schema                 | decided            | project-scoped relational nodes / edges、既存 `graphNodeId` を `node_key` として維持                |
-| AGE migration                | conditional        | source rebuild + dual-write / shadow を推奨。AGE-only row audit が通らなければ export/import を選ぶ |
-| GCP keyword provider         | pending Step 3     | built-in FTS、pg_trgm、application n-gram を固定 corpus で比較して選ぶ                              |
-| GCP vector provider          | decided            | pgvector 継続、adapter 内へ隔離                                                                     |
-| final GCP extensions         | conditional        | vector + selected keyword dependency。AGE / PGroonga は削除、pgcrypto は core UUID 確認後に削除候補 |
-| custom PostgreSQL image      | pending Step 4     | official PostgreSQL base + reproducible extension install と current custom image を比較            |
-| Cloudflare graph provider    | candidate          | D1 relational graph。Step 6 の transaction / throughput / query limit で確定                        |
-| Cloudflare semantic provider | candidate          | Vectorize cosine 1536。filter / namespace / consistency / quality で確定                            |
-| Cloudflare keyword provider  | pending Step 6 / 7 | D1 FTS5 または application n-gram を Step 3 corpus で選ぶ                                           |
-| provider selection           | decided            | deployment-level `PUFU_LENS_DATA_PROFILE` を composition root で解決。per-request selection なし    |
-| parity tolerance             | decided            | rank / relevance based。security / tenant / graph mutation は 100%、raw score 一致は要求しない      |
+| Decision                     | 状態               | 判断 / decision gate                                                                                  |
+| ---------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------- |
+| Graph repository 境界        | decided            | ProjectResolver / GraphIndexing / GraphRead / GraphMutation に分け、既存 interface は直接再利用しない |
+| graph schema                 | decided            | project-scoped relational nodes / edges、既存 `graphNodeId` を `node_key` として維持                  |
+| AGE migration                | conditional        | source rebuild + dual-write / shadow を推奨。AGE-only row audit が通らなければ export/import を選ぶ   |
+| GCP keyword provider         | pending Step 3     | built-in FTS、pg_trgm、application n-gram を固定 corpus で比較して選ぶ                                |
+| GCP vector provider          | decided            | pgvector 継続、adapter 内へ隔離                                                                       |
+| final GCP extensions         | conditional        | vector + selected keyword dependency。AGE / PGroonga は削除、pgcrypto は core UUID 確認後に削除候補   |
+| custom PostgreSQL image      | pending Step 4     | official PostgreSQL base + reproducible extension install と current custom image を比較              |
+| Cloudflare graph provider    | candidate          | D1 relational graph。Step 6 の transaction / throughput / query limit で確定                          |
+| Cloudflare semantic provider | candidate          | Vectorize cosine 1536。filter / namespace / consistency / quality で確定                              |
+| Cloudflare keyword provider  | pending Step 6 / 7 | D1 FTS5 または application n-gram を Step 3 corpus で選ぶ                                             |
+| provider selection           | decided            | deployment-level `PUFU_LENS_DATA_PROFILE` を composition root で解決。per-request selection なし      |
+| parity tolerance             | decided            | rank / relevance based。security / tenant / graph mutation は 100%、raw score 一致は要求しない        |
 
 ## 16. Documentation update matrix
 
