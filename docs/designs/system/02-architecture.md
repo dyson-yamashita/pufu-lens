@@ -73,6 +73,20 @@
 └─────────────────────────┘   └──────────────────────────────┘
 ```
 
+#### 検索 candidate capability 境界
+
+Plan 018 Step 1A では、Chat の既存外部挙動を保ったまま検索候補取得を provider-neutral な
+`SemanticCandidateRepository` / `KeywordCandidateRepository` へ分離する。`@pufu-lens/retrieval` は
+candidate DTO と runtime guard、document dedupe、`k=60` の RRF、表示 chunk provenance の選択を担い、
+SQL、provider 名、raw score を持たない。score-aware cutoff、diversity、retrieval confidence、graph coverage
+policy は引き続き Core / Workflow が所有する。
+
+`gcp-postgres` composition は Web の Postgres Chat facade 内で構成し、semantic adapter が pgvector の
+`<=>` を既存 cutoff と同じ cosine distance へ正規化し、keyword adapter が PGroonga の operator / function
+と raw score を内部に閉じる。両 adapter は project scope と chunk provenance を検証済みの candidate として
+返す。access、history、raw read、timeline、graph の契約は candidate interface に含めず、private / public
+Chat API、tool 名、source response、schema、data は変更しない。
+
 ### 2. コンポーネント役割
 
 | コンポーネント      | 役割                                                                                                         | デプロイ先                              |

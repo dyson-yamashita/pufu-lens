@@ -15,6 +15,9 @@
     },
     {
       "path": "./packages/project-tenancy"
+    },
+    {
+      "path": "./packages/retrieval"
     }
   ]
 }

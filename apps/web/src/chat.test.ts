@@ -1427,22 +1427,30 @@ await assert.rejects(
   const sqlTexts: string[] = [];
   const boundValues: unknown[][] = [];
   const sql = ((strings: TemplateStringsArray, ...values: unknown[]) => {
-    sqlTexts.push(strings.join('?'));
+    const sqlText = strings.join('?');
+    sqlTexts.push(sqlText);
     boundValues.push(values);
-    return Promise.resolve([
-      {
-        canonical_uri: 'https://example.test/doc',
-        document_id: 'doc-rrf',
-        doc_type: 'web_page',
-        raw_document_id: 'raw-rrf',
-        snippet: 'RRF source',
-        title: 'RRF Source',
-        fused_score: '0.03',
-        keyword_rank: '2',
-        vector_distance: '0.21',
-        vector_rank: '1',
-      },
-    ]);
+    const common = {
+      canonical_uri: 'https://example.test/doc',
+      chunk_index: 0,
+      document_id: 'doc-rrf',
+      doc_type: 'web_page',
+      raw_document_id: 'raw-rrf',
+      snippet: 'RRF source',
+      title: 'RRF Source',
+    };
+    return Promise.resolve(
+      sqlText.includes('pgroonga_score')
+        ? [{ ...common, chunk_id: 'chunk-keyword', rank: '2' }]
+        : [
+            {
+              ...common,
+              chunk_id: 'chunk-semantic',
+              cosine_distance: '0.21',
+              rank: '1',
+            },
+          ],
+    );
   }) as never;
   const rrfRepository = createPostgresChatRepository(sql);
   const sources = await rrfRepository.hybridSearch({
@@ -1456,12 +1464,13 @@ await assert.rejects(
   assert.equal(sources[0]?.vectorDistance, 0.21);
   assert.equal(sources[0]?.vectorRank, 1);
   assert.equal(sources[0]?.keywordRank, 2);
-  assert.equal(sources[0]?.fusedScore, 0.03);
-  assert.match(sqlTexts[0] ?? '', /embedding_model/);
-  assert.match(sqlTexts[0] ?? '', /rrf_score/);
-  assert.match(sqlTexts[0] ?? '', /vector_distance/);
-  assert.doesNotMatch(sqlTexts[0] ?? '', /hybrid_score/);
-  assert.ok(boundValues[0]?.includes('gemini-test'));
+  assert.equal(sources[0]?.fusedScore, reciprocalRankFusionScore(1) + reciprocalRankFusionScore(2));
+  assert.equal(sources[0]?.chunkId, 'chunk-semantic');
+  assert.equal(sqlTexts.length, 2);
+  assert.ok(sqlTexts.some((sqlText) => /embedding_model/.test(sqlText)));
+  assert.ok(sqlTexts.some((sqlText) => /pgroonga_score/.test(sqlText)));
+  assert.ok(sqlTexts.every((sqlText) => !/rrf_score|hybrid_score/.test(sqlText)));
+  assert.ok(boundValues.some((values) => values.includes('gemini-test')));
 }
 
 {

@@ -1,4 +1,14 @@
 import { createHash } from 'node:crypto';
+import type {
+  CandidateRepositories,
+  FusedChunkCandidate,
+  SemanticChunkCandidate,
+} from '@pufu-lens/retrieval';
+import {
+  fuseRankedChunkCandidates,
+  RECIPROCAL_RANK_FUSION_K,
+  reciprocalRankFusionScore,
+} from '@pufu-lens/retrieval';
 import type postgres from 'postgres';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
@@ -9,6 +19,7 @@ import {
 } from './chat-search-period.ts';
 import type { GitHubDocumentLifecycle } from './github-lifecycle-contract.ts';
 import { parseGitHubDocumentLifecycle } from './github-lifecycle-contract.ts';
+import { createGcpPostgresCandidateRepositories } from './postgres-chat-candidate-adapters.ts';
 import { jsonParameter } from './postgres-json.ts';
 import {
   type AgentRawReadViewEnvelope,
@@ -51,7 +62,7 @@ export interface ChatSource {
   readonly chunkId?: string;
   /** Retrieval-only selected chunk index. It is never persisted or returned by chat response APIs. */
   readonly chunkIndex?: number;
-  /** Retrieval-only RRF score normalized to 0..1. It is never persisted or returned by chat response APIs. */
+  /** Retrieval-only sum of k=60 RRF rank contributions. It is never persisted or returned by chat response APIs. */
   readonly fusedScore?: number;
   /**
    * Normalized UTC ISO-8601 document occurrence time (`...Z`) used during synthesis.
@@ -173,7 +184,7 @@ export const PRIVATE_CHAT_CONTEXT_TURN_LIMIT = 6;
 export const PRIVATE_CHAT_HISTORY_UI_LIMIT = 50;
 export const PRIVATE_CHAT_HISTORY_CONTENT_MAX = 4000;
 export const PRIVATE_CHAT_VECTOR_DIMENSIONS = 1536;
-export const RECIPROCAL_RANK_FUSION_K = 60;
+export { RECIPROCAL_RANK_FUSION_K, reciprocalRankFusionScore };
 
 export interface ChatEmbeddingProvider {
   readonly dimensions: number;
@@ -1156,13 +1167,18 @@ export function privateChatHistoryItemsForUiDisplay(
 /**
  * Creates a Postgres-backed chat repository with project-scoped RRF hybrid retrieval.
  *
- * @param options - Optional raw storage used to enable raw read view fetches
+ * @param options - Optional candidate capability overrides and raw storage for raw read view fetches
  * @returns A repository that filters vector candidates by embedding model and keeps keyword retrieval model-independent
  */
 export function createPostgresChatRepository(
   sql: postgres.Sql,
-  options: { readonly rawStorage?: Pick<ObjectStorage, 'getText'> } = {},
+  options: {
+    readonly candidateRepositories?: CandidateRepositories;
+    readonly rawStorage?: Pick<ObjectStorage, 'getText'>;
+  } = {},
 ): ChatRepository {
+  const candidateRepositories =
+    options.candidateRepositories ?? createGcpPostgresCandidateRepositories(sql);
   const rawReadViewRepository = options.rawStorage
     ? createPostgresRawReadViewRepository({ sql, storage: options.rawStorage })
     : undefined;
@@ -1179,201 +1195,37 @@ export function createPostgresChatRepository(
         : undefined;
     },
     async hybridSearch({ embedding, embeddingModel, limit, projectId, query }) {
-      const vector = `[${embedding.join(',')}]`;
       const keywordQuery = normalizeHybridKeywordQuery(query);
       if (keywordQuery.length === 0) {
-        const rows = (await sql`
-          WITH distinct_chunks AS (
-            SELECT DISTINCT ON (d.id)
-              dc.id::text AS chunk_id,
-              dc.chunk_index,
-              d.id::text AS document_id,
-              d.raw_document_id::text AS raw_document_id,
-              d.doc_type,
-              coalesce(d.title, 'Untitled') AS title,
-              coalesce(d.canonical_uri, '') AS canonical_uri,
-              left(coalesce(dc.content, d.summary, ''), 700) AS snippet,
-              dc.embedding <=> ${vector}::vector AS distance
-            FROM public.document_chunks dc
-            JOIN public.documents d ON d.id = dc.document_id
-            WHERE dc.project_id = ${projectId}
-              AND dc.embedding_model = ${embeddingModel}
-              AND dc.embedding IS NOT NULL
-            ORDER BY d.id, dc.embedding <=> ${vector}::vector, dc.id
-          )
-          SELECT
-            chunk_id,
-            chunk_index,
-            document_id,
-            raw_document_id,
-            doc_type,
-            title,
-            canonical_uri,
-            snippet,
-            distance AS vector_distance,
-            row_number() OVER (ORDER BY distance ASC NULLS LAST, document_id) AS vector_rank
-          FROM distinct_chunks
-          ORDER BY distance ASC NULLS LAST
-          LIMIT ${limit}
-        `) as readonly unknown[];
-        return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
+        const semanticCandidates = await candidateRepositories.semanticCandidateRepository.search({
+          embedding,
+          embeddingModel,
+          limit,
+          projectId,
+        });
+        return semanticCandidates.map(sourceFromSemanticCandidate);
       }
 
       const candidateLimit = hybridSearchCandidateLimit(limit);
-      const rows = (await sql`
-        WITH vector_chunk_candidates_limit AS (
-          SELECT
-            dc.id::text AS chunk_id,
-            dc.chunk_index,
-            d.id::text AS document_id,
-            d.raw_document_id::text AS raw_document_id,
-            d.doc_type,
-            coalesce(d.title, 'Untitled') AS title,
-            coalesce(d.canonical_uri, '') AS canonical_uri,
-            left(coalesce(dc.content, d.summary, ''), 700) AS snippet,
-            dc.embedding <=> ${vector}::vector AS distance
-          FROM public.document_chunks dc
-          JOIN public.documents d ON d.id = dc.document_id
-          WHERE dc.project_id = ${projectId}
-            AND dc.embedding_model = ${embeddingModel}
-            AND dc.embedding IS NOT NULL
-          ORDER BY dc.embedding <=> ${vector}::vector, dc.id
-          LIMIT ${candidateLimit}
-        ),
-        vector_document_candidates AS (
-          SELECT DISTINCT ON (document_id)
-            chunk_id,
-            chunk_index,
-            document_id,
-            raw_document_id,
-            doc_type,
-            title,
-            canonical_uri,
-            snippet,
-            distance
-          FROM vector_chunk_candidates_limit
-          ORDER BY document_id, distance, chunk_id
-        ),
-        vector_candidates AS (
-          SELECT
-            chunk_id,
-            chunk_index,
-            document_id,
-            raw_document_id,
-            doc_type,
-            title,
-            canonical_uri,
-            snippet,
-            distance,
-            row_number() OVER (ORDER BY distance, chunk_id) AS vector_rank,
-            NULL::bigint AS keyword_rank
-          FROM vector_document_candidates
-        ),
-        keyword_chunk_candidates_limit AS (
-          SELECT
-            dc.id::text AS chunk_id,
-            dc.chunk_index,
-            dc.document_id,
-            dc.content,
-            pgroonga_score(dc.tableoid, dc.ctid) AS keyword_score
-          FROM public.document_chunks dc
-          WHERE dc.project_id = ${projectId}
-            AND dc.content &@~ pgroonga_query_escape(${keywordQuery})
-          ORDER BY pgroonga_score(dc.tableoid, dc.ctid) DESC, dc.id
-          LIMIT ${candidateLimit}
-        ),
-        keyword_document_candidates AS (
-          SELECT DISTINCT ON (d.id)
-            kcl.chunk_id,
-            kcl.chunk_index,
-            d.id::text AS document_id,
-            d.raw_document_id::text AS raw_document_id,
-            d.doc_type,
-            coalesce(d.title, 'Untitled') AS title,
-            coalesce(d.canonical_uri, '') AS canonical_uri,
-            left(coalesce(kcl.content, d.summary, ''), 700) AS snippet,
-            kcl.keyword_score
-          FROM keyword_chunk_candidates_limit kcl
-          JOIN public.documents d ON d.id = kcl.document_id
-          ORDER BY d.id, kcl.keyword_score DESC, kcl.chunk_id
-        ),
-        keyword_candidates AS (
-          SELECT
-            chunk_id,
-            chunk_index,
-            document_id,
-            raw_document_id,
-            doc_type,
-            title,
-            canonical_uri,
-            snippet,
-            NULL::double precision AS distance,
-            NULL::bigint AS vector_rank,
-            row_number() OVER (ORDER BY keyword_score DESC, chunk_id) AS keyword_rank
-          FROM keyword_document_candidates
-        ),
-        document_candidates AS (
-          SELECT * FROM vector_candidates
-          UNION ALL
-          SELECT * FROM keyword_candidates
-        ),
-        document_scores AS (
-          SELECT
-            document_id,
-            min(vector_rank) AS vector_rank,
-            min(keyword_rank) AS keyword_rank,
-            min(distance) AS vector_distance,
-            COALESCE(1.0 / (${RECIPROCAL_RANK_FUSION_K} + min(vector_rank)), 0.0) +
-              COALESCE(1.0 / (${RECIPROCAL_RANK_FUSION_K} + min(keyword_rank)), 0.0)
-              AS rrf_score
-          FROM document_candidates
-          GROUP BY document_id
-        ),
-        document_display AS (
-          SELECT DISTINCT ON (document_id)
-            document_id,
-            raw_document_id,
-            doc_type,
-            title,
-            canonical_uri,
-            snippet,
-            chunk_id,
-            chunk_index
-          FROM document_candidates
-          ORDER BY
-            document_id,
-            LEAST(
-              COALESCE(vector_rank, 2147483647),
-              COALESCE(keyword_rank, 2147483647)
-            ),
-            CASE WHEN vector_rank IS NULL THEN 1 ELSE 0 END,
-            chunk_id
-        )
-        SELECT
-          dd.document_id,
-          dd.raw_document_id,
-          dd.doc_type,
-          dd.title,
-          dd.canonical_uri,
-          dd.snippet,
-          dd.chunk_id,
-          dd.chunk_index,
-          ds.vector_distance,
-          ds.vector_rank,
-          ds.keyword_rank,
-          ds.rrf_score AS fused_score
-        FROM document_scores ds
-        JOIN document_display dd USING (document_id)
-        ORDER BY
-          ds.rrf_score DESC,
-          LEAST(
-            COALESCE(ds.vector_rank, 2147483647),
-            COALESCE(ds.keyword_rank, 2147483647)
-          ),
-          dd.document_id
-        LIMIT ${limit}
-      `) as readonly unknown[];
-      return rows.map((row) => sourceFromRow(parseChatSourceRow(row)));
+      const [semanticCandidates, keywordCandidates] = await Promise.all([
+        candidateRepositories.semanticCandidateRepository.search({
+          embedding,
+          embeddingModel,
+          limit: candidateLimit,
+          preDedupLimit: candidateLimit,
+          projectId,
+        }),
+        candidateRepositories.keywordCandidateRepository.search({
+          limit: candidateLimit,
+          normalizedQuery: keywordQuery,
+          projectId,
+        }),
+      ]);
+      return fuseRankedChunkCandidates({
+        keywordCandidates,
+        limit,
+        semanticCandidates,
+      }).map(sourceFromFusedCandidate);
     },
     async graphCoverageQuery({ graphName, projectId, question, seedDocumentIds }) {
       return resolveGraphRelatedSources(sql, {
@@ -2298,6 +2150,38 @@ function sourceFromRow(row: ChatSourceRow): ChatSource {
   };
 }
 
+function sourceFromSemanticCandidate(candidate: SemanticChunkCandidate): ChatSource {
+  return {
+    canonicalUri: candidate.canonicalUri,
+    chunkId: candidate.chunkId,
+    chunkIndex: candidate.chunkIndex,
+    documentId: candidate.documentId,
+    docType: candidate.docType,
+    rawDocumentId: candidate.rawDocumentId,
+    ...(candidate.snippet === undefined ? {} : { snippet: candidate.snippet }),
+    title: candidate.title,
+    vectorDistance: candidate.cosineDistance,
+    vectorRank: candidate.rank,
+  };
+}
+
+function sourceFromFusedCandidate(candidate: FusedChunkCandidate): ChatSource {
+  return {
+    canonicalUri: candidate.canonicalUri,
+    chunkId: candidate.chunkId,
+    chunkIndex: candidate.chunkIndex,
+    documentId: candidate.documentId,
+    docType: candidate.docType,
+    fusedScore: candidate.fusedScore,
+    ...(candidate.keywordRank === undefined ? {} : { keywordRank: candidate.keywordRank }),
+    rawDocumentId: candidate.rawDocumentId,
+    ...(candidate.snippet === undefined ? {} : { snippet: candidate.snippet }),
+    title: candidate.title,
+    ...(candidate.cosineDistance === undefined ? {} : { vectorDistance: candidate.cosineDistance }),
+    ...(candidate.semanticRank === undefined ? {} : { vectorRank: candidate.semanticRank }),
+  };
+}
+
 /**
  * ハイブリッド検索の候補数上限を算出します。
  *
@@ -2821,20 +2705,6 @@ export async function embedPrivateChatQueries(
     }
   }
   return vectors;
-}
-
-/**
- * Returns the weighted contribution for one one-based rank in reciprocal rank fusion.
- *
- * @param rank - One-based position in a ranked retrieval result
- * @param weight - Relative importance of the ranked result list
- * @returns The deterministic RRF contribution, or zero for invalid ranks and weights
- */
-export function reciprocalRankFusionScore(rank: number, weight = 1): number {
-  if (!Number.isInteger(rank) || rank < 1 || !Number.isFinite(weight) || weight <= 0) {
-    return 0;
-  }
-  return weight / (RECIPROCAL_RANK_FUSION_K + rank);
 }
 
 async function geminiErrorDetails(response: Response): Promise<string> {

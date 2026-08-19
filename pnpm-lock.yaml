@@ -111,6 +111,9 @@ importers:
       '@pufu-lens/project-tenancy':
         specifier: workspace:*
         version: link:../../packages/project-tenancy
+      '@pufu-lens/retrieval':
+        specifier: workspace:*
+        version: link:../../packages/retrieval
       '@pufu-lens/storage':
         specifier: workspace:*
         version: link:../../packages/storage
@@ -241,6 +244,8 @@ importers:
         version: 0.1.22(typescript@5.9.3)
 
   packages/project-tenancy: {}
+
+  packages/retrieval: {}
 
   packages/storage:
     dependencies:

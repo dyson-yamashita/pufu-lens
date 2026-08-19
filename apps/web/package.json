@@ -19,7 +19,7 @@
     "dev:lan": "DATABASE_URL=${DATABASE_URL:-postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens} STORAGE_DRIVER=${STORAGE_DRIVER:-local} STORAGE_ROOT=${STORAGE_ROOT:-../../.data/volumes/pufu-lens-data} next dev -H 0.0.0.0",
     "start": "next start",
     "test": "node --experimental-strip-types scripts/run-tests.ts",
-    "test:db": "pnpm --filter @pufu-lens/ingestion --filter @pufu-lens/project-tenancy build && node --experimental-strip-types scripts/run-db-tests.ts",
+    "test:db": "pnpm --filter @pufu-lens/ingestion --filter @pufu-lens/project-tenancy --filter @pufu-lens/retrieval build && node --experimental-strip-types scripts/run-db-tests.ts",
     "test:activitypub": "node --experimental-strip-types --test src/activitypub-runtime.test.ts src/activitypub-subscription-settings.test.ts src/activitypub-subscription-errors.test.ts src/activitypub-subscription-service.test.ts src/activitypub-subscription-validation.test.ts src/activitypub-federation-form.test.ts src/proxy.test.ts",
     "test:e2e": "playwright test",
     "typecheck": "next typegen && tsc --noEmit -p tsconfig.json"
@@ -31,6 +31,7 @@
     "@pdf-lib/fontkit": "^1.1.1",
     "@pufu-lens/ingestion": "workspace:*",
     "@pufu-lens/project-tenancy": "workspace:*",
+    "@pufu-lens/retrieval": "workspace:*",
     "@pufu-lens/storage": "workspace:*",
     "cytoscape": "^3.34.0",
     "dom-to-image": "^2.6.0",

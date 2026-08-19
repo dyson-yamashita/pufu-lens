@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import postgres from 'postgres';
-import { createPostgresChatRepository } from './chat.ts';
+import { createPostgresChatRepository, reciprocalRankFusionScore } from './chat.ts';
 import { CUSTOM_REPORT_LAYOUT_SCHEMA_VERSION } from './custom-report-schema.ts';
 import { createPostgresReportRepository } from './report-repository.ts';
 import {
@@ -58,6 +58,9 @@ const matchingChunkId = '10000000-0000-0000-0000-000000000455';
 const mismatchedChunkId = '10000000-0000-0000-0000-000000000456';
 const crossChunkVectorChunkId = '10000000-0000-0000-0000-000000000457';
 const crossChunkKeywordChunkId = '10000000-0000-0000-0000-000000000458';
+const crossProjectSearchRawDocumentId = '10000000-0000-0000-0000-000000000459';
+const crossProjectSearchDocumentId = '10000000-0000-0000-0000-000000000460';
+const crossProjectSearchChunkId = '10000000-0000-0000-0000-000000000461';
 const settingsScheduleAsOf = new Date('2026-07-20T05:00:00.000Z');
 const settingsProjectCreatedAt = '2026-06-15T01:00:00.000Z';
 
@@ -157,6 +160,11 @@ async function assertChatHybridSearchRoundTrip() {
         ${crossChunkRawDocumentId}, ${projectId}, 'web', 'rrf-cross-chunk', 'rrf-cross-chunk',
         'rrf-cross-chunk-v1',
         'raw/rrf-cross-chunk.json', 'rrf-cross-chunk-hash', 'indexed'
+      ),
+      (
+        ${crossProjectSearchRawDocumentId}, ${crossProjectId}, 'web', 'rrf-cross-project',
+        'rrf-cross-project', 'rrf-cross-project-v1',
+        'raw/rrf-cross-project.json', 'rrf-cross-project-hash', 'indexed'
       )
   `;
   await sql`
@@ -181,6 +189,12 @@ async function assertChatHybridSearchRoundTrip() {
         'rrf-cross-chunk',
         'Cross Chunk Consensus', '別々の chunk が各検索方式で一致する資料',
         'https://example.test/rrf-cross-chunk', 'document:web:rrf-cross-chunk'
+      ),
+      (
+        ${crossProjectSearchDocumentId}, ${crossProjectId}, ${crossProjectSearchRawDocumentId},
+        'web_page', 'rrf-cross-project',
+        'Cross Project Search', 'crosschunkkeyword wrongmodelkeyword の越境禁止資料',
+        'https://example.test/rrf-cross-project', 'document:web:rrf-cross-project'
       )
   `;
   const embedding = [1, ...Array.from({ length: 1535 }, () => 0)];
@@ -207,6 +221,11 @@ async function assertChatHybridSearchRoundTrip() {
       (
         ${crossChunkKeywordChunkId}, ${projectId}, ${crossChunkDocumentId}, 1, 'crosschunkkeyword の本文',
         'rrf-chunk-cross-keyword', ${vector}::vector, 'deterministic-test'
+      ),
+      (
+        ${crossProjectSearchChunkId}, ${crossProjectId}, ${crossProjectSearchDocumentId}, 0,
+        'crosschunkkeyword wrongmodelkeyword の越境禁止本文', 'rrf-chunk-cross-project',
+        ${vector}::vector, 'gemini-test'
       )
   `;
 
@@ -221,6 +240,10 @@ async function assertChatHybridSearchRoundTrip() {
   assert.deepEqual(
     vectorOnly.map((source) => source.documentId),
     [matchingDocumentId, crossChunkDocumentId],
+  );
+  assert.equal(
+    vectorOnly.some((source) => source.documentId === crossProjectSearchDocumentId),
+    false,
   );
   assert.equal(vectorOnly[0]?.vectorRank, 1);
   assert.equal(vectorOnly[1]?.vectorRank, 2);
@@ -241,6 +264,10 @@ async function assertChatHybridSearchRoundTrip() {
   });
   assert.ok(hybrid.some((source) => source.documentId === matchingDocumentId));
   assert.ok(hybrid.some((source) => source.documentId === mismatchedDocumentId));
+  assert.equal(
+    hybrid.some((source) => source.documentId === crossProjectSearchDocumentId),
+    false,
+  );
   for (const source of hybrid) {
     assert.equal(typeof source.fusedScore, 'number');
     assert.ok((source.fusedScore ?? Number.NEGATIVE_INFINITY) > 0);
@@ -259,6 +286,15 @@ async function assertChatHybridSearchRoundTrip() {
   assert.equal(crossChunkHybrid[0]?.chunkId, crossChunkKeywordChunkId);
   assert.equal(crossChunkHybrid[0]?.chunkIndex, 1);
   assert.equal(crossChunkHybrid[0]?.keywordRank, 1);
+  assert.equal(crossChunkHybrid[0]?.vectorRank, 2);
+  assert.equal(
+    crossChunkHybrid[0]?.fusedScore,
+    reciprocalRankFusionScore(1) + reciprocalRankFusionScore(2),
+  );
+  assert.equal(
+    crossChunkHybrid.some((source) => source.documentId === crossProjectSearchDocumentId),
+    false,
+  );
 }
 
 async function assertPrivateChatJsonbRoundTrip() {
