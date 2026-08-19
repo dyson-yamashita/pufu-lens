@@ -196,17 +196,6 @@ export {
   scanGmailDataSource,
 } from './gmail-source.js';
 export type {
-  GraphActorAliasType,
-  GraphEdgeInput,
-  GraphEdgeType,
-  GraphEmailQuoteInput,
-  GraphNodeInput,
-  GraphRelationActorRecord,
-  GraphRelationDocumentRecord,
-  GraphRelationProjectRecord,
-  GraphRelationsRepository,
-  GraphRelationTarget,
-  ReplaceEmailQuotesInput,
   StoreGraphRelationDecision,
   StoreGraphRelationsOptions,
   StoreGraphRelationsResult,

@@ -1,6 +1,39 @@
 import { createHash } from 'node:crypto';
-import type { GraphEdgeInput, GraphEmailQuoteInput, GraphNodeInput } from './graph-relations.js';
 import type { ParsedDocumentType, SourceType } from './ingestion-fixtures.js';
+
+type RecoveryGraphEdgeType =
+  | 'AUTHORED'
+  | 'COMMENTED_ON'
+  | 'MENTIONS'
+  | 'OWNS'
+  | 'REPLY_TO'
+  | 'RELATED_TO'
+  | 'REVIEWED'
+  | 'SAME_AS'
+  | 'SENT';
+
+interface RecoveryGraphNodeInput {
+  graphNodeId: string;
+  labels: string[];
+  properties: Record<string, unknown>;
+}
+
+interface RecoveryGraphEdgeInput {
+  fromGraphNodeId: string;
+  properties: Record<string, unknown>;
+  toGraphNodeId: string;
+  type: RecoveryGraphEdgeType;
+}
+
+interface RecoveryGraphEmailQuoteInput {
+  bodyText: string;
+  prevQuoteIndex?: number;
+  quoteIndex: number;
+  quotedMessageId: string;
+  senderActorId?: string;
+  senderAlias: string;
+  sentAt: string;
+}
 
 export const RECOVERY_ARTIFACT_VERSION = 2;
 export const LEGACY_RECOVERY_ARTIFACT_VERSION = 1;
@@ -67,9 +100,9 @@ export interface GraphRecoveryArtifactEvent extends RecoveryArtifactBaseEvent {
   artifactKind: 'graph-relation';
   document: RecoveryArtifactDocumentSnapshot;
   documentGraphNodeId: string;
-  edges: GraphEdgeInput[];
-  emailQuotes: GraphEmailQuoteInput[];
-  nodes: GraphNodeInput[];
+  edges: RecoveryGraphEdgeInput[];
+  emailQuotes: RecoveryGraphEmailQuoteInput[];
+  nodes: RecoveryGraphNodeInput[];
 }
 
 export type RecoveryArtifactEvent =
@@ -378,7 +411,7 @@ function validateDocumentSnapshot(value: unknown): RecoveryArtifactDocumentSnaps
   return snapshot;
 }
 
-function validateGraphNode(value: unknown, path: string): GraphNodeInput {
+function validateGraphNode(value: unknown, path: string): RecoveryGraphNodeInput {
   const node = requireRecord(value, path);
   return {
     graphNodeId: requireNonEmptyString(node.graphNodeId, `${path}.graphNodeId`),
@@ -387,7 +420,7 @@ function validateGraphNode(value: unknown, path: string): GraphNodeInput {
   };
 }
 
-function validateGraphEdge(value: unknown, path: string): GraphEdgeInput {
+function validateGraphEdge(value: unknown, path: string): RecoveryGraphEdgeInput {
   const edge = requireRecord(value, path);
   return {
     fromGraphNodeId: requireNonEmptyString(edge.fromGraphNodeId, `${path}.fromGraphNodeId`),
@@ -397,9 +430,9 @@ function validateGraphEdge(value: unknown, path: string): GraphEdgeInput {
   };
 }
 
-function validateEmailQuote(value: unknown, path: string): GraphEmailQuoteInput {
+function validateEmailQuote(value: unknown, path: string): RecoveryGraphEmailQuoteInput {
   const quote = requireRecord(value, path);
-  const emailQuote: GraphEmailQuoteInput = {
+  const emailQuote: RecoveryGraphEmailQuoteInput = {
     bodyText: requireNonEmptyString(quote.bodyText, `${path}.bodyText`),
     quoteIndex: requirePositiveInteger(quote.quoteIndex, `${path}.quoteIndex`),
     quotedMessageId: requireNonEmptyString(quote.quotedMessageId, `${path}.quotedMessageId`),
@@ -478,7 +511,7 @@ function requireParsedDocumentType(value: unknown): ParsedDocumentType {
   throw new Error('document.docType is invalid.');
 }
 
-function requireGraphEdgeType(value: unknown, path: string): GraphEdgeInput['type'] {
+function requireGraphEdgeType(value: unknown, path: string): RecoveryGraphEdgeInput['type'] {
   if (
     value === 'AUTHORED' ||
     value === 'COMMENTED_ON' ||

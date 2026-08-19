@@ -7,11 +7,19 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./postgres-age-mutation": {
+      "types": "./dist/postgres-age-mutation.d.ts",
+      "import": "./dist/postgres-age-mutation.js"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "tsc -p tsconfig.json && node --test \"dist/**/*.test.js\"",
     "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@pufu-lens/project-tenancy": "workspace:*",
+    "postgres": "^3.4.9"
   }
 }

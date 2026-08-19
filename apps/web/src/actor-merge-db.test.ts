@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { createPostgresAgeGraphMutationRepository } from '@pufu-lens/graph/postgres-age-mutation';
 import postgres from 'postgres';
 import { executeActorMerge } from './actor-merge-use-case.ts';
 
@@ -66,9 +67,8 @@ async function assertSuccessfulActorMerge() {
   await seedSuccessGraph();
 
   await sql.begin(async (tx) => {
-    await executeActorMerge(tx, {
+    await executeActorMerge(tx, createPostgresAgeGraphMutationRepository(tx), {
       adminUserId: userId,
-      graphName,
       primaryActorId,
       projectId,
       reason: 'issue-611 integration',
@@ -118,9 +118,8 @@ async function assertActorMergeRollbackOnGraphFailure() {
   await assert.rejects(
     () =>
       sql.begin(async (tx) => {
-        await executeActorMerge(tx, {
+        await executeActorMerge(tx, createPostgresAgeGraphMutationRepository(tx), {
           adminUserId: rollbackUserId,
-          graphName: rollbackGraphName,
           primaryActorId: rollbackPrimaryActorId,
           projectId: rollbackProjectId,
           reason: 'issue-611 rollback',

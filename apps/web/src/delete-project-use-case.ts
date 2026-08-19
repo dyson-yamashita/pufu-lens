@@ -1,3 +1,4 @@
+import type { GraphMutationRepository } from '@pufu-lens/graph';
 import type postgres from 'postgres';
 import type { ProjectVisibility } from './admin-data';
 import {
@@ -7,19 +8,31 @@ import {
 import { writePublicProjectVisibilityManifest } from './project-visibility-manifest.ts';
 
 export interface DeletableProject {
-  readonly graphName: string | null;
   readonly id: string;
   readonly slug: string;
   readonly visibility: ProjectVisibility;
 }
 
+/** Creates a graph mutation repository bound to the caller's open transaction. */
+export type CreateGraphMutationRepository = (
+  tx: postgres.TransactionSql,
+) => GraphMutationRepository;
+
 export interface DeleteProjectUseCaseResult {
   readonly storageCleanupWarning?: string;
 }
 
+/**
+ * Deletes a project and its graph after manifest preparation, within one relational transaction.
+ *
+ * @param sql - Postgres client used for the atomic delete transaction.
+ * @param project - Relational project identity and visibility used for rollback.
+ * @param createMutationRepository - Factory that binds graph mutations to the open transaction.
+ */
 export async function deleteProjectUseCase(
   sql: postgres.Sql,
   project: DeletableProject,
+  createMutationRepository: CreateGraphMutationRepository,
 ): Promise<DeleteProjectUseCaseResult> {
   const cleanupProjectStorage = await prepareProjectStorageCleanup(project.slug);
 
@@ -27,19 +40,8 @@ export async function deleteProjectUseCase(
 
   try {
     await sql.begin(async (tx) => {
-      await tx`LOAD 'age'`;
-      await tx`SET LOCAL search_path = ag_catalog, "$user", public`;
-
-      if (project.graphName) {
-        const graphRows = await tx`
-          SELECT 1
-          FROM ag_catalog.ag_graph
-          WHERE name = ${project.graphName}
-        `;
-        if (graphRows.length > 0) {
-          await tx`SELECT drop_graph(${project.graphName}, ${true})`;
-        }
-      }
+      const mutationRepository = createMutationRepository(tx);
+      await mutationRepository.deleteProjectGraph({ projectId: project.id });
 
       await tx`
         DELETE FROM public.projects

@@ -1,3 +1,14 @@
+import {
+  type GraphIndexingActorRecord,
+  type GraphIndexingDocumentRecord,
+  type GraphIndexingEmailQuoteInput,
+  type GraphIndexingRepository,
+  type GraphIndexingTarget,
+  type GraphMutationRepository,
+  type GraphRelationType,
+  type ProjectResolver,
+  parseGraphIndexingDocumentType,
+} from '@pufu-lens/graph';
 import { parseSenderAlias } from './actor-resolution.js';
 import {
   githubLifecycleGraphProperties,
@@ -7,172 +18,103 @@ import {
 import type { ActorMention, ParsedDocument, ParsedDocumentType } from './ingestion-fixtures.js';
 import { validateParsedDocument } from './ingestion-fixtures.js';
 
-export type GraphActorAliasType = 'email' | 'github_login' | 'domain';
-export type GraphEdgeType =
-  | 'AUTHORED'
-  | 'COMMENTED_ON'
-  | 'MENTIONS'
-  | 'OWNS'
-  | 'REPLY_TO'
-  | 'RELATED_TO'
-  | 'REVIEWED'
-  | 'SAME_AS'
-  | 'SENT';
-
-export interface GraphRelationProjectRecord {
-  graphName: string;
-  id: string;
-  slug: string;
-}
-
-export interface GraphRelationDocumentRecord {
-  docType: ParsedDocumentType;
-  graphNodeId: string;
-  id: string;
-  rawDocumentId: string;
-  sourceId: string;
-}
-
-export interface GraphRelationActorRecord {
-  displayName: string;
-  graphNodeId: string;
-  id: string;
-}
-
-export interface GraphRelationTarget {
-  document: GraphRelationDocumentRecord;
-  parsed: ParsedDocument | string;
-  rawContentHash: string;
-  rawDocumentId: string;
-}
-
-export interface GraphNodeInput {
-  graphNodeId: string;
-  labels: string[];
-  properties: Record<string, unknown>;
-}
-
-export interface GraphEdgeInput {
-  fromGraphNodeId: string;
-  properties: Record<string, unknown>;
-  toGraphNodeId: string;
-  type: GraphEdgeType;
-}
-
-export interface ReplaceEmailQuotesInput {
-  documentId: string;
-  projectId: string;
-  quotes: GraphEmailQuoteInput[];
-}
-
-export interface GraphEmailQuoteInput {
-  bodyText: string;
-  prevQuoteIndex?: number;
-  quoteIndex: number;
-  quotedMessageId: string;
-  senderActorId?: string;
-  senderAlias: string;
-  sentAt: string;
-}
-
-export interface GraphRelationsRepository {
-  findActorByAlias(input: {
-    aliasType: GraphActorAliasType;
-    aliasValue: string;
-    projectId: string;
-  }): Promise<GraphRelationActorRecord | undefined>;
-  findActorByGraphNodeId(input: {
-    graphNodeId: string;
-    projectId: string;
-  }): Promise<GraphRelationActorRecord | undefined>;
-  findSameAsDocuments(input: {
-    projectId: string;
-    rawContentHash: string;
-    rawDocumentId: string;
-    sourceType: ParsedDocument['sourceType'];
-  }): Promise<GraphRelationDocumentRecord[]>;
-  findDocumentsBySourceIds(input: {
-    projectId: string;
-    sourceIds: readonly string[];
-  }): Promise<GraphRelationDocumentRecord[]>;
-  lookupProjectBySlug(slug: string): Promise<GraphRelationProjectRecord | undefined>;
-  markFailed(input: {
-    errorMessage: string;
-    projectId: string;
-    rawDocumentId: string;
-  }): Promise<void>;
-  markIndexed(input: { projectId: string; rawDocumentId: string }): Promise<void>;
-  readGraphTargets(input: { limit: number; projectId: string }): Promise<GraphRelationTarget[]>;
-  replaceEmailQuotes(input: ReplaceEmailQuotesInput): Promise<void>;
-  upsertGraphEdge(input: GraphEdgeInput): Promise<void>;
-  upsertGraphNode(input: GraphNodeInput): Promise<void>;
-}
-
+/** Options for storing graph relations through separated provider-neutral collaborators. */
 export interface StoreGraphRelationsOptions {
-  limit: number;
-  projectSlug: string;
-  repository: GraphRelationsRepository;
+  readonly indexingRepository: GraphIndexingRepository;
+  readonly limit: number;
+  readonly mutationRepository: GraphMutationRepository;
+  readonly projectResolver: ProjectResolver;
+  readonly projectSlug: string;
 }
 
+/** Result of a graph relation indexing batch for one project slug. */
 export interface StoreGraphRelationsResult {
-  decisions: StoreGraphRelationDecision[];
-  projectSlug: string;
+  readonly decisions: readonly StoreGraphRelationDecision[];
+  readonly projectSlug: string;
 }
 
+/** Per-document graph indexing decision emitted by `storeGraphRelations`. */
 export interface StoreGraphRelationDecision {
-  actorEdgeCount: number;
-  decision: 'failed' | 'indexed';
-  documentId: string;
-  emailQuoteCount: number;
-  errorMessage?: string;
-  graphEdgeCount: number;
-  graphNodeCount: number;
-  rawDocumentId: string;
-  sameAsCount: number;
-  sourceId: string;
+  readonly actorEdgeCount: number;
+  readonly decision: 'failed' | 'indexed';
+  readonly documentId: string;
+  readonly emailQuoteCount: number;
+  readonly errorMessage?: string;
+  readonly graphEdgeCount: number;
+  readonly graphNodeCount: number;
+  readonly rawDocumentId: string;
+  readonly sameAsCount: number;
+  readonly sourceId: string;
 }
 
 interface GraphRelationContext {
-  project: GraphRelationProjectRecord;
-  repository: GraphRelationsRepository;
+  readonly indexingRepository: GraphIndexingRepository;
+  readonly mutationRepository: GraphMutationRepository;
+  readonly projectId: string;
+  readonly projectSlug: string;
 }
 
-type GraphNodeEdge = { edge: GraphEdgeInput; node: GraphNodeInput };
+type GraphIndexingActorAliasType = 'email' | 'github_login' | 'domain';
 
+type MutationNodeEdge = {
+  readonly edge: {
+    readonly fromGraphNodeId: string;
+    readonly properties: Record<string, unknown>;
+    readonly relationType: GraphRelationType;
+    readonly toGraphNodeId: string;
+  };
+  readonly node: {
+    readonly graphNodeId: string;
+    readonly labels: string[];
+    readonly properties: Record<string, unknown>;
+  };
+};
+
+/**
+ * Indexes parsed documents into the project graph using separated resolver, indexing, and mutation collaborators.
+ *
+ * @param options - Project slug, bounded limit, and provider-neutral graph collaborators.
+ */
 export async function storeGraphRelations(
   options: StoreGraphRelationsOptions,
 ): Promise<StoreGraphRelationsResult> {
-  const project = await options.repository.lookupProjectBySlug(options.projectSlug);
+  const project = await options.projectResolver.resolveBySlug(options.projectSlug);
   if (!project) {
     throw new Error(`Project not found: ${options.projectSlug}`);
   }
-  validateGraphName(project.graphName);
 
-  const targets = await options.repository.readGraphTargets({
+  await options.mutationRepository.ensureProjectGraph({ projectId: project.projectId });
+
+  const targets = await options.indexingRepository.readGraphTargets({
     limit: options.limit,
-    projectId: project.id,
+    projectId: project.projectId,
   });
-  const context = { project, repository: options.repository };
+  const context: GraphRelationContext = {
+    indexingRepository: options.indexingRepository,
+    mutationRepository: options.mutationRepository,
+    projectId: project.projectId,
+    projectSlug: project.projectSlug,
+  };
   const decisions: StoreGraphRelationDecision[] = [];
 
   for (const target of targets) {
     decisions.push(await storeGraphTargetSafely(context, target));
   }
 
-  return { decisions, projectSlug: project.slug };
+  return { decisions, projectSlug: project.projectSlug };
 }
 
 async function storeGraphTargetSafely(
   context: GraphRelationContext,
-  target: GraphRelationTarget,
+  target: GraphIndexingTarget,
 ): Promise<StoreGraphRelationDecision> {
   try {
     return await storeGraphTarget(context, target);
   } catch (error) {
     const errorMessage = safeErrorMessage(error);
-    await context.repository.markFailed({
+    await context.indexingRepository.markFailed({
       errorMessage,
-      projectId: context.project.id,
+      projectId: context.projectId,
       rawDocumentId: target.rawDocumentId,
     });
     return {
@@ -192,21 +134,25 @@ async function storeGraphTargetSafely(
 
 async function storeGraphTarget(
   context: GraphRelationContext,
-  target: GraphRelationTarget,
+  target: GraphIndexingTarget,
 ): Promise<StoreGraphRelationDecision> {
+  const document = validatedIndexingDocument(target.document);
   const parsed = parseTargetDocument(target.parsed);
-  validateDocumentGraphKey(target.document, parsed);
+  validateDocumentGraphKey(document, parsed);
 
   if (isGitHubLifecycleOnlyRefresh(parsed.metadata)) {
-    await context.repository.upsertGraphNode(documentGraphNode(context.project, target, parsed));
-    await context.repository.markIndexed({
-      projectId: context.project.id,
+    await upsertMutationNode(
+      context,
+      documentGraphNode(context.projectId, target, document, parsed),
+    );
+    await context.indexingRepository.markIndexed({
+      projectId: context.projectId,
       rawDocumentId: target.rawDocumentId,
     });
     return {
       actorEdgeCount: 0,
       decision: 'indexed',
-      documentId: target.document.id,
+      documentId: document.id,
       emailQuoteCount: 0,
       graphEdgeCount: 0,
       graphNodeCount: 1,
@@ -221,67 +167,67 @@ async function storeGraphTarget(
   let actorEdgeCount = 0;
   let sameAsCount = 0;
 
-  await context.repository.upsertGraphNode(documentGraphNode(context.project, target, parsed));
+  await upsertMutationNode(context, documentGraphNode(context.projectId, target, document, parsed));
   graphNodeCount += 1;
 
-  for (const actorEdge of await actorEdges(context, parsed, target.document.graphNodeId)) {
-    await context.repository.upsertGraphNode(actorEdge.node);
-    await context.repository.upsertGraphEdge(actorEdge.edge);
+  for (const actorEdge of await actorEdges(context, parsed, document.graphNodeId)) {
+    await upsertMutationNode(context, actorEdge.node);
+    await upsertMutationEdge(context, actorEdge.edge);
     graphNodeCount += 1;
     graphEdgeCount += 1;
     actorEdgeCount += 1;
   }
 
-  for (const topicNodeEdge of topicNodesAndEdges(context.project, parsed, target)) {
-    await context.repository.upsertGraphNode(topicNodeEdge.node);
-    await context.repository.upsertGraphEdge(topicNodeEdge.edge);
+  for (const topicNodeEdge of topicNodesAndEdges(context.projectId, parsed, document)) {
+    await upsertMutationNode(context, topicNodeEdge.node);
+    await upsertMutationEdge(context, topicNodeEdge.edge);
     graphNodeCount += 1;
     graphEdgeCount += 1;
   }
 
-  for (const documentEdge of await relatedDocumentEdges(context, parsed, target)) {
-    await context.repository.upsertGraphNode(documentEdge.node);
-    await context.repository.upsertGraphEdge(documentEdge.edge);
+  for (const documentEdge of await relatedDocumentEdges(context, parsed, document)) {
+    await upsertMutationNode(context, documentEdge.node);
+    await upsertMutationEdge(context, documentEdge.edge);
     graphNodeCount += 1;
     graphEdgeCount += 1;
   }
 
   const emailQuotes = await resolvedEmailQuotes(context, parsed);
-  await context.repository.replaceEmailQuotes({
-    documentId: target.document.id,
-    projectId: context.project.id,
+  await context.indexingRepository.replaceEmailQuotes({
+    documentId: document.id,
+    projectId: context.projectId,
     quotes: emailQuotes,
   });
 
-  for (const sameAsDocument of await context.repository.findSameAsDocuments({
-    projectId: context.project.id,
+  for (const sameAsDocument of await context.indexingRepository.findSameAsDocuments({
+    projectId: context.projectId,
     rawContentHash: target.rawContentHash,
     rawDocumentId: target.rawDocumentId,
     sourceType: parsed.sourceType,
   })) {
-    await context.repository.upsertGraphEdge({
-      fromGraphNodeId: target.document.graphNodeId,
+    await upsertMutationEdge(context, {
+      fromGraphNodeId: document.graphNodeId,
       properties: {
         confidence: 1,
-        projectId: context.project.id,
+        projectId: context.projectId,
         reason: 'content_hash_match',
       },
-      toGraphNodeId: sameAsDocument.graphNodeId,
-      type: 'SAME_AS',
+      relationType: 'SAME_AS',
+      toGraphNodeId: validatedIndexingDocument(sameAsDocument).graphNodeId,
     });
     graphEdgeCount += 1;
     sameAsCount += 1;
   }
 
-  await context.repository.markIndexed({
-    projectId: context.project.id,
+  await context.indexingRepository.markIndexed({
+    projectId: context.projectId,
     rawDocumentId: target.rawDocumentId,
   });
 
   return {
     actorEdgeCount,
     decision: 'indexed',
-    documentId: target.document.id,
+    documentId: document.id,
     emailQuoteCount: emailQuotes.length,
     graphEdgeCount,
     graphNodeCount,
@@ -291,21 +237,56 @@ async function storeGraphTarget(
   };
 }
 
+async function upsertMutationNode(
+  context: GraphRelationContext,
+  node: MutationNodeEdge['node'],
+): Promise<void> {
+  await context.mutationRepository.upsertNode({
+    graphNodeId: node.graphNodeId,
+    labels: node.labels,
+    projectId: context.projectId,
+    properties: node.properties,
+  });
+}
+
+async function upsertMutationEdge(
+  context: GraphRelationContext,
+  edge: MutationNodeEdge['edge'],
+): Promise<void> {
+  await context.mutationRepository.upsertEdge({
+    fromGraphNodeId: edge.fromGraphNodeId,
+    projectId: context.projectId,
+    properties: edge.properties,
+    relationType: edge.relationType,
+    toGraphNodeId: edge.toGraphNodeId,
+  });
+}
+
+function validatedIndexingDocument(
+  document: GraphIndexingDocumentRecord,
+): GraphIndexingDocumentRecord & { readonly docType: ParsedDocumentType } {
+  return {
+    ...document,
+    docType: parseGraphIndexingDocumentType(document.docType) as ParsedDocumentType,
+  };
+}
+
 function documentGraphNode(
-  project: GraphRelationProjectRecord,
-  target: GraphRelationTarget,
+  projectId: string,
+  target: GraphIndexingTarget,
+  document: GraphIndexingDocumentRecord & { readonly docType: ParsedDocumentType },
   parsed: ParsedDocument,
-): GraphNodeInput {
+): MutationNodeEdge['node'] {
   const lifecycle = readGitHubDocumentLifecycle(parsed.metadata);
   return {
-    graphNodeId: target.document.graphNodeId,
-    labels: ['Document', documentLabel(parsed.docType)],
+    graphNodeId: document.graphNodeId,
+    labels: ['Document', documentLabel(document.docType)],
     properties: {
       canonicalUri: parsed.canonicalUri,
       docType: parsed.docType,
-      documentId: target.document.id,
+      documentId: document.id,
       occurredAt: parsed.occurredAt,
-      projectId: project.id,
+      projectId,
       rawDocumentId: target.rawDocumentId,
       sourceId: parsed.sourceId,
       sourceType: parsed.sourceType,
@@ -319,8 +300,8 @@ async function actorEdges(
   context: GraphRelationContext,
   parsed: ParsedDocument,
   documentGraphNodeId: string,
-): Promise<GraphNodeEdge[]> {
-  const edges: Array<GraphNodeEdge | undefined> = await Promise.all(
+): Promise<MutationNodeEdge[]> {
+  const edges: Array<MutationNodeEdge | undefined> = await Promise.all(
     parsed.actors.map(async (mention, index) => {
       const actor = await findResolvedActor(context, parsed, mention, `${mention.role}:${index}`);
       if (!actor) {
@@ -333,8 +314,8 @@ async function actorEdges(
             actorId: actor.id,
             role: mention.role,
           },
+          relationType: actorEdgeType(mention.role),
           toGraphNodeId: documentGraphNodeId,
-          type: actorEdgeType(mention.role),
         },
         node: {
           graphNodeId: actor.graphNodeId,
@@ -342,40 +323,40 @@ async function actorEdges(
           properties: {
             actorId: actor.id,
             displayName: actor.displayName,
-            projectId: context.project.id,
+            projectId: context.projectId,
           },
         },
       };
     }),
   );
-  return edges.filter(isGraphNodeEdge);
+  return edges.filter(isMutationNodeEdge);
 }
 
 function topicNodesAndEdges(
-  project: GraphRelationProjectRecord,
+  projectId: string,
   parsed: ParsedDocument,
-  target: GraphRelationTarget,
-): Array<{ edge: GraphEdgeInput; node: GraphNodeInput }> {
+  document: GraphIndexingDocumentRecord & { readonly docType: ParsedDocumentType },
+): MutationNodeEdge[] {
   return [
-    ...parsedTopicNodesAndEdges(project, parsed, target),
-    ...replyTopicNodesAndEdges(project, parsed, target),
+    ...parsedTopicNodesAndEdges(projectId, parsed, document),
+    ...replyTopicNodesAndEdges(projectId, parsed, document),
   ];
 }
 
 async function relatedDocumentEdges(
   context: GraphRelationContext,
   parsed: ParsedDocument,
-  target: GraphRelationTarget,
-): Promise<Array<{ edge: GraphEdgeInput; node: GraphNodeInput }>> {
-  const edges: Array<{ edge: GraphEdgeInput; node: GraphNodeInput }> = [];
+  document: GraphIndexingDocumentRecord & { readonly docType: ParsedDocumentType },
+): Promise<MutationNodeEdge[]> {
+  const edges: MutationNodeEdge[] = [];
   const targetSourceIds = relatedDocumentSourceIds(parsed);
   const documentsBySourceId = new Map(
     (
-      await context.repository.findDocumentsBySourceIds({
-        projectId: context.project.id,
+      await context.indexingRepository.findDocumentsBySourceIds({
+        projectId: context.projectId,
         sourceIds: targetSourceIds,
       })
-    ).map((document) => [document.sourceId, document]),
+    ).map((candidate) => [candidate.sourceId, validatedIndexingDocument(candidate)]),
   );
 
   for (const targetSourceId of targetSourceIds) {
@@ -389,17 +370,17 @@ async function relatedDocumentEdges(
 
     edges.push({
       edge: {
-        fromGraphNodeId: target.document.graphNodeId,
+        fromGraphNodeId: document.graphNodeId,
         properties: {
           ...relation.metadata,
-          projectId: context.project.id,
+          projectId: context.projectId,
           relationTarget: targetSourceId,
           relationType: relation.type,
         },
+        relationType: 'RELATED_TO',
         toGraphNodeId: relatedDocument.graphNodeId,
-        type: 'RELATED_TO',
       },
-      node: documentPlaceholderGraphNode(context.project, relatedDocument),
+      node: documentPlaceholderGraphNode(context.projectId, relatedDocument),
     });
   }
 
@@ -428,16 +409,16 @@ function relatedDocumentSourceIds(parsed: ParsedDocument): string[] {
 }
 
 function documentPlaceholderGraphNode(
-  project: GraphRelationProjectRecord,
-  document: GraphRelationDocumentRecord,
-): GraphNodeInput {
+  projectId: string,
+  document: GraphIndexingDocumentRecord & { readonly docType: ParsedDocumentType },
+): MutationNodeEdge['node'] {
   return {
     graphNodeId: document.graphNodeId,
     labels: ['Document', documentLabel(document.docType)],
     properties: {
       docType: document.docType,
       documentId: document.id,
-      projectId: project.id,
+      projectId,
       rawDocumentId: document.rawDocumentId,
       sourceId: document.sourceId,
     },
@@ -445,10 +426,10 @@ function documentPlaceholderGraphNode(
 }
 
 function parsedTopicNodesAndEdges(
-  project: GraphRelationProjectRecord,
+  projectId: string,
   parsed: ParsedDocument,
-  target: GraphRelationTarget,
-): Array<{ edge: GraphEdgeInput; node: GraphNodeInput }> {
+  document: GraphIndexingDocumentRecord & { readonly docType: ParsedDocumentType },
+): MutationNodeEdge[] {
   return (parsed.topics ?? [])
     .filter((topic) => topic.target.trim() !== '')
     .map((topic) => {
@@ -457,21 +438,21 @@ function parsedTopicNodesAndEdges(
       const topicGraphNodeId = `topic:${topic.topicType}:${encodeURIComponent(topicGraphKeyTarget)}`;
       return {
         edge: {
-          fromGraphNodeId: target.document.graphNodeId,
+          fromGraphNodeId: document.graphNodeId,
           properties: {
             ...topic.metadata,
-            projectId: project.id,
+            projectId,
             relationTarget: topic.target,
             relationType: 'TOPIC',
           },
+          relationType: 'MENTIONS',
           toGraphNodeId: topicGraphNodeId,
-          type: 'MENTIONS',
         },
         node: {
           graphNodeId: topicGraphNodeId,
           labels: ['Topic'],
           properties: {
-            projectId: project.id,
+            projectId,
             target: topic.target,
             topicType: topic.topicType,
           },
@@ -481,31 +462,31 @@ function parsedTopicNodesAndEdges(
 }
 
 function replyTopicNodesAndEdges(
-  project: GraphRelationProjectRecord,
+  projectId: string,
   parsed: ParsedDocument,
-  target: GraphRelationTarget,
-): Array<{ edge: GraphEdgeInput; node: GraphNodeInput }> {
+  document: GraphIndexingDocumentRecord & { readonly docType: ParsedDocumentType },
+): MutationNodeEdge[] {
   return parsed.relations
     .filter((relation) => relation.type === 'REPLY_TO' && relation.target.trim() !== '')
     .map((relation) => {
       const topicGraphNodeId = `topic:message:${encodeURIComponent(relation.target)}`;
       return {
         edge: {
-          fromGraphNodeId: target.document.graphNodeId,
+          fromGraphNodeId: document.graphNodeId,
           properties: {
             ...relation.metadata,
-            projectId: project.id,
+            projectId,
             relationTarget: relation.target,
             relationType: relation.type,
           },
+          relationType: 'REPLY_TO',
           toGraphNodeId: topicGraphNodeId,
-          type: 'REPLY_TO',
         },
         node: {
           graphNodeId: topicGraphNodeId,
           labels: ['Topic'],
           properties: {
-            projectId: project.id,
+            projectId,
             target: relation.target,
             topicType: 'message',
           },
@@ -517,7 +498,7 @@ function replyTopicNodesAndEdges(
 async function resolvedEmailQuotes(
   context: GraphRelationContext,
   parsed: ParsedDocument,
-): Promise<GraphEmailQuoteInput[]> {
+): Promise<GraphIndexingEmailQuoteInput[]> {
   const quotes = parsed.emailQuotes ?? [];
   const resolvedActors = await Promise.all(
     quotes.map((quote, index) => {
@@ -557,32 +538,32 @@ async function findResolvedActor(
   parsed: ParsedDocument,
   mention: ActorMention,
   occurrenceKey: string,
-): Promise<GraphRelationActorRecord | undefined> {
+): Promise<GraphIndexingActorRecord | undefined> {
   for (const alias of strongAliases(mention)) {
-    const actor = await context.repository.findActorByAlias({
+    const actor = await context.indexingRepository.findActorByAlias({
       aliasType: alias.aliasType,
       aliasValue: alias.aliasValue,
-      projectId: context.project.id,
+      projectId: context.projectId,
     });
     if (actor) {
       return actor;
     }
   }
 
-  return context.repository.findActorByGraphNodeId({
+  return context.indexingRepository.findActorByGraphNodeId({
     graphNodeId: unresolvedActorGraphNodeId({
       displayName: mention.displayName,
       occurrenceKey,
       sourceId: parsed.sourceId,
     }),
-    projectId: context.project.id,
+    projectId: context.projectId,
   });
 }
 
 function strongAliases(
   mention: ActorMention,
-): Array<{ aliasType: GraphActorAliasType; aliasValue: string }> {
-  const aliases: Array<{ aliasType: GraphActorAliasType; aliasValue: string }> = [];
+): Array<{ aliasType: GraphIndexingActorAliasType; aliasValue: string }> {
+  const aliases: Array<{ aliasType: GraphIndexingActorAliasType; aliasValue: string }> = [];
   const email = mention.email?.trim().toLowerCase();
   const githubLogin = mention.githubLogin?.trim().toLowerCase();
   const domain = mention.domain
@@ -602,12 +583,12 @@ function strongAliases(
   return aliases;
 }
 
-function isGraphNodeEdge(value: GraphNodeEdge | undefined): value is GraphNodeEdge {
+function isMutationNodeEdge(value: MutationNodeEdge | undefined): value is MutationNodeEdge {
   return value !== undefined;
 }
 
 function validateDocumentGraphKey(
-  document: GraphRelationDocumentRecord,
+  document: GraphIndexingDocumentRecord & { readonly docType: ParsedDocumentType },
   parsed: ParsedDocument,
 ): void {
   const expected = documentGraphNodeId(parsed);
@@ -615,12 +596,6 @@ function validateDocumentGraphKey(
     throw new Error(
       `Document graph key mismatch for ${parsed.sourceId}: expected ${expected}, got ${document.graphNodeId}`,
     );
-  }
-}
-
-function validateGraphName(graphName: string): void {
-  if (!/^graph_[a-z0-9_]+$/.test(graphName) || graphName.length > 63) {
-    throw new Error(`Invalid AGE graph name: ${graphName}`);
   }
 }
 
@@ -653,7 +628,7 @@ function documentLabel(docType: ParsedDocumentType): string {
   }
 }
 
-function actorEdgeType(role: ActorMention['role']): GraphEdgeType {
+function actorEdgeType(role: ActorMention['role']): GraphRelationType {
   switch (role) {
     case 'author':
       return 'AUTHORED';
@@ -668,8 +643,9 @@ function actorEdgeType(role: ActorMention['role']): GraphEdgeType {
   }
 }
 
-function parseTargetDocument(value: ParsedDocument | string): ParsedDocument {
-  const parsed = typeof value === 'string' ? (JSON.parse(value) as ParsedDocument) : value;
+function parseTargetDocument(value: unknown): ParsedDocument {
+  const parsed =
+    typeof value === 'string' ? (JSON.parse(value) as ParsedDocument) : (value as ParsedDocument);
   return validateParsedDocument(parsed);
 }
 
@@ -678,7 +654,7 @@ function safeErrorMessage(error: unknown): string {
   return message.replace(/\s+/g, ' ').slice(0, 500);
 }
 
-function sourceIdForFailure(target: GraphRelationTarget): string {
+function sourceIdForFailure(target: GraphIndexingTarget): string {
   try {
     return parseTargetDocument(target.parsed).sourceId;
   } catch {

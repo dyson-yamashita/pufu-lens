@@ -1,20 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {
-  type GraphEdgeInput,
-  type GraphEmailQuoteInput,
-  type GraphNodeInput,
-  type GraphRelationActorRecord,
-  type GraphRelationDocumentRecord,
-  type GraphRelationsRepository,
-  type GraphRelationTarget,
-  type ReplaceEmailQuotesInput,
-  storeGraphRelations,
-} from './graph-relations.js';
+import type {
+  GraphIndexingActorRecord,
+  GraphIndexingDocumentRecord,
+  GraphIndexingEmailQuoteInput,
+  GraphIndexingRepository,
+  GraphIndexingTarget,
+  GraphMutationRepository,
+  GraphRelationType,
+  ProjectResolver,
+} from '@pufu-lens/graph';
+import { storeGraphRelations } from './graph-relations.js';
 import type { ParsedDocument } from './ingestion-fixtures.js';
 
 test('storeGraphRelations materializes document, actor, topic, quote, and status updates idempotently', async () => {
-  const repository = new InMemoryGraphRelationsRepository([
+  const fixture = new InMemoryGraphFixture([
     {
       document: documentRecord(),
       parsed: gmailParsed(),
@@ -22,52 +22,44 @@ test('storeGraphRelations materializes document, actor, topic, quote, and status
       rawDocumentId: 'raw-email-1',
     },
   ]);
-  repository.actors.push({
+  fixture.actors.push({
     displayName: 'Sample Sender',
     graphNodeId: 'actor:email:sender%40example.test',
     id: 'actor-sender',
   });
-  repository.aliases.set(
+  fixture.aliases.set(
     'email:sender@example.test',
-    repository.actors.at(-1) as GraphRelationActorRecord,
+    fixture.actors.at(-1) as GraphIndexingActorRecord,
   );
-  repository.actors.push({
+  fixture.actors.push({
     displayName: 'Sample Reviewer',
     graphNodeId: 'actor:email:reviewer%40example.test',
     id: 'actor-reviewer',
   });
-  repository.aliases.set(
+  fixture.aliases.set(
     'email:reviewer@example.test',
-    repository.actors.at(-1) as GraphRelationActorRecord,
+    fixture.actors.at(-1) as GraphIndexingActorRecord,
   );
 
-  const first = await storeGraphRelations({
-    limit: 10,
-    projectSlug: 'sample-a',
-    repository,
-  });
-  const second = await storeGraphRelations({
-    limit: 10,
-    projectSlug: 'sample-a',
-    repository,
-  });
+  const first = await storeGraphRelations(fixture.storeOptions());
+  const second = await storeGraphRelations(fixture.storeOptions());
 
   assert.equal(first.decisions[0]?.decision, 'indexed');
   assert.equal(first.decisions[0]?.actorEdgeCount, 2);
   assert.equal(first.decisions[0]?.emailQuoteCount, 1);
-  assert.equal(repository.nodes.size, 4);
-  assert.equal(repository.edges.size, 3);
-  assert.equal(repository.emailQuotes.get('document-email-1')?.length, 1);
-  assert.deepEqual(repository.statusUpdates, [
+  assert.equal(fixture.nodes.size, 4);
+  assert.equal(fixture.edges.size, 3);
+  assert.equal(fixture.emailQuotes.get('document-email-1')?.length, 1);
+  assert.deepEqual(fixture.statusUpdates, [
     { projectId: 'project-a', rawDocumentId: 'raw-email-1' },
     { projectId: 'project-a', rawDocumentId: 'raw-email-1' },
   ]);
   assert.equal(second.decisions[0]?.graphNodeCount, first.decisions[0]?.graphNodeCount);
-  assert.equal(repository.edges.size, 3);
+  assert.equal(fixture.edges.size, 3);
 });
 
 test('storeGraphRelations updates GitHub lifecycle properties without recreating edges', async () => {
-  const repository = new InMemoryGraphRelationsRepository([
+  const fixture = new InMemoryGraphFixture([
     {
       document: documentRecord({
         docType: 'issue',
@@ -96,23 +88,17 @@ test('storeGraphRelations updates GitHub lifecycle properties without recreating
     },
   ]);
 
-  const result = await storeGraphRelations({
-    limit: 10,
-    projectSlug: 'sample-a',
-    repository,
-  });
+  const result = await storeGraphRelations(fixture.storeOptions());
 
   assert.equal(result.decisions[0]?.decision, 'indexed');
   assert.equal(result.decisions[0]?.graphEdgeCount, 0);
   assert.equal(result.decisions[0]?.graphNodeCount, 1);
-  const documentNode = [...repository.nodes.values()].find((node) =>
-    node.labels.includes('Document'),
-  );
+  const documentNode = [...fixture.nodes.values()].find((node) => node.labels.includes('Document'));
   assert.equal(documentNode?.properties.state, 'closed');
 });
 
 test('storeGraphRelations resolves web authors by domain alias', async () => {
-  const repository = new InMemoryGraphRelationsRepository([
+  const fixture = new InMemoryGraphFixture([
     {
       document: documentRecord({
         docType: 'web_page',
@@ -125,25 +111,21 @@ test('storeGraphRelations resolves web authors by domain alias', async () => {
       rawDocumentId: 'raw-web-1',
     },
   ]);
-  repository.actors.push({
+  fixture.actors.push({
     displayName: 'Sample Writer',
     graphNodeId: 'actor:domain:note.example.test%2Fsample-writer',
     id: 'actor-web-writer',
   });
-  repository.aliases.set(
+  fixture.aliases.set(
     'domain:note.example.test/sample-writer',
-    repository.actors.at(-1) as GraphRelationActorRecord,
+    fixture.actors.at(-1) as GraphIndexingActorRecord,
   );
 
-  const result = await storeGraphRelations({
-    limit: 10,
-    projectSlug: 'sample-a',
-    repository,
-  });
+  const result = await storeGraphRelations(fixture.storeOptions());
 
   assert.equal(result.decisions[0]?.actorEdgeCount, 1);
   assert.ok(
-    repository.hasEdge(
+    fixture.hasEdge(
       'actor:domain:note.example.test%2Fsample-writer',
       'AUTHORED',
       'document:web_page:https%3A%2F%2Fnote.example.test%2Fsample-writer%2Fpost-1',
@@ -152,7 +134,7 @@ test('storeGraphRelations resolves web authors by domain alias', async () => {
 });
 
 test('storeGraphRelations resolves quote chains without depending on quote order', async () => {
-  const repository = new InMemoryGraphRelationsRepository([
+  const fixture = new InMemoryGraphFixture([
     {
       document: documentRecord(),
       parsed: gmailParsed({
@@ -176,33 +158,29 @@ test('storeGraphRelations resolves quote chains without depending on quote order
       rawDocumentId: 'raw-email-1',
     },
   ]);
-  repository.actors.push({
+  fixture.actors.push({
     displayName: 'Sample Sender',
     graphNodeId: 'actor:email:sender%40example.test',
     id: 'actor-sender',
   });
-  repository.aliases.set(
+  fixture.aliases.set(
     'email:sender@example.test',
-    repository.actors.at(-1) as GraphRelationActorRecord,
+    fixture.actors.at(-1) as GraphIndexingActorRecord,
   );
-  repository.actors.push({
+  fixture.actors.push({
     displayName: 'Sample Reviewer',
     graphNodeId: 'actor:email:reviewer%40example.test',
     id: 'actor-reviewer',
   });
-  repository.aliases.set(
+  fixture.aliases.set(
     'email:reviewer@example.test',
-    repository.actors.at(-1) as GraphRelationActorRecord,
+    fixture.actors.at(-1) as GraphIndexingActorRecord,
   );
 
-  await storeGraphRelations({
-    limit: 10,
-    projectSlug: 'sample-a',
-    repository,
-  });
+  await storeGraphRelations(fixture.storeOptions());
 
   assert.deepEqual(
-    repository.emailQuotes.get('document-email-1')?.map((quote) => ({
+    fixture.emailQuotes.get('document-email-1')?.map((quote) => ({
       prevQuoteIndex: quote.prevQuoteIndex,
       quoteIndex: quote.quoteIndex,
       quotedMessageId: quote.quotedMessageId,
@@ -215,7 +193,7 @@ test('storeGraphRelations resolves quote chains without depending on quote order
 });
 
 test('storeGraphRelations creates SAME_AS only for another source type in the same project', async () => {
-  const repository = new InMemoryGraphRelationsRepository([
+  const fixture = new InMemoryGraphFixture([
     {
       document: documentRecord({
         docType: 'drive_doc',
@@ -228,7 +206,7 @@ test('storeGraphRelations creates SAME_AS only for another source type in the sa
       rawDocumentId: 'raw-drive-1',
     },
   ]);
-  repository.sameAsDocuments.push({
+  fixture.sameAsDocuments.push({
     docType: 'web_page',
     graphNodeId: 'document:web_page:https%3A%2F%2Fexample.test%2Fspec',
     id: 'document-web-1',
@@ -236,15 +214,11 @@ test('storeGraphRelations creates SAME_AS only for another source type in the sa
     sourceId: 'https://example.test/spec',
   });
 
-  const result = await storeGraphRelations({
-    limit: 10,
-    projectSlug: 'sample-a',
-    repository,
-  });
+  const result = await storeGraphRelations(fixture.storeOptions());
 
   assert.equal(result.decisions[0]?.sameAsCount, 1);
   assert.ok(
-    repository.hasEdge(
+    fixture.hasEdge(
       'document:drive_doc:drive%3Afile-1%3Arev-1',
       'SAME_AS',
       'document:web_page:https%3A%2F%2Fexample.test%2Fspec',
@@ -253,7 +227,7 @@ test('storeGraphRelations creates SAME_AS only for another source type in the sa
 });
 
 test('storeGraphRelations materializes parsed keyword topics as mentions', async () => {
-  const repository = new InMemoryGraphRelationsRepository([
+  const fixture = new InMemoryGraphFixture([
     {
       document: documentRecord(),
       parsed: gmailParsed({
@@ -271,25 +245,21 @@ test('storeGraphRelations materializes parsed keyword topics as mentions', async
     },
   ]);
 
-  await storeGraphRelations({
-    limit: 10,
-    projectSlug: 'sample-a',
-    repository,
-  });
+  await storeGraphRelations(fixture.storeOptions());
 
-  assert.ok(repository.nodes.has('topic:keyword:release%20notes'));
+  assert.ok(fixture.nodes.has('topic:keyword:release%20notes'));
   assert.ok(
-    repository.hasEdge(
+    fixture.hasEdge(
       'document:email:thread-alpha%3Amsg-alpha-003',
       'MENTIONS',
       'topic:keyword:release%20notes',
     ),
   );
   assert.equal(
-    repository.nodes.get('topic:keyword:release%20notes')?.properties.target,
+    fixture.nodes.get('topic:keyword:release%20notes')?.properties.target,
     'Release Notes',
   );
-  assert.equal(repository.nodes.has('topic:uri:https%3A%2F%2Fexample.test%2Fignored'), false);
+  assert.equal(fixture.nodes.has('topic:uri:https%3A%2F%2Fexample.test%2Fignored'), false);
 });
 
 test('storeGraphRelations materializes parsed Drive keyword topics as mentions', async () => {
@@ -299,7 +269,7 @@ test('storeGraphRelations materializes parsed Drive keyword topics as mentions',
     id: 'document-drive-1',
     rawDocumentId: 'raw-drive-1',
   });
-  const repository = new InMemoryGraphRelationsRepository([
+  const fixture = new InMemoryGraphFixture([
     {
       document: driveDocument,
       parsed: driveParsed({
@@ -316,17 +286,11 @@ test('storeGraphRelations materializes parsed Drive keyword topics as mentions',
     },
   ]);
 
-  await storeGraphRelations({
-    limit: 10,
-    projectSlug: 'sample-a',
-    repository,
-  });
+  await storeGraphRelations(fixture.storeOptions());
 
-  assert.ok(repository.nodes.has('topic:keyword:spec%20draft'));
-  assert.ok(
-    repository.hasEdge(driveDocument.graphNodeId, 'MENTIONS', 'topic:keyword:spec%20draft'),
-  );
-  assert.equal(repository.nodes.get('topic:keyword:spec%20draft')?.properties.target, 'Spec draft');
+  assert.ok(fixture.nodes.has('topic:keyword:spec%20draft'));
+  assert.ok(fixture.hasEdge(driveDocument.graphNodeId, 'MENTIONS', 'topic:keyword:spec%20draft'));
+  assert.equal(fixture.nodes.get('topic:keyword:spec%20draft')?.properties.target, 'Spec draft');
 });
 
 test('storeGraphRelations materializes parsed GitHub keyword topics as mentions', async () => {
@@ -337,7 +301,7 @@ test('storeGraphRelations materializes parsed GitHub keyword topics as mentions'
     rawDocumentId: 'raw-github-pr-202',
     sourceId: 'example-org/pufu-sample/pulls/202',
   });
-  const repository = new InMemoryGraphRelationsRepository([
+  const fixture = new InMemoryGraphFixture([
     {
       document: githubDocument,
       parsed: githubParsed({
@@ -356,18 +320,14 @@ test('storeGraphRelations materializes parsed GitHub keyword topics as mentions'
     },
   ]);
 
-  await storeGraphRelations({
-    limit: 10,
-    projectSlug: 'sample-a',
-    repository,
-  });
+  await storeGraphRelations(fixture.storeOptions());
 
-  assert.ok(repository.nodes.has('topic:keyword:parser%20fixtures'));
+  assert.ok(fixture.nodes.has('topic:keyword:parser%20fixtures'));
   assert.ok(
-    repository.hasEdge(githubDocument.graphNodeId, 'MENTIONS', 'topic:keyword:parser%20fixtures'),
+    fixture.hasEdge(githubDocument.graphNodeId, 'MENTIONS', 'topic:keyword:parser%20fixtures'),
   );
   assert.equal(
-    repository.nodes.get('topic:keyword:parser%20fixtures')?.properties.target,
+    fixture.nodes.get('topic:keyword:parser%20fixtures')?.properties.target,
     'Parser fixtures',
   );
 });
@@ -387,7 +347,7 @@ test('storeGraphRelations shares normalized GitHub topic nodes across documents'
     rawDocumentId: 'raw-github-pr-202',
     sourceId: 'example-org/pufu-sample/pulls/202',
   });
-  const repository = new InMemoryGraphRelationsRepository([
+  const fixture = new InMemoryGraphFixture([
     {
       document: issueDocument,
       parsed: githubParsed({
@@ -429,21 +389,17 @@ test('storeGraphRelations shares normalized GitHub topic nodes across documents'
       rawDocumentId: 'raw-github-pr-202',
     },
   ]);
-  repository.documents.set('example-org/pufu-sample/issues/101', issueDocument);
+  fixture.documents.set('example-org/pufu-sample/issues/101', issueDocument);
 
-  const result = await storeGraphRelations({
-    limit: 10,
-    projectSlug: 'sample-a',
-    repository,
-  });
+  const result = await storeGraphRelations(fixture.storeOptions());
 
   const topicNodeId = 'topic:keyword:release%20notes';
   assert.equal(result.decisions.length, 2);
-  assert.ok(repository.nodes.has(topicNodeId));
-  assert.ok(repository.hasEdge(issueDocument.graphNodeId, 'MENTIONS', topicNodeId));
-  assert.ok(repository.hasEdge(pullRequestDocument.graphNodeId, 'MENTIONS', topicNodeId));
+  assert.ok(fixture.nodes.has(topicNodeId));
+  assert.ok(fixture.hasEdge(issueDocument.graphNodeId, 'MENTIONS', topicNodeId));
+  assert.ok(fixture.hasEdge(pullRequestDocument.graphNodeId, 'MENTIONS', topicNodeId));
   assert.ok(
-    repository.hasEdge(pullRequestDocument.graphNodeId, 'RELATED_TO', issueDocument.graphNodeId),
+    fixture.hasEdge(pullRequestDocument.graphNodeId, 'RELATED_TO', issueDocument.graphNodeId),
   );
 });
 
@@ -455,7 +411,7 @@ test('storeGraphRelations materializes GitHub related document edges', async () 
     rawDocumentId: 'raw-github-issue-101',
     sourceId: 'example-org/pufu-sample/issues/101',
   });
-  const repository = new InMemoryGraphRelationsRepository([
+  const fixture = new InMemoryGraphFixture([
     {
       document: documentRecord({
         docType: 'pull_request',
@@ -479,33 +435,29 @@ test('storeGraphRelations materializes GitHub related document edges', async () 
       rawDocumentId: 'raw-github-pr-202',
     },
   ]);
-  repository.documents.set('example-org/pufu-sample/issues/101', issueDocument);
+  fixture.documents.set('example-org/pufu-sample/issues/101', issueDocument);
 
-  const result = await storeGraphRelations({
-    limit: 10,
-    projectSlug: 'sample-a',
-    repository,
-  });
+  const result = await storeGraphRelations(fixture.storeOptions());
 
   const edgeKey =
     'document:pull_request:example-org%2Fpufu-sample%2Fpulls%2F202:RELATED_TO:document:issue:example-org%2Fpufu-sample%2Fissues%2F101';
   assert.equal(result.decisions[0]?.graphEdgeCount, 1);
   assert.ok(
-    repository.hasEdge(
+    fixture.hasEdge(
       'document:pull_request:example-org%2Fpufu-sample%2Fpulls%2F202',
       'RELATED_TO',
       'document:issue:example-org%2Fpufu-sample%2Fissues%2F101',
     ),
   );
   assert.equal(
-    repository.edges.get(edgeKey)?.properties.relationTarget,
+    fixture.edges.get(edgeKey)?.properties.relationTarget,
     'example-org/pufu-sample/issues/101',
   );
-  assert.ok(repository.nodes.has('document:issue:example-org%2Fpufu-sample%2Fissues%2F101'));
+  assert.ok(fixture.nodes.has('document:issue:example-org%2Fpufu-sample%2Fissues%2F101'));
 });
 
 test('storeGraphRelations skips blank reply relation targets', async () => {
-  const repository = new InMemoryGraphRelationsRepository([
+  const fixture = new InMemoryGraphFixture([
     {
       document: documentRecord(),
       parsed: gmailParsed({
@@ -516,17 +468,13 @@ test('storeGraphRelations skips blank reply relation targets', async () => {
     },
   ]);
 
-  await storeGraphRelations({
-    limit: 10,
-    projectSlug: 'sample-a',
-    repository,
-  });
+  await storeGraphRelations(fixture.storeOptions());
 
-  assert.equal([...repository.nodes.keys()].filter((key) => key.startsWith('topic:')).length, 0);
+  assert.equal([...fixture.nodes.keys()].filter((key) => key.startsWith('topic:')).length, 0);
 });
 
 test('storeGraphRelations rejects stale document graph keys before writing graph data', async () => {
-  const repository = new InMemoryGraphRelationsRepository([
+  const fixture = new InMemoryGraphFixture([
     {
       document: documentRecord({ graphNodeId: 'document:issue:stale' }),
       parsed: githubParsed(),
@@ -535,15 +483,11 @@ test('storeGraphRelations rejects stale document graph keys before writing graph
     },
   ]);
 
-  const result = await storeGraphRelations({
-    limit: 10,
-    projectSlug: 'sample-a',
-    repository,
-  });
+  const result = await storeGraphRelations(fixture.storeOptions());
 
   assert.equal(result.decisions[0]?.decision, 'failed');
   assert.match(result.decisions[0]?.errorMessage ?? '', /Document graph key mismatch/);
-  assert.deepEqual(repository.failureUpdates, [
+  assert.deepEqual(fixture.failureUpdates, [
     {
       errorMessage:
         'Document graph key mismatch for example-org/pufu-sample/issues/101: expected document:issue:example-org%2Fpufu-sample%2Fissues%2F101, got document:issue:stale',
@@ -551,12 +495,12 @@ test('storeGraphRelations rejects stale document graph keys before writing graph
       rawDocumentId: 'raw-github-1',
     },
   ]);
-  assert.equal(repository.nodes.size, 0);
-  assert.equal(repository.edges.size, 0);
+  assert.equal(fixture.nodes.size, 0);
+  assert.equal(fixture.edges.size, 0);
 });
 
 test('storeGraphRelations continues after a failed document', async () => {
-  const repository = new InMemoryGraphRelationsRepository([
+  const fixture = new InMemoryGraphFixture([
     {
       document: documentRecord({ graphNodeId: 'document:issue:stale', id: 'document-bad' }),
       parsed: githubParsed(),
@@ -570,155 +514,224 @@ test('storeGraphRelations continues after a failed document', async () => {
       rawDocumentId: 'raw-email-1',
     },
   ]);
-  repository.actors.push({
+  fixture.actors.push({
     displayName: 'Sample Sender',
     graphNodeId: 'actor:email:sender%40example.test',
     id: 'actor-sender',
   });
-  repository.aliases.set(
+  fixture.aliases.set(
     'email:sender@example.test',
-    repository.actors.at(-1) as GraphRelationActorRecord,
+    fixture.actors.at(-1) as GraphIndexingActorRecord,
   );
-  repository.actors.push({
+  fixture.actors.push({
     displayName: 'Sample Reviewer',
     graphNodeId: 'actor:email:reviewer%40example.test',
     id: 'actor-reviewer',
   });
-  repository.aliases.set(
+  fixture.aliases.set(
     'email:reviewer@example.test',
-    repository.actors.at(-1) as GraphRelationActorRecord,
+    fixture.actors.at(-1) as GraphIndexingActorRecord,
   );
 
-  const result = await storeGraphRelations({
-    limit: 10,
-    projectSlug: 'sample-a',
-    repository,
-  });
+  const result = await storeGraphRelations(fixture.storeOptions());
 
   assert.deepEqual(
     result.decisions.map((decision) => decision.decision),
     ['failed', 'indexed'],
   );
   assert.deepEqual(
-    repository.failureUpdates.map((update) => update.rawDocumentId),
+    fixture.failureUpdates.map((update) => update.rawDocumentId),
     ['raw-github-1'],
   );
   assert.deepEqual(
-    repository.statusUpdates.map((update) => update.rawDocumentId),
+    fixture.statusUpdates.map((update) => update.rawDocumentId),
     ['raw-email-1'],
   );
 });
 
-test('storeGraphRelations keeps project slug isolation at repository boundary', async () => {
-  const repository = new InMemoryGraphRelationsRepository([]);
+test('storeGraphRelations keeps project slug isolation at resolver boundary', async () => {
+  const fixture = new InMemoryGraphFixture([]);
 
   await assert.rejects(
     () =>
       storeGraphRelations({
-        limit: 10,
+        ...fixture.storeOptions(),
         projectSlug: 'sample-b',
-        repository,
       }),
     /Project not found/,
   );
 });
 
-class InMemoryGraphRelationsRepository implements GraphRelationsRepository {
-  readonly aliases = new Map<string, GraphRelationActorRecord>();
-  readonly actors: GraphRelationActorRecord[] = [];
-  readonly documents = new Map<string, GraphRelationDocumentRecord>();
-  readonly edges = new Map<string, GraphEdgeInput>();
-  readonly emailQuotes = new Map<string, GraphEmailQuoteInput[]>();
-  readonly nodes = new Map<string, GraphNodeInput>();
-  readonly project = { graphName: 'graph_sample_a', id: 'project-a', slug: 'sample-a' };
-  readonly sameAsDocuments: GraphRelationDocumentRecord[] = [];
+test('storeGraphRelations collaborators stay separated without graphName', async () => {
+  const fixture = new InMemoryGraphFixture([]);
+  const projectResolver = fixture.projectResolver();
+  const indexingRepository = fixture.indexingRepository();
+  const mutationRepository = fixture.mutationRepository();
+
+  assert.deepEqual(await projectResolver.resolveBySlug('sample-a'), {
+    projectId: 'project-a',
+    projectSlug: 'sample-a',
+  });
+  assert.equal('upsertNode' in indexingRepository, false);
+  assert.equal('ensureProjectGraph' in indexingRepository, false);
+
+  await mutationRepository.ensureProjectGraph({ projectId: 'project-a' });
+  await mutationRepository.upsertNode({
+    graphNodeId: 'document:email:msg-a',
+    labels: ['Document'],
+    projectId: 'project-a',
+    properties: { documentId: 'document-a' },
+  });
+  assert.deepEqual(fixture.mutationProjectIds, ['project-a']);
+  assert.equal(fixture.nodes.size, 1);
+});
+
+class InMemoryGraphFixture {
+  readonly aliases = new Map<string, GraphIndexingActorRecord>();
+  readonly actors: GraphIndexingActorRecord[] = [];
+  readonly documents = new Map<string, GraphIndexingDocumentRecord>();
+  readonly edges = new Map<
+    string,
+    {
+      fromGraphNodeId: string;
+      properties: Record<string, unknown>;
+      projectId: string;
+      relationType: GraphRelationType;
+      toGraphNodeId: string;
+    }
+  >();
+  readonly emailQuotes = new Map<string, GraphIndexingEmailQuoteInput[]>();
+  readonly nodes = new Map<
+    string,
+    {
+      graphNodeId: string;
+      labels: readonly string[];
+      projectId: string;
+      properties: Record<string, unknown>;
+    }
+  >();
+  readonly projectId = 'project-a';
+  readonly projectSlug = 'sample-a';
+  readonly sameAsDocuments: GraphIndexingDocumentRecord[] = [];
   readonly failureUpdates: Array<{
     errorMessage: string;
     projectId: string;
     rawDocumentId: string;
   }> = [];
   readonly statusUpdates: Array<{ projectId: string; rawDocumentId: string }> = [];
+  readonly mutationProjectIds: string[] = [];
 
-  constructor(private readonly targets: GraphRelationTarget[]) {}
+  constructor(private readonly targets: GraphIndexingTarget[]) {}
 
-  async lookupProjectBySlug(slug: string) {
-    return slug === this.project.slug ? this.project : undefined;
+  projectResolver(): ProjectResolver {
+    const fixture = this;
+    return {
+      async resolveBySlug(slug: string) {
+        if (slug !== fixture.projectSlug) {
+          return undefined;
+        }
+        return { projectId: fixture.projectId, projectSlug: fixture.projectSlug };
+      },
+    };
   }
 
-  async readGraphTargets(input: { limit: number; projectId: string }) {
-    assert.equal(input.projectId, this.project.id);
-    return this.targets.slice(0, input.limit);
+  indexingRepository(): GraphIndexingRepository {
+    const fixture = this;
+    return {
+      async findActorByAlias(input) {
+        assert.equal(input.projectId, fixture.projectId);
+        return fixture.aliases.get(`${input.aliasType}:${input.aliasValue}`);
+      },
+      async findActorByGraphNodeId(input) {
+        assert.equal(input.projectId, fixture.projectId);
+        return fixture.actors.find((actor) => actor.graphNodeId === input.graphNodeId);
+      },
+      async findDocumentsBySourceIds(input) {
+        assert.equal(input.projectId, fixture.projectId);
+        return input.sourceIds
+          .map((sourceId) => fixture.documents.get(sourceId))
+          .filter((document): document is GraphIndexingDocumentRecord => document !== undefined);
+      },
+      async findSameAsDocuments(input) {
+        assert.equal(input.projectId, fixture.projectId);
+        if (input.rawContentHash !== 'same-hash') {
+          return [];
+        }
+        return fixture.sameAsDocuments.filter(
+          (document) => document.rawDocumentId !== input.rawDocumentId,
+        );
+      },
+      async markFailed(input) {
+        fixture.failureUpdates.push(input);
+      },
+      async markIndexed(input) {
+        fixture.statusUpdates.push(input);
+      },
+      async readGraphTargets(input) {
+        assert.equal(input.projectId, fixture.projectId);
+        return fixture.targets.slice(0, input.limit);
+      },
+      async replaceEmailQuotes(input) {
+        assert.equal(input.projectId, fixture.projectId);
+        fixture.emailQuotes.set(input.documentId, [...input.quotes]);
+      },
+    };
   }
 
-  async findActorByAlias(input: {
-    aliasType: 'email' | 'github_login' | 'domain';
-    aliasValue: string;
-    projectId: string;
-  }) {
-    assert.equal(input.projectId, this.project.id);
-    return this.aliases.get(`${input.aliasType}:${input.aliasValue}`);
+  mutationRepository(): GraphMutationRepository {
+    const fixture = this;
+    return {
+      async deleteDocumentGraphNodes(input) {
+        assert.equal(input.projectId, fixture.projectId);
+        return 0;
+      },
+      async deleteProjectGraph(input) {
+        assert.equal(input.projectId, fixture.projectId);
+      },
+      async ensureProjectGraph(input) {
+        fixture.mutationProjectIds.push(input.projectId);
+      },
+      async mergeActorGraphNodes(input) {
+        assert.equal(input.projectId, fixture.projectId);
+        return { reason: 'test skip', status: 'skipped' };
+      },
+      async upsertEdge(input) {
+        assert.equal(input.projectId, fixture.projectId);
+        fixture.edges.set(edgeKey(input), input);
+      },
+      async upsertNode(input) {
+        assert.equal(input.projectId, fixture.projectId);
+        fixture.nodes.set(input.graphNodeId, input);
+      },
+    };
   }
 
-  async findActorByGraphNodeId(input: { graphNodeId: string; projectId: string }) {
-    assert.equal(input.projectId, this.project.id);
-    return this.actors.find((actor) => actor.graphNodeId === input.graphNodeId);
+  storeOptions(limit = 10) {
+    return {
+      indexingRepository: this.indexingRepository(),
+      limit,
+      mutationRepository: this.mutationRepository(),
+      projectResolver: this.projectResolver(),
+      projectSlug: this.projectSlug,
+    };
   }
 
-  async findSameAsDocuments(input: {
-    projectId: string;
-    rawContentHash: string;
-    rawDocumentId: string;
-    sourceType: ParsedDocument['sourceType'];
-  }) {
-    assert.equal(input.projectId, this.project.id);
-    if (input.rawContentHash !== 'same-hash') {
-      return [];
-    }
-    return this.sameAsDocuments.filter(
-      (document) => document.rawDocumentId !== input.rawDocumentId,
-    );
-  }
-
-  async findDocumentsBySourceIds(input: { projectId: string; sourceIds: readonly string[] }) {
-    assert.equal(input.projectId, this.project.id);
-    return input.sourceIds
-      .map((sourceId) => this.documents.get(sourceId))
-      .filter((document): document is GraphRelationDocumentRecord => document !== undefined);
-  }
-
-  async upsertGraphNode(input: GraphNodeInput) {
-    this.nodes.set(input.graphNodeId, input);
-  }
-
-  async upsertGraphEdge(input: GraphEdgeInput) {
-    this.edges.set(edgeKey(input), input);
-  }
-
-  async replaceEmailQuotes(input: ReplaceEmailQuotesInput) {
-    assert.equal(input.projectId, this.project.id);
-    this.emailQuotes.set(input.documentId, input.quotes);
-  }
-
-  async markFailed(input: { errorMessage: string; projectId: string; rawDocumentId: string }) {
-    this.failureUpdates.push(input);
-  }
-
-  async markIndexed(input: { projectId: string; rawDocumentId: string }) {
-    this.statusUpdates.push(input);
-  }
-
-  hasEdge(fromGraphNodeId: string, type: string, toGraphNodeId: string): boolean {
-    return this.edges.has(`${fromGraphNodeId}:${type}:${toGraphNodeId}`);
+  hasEdge(fromGraphNodeId: string, relationType: string, toGraphNodeId: string): boolean {
+    return this.edges.has(`${fromGraphNodeId}:${relationType}:${toGraphNodeId}`);
   }
 }
 
-function edgeKey(input: GraphEdgeInput): string {
-  return `${input.fromGraphNodeId}:${input.type}:${input.toGraphNodeId}`;
+function edgeKey(input: {
+  fromGraphNodeId: string;
+  relationType: GraphRelationType;
+  toGraphNodeId: string;
+}): string {
+  return `${input.fromGraphNodeId}:${input.relationType}:${input.toGraphNodeId}`;
 }
 
 function documentRecord(
-  input: Partial<GraphRelationDocumentRecord> = {},
-): GraphRelationDocumentRecord {
+  input: Partial<GraphIndexingDocumentRecord> = {},
+): GraphIndexingDocumentRecord {
   return {
     docType: 'email',
     graphNodeId: 'document:email:thread-alpha%3Amsg-alpha-003',
