@@ -120,8 +120,10 @@ export interface SyntheticMonitorRepository {
 /**
  * Runs bounded Synthetic Monitor observations for dedicated project scope.
  *
- * @param input - Parsed request, repository, storage, and allowed project slugs.
+ * @param input - Parsed request, relational repository, storage, project allowlist, and required project-scoped graph read repository.
  * @returns Machine-readable observation stages without sensitive identifiers.
+ * @throws When the requested project is outside the allowlist or cannot be resolved.
+ * Per-source repository, storage, and graph read errors are converted to failed stage observations.
  */
 export async function runSyntheticMonitorObservations(input: {
   readonly allowedProjectSlugs: readonly string[];

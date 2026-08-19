@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MemoryObjectStorage } from '../../../packages/storage/src/testing.ts';
+import { SYNTHETIC_MONITOR_RELATION_TYPES } from './synthetic-monitor-contract.ts';
 import { runSyntheticMonitorObservations } from './synthetic-monitor-service.ts';
 import {
   createSyntheticMonitorTestGraphReadRepository,
@@ -161,6 +162,19 @@ test('stage observations mark insufficient expected relations as graph failed', 
   assert.equal(response.observations[0]?.graph.status, 'failed');
   assert.equal(response.observations[0]?.graph.documentNodePresent, true);
   assertNoSensitivePayload(response);
+});
+
+test('stage observations pass the canonical relation allowlist to graph reads', async () => {
+  let receivedRelationTypes: readonly string[] | undefined;
+  await observeGmail(
+    createMockRepository({
+      async countGraphRelations(input) {
+        receivedRelationTypes = input.relationTypes;
+        return { SENT: 1 };
+      },
+    }),
+  );
+  assert.deepEqual(receivedRelationTypes, SYNTHETIC_MONITOR_RELATION_TYPES);
 });
 
 test('stage observations report full success across raw document chunk and graph', async () => {

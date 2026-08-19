@@ -8,6 +8,7 @@ import {
   type GraphReadRepository,
   type GraphRelatedDocumentCandidate,
   type GraphRelatedRelationType,
+  type GraphRelationType,
   parseGraphCountResult,
   parseGraphPresetId,
   parseGraphPresetReadResult,
@@ -73,7 +74,15 @@ export function createPostgresAgeGraphReadRepository(sql: postgres.Sql): GraphRe
           seedDocumentIds,
         });
         return { candidates, status: 'success' };
-      } catch {
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            errorName: error instanceof Error ? error.name : 'UnknownError',
+            event: 'graph_read_unavailable',
+            operation: 'find_related_documents',
+            provider: 'postgres_age',
+          }),
+        );
         return { candidates: [], status: 'unavailable' };
       }
     },
@@ -92,15 +101,16 @@ export function createPostgresAgeGraphReadRepository(sql: postgres.Sql): GraphRe
           truncated: false,
         });
       }
-      const rows = await sql.begin(async (transaction) => {
+      const rawRows = await sql.begin(async (transaction) => {
         await configureAgeReadTransaction(transaction);
         return transaction.unsafe(
           `SELECT * FROM cypher(${sqlString(graphName)}, ${dollarQuote(
             preview,
           )}, $1::agtype) AS (${preset.recordDefinition})`,
           [JSON.stringify({ documentGraphNodeIds: input.documentGraphNodeIds })],
-        ) as Promise<readonly Record<string, unknown>[]>;
+        ) as Promise<readonly unknown[]>;
       });
+      const rows = rawRows.map(requireAgeGraphRow);
       const normalized = normalizeAgeGraphRows(rows, {
         maxEdges: GRAPH_PRESET_MAX_EDGES,
         maxNodes: GRAPH_PRESET_MAX_NODES,
@@ -124,7 +134,7 @@ export function createPostgresAgeGraphReadRepository(sql: postgres.Sql): GraphRe
     async countRelations(input) {
       const relationTypes = parseGraphRelationTypes(input.relationTypes);
       const graphName = await requireProjectGraphName(sql, input.projectId);
-      const counts: Record<string, number> = {};
+      const counts: Partial<Record<GraphRelationType, number>> = {};
       await sql.begin(async (transaction) => {
         await configureAgeReadTransaction(transaction);
         for (const relationType of relationTypes) {
@@ -187,12 +197,10 @@ async function queryRelatedDocumentCandidates(
   },
 ): Promise<readonly GraphRelatedDocumentCandidate[]> {
   const relationLimits = { ...GRAPH_RELATED_DOCUMENT_POOL_LIMITS, ...input.relationLimits };
-  const projectIdLiteral = cypherString(input.projectId);
-  const seedIdList = input.seedDocumentIds.map(cypherString).join(', ');
-  const whereBase = `seed.projectId = ${projectIdLiteral}
-  AND related.projectId = ${projectIdLiteral}
-  AND seed.documentId IN [${seedIdList}]
-  AND NOT related.documentId IN [${seedIdList}]`;
+  const whereBase = `seed.projectId = $projectId
+  AND related.projectId = $projectId
+  AND seed.documentId IN $seedDocumentIds
+  AND NOT related.documentId IN $seedDocumentIds`;
   const relationQueries: readonly {
     readonly cypher: string;
     readonly hopCount: 1 | 2;
@@ -216,11 +224,11 @@ ORDER BY seed.documentId, related.documentId`,
     },
     {
       cypher: `MATCH (seed:Document)-[:MENTIONS]-(topic:Topic)-[:MENTIONS]-(related:Document)
-WHERE seed.projectId = ${projectIdLiteral}
-  AND topic.projectId = ${projectIdLiteral}
-  AND related.projectId = ${projectIdLiteral}
-  AND seed.documentId IN [${seedIdList}]
-  AND NOT related.documentId IN [${seedIdList}]
+WHERE seed.projectId = $projectId
+  AND topic.projectId = $projectId
+  AND related.projectId = $projectId
+  AND seed.documentId IN $seedDocumentIds
+  AND NOT related.documentId IN $seedDocumentIds
 RETURN seed, related
 ORDER BY seed.documentId, related.documentId`,
       hopCount: 2,
@@ -238,7 +246,8 @@ ORDER BY seed.documentId, related.documentId`,
       const rows = (await transaction.unsafe(
         `SELECT * FROM cypher(${sqlString(input.graphName)}, ${dollarQuote(
           `${query.cypher}\nLIMIT ${limit}`,
-        )}) AS (seed agtype, related agtype)`,
+        )}, $1::agtype) AS (seed agtype, related agtype)`,
+        [JSON.stringify({ projectId: input.projectId, seedDocumentIds: input.seedDocumentIds })],
       )) as readonly unknown[];
       candidates.push(
         ...selectRelatedDocumentCandidates({
@@ -347,13 +356,14 @@ function parseAgeCountRows(rows: readonly unknown[], label: string): number {
 
 /** Normalizes bounded raw AGE rows for adapter parity tests and Viewer responses. */
 export function normalizeAgeGraphRows(
-  rows: readonly Record<string, unknown>[],
+  rows: readonly unknown[],
   limits: { readonly maxEdges: number; readonly maxNodes: number },
 ): Pick<GraphPresetReadResult, 'edges' | 'nodes' | 'truncated'> {
   const nodes = new Map<string, GraphReadNode>();
   const edges = new Map<string, GraphReadEdge>();
   let truncated = false;
   for (const row of rows) {
+    if (!isRecord(row)) continue;
     for (const value of Object.values(row)) {
       collectGraphValue(value, {
         edges,
@@ -418,14 +428,12 @@ function parseTypedAgtype(value: string): GraphReadNode | GraphReadEdge | unknow
   if (!value) return undefined;
   try {
     if (value.endsWith('::vertex')) {
-      return vertexRecordToNode(
-        JSON.parse(value.slice(0, -'::vertex'.length)) as Record<string, unknown>,
-      );
+      const parsed: unknown = JSON.parse(value.slice(0, -'::vertex'.length));
+      return isRecord(parsed) && isAgeVertexRecord(parsed) ? vertexRecordToNode(parsed) : undefined;
     }
     if (value.endsWith('::edge')) {
-      return edgeRecordToEdge(
-        JSON.parse(value.slice(0, -'::edge'.length)) as Record<string, unknown>,
-      );
+      const parsed: unknown = JSON.parse(value.slice(0, -'::edge'.length));
+      return isRecord(parsed) && isAgeEdgeRecord(parsed) ? edgeRecordToEdge(parsed) : undefined;
     }
   } catch {
     return undefined;
@@ -548,11 +556,24 @@ function isEscaped(value: string, index: number): boolean {
 }
 
 function isAgeVertexRecord(value: Record<string, unknown>): boolean {
-  return 'id' in value && 'label' in value && 'properties' in value && !('start_id' in value);
+  return (
+    isGraphIdentifier(value.id) &&
+    typeof value.label === 'string' &&
+    value.label.trim().length > 0 &&
+    isRecord(value.properties) &&
+    !('start_id' in value)
+  );
 }
 
 function isAgeEdgeRecord(value: Record<string, unknown>): boolean {
-  return 'id' in value && 'label' in value && 'start_id' in value && 'end_id' in value;
+  return (
+    isGraphIdentifier(value.id) &&
+    typeof value.label === 'string' &&
+    value.label.trim().length > 0 &&
+    isGraphIdentifier(value.start_id) &&
+    isGraphIdentifier(value.end_id) &&
+    isRecord(value.properties)
+  );
 }
 
 function isParsedNode(value: unknown): value is GraphReadNode {
@@ -573,7 +594,7 @@ function stableId(value: unknown): string {
 }
 
 function dollarQuote(value: string): string {
-  const tag = `$pufu_${createHash('sha256').update(value).digest('hex')}$`;
+  const tag = `$pufu_${createHash('sha256').update(value).digest('hex').slice(0, 16)}$`;
   return `${tag}${value}${tag}`;
 }
 
@@ -581,8 +602,18 @@ function sqlString(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-function cypherString(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+function requireAgeGraphRow(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new Error('Invalid AGE graph row.');
+  }
+  return value;
+}
+
+function isGraphIdentifier(value: unknown): boolean {
+  return (
+    (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint') &&
+    String(value).trim().length > 0
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

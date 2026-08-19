@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import type { GraphRelationType } from '@pufu-lens/graph';
 import postgres from 'postgres';
 import { MemoryObjectStorage } from '../../../packages/storage/src/testing.ts';
 import { createPostgresAgeGraphReadRepository } from './postgres-graph-read-adapter.ts';
@@ -284,12 +285,12 @@ async function countGraphDocumentNode(projectId: string, nodeId: string): Promis
 async function countGraphRelation(
   projectId: string,
   nodeId: string,
-  relationType: string,
+  relationType: GraphRelationType,
 ): Promise<number> {
   const counts = await graphReadRepository.countRelations({
     graphNodeId: nodeId,
     projectId,
-    relationTypes: [relationType as 'SENT'],
+    relationTypes: [relationType],
   });
   return counts[relationType] ?? 0;
 }

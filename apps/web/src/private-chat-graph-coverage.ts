@@ -283,7 +283,10 @@ function countRelationAdoptions(
 }
 
 /**
- * Runs the graph coverage pass: bounded relation pools, hybrid evidence re-check, and diagnostics.
+ * Runs project-scoped graph coverage for the supplied seed document IDs.
+ *
+ * Candidate resolution is delegated to `input.repository.graphCoverageQuery`; this pass applies
+ * bounded relation pools, hybrid evidence re-checks, final selection, and diagnostics.
  */
 export async function runPrivateChatGraphCoveragePass(input: {
   readonly classification: { readonly primaryOperation: string };

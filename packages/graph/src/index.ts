@@ -83,7 +83,7 @@ export interface GraphReadRepository {
     readonly graphNodeId: string;
     readonly projectId: string;
     readonly relationTypes: readonly GraphRelationType[];
-  }): Promise<Readonly<Record<string, number>>>;
+  }): Promise<Readonly<Partial<Record<GraphRelationType, number>>>>;
   findRelatedDocuments(input: {
     readonly projectId: string;
     readonly relationLimits?: Partial<Record<GraphRelatedRelationType, number>>;

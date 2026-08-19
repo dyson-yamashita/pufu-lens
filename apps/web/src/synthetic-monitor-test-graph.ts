@@ -6,10 +6,9 @@ export type SyntheticMonitorTestRepository = SyntheticMonitorRepository & {
     readonly graphNodeId: string;
     readonly projectId: string;
   }): Promise<number>;
-  countGraphRelations(input: {
-    readonly graphNodeId: string;
-    readonly projectId: string;
-  }): Promise<Readonly<Record<string, number>>>;
+  countGraphRelations(
+    input: Parameters<GraphReadRepository['countRelations']>[0],
+  ): ReturnType<GraphReadRepository['countRelations']>;
 };
 
 /** Adapts legacy-shaped test doubles to the provider-neutral graph read contract. */

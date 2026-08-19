@@ -2291,15 +2291,15 @@ export async function resolveGraphRelatedSources(
     RELATED_TO: 0,
     SAME_AS: 0,
   };
-  const graphResult = await graphReadRepository.findRelatedDocuments({
-    projectId: input.projectId,
-    relationLimits: { ...GRAPH_RELATION_POOL_LIMITS, ...input.relationLimits },
-    seedDocumentIds: input.seedDocumentIds,
-  });
-  if (graphResult.status === 'unavailable') {
-    return { candidates: [], queryFailed: true, relationCandidateCounts: emptyCounts };
-  }
   try {
+    const graphResult = await graphReadRepository.findRelatedDocuments({
+      projectId: input.projectId,
+      relationLimits: { ...GRAPH_RELATION_POOL_LIMITS, ...input.relationLimits },
+      seedDocumentIds: input.seedDocumentIds,
+    });
+    if (graphResult.status === 'unavailable') {
+      return { candidates: [], queryFailed: true, relationCandidateCounts: emptyCounts };
+    }
     const relatedDocumentIds = graphResult.candidates;
     const relationCandidateCounts = { ...emptyCounts };
     for (const candidate of relatedDocumentIds) {

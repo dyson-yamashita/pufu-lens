@@ -82,8 +82,9 @@ export function parsePublicGraphRequestBody(body: unknown): PublicGraphRequestBo
  * Runs a public graph preset query and maps domain errors to API responses.
  *
  * @param input - The project slug, preset ID, optional document limit, and optional period bounds
- * @param options - Repository used to resolve public project access and execute the preset
+ * @param options - Relational public-access repository and required project-scoped graph read repository
  * @returns A success payload with graph data or an error payload with an HTTP status
+ * Known access, preset, limit, and period errors are converted to API results; provider errors propagate.
  */
 export async function runPublicGraphApi(
   input: {

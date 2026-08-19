@@ -169,6 +169,7 @@ async function assertUndirectedMatchFindsDirectedEdges(): Promise<void> {
     relationLimits: { MENTIONS: 0, RELATED_TO: 0, SAME_AS: 1 },
     seedDocumentIds: [seedDocumentId],
   });
+  assert.equal(result.status, 'success');
   const sameAsCandidates = result.candidates;
   assert.equal(sameAsCandidates.length, 1);
   assert.equal(sameAsCandidates[0]?.relationType, 'SAME_AS');

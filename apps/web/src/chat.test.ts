@@ -29,6 +29,7 @@ import {
   privateChatSourcesForResponse,
   publicChatToolCallsFromPrivate,
   reciprocalRankFusionScore,
+  resolveGraphRelatedSources,
   runPrivateChat,
   runPublicChat,
   shouldUseGraphRelatedSource,
@@ -1419,6 +1420,29 @@ assert.equal((await embedPrivateChatQueries(testEmbeddingProvider, ['query']))[0
 await assert.rejects(
   () => embedPrivateChatQueries({ ...testEmbeddingProvider, dimensions: 768 }, ['query']),
   /dimensions must be 1536/,
+);
+
+assert.deepEqual(
+  await resolveGraphRelatedSources(
+    (() => {
+      assert.fail('relational lookup must not run after a graph provider rejection');
+    }) as never,
+    {
+      async findRelatedDocuments() {
+        throw new Error('provider unavailable');
+      },
+    },
+    {
+      projectId: 'project-a',
+      question: '関連資料',
+      seedDocumentIds: ['doc-a'],
+    },
+  ),
+  {
+    candidates: [],
+    queryFailed: true,
+    relationCandidateCounts: { MENTIONS: 0, RELATED_TO: 0, SAME_AS: 0 },
+  },
 );
 
 {

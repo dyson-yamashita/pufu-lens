@@ -142,12 +142,6 @@ export const GRAPH_PRESETS: readonly GraphPreset[] = [
 ];
 
 /**
- * Builds the server-owned preset Cypher query with a fixed raw result-row safety limit.
- *
- * @param preset - The graph preset whose maxEdges bound is applied
- * @returns The preset Cypher body with a numeric LIMIT that cannot be controlled by request input
- */
-/**
  * Lists the available graph presets.
  *
  * @returns The available preset summaries with preview queries generated from each preset's default limit.
@@ -182,8 +176,13 @@ export function getGraphPreset(queryId: string): GraphPreset {
  * Runs a graph preset query for an accessible project.
  *
  * @param input - Query parameters including the project, preset ID, and optional limit.
- * @param options - Repository used to resolve project access and execute the preset.
+ * @param options - Relational access repository and required project-scoped graph read repository.
  * @returns The normalized graph result, including preset metadata, raw rows, and the applied limit.
+ * @throws {GraphAccessDeniedError} When membership cannot be resolved for the project.
+ * @throws {GraphPresetNotFoundError} When the preset ID is unknown.
+ * @throws {GraphLimitError} When the requested limit is outside the preset bounds.
+ * @throws {GraphPeriodError} When the period filter is invalid.
+ * Provider read errors are propagated to the authenticated API boundary.
  */
 export async function runGraphPresetQuery(
   input: {
@@ -227,8 +226,13 @@ export async function runGraphPresetQuery(
  * Runs a graph preset query for a public project without requiring member authentication.
  *
  * @param input - Query parameters including the project, preset ID, and optional limit.
- * @param options - Repository used to resolve public project access and execute the preset.
+ * @param options - Relational public-access repository and required project-scoped graph read repository.
  * @returns The normalized graph result, including preset metadata, raw rows, and the applied limit.
+ * @throws {GraphAccessDeniedError} When the project is not publicly accessible.
+ * @throws {GraphPresetNotFoundError} When the preset ID is unknown.
+ * @throws {GraphLimitError} When the requested limit is outside the preset bounds.
+ * @throws {GraphPeriodError} When the period filter is invalid.
+ * Provider read errors are propagated to the public API boundary.
  */
 export async function runPublicGraphPresetQuery(
   input: {
