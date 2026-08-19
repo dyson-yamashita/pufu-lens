@@ -326,3 +326,5 @@ export {
   fetchWebUrl,
   scanWebUrlDataSource,
 } from './web-url-source.js';
+export type { CollectXSourceOptions, XSyncWindow } from './x-source.js';
+export { collectXSource, resolveXSyncWindow } from './x-source.js';

@@ -105,6 +105,11 @@ export default async function DataSourcesPage({
               />
               <DataSourceTypeOption availability={availability} label="Drive" sourceType="drive" />
               <DataSourceTypeOption availability={availability} label="Gmail" sourceType="gmail" />
+              <DataSourceTypeOption
+                availability={availability}
+                label="X (Twitter)"
+                sourceType="x"
+              />
             </select>
           </label>
           <label>
@@ -137,7 +142,7 @@ export default async function DataSourcesPage({
               <Link href={connectionStartHref(project.slug, requestedSourceType)}>接続を開始</Link>
             </p>
           ) : null}
-          {!availability.github || !availability.gmail || !availability.drive ? (
+          {!availability.github || !availability.gmail || !availability.drive || !availability.x ? (
             <p
               className="connection-required-notice project-create-notice"
               data-testid="data-source-connection-notice"
@@ -155,6 +160,9 @@ export default async function DataSourcesPage({
               ) : null}
               {!availability.github ? (
                 <Link href={connectionStartHref(project.slug, 'github')}>GitHub を接続</Link>
+              ) : null}
+              {!availability.x ? (
+                <Link href={connectionStartHref(project.slug, 'x')}>X を接続</Link>
               ) : null}
             </p>
           ) : null}
@@ -435,12 +443,15 @@ function sourceTypeLabel(sourceType: SourceType): string {
       return 'Drive';
     case 'gmail':
       return 'Gmail';
+    case 'x':
+      return 'X';
     default:
       return 'Web';
   }
 }
 
 function connectionStartHref(projectSlug: string, sourceType: SourceType): string {
+  if (sourceType === 'x') return `/projects/${projectSlug}/admin/settings#connections`;
   const provider = sourceType === 'github' ? 'github' : 'google';
   const params = new URLSearchParams({ projectSlug });
   if (sourceType === 'drive' || sourceType === 'gmail') {

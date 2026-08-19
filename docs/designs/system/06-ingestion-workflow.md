@@ -289,3 +289,9 @@ export const ingestWorkflow = createWorkflow({
 Synthetic Monitor は `POST /internal/monitoring/v1/observations` から ingestion pipeline の各 stage（`raw` / `currentDocument` / `chunks` / `graph` / `schedule`）を **読み取り専用** で観測する。source schedule は expected raw version ではなく logical source identity（`project_id` + `source_type` + `logical_source_id`）で `data_source_schedules` を辿る。内部の `raw_documents` / `documents` / AGE graph schema や storage URI、provider payload は response に含めず、stage ごとの `ok` / `pending` / `failed` / `not_found` と schedule の `nextRunDue` だけを返す。queue 投入、parser 切替、graph 更新、schedule 変更は行わない。
 
 ---
+
+## X（旧 Twitter）収集
+
+X は Project Settings の Connections で、サーバーに `X_BEARER_TOKEN` が設定済みかを接続許可として表示する。Data Source の Scope には `@` の有無を問わず対象アカウントを改行またはカンマ区切りで指定する。
+
+初回収集は X API が返せる履歴を当日 00:00 UTC より前（前日まで）取得し、当日分を含めない。初回成功後の定期収集は毎日、前日 00:00 UTC 以上かつ当日 00:00 UTC 未満の投稿だけを取得する。X API の product tier による履歴上限と rate limit は外部制約であり、token をログや DB に保存しない。

@@ -41,7 +41,7 @@ export function createPostgresScheduleRepository(sql: postgres.Sql): SourceSyncS
              AND source.project_id = schedule.project_id
             WHERE schedule.enabled = true
               AND source.enabled = true
-              AND source.source_type IN ('drive', 'github', 'gmail')
+              AND source.source_type IN ('drive', 'github', 'gmail', 'x')
               AND schedule.next_run_at <= now()
               AND (schedule.lease_expires_at IS NULL OR schedule.lease_expires_at <= now())
             ORDER BY schedule.next_run_at, schedule.id
@@ -215,7 +215,12 @@ function parseSourceSyncTarget(value: unknown): SourceSyncTarget {
   const dataSourceId = requireRowString(Reflect.get(value, 'dataSourceId'), 'dataSourceId');
   const projectSlug = requireRowString(Reflect.get(value, 'projectSlug'), 'projectSlug');
   const sourceType = Reflect.get(value, 'sourceType');
-  if (sourceType !== 'drive' && sourceType !== 'github' && sourceType !== 'gmail') {
+  if (
+    sourceType !== 'drive' &&
+    sourceType !== 'github' &&
+    sourceType !== 'gmail' &&
+    sourceType !== 'x'
+  ) {
     throw new Error('Invalid source sync target row field: sourceType');
   }
   return { dataSourceId, projectSlug, scheduleId, sourceType };

@@ -5,8 +5,8 @@ import { assertCanonicalUuid } from './uuid.ts';
 
 const ENCRYPTED_CONNECTION_SECRET_PREFIX = 'encrypted:';
 
-export type CollectionSourceType = 'drive' | 'github' | 'gmail' | 'web';
-export type CollectionOAuthSourceType = Exclude<CollectionSourceType, 'web'>;
+export type CollectionSourceType = 'drive' | 'github' | 'gmail' | 'web' | 'x';
+export type CollectionOAuthSourceType = Exclude<CollectionSourceType, 'web' | 'x'>;
 export type ConnectionProvider = 'github' | 'google';
 
 export interface CollectionConnection {

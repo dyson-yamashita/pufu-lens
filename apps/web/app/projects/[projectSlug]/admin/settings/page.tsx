@@ -158,7 +158,7 @@ export default async function ProjectSettingsPage({
           </p>
         ) : null}
         <p className="connections-panel-copy">
-          このプロジェクトの Gmail / Drive / GitHub 収集に使う連携です。Google は source type
+          このプロジェクトの Gmail / Drive / GitHub / X 収集に使う連携です。Google は source type
           追加時に必要な scope を追加要求し、GitHub は GitHub App installation として接続します。
         </p>
         <div className="connection-card-grid">
@@ -171,7 +171,13 @@ export default async function ProjectSettingsPage({
               <div className="connection-card-header">
                 <div>
                   <p className="eyebrow">{connection.provider}</p>
-                  <h3>{connection.provider === 'google' ? 'Google' : 'GitHub'}</h3>
+                  <h3>
+                    {connection.provider === 'google'
+                      ? 'Google'
+                      : connection.provider === 'github'
+                        ? 'GitHub'
+                        : 'X (Twitter)'}
+                  </h3>
                 </div>
                 <span
                   className={`status-badge status-connection-${connection.status}`}

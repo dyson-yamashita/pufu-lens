@@ -22,7 +22,7 @@ import {
   selectRelatedDocumentBackfillTargets,
 } from './lib/graph-target-selection.ts';
 
-const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
+const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive', 'x'];
 const GRAPH_TARGET_SCAN_PAGE_MIN_SIZE = 100;
 const GRAPH_TARGET_SCAN_PAGE_MULTIPLIER = 10;
 

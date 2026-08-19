@@ -18,7 +18,12 @@ export interface DataSourceScheduleSummary {
 type SqlExecutor = postgres.Sql | postgres.TransactionSql;
 
 export function isSchedulableSourceType(sourceType: SourceType): boolean {
-  return sourceType === 'github' || sourceType === 'drive' || sourceType === 'gmail';
+  return (
+    sourceType === 'github' ||
+    sourceType === 'drive' ||
+    sourceType === 'gmail' ||
+    sourceType === 'x'
+  );
 }
 
 export function requireDailyTime(value: string): string {
@@ -93,7 +98,7 @@ export async function readDataSourceSchedule(
      AND source.project_id = schedule.project_id
     WHERE schedule.project_id = ${input.projectId}
       AND schedule.data_source_id = ${input.dataSourceId}
-      AND source.source_type IN ('github', 'drive', 'gmail')
+      AND source.source_type IN ('github', 'drive', 'gmail', 'x')
     LIMIT 1
   `) as readonly unknown[];
   return rows[0] ? parseDataSourceScheduleRow(rows[0]) : null;
@@ -129,7 +134,7 @@ export async function updateDataSourceScheduleRow(
       AND schedule.data_source_id = ${input.dataSourceId}
       AND source.id = schedule.data_source_id
       AND source.project_id = schedule.project_id
-      AND source.source_type IN ('github', 'drive', 'gmail')
+      AND source.source_type IN ('github', 'drive', 'gmail', 'x')
     RETURNING
       schedule.enabled,
       to_char(schedule.daily_time, 'HH24:MI') AS "dailyTime",

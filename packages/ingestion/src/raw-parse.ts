@@ -411,6 +411,8 @@ export function defaultParserContract(sourceType: SourceType): ParserVersionCont
       return { requiredPaths: ['fileId', 'revisionId', 'title', 'modifiedTime', 'webViewLink'] };
     case 'web':
       return {};
+    case 'x':
+      return { requiredPaths: ['id', 'text', 'created_at', 'author.username'] };
   }
 }
 

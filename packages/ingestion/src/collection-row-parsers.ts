@@ -1,7 +1,7 @@
 import type { DataSourceRecord, RawDocumentRecord } from './collection-pipeline.js';
 import type { SourceType } from './ingestion-fixtures.js';
 
-const COLLECTION_SOURCE_TYPES = ['drive', 'github', 'gmail', 'web'] as const;
+const COLLECTION_SOURCE_TYPES = ['drive', 'github', 'gmail', 'web', 'x'] as const;
 const RAW_INGEST_STATUSES = ['fetched', 'held', 'parsed', 'indexed', 'failed'] as const;
 
 /**

@@ -10,7 +10,7 @@ export interface SourceSyncTarget {
   readonly dataSourceId: string;
   readonly projectSlug: string;
   readonly scheduleId: string;
-  readonly sourceType: 'drive' | 'github' | 'gmail';
+  readonly sourceType: 'drive' | 'github' | 'gmail' | 'x';
 }
 
 export interface SourceSyncScheduleRepository {

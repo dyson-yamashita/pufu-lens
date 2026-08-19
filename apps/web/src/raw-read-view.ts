@@ -1,7 +1,7 @@
 import type postgres from 'postgres';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 
-type RawSourceType = 'drive' | 'github' | 'gmail' | 'web';
+type RawSourceType = 'drive' | 'github' | 'gmail' | 'web' | 'x';
 
 export type RawReadViewSourceLocator =
   | { readonly kind: 'message'; readonly messageIndex: number }
@@ -596,7 +596,9 @@ function optionalString(value: unknown): string | undefined {
 }
 
 function isRawSourceType(value: unknown): value is RawSourceType {
-  return value === 'drive' || value === 'github' || value === 'gmail' || value === 'web';
+  return (
+    value === 'drive' || value === 'github' || value === 'gmail' || value === 'web' || value === 'x'
+  );
 }
 
 function requireNonEmptySections(

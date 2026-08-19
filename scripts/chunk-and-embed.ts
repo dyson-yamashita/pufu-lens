@@ -15,7 +15,7 @@ import { createObjectStorageFromEnv } from '../packages/storage/dist/factory.js'
 import type { ObjectStorage } from '../packages/storage/dist/object-storage.js';
 import { requiredEnv } from './lib/cli.ts';
 
-const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'];
+const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive', 'x'];
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
