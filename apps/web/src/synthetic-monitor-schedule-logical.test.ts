@@ -1,32 +1,35 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MemoryObjectStorage } from '../../../packages/storage/src/testing.ts';
+import { runSyntheticMonitorObservations } from './synthetic-monitor-service.ts';
 import {
-  runSyntheticMonitorObservations,
-  type SyntheticMonitorRepository,
-} from './synthetic-monitor-service.ts';
+  createSyntheticMonitorTestGraphReadRepository,
+  type SyntheticMonitorTestRepository,
+} from './synthetic-monitor-test-graph.ts';
 
 test('schedule observation follows logical source identity when expected raw version is missing', async () => {
+  const repository = createMockRepository({
+    async lookupRawDocument() {
+      return null;
+    },
+    async lookupSchedulesForLogicalSource(input) {
+      if (input.logicalSourceId === 'thread-1' && input.sourceType === 'gmail') {
+        return [
+          {
+            enabled: true,
+            retryCount: 0,
+            leaseExpiresAt: null,
+            nextRunAt: '2099-01-01T01:00:00.000Z',
+          },
+        ];
+      }
+      return [];
+    },
+  });
   const response = await runSyntheticMonitorObservations({
     allowedProjectSlugs: ['sample-a'],
-    repository: createMockRepository({
-      async lookupRawDocument() {
-        return null;
-      },
-      async lookupSchedulesForLogicalSource(input) {
-        if (input.logicalSourceId === 'thread-1' && input.sourceType === 'gmail') {
-          return [
-            {
-              enabled: true,
-              retryCount: 0,
-              leaseExpiresAt: null,
-              nextRunAt: '2099-01-01T01:00:00.000Z',
-            },
-          ];
-        }
-        return [];
-      },
-    }),
+    graphReadRepository: createSyntheticMonitorTestGraphReadRepository(repository),
+    repository,
     storage: new MemoryObjectStorage(),
     request: {
       projectSlug: 'sample-a',
@@ -40,15 +43,14 @@ test('schedule observation follows logical source identity when expected raw ver
 });
 
 function createMockRepository(
-  overrides: Partial<SyntheticMonitorRepository> = {},
-): SyntheticMonitorRepository {
+  overrides: Partial<SyntheticMonitorTestRepository> = {},
+): SyntheticMonitorTestRepository {
   return {
     async lookupProject(slug) {
       return slug === 'sample-a'
         ? {
             id: '11111111-1111-4111-8111-111111111111',
             slug: 'sample-a',
-            graphName: 'graph_sample_a',
           }
         : null;
     },

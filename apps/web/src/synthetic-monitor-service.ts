@@ -1,3 +1,4 @@
+import type { GraphReadRepository } from '@pufu-lens/graph';
 import {
   driveLogicalSourceId,
   driveSourceVersion,
@@ -7,7 +8,6 @@ import {
   webLogicalSourceId,
   webSourceVersion,
 } from '@pufu-lens/ingestion/source-version-identity';
-import { validateGraphName } from '@pufu-lens/project-tenancy';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import {
   isSyntheticMonitorArtifactConsistent,
@@ -39,7 +39,6 @@ import {
 import { aggregateScheduleStageObservation } from './synthetic-monitor-schedule.ts';
 
 export interface SyntheticMonitorProjectRecord {
-  readonly graphName: string;
   readonly id: string;
   readonly slug: string;
 }
@@ -83,14 +82,6 @@ export interface SyntheticMonitorRepository {
     readonly documentId: string;
     readonly projectId: string;
   }): Promise<{ readonly total: number; readonly withEmbedding: number }>;
-  countGraphDocumentNode(input: {
-    readonly graphName: string;
-    readonly graphNodeId: string;
-  }): Promise<number>;
-  countGraphRelations(input: {
-    readonly graphName: string;
-    readonly graphNodeId: string;
-  }): Promise<Readonly<Record<string, number>>>;
   lookupDocument(input: {
     readonly docType: string;
     readonly logicalSourceId: string;
@@ -129,11 +120,14 @@ export interface SyntheticMonitorRepository {
 /**
  * Runs bounded Synthetic Monitor observations for dedicated project scope.
  *
- * @param input - Parsed request, repository, storage, and allowed project slugs.
+ * @param input - Parsed request, relational repository, storage, project allowlist, and required project-scoped graph read repository.
  * @returns Machine-readable observation stages without sensitive identifiers.
+ * @throws When the requested project is outside the allowlist or cannot be resolved.
+ * Per-source repository, storage, and graph read errors are converted to failed stage observations.
  */
 export async function runSyntheticMonitorObservations(input: {
   readonly allowedProjectSlugs: readonly string[];
+  readonly graphReadRepository: Pick<GraphReadRepository, 'countDocumentNode' | 'countRelations'>;
   readonly repository: SyntheticMonitorRepository;
   readonly request: SyntheticMonitorRequest;
   readonly storage: ObjectStorage;
@@ -150,6 +144,7 @@ export async function runSyntheticMonitorObservations(input: {
       try {
         return await observeSource({
           index,
+          graphReadRepository: input.graphReadRepository,
           project,
           repository: input.repository,
           source,
@@ -191,6 +186,7 @@ export function loadSyntheticMonitorProjectSlugs(env: NodeJS.ProcessEnv): readon
 }
 
 async function observeSource(input: {
+  readonly graphReadRepository: Pick<GraphReadRepository, 'countDocumentNode' | 'countRelations'>;
   readonly index: number;
   readonly project: SyntheticMonitorProjectRecord;
   readonly repository: SyntheticMonitorRepository;
@@ -214,7 +210,7 @@ async function observeSource(input: {
   const graph = await observeGraphStage({
     documentStatus: currentDocument.status,
     expectedRelations: identity.expectedRelations,
-    graphName: input.project.graphName,
+    graphReadRepository: input.graphReadRepository,
     logicalSourceId: identity.logicalSourceId,
     projectId: input.project.id,
     repository: input.repository,
@@ -305,7 +301,7 @@ async function observeGraphStage(input: {
   readonly docType: string;
   readonly documentStatus: SyntheticMonitorStageStatus;
   readonly expectedRelations: readonly SyntheticMonitorExpectedRelation[];
-  readonly graphName: string;
+  readonly graphReadRepository: Pick<GraphReadRepository, 'countDocumentNode' | 'countRelations'>;
   readonly logicalSourceId: string;
   readonly projectId: string;
   readonly repository: SyntheticMonitorRepository;
@@ -322,17 +318,17 @@ async function observeGraphStage(input: {
   if (!document?.graphNodeId) {
     return { status: 'not_found', documentNodePresent: false, relations: emptyRelations };
   }
-  const graphName = validateGraphName(input.graphName);
-  const nodeCount = await input.repository.countGraphDocumentNode({
-    graphName,
+  const nodeCount = await input.graphReadRepository.countDocumentNode({
     graphNodeId: document.graphNodeId,
+    projectId: input.projectId,
   });
   if (nodeCount !== 1) {
     return { status: 'not_found', documentNodePresent: false, relations: emptyRelations };
   }
-  const relationCounts = await input.repository.countGraphRelations({
-    graphName,
+  const relationCounts = await input.graphReadRepository.countRelations({
     graphNodeId: document.graphNodeId,
+    projectId: input.projectId,
+    relationTypes: SYNTHETIC_MONITOR_RELATION_TYPES,
   });
   const relations = normalizeRelationCounts(relationCounts);
   const relationStatus = evaluateExpectedRelations(input.expectedRelations, relations);

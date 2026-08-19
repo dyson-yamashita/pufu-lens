@@ -3,10 +3,11 @@ import { Readable } from 'node:stream';
 import test from 'node:test';
 import { MemoryObjectStorage } from '../../../packages/storage/src/testing.ts';
 import { SYNTHETIC_MONITOR_ARTIFACT_MAX_BYTES } from './synthetic-monitor-contract.ts';
+import { runSyntheticMonitorObservations } from './synthetic-monitor-service.ts';
 import {
-  runSyntheticMonitorObservations,
-  type SyntheticMonitorRepository,
-} from './synthetic-monitor-service.ts';
+  createSyntheticMonitorTestGraphReadRepository,
+  type SyntheticMonitorTestRepository,
+} from './synthetic-monitor-test-graph.ts';
 
 const projectId = '11111111-1111-4111-8111-111111111111';
 const reportId = '22222222-2222-4222-8222-222222222222';
@@ -205,11 +206,12 @@ class OversizeStorage extends MemoryObjectStorage {
 }
 
 async function observeReport(
-  repository: SyntheticMonitorRepository,
+  repository: SyntheticMonitorTestRepository,
   storage: MemoryObjectStorage = new MemoryObjectStorage(),
 ) {
   return runSyntheticMonitorObservations({
     allowedProjectSlugs: ['sample-a'],
+    graphReadRepository: createSyntheticMonitorTestGraphReadRepository(repository),
     repository,
     storage,
     request: {
@@ -221,13 +223,11 @@ async function observeReport(
 }
 
 function createMockRepository(
-  overrides: Partial<SyntheticMonitorRepository> = {},
-): SyntheticMonitorRepository {
+  overrides: Partial<SyntheticMonitorTestRepository> = {},
+): SyntheticMonitorTestRepository {
   return {
     async lookupProject(slug) {
-      return slug === 'sample-a'
-        ? { id: projectId, slug: 'sample-a', graphName: 'graph_sample_a' }
-        : null;
+      return slug === 'sample-a' ? { id: projectId, slug: 'sample-a' } : null;
     },
     async lookupRawDocument() {
       return null;

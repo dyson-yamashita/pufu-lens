@@ -1,27 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import type { GraphReadRepository } from '@pufu-lens/graph';
 import type { GraphViewerRepository } from './graph-viewer.ts';
 import { parsePublicGraphRequestBody, runPublicGraphApi } from './public-graph-api.ts';
 
 function createRepository(): GraphViewerRepository {
   return {
-    async executePreset({ cypher, graphName, parameters, preset }) {
-      assert.equal(graphName, 'graph_sample_a');
-      assert.equal(preset.id, 'recent-relations');
-      assert.match(cypher, /\$documentGraphNodeIds/u);
-      assert.match(cypher, /LIMIT 500$/);
-      assert.deepEqual(parameters.documentGraphNodeIds, ['document:spec']);
-      return [
-        {
-          relation:
-            '{"id":"3","label":"AUTHORED","start_id":"1","end_id":"2","properties":{}}::edge',
-          source:
-            '{"id":"1","label":"Actor","properties":{"displayName":"Ada","graphNodeId":"actor:ada"}}::vertex',
-          target:
-            '{"id":"2","label":"Document","properties":{"documentId":"doc-a","graphNodeId":"document:spec","title":"Spec"}}::vertex',
-        },
-      ];
-    },
     async fetchDocumentChunks() {
       throw new Error('not used');
     },
@@ -39,6 +23,34 @@ function createRepository(): GraphViewerRepository {
       return ['document:spec'];
     },
   };
+}
+
+const graphReadRepository: Pick<GraphReadRepository, 'readPreset'> = {
+  async readPreset({ documentGraphNodeIds, presetId, projectId }) {
+    assert.deepEqual(documentGraphNodeIds, ['document:spec']);
+    assert.equal(presetId, 'recent-relations');
+    assert.equal(projectId, 'project-a');
+    return {
+      edges: [{ id: '3', label: 'AUTHORED', properties: {}, source: '1', target: '2' }],
+      nodes: [
+        { id: '1', label: 'Ada', labels: ['Actor'], properties: {} },
+        {
+          id: '2',
+          label: 'Spec',
+          labels: ['Document'],
+          properties: { documentId: 'doc-a' },
+        },
+      ],
+      preview: 'provider-owned preview LIMIT 500',
+      rawRows: [{ source: 'bounded-provider-row' }],
+      rowCount: 1,
+      truncated: false,
+    };
+  },
+};
+
+function createOptions() {
+  return { graphReadRepository, repository: createRepository() };
 }
 
 test('parsePublicGraphRequestBody accepts queryId, limit, and period bounds', () => {
@@ -119,7 +131,7 @@ test('parsePublicGraphRequestBody rejects invalid period bounds', () => {
 test('runPublicGraphApi returns 404 when public project is not found', async () => {
   const result = await runPublicGraphApi(
     { projectSlug: 'missing-public', queryId: 'recent-relations' },
-    { repository: createRepository() },
+    createOptions(),
   );
   if (result.status === 200) {
     assert.fail('expected public project lookup to fail');
@@ -131,7 +143,7 @@ test('runPublicGraphApi returns 404 when public project is not found', async () 
 test('runPublicGraphApi returns 200 for an accessible public project', async () => {
   const result = await runPublicGraphApi(
     { limit: 50, projectSlug: 'sample-a', queryId: 'recent-relations' },
-    { repository: createRepository() },
+    createOptions(),
   );
   assert.equal(result.status, 200);
   if (result.status !== 200) {
@@ -145,7 +157,7 @@ test('runPublicGraphApi returns 200 for an accessible public project', async () 
 test('runPublicGraphApi returns 400 for unknown queryId', async () => {
   const result = await runPublicGraphApi(
     { projectSlug: 'sample-a', queryId: 'unknown-preset' },
-    { repository: createRepository() },
+    createOptions(),
   );
   if (result.status === 200) {
     assert.fail('expected unknown preset to fail');
@@ -157,7 +169,7 @@ test('runPublicGraphApi returns 400 for unknown queryId', async () => {
 test('runPublicGraphApi returns 400 for invalid limit', async () => {
   const result = await runPublicGraphApi(
     { limit: 0, projectSlug: 'sample-a', queryId: 'recent-relations' },
-    { repository: createRepository() },
+    createOptions(),
   );
   if (result.status === 200) {
     assert.fail('expected invalid limit to fail');

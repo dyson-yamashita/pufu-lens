@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MemoryObjectStorage } from '../../../packages/storage/src/testing.ts';
+import { SYNTHETIC_MONITOR_RELATION_TYPES } from './synthetic-monitor-contract.ts';
+import { runSyntheticMonitorObservations } from './synthetic-monitor-service.ts';
 import {
-  runSyntheticMonitorObservations,
-  type SyntheticMonitorRepository,
-} from './synthetic-monitor-service.ts';
+  createSyntheticMonitorTestGraphReadRepository,
+  type SyntheticMonitorTestRepository,
+} from './synthetic-monitor-test-graph.ts';
 
 const project = {
   id: '11111111-1111-4111-8111-111111111111',
   slug: 'sample-a',
-  graphName: 'graph_sample_a',
 };
 
 const gmailSource = {
@@ -163,6 +164,19 @@ test('stage observations mark insufficient expected relations as graph failed', 
   assertNoSensitivePayload(response);
 });
 
+test('stage observations pass the canonical relation allowlist to graph reads', async () => {
+  let receivedRelationTypes: readonly string[] | undefined;
+  await observeGmail(
+    createMockRepository({
+      async countGraphRelations(input) {
+        receivedRelationTypes = input.relationTypes;
+        return { SENT: 1 };
+      },
+    }),
+  );
+  assert.deepEqual(receivedRelationTypes, SYNTHETIC_MONITOR_RELATION_TYPES);
+});
+
 test('stage observations report full success across raw document chunk and graph', async () => {
   const response = await observeGmail(
     createMockRepository({
@@ -185,13 +199,14 @@ test('stage observations report full success across raw document chunk and graph
 });
 
 async function observeGmail(
-  repository: SyntheticMonitorRepository,
+  repository: SyntheticMonitorTestRepository,
   source: typeof gmailSource & {
     expectedRelations?: { type: 'SENT'; minCount: number }[];
   } = gmailSource,
 ) {
   return runSyntheticMonitorObservations({
     allowedProjectSlugs: ['sample-a'],
+    graphReadRepository: createSyntheticMonitorTestGraphReadRepository(repository),
     repository,
     storage: new MemoryObjectStorage(),
     request: { projectSlug: 'sample-a', sources: [source] },
@@ -199,8 +214,8 @@ async function observeGmail(
 }
 
 function createMockRepository(
-  overrides: Partial<SyntheticMonitorRepository> = {},
-): SyntheticMonitorRepository {
+  overrides: Partial<SyntheticMonitorTestRepository> = {},
+): SyntheticMonitorTestRepository {
   return {
     async lookupProject(slug) {
       return slug === project.slug ? project : null;

@@ -534,28 +534,6 @@ export function createProjectChatTools(
     }
     return projectId;
   };
-  const graphNameFromContext = (
-    context:
-      | {
-          requestContext?:
-            | { get<T>(key: string): T }
-            | {
-                graphName?: string | null;
-              };
-        }
-      | undefined,
-  ): string | null => {
-    const requestContext = context?.requestContext;
-    if (requestContext && 'get' in requestContext && typeof requestContext.get === 'function') {
-      return requestContext.get<string | null>('graphName') ?? null;
-    }
-    return requestContext &&
-      'graphName' in requestContext &&
-      typeof requestContext.graphName === 'string'
-      ? requestContext.graphName
-      : null;
-  };
-
   return {
     documentFetch: createTool({
       id: mastraToolIds.documentFetch,
@@ -584,7 +562,6 @@ export function createProjectChatTools(
       requestContextSchema: mastraProjectContextSchema,
       execute: async ({ limit, query, seedDocumentIds }, context) => {
         const result = await repository.graphQueryWithStatus({
-          graphName: graphNameFromContext(context),
           limit,
           projectId: projectIdFromContext(context),
           query,

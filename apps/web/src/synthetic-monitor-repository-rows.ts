@@ -32,7 +32,6 @@ export function parseSyntheticMonitorProjectRow(
   return {
     id: parseUuid(row.id, 'project.id'),
     slug: parseProjectSlug(row.slug, 'project.slug'),
-    graphName: parseGraphName(row.graphName, 'project.graphName'),
   };
 }
 
@@ -244,14 +243,6 @@ function parseProjectSlug(value: unknown, label: string): string {
   const text = parseNonEmptyString(value, label);
   if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(text)) {
     throw new Error(`Invalid ${label}: expected lowercase slug.`);
-  }
-  return text;
-}
-
-function parseGraphName(value: unknown, label: string): string {
-  const text = parseNonEmptyString(value, label);
-  if (!/^[a-z][a-z0-9_]*$/.test(text)) {
-    throw new Error(`Invalid ${label}: expected graph name.`);
   }
   return text;
 }

@@ -1,10 +1,21 @@
-import { createHash } from 'node:crypto';
+import type {
+  GraphPresetId,
+  GraphPresetReadResult,
+  GraphReadEdge,
+  GraphReadNode,
+  GraphReadRepository,
+} from '@pufu-lens/graph';
+import { validateGraphName } from '@pufu-lens/project-tenancy';
 import type postgres from 'postgres';
 import { getRequiredAdminSql } from './admin-sql.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
 import { graphPropertyString as propertyString } from './graph-property-utils.ts';
+import {
+  ageGraphPresetPreview,
+  createPostgresAgeGraphReadRepository,
+} from './postgres-graph-read-adapter.ts';
 
-export type GraphPresetId = 'actor-documents' | 'recent-relations';
+export type { GraphPresetId } from '@pufu-lens/graph';
 
 export type GraphPresetSummary = {
   readonly defaultLimit: number;
@@ -15,12 +26,7 @@ export type GraphPresetSummary = {
   readonly preview: string;
 };
 
-export type GraphViewerNode = {
-  readonly id: string;
-  readonly label: string;
-  readonly labels: readonly string[];
-  readonly properties: Record<string, unknown>;
-};
+export type GraphViewerNode = GraphReadNode;
 
 export type GraphViewerDocumentChunk = {
   readonly chunkIndex: number;
@@ -31,13 +37,7 @@ export type GraphViewerDocumentChunk = {
   readonly metadata: Record<string, unknown>;
 };
 
-export type GraphViewerEdge = {
-  readonly id: string;
-  readonly label: string;
-  readonly properties: Record<string, unknown>;
-  readonly source: string;
-  readonly target: string;
-};
+export type GraphViewerEdge = GraphReadEdge;
 
 export type GraphPeriodFilter = {
   readonly periodEnd?: string;
@@ -53,7 +53,7 @@ export type GraphQueryResult = {
   readonly periodEnd?: string;
   readonly periodStart?: string;
   readonly preset: GraphPresetSummary;
-  readonly rawRows: readonly Record<string, unknown>[];
+  readonly rawRows: readonly Readonly<Record<string, unknown>>[];
   readonly rowCount: number;
   readonly truncated: boolean;
 };
@@ -65,20 +65,9 @@ export type GraphProjectAccess = {
   readonly slug: string;
 };
 
-type GraphPreset = Omit<GraphPresetSummary, 'preview'> & {
-  readonly cypherBody: string;
-  readonly maxEdges: number;
-  readonly maxNodes: number;
-  readonly recordDefinition: string;
-};
+type GraphPreset = Omit<GraphPresetSummary, 'preview'>;
 
 export interface GraphViewerRepository {
-  executePreset(input: {
-    cypher: string;
-    graphName: string;
-    parameters: Record<string, unknown>;
-    preset: GraphPreset;
-  }): Promise<readonly Record<string, unknown>[]>;
   selectEligibleDocumentGraphNodeIds(input: {
     limit: number;
     periodEnd?: string;
@@ -135,54 +124,22 @@ export class GraphPeriodError extends Error {
   }
 }
 
-const GRAPH_PRESET_DOCUMENT_IDS_PARAM = 'documentGraphNodeIds';
-
 export const GRAPH_PRESETS: readonly GraphPreset[] = [
   {
-    cypherBody: [
-      'MATCH (doc:Document)',
-      'WHERE doc.graphNodeId IN $documentGraphNodeIds',
-      'MATCH (doc)-[relation]-(neighbor)',
-      "WHERE 'Actor' IN labels(neighbor) OR 'Topic' IN labels(neighbor)",
-      "OR ('Document' IN labels(neighbor) AND neighbor.graphNodeId IN $documentGraphNodeIds AND doc.graphNodeId <= neighbor.graphNodeId)",
-      'RETURN doc AS source, relation, neighbor AS target',
-    ].join(' '),
     defaultLimit: GRAPH_DEFAULT_LIMIT,
     description: 'Document、Actor、Topic など、直近の関係を横断して確認します。',
     id: 'recent-relations',
     label: 'Recent Relations',
-    maxEdges: GRAPH_MAX_LIMIT,
     maxLimit: GRAPH_MAX_LIMIT,
-    maxNodes: 600,
-    recordDefinition: 'source agtype, relation agtype, target agtype',
   },
   {
-    cypherBody: [
-      'MATCH (source:Actor)-[relation]->(target:Document)',
-      'WHERE target.graphNodeId IN $documentGraphNodeIds',
-      'RETURN source, relation, target',
-    ].join(' '),
     defaultLimit: GRAPH_DEFAULT_LIMIT,
     description: 'Actor から Document への関係を確認します。',
     id: 'actor-documents',
     label: 'Actors to Documents',
-    maxEdges: GRAPH_MAX_LIMIT,
     maxLimit: GRAPH_MAX_LIMIT,
-    maxNodes: 600,
-    recordDefinition: 'source agtype, relation agtype, target agtype',
   },
 ];
-
-/**
- * Builds the server-owned preset Cypher query with a fixed raw result-row safety limit.
- *
- * @param preset - The graph preset whose maxEdges bound is applied
- * @returns The preset Cypher body with a numeric LIMIT that cannot be controlled by request input
- */
-export function buildPresetCypher(preset: GraphPreset): string {
-  const maxResultRows = validatePresetResultRowLimit(preset.maxEdges);
-  return `${preset.cypherBody} LIMIT ${maxResultRows}`;
-}
 
 /**
  * Lists the available graph presets.
@@ -196,7 +153,7 @@ export function listGraphPresets(): readonly GraphPresetSummary[] {
     id: preset.id,
     label: preset.label,
     maxLimit: preset.maxLimit,
-    preview: buildPresetCypher(preset),
+    preview: ageGraphPresetPreview(preset.id),
   }));
 }
 
@@ -219,8 +176,13 @@ export function getGraphPreset(queryId: string): GraphPreset {
  * Runs a graph preset query for an accessible project.
  *
  * @param input - Query parameters including the project, preset ID, and optional limit.
- * @param options - Repository used to resolve project access and execute the preset.
+ * @param options - Relational access repository and required project-scoped graph read repository.
  * @returns The normalized graph result, including preset metadata, raw rows, and the applied limit.
+ * @throws {GraphAccessDeniedError} When membership cannot be resolved for the project.
+ * @throws {GraphPresetNotFoundError} When the preset ID is unknown.
+ * @throws {GraphLimitError} When the requested limit is outside the preset bounds.
+ * @throws {GraphPeriodError} When the period filter is invalid.
+ * Provider read errors are propagated to the authenticated API boundary.
  */
 export async function runGraphPresetQuery(
   input: {
@@ -231,7 +193,10 @@ export async function runGraphPresetQuery(
     queryId: string;
     userId: string;
   },
-  options: { repository: GraphViewerRepository },
+  options: {
+    graphReadRepository: Pick<GraphReadRepository, 'readPreset'>;
+    repository: GraphViewerRepository;
+  },
 ): Promise<GraphQueryResult> {
   const project = await options.repository.lookupProjectMember({
     projectSlug: input.projectSlug,
@@ -248,7 +213,12 @@ export async function runGraphPresetQuery(
 
   return executeGraphPresetForProject(
     { limit: input.limit, period, queryId: input.queryId },
-    { graphName: project.graphName, projectId: project.id, repository: options.repository },
+    {
+      graphName: project.graphName,
+      graphReadRepository: options.graphReadRepository,
+      projectId: project.id,
+      repository: options.repository,
+    },
   );
 }
 
@@ -256,8 +226,13 @@ export async function runGraphPresetQuery(
  * Runs a graph preset query for a public project without requiring member authentication.
  *
  * @param input - Query parameters including the project, preset ID, and optional limit.
- * @param options - Repository used to resolve public project access and execute the preset.
+ * @param options - Relational public-access repository and required project-scoped graph read repository.
  * @returns The normalized graph result, including preset metadata, raw rows, and the applied limit.
+ * @throws {GraphAccessDeniedError} When the project is not publicly accessible.
+ * @throws {GraphPresetNotFoundError} When the preset ID is unknown.
+ * @throws {GraphLimitError} When the requested limit is outside the preset bounds.
+ * @throws {GraphPeriodError} When the period filter is invalid.
+ * Provider read errors are propagated to the public API boundary.
  */
 export async function runPublicGraphPresetQuery(
   input: {
@@ -267,7 +242,10 @@ export async function runPublicGraphPresetQuery(
     projectSlug: string;
     queryId: string;
   },
-  options: { repository: GraphViewerRepository },
+  options: {
+    graphReadRepository: Pick<GraphReadRepository, 'readPreset'>;
+    repository: GraphViewerRepository;
+  },
 ): Promise<GraphQueryResult> {
   const project = await options.repository.lookupPublicProject({
     projectSlug: input.projectSlug,
@@ -283,7 +261,12 @@ export async function runPublicGraphPresetQuery(
 
   return executeGraphPresetForProject(
     { limit: input.limit, period, queryId: input.queryId },
-    { graphName: project.graphName, projectId: project.id, repository: options.repository },
+    {
+      graphName: project.graphName,
+      graphReadRepository: options.graphReadRepository,
+      projectId: project.id,
+      repository: options.repository,
+    },
   );
 }
 
@@ -291,63 +274,45 @@ async function executeGraphPresetForProject(
   input: { limit?: unknown; period: GraphPeriodFilter; queryId: string },
   options: {
     graphName: string;
+    graphReadRepository: Pick<GraphReadRepository, 'readPreset'>;
     projectId: string;
-    repository: Pick<GraphViewerRepository, 'executePreset' | 'selectEligibleDocumentGraphNodeIds'>;
+    repository: Pick<GraphViewerRepository, 'selectEligibleDocumentGraphNodeIds'>;
   },
 ): Promise<GraphQueryResult> {
   const preset = getGraphPreset(input.queryId);
   const limit = normalizeGraphLimit(input.limit ?? preset.defaultLimit, preset.maxLimit);
-  const cypher = buildPresetCypher(preset);
   const documentGraphNodeIds = await options.repository.selectEligibleDocumentGraphNodeIds({
     limit,
     periodEnd: input.period.periodEnd,
     periodStart: input.period.periodStart,
     projectId: options.projectId,
   });
-  if (documentGraphNodeIds.length === 0) {
-    return buildGraphQueryResult({
-      cypher,
-      graphName: options.graphName,
-      limit,
-      period: input.period,
-      preset,
-      rows: [],
-    });
-  }
-
-  const parameters = { [GRAPH_PRESET_DOCUMENT_IDS_PARAM]: documentGraphNodeIds };
-  const rows = await options.repository.executePreset({
-    cypher,
-    graphName: options.graphName,
-    parameters,
-    preset,
+  const graph = await options.graphReadRepository.readPreset({
+    documentGraphNodeIds,
+    presetId: preset.id,
+    projectId: options.projectId,
   });
   return buildGraphQueryResult({
-    cypher,
+    graph,
     graphName: options.graphName,
     limit,
     period: input.period,
     preset,
-    rows,
   });
 }
 
 function buildGraphQueryResult(input: {
-  cypher: string;
+  graph: GraphPresetReadResult;
   graphName: string;
   limit: number;
   period: GraphPeriodFilter;
   preset: GraphPreset;
-  rows: readonly Record<string, unknown>[];
 }): GraphQueryResult {
-  const normalized = normalizeGraphRows(input.rows, {
-    maxEdges: input.preset.maxEdges,
-    maxNodes: input.preset.maxNodes,
-  });
-
   return {
-    ...normalized,
-    documentCount: countGraphDocumentNodes(normalized.nodes),
+    edges: input.graph.edges,
+    nodes: input.graph.nodes,
+    truncated: input.graph.truncated,
+    documentCount: countGraphDocumentNodes(input.graph.nodes),
     graphName: input.graphName,
     limit: input.limit,
     ...(input.period.periodStart ? { periodStart: input.period.periodStart } : {}),
@@ -358,10 +323,10 @@ function buildGraphQueryResult(input: {
       id: input.preset.id,
       label: input.preset.label,
       maxLimit: input.preset.maxLimit,
-      preview: input.cypher,
+      preview: input.graph.preview,
     },
-    rawRows: input.rows.map(safeRawRow),
-    rowCount: input.rows.length,
+    rawRows: input.graph.rawRows,
+    rowCount: input.graph.rowCount,
   };
 }
 
@@ -492,28 +457,12 @@ function normalizeOptionalIsoDate(value: unknown, fieldName: string): string | u
 /**
  * Creates a PostgreSQL-backed graph viewer repository.
  *
- * @returns A repository that executes preset graph queries, loads document chunks, and looks up project graph access.
+ * @returns A relational repository that loads document chunks and looks up project graph access.
  */
 export function createPostgresGraphViewerRepository(
   sql: postgres.Sql = getRequiredAdminSql(),
 ): GraphViewerRepository {
   return {
-    async executePreset({ cypher, graphName, parameters, preset }) {
-      const safeGraphName = validateGraphName(graphName);
-      const safeRecordDefinition = validateRecordDefinition(preset.recordDefinition);
-      return sql.begin(async (transaction) => {
-        await transaction`SET TRANSACTION READ ONLY`;
-        await transaction`LOAD 'age'`;
-        await transaction`SET LOCAL search_path = ag_catalog, "$user", public`;
-        await transaction`SET LOCAL statement_timeout = '5000ms'`;
-        return transaction.unsafe(
-          `SELECT * FROM cypher(${sqlString(safeGraphName)}, ${dollarQuote(
-            cypher,
-          )}, $1::agtype) AS (${safeRecordDefinition})`,
-          [JSON.stringify(parameters)],
-        ) as Promise<readonly Record<string, unknown>[]>;
-      });
-    },
     async selectEligibleDocumentGraphNodeIds({ limit, periodEnd, periodStart, projectId }) {
       return sql.begin(async (transaction) => {
         await transaction`SET TRANSACTION READ ONLY`;
@@ -608,217 +557,15 @@ export function createPostgresGraphViewerRepository(
   };
 }
 
-export function normalizeGraphRows(
-  rows: readonly Record<string, unknown>[],
-  limits: { maxEdges: number; maxNodes: number },
-): Pick<GraphQueryResult, 'edges' | 'nodes' | 'truncated'> {
-  const nodes = new Map<string, GraphViewerNode>();
-  const edges = new Map<string, GraphViewerEdge>();
-  let truncated = false;
-
-  for (const row of rows) {
-    for (const value of Object.values(row)) {
-      collectGraphValue(value, { edges, limits, nodes, truncated: () => (truncated = true) });
-    }
-  }
-
+/** Composes the provider-neutral graph reader with Graph Viewer relational capabilities. */
+export function createPostgresGraphViewerDependencies(sql: postgres.Sql = getRequiredAdminSql()): {
+  readonly graphReadRepository: GraphReadRepository;
+  readonly repository: GraphViewerRepository;
+} {
   return {
-    edges: [...edges.values()],
-    nodes: [...nodes.values()],
-    truncated,
+    graphReadRepository: createPostgresAgeGraphReadRepository(sql),
+    repository: createPostgresGraphViewerRepository(sql),
   };
-}
-
-function collectGraphValue(
-  value: unknown,
-  state: {
-    edges: Map<string, GraphViewerEdge>;
-    limits: { maxEdges: number; maxNodes: number };
-    nodes: Map<string, GraphViewerNode>;
-    truncated: () => void;
-  },
-): void {
-  const parsed = parseGraphValue(value);
-  if (!parsed) {
-    return;
-  }
-  if (Array.isArray(parsed)) {
-    for (const item of parsed) {
-      collectGraphValue(item, state);
-    }
-    return;
-  }
-  if (isParsedNode(parsed)) {
-    if (state.nodes.size >= state.limits.maxNodes && !state.nodes.has(parsed.id)) {
-      state.truncated();
-      return;
-    }
-    state.nodes.set(parsed.id, parsed);
-    return;
-  }
-  if (isParsedEdge(parsed)) {
-    if (state.edges.size >= state.limits.maxEdges && !state.edges.has(parsed.id)) {
-      state.truncated();
-      return;
-    }
-    state.edges.set(parsed.id, parsed);
-  }
-}
-
-function parseGraphValue(
-  value: unknown,
-): GraphViewerNode | GraphViewerEdge | unknown[] | undefined {
-  if (typeof value === 'string') {
-    return parseTypedAgtype(value.trim());
-  }
-  if (Array.isArray(value)) {
-    return value;
-  }
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  if (isParsedNode(value) || isParsedEdge(value)) {
-    return value;
-  }
-  if (isAgeVertexRecord(value)) {
-    return vertexRecordToNode(value);
-  }
-  if (isAgeEdgeRecord(value)) {
-    return edgeRecordToEdge(value);
-  }
-  if (Array.isArray(value.vertices) || Array.isArray(value.edges)) {
-    return [
-      ...((value.vertices as unknown[] | undefined) ?? []),
-      ...((value.edges as unknown[] | undefined) ?? []),
-    ];
-  }
-  return undefined;
-}
-
-function parseTypedAgtype(
-  value: string,
-): GraphViewerNode | GraphViewerEdge | unknown[] | undefined {
-  if (!value) {
-    return undefined;
-  }
-  try {
-    if (value.endsWith('::vertex')) {
-      return vertexRecordToNode(
-        JSON.parse(value.slice(0, -'::vertex'.length)) as Record<string, unknown>,
-      );
-    }
-    if (value.endsWith('::edge')) {
-      return edgeRecordToEdge(
-        JSON.parse(value.slice(0, -'::edge'.length)) as Record<string, unknown>,
-      );
-    }
-  } catch {
-    return undefined;
-  }
-  if (value.endsWith('::path')) {
-    const body = value.slice(0, -'::path'.length);
-    return parsePathItems(body);
-  }
-  return undefined;
-}
-
-function parsePathItems(value: string): unknown[] {
-  const items: unknown[] = [];
-  let depth = 0;
-  let start = -1;
-  let inString = false;
-
-  for (let index = 0; index < value.length; index += 1) {
-    const character = value[index];
-    if (character === '"' && !isEscaped(value, index)) {
-      inString = !inString;
-      continue;
-    }
-    if (inString) {
-      continue;
-    }
-    if (character === '{') {
-      if (depth === 0) {
-        start = index;
-      }
-      depth += 1;
-      continue;
-    }
-    if (character !== '}') {
-      continue;
-    }
-    depth -= 1;
-    if (depth < 0) {
-      depth = 0;
-      start = -1;
-      continue;
-    }
-    if (depth === 0 && start !== -1) {
-      const suffix = value.slice(index + 1).match(/^::(?:vertex|edge)/)?.[0];
-      if (suffix) {
-        try {
-          const parsed = parseTypedAgtype(`${value.slice(start, index + 1)}${suffix}`);
-          if (parsed) {
-            items.push(parsed);
-          }
-        } catch {
-          // Ignore malformed path fragments and continue parsing later items.
-        }
-        index += suffix.length;
-      }
-      start = -1;
-    }
-  }
-  return items;
-}
-
-function isEscaped(value: string, index: number): boolean {
-  let backslashCount = 0;
-  for (let cursor = index - 1; cursor >= 0 && value[cursor] === '\\'; cursor -= 1) {
-    backslashCount += 1;
-  }
-  return backslashCount % 2 === 1;
-}
-
-function vertexRecordToNode(value: Record<string, unknown>): GraphViewerNode {
-  const id = String(value.id ?? value.graphNodeId ?? value.graph_node_id ?? '');
-  const label = String(value.label ?? 'Node');
-  const properties = isRecord(value.properties) ? value.properties : {};
-  const graphNodeId =
-    propertyString(properties, 'graphNodeId') ?? propertyString(properties, 'graph_node_id');
-  return {
-    id,
-    label: displayNodeLabel(label, properties),
-    labels: [label],
-    properties: { ...properties, ageId: id, graphNodeId },
-  };
-}
-
-function edgeRecordToEdge(value: Record<string, unknown>): GraphViewerEdge {
-  const id = String(value.id ?? stableId(value));
-  const label = String(value.label ?? 'RELATED');
-  const properties = isRecord(value.properties) ? value.properties : {};
-  return {
-    id,
-    label,
-    properties,
-    source: String(value.start_id ?? value.startId ?? value.source ?? ''),
-    target: String(value.end_id ?? value.endId ?? value.target ?? ''),
-  };
-}
-
-function displayNodeLabel(label: string, properties: Record<string, unknown>): string {
-  return (
-    propertyString(properties, 'title') ??
-    propertyString(properties, 'displayName') ??
-    propertyString(properties, 'display_name') ??
-    propertyString(properties, 'name') ??
-    propertyString(properties, 'canonicalUri') ??
-    propertyString(properties, 'canonical_uri') ??
-    propertyString(properties, 'target') ??
-    propertyString(properties, 'graphNodeId') ??
-    label
-  );
 }
 
 /**
@@ -871,84 +618,6 @@ function requireNumber(value: unknown, label: string): number {
     throw new Error(`Invalid ${label}.`);
   }
   return value;
-}
-
-function isAgeVertexRecord(value: Record<string, unknown>): boolean {
-  return 'id' in value && 'label' in value && 'properties' in value && !('start_id' in value);
-}
-
-function isAgeEdgeRecord(value: Record<string, unknown>): boolean {
-  return 'id' in value && 'label' in value && 'start_id' in value && 'end_id' in value;
-}
-
-function isParsedNode(value: unknown): value is GraphViewerNode {
-  return isRecord(value) && typeof value.id === 'string' && Array.isArray(value.labels);
-}
-
-function isParsedEdge(value: unknown): value is GraphViewerEdge {
-  return (
-    isRecord(value) &&
-    typeof value.id === 'string' &&
-    typeof value.source === 'string' &&
-    typeof value.target === 'string'
-  );
-}
-
-function safeRawRow(row: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(row).map(([key, value]) => [key, rawValuePreview(value)]),
-  );
-}
-
-function rawValuePreview(value: unknown): unknown {
-  if (typeof value === 'string') {
-    return value.length > 2_000 ? `${value.slice(0, 2_000)}...` : value;
-  }
-  if (Array.isArray(value)) {
-    return value.slice(0, 20).map(rawValuePreview);
-  }
-  if (isRecord(value)) {
-    return Object.fromEntries(
-      Object.entries(value)
-        .slice(0, 40)
-        .map(([key, nested]) => [key, rawValuePreview(nested)]),
-    );
-  }
-  return value;
-}
-
-function stableId(value: unknown): string {
-  return createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 16);
-}
-
-function dollarQuote(value: string): string {
-  const tag = `$pufu_${createHash('sha256').update(value).digest('hex')}$`;
-  return `${tag}${value}${tag}`;
-}
-
-function sqlString(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
-}
-
-function validateGraphName(graphName: string): string {
-  if (!/^graph_[a-z0-9_]+$/.test(graphName) || graphName.length > 63) {
-    throw new Error(`Invalid AGE graph name: ${graphName}`);
-  }
-  return graphName;
-}
-
-function validateRecordDefinition(value: string): string {
-  if (!/^[a-z_]+ agtype(?:, [a-z_]+ agtype)*$/.test(value)) {
-    throw new Error(`Invalid graph preset record definition: ${value}`);
-  }
-  return value;
-}
-
-function validatePresetResultRowLimit(maxEdges: number): number {
-  if (!Number.isInteger(maxEdges) || maxEdges < GRAPH_MIN_LIMIT || maxEdges > GRAPH_MAX_LIMIT) {
-    throw new Error(`Invalid graph preset result row limit: ${String(maxEdges)}`);
-  }
-  return maxEdges;
 }
 
 function parseEligibleDocumentGraphNodeIdRow(row: unknown): string {

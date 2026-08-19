@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import type { GraphRelationType } from '@pufu-lens/graph';
 import postgres from 'postgres';
 import { MemoryObjectStorage } from '../../../packages/storage/src/testing.ts';
+import { createPostgresAgeGraphReadRepository } from './postgres-graph-read-adapter.ts';
 import { createPostgresSyntheticMonitorRepository } from './synthetic-monitor-repository.ts';
 import { runSyntheticMonitorObservations } from './synthetic-monitor-service.ts';
 
@@ -11,6 +13,7 @@ if (!databaseUrl) {
 }
 
 const sql = postgres(databaseUrl, { max: 1 });
+const graphReadRepository = createPostgresAgeGraphReadRepository(sql);
 
 const projectAId = '64600000-0000-0000-0000-000000000001';
 const projectBId = '64600000-0000-0000-0000-000000000002';
@@ -47,6 +50,7 @@ async function assertSuccessfulObservationRoundTrip() {
   const repository = createPostgresSyntheticMonitorRepository(sql);
   const response = await runSyntheticMonitorObservations({
     allowedProjectSlugs: ['issue-646-monitor-a'],
+    graphReadRepository,
     repository,
     storage: new MemoryObjectStorage(),
     request: {
@@ -80,6 +84,7 @@ async function assertProjectBoundary() {
   const repository = createPostgresSyntheticMonitorRepository(sql);
   const response = await runSyntheticMonitorObservations({
     allowedProjectSlugs: ['issue-646-monitor-b'],
+    graphReadRepository,
     repository,
     storage: new MemoryObjectStorage(),
     request: {
@@ -96,6 +101,7 @@ async function assertReadonlyObservations() {
   const repository = createPostgresSyntheticMonitorRepository(sql);
   await runSyntheticMonitorObservations({
     allowedProjectSlugs: ['issue-646-monitor-a'],
+    graphReadRepository,
     repository,
     storage: new MemoryObjectStorage(),
     request: {
@@ -129,8 +135,8 @@ async function readFixtureSnapshot() {
     raw: rawRows[0] ?? null,
     document: documentRows[0] ?? null,
     chunks: chunkRows[0] ?? { total: 0, withEmbedding: 0 },
-    graphNodeCount: await countGraphDocumentNode(graphNameA, graphNodeId),
-    sentRelationCount: await countGraphRelation(graphNameA, graphNodeId, 'SENT'),
+    graphNodeCount: await countGraphDocumentNode(projectAId, graphNodeId),
+    sentRelationCount: await countGraphRelation(projectAId, graphNodeId, 'SENT'),
   };
 }
 
@@ -272,20 +278,19 @@ async function runCypher(
   );
 }
 
-async function countGraphDocumentNode(targetGraphName: string, nodeId: string): Promise<number> {
-  const repository = createPostgresSyntheticMonitorRepository(sql);
-  return repository.countGraphDocumentNode({ graphName: targetGraphName, graphNodeId: nodeId });
+async function countGraphDocumentNode(projectId: string, nodeId: string): Promise<number> {
+  return graphReadRepository.countDocumentNode({ graphNodeId: nodeId, projectId });
 }
 
 async function countGraphRelation(
-  targetGraphName: string,
+  projectId: string,
   nodeId: string,
-  relationType: string,
+  relationType: GraphRelationType,
 ): Promise<number> {
-  const repository = createPostgresSyntheticMonitorRepository(sql);
-  const counts = await repository.countGraphRelations({
-    graphName: targetGraphName,
+  const counts = await graphReadRepository.countRelations({
     graphNodeId: nodeId,
+    projectId,
+    relationTypes: [relationType],
   });
   return counts[relationType] ?? 0;
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
+import type { GraphReadRepository } from '@pufu-lens/graph';
 import {
-  buildPresetCypher,
   countGraphDocumentNodes,
   fetchGraphDocumentChunks,
   GraphAccessDeniedError,
@@ -14,11 +14,11 @@ import {
   listGraphPresets,
   normalizeGraphLimit,
   normalizeGraphPeriodFilter,
-  normalizeGraphRows,
   parseEligibleDocumentGraphNodeIdRows,
   runGraphPresetQuery,
   runPublicGraphPresetQuery,
 } from './graph-viewer.ts';
+import { normalizeAgeGraphRows as normalizeGraphRows } from './postgres-graph-read-adapter.ts';
 
 const actor = {
   id: '1',
@@ -157,25 +157,27 @@ assert.throws(
 
 const recentPreset = getGraphPreset('recent-relations');
 assert.equal(recentPreset.defaultLimit, 50);
-assert.match(buildPresetCypher(recentPreset), /LIMIT 500$/);
-assert.match(recentPreset.cypherBody, /doc\.graphNodeId <= neighbor\.graphNodeId/u);
+
+function createGraphReadRepository(
+  expectedDocumentIds = ['document:spec'],
+): Pick<GraphReadRepository, 'readPreset'> {
+  return {
+    async readPreset({ documentGraphNodeIds, presetId, projectId }) {
+      assert.deepEqual(documentGraphNodeIds, expectedDocumentIds);
+      assert.equal(presetId, 'recent-relations');
+      assert.equal(projectId, 'project-a');
+      return {
+        ...normalized,
+        preview: listGraphPresets().find((preset) => preset.id === presetId)?.preview ?? 'preview',
+        rawRows: [{ source: 'bounded-provider-row' }],
+        rowCount: 1,
+      };
+    },
+  };
+}
 
 function createRepository(expectedLimit = 200): GraphViewerRepository {
   return {
-    async executePreset({ cypher, graphName, parameters, preset }) {
-      assert.equal(graphName, 'graph_sample_a');
-      assert.equal(preset.id, 'recent-relations');
-      assert.match(cypher, /\$documentGraphNodeIds/u);
-      assert.match(cypher, /LIMIT 500$/);
-      assert.deepEqual(parameters.documentGraphNodeIds, ['document:spec']);
-      return [
-        {
-          relation: `${JSON.stringify(edge)}::edge`,
-          source: `${JSON.stringify(actor)}::vertex`,
-          target: `${JSON.stringify(document)}::vertex`,
-        },
-      ];
-    },
     async fetchDocumentChunks({ documentIds, projectId }) {
       assert.equal(projectId, 'project-a');
       assert.deepEqual(documentIds, ['doc-a']);
@@ -217,7 +219,7 @@ function createRepository(expectedLimit = 200): GraphViewerRepository {
 
 const result = await runGraphPresetQuery(
   { limit: 200, projectSlug: 'sample-a', queryId: 'recent-relations', userId: 'user-a' },
-  { repository: createRepository() },
+  { graphReadRepository: createGraphReadRepository(), repository: createRepository() },
 );
 assert.equal(result.graphName, 'graph_sample_a');
 assert.equal(result.limit, 200);
@@ -231,7 +233,7 @@ assert.equal(result.rowCount, 1);
 
 const publicResult = await runPublicGraphPresetQuery(
   { limit: 50, projectSlug: 'sample-a', queryId: 'recent-relations' },
-  { repository: createRepository(50) },
+  { graphReadRepository: createGraphReadRepository(), repository: createRepository(50) },
 );
 assert.equal(publicResult.graphName, 'graph_sample_a');
 assert.equal(publicResult.limit, 50);
@@ -240,9 +242,6 @@ assert.equal(publicResult.nodes.length, 2);
 
 const emptyGraphRepository: GraphViewerRepository = {
   ...createRepository(100),
-  async executePreset() {
-    return [];
-  },
   async selectEligibleDocumentGraphNodeIds() {
     return ['document:missing-a', 'document:missing-b', 'document:missing-c'];
   },
@@ -250,7 +249,21 @@ const emptyGraphRepository: GraphViewerRepository = {
 
 const emptyGraphResult = await runGraphPresetQuery(
   { limit: 100, projectSlug: 'sample-a', queryId: 'recent-relations', userId: 'user-a' },
-  { repository: emptyGraphRepository },
+  {
+    graphReadRepository: {
+      async readPreset() {
+        return {
+          edges: [],
+          nodes: [],
+          preview: listGraphPresets()[0]?.preview ?? 'preview',
+          rawRows: [],
+          rowCount: 0,
+          truncated: false,
+        };
+      },
+    },
+    repository: emptyGraphRepository,
+  },
 );
 assert.equal(emptyGraphResult.documentCount, 0);
 assert.equal(emptyGraphResult.nodes.length, 0);
@@ -258,20 +271,6 @@ assert.ok(emptyGraphResult.documentCount <= emptyGraphResult.limit);
 
 const periodRepository: GraphViewerRepository = {
   ...createRepository(100),
-  async executePreset({ parameters, preset, graphName, cypher }) {
-    assert.equal(graphName, 'graph_sample_a');
-    assert.equal(preset.id, 'recent-relations');
-    assert.match(cypher, /\$documentGraphNodeIds/u);
-    assert.match(cypher, /LIMIT 500$/);
-    assert.deepEqual(parameters.documentGraphNodeIds, ['document:period']);
-    return [
-      {
-        relation: `${JSON.stringify(edge)}::edge`,
-        source: `${JSON.stringify(actor)}::vertex`,
-        target: `${JSON.stringify(document)}::vertex`,
-      },
-    ];
-  },
   async selectEligibleDocumentGraphNodeIds({ periodEnd, periodStart }) {
     assert.equal(periodStart, '2026-01-01');
     assert.equal(periodEnd, '2026-01-31');
@@ -288,19 +287,18 @@ const periodResult = await runGraphPresetQuery(
     queryId: 'recent-relations',
     userId: 'user-a',
   },
-  { repository: periodRepository },
+  {
+    graphReadRepository: createGraphReadRepository(['document:period']),
+    repository: periodRepository,
+  },
 );
 assert.equal(periodResult.documentCount, 1);
 assert.equal(periodResult.periodStart, '2026-01-01');
 assert.equal(periodResult.periodEnd, '2026-01-31');
 
-let executePresetCalls = 0;
+let readPresetCalls = 0;
 const noEligibleDocumentsRepository: GraphViewerRepository = {
   ...createRepository(100),
-  async executePreset() {
-    executePresetCalls += 1;
-    assert.fail('executePreset should not be called when eligible document IDs are empty');
-  },
   async selectEligibleDocumentGraphNodeIds({ periodEnd, periodStart }) {
     assert.equal(periodStart, '2026-01-01');
     assert.equal(periodEnd, '2026-01-31');
@@ -317,9 +315,25 @@ const noEligibleResult = await runGraphPresetQuery(
     queryId: 'recent-relations',
     userId: 'user-a',
   },
-  { repository: noEligibleDocumentsRepository },
+  {
+    graphReadRepository: {
+      async readPreset({ documentGraphNodeIds }) {
+        readPresetCalls += 1;
+        assert.deepEqual(documentGraphNodeIds, []);
+        return {
+          edges: [],
+          nodes: [],
+          preview: listGraphPresets()[0]?.preview ?? 'preview',
+          rawRows: [],
+          rowCount: 0,
+          truncated: false,
+        };
+      },
+    },
+    repository: noEligibleDocumentsRepository,
+  },
 );
-assert.equal(executePresetCalls, 0);
+assert.equal(readPresetCalls, 1);
 assert.equal(noEligibleResult.documentCount, 0);
 assert.equal(noEligibleResult.rowCount, 0);
 assert.equal(noEligibleResult.nodes.length, 0);
@@ -337,7 +351,7 @@ await assert.rejects(
   () =>
     runPublicGraphPresetQuery(
       { projectSlug: 'missing-public', queryId: 'recent-relations' },
-      { repository: createRepository() },
+      { graphReadRepository: createGraphReadRepository(), repository: createRepository() },
     ),
   GraphAccessDeniedError,
 );
@@ -383,13 +397,12 @@ assert.match(presetSummary?.preview ?? '', /'Topic' IN labels\(neighbor\)/u);
 assert.match(presetSummary?.preview ?? '', /'Document' IN labels\(neighbor\)/u);
 assert.doesNotMatch(presetSummary?.preview ?? '', /neighbor:(?:Actor|Topic|Document)/u);
 assert.match(presetSummary?.preview ?? '', /LIMIT 500$/);
-assert.equal(presetSummary?.preview, buildPresetCypher(recentPreset));
 
 await assert.rejects(
   () =>
     runGraphPresetQuery(
       { projectSlug: 'sample-a', queryId: 'missing', userId: 'user-a' },
-      { repository: createRepository() },
+      { graphReadRepository: createGraphReadRepository(), repository: createRepository() },
     ),
   GraphPresetNotFoundError,
 );
@@ -398,7 +411,7 @@ await assert.rejects(
   () =>
     runGraphPresetQuery(
       { projectSlug: 'sample-b', queryId: 'recent-relations', userId: 'user-a' },
-      { repository: createRepository() },
+      { graphReadRepository: createGraphReadRepository(), repository: createRepository() },
     ),
   GraphAccessDeniedError,
 );

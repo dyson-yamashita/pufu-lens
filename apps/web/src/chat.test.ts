@@ -11,7 +11,6 @@ import {
   createPublicChatMemoryRateLimiter,
   embedPrivateChatQueries,
   graphQuerySearchPatterns,
-  graphRelationQueryRowLimit,
   hybridSearchCandidateLimit,
   inferChatEditingMetadata,
   inferPublicChatEditingMetadata,
@@ -30,9 +29,9 @@ import {
   privateChatSourcesForResponse,
   publicChatToolCallsFromPrivate,
   reciprocalRankFusionScore,
+  resolveGraphRelatedSources,
   runPrivateChat,
   runPublicChat,
-  selectGraphRelatedDocumentCandidates,
   shouldUseGraphRelatedSource,
   timelineSearchPatterns,
   trimPrivateChatHistoryContent,
@@ -51,6 +50,10 @@ import {
   mastraGenerateReportWorkflowStartUrl,
   runMastraGenerateReportWorkflow,
 } from './mastra-workflow.ts';
+import {
+  graphRelationQueryRowLimit,
+  selectGraphRelatedDocumentCandidates,
+} from './postgres-graph-read-adapter.ts';
 import { jsonParameter } from './postgres-json.ts';
 import { appendSpeechTranscript } from './speech-input.ts';
 import {
@@ -311,7 +314,6 @@ function createRepository(): ChatRepository & {
     async lookupProjectMember({ projectSlug, userId }) {
       return projectSlug === 'sample-a' && (userId === 'user-a' || userId === 'admin-a')
         ? {
-            graphName: 'graph_sample_a',
             hybridSearchDocumentLimit: 5,
             id: 'project-a',
             slug: 'sample-a',
@@ -323,8 +325,7 @@ function createRepository(): ChatRepository & {
       assert.equal(limit, 5);
       return [sampleSource];
     },
-    async graphCoverageQuery({ graphName, projectId, seedDocumentIds }) {
-      assert.equal(graphName, 'graph_sample_a');
+    async graphCoverageQuery({ projectId, seedDocumentIds }) {
       assert.equal(projectId, 'project-a');
       assert.deepEqual(seedDocumentIds, ['doc-a']);
       return {
@@ -342,8 +343,7 @@ function createRepository(): ChatRepository & {
         relationCandidateCounts: { MENTIONS: 0, RELATED_TO: 1, SAME_AS: 0 },
       };
     },
-    async graphQueryWithStatus({ graphName, limit, projectId, seedDocumentIds }) {
-      assert.equal(graphName, 'graph_sample_a');
+    async graphQueryWithStatus({ limit, projectId, seedDocumentIds }) {
       assert.equal(projectId, 'project-a');
       assert.equal(limit, 5);
       assert.deepEqual(seedDocumentIds, ['doc-a']);
@@ -352,8 +352,7 @@ function createRepository(): ChatRepository & {
         status: 'success',
       };
     },
-    async graphQuery({ graphName, limit, projectId, seedDocumentIds }) {
-      assert.equal(graphName, 'graph_sample_a');
+    async graphQuery({ limit, projectId, seedDocumentIds }) {
       assert.equal(projectId, 'project-a');
       assert.equal(limit, 5);
       assert.deepEqual(seedDocumentIds, ['doc-a']);
@@ -1421,6 +1420,29 @@ assert.equal((await embedPrivateChatQueries(testEmbeddingProvider, ['query']))[0
 await assert.rejects(
   () => embedPrivateChatQueries({ ...testEmbeddingProvider, dimensions: 768 }, ['query']),
   /dimensions must be 1536/,
+);
+
+assert.deepEqual(
+  await resolveGraphRelatedSources(
+    (() => {
+      assert.fail('relational lookup must not run after a graph provider rejection');
+    }) as never,
+    {
+      async findRelatedDocuments() {
+        throw new Error('provider unavailable');
+      },
+    },
+    {
+      projectId: 'project-a',
+      question: '関連資料',
+      seedDocumentIds: ['doc-a'],
+    },
+  ),
+  {
+    candidates: [],
+    queryFailed: true,
+    relationCandidateCounts: { MENTIONS: 0, RELATED_TO: 0, SAME_AS: 0 },
+  },
 );
 
 {

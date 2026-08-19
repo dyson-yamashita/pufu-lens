@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MemoryObjectStorage } from '../../../packages/storage/src/testing.ts';
+import { runSyntheticMonitorObservations } from './synthetic-monitor-service.ts';
 import {
-  runSyntheticMonitorObservations,
-  type SyntheticMonitorRepository,
-} from './synthetic-monitor-service.ts';
+  createSyntheticMonitorTestGraphReadRepository,
+  type SyntheticMonitorTestRepository,
+} from './synthetic-monitor-test-graph.ts';
 
 test('runSyntheticMonitorObservations returns partial per-source stages without echoing identifiers', async () => {
   const repository = createMockRepository();
@@ -30,6 +31,7 @@ test('runSyntheticMonitorObservations returns partial per-source stages without 
   );
   const response = await runSyntheticMonitorObservations({
     allowedProjectSlugs: ['sample-a'],
+    graphReadRepository: createSyntheticMonitorTestGraphReadRepository(repository),
     repository,
     storage,
     request: {
@@ -80,6 +82,7 @@ test('runSyntheticMonitorObservations keeps other sources when one repository ca
   });
   const response = await runSyntheticMonitorObservations({
     allowedProjectSlugs: ['sample-a'],
+    graphReadRepository: createSyntheticMonitorTestGraphReadRepository(repository),
     repository,
     storage: new MemoryObjectStorage(),
     request: {
@@ -104,6 +107,7 @@ test('runSyntheticMonitorObservations keeps source observations when report obse
   });
   const response = await runSyntheticMonitorObservations({
     allowedProjectSlugs: ['sample-a'],
+    graphReadRepository: createSyntheticMonitorTestGraphReadRepository(repository),
     repository,
     storage: new MemoryObjectStorage(),
     request: {
@@ -127,6 +131,7 @@ test('runSyntheticMonitorObservations denies projects outside dedicated allowlis
     () =>
       runSyntheticMonitorObservations({
         allowedProjectSlugs: ['sample-b'],
+        graphReadRepository: createSyntheticMonitorTestGraphReadRepository(createMockRepository()),
         repository: createMockRepository(),
         storage: new MemoryObjectStorage(),
         request: {
@@ -139,15 +144,14 @@ test('runSyntheticMonitorObservations denies projects outside dedicated allowlis
 });
 
 function createMockRepository(
-  overrides: Partial<SyntheticMonitorRepository> = {},
-): SyntheticMonitorRepository {
+  overrides: Partial<SyntheticMonitorTestRepository> = {},
+): SyntheticMonitorTestRepository {
   return {
     async lookupProject(slug) {
       return slug === 'sample-a'
         ? {
             id: '11111111-1111-4111-8111-111111111111',
             slug: 'sample-a',
-            graphName: 'graph_sample_a',
           }
         : null;
     },

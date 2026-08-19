@@ -286,6 +286,6 @@ export const ingestWorkflow = createWorkflow({
 
 ### Synthetic Monitor の readonly 観測境界
 
-Synthetic Monitor は `POST /internal/monitoring/v1/observations` から ingestion pipeline の各 stage（`raw` / `currentDocument` / `chunks` / `graph` / `schedule`）を **読み取り専用** で観測する。source schedule は expected raw version ではなく logical source identity（`project_id` + `source_type` + `logical_source_id`）で `data_source_schedules` を辿る。内部の `raw_documents` / `documents` / AGE graph schema や storage URI、provider payload は response に含めず、stage ごとの `ok` / `pending` / `failed` / `not_found` と schedule の `nextRunDue` だけを返す。queue 投入、parser 切替、graph 更新、schedule 変更は行わない。
+Synthetic Monitor は `POST /internal/monitoring/v1/observations` から ingestion pipeline の各 stage（`raw` / `currentDocument` / `chunks` / `graph` / `schedule`）を **読み取り専用** で観測する。source schedule は expected raw version ではなく logical source identity（`project_id` + `source_type` + `logical_source_id`）で `data_source_schedules` を辿る。graph stage の Document node / 9 relation count は provider-neutral `GraphReadRepository` に `projectId` と `graphNodeId` を渡し、現行 AGE の graph name、Cypher、agtype count parser は adapter 内に閉じる。内部の `raw_documents` / `documents` / graph schema や storage URI、provider payload は response に含めず、stage ごとの `ok` / `pending` / `failed` / `not_found` と schedule の `nextRunDue` だけを返す。queue 投入、parser 切替、graph 更新、schedule 変更は行わない。
 
 ---

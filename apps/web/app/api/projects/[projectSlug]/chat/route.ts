@@ -104,7 +104,7 @@ export async function POST(
           };
           try {
             const chatResponse = await runPrivateChatSearchViaMastraWorkflow({
-              graphName: project.graphName,
+              graphName: null,
               history: mastraHistory,
               hybridSearchDocumentLimit: project.hybridSearchDocumentLimit,
               onStage: writeProgress,
@@ -156,7 +156,7 @@ export async function POST(
     }
 
     const chatResponse = await runPrivateChatSearchViaMastraWorkflow({
-      graphName: project.graphName,
+      graphName: null,
       history: mastraHistory,
       hybridSearchDocumentLimit: project.hybridSearchDocumentLimit,
       projectId: project.id,
