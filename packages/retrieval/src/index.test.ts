@@ -359,6 +359,36 @@ test('fuseRankedChunkCandidates sorts by fused score, best rank, then documentId
   assert.equal(fused[2]?.fusedScore, reciprocalRankFusionScore(1));
 });
 
+test('fuseRankedChunkCandidates uses locale-independent code-unit order for documentId ties', () => {
+  const fused = fuseRankedChunkCandidates({
+    keywordCandidates: [],
+    limit: 10,
+    semanticCandidates: [
+      parseSemanticChunkCandidate(
+        buildSemanticCandidateInput({
+          chunkId: 'chunk-underscore',
+          documentId: 'doc_underscore',
+          rawDocumentId: 'raw-underscore',
+          rank: 1,
+        }),
+      ),
+      parseSemanticChunkCandidate(
+        buildSemanticCandidateInput({
+          chunkId: 'chunk-hyphen',
+          documentId: 'doc-hyphen',
+          rawDocumentId: 'raw-hyphen',
+          rank: 1,
+        }),
+      ),
+    ],
+  });
+
+  assert.deepEqual(
+    fused.map((candidate) => candidate.documentId),
+    ['doc-hyphen', 'doc_underscore'],
+  );
+});
+
 test('fuseRankedChunkCandidates respects non-negative limit', () => {
   const fused = fuseRankedChunkCandidates({
     keywordCandidates: [],

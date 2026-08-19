@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import type postgres from 'postgres';
 import {
   createGcpPostgresCandidateRepositories,
   createPostgresKeywordCandidateRepository,
@@ -40,7 +41,7 @@ function createSqlMock(
   onQuery: (sqlText: string, values: readonly unknown[]) => readonly unknown[],
 ): {
   readonly boundValues: unknown[][];
-  readonly sql: never;
+  readonly sql: postgres.Sql;
   readonly sqlTexts: string[];
 } {
   const sqlTexts: string[] = [];
@@ -50,7 +51,7 @@ function createSqlMock(
     sqlTexts.push(sqlText);
     boundValues.push(values);
     return Promise.resolve(onQuery(sqlText, values));
-  }) as never;
+  }) as unknown as postgres.Sql;
   return {
     boundValues,
     sql,

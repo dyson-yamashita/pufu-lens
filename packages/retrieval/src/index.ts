@@ -164,7 +164,7 @@ export function fuseRankedChunkCandidates(input: {
       return (
         right.fusedScore - left.fusedScore ||
         leftBestRank - rightBestRank ||
-        left.documentId.localeCompare(right.documentId)
+        compareCodeUnitStrings(left.documentId, right.documentId)
       );
     })
     .slice(0, Math.max(0, input.limit));
@@ -186,6 +186,12 @@ function lowestRankedByDocument<T extends RankedChunkCandidate>(
     }
   }
   return selected;
+}
+
+function compareCodeUnitStrings(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
 function requireRecord(value: unknown, message: string): Record<string, unknown> {

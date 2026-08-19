@@ -62,7 +62,7 @@ export interface ChatSource {
   readonly chunkId?: string;
   /** Retrieval-only selected chunk index. It is never persisted or returned by chat response APIs. */
   readonly chunkIndex?: number;
-  /** Retrieval-only RRF score normalized to 0..1. It is never persisted or returned by chat response APIs. */
+  /** Retrieval-only sum of k=60 RRF rank contributions. It is never persisted or returned by chat response APIs. */
   readonly fusedScore?: number;
   /**
    * Normalized UTC ISO-8601 document occurrence time (`...Z`) used during synthesis.
