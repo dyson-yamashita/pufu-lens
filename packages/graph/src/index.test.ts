@@ -213,9 +213,8 @@ test('parseGraphMutationNodeInput validates project-scoped normalized node field
   assert.throws(() => parseGraphMutationNodeInput({ ...node, labels: ['Document', 1] }));
   assert.throws(() => parseGraphMutationNodeInput({ ...node, projectId: '' }));
   assert.throws(() => parseGraphMutationNodeInput({ ...node, properties: { raw: 1n } }));
-  assert.throws(() =>
-    parseGraphMutationNodeInput({ ...node, properties: { raw: undefined }, graphName: 'graph_a' }),
-  );
+  assert.throws(() => parseGraphMutationNodeInput({ ...node, properties: { raw: undefined } }));
+  assert.throws(() => parseGraphMutationNodeInput({ ...node, graphName: 'graph_a' }));
   const cyclicObject: Record<string, unknown> = { nested: { value: 1 } };
   cyclicObject.self = cyclicObject;
   assert.throws(() => parseGraphMutationNodeInput({ ...node, properties: cyclicObject }));
@@ -290,8 +289,13 @@ test('parseGraphActorMergeInput and result stay provider-neutral', () => {
     status: 'unavailable',
   });
   assert.throws(() => parseGraphActorMergeResult({ deletedCount: -1, status: 'merged' }));
+  assert.throws(() => parseGraphActorMergeResult({ reason: '', status: 'skipped' }));
   assert.throws(() =>
-    parseGraphActorMergeResult({ reason: '', status: 'skipped', providerSql: 'SELECT 1' }),
+    parseGraphActorMergeResult({
+      reason: 'secondary actor graph node not found',
+      status: 'skipped',
+      providerSql: 'SELECT 1',
+    }),
   );
 });
 
@@ -303,9 +307,8 @@ test('parseGraphDocumentCleanupInput and result reject provider fields and unsaf
   assert.deepEqual(parseGraphDocumentCleanupInput(cleanupInput), cleanupInput);
   assert.throws(() => parseGraphDocumentCleanupInput({ ...cleanupInput, graphNodeIds: [' '] }));
   assert.throws(() => parseGraphDocumentCleanupInput({ ...cleanupInput, projectId: '' }));
-  assert.throws(() =>
-    parseGraphDocumentCleanupInput({ ...cleanupInput, graphName: 'graph_a', graphNodeIds: [] }),
-  );
+  assert.throws(() => parseGraphDocumentCleanupInput({ ...cleanupInput, graphNodeIds: [] }));
+  assert.throws(() => parseGraphDocumentCleanupInput({ ...cleanupInput, graphName: 'graph_a' }));
 
   assert.equal(parseGraphDocumentCleanupResult({ deletedCount: 2 }), 2);
   assert.throws(() => parseGraphDocumentCleanupResult({ deletedCount: 1.5 }));

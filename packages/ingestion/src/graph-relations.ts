@@ -267,7 +267,7 @@ function validatedIndexingDocument(
 ): GraphIndexingDocumentRecord & { readonly docType: ParsedDocumentType } {
   return {
     ...document,
-    docType: parseGraphIndexingDocumentType(document.docType) as ParsedDocumentType,
+    docType: parseGraphIndexingDocumentType(document.docType),
   };
 }
 

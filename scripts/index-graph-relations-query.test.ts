@@ -17,13 +17,10 @@ function sliceAdapterFunction(startMarker: string, endMarker: string): string {
 }
 
 test('postgres graph indexing adapter exposes ingest-status-aware target selection SQL', () => {
-  const startMarker = 'private async readGraphTargetRows';
-  const endMarker = 'async findActorByAlias';
-  const startIndex = adapterSource.indexOf(startMarker);
-  assert.notEqual(startIndex, -1, 'readGraphTargetRows method should exist');
-  const endIndex = adapterSource.indexOf(endMarker, startIndex);
-  assert.notEqual(endIndex, -1, 'findActorByAlias method should exist');
-  const methodSource = adapterSource.slice(startIndex, endIndex);
+  const methodSource = sliceAdapterFunction(
+    'private async readGraphTargetRows',
+    'async findActorByAlias',
+  );
 
   assert.match(methodSource, /rd\.ingest_status AS "ingestStatus"/);
   assert.match(methodSource, /rd\.ingest_status IN \('parsed', 'indexed'\)/);
@@ -89,4 +86,19 @@ test('postgres graph indexing adapter treats AGE related edge rows as unknown co
   assert.match(methodSource, /isRecord/);
   assert.match(methodSource, /\.map\(/);
   assert.match(methodSource, /parseAgtypeString/);
+});
+
+test('postgres graph indexing adapter bounds related document backfill parsed-text reads', () => {
+  assert.match(adapterSource, /GRAPH_RELATED_PARSED_TEXT_READ_CONCURRENCY\s*=\s*10/);
+
+  const methodSource = sliceAdapterFunction(
+    'private async selectRelatedDocumentBackfillRows',
+    'private async readParsedText',
+  );
+
+  assert.match(methodSource, /GRAPH_RELATED_PARSED_TEXT_READ_CONCURRENCY/);
+  assert.match(methodSource, /for\s*\(/);
+  assert.match(methodSource, /slice\(/);
+  assert.match(methodSource, /Promise\.all\(/);
+  assert.doesNotMatch(methodSource, /await Promise\.all\(\s*input\.rows/);
 });

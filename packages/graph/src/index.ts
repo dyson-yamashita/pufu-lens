@@ -484,6 +484,9 @@ export function parseGraphDocumentCleanupInput(value: unknown): GraphDocumentCle
   if (!Array.isArray(record.graphNodeIds)) {
     throw new Error('Invalid graph document cleanup input field: graphNodeIds');
   }
+  if (record.graphNodeIds.length === 0) {
+    throw new Error('Invalid graph document cleanup input field: graphNodeIds');
+  }
   if (!record.graphNodeIds.every(isNonEmptyString)) {
     throw new Error('Invalid graph document cleanup input field: graphNodeIds');
   }

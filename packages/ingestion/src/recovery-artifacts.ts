@@ -517,6 +517,7 @@ function requireGraphEdgeType(value: unknown, path: string): RecoveryGraphEdgeIn
     value === 'COMMENTED_ON' ||
     value === 'MENTIONS' ||
     value === 'OWNS' ||
+    value === 'RELATED_TO' ||
     value === 'REPLY_TO' ||
     value === 'REVIEWED' ||
     value === 'SAME_AS' ||

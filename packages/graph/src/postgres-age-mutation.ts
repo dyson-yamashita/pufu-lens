@@ -160,7 +160,9 @@ async function mergeActorGraphNodesInAge(
     return { reason: 'secondary actor graph node not found', status: 'skipped' };
   }
   if (secondaryCount !== 1) {
-    throw new Error(`expected 1 secondary actor graph node, found ${secondaryCount}`);
+    throw new ActorMergeInvariantError(
+      `expected 1 secondary actor graph node, found ${secondaryCount}`,
+    );
   }
   const primaryCount = await countActorGraphNode(
     executor,
@@ -169,7 +171,9 @@ async function mergeActorGraphNodesInAge(
     'primary actor graph node',
   );
   if (primaryCount !== 1) {
-    throw new Error(`expected 1 primary actor graph node, found ${primaryCount}`);
+    throw new ActorMergeInvariantError(
+      `expected 1 primary actor graph node, found ${primaryCount}`,
+    );
   }
 
   for (const edgeType of ACTOR_EDGE_TYPES) {
@@ -224,18 +228,22 @@ async function mergeActorGraphNodesInAge(
   )) as readonly unknown[];
   const deletedCount = parseAgeGraphMutationCountRow(deleteRows[0], 'secondary actor delete count');
   if (deletedCount !== 1) {
-    throw new Error(
+    throw new ActorMergeInvariantError(
       `Actor graph reconcile failed: expected to delete 1 secondary node, deleted ${deletedCount}.`,
     );
   }
   return { deletedCount, status: 'merged' };
 }
 
-function isActorMergeInvariantError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
+class ActorMergeInvariantError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ActorMergeInvariantError';
   }
-  return /expected 1|Actor graph reconcile failed/.test(error.message);
+}
+
+function isActorMergeInvariantError(error: unknown): boolean {
+  return error instanceof ActorMergeInvariantError;
 }
 
 async function upsertGraphNode(
@@ -495,8 +503,9 @@ function parameterizedSetClause(
       continue;
     }
     const safePropertyName = validatePropertyName(propertyName);
-    assignments.push(`${variableName}.${safePropertyName} = $${safePropertyName}`);
-    params[safePropertyName] = graphPropertyValue(value);
+    const paramName = `property_${safePropertyName}`;
+    assignments.push(`${variableName}.${safePropertyName} = $${paramName}`);
+    params[paramName] = graphPropertyValue(value);
   }
   return {
     cypher: assignments.length === 0 ? '' : `SET ${assignments.join(', ')}`,

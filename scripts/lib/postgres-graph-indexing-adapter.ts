@@ -23,6 +23,7 @@ export const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
 
 export const GRAPH_INDEX_TARGET_SCAN_PAGE_MIN_SIZE = 100;
 export const GRAPH_INDEX_TARGET_SCAN_PAGE_MULTIPLIER = 10;
+export const GRAPH_RELATED_PARSED_TEXT_READ_CONCURRENCY = 10;
 
 /** CLI options accepted by `index-graph-relations`. */
 export type IndexGraphRelationsCliOptions = {
@@ -208,16 +209,28 @@ class PostgresGraphIndexingRepository implements GraphIndexingRepository {
     readonly rows: readonly GraphTargetRow[];
     readonly selectedGraphNodeIds: ReadonlySet<string>;
   }): Promise<GraphTargetRow[]> {
-    const rowsWithParsed = (
-      await Promise.all(
-        input.rows
-          .filter((row) => input.existingGraphNodeIds.has(row.graphNodeId))
-          .map(async (row) => ({
-            ...row,
-            parsedText: await this.readParsedText(row, input.parsedTextByRawDocumentId),
-          })),
-      )
-    ).filter((row) => extractRelatedDocumentSourceIds(row.parsedText).length > 0);
+    const candidateRows = input.rows.filter((row) =>
+      input.existingGraphNodeIds.has(row.graphNodeId),
+    );
+    const rowsWithParsed: Array<GraphTargetRow & { parsedText: string }> = [];
+    for (
+      let start = 0;
+      start < candidateRows.length;
+      start += GRAPH_RELATED_PARSED_TEXT_READ_CONCURRENCY
+    ) {
+      const slice = candidateRows.slice(start, start + GRAPH_RELATED_PARSED_TEXT_READ_CONCURRENCY);
+      const parsedSlice = await Promise.all(
+        slice.map(async (row) => ({
+          ...row,
+          parsedText: await this.readParsedText(row, input.parsedTextByRawDocumentId),
+        })),
+      );
+      for (const row of parsedSlice) {
+        if (extractRelatedDocumentSourceIds(row.parsedText).length > 0) {
+          rowsWithParsed.push(row);
+        }
+      }
+    }
     if (rowsWithParsed.length === 0) {
       return [];
     }

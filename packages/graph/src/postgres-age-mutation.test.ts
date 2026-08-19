@@ -75,12 +75,58 @@ test('AGE graph mutation adapter binds identifiers through the AGE parameter map
   assert.match(call?.query ?? '', /\$graphNodeId/);
   assert.doesNotMatch(call?.query ?? '', /msg-with\nnewline/);
   assert.deepEqual(JSON.parse(String(call?.parameters?.[0])), {
-    documentId: 'document-a',
-    graphLabels: ['Document'],
     graphNodeId: 'document:email:msg-with\nnewline',
+    property_documentId: 'document-a',
+    property_graphLabels: ['Document'],
+    property_graphNodeId: 'document:email:msg-with\nnewline',
   });
   assert.ok(unsafeCalls.every((entry) => entry.query.includes('$1::agtype')));
   assert.ok(unsafeCalls.every((entry) => !entry.query.includes('jsonb::agtype')));
+});
+
+test('AGE graph mutation adapter prefixes edge property parameters that collide with MATCH identifiers', async () => {
+  const unsafeCalls: Array<{ parameters?: readonly unknown[]; query: string }> = [];
+  const transaction = Object.assign(() => Promise.resolve([]), {
+    unsafe(query: string, parameters?: readonly unknown[]) {
+      unsafeCalls.push({ parameters, query });
+      return Promise.resolve([]);
+    },
+  });
+  const sql = Object.assign(() => Promise.resolve([{ graphName: 'graph_sample_a' }]), {
+    begin: (callback: (value: unknown) => unknown) => callback(transaction),
+  }) as unknown as postgres.Sql;
+  const repository = createPostgresAgeGraphMutationRepository(sql);
+
+  await repository.upsertEdge({
+    fromGraphNodeId: 'node:match-from',
+    toGraphNodeId: 'node:match-to',
+    projectId: 'project-a',
+    properties: {
+      fromGraphNodeId: 'prop:from-value',
+      toGraphNodeId: 'prop:to-value',
+      confidence: 1,
+    },
+    relationType: 'RELATED_TO',
+  });
+
+  assert.equal(unsafeCalls.length, 1);
+  const call = unsafeCalls[0];
+  const params = JSON.parse(String(call?.parameters?.[0])) as Record<string, unknown>;
+  assert.equal(params.fromGraphNodeId, 'node:match-from');
+  assert.equal(params.toGraphNodeId, 'node:match-to');
+
+  const propertyFromKey = Object.keys(params).find(
+    (key) => key !== 'fromGraphNodeId' && params[key] === 'prop:from-value',
+  );
+  const propertyToKey = Object.keys(params).find(
+    (key) => key !== 'toGraphNodeId' && params[key] === 'prop:to-value',
+  );
+  assert.ok(propertyFromKey, 'property fromGraphNodeId should use a prefixed parameter key');
+  assert.ok(propertyToKey, 'property toGraphNodeId should use a prefixed parameter key');
+
+  const query = call?.query ?? '';
+  assert.match(query, new RegExp(`r\\.fromGraphNodeId = \\$${propertyFromKey}`));
+  assert.match(query, new RegExp(`r\\.toGraphNodeId = \\$${propertyToKey}`));
 });
 
 test('parseAgeGraphMutationCountRow rejects malformed provider rows', () => {

@@ -103,6 +103,21 @@ test('graph recovery event validates document snapshot, nodes, edges, and email 
   assert.deepEqual(validateRecoveryArtifactEvent(event), event);
 });
 
+test('graph recovery event validates RELATED_TO edge type', () => {
+  const event = sampleGraphEvent({
+    edges: [
+      {
+        fromGraphNodeId: 'document:web_page:https%3A%2F%2Fexample.test%2Fa',
+        properties: { relationType: 'RELATED_TO' },
+        toGraphNodeId: 'document:web_page:https%3A%2F%2Fexample.test%2Fb',
+        type: 'RELATED_TO',
+      },
+    ],
+  });
+
+  assert.deepEqual(validateRecoveryArtifactEvent(event), event);
+});
+
 test('invalid artifact JSON is reported with the object URI', async () => {
   const storage = new MemoryRecoveryArtifactStorage();
   storage.objects.set('sample-a/manifests/raw-documents/events/broken.json', '{not-json');
