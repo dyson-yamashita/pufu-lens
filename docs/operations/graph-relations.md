@@ -2,9 +2,10 @@
 
 Step 8 では、`documents` と `actors` を AGE graph に materialize し、`email_quotes` と最小 relation を保存する。
 
-Plan 018 Step 2A では移行先として `graph_nodes` / `graph_edges` schemaをadditiveに追加した。現行の
-`ingest:index`、Graph read / Viewer、Actor merge、Document cleanup、Synthetic Monitorは引き続きAGE adapterを
-使い、relational tableへのwrite / readは行わない。2A schema PRのmergeを確認するまで2Bのadapter実装を開始しない。
+Plan 018 Step 2A では移行先として `graph_nodes` / `graph_edges` schemaをadditiveに追加し、Step 2B では同schemaを
+使うrelational Graph read / mutation adapterを追加した。ViewerとSynthetic Monitorを含むDB testは明示DIで
+relational adapterを検証する。現行productionの`ingest:index`、Graph read / Viewer、Actor merge、Document cleanup、
+Synthetic Monitorは引き続きAGE adapterを使い、既定compositionやread / write profileは切り替えない。
 
 ### Relational graph schema（Step 2A）
 
@@ -20,6 +21,21 @@ Plan 018 Step 2A では移行先として `graph_nodes` / `graph_edges` schema�
   representative query計測で必要性を判断する。
 - `0026_relational_graph_schema`はAGE dataをcopyしない。live AGE inventoryとsource-of-truth auditは2Cで行い、
   差分が解消または明示判断されるまで全graphを再生成可能と断定しない。
+
+### Relational Graph adapter（Step 2B）
+
+- read adapterはproject-scopedなnode / relation count、SAME_AS / RELATED_TO 1-hop、MENTIONS 2-hop、Viewer presetを
+  bounded SQLで実装する。全queryはread-only transaction、5秒timeout、deterministic order / row上限を使う。
+- mutation adapterはproject graph lifecycle、node / 9 edge typeのidempotent upsert、Document node cleanup、
+  Actor mergeを同一transactionで実装する。SAME_ASはendpointをUTF-8 byte順にcanonicalizeし、PostgreSQLの
+  merge SQLでは明示的な`COLLATE "C"`でapplication側と同じ順序を使う。
+- Viewer / Synthetic Monitorへの接続はtestの明示DIだけであり、productionのAGE primary compositionは維持する。
+- adapter testは専用project fixtureだけを作成・削除し、AGE graphや既存projectには触れない。ログにはproperties、
+  node identity、content、PII、secretを出さず、安全なoperation / error種別だけを記録する。
+- Step 2Bはmigration、backfill、live AGE inventory、dual-write / shadow read、production switchを行わない。
+  これらはStep 2C以降のmerge gateを順に満たしてから実施する。
+- `graph_nodes.properties ->> 'documentId'`を使う代表queryの`EXPLAIN (ANALYZE, BUFFERS)`とrow countは
+  Step 2Cで取得し、expression indexは測定結果なしに追加しない。
 
 ## 前提
 

@@ -18,6 +18,7 @@ const dbTestFiles = [
   resolve(webTestRoot, 'db-synthetic-monitor.test.ts'),
   resolve(webTestRoot, 'graph-coverage-db.test.ts'),
   resolve(webTestRoot, 'relational-graph-schema-db.test.ts'),
+  resolve(webTestRoot, 'postgres-relational-graph-adapter-db.test.ts'),
   resolve(repoRoot, 'scripts/lib/built-in-parser-profiles-db.test.ts'),
   resolve(repoRoot, 'scripts/lib/ingest-workflow-reprocess-db.test.ts'),
 ];
