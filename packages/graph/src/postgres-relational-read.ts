@@ -81,6 +81,9 @@ export function createPostgresRelationalGraphReadRepository(
       requireProjectId(input.projectId);
       requireNonEmptyString(input.graphNodeId, 'graphNodeId');
       const relationTypes = parseGraphRelationTypes(input.relationTypes);
+      if (relationTypes.length === 0) {
+        return {};
+      }
       try {
         return await withReadOnlyTransaction(sql, async (transaction) => {
           const rows = (await transaction`

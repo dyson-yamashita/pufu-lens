@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type postgres from 'postgres';
 import { GRAPH_PRESET_IDS, type GraphPresetId } from './index.js';
-import { GRAPH_READ_UNAVAILABLE_MESSAGE } from './postgres-relational-common.js';
+import { GraphReadUnavailableError, isReadUnavailableError } from './postgres-relational-common.js';
 import {
   createPostgresRelationalGraphReadRepository,
   deriveRelationalGraphNodeKindSubtype,
@@ -187,11 +187,10 @@ test('countRelations rejects malformed SQL rows as graph read unavailable', asyn
         relationTypes: ['SENT'],
       }),
     (error: unknown) => {
-      if (!(error instanceof Error)) {
-        return false;
+      assert.ok(isReadUnavailableError(error));
+      if (error instanceof Error) {
+        assert.doesNotMatch(error.message, /714|SENT|null/i);
       }
-      assert.match(error.message, new RegExp(GRAPH_READ_UNAVAILABLE_MESSAGE));
-      assert.doesNotMatch(error.message, /714|SENT|null/i);
       return true;
     },
   );
@@ -206,7 +205,7 @@ test('countRelations rejects allowlist drift and malformed counts as graph read 
         projectId: PROJECT_ID,
         relationTypes: ['SENT'],
       }),
-    new RegExp(GRAPH_READ_UNAVAILABLE_MESSAGE),
+    (error: unknown) => isReadUnavailableError(error),
   );
 
   const malformedCountRepository = createReadRepositoryMock([
@@ -219,8 +218,43 @@ test('countRelations rejects allowlist drift and malformed counts as graph read 
         projectId: PROJECT_ID,
         relationTypes: ['SENT'],
       }),
-    new RegExp(GRAPH_READ_UNAVAILABLE_MESSAGE),
+    (error: unknown) => isReadUnavailableError(error),
   );
+});
+
+test('countRelations returns {} for empty relationTypes without executing SQL', async () => {
+  let beginCalls = 0;
+  let tagCalls = 0;
+  const transaction = ((
+    strings: TemplateStringsArray | readonly string[],
+    ...values: readonly unknown[]
+  ) => {
+    tagCalls += 1;
+    void strings;
+    void values;
+    return Promise.resolve([]);
+  }) as unknown as postgres.TransactionSql;
+  const sql = Object.assign(() => Promise.resolve([]), {
+    begin: async (callback: (tx: typeof transaction) => Promise<unknown>) => {
+      beginCalls += 1;
+      return callback(transaction);
+    },
+  }) as unknown as postgres.Sql;
+  const repository = createPostgresRelationalGraphReadRepository(sql);
+  const counts = await repository.countRelations({
+    graphNodeId: GRAPH_NODE_ID,
+    projectId: PROJECT_ID,
+    relationTypes: [],
+  });
+  assert.deepEqual(counts, {});
+  assert.equal(beginCalls, 0);
+  assert.equal(tagCalls, 0);
+});
+
+test('createReadUnavailableError is identified by read unavailable predicate', () => {
+  const error = new GraphReadUnavailableError();
+  assert.ok(isReadUnavailableError(error));
+  assert.ok(!isReadUnavailableError(new Error('other failure')));
 });
 
 test('findRelatedDocuments returns unavailable when related-document SQL rows are malformed', async () => {

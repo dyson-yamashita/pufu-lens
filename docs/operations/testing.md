@@ -17,9 +17,10 @@ orphan / cross-project endpoint、project / node cascade、Actor mergeに必要�
 
 Plan 018 Step 2B の relational Graph adapter は、`packages/graph/src/postgres-relational-read.test.ts` と
 `postgres-relational-mutation.test.ts`、read helperのunit testでruntime guard、malformed SQL rowのfail-closed、
-bounded Viewer endpoint整合、SAME_AS canonicalizationを検証する。実PostgreSQLではWebの`test:db`に含まれる
+bounded Viewer endpoint整合、SAME_ASのUTF-8 byte canonicalizationを検証する。実PostgreSQLではWebの`test:db`に含まれる
 `postgres-relational-graph-adapter-db.test.ts`が9 edge type、1-hop / 2-hop read、Viewer preset、Synthetic Monitor count、
-Document cleanup、Actor mergeのedge-first / dedupe / rollback、project isolationを明示DIで検証する。通常の
+Document cleanup、Actor mergeのedge-first / dedupe / rollback、`COLLATE "C"`との順序整合、project isolationを明示DIで
+検証する。通常の
 `pnpm test`からDB testを除外し、`DATABASE_URL`を設定した`pnpm --filter @pufu-lens/web test:db`で実行する。
 testはproduction composition、AGE graph、migration、外部serviceを変更しない。
 

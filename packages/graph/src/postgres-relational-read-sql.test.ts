@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { selectRelatedDocumentCandidates } from './postgres-relational-read-sql.js';
+import type postgres from 'postgres';
+import {
+  queryActorDocumentsPreset,
+  queryRecentRelationsPreset,
+  selectRelatedDocumentCandidates,
+} from './postgres-relational-read-sql.js';
 
 test('selectRelatedDocumentCandidates rejects malformed SQL rows fail-closed', () => {
   assert.throws(
@@ -47,4 +52,44 @@ test('selectRelatedDocumentCandidates deduplicates duplicate documentId rows', (
   });
   assert.equal(candidates.length, 1);
   assert.equal(candidates[0]?.documentId, 'doc-1');
+});
+
+test('queryActorDocumentsPreset skips SQL when documentGraphNodeIds is empty', async () => {
+  let tagCalls = 0;
+  const transaction = ((
+    strings: TemplateStringsArray | readonly string[],
+    ...values: readonly unknown[]
+  ) => {
+    tagCalls += 1;
+    void strings;
+    void values;
+    return Promise.resolve([]);
+  }) as unknown as postgres.TransactionSql;
+  const rows = await queryActorDocumentsPreset(
+    transaction,
+    '71400000-0000-0000-0000-000000000001',
+    [],
+  );
+  assert.deepEqual(rows, []);
+  assert.equal(tagCalls, 0);
+});
+
+test('queryRecentRelationsPreset skips SQL when documentGraphNodeIds is empty', async () => {
+  let tagCalls = 0;
+  const transaction = ((
+    strings: TemplateStringsArray | readonly string[],
+    ...values: readonly unknown[]
+  ) => {
+    tagCalls += 1;
+    void strings;
+    void values;
+    return Promise.resolve([]);
+  }) as unknown as postgres.TransactionSql;
+  const rows = await queryRecentRelationsPreset(
+    transaction,
+    '71400000-0000-0000-0000-000000000001',
+    [],
+  );
+  assert.deepEqual(rows, []);
+  assert.equal(tagCalls, 0);
 });

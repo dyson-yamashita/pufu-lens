@@ -414,7 +414,8 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
 - `@pufu-lens/graph` にrelational read / mutation adapterの明示subpath exportを追加し、project-scopedな
   node / relation count、SAME_AS / RELATED_TO 1-hop、MENTIONS 2-hop、Viewer presetをbounded SQLで実装する。
 - 9 edge typeのidempotent upsert、SAME_AS canonicalization、project lifecycle、Document node cleanup、
-  Actor mergeのedge-first rewire / dedupe / rollbackを実装し、unit / 実PostgreSQL DB testで固定する。
+  Actor mergeのedge-first rewire / dedupe / rollbackを実装し、unit / 実PostgreSQL DB testで固定する。SAME_ASの
+  endpoint順序はUTF-8 byte順とし、merge SQLの明示的な`COLLATE "C"`とapplication実装を一致させる。
 - ViewerとSynthetic Monitorは明示DIしたrelational adapterで検証する。productionのAGE primary composition、
   `projects.graph_name`、API / 認可 contractは変更しない。
 - 2Bではmigration、backfill、live AGE inventory、dual-write / shadow read、production switchを行わない。
@@ -439,6 +440,8 @@ PostgreSQL VM 上で AGE なしに同等 behavior を提供する。
 - parsed JSON + relational row から再生成した shadow graph と AGE export を project ごとに比較する。
 - Actor merge decision、lifecycle-only refresh、Document cleanup 後の再生成規則を確認する。
 - representative 1-hop / 2-hop query の EXPLAIN と row count を取得する。
+- `graph_nodes.properties ->> 'documentId'`を使う代表queryも`EXPLAIN (ANALYZE, BUFFERS)`で計測し、
+  expression indexはその結果を2Cの追加判断gateとする。
 
 ### 設計判断と根拠
 
@@ -482,8 +485,9 @@ graph_edges
 - edge identity は現行 `MERGE (from)-[type]->(to)` と同じ source / target / type とし、properties は
   upsert する。Actor merge 時は conflict で重複を吸収する。
 - `AUTHORED` 等の Actor / Document edge、`MENTIONS`、`RELATED_TO` は格納方向を維持する。
-  `SAME_AS` は読取契約が無向なので、両 endpoint を `node_key` 順に canonicalize して reverse duplicate を
-  作らない。既存 AGE の双方向 duplicate は canonical comparison で一件へ正規化する。
+  `SAME_AS` は読取契約が無向なので、両 endpoint を UTF-8 byte 順に canonicalize して reverse duplicate を
+  作らない。PostgreSQL側は明示的な`COLLATE "C"`で同じ順序を使う。既存 AGE の双方向 duplicate は
+  canonical comparison で一件へ正規化する。
 - label を可変 table にせず `kind` / `subtype` の許可値を guard する。
 - 9 種の edge type を列挙する `GRAPH_EDGE_TYPES` を canonical registry とし、`GraphEdgeType` は同定数から
   導出する。PostgreSQL / D1 migration の `relation_type` CHECK、adapter の write validation、upsert / query、

@@ -136,6 +136,9 @@ export async function queryActorDocumentsPreset(
   projectId: string,
   documentGraphNodeIds: readonly string[],
 ): Promise<readonly unknown[]> {
+  if (documentGraphNodeIds.length === 0) {
+    return [];
+  }
   return transaction`
     SELECT
       source.node_key AS "sourceNodeKey",
@@ -170,6 +173,9 @@ export async function queryRecentRelationsPreset(
   projectId: string,
   documentGraphNodeIds: readonly string[],
 ): Promise<readonly unknown[]> {
+  if (documentGraphNodeIds.length === 0) {
+    return [];
+  }
   return transaction`
     SELECT
       doc.node_key AS "sourceNodeKey",

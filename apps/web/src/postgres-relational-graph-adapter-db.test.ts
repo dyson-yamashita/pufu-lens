@@ -29,6 +29,7 @@ const projectId = '10000000-0000-0000-0000-000000000714';
 const otherProjectId = '10000000-0000-0000-0000-000000007141';
 const mergeProjectId = '10000000-0000-0000-0000-000000007142';
 const rollbackProjectId = '10000000-0000-0000-0000-000000007143';
+const monitorProjectId = '10000000-0000-0000-0000-000000007144';
 const missingProjectId = '10000000-0000-0000-0000-000000007149';
 const monitorUserId = '71400000-0000-0000-0000-000000000010';
 const monitorDataSourceId = '71400000-0000-0000-0000-000000000011';
@@ -45,6 +46,8 @@ const mentionsDocumentId = '71400000-0000-0000-0000-000000000006';
 const seedNodeKey = 'document:issue-714-seed';
 const sameAsNodeKeyA = 'document:issue-714-same-a';
 const sameAsNodeKeyB = 'document:issue-714-same-b';
+const sameAsUtfBmpPeerKey = `actor:issue-714-utf-bmp-${'\uE000'}`;
+const sameAsUtfNonBmpPeerKey = `actor:issue-714-utf-nonbmp-${'\u{10000}'}`;
 const relatedNodeKeyA = 'document:issue-714-related-a';
 const relatedNodeKeyB = 'document:issue-714-related-b';
 const mentionsNodeKey = 'document:issue-714-mentions';
@@ -59,6 +62,11 @@ const mergePrimaryNodeKey = 'actor:issue-714-merge-primary';
 const mergeSecondaryNodeKey = 'actor:issue-714-merge-secondary';
 const mergeCollisionPeerNodeKey = 'actor:issue-714-merge-aa-peer';
 const mergeCanonicalizationPeerNodeKey = 'actor:issue-714-merge-rr-peer';
+const mergeUtfPrimaryNodeKey = `actor:issue-714-merge-utf-${'\uE000'}`;
+const mergeUtfPeerNodeKey = `actor:issue-714-merge-utf-${'\u{10000}'}`;
+const mergeUtfSecondaryNodeKey = 'actor:issue-714-merge-utf-secondary';
+const mergeUtfPrimaryActorId = '71400000-0000-0000-0000-000000000026';
+const mergeUtfSecondaryActorId = '71400000-0000-0000-0000-000000000027';
 const mergeSharedDocumentNodeKey = 'document:issue-714-merge-shared';
 const mergeSecondaryOnlyDocumentNodeKey = 'document:issue-714-merge-secondary-only';
 const mergeIncomingDocumentNodeKey = 'document:issue-714-merge-incoming';
@@ -79,6 +87,7 @@ async function main(): Promise<void> {
     await assertNodeUpsertPersistsKindSubtypeAndProperties();
     await assertAllEdgeTypesUpsertAndReplaceProperties();
     await assertSameAsReverseUpsertUsesCanonicalPair();
+    await assertSameAsUtf8ByteOrderCanonicalization();
     await assertMissingAndCrossProjectEndpointsRejected();
     await assertCountDocumentNodeAndCountRelations();
     await assertFindRelatedDocumentsTraversal();
@@ -91,6 +100,8 @@ async function main(): Promise<void> {
     await seedProjects();
     await seedMergeFixture();
     await assertMergeActorGraphNodes();
+    await seedMergeUtfFixture();
+    await assertMergeActorGraphNodesUtf8Collation();
     await resetFixtureRows();
     await seedProjects();
     await seedRollbackFixture();
@@ -274,6 +285,89 @@ async function assertSameAsReverseUpsertUsesCanonicalPair(): Promise<void> {
     }),
     0,
   );
+}
+
+async function assertSameAsUtf8ByteOrderCanonicalization(): Promise<void> {
+  await mutationRepository.upsertNode({
+    graphNodeId: sameAsUtfBmpPeerKey,
+    labels: ['Actor'],
+    projectId,
+    properties: {
+      actorId: '71400000-0000-0000-0000-000000000060',
+      displayName: 'Issue 714 UTF BMP peer',
+      graphLabels: ['Actor'],
+      graphNodeId: sameAsUtfBmpPeerKey,
+    },
+  });
+  await mutationRepository.upsertNode({
+    graphNodeId: sameAsUtfNonBmpPeerKey,
+    labels: ['Actor'],
+    projectId,
+    properties: {
+      actorId: '71400000-0000-0000-0000-000000000061',
+      displayName: 'Issue 714 UTF non-BMP peer',
+      graphLabels: ['Actor'],
+      graphNodeId: sameAsUtfNonBmpPeerKey,
+    },
+  });
+  await mutationRepository.upsertEdge({
+    fromGraphNodeId: sameAsUtfNonBmpPeerKey,
+    projectId,
+    properties: { fixture: 'utf8-order', weight: 11 },
+    relationType: 'SAME_AS',
+    toGraphNodeId: sameAsUtfBmpPeerKey,
+  });
+  assert.equal(
+    await countEdgesBetween({
+      projectId,
+      relationType: 'SAME_AS',
+      sourceNodeKey: sameAsUtfBmpPeerKey,
+      targetNodeKey: sameAsUtfNonBmpPeerKey,
+    }),
+    1,
+  );
+  assert.equal(
+    await countEdgesBetween({
+      projectId,
+      relationType: 'SAME_AS',
+      sourceNodeKey: sameAsUtfNonBmpPeerKey,
+      targetNodeKey: sameAsUtfBmpPeerKey,
+    }),
+    0,
+  );
+  const canonicalEdge = await readEdgeProperties({
+    projectId,
+    relationType: 'SAME_AS',
+    sourceNodeKey: sameAsUtfBmpPeerKey,
+    targetNodeKey: sameAsUtfNonBmpPeerKey,
+  });
+  assert.equal(canonicalEdge.fixture, 'utf8-order');
+  assert.equal(canonicalEdge.weight, 11);
+
+  await mutationRepository.upsertEdge({
+    fromGraphNodeId: sameAsUtfNonBmpPeerKey,
+    projectId,
+    properties: { fixture: 'utf8-order-updated', weight: 99 },
+    relationType: 'SAME_AS',
+    toGraphNodeId: sameAsUtfBmpPeerKey,
+  });
+  assert.equal(
+    await countEdgesBetween({
+      projectId,
+      relationType: 'SAME_AS',
+      sourceNodeKey: sameAsUtfBmpPeerKey,
+      targetNodeKey: sameAsUtfNonBmpPeerKey,
+    }),
+    1,
+  );
+  const updatedEdge = await readEdgeProperties({
+    projectId,
+    relationType: 'SAME_AS',
+    sourceNodeKey: sameAsUtfBmpPeerKey,
+    targetNodeKey: sameAsUtfNonBmpPeerKey,
+  });
+  assert.equal(updatedEdge.fixture, 'utf8-order-updated');
+  assert.equal(updatedEdge.weight, 99);
 }
 
 async function assertMissingAndCrossProjectEndpointsRejected(): Promise<void> {
@@ -500,14 +594,14 @@ async function assertSyntheticMonitorCountContract(): Promise<void> {
   assert.equal(
     await graphReadRepository.countDocumentNode({
       graphNodeId: monitorGraphNodeId,
-      projectId,
+      projectId: monitorProjectId,
     }),
     1,
   );
   assert.deepEqual(
     await graphReadRepository.countRelations({
       graphNodeId: monitorGraphNodeId,
-      projectId,
+      projectId: monitorProjectId,
       relationTypes: ['SENT'],
     }),
     { SENT: 1 },
@@ -700,9 +794,54 @@ async function assertMergeActorGraphNodes(): Promise<void> {
   assert.equal(canonicalizedSameAsEdge.weight, 7);
 }
 
+async function assertMergeActorGraphNodesUtf8Collation(): Promise<void> {
+  assert.ok(
+    Buffer.from(mergeUtfPrimaryNodeKey, 'utf8').compare(Buffer.from(mergeUtfPeerNodeKey, 'utf8')) <
+      0,
+  );
+  assert.ok(mergeUtfPeerNodeKey < mergeUtfPrimaryNodeKey);
+
+  const mergeResult = await mutationRepository.mergeActorGraphNodes({
+    primaryActorId: mergeUtfPrimaryActorId,
+    primaryGraphNodeId: mergeUtfPrimaryNodeKey,
+    projectId: mergeProjectId,
+    secondaryGraphNodeId: mergeUtfSecondaryNodeKey,
+  });
+  assert.deepEqual(mergeResult, { deletedCount: 1, status: 'merged' });
+  assert.equal(await countNode(mergeProjectId, mergeUtfSecondaryNodeKey), 0);
+  assert.equal(await countEdgesForNode(mergeProjectId, mergeUtfSecondaryNodeKey), 0);
+
+  assert.equal(
+    await countEdgesBetween({
+      projectId: mergeProjectId,
+      relationType: 'SAME_AS',
+      sourceNodeKey: mergeUtfPrimaryNodeKey,
+      targetNodeKey: mergeUtfPeerNodeKey,
+    }),
+    1,
+  );
+  assert.equal(
+    await countEdgesBetween({
+      projectId: mergeProjectId,
+      relationType: 'SAME_AS',
+      sourceNodeKey: mergeUtfPeerNodeKey,
+      targetNodeKey: mergeUtfPrimaryNodeKey,
+    }),
+    0,
+  );
+  const utfCanonicalSameAsEdge = await readEdgeProperties({
+    projectId: mergeProjectId,
+    relationType: 'SAME_AS',
+    sourceNodeKey: mergeUtfPrimaryNodeKey,
+    targetNodeKey: mergeUtfPeerNodeKey,
+  });
+  assert.equal(utfCanonicalSameAsEdge.actorId, mergeUtfPrimaryActorId);
+  assert.equal(utfCanonicalSameAsEdge.fixture, 'secondary-same-as-utf');
+  assert.equal(utfCanonicalSameAsEdge.weight, 13);
+}
+
 async function assertMergeActorGraphNodesRollback(): Promise<void> {
   const edgeCountBefore = await countEdges(rollbackProjectId);
-  const transactionRepository = createPostgresRelationalGraphMutationRepository(sql);
 
   await assert.rejects(
     () =>
@@ -739,7 +878,6 @@ async function assertMergeActorGraphNodesRollback(): Promise<void> {
     }),
     0,
   );
-  assert.equal(typeof transactionRepository.mergeActorGraphNodes, 'function');
 }
 
 async function assertDeleteProjectGraphKeepsProjectRow(): Promise<void> {
@@ -878,18 +1016,14 @@ async function seedMonitorFixture(): Promise<void> {
   await sql`
     INSERT INTO public.projects (id, slug, name, graph_name, storage_prefix, visibility)
     VALUES (
-      ${projectId},
+      ${monitorProjectId},
       'issue-714-relational-monitor',
       'Issue 714 Relational Monitor',
       'graph_issue_714_relational_monitor',
       'issue-714-relational-monitor',
       'private'
     )
-    ON CONFLICT (id) DO UPDATE SET
-      slug = EXCLUDED.slug,
-      name = EXCLUDED.name,
-      graph_name = EXCLUDED.graph_name,
-      storage_prefix = EXCLUDED.storage_prefix
+    ON CONFLICT (id) DO NOTHING
   `;
   await sql`
     INSERT INTO public.users (id, email, name, role)
@@ -903,7 +1037,7 @@ async function seedMonitorFixture(): Promise<void> {
   `;
   await sql`
     INSERT INTO public.project_members (project_id, user_id, role)
-    VALUES (${projectId}, ${monitorUserId}, 'admin')
+    VALUES (${monitorProjectId}, ${monitorUserId}, 'admin')
     ON CONFLICT (project_id, user_id) DO NOTHING
   `;
   await sql`
@@ -912,7 +1046,7 @@ async function seedMonitorFixture(): Promise<void> {
     )
     VALUES (
       ${monitorDataSourceId},
-      ${projectId},
+      ${monitorProjectId},
       ${monitorUserId},
       'gmail',
       'Issue 714 Monitor Gmail',
@@ -936,7 +1070,7 @@ async function seedMonitorFixture(): Promise<void> {
     )
     VALUES (
       ${monitorRawDocumentId},
-      ${projectId},
+      ${monitorProjectId},
       'gmail',
       'issue-714-monitor-source',
       'thread-714-monitor',
@@ -952,7 +1086,7 @@ async function seedMonitorFixture(): Promise<void> {
     INSERT INTO public.raw_document_data_sources (
       raw_document_id, data_source_id, project_id
     )
-    VALUES (${monitorRawDocumentId}, ${monitorDataSourceId}, ${projectId})
+    VALUES (${monitorRawDocumentId}, ${monitorDataSourceId}, ${monitorProjectId})
     ON CONFLICT DO NOTHING
   `;
   await sql`
@@ -960,7 +1094,7 @@ async function seedMonitorFixture(): Promise<void> {
       project_id, data_source_id, enabled, next_run_at
     )
     VALUES (
-      ${projectId},
+      ${monitorProjectId},
       ${monitorDataSourceId},
       true,
       '2099-01-01T01:00:00.000Z'::timestamptz
@@ -981,7 +1115,7 @@ async function seedMonitorFixture(): Promise<void> {
     )
     VALUES (
       ${monitorDocumentId},
-      ${projectId},
+      ${monitorProjectId},
       ${monitorRawDocumentId},
       'email',
       'thread-714-monitor',
@@ -1000,12 +1134,12 @@ async function seedMonitorFixture(): Promise<void> {
     )
     VALUES ($1::uuid, $2::uuid, 0, 'fixture chunk', 'issue-714-monitor-chunk', $3::vector, 'gemini-test')
     ON CONFLICT DO NOTHING`,
-    [projectId, monitorDocumentId, vector],
+    [monitorProjectId, monitorDocumentId, vector],
   );
   await mutationRepository.upsertNode({
     graphNodeId: monitorGraphNodeId,
     labels: ['Document'],
-    projectId,
+    projectId: monitorProjectId,
     properties: {
       docType: 'email',
       documentId: monitorDocumentId,
@@ -1016,7 +1150,7 @@ async function seedMonitorFixture(): Promise<void> {
   await mutationRepository.upsertNode({
     graphNodeId: actorNodeKey,
     labels: ['Actor'],
-    projectId,
+    projectId: monitorProjectId,
     properties: {
       actorId: monitorUserId,
       displayName: 'Issue 714 monitor actor',
@@ -1026,7 +1160,7 @@ async function seedMonitorFixture(): Promise<void> {
   });
   await mutationRepository.upsertEdge({
     fromGraphNodeId: actorNodeKey,
-    projectId,
+    projectId: monitorProjectId,
     properties: { actorId: monitorUserId },
     relationType: 'SENT',
     toGraphNodeId: monitorGraphNodeId,
@@ -1092,6 +1226,14 @@ async function seedProjects(): Promise<void> {
         'Issue 714 Relational Rollback',
         'graph_issue_714_relational_rollback',
         'issue-714-relational-rollback',
+        'private'
+      ),
+      (
+        ${monitorProjectId},
+        'issue-714-relational-monitor',
+        'Issue 714 Relational Monitor',
+        'graph_issue_714_relational_monitor',
+        'issue-714-relational-monitor',
         'private'
       )
   `;
@@ -1216,6 +1358,53 @@ async function seedMergeFixture(): Promise<void> {
     properties: { fixture: 'incoming' },
     relationType: 'MENTIONS',
     toGraphNodeId: mergeSecondaryNodeKey,
+  });
+}
+
+async function seedMergeUtfFixture(): Promise<void> {
+  await mutationRepository.upsertNode({
+    graphNodeId: mergeUtfPrimaryNodeKey,
+    labels: ['Actor'],
+    projectId: mergeProjectId,
+    properties: {
+      actorId: mergeUtfPrimaryActorId,
+      displayName: 'Issue 714 merge UTF primary',
+      graphLabels: ['Actor'],
+      graphNodeId: mergeUtfPrimaryNodeKey,
+    },
+  });
+  await mutationRepository.upsertNode({
+    graphNodeId: mergeUtfPeerNodeKey,
+    labels: ['Actor'],
+    projectId: mergeProjectId,
+    properties: {
+      actorId: '71400000-0000-0000-0000-000000000028',
+      displayName: 'Issue 714 merge UTF peer',
+      graphLabels: ['Actor'],
+      graphNodeId: mergeUtfPeerNodeKey,
+    },
+  });
+  await mutationRepository.upsertNode({
+    graphNodeId: mergeUtfSecondaryNodeKey,
+    labels: ['Actor'],
+    projectId: mergeProjectId,
+    properties: {
+      actorId: mergeUtfSecondaryActorId,
+      displayName: 'Issue 714 merge UTF secondary',
+      graphLabels: ['Actor'],
+      graphNodeId: mergeUtfSecondaryNodeKey,
+    },
+  });
+  await mutationRepository.upsertEdge({
+    fromGraphNodeId: mergeUtfSecondaryNodeKey,
+    projectId: mergeProjectId,
+    properties: {
+      actorId: mergeUtfSecondaryActorId,
+      fixture: 'secondary-same-as-utf',
+      weight: 13,
+    },
+    relationType: 'SAME_AS',
+    toGraphNodeId: mergeUtfPeerNodeKey,
   });
 }
 
@@ -1370,15 +1559,15 @@ async function countEdgesBetween(input: {
 }
 
 async function resetFixtureRows(): Promise<void> {
-  await sql`DELETE FROM public.graph_edges WHERE project_id IN (${projectId}, ${otherProjectId}, ${mergeProjectId}, ${rollbackProjectId})`;
-  await sql`DELETE FROM public.graph_nodes WHERE project_id IN (${projectId}, ${otherProjectId}, ${mergeProjectId}, ${rollbackProjectId})`;
-  await sql`DELETE FROM public.document_chunks WHERE project_id = ${projectId}`;
-  await sql`DELETE FROM public.documents WHERE project_id = ${projectId}`;
-  await sql`DELETE FROM public.raw_document_data_sources WHERE project_id = ${projectId}`;
-  await sql`DELETE FROM public.data_source_schedules WHERE project_id = ${projectId}`;
-  await sql`DELETE FROM public.raw_documents WHERE project_id = ${projectId}`;
-  await sql`DELETE FROM public.data_sources WHERE project_id = ${projectId}`;
-  await sql`DELETE FROM public.project_members WHERE project_id = ${projectId}`;
+  await sql`DELETE FROM public.graph_edges WHERE project_id IN (${projectId}, ${otherProjectId}, ${mergeProjectId}, ${rollbackProjectId}, ${monitorProjectId})`;
+  await sql`DELETE FROM public.graph_nodes WHERE project_id IN (${projectId}, ${otherProjectId}, ${mergeProjectId}, ${rollbackProjectId}, ${monitorProjectId})`;
+  await sql`DELETE FROM public.document_chunks WHERE project_id IN (${projectId}, ${monitorProjectId})`;
+  await sql`DELETE FROM public.documents WHERE project_id IN (${projectId}, ${monitorProjectId})`;
+  await sql`DELETE FROM public.raw_document_data_sources WHERE project_id IN (${projectId}, ${monitorProjectId})`;
+  await sql`DELETE FROM public.data_source_schedules WHERE project_id IN (${projectId}, ${monitorProjectId})`;
+  await sql`DELETE FROM public.raw_documents WHERE project_id IN (${projectId}, ${monitorProjectId})`;
+  await sql`DELETE FROM public.data_sources WHERE project_id IN (${projectId}, ${monitorProjectId})`;
+  await sql`DELETE FROM public.project_members WHERE project_id IN (${projectId}, ${monitorProjectId})`;
   await sql`DELETE FROM public.users WHERE id = ${monitorUserId}`;
-  await sql`DELETE FROM public.projects WHERE id IN (${projectId}, ${otherProjectId}, ${mergeProjectId}, ${rollbackProjectId})`;
+  await sql`DELETE FROM public.projects WHERE id IN (${projectId}, ${otherProjectId}, ${mergeProjectId}, ${rollbackProjectId}, ${monitorProjectId})`;
 }

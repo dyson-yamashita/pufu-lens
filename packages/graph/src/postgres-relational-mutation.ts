@@ -13,8 +13,10 @@ import {
 } from './index.js';
 import {
   bindSafeJsonParameter,
+  compareUtf8ByteOrder,
   createMutationUnavailableError,
   deriveRelationalGraphNodeKindSubtype,
+  isMutationUnavailableError,
   isRecord,
   logRelationalMutationUnavailable,
   parseRelationalIntegerField,
@@ -30,7 +32,7 @@ class ActorMergeInvariantError extends Error {
   }
 }
 
-/** Canonicalizes SAME_AS endpoints into a lexicographic source/target pair. */
+/** Canonicalizes SAME_AS endpoints into a UTF-8 byte-order source/target pair. */
 export function canonicalizeSameAsEdgeEndpoints(
   fromGraphNodeId: string,
   toGraphNodeId: string,
@@ -40,7 +42,7 @@ export function canonicalizeSameAsEdgeEndpoints(
   if (from === to) {
     throw new Error('SAME_AS endpoints must differ.');
   }
-  return from <= to
+  return compareUtf8ByteOrder(from, to) <= 0
     ? { sourceNodeKey: from, targetNodeKey: to }
     : { sourceNodeKey: to, targetNodeKey: from };
 }
@@ -66,9 +68,6 @@ export function createPostgresRelationalGraphMutationRepository(
   return {
     async deleteDocumentGraphNodes(input) {
       const parsed = parseGraphDocumentCleanupInput(input);
-      if (parsed.graphNodeIds.length === 0) {
-        return 0;
-      }
       try {
         const rows = (await sql`
           DELETE FROM public.graph_nodes
@@ -79,8 +78,7 @@ export function createPostgresRelationalGraphMutationRepository(
         `) as readonly unknown[];
         return rows.length;
       } catch (error) {
-        logRelationalMutationUnavailable('delete_document_graph_nodes', error);
-        return 0;
+        rethrowOrNormalizeMutationError('delete_document_graph_nodes', error);
       }
     },
     async deleteProjectGraph(input) {
@@ -111,20 +109,20 @@ export function createPostgresRelationalGraphMutationRepository(
           status: 'skipped',
         };
       }
-      try {
-        if (isSql(sql)) {
+      if (isSql(sql)) {
+        try {
           return await sql.begin(async (transaction) =>
             mergeActorGraphNodesInRelational(transaction, parsed),
           );
+        } catch (error) {
+          if (error instanceof ActorMergeInvariantError) {
+            throw error;
+          }
+          logRelationalMutationUnavailable('merge_actor_graph_nodes', error);
+          return { status: 'unavailable' };
         }
-        return await mergeActorGraphNodesInRelational(sql, parsed);
-      } catch (error) {
-        if (error instanceof ActorMergeInvariantError) {
-          throw error;
-        }
-        logRelationalMutationUnavailable('merge_actor_graph_nodes', error);
-        return { status: 'unavailable' };
       }
+      return await mergeActorGraphNodesInRelational(sql, parsed);
     },
     async upsertEdge(input) {
       const parsed = parseGraphMutationEdgeInput(input);
@@ -178,11 +176,21 @@ async function mergeActorGraphNodesInRelational(
     SELECT
       project_id,
       CASE
-        WHEN relation_type = 'SAME_AS' THEN LEAST(${input.primaryGraphNodeId}, target_node_key)
+        WHEN relation_type = 'SAME_AS' THEN
+          CASE
+            WHEN (${input.primaryGraphNodeId})::text COLLATE "C" <= target_node_key::text COLLATE "C"
+            THEN ${input.primaryGraphNodeId}
+            ELSE target_node_key
+          END
         ELSE ${input.primaryGraphNodeId}
       END,
       CASE
-        WHEN relation_type = 'SAME_AS' THEN GREATEST(${input.primaryGraphNodeId}, target_node_key)
+        WHEN relation_type = 'SAME_AS' THEN
+          CASE
+            WHEN (${input.primaryGraphNodeId})::text COLLATE "C" <= target_node_key::text COLLATE "C"
+            THEN target_node_key
+            ELSE ${input.primaryGraphNodeId}
+          END
         ELSE target_node_key
       END,
       relation_type,
@@ -194,8 +202,19 @@ async function mergeActorGraphNodesInRelational(
         relation_type <> 'SAME_AS' AND target_node_key <> ${input.primaryGraphNodeId}
         OR (
           relation_type = 'SAME_AS'
-          AND LEAST(${input.primaryGraphNodeId}, target_node_key)
-            <> GREATEST(${input.primaryGraphNodeId}, target_node_key)
+          AND (
+            CASE
+              WHEN (${input.primaryGraphNodeId})::text COLLATE "C" <= target_node_key::text COLLATE "C"
+              THEN (${input.primaryGraphNodeId})::text COLLATE "C"
+              ELSE target_node_key::text COLLATE "C"
+            END
+            <>
+            CASE
+              WHEN (${input.primaryGraphNodeId})::text COLLATE "C" <= target_node_key::text COLLATE "C"
+              THEN target_node_key::text COLLATE "C"
+              ELSE (${input.primaryGraphNodeId})::text COLLATE "C"
+            END
+          )
         )
       )
     ON CONFLICT (project_id, source_node_key, target_node_key, relation_type) DO NOTHING
@@ -207,11 +226,21 @@ async function mergeActorGraphNodesInRelational(
     SELECT
       project_id,
       CASE
-        WHEN relation_type = 'SAME_AS' THEN LEAST(source_node_key, ${input.primaryGraphNodeId})
+        WHEN relation_type = 'SAME_AS' THEN
+          CASE
+            WHEN source_node_key::text COLLATE "C" <= (${input.primaryGraphNodeId})::text COLLATE "C"
+            THEN source_node_key
+            ELSE ${input.primaryGraphNodeId}
+          END
         ELSE source_node_key
       END,
       CASE
-        WHEN relation_type = 'SAME_AS' THEN GREATEST(source_node_key, ${input.primaryGraphNodeId})
+        WHEN relation_type = 'SAME_AS' THEN
+          CASE
+            WHEN source_node_key::text COLLATE "C" <= (${input.primaryGraphNodeId})::text COLLATE "C"
+            THEN ${input.primaryGraphNodeId}
+            ELSE source_node_key
+          END
         ELSE ${input.primaryGraphNodeId}
       END,
       relation_type,
@@ -223,8 +252,19 @@ async function mergeActorGraphNodesInRelational(
         relation_type <> 'SAME_AS' AND source_node_key <> ${input.primaryGraphNodeId}
         OR (
           relation_type = 'SAME_AS'
-          AND LEAST(source_node_key, ${input.primaryGraphNodeId})
-            <> GREATEST(source_node_key, ${input.primaryGraphNodeId})
+          AND (
+            CASE
+              WHEN source_node_key::text COLLATE "C" <= (${input.primaryGraphNodeId})::text COLLATE "C"
+              THEN source_node_key::text COLLATE "C"
+              ELSE (${input.primaryGraphNodeId})::text COLLATE "C"
+            END
+            <>
+            CASE
+              WHEN source_node_key::text COLLATE "C" <= (${input.primaryGraphNodeId})::text COLLATE "C"
+              THEN (${input.primaryGraphNodeId})::text COLLATE "C"
+              ELSE source_node_key::text COLLATE "C"
+            END
+          )
         )
       )
     ON CONFLICT (project_id, source_node_key, target_node_key, relation_type) DO NOTHING
@@ -367,7 +407,7 @@ function rethrowOrNormalizeMutationError(operation: string, error: unknown): nev
   if (error instanceof Error && error.message === 'SAME_AS endpoints must differ.') {
     throw error;
   }
-  if (error instanceof Error && error.message === createMutationUnavailableError().message) {
+  if (isMutationUnavailableError(error)) {
     logRelationalMutationUnavailable(operation, error);
     throw error;
   }

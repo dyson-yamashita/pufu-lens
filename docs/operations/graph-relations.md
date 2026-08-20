@@ -27,12 +27,15 @@ Synthetic Monitorは引き続きAGE adapterを使い、既定compositionやread 
 - read adapterはproject-scopedなnode / relation count、SAME_AS / RELATED_TO 1-hop、MENTIONS 2-hop、Viewer presetを
   bounded SQLで実装する。全queryはread-only transaction、5秒timeout、deterministic order / row上限を使う。
 - mutation adapterはproject graph lifecycle、node / 9 edge typeのidempotent upsert、Document node cleanup、
-  Actor mergeを同一transactionで実装する。SAME_ASはendpointを`node_key`順にcanonicalizeする。
+  Actor mergeを同一transactionで実装する。SAME_ASはendpointをUTF-8 byte順にcanonicalizeし、PostgreSQLの
+  merge SQLでは明示的な`COLLATE "C"`でapplication側と同じ順序を使う。
 - Viewer / Synthetic Monitorへの接続はtestの明示DIだけであり、productionのAGE primary compositionは維持する。
 - adapter testは専用project fixtureだけを作成・削除し、AGE graphや既存projectには触れない。ログにはproperties、
   node identity、content、PII、secretを出さず、安全なoperation / error種別だけを記録する。
 - Step 2Bはmigration、backfill、live AGE inventory、dual-write / shadow read、production switchを行わない。
   これらはStep 2C以降のmerge gateを順に満たしてから実施する。
+- `graph_nodes.properties ->> 'documentId'`を使う代表queryの`EXPLAIN (ANALYZE, BUFFERS)`とrow countは
+  Step 2Cで取得し、expression indexは測定結果なしに追加しない。
 
 ## 前提
 

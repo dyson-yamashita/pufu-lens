@@ -72,8 +72,9 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
 - relation type の正本は `packages/graph` の `GRAPH_EDGE_TYPES` 9種である。migration / fresh schema の
   `graph_edges_relation_type_check` との drift を test で検出し、未知の値を DB 境界でも拒否する。
 - Step 2B の Actor merge adapter は、同一 transaction 内で edge を primary endpoint へ先に upsert / dedupeし、
-  secondary incident edge を明示削除してから node を削除する。SAME_AS は endpoint を `node_key` 順に
-  canonicalizeし、rewire後の競合も一件へ吸収する。この順序をDB testで固定し、node cascadeをedge移送に使わない。
+  secondary incident edge を明示削除してから node を削除する。SAME_AS は endpoint を UTF-8 byte 順に
+  canonicalizeし、PostgreSQL 側は明示的な `COLLATE "C"` で application と同じ順序を使う。rewire後の競合も
+  一件へ吸収する。この順序をDB testで固定し、node cascadeをedge移送に使わない。
 - `0026_relational_graph_schema` は table / constraint / index だけを追加し、AGE export、backfill、既存 row 更新を
   行わない。AGE-only row と source-of-truth の inventory は Step 2C の gate であり、現時点で全 graph が再生成可能とは
   扱わない。
@@ -89,6 +90,8 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
   `projects.graph_name`、API contract、認可境界は変更しない。
 - Step 2B はDDL、data migration、AGE export、backfillを追加しない。live AGE inventoryとsource-of-truth auditは
   Step 2C の gate であり、全graphを再生成可能とはまだ扱わない。
+- `graph_nodes.properties ->> 'documentId'` を使う代表 query の `EXPLAIN (ANALYZE, BUFFERS)` と row count は
+  Step 2C で取得し、expression index は計測結果を根拠に追加可否を判断する。
 
 ### 3. OAuth connection と data source
 

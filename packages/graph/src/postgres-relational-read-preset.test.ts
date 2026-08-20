@@ -113,3 +113,38 @@ test('normalizePresetRows does not treat duplicate edges as maxEdges overflow', 
   assert.equal(normalized.result.truncated, false);
   assertEdgeEndpointsExistInNodes(normalized);
 });
+
+test('normalizePresetRows truncates second distinct edge at maxEdges=1 without dangling endpoints', () => {
+  const normalized = normalizePresetRows(
+    [
+      presetQueryRow(),
+      presetQueryRow({
+        edgeSource: 'actor:issue-714-c',
+        edgeTarget: 'document:issue-714-d',
+        sourceNodeKey: 'actor:issue-714-c',
+        targetNodeKey: 'document:issue-714-d',
+        sourceProperties: {
+          actorId: '71400000-0000-0000-0000-000000000011',
+          displayName: 'Actor C',
+          graphLabels: ['Actor'],
+          graphNodeId: 'actor:issue-714-c',
+        },
+        targetProperties: {
+          docType: 'email',
+          documentId: '71400000-0000-0000-0000-000000000021',
+          graphLabels: ['Document'],
+          graphNodeId: 'document:issue-714-d',
+        },
+      }),
+    ],
+    {
+      maxEdges: 1,
+      maxNodes: 10,
+      queryLimit: 10,
+    },
+  );
+  assert.equal(normalized.result.edges.length, 1);
+  assert.equal(normalized.rawRows.length, 1);
+  assert.equal(normalized.result.truncated, true);
+  assertEdgeEndpointsExistInNodes(normalized);
+});

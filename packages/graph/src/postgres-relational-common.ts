@@ -50,7 +50,7 @@ export function deriveRelationalGraphNodeKindSubtype(
   };
 }
 
-/** Parses a single relational SQL count row at an adapter boundary. */
+/** Validates a single SQL field value as a non-negative safe integer at an adapter boundary. */
 export function parseRelationalIntegerField(value: unknown, label: string): number {
   if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
     return value;
@@ -163,12 +163,55 @@ export function logRelationalReadUnavailable(operation: string, error: unknown):
   );
 }
 
-export function createMutationUnavailableError(): Error {
-  return new Error(GRAPH_MUTATION_UNAVAILABLE_MESSAGE);
+export function createMutationUnavailableError(): GraphMutationUnavailableError {
+  return new GraphMutationUnavailableError();
 }
 
-export function createReadUnavailableError(): Error {
-  return new Error(GRAPH_READ_UNAVAILABLE_MESSAGE);
+export function createReadUnavailableError(): GraphReadUnavailableError {
+  return new GraphReadUnavailableError();
+}
+
+/** Marks graph mutation capability failures normalized by relational adapters. */
+export class GraphMutationUnavailableError extends Error {
+  constructor() {
+    super(GRAPH_MUTATION_UNAVAILABLE_MESSAGE);
+    this.name = 'GraphMutationUnavailableError';
+  }
+}
+
+/** Marks graph read capability failures normalized by relational adapters. */
+export class GraphReadUnavailableError extends Error {
+  constructor() {
+    super(GRAPH_READ_UNAVAILABLE_MESSAGE);
+    this.name = 'GraphReadUnavailableError';
+  }
+}
+
+/** Returns true when an error was normalized as graph mutation unavailable. */
+export function isMutationUnavailableError(error: unknown): boolean {
+  return error instanceof GraphMutationUnavailableError;
+}
+
+/** Returns true when an error was normalized as graph read unavailable. */
+export function isReadUnavailableError(error: unknown): boolean {
+  return error instanceof GraphReadUnavailableError;
+}
+
+const utf8Encoder = new TextEncoder();
+
+/** Compares graph node keys using UTF-8 byte order. */
+export function compareUtf8ByteOrder(left: string, right: string): number {
+  const leftBytes = utf8Encoder.encode(left);
+  const rightBytes = utf8Encoder.encode(right);
+  const length = Math.min(leftBytes.length, rightBytes.length);
+  for (let index = 0; index < length; index += 1) {
+    const leftByte = leftBytes[index] ?? 0;
+    const rightByte = rightBytes[index] ?? 0;
+    if (leftByte !== rightByte) {
+      return leftByte - rightByte;
+    }
+  }
+  return leftBytes.length - rightBytes.length;
 }
 
 export function graphRelationQueryRowLimit(
