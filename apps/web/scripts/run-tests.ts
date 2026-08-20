@@ -10,6 +10,7 @@ const excludedTestPaths = new Set([
   'db-synthetic-monitor.test.ts',
   'graph-coverage-db.test.ts',
   'postgres-roundtrip.test.ts',
+  'relational-graph-schema-db.test.ts',
 ]);
 
 function shouldSkipDirectory(name: string): boolean {

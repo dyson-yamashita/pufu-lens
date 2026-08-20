@@ -17,6 +17,7 @@ const dbTestFiles = [
   resolve(webTestRoot, 'actor-merge-db.test.ts'),
   resolve(webTestRoot, 'db-synthetic-monitor.test.ts'),
   resolve(webTestRoot, 'graph-coverage-db.test.ts'),
+  resolve(webTestRoot, 'relational-graph-schema-db.test.ts'),
   resolve(repoRoot, 'scripts/lib/built-in-parser-profiles-db.test.ts'),
   resolve(repoRoot, 'scripts/lib/ingest-workflow-reprocess-db.test.ts'),
 ];

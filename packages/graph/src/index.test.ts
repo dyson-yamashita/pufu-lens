@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  GRAPH_EDGE_TYPES,
   type GraphIndexingRepository,
   type GraphMutationRepository,
   type GraphReadRepository,
@@ -21,6 +22,20 @@ import {
   parseGraphRelatedDocumentCandidate,
   parseGraphRelationTypes,
 } from './index.js';
+
+test('GRAPH_EDGE_TYPES is the canonical graph edge type registry in fixed order', () => {
+  assert.deepEqual(GRAPH_EDGE_TYPES, [
+    'AUTHORED',
+    'COMMENTED_ON',
+    'MENTIONS',
+    'OWNS',
+    'REPLY_TO',
+    'RELATED_TO',
+    'REVIEWED',
+    'SAME_AS',
+    'SENT',
+  ]);
+});
 
 test('parseGraphRelatedDocumentCandidate accepts a provider-neutral candidate', () => {
   assert.deepEqual(

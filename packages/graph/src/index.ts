@@ -6,8 +6,8 @@ export const GRAPH_RELATED_DOCUMENT_POOL_LIMITS = {
   RELATED_TO: 5,
   SAME_AS: 2,
 } as const satisfies Record<GraphRelatedRelationType, number>;
-/** Canonical graph relation allowlist shared by read and future mutation capabilities. */
-export const GRAPH_RELATION_TYPES = [
+/** Canonical graph edge type registry for DB CHECK constraints and write validation. */
+export const GRAPH_EDGE_TYPES = [
   'AUTHORED',
   'COMMENTED_ON',
   'MENTIONS',
@@ -18,13 +18,17 @@ export const GRAPH_RELATION_TYPES = [
   'SAME_AS',
   'SENT',
 ] as const;
+/** Compatibility alias for historical graph relation type names; not a second registry. */
+export const GRAPH_RELATION_TYPES = GRAPH_EDGE_TYPES;
 /** Viewer preset identifiers owned by Pufu Lens rather than a graph query language. */
 export const GRAPH_PRESET_IDS = ['actor-documents', 'recent-relations'] as const;
 
 /** Relation type supported by related-document traversal. */
 export type GraphRelatedRelationType = (typeof GRAPH_RELATED_RELATION_TYPES)[number];
-/** Canonical graph relation type. */
-export type GraphRelationType = (typeof GRAPH_RELATION_TYPES)[number];
+/** Canonical graph edge type. */
+export type GraphEdgeType = (typeof GRAPH_EDGE_TYPES)[number];
+/** Compatibility alias for historical graph relation type names. */
+export type GraphRelationType = GraphEdgeType;
 /** Server-owned Graph Viewer preset identifier. */
 export type GraphPresetId = (typeof GRAPH_PRESET_IDS)[number];
 
@@ -188,7 +192,7 @@ export function parseGraphRelationTypes(value: unknown): readonly GraphRelationT
     !Array.isArray(value) ||
     !value.every(
       (entry) =>
-        typeof entry === 'string' && (GRAPH_RELATION_TYPES as readonly string[]).includes(entry),
+        typeof entry === 'string' && (GRAPH_EDGE_TYPES as readonly string[]).includes(entry),
     )
   ) {
     throw new Error('Invalid graph relation types.');
@@ -503,7 +507,7 @@ export function parseGraphDocumentCleanupResult(value: unknown): number {
 }
 
 function isGraphRelationType(value: unknown): value is GraphRelationType {
-  return typeof value === 'string' && (GRAPH_RELATION_TYPES as readonly string[]).includes(value);
+  return typeof value === 'string' && (GRAPH_EDGE_TYPES as readonly string[]).includes(value);
 }
 
 function isGraphRelatedRelationType(value: unknown): value is GraphRelatedRelationType {
