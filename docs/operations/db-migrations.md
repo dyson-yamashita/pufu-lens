@@ -117,6 +117,18 @@ source data からの backfill も実行しない。
 - live AGE inventoryと再生成元の完全性はStep 2Cで確認する。inventory未完了の状態で全graphを再生成可能と
   判断しない。
 
+### Relational Graph Step 2B
+
+Step 2B の relational Graph read / mutation adapter は、Step 2A の `0026_relational_graph_schema` だけを使用し、
+新しいDDL、data migration、AGE export / import、backfillを追加しない。fresh / migrated schema parity とmigration
+再実行性は引き続き`pnpm db:migrate --check`、`pnpm db:schema-drift`、Web DB testで検証する。
+
+- adapterは明示DIでのみ有効化し、productionのAGE primary compositionと`projects.graph_name`を維持する。
+- production DBへStep 2B固有のmigration適用やwriteを行わない。rollbackはrelational adapterを注入しない既定経路へ
+  戻すことで完了し、`graph_nodes` / `graph_edges`をdropしない。
+- live AGE inventory、再生成元の完全性、backfill / compareはStep 2C、dual-write / shadow readはStep 2D、
+  production switchはStep 2Eのgateとする。
+
 ### Vector / Embedding
 
 - PGroonga を追加する migration は、PostgreSQL ランタイム（Docker イメージ / VM）へ PGroonga パッケージを反映してから適用する。`CREATE EXTENSION pgroonga` は package 未導入の DB では失敗する。
