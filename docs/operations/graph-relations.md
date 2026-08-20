@@ -2,6 +2,25 @@
 
 Step 8 では、`documents` と `actors` を AGE graph に materialize し、`email_quotes` と最小 relation を保存する。
 
+Plan 018 Step 2A では移行先として `graph_nodes` / `graph_edges` schemaをadditiveに追加した。現行の
+`ingest:index`、Graph read / Viewer、Actor merge、Document cleanup、Synthetic Monitorは引き続きAGE adapterを
+使い、relational tableへのwrite / readは行わない。2A schema PRのmergeを確認するまで2Bのadapter実装を開始しない。
+
+### Relational graph schema（Step 2A）
+
+- node identityは既存`graphNodeId`を`node_key`として維持し、`project_id + node_key`で一意にする。
+- edge identityは`project_id + source_node_key + target_node_key + relation_type`で、relation typeは
+  `GRAPH_EDGE_TYPES`の`AUTHORED`、`COMMENTED_ON`、`MENTIONS`、`OWNS`、`REPLY_TO`、`RELATED_TO`、
+  `REVIEWED`、`SAME_AS`、`SENT`だけを許可する。
+- endpoint FKは同じ`project_id`のnodeだけを参照でき、unknown relation、orphan、project越境edgeをDBで拒否する。
+- project deleteとnode deleteはcascadeする。将来のDocument cleanupは対象node deleteでincident edgeを削除し、
+  Actor mergeはedgeをprimaryへupsert / dedupeしてsecondary edgeを明示削除した後にsecondary nodeを削除する。
+- propertiesはprovider-neutral JSON objectに限定する。content、PII、secretをschema test fixtureやlogへ記録しない。
+- outgoing / incoming traversal用indexだけを2Aで作る。relation type単独 / recent document indexは2B以降の
+  representative query計測で必要性を判断する。
+- `0026_relational_graph_schema`はAGE dataをcopyしない。live AGE inventoryとsource-of-truth auditは2Cで行い、
+  差分が解消または明示判断されるまで全graphを再生成可能と断定しない。
+
 ## 前提
 
 - `DATABASE_URL` が PostgreSQL / AGE / pgvector / PGroonga 入りの DB を指している。

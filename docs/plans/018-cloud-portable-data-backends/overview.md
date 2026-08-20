@@ -393,6 +393,21 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
 
 ## 9. Step 2: Apache AGE を relational graph schema へ置き換える
 
+> 進捗（2026-08-20）: Step 1A〜1C は PR #707 / #709 / #711 で merge 済み。Issue #712 で 2A
+> 「graph schema / DB tests」に着手した。2A の ready PR が merge されるまで 2B は開始しない。
+> live AGE inventory と graph の再生成可能性判定は 2C の gate とし、2A では既存 AGE path を変更しない。
+
+#### 2A 実装記録（Issue #712）
+
+- `0026_relational_graph_schema` と fresh DB `init.sql` に、project-scoped な `graph_nodes` / `graph_edges`、
+  source / target composite FK cascade、outgoing / incoming indexをadditiveに追加する。
+- provider-neutral canonical registryを`GRAPH_EDGE_TYPES` 9種へ固定し、migration / fresh schemaの
+  `relation_type` CHECKとのdrift testを追加する。既存`GraphRelationType`は互換aliasとして維持する。
+- DB testでunknown relation、orphan / cross-project endpoint、project / Document node cascade、Actor mergeに
+  必要なedge-first / conflict dedupe / secondary delete / transaction rollbackのschema契約を固定する。
+- 2Aではdata backfillを行わず、AGE extension、`projects.graph_name`、AGE adapter、read / write profileを維持する。
+  relational adapter / Viewer / monitorは2B、live AGE inventory / source-of-truth auditは2Cへ残す。
+
 ### 目的
 
 Pufu Lens が使う bounded graph capability を通常の relational node / edge schema で実装し、まず GCP

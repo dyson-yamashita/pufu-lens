@@ -94,6 +94,25 @@ DATABASE_URL=postgres://... pnpm db:schema-drift
 
 AGE graph、vector、embedding の変更は、schema とデータ再生成の適用順を分けて設計する。
 
+### Relational Graph Step 2A
+
+`0026_relational_graph_schema` は Plan 018 Step 2A の additive migration であり、空の `graph_nodes` /
+`graph_edges`、composite FK、relation type CHECK、outgoing / incoming indexだけを作る。AGE graph、
+`projects.graph_name`、既存 application row は変更せず、AGEからのexport/importやsource dataからのbackfillも
+実行しない。
+
+- fresh DB は `init.sql` の同等DDLと`0026_relational_graph_schema` seedを使い、既存DBはmigration runnerが
+  transaction内で適用・version記録する。
+- DDLは`CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS`で未記録migrationの再試行を安全にする。
+  適用後の再実行要否は`schema_migrations`を正本として判断し、手動でmigration SQLを再投入しない。
+- 適用前は`pnpm db:migrate --check`、create database権限付きlocal / CI PostgreSQLでは
+  `pnpm db:schema-drift`とWeb DB testを実行する。DB testはunknown relation、orphan / cross-project endpoint、
+  project / node cascade、Actor mergeに必要なedge-first / dedupe / rollback契約を検証する。
+- production適用、relational write、read switchはこのschema PRの範囲外である。適用後に問題が見つかっても
+  AGE primaryを維持し、tableを即時dropせずforward-fixを優先する。
+- live AGE inventoryと再生成元の完全性はStep 2Cで確認する。inventory未完了の状態で全graphを再生成可能と
+  判断しない。
+
 ### Vector / Embedding
 
 - PGroonga を追加する migration は、PostgreSQL ランタイム（Docker イメージ / VM）へ PGroonga パッケージを反映してから適用する。`CREATE EXTENSION pgroonga` は package 未導入の DB では失敗する。
