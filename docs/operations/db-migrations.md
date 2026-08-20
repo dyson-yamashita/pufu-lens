@@ -97,14 +97,18 @@ AGE graph、vector、embedding の変更は、schema とデータ再生成の適
 ### Relational Graph Step 2A
 
 `0026_relational_graph_schema` は Plan 018 Step 2A の additive migration であり、空の `graph_nodes` /
-`graph_edges`、composite FK、relation type CHECK、outgoing / incoming indexだけを作る。AGE graph、
-`projects.graph_name`、既存 application row は変更せず、AGEからのexport/importやsource dataからのbackfillも
-実行しない。
+`graph_edges` を作る。両 table の composite primary key、node の project FK、edge endpoint の composite FK、
+node kind / 空白 node key / 空白 subtype / properties JSON object / relation type の CHECK、outgoing / incoming
+index を含む。AGE graph、`projects.graph_name`、既存 application row は変更せず、AGE からの export / import や
+source data からの backfill も実行しない。
 
 - fresh DB は `init.sql` の同等DDLと`0026_relational_graph_schema` seedを使い、既存DBはmigration runnerが
   transaction内で適用・version記録する。
-- DDLは`CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS`で未記録migrationの再試行を安全にする。
-  適用後の再実行要否は`schema_migrations`を正本として判断し、手動でmigration SQLを再投入しない。
+- migration runner の transaction が失敗した通常ケースでは DDL と version 記録が共に rollback され、未作成
+  object に対する再試行を行える。`CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` は同名 object の
+  FK、CHECK、index 定義を検証しないため、未記録の同名 object が残る DB を安全とはみなさない。その場合は
+  migration を停止して `pg_catalog` の定義を確認し、forward-fix または backup restore を判断する。
+  適用後の再実行要否は `schema_migrations` を正本として判断し、手動で migration SQL を再投入しない。
 - 適用前は`pnpm db:migrate --check`、create database権限付きlocal / CI PostgreSQLでは
   `pnpm db:schema-drift`とWeb DB testを実行する。DB testはunknown relation、orphan / cross-project endpoint、
   project / node cascade、Actor mergeに必要なedge-first / dedupe / rollback契約を検証する。
