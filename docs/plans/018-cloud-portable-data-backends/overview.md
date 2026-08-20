@@ -394,8 +394,8 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
 ## 9. Step 2: Apache AGE を relational graph schema へ置き換える
 
 > 進捗（2026-08-20）: Step 1A〜1C は PR #707 / #709 / #711、2A は Issue #712 / PR #713 で
-> merge 済み。Issue #714 で 2B「relational Graph adapter / Viewer / monitor」に着手した。2B の
-> ready PR が merge されるまで 2C は開始しない。live AGE inventory と graph の再生成可能性判定は
+> merge 済み。Issue #714 / ready PR #715 で 2B「relational Graph adapter / Viewer / monitor」を
+> レビュー中。PR #715 が merge されるまで 2C は開始しない。live AGE inventory と graph の再生成可能性判定は
 > 引き続き 2C の gate とし、2B では既存 AGE primary composition を変更しない。
 
 #### 2A 実装記録（Issue #712）
@@ -409,7 +409,7 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
 - 2Aではdata backfillを行わず、AGE extension、`projects.graph_name`、AGE adapter、read / write profileを維持する。
   relational adapter / Viewer / monitorは2B、live AGE inventory / source-of-truth auditは2Cへ残す。
 
-#### 2B 実装記録（Issue #714）
+#### 2B 実装記録（Issue #714 / ready PR #715）
 
 - `@pufu-lens/graph` にrelational read / mutation adapterの明示subpath exportを追加し、project-scopedな
   node / relation count、SAME_AS / RELATED_TO 1-hop、MENTIONS 2-hop、Viewer presetをbounded SQLで実装する。
