@@ -1,5 +1,4 @@
 import postgres from 'postgres';
-import { createObjectStorageFromEnv } from '../packages/storage/dist/factory.js';
 import { requiredEnv } from './lib/cli.ts';
 import {
   GraphMigrationCliValidationError,
@@ -13,6 +12,7 @@ async function main(): Promise<void> {
 
   try {
     if (options.command === 'rebuild') {
+      const { createObjectStorageFromEnv } = await import('../packages/storage/dist/factory.js');
       const storage = createObjectStorageFromEnv(process.env);
       const result = await runGraphRebuild({
         dryRun: options.dryRun,
