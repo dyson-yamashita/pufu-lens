@@ -11,6 +11,14 @@
     "./postgres-age-mutation": {
       "types": "./dist/postgres-age-mutation.d.ts",
       "import": "./dist/postgres-age-mutation.js"
+    },
+    "./postgres-relational-read": {
+      "types": "./dist/postgres-relational-read.d.ts",
+      "import": "./dist/postgres-relational-read.js"
+    },
+    "./postgres-relational-mutation": {
+      "types": "./dist/postgres-relational-mutation.d.ts",
+      "import": "./dist/postgres-relational-mutation.js"
     }
   },
   "scripts": {

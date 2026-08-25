@@ -100,6 +100,13 @@ Monitor の node / relation count は検証済み `projectId` だけを同 contr
 preview / `rawRows` response は互換性のため維持するが、request や Graph repository input には graph name、Cypher、
 record definition を受け取らない。
 
+Plan 018 Step 2B では、同じ `GraphReadRepository` / `GraphMutationRepository` contract を実装する PostgreSQL
+relational adapter を `@pufu-lens/graph` の明示 subpath export として追加した。adapter は `projectId` で scope した
+bounded SQL、read-only transaction、5 秒 timeout、provider-neutral JSON、SAME_AS の canonical endpoint、Actor merge
+の edge-first dedupe を内部に閉じる。Viewer と Synthetic Monitor は DB test で明示的に同 adapter を注入して検証するが、
+production の composition / profile はまだ変更せず AGE primary を維持する。backfill / compare、dual-write / shadow read、
+production switch はそれぞれ Step 2C 以降の gate とする。
+
 ### 2. コンポーネント役割
 
 | コンポーネント      | 役割                                                                                                         | デプロイ先                              |

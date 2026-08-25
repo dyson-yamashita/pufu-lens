@@ -393,9 +393,10 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
 
 ## 9. Step 2: Apache AGE を relational graph schema へ置き換える
 
-> 進捗（2026-08-20）: Step 1A〜1C は PR #707 / #709 / #711 で merge 済み。Issue #712 で 2A
-> 「graph schema / DB tests」に着手した。2A の ready PR が merge されるまで 2B は開始しない。
-> live AGE inventory と graph の再生成可能性判定は 2C の gate とし、2A では既存 AGE path を変更しない。
+> 進捗（2026-08-20）: Step 1A〜1C は PR #707 / #709 / #711、2A は Issue #712 / PR #713 で
+> merge 済み。Issue #714 / ready PR #715 で 2B「relational Graph adapter / Viewer / monitor」を
+> レビュー中。PR #715 が merge されるまで 2C は開始しない。live AGE inventory と graph の再生成可能性判定は
+> 引き続き 2C の gate とし、2B では既存 AGE primary composition を変更しない。
 
 #### 2A 実装記録（Issue #712）
 
@@ -407,6 +408,18 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
   必要なedge-first / conflict dedupe / secondary delete / transaction rollbackのschema契約を固定する。
 - 2Aではdata backfillを行わず、AGE extension、`projects.graph_name`、AGE adapter、read / write profileを維持する。
   relational adapter / Viewer / monitorは2B、live AGE inventory / source-of-truth auditは2Cへ残す。
+
+#### 2B 実装記録（Issue #714 / ready PR #715）
+
+- `@pufu-lens/graph` にrelational read / mutation adapterの明示subpath exportを追加し、project-scopedな
+  node / relation count、SAME_AS / RELATED_TO 1-hop、MENTIONS 2-hop、Viewer presetをbounded SQLで実装する。
+- 9 edge typeのidempotent upsert、SAME_AS canonicalization、project lifecycle、Document node cleanup、
+  Actor mergeのedge-first rewire / dedupe / rollbackを実装し、unit / 実PostgreSQL DB testで固定する。SAME_ASの
+  endpoint順序はUTF-8 byte順とし、merge SQLの明示的な`COLLATE "C"`とapplication実装を一致させる。
+- ViewerとSynthetic Monitorは明示DIしたrelational adapterで検証する。productionのAGE primary composition、
+  `projects.graph_name`、API / 認可 contractは変更しない。
+- 2Bではmigration、backfill、live AGE inventory、dual-write / shadow read、production switchを行わない。
+  source-of-truth auditと再生成可能性判定は2Cのgateとして残し、2Bのready PRがmergeされるまで開始しない。
 
 ### 目的
 
@@ -427,6 +440,8 @@ PostgreSQL VM 上で AGE なしに同等 behavior を提供する。
 - parsed JSON + relational row から再生成した shadow graph と AGE export を project ごとに比較する。
 - Actor merge decision、lifecycle-only refresh、Document cleanup 後の再生成規則を確認する。
 - representative 1-hop / 2-hop query の EXPLAIN と row count を取得する。
+- `graph_nodes.properties ->> 'documentId'`を使う代表queryも`EXPLAIN (ANALYZE, BUFFERS)`で計測し、
+  expression indexはその結果を2Cの追加判断gateとする。
 
 ### 設計判断と根拠
 
@@ -470,8 +485,9 @@ graph_edges
 - edge identity は現行 `MERGE (from)-[type]->(to)` と同じ source / target / type とし、properties は
   upsert する。Actor merge 時は conflict で重複を吸収する。
 - `AUTHORED` 等の Actor / Document edge、`MENTIONS`、`RELATED_TO` は格納方向を維持する。
-  `SAME_AS` は読取契約が無向なので、両 endpoint を `node_key` 順に canonicalize して reverse duplicate を
-  作らない。既存 AGE の双方向 duplicate は canonical comparison で一件へ正規化する。
+  `SAME_AS` は読取契約が無向なので、両 endpoint を UTF-8 byte 順に canonicalize して reverse duplicate を
+  作らない。PostgreSQL側は明示的な`COLLATE "C"`で同じ順序を使う。既存 AGE の双方向 duplicate は
+  canonical comparison で一件へ正規化する。
 - label を可変 table にせず `kind` / `subtype` の許可値を guard する。
 - 9 種の edge type を列挙する `GRAPH_EDGE_TYPES` を canonical registry とし、`GraphEdgeType` は同定数から
   導出する。PostgreSQL / D1 migration の `relation_type` CHECK、adapter の write validation、upsert / query、

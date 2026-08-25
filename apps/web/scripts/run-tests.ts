@@ -11,6 +11,7 @@ const excludedTestPaths = new Set([
   'graph-coverage-db.test.ts',
   'postgres-roundtrip.test.ts',
   'relational-graph-schema-db.test.ts',
+  'postgres-relational-graph-adapter-db.test.ts',
 ]);
 
 function shouldSkipDirectory(name: string): boolean {

@@ -8,7 +8,7 @@
 
 - `projects` テーブルで論理プロジェクトを定義する。`slug` から storage prefix と AGE graph name を生成する。
 - ほぼ全ての業務テーブルに `project_id` を持たせ、query と unique 制約を project scope に閉じる。
-- 現行のナレッジグラフ read / write は project ごとの AGE graph を使う。`projects.graph_name` は DB に保存された値だけを信用し、request body や URL から graph name を受け取らない。Plan 018 Step 2A では移行先の `graph_nodes` / `graph_edges` を additive に追加したが、AGE は引き続き primary であり、adapter・dual-write・read switch はまだ接続しない。
+- 現行 production のナレッジグラフ read / write は project ごとの AGE graph を使う。`projects.graph_name` は DB に保存された値だけを信用し、request body や URL から graph name を受け取らない。Plan 018 Step 2A で移行先の `graph_nodes` / `graph_edges` を additive に追加し、Step 2B で relational read / mutation adapter を明示 DI 用に追加した。既定 composition は AGE primary のままで、backfill、dual-write、read switch はまだ接続しない。
 - Object Storage は project ごとの prefix（例: `<project_slug>/raw/...`, `<project_slug>/parsed/...`, `<project_slug>/reports/...`）で分離する。
 - Browser から渡された `projectId` は信用せず、URL の `projectSlug` から server side で `projects.id` を解決する。
 
@@ -30,36 +30,36 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
 
 現在の主なテーブル:
 
-| テーブル                                         | 役割                                                                                                                                                                                                                                                   |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `users`                                          | アプリログインユーザー。global role は bootstrap や運用用途に限定し、project 認可は `project_members` を主に使う。                                                                                                                                     |
-| `auth_accounts`                                  | Google / GitHub などのアプリログイン provider と `users.id` の対応表。provider token は保存しない。                                                                                                                                                    |
-| `auth_password_credentials`                      | OAuth を使わないローカル/運用用 Credentials provider の password hash。                                                                                                                                                                                |
-| `projects`                                       | project slug、graph name、storage prefix、visibility、settings を保持する。                                                                                                                                                                            |
-| `graph_nodes`                                    | relational graph の provider-neutral node。`(project_id, node_key)` を identity とし、`document` / `actor` / `topic` の kind、nullable subtype、JSON object properties を保持する。Step 2A 時点では空の移行先 schema であり AGE primary からは未接続。 |
-| `graph_edges`                                    | relational graph の directed edge。project、source / target node key、canonical 9種の relation type を identity とし、両 endpoint の composite FK で project 越境と orphan を拒否する。Step 2A 時点では AGE primary からは未接続。                     |
-| `project_members`                                | project ごとの member/admin 権限を保持する。private API と server action の主要な認可境界。                                                                                                                                                            |
-| `oauth_connections`                              | project 単位の Google / GitHub 連携 metadata。token 実値ではなく暗号化済み値または secret 参照を扱う。                                                                                                                                                 |
-| `data_sources`                                   | project の収集対象。Gmail / Drive / GitHub は対応する `oauth_connections` を必要とし、Web は connection なしで作成できる。完全成功した差分収集の `sync_cursor` と `last_sync_succeeded_at` を保持する。                                                |
-| `data_source_schedules`                          | GitHub / Drive / Gmail の日次同期設定。`daily_time` と `timezone`、UTC の `next_run_at`、Step 4 dispatcher 用 lease・retry・結果を project / data source scope で保持する。Web には作成しない。                                                        |
-| `project_report_schedules`                       | project ごとの定期 report 周期と実行状態。`none` / `weekly` / `monthly` / `annually`、10:00 `Asia/Tokyo` の wall-clock、UTC の `next_run_at`、lease・retry・監査 user を保持する。                                                                     |
-| `report_schedule_period_runs`                    | 定期 report の対象期間ごとの実行履歴の正本。通常は calendar period、初回 backfill は完了済み履歴全体の期間を表し、pending / running / succeeded / skipped / retry 状態、lease、通知、生成 report を project scope で追跡する。                         |
-| `parser_profiles` / `parser_versions`            | source type / data source ごとの parser 選択、artifact、承認状態を管理する。                                                                                                                                                                           |
-| `raw_documents`                                  | 外部 source から取得した版単位の原本 metadata と storage URI。`logical_source_id` で実体を束ね、`source_version` ごとの履歴を保持する。実体は Object Storage に置く。                                                                                  |
-| `raw_document_data_sources`                      | 同じ raw document が複数 data source から見つかった履歴を n:m で保持する。Data Sources 詳細の content preview はこの関連から対象 data source の raw document を列挙する。                                                                              |
-| `ingestion_queue`                                | raw document の parse / index 処理キュー。lease、attempts、hold/failed 状態を持つ。                                                                                                                                                                    |
-| `documents`                                      | 解析済み document の正規化 metadata。logical source 単位で ID を維持し、`raw_document_id` は検索対象の最新版を参照する。                                                                                                                               |
-| `document_chunks` / `document_chunk_history`     | chunk 本体、embedding、chunk hash、再生成履歴を保持する。                                                                                                                                                                                              |
-| `actors` / `actor_aliases`                       | email / GitHub login / Web author domain などの actor と alias を project scope で管理する。                                                                                                                                                           |
-| `email_quotes`                                   | Gmail の引用チェーンを document と分離して保持する。                                                                                                                                                                                                   |
-| `reports` / `report_chunks`                      | private/public report metadata、artifact URI、検索用 chunk を保持する。`reports` は手動・通常定期・backfill の生成種別、周期、前回定期 report、period run を参照する。                                                                                 |
-| `activitypub_fedify_kv`                          | Fedify の cache / idempotency state 用 PostgreSQL KV。業務データは保存しない。Step 1 protocol spike で導入済み。                                                                                                                                       |
-| `activitypub_queue_messages`                     | ActivityPub inbox / delivery queue。Activity ID 単位の inbound dedupe と recipient 単位の outbox dedupe、ordering key、recipient origin、lease / attempt / 結果を保持する。private JWK は保存しない。                                                  |
-| `activitypub_instance_config`                    | instance 全体の `article` / `note` 表現を保持する singleton。最初の outbound activity 作成時に DB trigger で lock し、以後の変更・unlock・singleton 削除を拒否する。                                                                                   |
-| `activitypub_actors`                             | project Actor と aggregate `@all` Actor の正本。instance 内 username 一意、aggregate 最大1件、project ごと最大1件、kind / project 整合、`all` 予約を DB 制約で保証し、display name、icon URL、投稿追加prompt、Actor単位の暗号化秘密鍵を保持する。      |
-| `activitypub_follows` / `activitypub_activities` | inbound / outbound Follow の状態、Activity receipt、公開 report の Create / Announce transactional outbox の正本。公開状態と outbound row は同じ transaction で更新する。                                                                              |
-| `federated_reports`                              | remote object を project scope で参照する外部 report の正本。`project_id + remote_object_uri` を一意にし、accepted outbound followとのproject対応をDB triggerで固定する。chat / graph / embedding / report生成 / ingestionの正本にはしない。           |
-| `schema_migrations`                              | `pnpm db:migrate` が適用済み migration version を記録する。fresh DB では `init.sql` に取り込み済み version を seed する。                                                                                                                              |
+| テーブル                                         | 役割                                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`                                          | アプリログインユーザー。global role は bootstrap や運用用途に限定し、project 認可は `project_members` を主に使う。                                                                                                                                                                    |
+| `auth_accounts`                                  | Google / GitHub などのアプリログイン provider と `users.id` の対応表。provider token は保存しない。                                                                                                                                                                                   |
+| `auth_password_credentials`                      | OAuth を使わないローカル/運用用 Credentials provider の password hash。                                                                                                                                                                                                               |
+| `projects`                                       | project slug、graph name、storage prefix、visibility、settings を保持する。                                                                                                                                                                                                           |
+| `graph_nodes`                                    | relational graph の provider-neutral node。`(project_id, node_key)` を identity とし、`document` / `actor` / `topic` の kind、nullable subtype、JSON object properties を保持する。Step 2B adapter から明示 DI で read / mutation できるが、production AGE primary からは未接続。     |
+| `graph_edges`                                    | relational graph の directed edge。project、source / target node key、canonical 9種の relation type を identity とし、両 endpoint の composite FK で project 越境と orphan を拒否する。Step 2B adapter から明示 DI で read / mutation できるが、production AGE primary からは未接続。 |
+| `project_members`                                | project ごとの member/admin 権限を保持する。private API と server action の主要な認可境界。                                                                                                                                                                                           |
+| `oauth_connections`                              | project 単位の Google / GitHub 連携 metadata。token 実値ではなく暗号化済み値または secret 参照を扱う。                                                                                                                                                                                |
+| `data_sources`                                   | project の収集対象。Gmail / Drive / GitHub は対応する `oauth_connections` を必要とし、Web は connection なしで作成できる。完全成功した差分収集の `sync_cursor` と `last_sync_succeeded_at` を保持する。                                                                               |
+| `data_source_schedules`                          | GitHub / Drive / Gmail の日次同期設定。`daily_time` と `timezone`、UTC の `next_run_at`、Step 4 dispatcher 用 lease・retry・結果を project / data source scope で保持する。Web には作成しない。                                                                                       |
+| `project_report_schedules`                       | project ごとの定期 report 周期と実行状態。`none` / `weekly` / `monthly` / `annually`、10:00 `Asia/Tokyo` の wall-clock、UTC の `next_run_at`、lease・retry・監査 user を保持する。                                                                                                    |
+| `report_schedule_period_runs`                    | 定期 report の対象期間ごとの実行履歴の正本。通常は calendar period、初回 backfill は完了済み履歴全体の期間を表し、pending / running / succeeded / skipped / retry 状態、lease、通知、生成 report を project scope で追跡する。                                                        |
+| `parser_profiles` / `parser_versions`            | source type / data source ごとの parser 選択、artifact、承認状態を管理する。                                                                                                                                                                                                          |
+| `raw_documents`                                  | 外部 source から取得した版単位の原本 metadata と storage URI。`logical_source_id` で実体を束ね、`source_version` ごとの履歴を保持する。実体は Object Storage に置く。                                                                                                                 |
+| `raw_document_data_sources`                      | 同じ raw document が複数 data source から見つかった履歴を n:m で保持する。Data Sources 詳細の content preview はこの関連から対象 data source の raw document を列挙する。                                                                                                             |
+| `ingestion_queue`                                | raw document の parse / index 処理キュー。lease、attempts、hold/failed 状態を持つ。                                                                                                                                                                                                   |
+| `documents`                                      | 解析済み document の正規化 metadata。logical source 単位で ID を維持し、`raw_document_id` は検索対象の最新版を参照する。                                                                                                                                                              |
+| `document_chunks` / `document_chunk_history`     | chunk 本体、embedding、chunk hash、再生成履歴を保持する。                                                                                                                                                                                                                             |
+| `actors` / `actor_aliases`                       | email / GitHub login / Web author domain などの actor と alias を project scope で管理する。                                                                                                                                                                                          |
+| `email_quotes`                                   | Gmail の引用チェーンを document と分離して保持する。                                                                                                                                                                                                                                  |
+| `reports` / `report_chunks`                      | private/public report metadata、artifact URI、検索用 chunk を保持する。`reports` は手動・通常定期・backfill の生成種別、周期、前回定期 report、period run を参照する。                                                                                                                |
+| `activitypub_fedify_kv`                          | Fedify の cache / idempotency state 用 PostgreSQL KV。業務データは保存しない。Step 1 protocol spike で導入済み。                                                                                                                                                                      |
+| `activitypub_queue_messages`                     | ActivityPub inbox / delivery queue。Activity ID 単位の inbound dedupe と recipient 単位の outbox dedupe、ordering key、recipient origin、lease / attempt / 結果を保持する。private JWK は保存しない。                                                                                 |
+| `activitypub_instance_config`                    | instance 全体の `article` / `note` 表現を保持する singleton。最初の outbound activity 作成時に DB trigger で lock し、以後の変更・unlock・singleton 削除を拒否する。                                                                                                                  |
+| `activitypub_actors`                             | project Actor と aggregate `@all` Actor の正本。instance 内 username 一意、aggregate 最大1件、project ごと最大1件、kind / project 整合、`all` 予約を DB 制約で保証し、display name、icon URL、投稿追加prompt、Actor単位の暗号化秘密鍵を保持する。                                     |
+| `activitypub_follows` / `activitypub_activities` | inbound / outbound Follow の状態、Activity receipt、公開 report の Create / Announce transactional outbox の正本。公開状態と outbound row は同じ transaction で更新する。                                                                                                             |
+| `federated_reports`                              | remote object を project scope で参照する外部 report の正本。`project_id + remote_object_uri` を一意にし、accepted outbound followとのproject対応をDB triggerで固定する。chat / graph / embedding / report生成 / ingestionの正本にはしない。                                          |
+| `schema_migrations`                              | `pnpm db:migrate` が適用済み migration version を記録する。fresh DB では `init.sql` に取り込み済み version を seed する。                                                                                                                                                             |
 
 #### Relational graph schema（Plan 018 Step 2A）
 
@@ -71,12 +71,27 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
   Viewer recent-document index は representative query の計測前には追加しない。
 - relation type の正本は `packages/graph` の `GRAPH_EDGE_TYPES` 9種である。migration / fresh schema の
   `graph_edges_relation_type_check` との drift を test で検出し、未知の値を DB 境界でも拒否する。
-- Actor merge の relational adapter は Step 2B で実装する。schema contract は、同一 transaction 内で edge を
-  primary endpoint へ先に upsert / dedupeし、secondary incident edge を明示削除してから node を削除する順序を
-  DB test で固定する。node cascade を edge 移送に使わない。
+- Step 2B の Actor merge adapter は、同一 transaction 内で edge を primary endpoint へ先に upsert / dedupeし、
+  secondary incident edge を明示削除してから node を削除する。SAME_AS は endpoint を UTF-8 byte 順に
+  canonicalizeし、PostgreSQL 側は明示的な `COLLATE "C"` で application と同じ順序を使う。rewire後の競合も
+  一件へ吸収する。この順序をDB testで固定し、node cascadeをedge移送に使わない。
 - `0026_relational_graph_schema` は table / constraint / index だけを追加し、AGE export、backfill、既存 row 更新を
   行わない。AGE-only row と source-of-truth の inventory は Step 2C の gate であり、現時点で全 graph が再生成可能とは
   扱わない。
+
+#### Relational graph adapter（Plan 018 Step 2B）
+
+- read adapter は project-scoped な node / relation count、SAME_AS / RELATED_TO 1-hop、MENTIONS 2-hop、
+  Viewer preset を bounded SQL で実装し、read-only transaction と5秒timeoutを適用する。
+- mutation adapter は project lifecycle、node / canonical 9 edge type の idempotent upsert、Document node cleanup、
+  Actor mergeを実装する。unknown kind / relation type、非object propertiesはSQL binding前に拒否する。
+- adapter は `@pufu-lens/graph/postgres-relational-read` と
+  `@pufu-lens/graph/postgres-relational-mutation` から明示的に注入する。production の AGE adapter選択、
+  `projects.graph_name`、API contract、認可境界は変更しない。
+- Step 2B はDDL、data migration、AGE export、backfillを追加しない。live AGE inventoryとsource-of-truth auditは
+  Step 2C の gate であり、全graphを再生成可能とはまだ扱わない。
+- `graph_nodes.properties ->> 'documentId'` を使う代表 query の `EXPLAIN (ANALYZE, BUFFERS)` と row count は
+  Step 2C で取得し、expression index は計測結果を根拠に追加可否を判断する。
 
 ### 3. OAuth connection と data source
 
