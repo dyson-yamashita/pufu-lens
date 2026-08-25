@@ -245,6 +245,12 @@ gsutil iam ch serviceAccount:pufu-lens-web-runtime@PROJECT.iam.gserviceaccount.c
 
 Cloud Build deploy example（`deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml`）では、Workflow Job image push 後に Cloud Run Job で `pnpm db:migrate` を実行し、Mastra Server / Workflow Jobs / Web deploy の前に schema migration を完了させる。migration target は `infra/db/migrations/*.sql` のファイル名順で、version は `.sql` を除いたファイル名、適用済み version は `public.schema_migrations` に記録される。deploy 前の手動確認として `pnpm db:migrate --check` と `pnpm db:migrate --plan` を使い、Cloud Build 側では `_RUN_DB_MIGRATIONS=true` と `_DB_MIGRATION_JOB=db-migrate` を既定とする。
 
+Plan 018 Step 2Cの`pnpm graph:migrate rebuild|compare`はdeployやmigration Jobから自動実行しない。
+productionで使用する場合は、事前backup、対象project、Object Storage読取権限、limit / resume cursor、
+read-only AGE inventory、実行前後のsanitized count、rollback / forward-fix判断をdeploy checklistへ記録し、
+明示承認後にoperatorがproject単位で実行する。live compareが`pass`または差分のdecision logが承認されるまで、
+dual-write / shadow read、relational primary切替、AGE停止を進めない。
+
 `apps/web/apphosting.yaml` の最小例：
 
 ```yaml

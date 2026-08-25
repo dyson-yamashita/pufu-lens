@@ -58,6 +58,66 @@ test('storeGraphRelations materializes document, actor, topic, quote, and status
   assert.equal(fixture.edges.size, 3);
 });
 
+test('storeGraphRelations rebuild mode materializes lifecycle-only targets with full graph edges', async () => {
+  const fixture = new InMemoryGraphFixture([
+    {
+      document: documentRecord({
+        docType: 'issue',
+        graphNodeId: 'document:issue:example-org%2Fpufu-sample%2Fissues%2F101',
+        id: 'document-github-1',
+        rawDocumentId: 'raw-github-1',
+      }),
+      parsed: githubParsed({
+        metadata: {
+          githubLifecycle: {
+            closedAt: '2026-05-08T12:00:00.000Z',
+            draft: null,
+            kind: 'issue',
+            merged: null,
+            mergedAt: null,
+            state: 'closed',
+            stateReason: 'completed',
+            statusKnown: true,
+            updatedAt: '2026-05-08T12:00:00.000Z',
+          },
+          lifecycleOnly: true,
+        },
+        topics: [
+          {
+            metadata: { source: 'title' },
+            target: 'Lifecycle rebuild',
+            topicType: 'keyword',
+          },
+        ],
+      }),
+      rawContentHash: 'github-hash',
+      rawDocumentId: 'raw-github-1',
+    },
+  ]);
+  fixture.actors.push({
+    displayName: 'Sample Author',
+    graphNodeId: 'actor:github:sample-author',
+    id: 'actor-github-author',
+  });
+  fixture.aliases.set(
+    'github_login:sample-author',
+    fixture.actors.at(-1) as GraphIndexingActorRecord,
+  );
+
+  const incremental = await storeGraphRelations(fixture.storeOptions());
+  assert.equal(incremental.decisions[0]?.graphEdgeCount, 0);
+
+  const rebuild = await storeGraphRelations({
+    ...fixture.storeOptions(),
+    mode: 'rebuild',
+  });
+
+  assert.equal(rebuild.decisions[0]?.decision, 'indexed');
+  assert.equal(rebuild.decisions[0]?.actorEdgeCount, 1);
+  assert.equal(rebuild.decisions[0]?.graphEdgeCount, 2);
+  assert.ok(fixture.nodes.has('topic:keyword:lifecycle%20rebuild'));
+});
+
 test('storeGraphRelations updates GitHub lifecycle properties without recreating edges', async () => {
   const fixture = new InMemoryGraphFixture([
     {

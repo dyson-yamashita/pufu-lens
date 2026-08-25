@@ -107,6 +107,13 @@ bounded SQL、read-only transaction、5 秒 timeout、provider-neutral JSON、SA
 production の composition / profile はまだ変更せず AGE primary を維持する。backfill / compare、dual-write / shadow read、
 production switch はそれぞれ Step 2C 以降の gate とする。
 
+Plan 018 Step 2Cでは同じprovider-neutral mutation contractをrebuild modeで再利用し、operator CLIの内側だけで
+relational adapterへproject-scopedなbounded upsertを行う。AGE / relational inventory queryとprovider固有parserは
+`scripts/lib`のmigration boundaryに閉じ、CLI出力はsanitized count / categoryだけにする。これはproduction
+compositionへ注入されない。rebuildのObject Storage読取は最大8並列、compareのprovider readは同一の
+`REPEATABLE READ READ ONLY` transaction / sessionに固定する。runtimeのdual-write / shadow readはStep 2Dまで
+追加しない。live AGE inventory未実施のため、再生成可能性の最終判断もStep 2D開始gateに残す。
+
 ### 2. コンポーネント役割
 
 | コンポーネント      | 役割                                                                                                         | デプロイ先                              |

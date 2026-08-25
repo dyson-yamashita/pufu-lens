@@ -19,11 +19,45 @@ import {
   selectRelatedDocumentBackfillTargets,
 } from './graph-target-selection.ts';
 
+export const GRAPH_REBUILD_RESUME_CURSOR_DIGEST_SQL =
+  "encode(sha256(convert_to(rd.id::text, 'UTF8')), 'hex')";
+
+const RESUME_CURSOR_PATTERN = /^[0-9a-f]{64}$/;
+
+/** postgres.js executor accepted by graph indexing adapters. */
+export type PostgresGraphExecutor = postgres.Sql | postgres.TransactionSql;
+
+/** Rebuild indexing repository with digest-based resume cursor support. */
+export interface GraphRebuildIndexingRepository extends GraphIndexingRepository {
+  readGraphTargets(input: {
+    readonly limit: number;
+    readonly projectId: string;
+    readonly resumeCursor?: string;
+  }): Promise<readonly GraphIndexingTarget[]>;
+}
+
+async function withIndexingTransaction<T>(
+  sql: PostgresGraphExecutor,
+  callback: (transaction: postgres.TransactionSql) => Promise<T>,
+): Promise<T> {
+  if (isSqlExecutor(sql)) {
+    const result = await sql.begin(callback);
+    return result as T;
+  }
+  return callback(sql);
+}
+
+function isSqlExecutor(executor: PostgresGraphExecutor): executor is postgres.Sql {
+  return 'begin' in executor && typeof executor.begin === 'function';
+}
+
 export const SOURCE_TYPES = ['github', 'web', 'gmail', 'drive'] as const;
 
 export const GRAPH_INDEX_TARGET_SCAN_PAGE_MIN_SIZE = 100;
 export const GRAPH_INDEX_TARGET_SCAN_PAGE_MULTIPLIER = 10;
 export const GRAPH_RELATED_PARSED_TEXT_READ_CONCURRENCY = 10;
+/** Maximum concurrent Object Storage reads while loading rebuild graph targets. */
+export const GRAPH_REBUILD_PARSED_TEXT_READ_CONCURRENCY = 8;
 
 /** CLI options accepted by `index-graph-relations`. */
 export type IndexGraphRelationsCliOptions = {
@@ -58,7 +92,7 @@ type InsertedEmailQuoteRow = {
 };
 
 /** Creates a PostgreSQL-backed project resolver for graph indexing workflows. */
-export function createPostgresGraphProjectResolver(sql: postgres.Sql): ProjectResolver {
+export function createPostgresGraphProjectResolver(sql: PostgresGraphExecutor): ProjectResolver {
   return {
     async resolveBySlug(slug: string) {
       const rows = (await sql`
@@ -78,7 +112,7 @@ export function createPostgresGraphProjectResolver(sql: postgres.Sql): ProjectRe
 
 /** Creates a PostgreSQL-backed graph indexing repository for ingestion workflows. */
 export function createPostgresGraphIndexingRepository(
-  sql: postgres.Sql,
+  sql: PostgresGraphExecutor,
   storage: ObjectStorage,
   filters: {
     readonly dataSourceId?: string;
@@ -90,6 +124,21 @@ export function createPostgresGraphIndexingRepository(
     storage,
     filters.sourceType,
     filters.dataSourceId,
+  );
+}
+
+/**
+ * Creates a rebuild-only graph indexing repository that reads current parsed documents
+ * with digest-based resume cursors and without AGE selection heuristics.
+ */
+export function createPostgresGraphRebuildIndexingRepository(
+  sql: PostgresGraphExecutor,
+  storage: ObjectStorage,
+): GraphRebuildIndexingRepository {
+  return new PostgresGraphRebuildIndexingRepository(
+    new PostgresGraphIndexingRepository(sql, storage, undefined, undefined),
+    sql,
+    storage,
   );
 }
 
@@ -116,13 +165,17 @@ export function parseIndexGraphRelationsCliArgs(argv: string[]): IndexGraphRelat
 class PostgresGraphIndexingRepository implements GraphIndexingRepository {
   private readonly dataSourceId: string | undefined;
   private readonly sourceType: SourceType | undefined;
+  private readonly sql: PostgresGraphExecutor;
+  private readonly storage: ObjectStorage;
 
   constructor(
-    private readonly sql: postgres.Sql,
-    private readonly storage: ObjectStorage,
+    sql: PostgresGraphExecutor,
+    storage: ObjectStorage,
     sourceType: SourceType | undefined,
     dataSourceId: string | undefined,
   ) {
+    this.sql = sql;
+    this.storage = storage;
     this.sourceType = sourceType;
     this.dataSourceId = dataSourceId;
   }
@@ -437,7 +490,7 @@ class PostgresGraphIndexingRepository implements GraphIndexingRepository {
   }
 
   async replaceEmailQuotes(input: ReplaceGraphIndexingEmailQuotesInput): Promise<void> {
-    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
+    await withIndexingTransaction(this.sql, async (transaction): Promise<void> => {
       await transaction`
         DELETE FROM public.email_quotes
         WHERE project_id = ${input.projectId}
@@ -484,7 +537,7 @@ class PostgresGraphIndexingRepository implements GraphIndexingRepository {
     readonly projectId: string;
     readonly rawDocumentId: string;
   }): Promise<void> {
-    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
+    await withIndexingTransaction(this.sql, async (transaction): Promise<void> => {
       await transaction`
         UPDATE public.raw_documents
         SET ingest_status = 'indexed', indexed_at = now(), ingest_error = null
@@ -505,7 +558,7 @@ class PostgresGraphIndexingRepository implements GraphIndexingRepository {
     readonly projectId: string;
     readonly rawDocumentId: string;
   }): Promise<void> {
-    await this.sql.begin(async (transaction: postgres.TransactionSql): Promise<void> => {
+    await withIndexingTransaction(this.sql, async (transaction): Promise<void> => {
       await transaction`
         UPDATE public.raw_documents
         SET ingest_status = 'failed', ingest_error = ${input.errorMessage}
@@ -519,6 +572,127 @@ class PostgresGraphIndexingRepository implements GraphIndexingRepository {
           AND raw_document_id = ${input.rawDocumentId}
       `;
     });
+  }
+}
+
+class PostgresGraphRebuildIndexingRepository implements GraphRebuildIndexingRepository {
+  private readonly delegate: PostgresGraphIndexingRepository;
+  private readonly sql: PostgresGraphExecutor;
+  private readonly storage: ObjectStorage;
+
+  constructor(
+    delegate: PostgresGraphIndexingRepository,
+    sql: PostgresGraphExecutor,
+    storage: ObjectStorage,
+  ) {
+    this.delegate = delegate;
+    this.sql = sql;
+    this.storage = storage;
+  }
+
+  findActorByAlias(
+    input: Parameters<GraphIndexingRepository['findActorByAlias']>[0],
+  ): ReturnType<GraphIndexingRepository['findActorByAlias']> {
+    return this.delegate.findActorByAlias(input);
+  }
+
+  findActorByGraphNodeId(
+    input: Parameters<GraphIndexingRepository['findActorByGraphNodeId']>[0],
+  ): ReturnType<GraphIndexingRepository['findActorByGraphNodeId']> {
+    return this.delegate.findActorByGraphNodeId(input);
+  }
+
+  findDocumentsBySourceIds(
+    input: Parameters<GraphIndexingRepository['findDocumentsBySourceIds']>[0],
+  ): ReturnType<GraphIndexingRepository['findDocumentsBySourceIds']> {
+    return this.delegate.findDocumentsBySourceIds(input);
+  }
+
+  findSameAsDocuments(
+    input: Parameters<GraphIndexingRepository['findSameAsDocuments']>[0],
+  ): ReturnType<GraphIndexingRepository['findSameAsDocuments']> {
+    return this.delegate.findSameAsDocuments(input);
+  }
+
+  markFailed(
+    input: Parameters<GraphIndexingRepository['markFailed']>[0],
+  ): ReturnType<GraphIndexingRepository['markFailed']> {
+    return this.delegate.markFailed(input);
+  }
+
+  markIndexed(
+    input: Parameters<GraphIndexingRepository['markIndexed']>[0],
+  ): ReturnType<GraphIndexingRepository['markIndexed']> {
+    return this.delegate.markIndexed(input);
+  }
+
+  replaceEmailQuotes(
+    input: Parameters<GraphIndexingRepository['replaceEmailQuotes']>[0],
+  ): ReturnType<GraphIndexingRepository['replaceEmailQuotes']> {
+    return this.delegate.replaceEmailQuotes(input);
+  }
+
+  async readGraphTargets(input: {
+    readonly limit: number;
+    readonly projectId: string;
+    readonly resumeCursor?: string;
+  }): Promise<readonly GraphIndexingTarget[]> {
+    if (input.resumeCursor !== undefined && !RESUME_CURSOR_PATTERN.test(input.resumeCursor)) {
+      throw new Error('resume cursor must be a 64-character lowercase hex digest.');
+    }
+    const rows = await this.readRebuildGraphTargetRows(input);
+    return mapWithBoundedConcurrency(
+      rows,
+      GRAPH_REBUILD_PARSED_TEXT_READ_CONCURRENCY,
+      async (row): Promise<GraphIndexingTarget> => ({
+        document: {
+          docType: row.docType,
+          graphNodeId: row.graphNodeId,
+          id: row.documentId,
+          rawDocumentId: row.documentRawDocumentId,
+          sourceId: row.sourceId,
+        },
+        parsed: await this.readParsedText(row),
+        rawContentHash: row.rawContentHash,
+        rawDocumentId: row.rawDocumentId,
+      }),
+    );
+  }
+
+  private async readParsedText(row: GraphTargetRow): Promise<string> {
+    return this.storage.getText(row.parsedUri);
+  }
+
+  private async readRebuildGraphTargetRows(input: {
+    readonly limit: number;
+    readonly projectId: string;
+    readonly resumeCursor?: string;
+  }): Promise<GraphTargetRow[]> {
+    const rows = (await this.sql`
+      SELECT
+        d.doc_type AS "docType",
+        d.graph_node_id AS "graphNodeId",
+        d.id::text AS "documentId",
+        d.raw_document_id::text AS "documentRawDocumentId",
+        rd.content_hash AS "rawContentHash",
+        rd.id::text AS "rawDocumentId",
+        rd.ingest_status AS "ingestStatus",
+        rd.parsed_uri AS "parsedUri",
+        rd.source_id AS "sourceId"
+      FROM public.documents d
+      JOIN public.raw_documents rd ON rd.id = d.raw_document_id
+      WHERE d.project_id = ${input.projectId}
+        AND rd.project_id = ${input.projectId}
+        AND rd.parsed_uri IS NOT NULL
+        AND rd.ingest_status IN ('parsed', 'indexed')
+        AND (
+          ${input.resumeCursor ?? null}::text IS NULL
+          OR encode(sha256(convert_to(rd.id::text, 'UTF8')), 'hex') > ${input.resumeCursor ?? null}
+        )
+      ORDER BY encode(sha256(convert_to(rd.id::text, 'UTF8')), 'hex'), rd.id
+      LIMIT ${input.limit}
+    `) as readonly unknown[];
+    return rows.map(parseGraphTargetRow);
   }
 }
 
@@ -596,7 +770,7 @@ function parseInsertedEmailQuoteRow(rows: unknown[]): InsertedEmailQuoteRow {
 }
 
 async function resolveProjectGraphName(
-  sql: postgres.Sql,
+  sql: PostgresGraphExecutor,
   projectId: string,
 ): Promise<string | undefined> {
   const rows = (await sql`
@@ -620,7 +794,7 @@ async function resolveProjectGraphName(
 }
 
 async function listExistingDocumentGraphNodeIds(
-  sql: postgres.Sql,
+  sql: PostgresGraphExecutor,
   graphName: string,
   graphNodeIds: readonly string[],
 ): Promise<Set<string>> {
@@ -649,7 +823,7 @@ async function listExistingDocumentGraphNodeIds(
 }
 
 async function listExistingRelatedDocumentEdgeKeys(
-  sql: postgres.Sql,
+  sql: PostgresGraphExecutor,
   graphName: string,
   pairs: ReadonlyArray<{ fromGraphNodeId: string; toGraphNodeId: string }>,
 ): Promise<Set<string>> {
@@ -685,7 +859,7 @@ async function listExistingRelatedDocumentEdgeKeys(
   );
 }
 
-async function ensureAgeSession(sql: postgres.Sql): Promise<void> {
+async function ensureAgeSession(sql: PostgresGraphExecutor): Promise<void> {
   await sql.unsafe("LOAD 'age'");
   await sql.unsafe('SET search_path = ag_catalog, "$user", public');
 }
@@ -739,4 +913,20 @@ function requireNonEmptyString(value: unknown, fieldName: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+async function mapWithBoundedConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let start = 0; start < items.length; start += concurrency) {
+    const slice = items.slice(start, start + concurrency);
+    const sliceResults = await Promise.all(
+      slice.map((item, offset) => mapper(item, start + offset)),
+    );
+    results.push(...sliceResults);
+  }
+  return results;
 }

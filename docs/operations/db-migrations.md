@@ -114,8 +114,8 @@ source data からの backfill も実行しない。
   project / node cascade、Actor mergeに必要なedge-first / dedupe / rollback契約を検証する。
 - production適用、relational write、read switchはこのschema PRの範囲外である。適用後に問題が見つかっても
   AGE primaryを維持し、tableを即時dropせずforward-fixを優先する。
-- live AGE inventoryと再生成元の完全性はStep 2Cで確認する。inventory未完了の状態で全graphを再生成可能と
-  判断しない。
+- local rebuild / compareと再生成元auditはStep 2Cで実装した。live AGE inventoryは未完了であり、
+  その状態で全graphを再生成可能と判断しない。
 
 ### Relational Graph Step 2B
 
@@ -126,8 +126,27 @@ Step 2B の relational Graph read / mutation adapter は、Step 2A の `0026_rel
 - adapterは明示DIでのみ有効化し、productionのAGE primary compositionと`projects.graph_name`を維持する。
 - production DBへStep 2B固有のmigration適用やwriteを行わない。rollbackはrelational adapterを注入しない既定経路へ
   戻すことで完了し、`graph_nodes` / `graph_edges`をdropしない。
-- live AGE inventory、再生成元の完全性、backfill / compareはStep 2C、dual-write / shadow readはStep 2D、
+- local rebuild / compare実装はStep 2C、live AGE inventory完了とdual-write / shadow readはStep 2D、
   production switchはStep 2Eのgateとする。
+
+### Relational Graph Step 2C
+
+Step 2Cの`pnpm graph:migrate`はDDL migrationではなく、project-scopedなoperator batch / read-only auditである。
+`0026_relational_graph_schema`とStep 2B adapterを再利用し、fresh / migrated schema、AGE extension、
+`projects.graph_name`を変更しない。
+
+- `rebuild --dry-run`はwriteを行わない。`rebuild --execute`はboundedな1 batchを単一transactionでupsertし、
+  途中失敗時はbatch全体をrollbackする。sourceの完全性が未確定なのでproject graphを先に全削除せず、
+  片側だけのrowは`compare`で分類する。parsed artifact読取は最大8並列に制限する。
+- migration SQLからrebuildを呼ばず、schema適用、operator batch、compare、runtime切替を別gateにする。
+  同じcursorの再実行はidempotent upsertで吸収し、成功batchのopaque resume cursorだけを運用記録へ残す。
+- compareはAGEをread-only inventory対象とし、project解決を含む全readを同じ`REPEATABLE READ READ ONLY`
+  transaction / sessionで実行して、relational tableとsource-of-truthのsanitized countを返す。`pass`以外、
+  またはlive AGE inventory未実施の状態では、dual-write / shadow readの開始判定を完了扱いにしない。
+- production実行にはbackup、対象project、limit、cursor、実行前後count、失敗時のforward-fix / restore判断を
+  deploy checklistへ記録し、明示承認を得る。Step 2CのPR自体はproduction DBへ適用・実行しない。
+- expression indexは代表queryの`EXPLAIN (ANALYZE, BUFFERS, SETTINGS)`と10倍相当fixtureのp50 / p95を根拠に
+  別migrationで判断する。Step 2Cでは計測なしのDDLを追加しない。
 
 ### Vector / Embedding
 

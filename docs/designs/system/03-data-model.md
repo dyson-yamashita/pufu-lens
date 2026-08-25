@@ -76,8 +76,8 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
   canonicalizeし、PostgreSQL 側は明示的な `COLLATE "C"` で application と同じ順序を使う。rewire後の競合も
   一件へ吸収する。この順序をDB testで固定し、node cascadeをedge移送に使わない。
 - `0026_relational_graph_schema` は table / constraint / index だけを追加し、AGE export、backfill、既存 row 更新を
-  行わない。AGE-only row と source-of-truth の inventory は Step 2C の gate であり、現時点で全 graph が再生成可能とは
-  扱わない。
+  行わない。AGE-only row と source-of-truth のlocal inventory契約はStep 2Cで実装したが、live AGE inventoryは
+  未実施であり、現時点で全graphが再生成可能とは扱わない。
 
 #### Relational graph adapter（Plan 018 Step 2B）
 
@@ -88,10 +88,26 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
 - adapter は `@pufu-lens/graph/postgres-relational-read` と
   `@pufu-lens/graph/postgres-relational-mutation` から明示的に注入する。production の AGE adapter選択、
   `projects.graph_name`、API contract、認可境界は変更しない。
-- Step 2B はDDL、data migration、AGE export、backfillを追加しない。live AGE inventoryとsource-of-truth auditは
-  Step 2C の gate であり、全graphを再生成可能とはまだ扱わない。
-- `graph_nodes.properties ->> 'documentId'` を使う代表 query の `EXPLAIN (ANALYZE, BUFFERS)` と row count は
-  Step 2C で取得し、expression index は計測結果を根拠に追加可否を判断する。
+- Step 2B はDDL、data migration、AGE export、backfillを追加しない。Step 2Cでlocal rebuild / compareと
+  source-of-truth auditを実装した後も、live AGE inventoryが完了するまで全graphを再生成可能とは扱わない。
+- `graph_nodes.properties ->> 'documentId'` を使う代表 query はStep 2Cのlocal synthetic fixtureで実行手順を確認した。
+  production相当row count / p95は未取得であり、expression indexは後続の実測を根拠に追加可否を判断する。
+
+#### Graph rebuild / source-of-truth audit（Plan 018 Step 2C）
+
+- relational graphの再構築元は、current `documents` / `raw_documents`、Object Storageのparsed artifact、
+  `actors` / `actor_aliases` / `actor_merge_decisions`、`email_quotes`である。rebuild modeはlifecycle-only refreshも
+  nodeだけの更新に縮めず、current parsed artifactからfull relationを再計算する。
+- rebuildはproject-scopedなbounded upsertであり、ingestion statusと`email_quotes`を変更しない。sourceの
+  完全性が未確定な段階で既存relational rowを先に全削除せず、AGE-only / relational-only rowはcompareで監査する。
+  parsed artifact読取は最大8並列に制限する。
+- AGE / relational inventoryはnode keyをSHA-256 digestへ変換し、physical labelとprovider-neutral
+  `graphLabels`、property key、directed relation typeだけを比較する。properties値、content、PII、secretは結果へ出さない。
+  project解決からsource auditまで同一の`REPEATABLE READ READ ONLY` transaction / sessionを使用する。
+- Actor merge後もsecondary Actorを参照するalias / email quote、merge decision不整合、current documentの
+  parsed artifact / status不足、Document rowのないrelational nodeはsource audit blockerとする。
+- local PostgreSQL + AGE fixtureでは再構築と比較契約を確認済みだが、live AGE inventoryは未実施である。
+  live差分がゼロまたは明示的な扱いが承認されるまで、全graphを再生成可能とは扱わず、Step 2D開始gateに残す。
 
 ### 3. OAuth connection と data source
 

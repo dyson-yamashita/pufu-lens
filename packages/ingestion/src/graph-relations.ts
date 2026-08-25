@@ -22,6 +22,7 @@ import { validateParsedDocument } from './ingestion-fixtures.js';
 export interface StoreGraphRelationsOptions {
   readonly indexingRepository: GraphIndexingRepository;
   readonly limit: number;
+  readonly mode?: 'incremental' | 'rebuild';
   readonly mutationRepository: GraphMutationRepository;
   readonly projectResolver: ProjectResolver;
   readonly projectSlug: string;
@@ -49,6 +50,7 @@ export interface StoreGraphRelationDecision {
 
 interface GraphRelationContext {
   readonly indexingRepository: GraphIndexingRepository;
+  readonly mode: 'incremental' | 'rebuild';
   readonly mutationRepository: GraphMutationRepository;
   readonly projectId: string;
   readonly projectSlug: string;
@@ -91,6 +93,7 @@ export async function storeGraphRelations(
   });
   const context: GraphRelationContext = {
     indexingRepository: options.indexingRepository,
+    mode: options.mode ?? 'incremental',
     mutationRepository: options.mutationRepository,
     projectId: project.projectId,
     projectSlug: project.projectSlug,
@@ -140,7 +143,7 @@ async function storeGraphTarget(
   const parsed = parseTargetDocument(target.parsed);
   validateDocumentGraphKey(document, parsed);
 
-  if (isGitHubLifecycleOnlyRefresh(parsed.metadata)) {
+  if (isGitHubLifecycleOnlyRefresh(parsed.metadata) && context.mode === 'incremental') {
     await upsertMutationNode(
       context,
       documentGraphNode(context.projectId, target, document, parsed),
