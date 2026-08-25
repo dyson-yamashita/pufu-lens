@@ -394,8 +394,8 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
 ## 9. Step 2: Apache AGE を relational graph schema へ置き換える
 
 > 進捗（2026-08-25）: Step 1A〜1C は PR #707 / #709 / #711、2A は Issue #712 / PR #713、
-> 2B は Issue #714 / PR #715 で merge 済み。Issue #716 で 2C「rebuild / compare CLI と
-> source-of-truth audit」に着手した。live AGE inventory と graph の再生成可能性判定は 2D の gate とし、
+> 2B は Issue #714 / PR #715 で merge 済み。Issue #716 / ready PR #717 で 2C「rebuild / compare CLI と
+> source-of-truth audit」をレビュー中。live AGE inventory と graph の再生成可能性判定は 2D の gate とし、
 > 2C でも既存 AGE primary composition、本番 DB、read / write profile を変更しない。
 
 #### 2A 実装記録（Issue #712）
@@ -421,7 +421,7 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
 - 2Bではmigration、backfill、live AGE inventory、dual-write / shadow read、production switchを行わない。
   source-of-truth auditと再生成可能性判定は2Cのgateとして残し、2Bのready PRがmergeされるまで開始しない。
 
-#### 2C 実装記録（Issue #716）
+#### 2C 実装記録（Issue #716 / ready PR #717）
 
 - `graph:migrate rebuild`にdry-run / execute、project、bounded limit、SHA-256 digestのresume cursorを追加し、
   current parsed documentsからrelational graphをidempotentにupsertする。executeの1 batchは単一transactionで、
