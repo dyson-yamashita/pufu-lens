@@ -21,6 +21,7 @@ const dbTestFiles = [
   resolve(webTestRoot, 'postgres-relational-graph-adapter-db.test.ts'),
   resolve(repoRoot, 'scripts/lib/built-in-parser-profiles-db.test.ts'),
   resolve(repoRoot, 'scripts/lib/ingest-workflow-reprocess-db.test.ts'),
+  resolve(repoRoot, 'scripts/lib/postgres-graph-migration-db.test.ts'),
 ];
 
 async function runTestFile(testFile: string): Promise<number | null> {

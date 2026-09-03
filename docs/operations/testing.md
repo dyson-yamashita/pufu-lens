@@ -29,12 +29,16 @@ Plan 018 Step 2Cのrebuild / compareは、CLI parser、sanitized summary、diges
 専用fixtureに対して次を実行し、dry-run非変更、resume / idempotency、batch rollback、project isolation、
 production形状のmulti-label node / edge inventory parity、source audit、repeatable-read/read-only transactionを検証する。
 Object Storage mockではparsed artifact読取が最大8並列で順序を維持し、読取失敗時にbatchがrejectされることも固定する。
+rebuildの選択SQLは実行時のtagged templateとbind値を捕捉し、project scope、digest cursorの比較・順序、
+未指定cursorのNULL bindを検証する。compare CLIはstorage設定を全て除いた環境でも、実DB fixtureで正常終了し
+`gateStatus=pass`を返すことを検証する。node / edgeの構造差分合計は`labelPropertyKeyMismatchCount`として固定する。
 
 ```bash
 DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
   node --experimental-strip-types --test scripts/lib/postgres-graph-migration-db.test.ts
 ```
 
+このDB testはWebの`test:db`にも登録し、CIの`db-check`で実行する。
 DB testは専用projectとAGE graphだけをcleanupし、既存project、production DB、外部Object Storageへ接続しない。
 通常の`pnpm scripts:test`では`DATABASE_URL`未指定のDB caseをskipし、unit boundaryだけを実行する。
 

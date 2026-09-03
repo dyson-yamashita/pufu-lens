@@ -393,10 +393,13 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
 
 ## 9. Step 2: Apache AGE を relational graph schema へ置き換える
 
-> 進捗（2026-08-25）: Step 1A〜1C は PR #707 / #709 / #711、2A は Issue #712 / PR #713、
+> 進捗（2026-09-03）: Step 1A〜1C は PR #707 / #709 / #711、2A は Issue #712 / PR #713、
 > 2B は Issue #714 / PR #715 で merge 済み。Issue #716 / ready PR #717 で 2C「rebuild / compare CLI と
 > source-of-truth audit」をレビュー中。live AGE inventory と graph の再生成可能性判定は 2D の gate とし、
 > 2C でも既存 AGE primary composition、本番 DB、read / write profile を変更しない。
+
+2026-09-03のレビュー対応でstorage公開entry pointへの依存を明示し、SQLの実行時検証とstorage設定なしの
+compare CLI成功検証を追加した。構造差分の合計出力名はnode / edge双方を表す`labelPropertyKeyMismatchCount`とする。
 
 #### 2A 実装記録（Issue #712）
 

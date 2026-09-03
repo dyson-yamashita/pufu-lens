@@ -9,9 +9,9 @@ import {
   canonicalizeSameAsEdgeEndpoints,
   createPostgresRelationalGraphMutationRepository,
 } from '@pufu-lens/graph/postgres-relational-mutation';
+import type { ObjectStorage } from '@pufu-lens/storage';
 import type postgres from 'postgres';
 import { storeGraphRelations } from '../../packages/ingestion/dist/index.js';
-import type { ObjectStorage } from '../../packages/storage/dist/object-storage.js';
 import {
   compareGraphInventories,
   type GraphInventoryComparisonSummary,

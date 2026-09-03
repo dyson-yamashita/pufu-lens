@@ -8,9 +8,9 @@ import {
   parseGraphProjectResolverResult,
   type ReplaceGraphIndexingEmailQuotesInput,
 } from '@pufu-lens/graph';
+import type { ObjectStorage } from '@pufu-lens/storage';
 import type postgres from 'postgres';
 import type { SourceType } from '../../packages/ingestion/dist/index.js';
-import type { ObjectStorage } from '../../packages/storage/dist/object-storage.js';
 import { validateGraphName } from './cli.ts';
 import {
   extractRelatedDocumentSourceIds,
@@ -18,9 +18,6 @@ import {
   selectGraphIndexTargets,
   selectRelatedDocumentBackfillTargets,
 } from './graph-target-selection.ts';
-
-export const GRAPH_REBUILD_RESUME_CURSOR_DIGEST_SQL =
-  "encode(sha256(convert_to(rd.id::text, 'UTF8')), 'hex')";
 
 const RESUME_CURSOR_PATTERN = /^[0-9a-f]{64}$/;
 

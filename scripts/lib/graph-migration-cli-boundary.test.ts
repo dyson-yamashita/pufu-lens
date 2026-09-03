@@ -8,13 +8,16 @@ import { GraphMigrationCliValidationError } from './graph-migration-cli-options.
 const execFileAsync = promisify(execFile);
 const graphMigrationScript = fileURLToPath(new URL('../graph-migration.ts', import.meta.url));
 
-test('graph-migration compare does not require object storage env vars', async () => {
+test('graph-migration compare sanitizes runtime failures without object storage env vars', async () => {
   const env = {
     ...process.env,
     DATABASE_URL: 'postgresql://user:secret@localhost:5432/pufu_lens',
     GCS_BUCKET: undefined,
     LOCAL_STORAGE_ROOT: undefined,
-    STORAGE_BACKEND: undefined,
+    OBJECT_STORAGE_DRIVER: undefined,
+    STORAGE_BUCKET: undefined,
+    STORAGE_DRIVER: undefined,
+    STORAGE_ROOT: undefined,
   };
   await assert.rejects(
     () =>

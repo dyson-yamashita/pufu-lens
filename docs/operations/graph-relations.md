@@ -71,6 +71,9 @@ pnpm graph:migrate compare --project sample-a --limit 50000
   実行し、AGE sessionも同じ接続にpinする。node / edge identityをprocess内でSHA-256 digestへ変換し、出力は
   件数、`gateStatus`、source audit categoryだけに限定する。node key、document identity、property値、content、
   PII、secretは出力しない。
+- compareはObject Storageを初期化せず、storage driver / root / bucketの環境変数を必要としない。
+- `labelPropertyKeyMismatchCount`は、一致するidentityのnodeでlabel / property-key集合が異なる件数と、
+  一致するedgeでproperty-key集合が異なる件数の合計である。node / edgeのいずれも1件ずつ数える。
 - AGEのphysical labelと`graphLabels` propertyを正規化した和集合を、relationalのprovider-neutral
   `graphLabels`と比較する。SAME_ASはendpoint順をcanonicalizeし、その他8 relationは方向を維持する。
 - `gateStatus=pass`はbounded inventoryにtruncationも差分もない場合だけである。上限を超えた場合は

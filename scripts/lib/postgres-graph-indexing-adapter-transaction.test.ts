@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import type { ObjectInfo, ObjectStorage } from '@pufu-lens/storage';
 import type postgres from 'postgres';
-import type { ObjectInfo, ObjectStorage } from '../../packages/storage/dist/object-storage.js';
 import { createPostgresGraphRebuildIndexingRepository } from './postgres-graph-indexing-adapter.ts';
 
 test('createPostgresGraphRebuildIndexingRepository accepts TransactionSql executors', async () => {

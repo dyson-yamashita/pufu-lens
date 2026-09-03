@@ -94,7 +94,7 @@ test('compareGraphInventories ignores reversed label and property key ordering',
 
   const summary = compareGraphInventories({ age, relational, sourceAudit: emptyAudit() });
   assert.equal(summary.gateStatus, 'pass');
-  assert.equal(summary.edgeLabelPropertyKeyMismatchCount, 0);
+  assert.equal(summary.labelPropertyKeyMismatchCount, 0);
   assert.deepEqual(normalizeStructuralStringSet(['Issue', 'Document']), ['Document', 'Issue']);
 });
 
@@ -201,9 +201,12 @@ test('compareGraphInventories detects property key drift and logical duplicates'
     sourceAudit: emptyAudit(),
   });
 
+  assert.equal(summary.gateStatus, 'blocked');
   assert.equal(summary.duplicateNodeCount, 1);
   assert.equal(summary.duplicateEdgeCount, 1);
-  assert.equal(summary.edgeLabelPropertyKeyMismatchCount, 2);
+  assert.equal(summary.labelPropertyKeyMismatchCount, 2);
+  const serialized = JSON.stringify(summary);
+  assert.equal(serialized.includes('edgeLabelPropertyKeyMismatchCount'), false);
 });
 
 test('compareGraphInventories is inconclusive when truncated', () => {

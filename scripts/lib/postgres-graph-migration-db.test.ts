@@ -1,13 +1,18 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { createPostgresAgeGraphMutationRepository } from '@pufu-lens/graph/postgres-age-mutation';
 import { createPostgresRelationalGraphMutationRepository } from '@pufu-lens/graph/postgres-relational-mutation';
+import type { ObjectInfo, ObjectStorage } from '@pufu-lens/storage';
 import postgres from 'postgres';
-import type { ObjectInfo, ObjectStorage } from '../../packages/storage/dist/object-storage.js';
 import { runGraphCompare, runGraphRebuild } from './postgres-graph-migration.ts';
 import { auditGraphSourceOfTruth } from './postgres-graph-source-audit.ts';
 
+const execFileAsync = promisify(execFile);
+const graphMigrationScript = fileURLToPath(new URL('../graph-migration.ts', import.meta.url));
 const databaseUrl = process.env.DATABASE_URL?.trim();
 
 const fixture = {
@@ -180,6 +185,56 @@ test('runGraphRebuild execute does not alter an isolated sentinel project', {
 
     assert.equal(await countGraphNodes(sql, fixture.sentinelProjectId), 1);
     assert.equal(await hasGraphNode(sql, fixture.sentinelProjectId, fixture.sentinelNodeKey), true);
+  } finally {
+    try {
+      await resetFixture(sql);
+    } finally {
+      await sql.end();
+    }
+  }
+});
+
+test('graph-migration compare succeeds without object storage configuration', {
+  skip: !databaseUrl,
+}, async () => {
+  const sql = postgres(databaseUrl as string, { max: 1 });
+  try {
+    await resetFixture(sql);
+    await seedFixture(sql);
+    await seedCompareParityGraph(sql);
+
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      [
+        '--experimental-strip-types',
+        graphMigrationScript,
+        'compare',
+        '--project',
+        fixture.projectSlug,
+        '--limit',
+        '100',
+      ],
+      {
+        env: {
+          ...process.env,
+          DATABASE_URL: databaseUrl,
+          GCS_BUCKET: undefined,
+          LOCAL_STORAGE_ROOT: undefined,
+          OBJECT_STORAGE_DRIVER: undefined,
+          STORAGE_BUCKET: undefined,
+          STORAGE_DRIVER: undefined,
+          STORAGE_ROOT: undefined,
+        },
+        timeout: 30_000,
+      },
+    );
+
+    const parsed: unknown = JSON.parse(stdout);
+    assert.ok(typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed));
+    assert.ok('gateStatus' in parsed);
+    assert.equal(parsed.gateStatus, 'pass');
+    assert.equal(stdout.includes(fixture.projectId), false);
+    assert.equal(stdout.includes(fixture.compareDocumentGraphNodeId), false);
   } finally {
     try {
       await resetFixture(sql);

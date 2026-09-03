@@ -76,6 +76,7 @@
   "dependencies": {
     "@pufu-lens/activitypub": "workspace:*",
     "@pufu-lens/graph": "workspace:*",
+    "@pufu-lens/storage": "workspace:*",
     "postgres": "^3.4.9"
   }
 }

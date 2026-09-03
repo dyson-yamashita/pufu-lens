@@ -37,6 +37,9 @@ importers:
       '@pufu-lens/graph':
         specifier: workspace:*
         version: link:packages/graph
+      '@pufu-lens/storage':
+        specifier: workspace:*
+        version: link:packages/storage
       postgres:
         specifier: ^3.4.9
         version: 3.4.9

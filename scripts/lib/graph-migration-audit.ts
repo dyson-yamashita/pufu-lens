@@ -40,7 +40,8 @@ export interface GraphInventoryComparisonSummary {
   readonly ageOnlyNodeCount: number;
   readonly duplicateEdgeCount: number;
   readonly duplicateNodeCount: number;
-  readonly edgeLabelPropertyKeyMismatchCount: number;
+  /** Combined count of node label/property-key mismatches and edge property-key mismatches. */
+  readonly labelPropertyKeyMismatchCount: number;
   readonly gateStatus: GraphInventoryGateStatus;
   readonly orphanEdgeCount: number;
   readonly relationalOnlyEdgeCount: number;
@@ -83,7 +84,7 @@ export function compareGraphInventories(input: {
 
   let ageOnlyNodeCount = 0;
   let relationalOnlyNodeCount = 0;
-  let edgeLabelPropertyKeyMismatchCount = 0;
+  let labelPropertyKeyMismatchCount = 0;
 
   for (const digest of new Set([...ageNodeByDigest.keys(), ...relationalNodeByDigest.keys()])) {
     const ageNode = ageNodeByDigest.get(digest);
@@ -100,7 +101,7 @@ export function compareGraphInventories(input: {
       !sameStringArrays(ageNode.labels, relationalNode.labels) ||
       !sameStringArrays(ageNode.propertyKeys, relationalNode.propertyKeys)
     ) {
-      edgeLabelPropertyKeyMismatchCount += 1;
+      labelPropertyKeyMismatchCount += 1;
     }
   }
 
@@ -124,7 +125,7 @@ export function compareGraphInventories(input: {
       continue;
     }
     if (!sameStringArrays(ageEdge.propertyKeys, relationalEdge.propertyKeys)) {
-      edgeLabelPropertyKeyMismatchCount += 1;
+      labelPropertyKeyMismatchCount += 1;
     }
   }
 
@@ -146,7 +147,7 @@ export function compareGraphInventories(input: {
     relationalOnlyNodeCount +
     ageOnlyEdgeCount +
     relationalOnlyEdgeCount +
-    edgeLabelPropertyKeyMismatchCount +
+    labelPropertyKeyMismatchCount +
     sumBlockingSourceAuditCounts(sourceAudit);
 
   const gateStatus: GraphInventoryGateStatus = truncated
@@ -160,7 +161,7 @@ export function compareGraphInventories(input: {
     ageOnlyNodeCount,
     duplicateEdgeCount,
     duplicateNodeCount,
-    edgeLabelPropertyKeyMismatchCount,
+    labelPropertyKeyMismatchCount,
     gateStatus,
     orphanEdgeCount,
     relationalOnlyEdgeCount,
