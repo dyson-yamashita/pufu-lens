@@ -393,10 +393,13 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
 
 ## 9. Step 2: Apache AGE を relational graph schema へ置き換える
 
-> 進捗（2026-08-20）: Step 1A〜1C は PR #707 / #709 / #711、2A は Issue #712 / PR #713 で
-> merge 済み。Issue #714 / ready PR #715 で 2B「relational Graph adapter / Viewer / monitor」を
-> レビュー中。PR #715 が merge されるまで 2C は開始しない。live AGE inventory と graph の再生成可能性判定は
-> 引き続き 2C の gate とし、2B では既存 AGE primary composition を変更しない。
+> 進捗（2026-09-03）: Step 1A〜1C は PR #707 / #709 / #711、2A は Issue #712 / PR #713、
+> 2B は Issue #714 / PR #715 で merge 済み。Issue #716 / ready PR #717 で 2C「rebuild / compare CLI と
+> source-of-truth audit」をレビュー中。live AGE inventory と graph の再生成可能性判定は 2D の gate とし、
+> 2C でも既存 AGE primary composition、本番 DB、read / write profile を変更しない。
+
+2026-09-03のレビュー対応でstorage公開entry pointへの依存を明示し、SQLの実行時検証とstorage設定なしの
+compare CLI成功検証を追加した。構造差分の合計出力名はnode / edge双方を表す`labelPropertyKeyMismatchCount`とする。
 
 #### 2A 実装記録（Issue #712）
 
@@ -409,7 +412,7 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
 - 2Aではdata backfillを行わず、AGE extension、`projects.graph_name`、AGE adapter、read / write profileを維持する。
   relational adapter / Viewer / monitorは2B、live AGE inventory / source-of-truth auditは2Cへ残す。
 
-#### 2B 実装記録（Issue #714 / ready PR #715）
+#### 2B 実装記録（Issue #714 / PR #715）
 
 - `@pufu-lens/graph` にrelational read / mutation adapterの明示subpath exportを追加し、project-scopedな
   node / relation count、SAME_AS / RELATED_TO 1-hop、MENTIONS 2-hop、Viewer presetをbounded SQLで実装する。
@@ -420,6 +423,23 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
   `projects.graph_name`、API / 認可 contractは変更しない。
 - 2Bではmigration、backfill、live AGE inventory、dual-write / shadow read、production switchを行わない。
   source-of-truth auditと再生成可能性判定は2Cのgateとして残し、2Bのready PRがmergeされるまで開始しない。
+
+#### 2C 実装記録（Issue #716 / ready PR #717）
+
+- `graph:migrate rebuild`にdry-run / execute、project、bounded limit、SHA-256 digestのresume cursorを追加し、
+  current parsed documentsからrelational graphをidempotentにupsertする。executeの1 batchは単一transactionで、
+  途中失敗時は全更新をrollbackする。parsed artifact読取は最大8並列とし、ingestion statusと`email_quotes`は変更しない。
+- `graph:migrate compare`はAGE / relationalのnode / edge identityをprocess内でdigest化し、count、duplicate、orphan、
+  unknown relation、片側だけのrow、label / property-key drift、source audit categoryだけを出力する。SAME_ASは
+  endpointをcanonicalizeし、AGEのphysical labelとprovider-neutral `graphLabels`の和集合を比較する。全readは
+  同一の`REPEATABLE READ READ ONLY` transaction / sessionで実行する。
+- Actor merge decision / secondary参照、Document cleanup相当のorphan、lifecycle-only refreshのfull rebuild契約を
+  unit / local PostgreSQL + AGE DB testで固定する。既存relational rowはsource完全性確認前に全削除しない。
+- local synthetic fixtureでrepresentative 1-hop / 2-hopと`properties ->> 'documentId'`のEXPLAIN手順を確認する。
+  production相当row count / p95は未取得のためexpression indexを追加せず、後続の実測gateに残す。
+- 2CではDDL migration、production DB実行、deploy、dual-write / shadow read、production switchを行わない。
+  live AGE inventoryは認証済み接続を取得せず未実施であり、全graphを再生成可能とは断定しない。live compareの
+  差分ゼロまたは明示decisionを2D開始gateとして残す。
 
 ### 目的
 

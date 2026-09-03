@@ -7,6 +7,10 @@ Plan 018 Step 2A では移行先として `graph_nodes` / `graph_edges` schema�
 relational adapterを検証する。現行productionの`ingest:index`、Graph read / Viewer、Actor merge、Document cleanup、
 Synthetic Monitorは引き続きAGE adapterを使い、既定compositionやread / write profileは切り替えない。
 
+Plan 018 Step 2C では、source dataからrelational graphをproject単位で再構築し、AGEとの構造差分を監査する
+operator CLIを追加した。CLIはproduction compositionへ接続せず、AGE primary read / writeも変更しない。live AGE
+inventoryは未実施であり、差分ゼロまたは明示的な扱いが決まるまでは全graphを再生成可能と扱わない。
+
 ### Relational graph schema（Step 2A）
 
 - node identityは既存`graphNodeId`を`node_key`として維持し、`project_id + node_key`で一意にする。
@@ -19,8 +23,8 @@ Synthetic Monitorは引き続きAGE adapterを使い、既定compositionやread 
 - propertiesはprovider-neutral JSON objectに限定する。content、PII、secretをschema test fixtureやlogへ記録しない。
 - outgoing / incoming traversal用indexだけを2Aで作る。relation type単独 / recent document indexは2B以降の
   representative query計測で必要性を判断する。
-- `0026_relational_graph_schema`はAGE dataをcopyしない。live AGE inventoryとsource-of-truth auditは2Cで行い、
-  差分が解消または明示判断されるまで全graphを再生成可能と断定しない。
+- `0026_relational_graph_schema`はAGE dataをcopyしない。2Cでlocal rebuild / compareとsource-of-truth auditを
+  実装したが、live AGE inventoryは未実施である。差分が解消または明示判断されるまで全graphを再生成可能と断定しない。
 
 ### Relational Graph adapter（Step 2B）
 
@@ -33,9 +37,73 @@ Synthetic Monitorは引き続きAGE adapterを使い、既定compositionやread 
 - adapter testは専用project fixtureだけを作成・削除し、AGE graphや既存projectには触れない。ログにはproperties、
   node identity、content、PII、secretを出さず、安全なoperation / error種別だけを記録する。
 - Step 2Bはmigration、backfill、live AGE inventory、dual-write / shadow read、production switchを行わない。
-  これらはStep 2C以降のmerge gateを順に満たしてから実施する。
-- `graph_nodes.properties ->> 'documentId'`を使う代表queryの`EXPLAIN (ANALYZE, BUFFERS)`とrow countは
-  Step 2Cで取得し、expression indexは測定結果なしに追加しない。
+  2Cのlocal rebuild / compare契約を満たした後も、live inventoryと後続gateを順に満たしてから実施する。
+- `graph_nodes.properties ->> 'documentId'`を使う代表queryはStep 2Cのlocal synthetic fixtureで実行手順を確認した。
+  production相当row count / p95は未取得であり、expression indexは後続の実測なしに追加しない。
+
+### Rebuild / compare audit（Step 2C）
+
+`graph:migrate`は任意SQL / Cypher / graph nameを受け付けず、`--project`で解決したprojectだけを対象にする。
+rebuildは現在の`documents` / `raw_documents`、parsed artifact、Actor / alias、email quote等からnode / edgeを
+再計算し、relational adapterへidempotentにupsertする。既存relational graphを先に全削除しない。source-of-truthの
+完全性が確定する前に片側だけのrowを失わず、compareでAGE-only / relational-onlyとして検出するためである。
+
+```bash
+# 書込みなし。件数と次のopaque cursorだけを確認する
+pnpm graph:migrate rebuild --project sample-a --dry-run --limit 100
+
+# local / test / 承認済み環境だけでproject単位batchを書き込む
+pnpm graph:migrate rebuild --project sample-a --execute --limit 100
+pnpm graph:migrate rebuild --project sample-a --execute --limit 100 \
+  --resume-cursor <64-character-lowercase-hex>
+
+# AGEとrelational graphの構造およびsource-of-truth集計をread-onlyで比較する
+pnpm graph:migrate compare --project sample-a --limit 50000
+```
+
+- rebuildは`--dry-run`と`--execute`のどちらか一方を必須とする。1 batchのexecuteは単一transactionであり、
+  途中に1件でも失敗があればnode / edge更新を全てrollbackする。ingestion statusと`email_quotes`は変更しない。
+- parsed artifactはSQL順序を維持したまま最大8件ずつ並列読取し、large limitでもObject Storageへ無制限な
+  同時requestを発行しない。1件でも読取に失敗した場合はmutation開始前にbatchを失敗させる。
+- dry-runで失敗があった場合は`nextResumeCursor`を返さず、失敗対象を飛ばして進めない。成功時のcursorは
+  raw document UUIDのSHA-256 digestで、raw identityを出力しない。resume後も同じproject scopeを維持する。
+- compareはproject解決、AGE / relational inventory、source auditを同じ`REPEATABLE READ READ ONLY` transactionで
+  実行し、AGE sessionも同じ接続にpinする。node / edge identityをprocess内でSHA-256 digestへ変換し、出力は
+  件数、`gateStatus`、source audit categoryだけに限定する。node key、document identity、property値、content、
+  PII、secretは出力しない。
+- compareはObject Storageを初期化せず、storage driver / root / bucketの環境変数を必要としない。
+- `labelPropertyKeyMismatchCount`は、一致するidentityのnodeでlabel / property-key集合が異なる件数と、
+  一致するedgeでproperty-key集合が異なる件数の合計である。node / edgeのいずれも1件ずつ数える。
+- AGEのphysical labelと`graphLabels` propertyを正規化した和集合を、relationalのprovider-neutral
+  `graphLabels`と比較する。SAME_ASはendpoint順をcanonicalizeし、その他8 relationは方向を維持する。
+- `gateStatus=pass`はbounded inventoryにtruncationも差分もない場合だけである。上限を超えた場合は
+  `inconclusive`、duplicate / orphan / unknown relation /片側だけのrow / label・property-key drift / source audit
+  blockerがあれば`blocked`とする。`currentLifecycleOnlyDocument`は再構築modeでfull relationを再計算するため
+  情報項目であり、単独ではblockerにしない。
+- source auditは、current documentのparsed artifact / status不足、merged Actorを参照し続けるalias / email quote、
+  merge decision不整合、Document rowのないrelational Document nodeを件数で検出する。
+
+productionのrebuild / compare、live AGE inventory、deploy、read / write切替はStep 2Cの実装作業では行わない。
+実行時は事前backup、対象project、batch上限、cursor記録、rollback判断をdeploy checklistへ残し、live compareの
+`pass`または承認済みdecision logをStep 2D開始gateとする。
+
+#### Representative queryの計測
+
+index追加はlocal / stagingのproduction相当fixtureで次の順序を守る。`EXPLAIN ANALYZE`はqueryを実行するため、
+productionでは明示承認とread-only transactionなしに実行しない。
+
+1. 対象projectのnode / edge件数とrepresentative 1-hop / 2-hopの実行条件を記録する。
+2. relational adapterが使うSAME_AS / RELATED_TO 1-hop、MENTIONS 2-hop、および
+   `graph_nodes.properties ->> 'documentId'` filterを`EXPLAIN (ANALYZE, BUFFERS, SETTINGS)`で計測する。
+3. 既存outgoing / incoming indexのscan種別、actual rows、loops、buffer hit / read、planning / execution timeを記録する。
+4. 10倍相当fixtureでも同じqueryを反復し、p50 / p95と書込みcostを比較する。expression indexは
+   `properties ->> 'documentId'`の高いfiltered-row比率が継続し、index追加で代表queryが安定して改善し、
+   upsert overheadを許容できる場合だけ別migration / PRで追加する。
+
+2Cではlocal transaction内に100 Document / 20 Topic、RELATED_TO 99 edge、MENTIONS 100 edgeのsynthetic fixtureを
+作り、1-hopと2-hopを`EXPLAIN (ANALYZE, BUFFERS, SETTINGS)`で実行してrollbackした。小規模fixtureではどちらも
+sequential scanを含み、実行時間はそれぞれ約0.19ms / 0.10msだった。この規模ではindex追加の効果を判断できないため、
+DDLは追加しない。production row countや10倍相当fixtureでのp50 / p95、buffer、write overhead取得を後続gateに残す。
 
 ## 前提
 

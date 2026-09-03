@@ -24,6 +24,24 @@ Document cleanup、Actor mergeのedge-first / dedupe / rollback、`COLLATE "C"`�
 `pnpm test`からDB testを除外し、`DATABASE_URL`を設定した`pnpm --filter @pufu-lens/web test:db`で実行する。
 testはproduction composition、AGE graph、migration、外部serviceを変更しない。
 
+Plan 018 Step 2Cのrebuild / compareは、CLI parser、sanitized summary、digest cursor、transaction executor境界を
+`scripts/lib/graph-migration-*.test.ts`と`postgres-graph-migration.test.ts`でunit検証する。実PostgreSQL + AGEは
+専用fixtureに対して次を実行し、dry-run非変更、resume / idempotency、batch rollback、project isolation、
+production形状のmulti-label node / edge inventory parity、source audit、repeatable-read/read-only transactionを検証する。
+Object Storage mockではparsed artifact読取が最大8並列で順序を維持し、読取失敗時にbatchがrejectされることも固定する。
+rebuildの選択SQLは実行時のtagged templateとbind値を捕捉し、project scope、digest cursorの比較・順序、
+未指定cursorのNULL bindを検証する。compare CLIはstorage設定を全て除いた環境でも、実DB fixtureで正常終了し
+`gateStatus=pass`を返すことを検証する。node / edgeの構造差分合計は`labelPropertyKeyMismatchCount`として固定する。
+
+```bash
+DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
+  node --experimental-strip-types --test scripts/lib/postgres-graph-migration-db.test.ts
+```
+
+このDB testはWebの`test:db`にも登録し、CIの`db-check`で実行する。
+DB testは専用projectとAGE graphだけをcleanupし、既存project、production DB、外部Object Storageへ接続しない。
+通常の`pnpm scripts:test`では`DATABASE_URL`未指定のDB caseをskipし、unit boundaryだけを実行する。
+
 ActivityPub の Actor repository / DB 制約 / 暗号化鍵再読込 / representation lock は、local PostgreSQL に `DATABASE_URL` を設定して `pnpm test:activitypub:db` で検証する。dispatcher の DB test は pool 上限を1接続にして report activity の materialization が完了することも検証し、transaction 内の Actor 参照が別接続を待つ自己デッドロックを回帰させない。test は固定した専用 fixture ID と、その実行中に新規作成した aggregate Actor だけを cleanup し、既存 aggregate Actor を再利用した場合は削除せず元の有効状態を復元する。各 DB 制約ケースは独立 rollback transaction で実行する。schema 変更時は `pnpm test:activitypub:schema`、`pnpm db:migrate --check`、`pnpm db:schema-drift` も併用する。Actor profile変更ではname / icon / promptの長さとURL guard、disabled Actorの編集、memberへのprompt非表示、PostgreSQL Actor SELECTのrow contract、aggregate disabled時のCreate-only outboxを検証する。Web runtime の unit test では production federation の初期化失敗後の再試行、DB pool 上限の入力 guard、project federation API の固定エラー契約と log sanitize、Follow / Accept / Undoの即時Job起動request、flag / activity type skip、設定・認証・timeout・network・非2xxのsafe fallbackに加え、reverse proxy の内部 URL / `Host` から canonical request を再構築した後の HTTP signature 検証と collection URL、forwarded host / network-path からの authority 逸脱拒否を確認する。投稿追加promptはserver→project順、未信頼値の構造化、最終guardrail、最大500 code pointの`activitypub_summary`、通常report artifactとの分離をunit testで確認する。PostgreSQL queue contractでは新規Inbox rowだけがhookを1回呼び、duplicate / outboxでは呼ばず、async hook完了までenqueueが待つことを検証する。
 
 ActivityPub の instance 間互換性は、`pnpm test:activitypub:e2e` で検証する。`DATABASE_URL` 未指定時は local test PostgreSQL の標準 URL（`postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens`）を使い、CI などでは `DATABASE_URL` で上書きする。この command は1 process 内に database、canonical origin、Actor key を分離した Pufu Lens A / B と Mastodon v4.6.5 互換 fixture を起動し、外部 network を使わず実 route、HTTP署名、Fedify parser、PostgreSQL queue、retry / recoveryを通す。test-only host router / document loader は `NODE_ENV=test`、`ACTIVITYPUB_RUN_DB_TESTS=1`、`ACTIVITYPUB_RUN_HERMETIC_E2E=1` が揃う場合だけ有効とし、CI artifact `artifacts/activitypub-e2e/protocol-trace.json` にはraw body、署名header、秘密鍵、secret / PIIを含めない。fixtureの固定version、公式source provenance、実 Mastodon 未確認リスクは `packages/activitypub/fixtures/mastodon-v4.6.5/provenance.json` を正とする。
