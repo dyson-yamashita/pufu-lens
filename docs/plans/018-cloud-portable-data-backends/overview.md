@@ -394,9 +394,9 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
 ## 9. Step 2: Apache AGE を relational graph schema へ置き換える
 
 > 進捗（2026-09-03）: Step 1A〜1C は PR #707 / #709 / #711、2A は Issue #712 / PR #713、
-> 2B は Issue #714 / PR #715 で merge 済み。Issue #716 / ready PR #717 で 2C「rebuild / compare CLI と
-> source-of-truth audit」をレビュー中。live AGE inventory と graph の再生成可能性判定は 2D の gate とし、
-> 2C でも既存 AGE primary composition、本番 DB、read / write profile を変更しない。
+> 2B は Issue #714 / PR #715、2C「rebuild / compare CLI と source-of-truth audit」は Issue #716 / PR #717 で
+> merge 済み。2D は Issue #718 で開始gateを調査し、live AGE inventory / compareの証跡と差分判断が未取得のため
+> `blocked`（実装未着手）とする。既存 AGE primary composition、本番 DB、read / write profile は維持する。
 
 2026-09-03のレビュー対応でstorage公開entry pointへの依存を明示し、SQLの実行時検証とstorage設定なしの
 compare CLI成功検証を追加した。構造差分の合計出力名はnode / edge双方を表す`labelPropertyKeyMismatchCount`とする。
@@ -424,7 +424,7 @@ compare CLI成功検証を追加した。構造差分の合計出力名はnode /
 - 2Bではmigration、backfill、live AGE inventory、dual-write / shadow read、production switchを行わない。
   source-of-truth auditと再生成可能性判定は2Cのgateとして残し、2Bのready PRがmergeされるまで開始しない。
 
-#### 2C 実装記録（Issue #716 / ready PR #717）
+#### 2C 実装記録（Issue #716 / PR #717、merge済み）
 
 - `graph:migrate rebuild`にdry-run / execute、project、bounded limit、SHA-256 digestのresume cursorを追加し、
   current parsed documentsからrelational graphをidempotentにupsertする。executeの1 batchは単一transactionで、
@@ -440,6 +440,25 @@ compare CLI成功検証を追加した。構造差分の合計出力名はnode /
 - 2CではDDL migration、production DB実行、deploy、dual-write / shadow read、production switchを行わない。
   live AGE inventoryは認証済み接続を取得せず未実施であり、全graphを再生成可能とは断定しない。live compareの
   差分ゼロまたは明示decisionを2D開始gateとして残す。
+
+#### 2D 開始gate確認（Issue #718）
+
+- status: `blocked`（実装未着手）、更新日: 2026-09-03、親Issue: #704、depends-on: #717（merge済み・依存解消）。
+  現在の停止理由はlive compare証跡・差分判断の承認待ちであり、Issue #718で管理する。
+- 最新origin/mainを再取得し、PR #717のmerge commit `ed138eaf183ff80f59442452ae38ae0df3816d86`を確認した。
+  #704 / #716 / #717とtrackedな設計・運用記録から、有効なlive compare結果や承認済みdecision logは見つからなかった。
+  PR #717本文もlive AGE inventory未実施を明記している。local synthetic DBのparityはlive gateの代用にしない。
+- この作業環境ではDB接続設定を確認できず、gcloud認証ファイルは存在確認だけにとどめた。認証の有効性、DB到達性、
+  対象project、比較先relational graphのschema適用・rebuild状態は未確認である。secret値の取得、本番接続は行っていない。
+- 再開には対象環境・project範囲・実行日時・code/schema version・sanitized count・truncation有無を伴うlive compareの
+  `pass`、または実測差分に対する承認済みdecision logが必要である。新規実行時の対象・接続・権限・timeout・ログ方針と
+  read-only実行条件案はIssue #718に記録した。production inventory / compareの明示承認前には実行しない。
+- 現行compareはread-only transactionを使うが、statement / lock / transaction timeoutを明示設定しない。
+  node / edgeのlimitはsource auditの集計件数やDB scan量を制限しないため、live実行前に接続側の制限を確定・確認する。
+  比較先が未backfillの場合も自動でrebuildせず、別途対象・影響・rollbackと書込み承認を確認する。
+- 本記録は2D開始・完了、差分容認、production操作の承認を意味しない。文書同期PRではIssue #718を閉じない。
+  2Eは2D完了、対象projectのbackfill / compare・shadow観測とmismatch判断、性能 / cost、restore point / rollback計画、
+  production切替の明示承認を満たした後、独立タスクで着手する。
 
 ### 目的
 
