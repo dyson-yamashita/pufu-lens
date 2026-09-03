@@ -443,7 +443,8 @@ compare CLI成功検証を追加した。構造差分の合計出力名はnode /
 
 #### 2D 開始gate確認（Issue #718）
 
-- status: `blocked`（実装未着手）、更新日: 2026-09-03、親Issue: #704、blocked-by: #717（merge済み）。
+- status: `blocked`（実装未着手）、更新日: 2026-09-03、親Issue: #704、depends-on: #717（merge済み・依存解消）。
+  現在の停止理由はlive compare証跡・差分判断の承認待ちであり、Issue #718で管理する。
 - 最新origin/mainを再取得し、PR #717のmerge commit `ed138eaf183ff80f59442452ae38ae0df3816d86`を確認した。
   #704 / #716 / #717とtrackedな設計・運用記録から、有効なlive compare結果や承認済みdecision logは見つからなかった。
   PR #717本文もlive AGE inventory未実施を明記している。local synthetic DBのparityはlive gateの代用にしない。
