@@ -112,7 +112,9 @@ relational adapterへproject-scopedなbounded upsertを行う。AGE / relational
 `scripts/lib`のmigration boundaryに閉じ、CLI出力はsanitized count / categoryだけにする。これはproduction
 compositionへ注入されない。rebuildのObject Storage読取は最大8並列、compareのprovider readは同一の
 `REPEATABLE READ READ ONLY` transaction / sessionに固定する。runtimeのdual-write / shadow readはStep 2Dまで
-追加しない。live AGE inventory未実施のため、再生成可能性の最終判断もStep 2D開始gateに残す。
+追加しない。承認済みlive rebuild / compareでは3 project中2 projectがpassし、595 documentsのprojectに差分が
+残ったため、再生成可能性の最終判断と差分対応をStep 2D開始gateに残す。Issue #720ではrelational node upsertの
+propertiesを既存値とのmergeへ補修するが、production composition / profileやmodule boundaryは変更しない。
 
 ### 2. コンポーネント役割
 

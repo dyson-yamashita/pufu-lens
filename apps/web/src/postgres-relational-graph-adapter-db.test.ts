@@ -77,6 +77,11 @@ const rollbackPrimaryNodeKey = 'actor:issue-714-rollback-primary';
 const rollbackSecondaryNodeKey = 'actor:issue-714-rollback-secondary';
 const rollbackDocumentNodeKey = 'document:issue-714-rollback-doc';
 
+const issue720MergePropertiesDocumentId = '72000000-0000-0000-0000-000000000001';
+const issue720PlaceholderFirstDocumentId = '72000000-0000-0000-0000-000000000002';
+const issue720MergePropertiesNodeKey = 'document:issue-720-merge-properties';
+const issue720PlaceholderFirstNodeKey = 'document:issue-720-placeholder-first';
+
 await main();
 
 async function main(): Promise<void> {
@@ -202,6 +207,83 @@ async function assertNodeUpsertPersistsKindSubtypeAndProperties(): Promise<void>
   const replacedRow = await readNodeRow(projectId, seedNodeKey);
   assert.equal(replacedRow.properties.title, 'Issue 714 seed document replaced');
   assert.notEqual(replacedRow.updatedAt, firstUpdatedAt);
+
+  await mutationRepository.upsertNode({
+    graphNodeId: issue720MergePropertiesNodeKey,
+    labels: ['Document', 'Issue'],
+    projectId,
+    properties: {
+      canonicalUri: 'https://github.com/example-org/pufu-fixture/issues/720',
+      docType: 'issue',
+      documentId: issue720MergePropertiesDocumentId,
+      occurredAt: '2026-09-04T12:00:00.000Z',
+      projectId,
+      rawDocumentId: '72000000-0000-0000-0000-000000000010',
+      sourceId: 'example-org/pufu-fixture/issues/720',
+      sourceType: 'github',
+      title: 'Issue 720 merge properties fixture',
+    },
+  });
+  await mutationRepository.upsertNode({
+    graphNodeId: issue720MergePropertiesNodeKey,
+    labels: ['Document', 'Issue'],
+    projectId,
+    properties: {
+      docType: 'issue',
+      documentId: issue720MergePropertiesDocumentId,
+      projectId,
+      rawDocumentId: '72000000-0000-0000-0000-000000000010',
+      sourceId: 'example-org/pufu-fixture/issues/720-sparse',
+    },
+  });
+  const sparseMergedRow = await readNodeRow(projectId, issue720MergePropertiesNodeKey);
+  assert.equal(
+    sparseMergedRow.properties.canonicalUri,
+    'https://github.com/example-org/pufu-fixture/issues/720',
+  );
+  assert.equal(sparseMergedRow.properties.occurredAt, '2026-09-04T12:00:00.000Z');
+  assert.equal(sparseMergedRow.properties.sourceType, 'github');
+  assert.equal(sparseMergedRow.properties.title, 'Issue 720 merge properties fixture');
+  assert.equal(sparseMergedRow.properties.sourceId, 'example-org/pufu-fixture/issues/720-sparse');
+
+  await mutationRepository.upsertNode({
+    graphNodeId: issue720PlaceholderFirstNodeKey,
+    labels: ['Document', 'Issue'],
+    projectId,
+    properties: {
+      docType: 'issue',
+      documentId: issue720PlaceholderFirstDocumentId,
+      fixtureRole: 'related-document-placeholder',
+      projectId,
+      rawDocumentId: '72000000-0000-0000-0000-000000000011',
+      sourceId: 'example-org/pufu-fixture/issues/720-placeholder-only',
+    },
+  });
+  await mutationRepository.upsertNode({
+    graphNodeId: issue720PlaceholderFirstNodeKey,
+    labels: ['Document', 'Issue'],
+    projectId,
+    properties: {
+      canonicalUri: 'https://github.com/example-org/pufu-fixture/issues/720-placeholder-first',
+      docType: 'issue',
+      documentId: issue720PlaceholderFirstDocumentId,
+      occurredAt: '2026-09-04T12:30:00.000Z',
+      projectId,
+      rawDocumentId: '72000000-0000-0000-0000-000000000011',
+      sourceId: 'example-org/pufu-fixture/issues/720-placeholder-first',
+      sourceType: 'github',
+      title: 'Issue 720 placeholder-first full upsert',
+    },
+  });
+  const placeholderFirstRow = await readNodeRow(projectId, issue720PlaceholderFirstNodeKey);
+  assert.equal(
+    placeholderFirstRow.properties.canonicalUri,
+    'https://github.com/example-org/pufu-fixture/issues/720-placeholder-first',
+  );
+  assert.equal(placeholderFirstRow.properties.occurredAt, '2026-09-04T12:30:00.000Z');
+  assert.equal(placeholderFirstRow.properties.sourceType, 'github');
+  assert.equal(placeholderFirstRow.properties.title, 'Issue 720 placeholder-first full upsert');
+  assert.equal(placeholderFirstRow.properties.fixtureRole, 'related-document-placeholder');
 }
 
 async function assertAllEdgeTypesUpsertAndReplaceProperties(): Promise<void> {
