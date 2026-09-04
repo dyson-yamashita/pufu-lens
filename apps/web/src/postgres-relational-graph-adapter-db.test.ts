@@ -224,17 +224,18 @@ async function assertNodeUpsertPersistsKindSubtypeAndProperties(): Promise<void>
       title: 'Issue 720 merge properties fixture',
     },
   });
+  const issue720SparseProperties = {
+    docType: 'issue',
+    documentId: issue720MergePropertiesDocumentId,
+    projectId,
+    rawDocumentId: '72000000-0000-0000-0000-000000000010',
+    sourceId: 'example-org/pufu-fixture/issues/720-sparse',
+  };
   await mutationRepository.upsertNode({
     graphNodeId: issue720MergePropertiesNodeKey,
     labels: ['Document', 'Issue'],
     projectId,
-    properties: {
-      docType: 'issue',
-      documentId: issue720MergePropertiesDocumentId,
-      projectId,
-      rawDocumentId: '72000000-0000-0000-0000-000000000010',
-      sourceId: 'example-org/pufu-fixture/issues/720-sparse',
-    },
+    properties: issue720SparseProperties,
   });
   const sparseMergedRow = await readNodeRow(projectId, issue720MergePropertiesNodeKey);
   assert.equal(
@@ -245,6 +246,15 @@ async function assertNodeUpsertPersistsKindSubtypeAndProperties(): Promise<void>
   assert.equal(sparseMergedRow.properties.sourceType, 'github');
   assert.equal(sparseMergedRow.properties.title, 'Issue 720 merge properties fixture');
   assert.equal(sparseMergedRow.properties.sourceId, 'example-org/pufu-fixture/issues/720-sparse');
+
+  await mutationRepository.upsertNode({
+    graphNodeId: issue720MergePropertiesNodeKey,
+    labels: ['Document', 'Issue'],
+    projectId,
+    properties: issue720SparseProperties,
+  });
+  const repeatSparseMergedRow = await readNodeRow(projectId, issue720MergePropertiesNodeKey);
+  assert.deepEqual(repeatSparseMergedRow.properties, sparseMergedRow.properties);
 
   await mutationRepository.upsertNode({
     graphNodeId: issue720PlaceholderFirstNodeKey,

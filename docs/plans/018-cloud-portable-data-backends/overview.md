@@ -396,7 +396,7 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
 > 進捗（2026-09-04）: Step 1A〜1C は PR #707 / #709 / #711、2A は Issue #712 / PR #713、
 > 2B は Issue #714 / PR #715、2C「rebuild / compare CLI と source-of-truth audit」は Issue #716 / PR #717 で
 > merge 済み。Issue #718で承認済みのproduction rebuild / compareを3 projectへ実施し、2 projectはpass、595 documentsの
-> projectは差分が残ってblockedとなった。Issue #720でnode properties upsertの補修を進めるが、2Dは実装未着手とし、
+> projectは差分が残ってblockedとなった。Issue #720 / PR #721でnode properties upsertを補修したが、2Dは実装未着手とし、
 > 既存 AGE primary composition、本番 DB、read / write profile は維持する。
 
 2026-09-03のレビュー対応でstorage公開entry pointへの依存を明示し、SQLの実行時検証とstorage設定なしの
@@ -451,11 +451,11 @@ compare CLI成功検証を追加した。構造差分の合計出力名はnode /
   duplicate / orphan / unknown relation / source audit blockerはいずれも0で、truncationは発生していない。
 - read-onlyの追加分類では595 Document nodeが両側に存在した一方、差分は主にGitHub PRのkeyword Topic / MENTIONS、
   lifecycle properties、REVIEWED / COMMENTED_ONに分かれた。relational node upsertがpropertiesを全置換していたため、
-  sparse placeholder更新で既存Document propertiesを失う不整合はIssue #720で補修する。
+  sparse placeholder更新で既存Document propertiesを失う不整合はIssue #720 / PR #721で補修した。
 - inventoryは実行中の更新によりsnapshot間で変動した。追加分類後の30秒安定観測はAGE 824 nodes / 2,219 edges、
   relational 1,456 nodes / 3,089 edgesであり、単一snapshotの件数から全graphを再生成可能とは断定しない。
-- Issue #720はnode propertiesのmerge契約と回帰testだけを扱う。Topic / edge生成差分の扱い、補修後の再build / compare、
-  差分解消または承認済みdecision logが揃うまでIssue #718と2D開始gateをblockedのまま維持する。
+- Issue #720 / PR #721はnode propertiesのmerge契約と回帰testだけを補修した。Topic / edge生成差分の扱い、
+  補修後の再build / compare、差分解消または承認済みdecision logが揃うまでIssue #718と2D開始gateをblockedのまま維持する。
 - AGE primary composition、production read / write profile、dual-write / shadow read、production switchは変更しない。
   2Eは2D完了、対象projectのbackfill / compare・shadow観測とmismatch判断、性能 / cost、restore point / rollback計画、
   production切替の明示承認を満たした後、独立タスクで着手する。
