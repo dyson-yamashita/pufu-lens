@@ -265,6 +265,11 @@ retry監視、sanitized observation保存先を確認した承認済みCloud Bui
 connection / CPU costを観測する。異常時はproduction App Hostingとtrigger substitutionを`off`へ戻して再deployし、AGE primaryを
 維持する。relational primaryへの変更はStep 2Eで再度明示承認を得る。
 
+2026-09-05にIssue #723 / PR #724のmerge commit `84240ed`をCloud Build `ac4ee36c-d030-49b9-a021-088b318c0fd3`で
+本番deployした。直前snapshot `pg-ai-data-pre-dual-write-20260905t064605z`は`READY`で、production trigger、App Hosting、
+Mastra Server、production 6 Workflow Jobsのmodeを`dual-write`へ揃えた。readはAGE primaryを維持し、shadow read、
+relational primary switch、AGE停止・削除は実施していない。
+
 `apps/web/apphosting.yaml` の最小例：
 
 ```yaml

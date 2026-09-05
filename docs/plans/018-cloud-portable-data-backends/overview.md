@@ -396,9 +396,9 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
 > 進捗（2026-09-05）: Step 1A〜1C は PR #707 / #709 / #711、2A は Issue #712 / PR #713、
 > 2B は Issue #714 / PR #715、2C「rebuild / compare CLI と source-of-truth audit」は Issue #716 / PR #717 で
 > merge済み。Issue #718のproduction rebuild / compareと追加source auditでcurrent-source relational出力を採用する
-> decision logが承認され、Issue #718 / PR #722で2D「dual-write / shadow read」のAGE primary・既定off実装をmergeし、
-> commit `b3b9c73`をmode未設定のまま本番deploy済み。Issue #723でproduction dual-write rollout設定と検証を進めており、
-> shadow read、relational primary switch、AGE cleanupはまだ行わない。
+> decision logが承認され、Issue #718 / PR #722で2D「dual-write / shadow read」のAGE primary・既定off実装をmergeした。
+> Issue #723 / PR #724のmerge commit `84240ed`を2026-09-05に本番deployし、Web、Mastra、production Workflow Jobsを
+> `dual-write`へ揃えた。readはAGE primaryのままで、shadow read、relational primary switch、AGE cleanupはまだ行わない。
 
 2026-09-03のレビュー対応でstorage公開entry pointへの依存を明示し、SQLの実行時検証とstorage設定なしの
 compare CLI成功検証を追加した。構造差分の合計出力名はnode / edge双方を表す`labelPropertyKeyMismatchCount`とする。
@@ -483,8 +483,8 @@ compare CLI成功検証を追加した。構造差分の合計出力名はnode /
 
 #### 2D production dual-write rollout（Issue #723）
 
-- PR #722のmerge commit `b3b9c73928eba4646ecee1876aebe264a1ad69df`は本番deploy済みだが、mode未設定のため
-  AGE-onlyで稼働している。Issue #723では次の段階として、productionだけ`dual-write`を有効化する設定とdrift testを扱う。
+- Issue #723 / PR #724でproductionだけ`dual-write`を有効化する設定とdrift testを追加し、merge commit
+  `84240eda41ee39811da9190051aaecf2b4ff6e25`を本番deployした。readはAGE primaryを維持する。
 - Cloud Buildの`_GRAPH_TRANSITION_MODE`はOSSで安全な既定`off`とし、canonical 3値以外をdeploy前に拒否する。production
   triggerは`dual-write`へ上書きし、Mastra Serverと全Workflow Jobsへ同じserver-only値を配る。production App Hostingも
   runtime-only `dual-write`、OSS exampleは`off`とする。
@@ -492,6 +492,11 @@ compare CLI成功検証を追加した。構造差分の合計出力名はnode /
   migration pending 0、DB余力、retry / sanitized observation監視を確認した承認済みdeployまで稼働modeを変えない。
 - deploy後はWeb / Graph / ingestion smokeと初期負荷を確認する。異常時は全deployment unitを`off`へ戻してAGE-onlyへrollbackし、
   relational tableはforward-fix / rebuild用に保持する。安定後のbackfill / compareをshadow read開始gateとする。
+- rollout直前snapshot `pg-ai-data-pre-dual-write-20260905t064605z`の`READY`とmigration pending 0を確認し、Cloud Build
+  `ac4ee36c-d030-49b9-a021-088b318c0fd3`が全step成功した。Web / Mastra / production 6 Jobsのruntime値は
+  `dual-write`で一致し、公開Overview / Reports / Graph / Chat / Login、rollout後のsource-sync / report dispatcher、
+  DB connection余力とerror logを確認した。観測期間内にgraph mutationがなかったためsanitized observationは0件であり、
+  実mutation時の継続監視とbackfill / compare再確認はshadow read開始gateに残す。
 
 ### 目的
 
