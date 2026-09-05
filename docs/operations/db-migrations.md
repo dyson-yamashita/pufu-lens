@@ -158,7 +158,8 @@ Step 2Dはapplication compositionと比較・failure契約だけを追加し、D
 migration適用や再実行はない。
 
 - local DB testは同じcaller-owned transactionへAGE / relational mutationをbindし、secondary失敗時に両側が
-  rollbackされ、同じidentityのretry後に両側1件へ収束することを検証する。
+  rollbackされ、同じidentityのretry後に両側1件へ収束することを検証する。indexingは1 documentのmutationとstatus、
+  Data Source削除はDocument cleanupとsource row削除を同じtransactionに置くため、cleanup queue用DDLは追加しない。
 - 本番で`PUFU_LENS_GRAPH_TRANSITION_MODE`を有効化する前に、`0026_relational_graph_schema`適用済みであること、
   対象projectのrebuild / compare decision、backup、retry queue、観測先を確認する。これはmigration runnerへ組み込まない。
 - rollbackはmodeを`off`へ戻すapplication rollbackであり、`graph_nodes` / `graph_edges`をdropしない。secondary側の

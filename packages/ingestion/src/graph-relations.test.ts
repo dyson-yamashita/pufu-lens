@@ -609,6 +609,86 @@ test('storeGraphRelations continues after a failed document', async () => {
   );
 });
 
+test('storeGraphRelations runs each document in its target transaction boundary', async () => {
+  const fixture = new InMemoryGraphFixture([
+    {
+      document: documentRecord(),
+      parsed: gmailParsed(),
+      rawContentHash: 'same-hash',
+      rawDocumentId: 'raw-email-1',
+    },
+  ]);
+  fixture.actors.push({
+    displayName: 'Sample Sender',
+    graphNodeId: 'actor:email:sender%40example.test',
+    id: 'actor-sender',
+  });
+  fixture.aliases.set(
+    'email:sender@example.test',
+    fixture.actors.at(-1) as GraphIndexingActorRecord,
+  );
+  fixture.actors.push({
+    displayName: 'Sample Reviewer',
+    graphNodeId: 'actor:email:reviewer%40example.test',
+    id: 'actor-reviewer',
+  });
+  fixture.aliases.set(
+    'email:reviewer@example.test',
+    fixture.actors.at(-1) as GraphIndexingActorRecord,
+  );
+  const events: string[] = [];
+
+  const result = await storeGraphRelations({
+    ...fixture.storeOptions(),
+    runInTargetTransaction: async (callback) => {
+      events.push('begin');
+      const result = await callback({
+        indexingRepository: fixture.indexingRepository(),
+        mutationRepository: fixture.mutationRepository(),
+      });
+      events.push('commit');
+      return result;
+    },
+  });
+
+  assert.equal(result.decisions[0]?.decision, 'indexed');
+  assert.deepEqual(events, ['begin', 'commit']);
+  assert.deepEqual(fixture.statusUpdates, [
+    { projectId: 'project-a', rawDocumentId: 'raw-email-1' },
+  ]);
+});
+
+test('storeGraphRelations marks failure after a target transaction rolls back', async () => {
+  const fixture = new InMemoryGraphFixture([
+    {
+      document: documentRecord(),
+      parsed: gmailParsed(),
+      rawContentHash: 'same-hash',
+      rawDocumentId: 'raw-email-1',
+    },
+  ]);
+  const events: string[] = [];
+
+  const result = await storeGraphRelations({
+    ...fixture.storeOptions(),
+    runInTargetTransaction: async () => {
+      events.push('begin');
+      events.push('rollback');
+      throw new Error('transactional graph failure');
+    },
+  });
+
+  assert.equal(result.decisions[0]?.decision, 'failed');
+  assert.deepEqual(events, ['begin', 'rollback']);
+  assert.deepEqual(fixture.failureUpdates, [
+    {
+      errorMessage: 'transactional graph failure',
+      projectId: 'project-a',
+      rawDocumentId: 'raw-email-1',
+    },
+  ]);
+});
+
 test('storeGraphRelations keeps project slug isolation at resolver boundary', async () => {
   const fixture = new InMemoryGraphFixture([]);
 

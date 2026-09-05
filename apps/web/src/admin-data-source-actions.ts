@@ -300,14 +300,13 @@ export async function deleteDataSource(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
   const dataSourceId = requireFormValue(formData, 'dataSourceId');
 
-  let graphNodeIds: readonly string[] = [];
   let storageObjectUris: readonly string[] = [];
 
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
     await lookupProjectDataSourceForDeletion(sql, project.id, dataSourceId);
 
-    ({ graphNodeIds, storageObjectUris } = await sql.begin(async (tx) => {
+    ({ storageObjectUris } = await sql.begin(async (tx) => {
       const exclusiveRawDocumentIds = await listExclusiveRawDocumentIds(
         tx,
         project.id,
@@ -321,6 +320,13 @@ export async function deleteDataSource(formData: FormData): Promise<void> {
         exclusiveRawDocumentIds.length === 0
           ? []
           : await listStorageObjectUris(tx, project.id, exclusiveRawDocumentIds);
+
+      if (resolvedGraphNodeIds.length > 0) {
+        await createPostgresGraphTransitionMutationRepository(tx).deleteDocumentGraphNodes({
+          projectId: project.id,
+          graphNodeIds: resolvedGraphNodeIds,
+        });
+      }
 
       if (exclusiveRawDocumentIds.length > 0) {
         await tx`
@@ -343,17 +349,9 @@ export async function deleteDataSource(formData: FormData): Promise<void> {
       }
 
       return {
-        graphNodeIds: resolvedGraphNodeIds,
         storageObjectUris: resolvedStorageObjectUris,
       };
     }));
-
-    if (graphNodeIds.length > 0) {
-      await createPostgresGraphTransitionMutationRepository(sql).deleteDocumentGraphNodes({
-        projectId: project.id,
-        graphNodeIds,
-      });
-    }
   });
 
   await deleteStorageObjectsBestEffort(storageObjectUris);

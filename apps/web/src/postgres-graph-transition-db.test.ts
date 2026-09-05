@@ -20,6 +20,7 @@ const projectId = '10000000-0000-0000-0000-000000000718';
 const graphName = 'graph_issue_718_transition';
 const committedNode = 'document:issue-718-committed';
 const rollbackNode = 'document:issue-718-rollback';
+const cleanupRollbackNode = 'document:issue-718-cleanup-rollback';
 
 await main();
 
@@ -75,6 +76,46 @@ async function main(): Promise<void> {
       }).upsertNode(nodeInput(rollbackNode));
     });
     await assertCounts(rollbackNode, 1);
+
+    await sql.begin(async (tx) => {
+      await createPostgresGraphTransitionMutationRepository(tx, {
+        observer: () => undefined,
+        transitionMode: 'dual-write',
+      }).upsertNode(nodeInput(cleanupRollbackNode));
+    });
+    await assertCounts(cleanupRollbackNode, 1);
+
+    await assert.rejects(
+      () =>
+        sql.begin(async (tx) => {
+          const relational = createPostgresRelationalGraphMutationRepository(tx);
+          const repository = createGraphShadowMutationRepository({
+            mode: 'dual-write',
+            primary: createPostgresAgeGraphMutationRepository(tx),
+            shadow: {
+              ...relational,
+              async deleteDocumentGraphNodes(input) {
+                await relational.deleteDocumentGraphNodes(input);
+                throw new Error('deliberate cleanup shadow failure');
+              },
+            },
+          });
+          await repository.deleteDocumentGraphNodes({
+            graphNodeIds: [cleanupRollbackNode],
+            projectId,
+          });
+        }),
+      GraphShadowMutationError,
+    );
+    await assertCounts(cleanupRollbackNode, 1);
+
+    await sql.begin(async (tx) => {
+      await createPostgresGraphTransitionMutationRepository(tx, {
+        observer: () => undefined,
+        transitionMode: 'dual-write',
+      }).deleteDocumentGraphNodes({ graphNodeIds: [cleanupRollbackNode], projectId });
+    });
+    await assertCounts(cleanupRollbackNode, 0);
 
     console.log('graph transition database tests passed');
   } finally {

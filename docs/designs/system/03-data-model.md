@@ -120,7 +120,8 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
   provider-neutral mutation contractをdual-writeし、fresh / migrated schemaの既存parityを維持する。
 - production compositionはAGEをprimaryとして先に実行する。caller-owned transactionを受けるproject lifecycleと
   Actor mergeではAGE / relationalを同じexecutorへbindし、retryable secondary failureでtransaction全体をrollbackする。
-  indexingのnode / edge identityは両backendでidempotentなため、AGE先行commit後のretryで重複rowを作らない。
+  indexingも1 document単位でmutationとstatus更新を同じtransactionへbindする。Data Source削除はDocument cleanupを
+  source row削除より先に同じtransactionで行い、secondary failure / count差分時はsource入力を残してrollbackする。
 - current sourceから再計算したrelational graphは596 documentsのproduction projectでもmissing / mismatch 0だった。
   AGE-only 30 Topic / 46 MENTIONSはcurrent sourceにないlegacy / stale構造として移植しない。この判断はAGEの全履歴が
   再生成可能という意味ではなく、`projects.graph_name`とAGE graphをrollback window中維持する。

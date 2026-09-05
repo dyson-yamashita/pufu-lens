@@ -91,7 +91,7 @@ wrapper とされているため、現行 SQL 使用状況だけなら pgcrypto 
 | graph-query fallback    | `apps/web/src/chat.ts`                                               | traversal 失敗と成功 0 件を区別し、title / summary fallback を別 status にする               |
 | Viewer presets          | Step 1B 前の `GraphViewerRepository.executePreset`                   | server-owned preset、eligible document 制限、read-only / timeout、normalized node / edge     |
 | Actor merge             | `executeActorMerge` / `GraphMutationRepository.mergeActorGraphNodes` | relational reassignment と graph edge 統合 / secondary node 削除の原子性、重複 edge 抑止     |
-| Document cleanup        | `GraphMutationRepository.deleteDocumentGraphNodes`                   | project scope、Document node の DETACH DELETE、失敗時の degraded behavior                    |
+| Document cleanup        | `GraphMutationRepository.deleteDocumentGraphNodes`                   | project scope、source削除と同一transaction、secondary失敗 / count差分時rollback              |
 | monitor / tests         | Synthetic Monitor と DB tests                                        | node presence、9 relation type count、tenant 越境拒否、rollback                              |
 | operator CLI            | `query-graph.ts`、`index-graph-relations.ts`                         | project resolver、adapter 内 graph name 検証、bounded batch、再実行、smoke / maintenance     |
 
@@ -468,10 +468,12 @@ compare CLI成功検証を追加した。構造差分の合計出力名はnode /
   shadow readはAGE primary完了後に実行し、外側6秒timeoutを設ける。各adapterのread-only transactionと5秒SQL timeoutも維持する。
 - read responseは常にAGE primaryをそのまま返す。count、relation count、related candidate、Viewer presetをcanonical比較し、
   Viewerのprovider固有ID、preview、raw row、property値は比較しない。shadow error / timeout / mismatch、観測失敗でprimary結果を変えない。
-- retry可能なupsert / project lifecycle / Actor mergeはsecondary失敗・不一致を固定エラーで返す。caller-owned transactionでは
-  AGEとrelationalを同じtransactionへbindして両方rollbackする。transaction外のindexingはAGE先行commitが起こり得るが、
-  idempotent upsertと既存failed queue retryで収束させる。source row削除後のDocument cleanupだけは安全に再試行できないため、
-  secondary error / count差分を観測してAGE primary結果を返す。
+- retry可能なupsert / project lifecycle / Actor mergeはsecondary失敗・不一致を固定エラーで返す。`ingest:index`は
+  1 documentのAGE / relational mutation、`email_quotes`、indexed statusを同じcaller-owned transactionへbindし、
+  secondary失敗時は両graphをrollbackした後、transaction外でfailed statusを記録して既存retryへ戻す。
+- Data Source削除はDocument cleanupをsource row削除より先に同じtransactionで実行する。secondary errorまたは
+  AGE / relational count差分ではsource削除ごとrollbackし、source rowとgraph node IDをdurableな再実行入力として残す。
+  cleanup専用outbox / queueやDDLは追加しない。
 - 観測は固定event / capability / operation / outcome / provider / latency / mismatch categoryだけを許可する。
   project / node / document / edge identity、properties、query、error本文、content、PII、secretは記録しない。shadow readは10%、
   成功mutation観測は1%に固定し、mismatch / error / timeoutは全件観測する。

@@ -555,7 +555,10 @@ export function createPostgresGraphViewerRepository(
   };
 }
 
-/** Composes the provider-neutral graph reader with Graph Viewer relational capabilities. */
+/**
+ * Composes Graph Viewer dependencies with AGE-primary reads and deployment-controlled relational
+ * shadow comparison.
+ */
 export function createPostgresGraphViewerDependencies(sql: postgres.Sql = getRequiredAdminSql()): {
   readonly graphReadRepository: GraphReadRepository;
   readonly repository: GraphViewerRepository;

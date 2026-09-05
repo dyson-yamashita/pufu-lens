@@ -183,7 +183,13 @@ export function createGraphShadowMutationRepository(
           ),
           categories.length > 0,
         );
-      } catch {
+        if (categories.length > 0) {
+          throw new GraphShadowMutationError();
+        }
+      } catch (error) {
+        if (error instanceof GraphShadowMutationError) {
+          throw error;
+        }
         await observe(
           runtime,
           mutationObservation(
@@ -195,6 +201,7 @@ export function createGraphShadowMutationRepository(
           ),
           true,
         );
+        throw new GraphShadowMutationError();
       }
       return primaryResult;
     },

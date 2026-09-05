@@ -121,7 +121,8 @@ modeは既定`off`で、AGE read / writeをprimaryとして維持する。enable
 relational secondaryへdual-writeし、combined modeでは`GraphReadRepository`の10%をshadow比較する。request / project
 override、provider固有query、graph nameはCore contractへ追加しない。Viewer presetは`graphNodeId`へcanonicalizeして
 比較し、provider固有ID / raw row / property値を境界外へ出さない。production設定・deploy・relational primary切替は
-この実装に含めず、Step 2Eの独立gateとする。
+この実装に含めず、Step 2Eの独立gateとする。indexingは1 documentのmutationとstatus更新、Data Source削除は
+Document cleanupとsource row削除をそれぞれ同一transactionにまとめ、secondary失敗時に再実行入力を失わない。
 
 ### 2. コンポーネント役割
 

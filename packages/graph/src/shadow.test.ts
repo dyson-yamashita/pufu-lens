@@ -321,7 +321,7 @@ test('dual-write calls AGE before relational and propagates a sanitized shadow e
   assert.doesNotMatch(JSON.stringify(observations), /private|never-log|database secret/i);
 });
 
-test('document cleanup is fail-open while actor merge mismatch is retryable failure', async () => {
+test('document cleanup shadow failure and actor merge mismatch are retryable failures', async () => {
   const cleanup = createGraphShadowMutationRepository({
     mode: 'dual-write',
     primary: mutationRepository({ deleteDocumentGraphNodes: async () => 2 }),
@@ -329,9 +329,9 @@ test('document cleanup is fail-open while actor merge mismatch is retryable fail
       deleteDocumentGraphNodes: async () => Promise.reject(new Error('unavailable')),
     }),
   });
-  assert.equal(
-    await cleanup.deleteDocumentGraphNodes({ graphNodeIds: ['node'], projectId: 'project' }),
-    2,
+  await assert.rejects(
+    () => cleanup.deleteDocumentGraphNodes({ graphNodeIds: ['node'], projectId: 'project' }),
+    GraphShadowMutationError,
   );
 
   const merge = createGraphShadowMutationRepository({
@@ -351,6 +351,19 @@ test('document cleanup is fail-open while actor merge mismatch is retryable fail
         projectId: 'project',
         secondaryGraphNodeId: 'secondary',
       }),
+    GraphShadowMutationError,
+  );
+});
+
+test('document cleanup count mismatch is a retryable failure', async () => {
+  const cleanup = createGraphShadowMutationRepository({
+    mode: 'dual-write',
+    primary: mutationRepository({ deleteDocumentGraphNodes: async () => 2 }),
+    shadow: mutationRepository({ deleteDocumentGraphNodes: async () => 1 }),
+  });
+
+  await assert.rejects(
+    () => cleanup.deleteDocumentGraphNodes({ graphNodeIds: ['node'], projectId: 'project' }),
     GraphShadowMutationError,
   );
 });

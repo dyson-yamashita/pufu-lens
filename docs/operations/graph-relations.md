@@ -111,10 +111,12 @@ mutationは次のfailure契約を使う。
 - node / edge upsert、project graph lifecycle、Actor mergeはAGE→relationalの順に実行する。secondary失敗または
   Actor merge outcome不一致は`GraphShadowMutationError`として呼出元へ返す。caller-owned transaction内なら両backendを
   同じtransactionへbindするため、AGE側を含めてrollbackされる。
-- transaction外の`ingest:index`はAGEだけが先にcommitされる場合がある。処理をfailedとして残し、同じ入力の
-  idempotent retryでrelationalを追従させる。
-- Data Source削除後のDocument cleanupはsource rowがすでにcommit済みで再試行入力を復元できないため、secondaryの
-  error / count差分を観測し、AGE primary countを返す。この例外を一般のmutationへ広げない。
+- `ingest:index`は1 documentのnode / edge mutation、`email_quotes`、indexed statusをcaller-owned transactionへまとめる。
+  secondary失敗時は両graphとstatus更新をrollbackし、transaction外でfailed statusを記録する。既存failed queue retryは
+  source rowを保ったまま同じ入力を再実行する。
+- Data Source削除はDocument cleanupを`raw_documents` / `data_sources`削除より先に同じtransactionで実行する。
+  secondary errorまたはAGE / relational count差分は`GraphShadowMutationError`にしてsource削除ごとrollbackするため、
+  source rowとgraph node IDが再実行入力として残る。別outboxやcleanup queueは追加しない。
 
 比較eventは`graph_transition_observation`で、capability、operation、match / mismatch / shadow_error /
 shadow_timeout、固定provider名、整数latency、有限のmismatch categoryだけを出す。project / node / document / edge identity、

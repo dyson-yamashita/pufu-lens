@@ -258,7 +258,7 @@ Plan 018 Step 2Dのapplicationは`PUFU_LENS_GRAPH_TRANSITION_MODE`をserver-only
 
 Step 2Dのmergeだけでは環境変数を設定せず、本番動作を変更しない。有効化は別の明示承認、直前backup、対象commit、
 全projectのrebuild / compare decision、DB connection余力、retry監視、sanitized observation保存先を確認してから、
-`dual-write`→観測→`dual-write-shadow-read`の順に別deployで行う。shadow readは固定10%、外側6秒timeoutであり、
+`dual-write`→backfill / compare確認→`dual-write-shadow-read`の順に別deployで行う。shadow readは固定10%、外側6秒timeoutであり、
 追加DB queryのlatency / connection / CPU costを観測する。異常時は`off`へ戻して再deployし、AGE primaryを維持する。
 relational primaryへの変更はStep 2Eで再度明示承認を得る。
 

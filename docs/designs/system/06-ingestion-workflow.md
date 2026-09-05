@@ -194,6 +194,7 @@ Collection Pipeline / Agent と Ingestion Workflow の責務を整理すると�
                     旧 document_chunks を旧 raw_document_id 付きで document_chunk_history に退避する。
                     同一 transaction で documents.raw_document_id と chunk を最新版へ切り替える
 6. storeGraph       documents 行 + AGE primaryへMERGE。Step 2D mode有効時はrelational graphへも同じmutationをwrite
+                    1 documentのgraph mutation、email_quotes、indexed statusをcaller-owned transactionへまとめる
                     引用チェーンは REPLY_TO で繋ぎ、email_quotes に詳細を保存
                     ソースをまたぐ意味的同一を検出したら SAME_AS 関係を張る（[複数データソース・重複データの扱い](03-data-model.md) 参照）
                     raw_documents.ingest_status を indexed に更新
@@ -280,7 +281,8 @@ export const ingestWorkflow = createWorkflow({
 - LLM / Agent は通常の取り込み判定には使わず、未知形式・低 confidence・parser 修正などの例外処理に限定する。
 - すべてのステップで`projectId`を必須コンテキストにし、AGE graph名・storage prefixをserver側で動的に解決する。
   Step 2D transitionはrequest / project overrideを持たず、deployment modeが有効な場合だけAGE primary成功後に
-  relationalへdual-writeする。secondary失敗は既存failed queue / idempotent retryへ戻す。
+  relationalへdual-writeする。1 documentのmutationとstatus更新は同じtransactionへbindし、secondary失敗時は
+  両graphをrollbackした後、transaction外でfailed statusを記録して既存retryへ戻す。
 - `MERGE` を使用してノード・エッジ・チャンクの重複を回避する。
 - メールは Gmail API の `threadId` で同一スレッドを判定し、**スレッド内の最新メールだけ** `documents` に登録、それ以前は `email_quotes` に分解。
 - Drive Doc は file ID を論理 ID、`revisionId` を版 ID とし、過去版は `raw_documents` に保持したまま同じ Document ID を最新版へ切り替える。
