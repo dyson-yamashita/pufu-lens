@@ -92,6 +92,11 @@ private PostgreSQL VM を使う場合、default Cloud Build worker pool から D
 
 ActivityPub dispatcher を有効にする trigger は `_ACTIVITYPUB_CANONICAL_ORIGIN`、`_ACTIVITYPUB_DISPATCHER_JOB`、`_ACTIVITYPUB_DISPATCHER_SCHEDULER`、固定 Mastra service URL の `_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE`、designated Scheduler SA の numeric subject を指定する `_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT`、Actor key暗号化secret名の `_ACTIVITYPUB_ACTOR_KEY_SECRET` を必須にする。canonical origin は公開 Web / federation origin、OIDC audience は内部 route を提供する Mastra service の固定 URL であり、同一値とは限らない。どちらも request の Host や外部入力から組み立てない。secret実値やOIDC tokenをsubstitutionへ入れない。
 
+graph移行profileはCloud Buildの`_GRAPH_TRANSITION_MODE`でMastra Serverと全Workflow Jobsへ配る。既定は`off`とし、
+`off` / `dual-write` / `dual-write-shadow-read`以外をdeploy前に拒否する。Webは環境別の`apps/web/apphosting.yaml`から
+同名の`PUFU_LENS_GRAPH_TRANSITION_MODE`を読むため、本番有効化・rollbackではtriggerとtracked App Hosting設定を同じ値に揃える。
+request / project入力や`NEXT_PUBLIC_*`でmodeを上書きしない。
+
 `_RUN_DB_MIGRATIONS=false` にして deploy 時 migration を skip する場合は、IAP tunnel を張った管理端末、private pool、または利用者環境のネットワーク設計に合わせて `pnpm db:migrate` を手動実行し、runtime rollout 前に schema を揃える。
 
 ## Trigger Model
@@ -175,10 +180,10 @@ gcloud builds triggers create github \
   --service-account "$PRODUCTION_DEPLOY_SA" \
   --require-approval \
   --included-files 'apps/**,packages/**,scripts/**,infra/**,deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml,.dockerignore,.firebaserc,firebase.json,pnpm-lock.yaml,pnpm-workspace.yaml,package.json,turbo.json,tsconfig*.json' \
-  --substitutions "_ENV=production,_REGION=${RUNTIME_REGION},_ARTIFACT_REPO=<artifact-repo>,_RUNTIME_SERVICE_ACCOUNT=${RUNTIME_SA},_SCHEDULER_SERVICE_ACCOUNT=${SCHEDULER_SA},_STORAGE_BUCKET=<storage-bucket>,_VPC_NETWORK=default,_VPC_SUBNET=<serverless-subnet>,_MASTRA_SERVICE=mastra-server,_MASTRA_IMAGE=mastra-server,_JOBS_IMAGE=workflow-job,_FIREBASE_DEPLOY=true,_FIREBASE_TOOLS_VERSION=15.25.1,_RUN_DB_MIGRATIONS=true,_DB_MIGRATION_JOB=db-migrate,_SOURCE_SYNC_DISPATCHER_JOB=source-sync-dispatcher,_SOURCE_SYNC_SCHEDULER=source-sync-dispatcher,_REPORT_SCHEDULE_DISPATCHER_JOB=report-schedule-dispatcher,_REPORT_SCHEDULE_SCHEDULER=report-schedule-dispatcher,_ACTIVITYPUB_CANONICAL_ORIGIN=${ACTIVITYPUB_CANONICAL_ORIGIN},_ACTIVITYPUB_DISPATCHER_JOB=activitypub-dispatcher,_ACTIVITYPUB_DISPATCHER_SCHEDULER=activitypub-dispatcher,_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE=${ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE},_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT=${SCHEDULER_SUBJECT},_ACTIVITYPUB_ACTOR_KEY_SECRET=${ACTIVITYPUB_ACTOR_KEY_SECRET},_CHAT_MODEL=google/gemini-2.5-flash,_CHAT_API_KEY_ENV=GEMINI_API_KEY,_CHAT_API_KEY_SECRET=GEMINI_API_KEY,_EMBEDDING_PROVIDER=gemini,_EMBEDDING_MODEL=gemini-embedding-2,_EMBEDDING_DIMENSIONS=1536,_EMBEDDING_API_KEY_SECRET=GEMINI_API_KEY"
+  --substitutions "_ENV=production,_REGION=${RUNTIME_REGION},_ARTIFACT_REPO=<artifact-repo>,_RUNTIME_SERVICE_ACCOUNT=${RUNTIME_SA},_SCHEDULER_SERVICE_ACCOUNT=${SCHEDULER_SA},_STORAGE_BUCKET=<storage-bucket>,_VPC_NETWORK=default,_VPC_SUBNET=<serverless-subnet>,_MASTRA_SERVICE=mastra-server,_MASTRA_IMAGE=mastra-server,_JOBS_IMAGE=workflow-job,_FIREBASE_DEPLOY=true,_FIREBASE_TOOLS_VERSION=15.25.1,_RUN_DB_MIGRATIONS=true,_DB_MIGRATION_JOB=db-migrate,_SOURCE_SYNC_DISPATCHER_JOB=source-sync-dispatcher,_SOURCE_SYNC_SCHEDULER=source-sync-dispatcher,_REPORT_SCHEDULE_DISPATCHER_JOB=report-schedule-dispatcher,_REPORT_SCHEDULE_SCHEDULER=report-schedule-dispatcher,_ACTIVITYPUB_CANONICAL_ORIGIN=${ACTIVITYPUB_CANONICAL_ORIGIN},_ACTIVITYPUB_DISPATCHER_JOB=activitypub-dispatcher,_ACTIVITYPUB_DISPATCHER_SCHEDULER=activitypub-dispatcher,_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE=${ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE},_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT=${SCHEDULER_SUBJECT},_ACTIVITYPUB_ACTOR_KEY_SECRET=${ACTIVITYPUB_ACTOR_KEY_SECRET},_CHAT_MODEL=google/gemini-2.5-flash,_CHAT_API_KEY_ENV=GEMINI_API_KEY,_CHAT_API_KEY_SECRET=GEMINI_API_KEY,_EMBEDDING_PROVIDER=gemini,_EMBEDDING_MODEL=gemini-embedding-2,_EMBEDDING_DIMENSIONS=1536,_EMBEDDING_API_KEY_SECRET=GEMINI_API_KEY,_GRAPH_TRANSITION_MODE=off"
 ```
 
-既存 trigger を更新する場合も、同じincluded filesとActivityPub substitutionを設定する。Cloud Build repository connection（`repositoryEventConfig`）を使う2nd gen triggerでは、`--update-substitutions`だけの更新が`INVALID_ARGUMENT`になるCLI versionがあるため、現在の完全なtrigger configを一時ファイルへexportし、接続、branch、approval、service account、included files、既存substitutionを保持したまま6つのActivityPub substitutionを追加する。値を編集したファイルにはsecret payloadを含めず、作業後は組織の一時ファイル処理規程に従う。
+既存 trigger を更新する場合も、同じincluded filesとActivityPub / graph transition substitutionを設定する。Cloud Build repository connection（`repositoryEventConfig`）を使う2nd gen triggerでは、`--update-substitutions`だけの更新が`INVALID_ARGUMENT`になるCLI versionがあるため、現在の完全なtrigger configを一時ファイルへexportし、接続、branch、approval、service account、included files、既存substitutionを保持したまま必要なsubstitutionだけを追加する。値を編集したファイルにはsecret payloadを含めず、作業後は組織の一時ファイル処理規程に従う。
 
 ```bash
 TRIGGER_ID="<trigger-id-or-name>"
@@ -196,6 +201,7 @@ gcloud builds triggers describe "$TRIGGER_ID" \
 # _ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE: ${ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE}
 # _ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT: '${SCHEDULER_SUBJECT}'
 # _ACTIVITYPUB_ACTOR_KEY_SECRET: ${ACTIVITYPUB_ACTOR_KEY_SECRET}
+# _GRAPH_TRANSITION_MODE: off
 
 gcloud builds triggers update github "$TRIGGER_ID" \
   --project "$PROJECT_ID" \
@@ -203,13 +209,13 @@ gcloud builds triggers update github "$TRIGGER_ID" \
   --trigger-config "$TRIGGER_CONFIG"
 ```
 
-更新後に`gcloud builds triggers describe`で、trigger ID、repository、`^main$`、approval required、deploy service account、included files、既存substitutionが変わらず、ActivityPub値だけが追加されたことを確認する。CLIではなくCloud Consoleから編集する場合も同じ差分だけを適用する。
+更新後に`gcloud builds triggers describe`で、trigger ID、repository、`^main$`、approval required、deploy service account、included files、既存substitutionが変わらず、意図したActivityPub / graph transition値だけが追加・変更されたことを確認する。CLIではなくCloud Consoleから編集する場合も同じ差分だけを適用する。
 
 deployの最初のvalidation stepは、2つのURLがHTTPS originだけであること、subjectがScheduler SAの`uniqueId`と一致すること、Actor key secretとENABLED versionが存在することをpayloadへアクセスせず検証する。ここで失敗したbuildはruntime resourceを変更していないため、値と権限を直して最新`main`から新しいbuildを開始する。
 
 `docs/**`、`README.md`、`deploy/examples/gcp-cloud-build/README.md` だけの変更は production deploy の対象外にする。deploy 手順書の変更を本番反映の契機にしたい場合は、manual trigger を明示的に実行する。
 
-Pufu Lens の現在の GCP project では `_FIREBASE_DEPLOY=true` とし、Cloud Build から Web deploy まで実行する。`apps/web/apphosting.yaml` と Cloud Run Job 名の整合、Firebase App Hosting backend、secret access、deploy service account 権限を事前に確認する。
+Pufu Lens の現在の GCP project では `_FIREBASE_DEPLOY=true` とし、Cloud Build から Web deploy まで実行する。`apps/web/apphosting.yaml` と Cloud Run Job 名の整合、Firebase App Hosting backend、secret access、deploy service account 権限を事前に確認する。graph移行を有効にしない環境ではtriggerとApp Hostingの両方を`off`に保つ。
 
 production release を tag や manual trigger に寄せる場合も、production deploy service account と approval required は維持する。
 
@@ -225,7 +231,7 @@ Cloud Console から作成する場合は、Cloud Build > Triggers で次を設�
 - Service account: production deploy 用 service account。
 - Approval: production は required。
 - Included files: 上記 CLI 例と同じ runtime / deploy config path だけを設定し、docs-only 変更で deploy が走らないようにする。
-- Substitution variables: deploy trigger の `_ENV`、`_REGION`、`_RUN_DB_MIGRATIONS`、`_DB_MIGRATION_JOB` などを設定する。
+- Substitution variables: deploy trigger の `_ENV`、`_REGION`、`_RUN_DB_MIGRATIONS`、`_DB_MIGRATION_JOB`、`_GRAPH_TRANSITION_MODE` などを設定する。
 
 ## IAM
 

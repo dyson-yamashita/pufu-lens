@@ -396,8 +396,9 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
 > 進捗（2026-09-05）: Step 1A〜1C は PR #707 / #709 / #711、2A は Issue #712 / PR #713、
 > 2B は Issue #714 / PR #715、2C「rebuild / compare CLI と source-of-truth audit」は Issue #716 / PR #717 で
 > merge済み。Issue #718のproduction rebuild / compareと追加source auditでcurrent-source relational出力を採用する
-> decision logが承認され、2D「dual-write / shadow read」を実装中。compositionはAGE primary・既定offであり、
-> 本番環境変数、deploy、read / write switchは変更しない。
+> decision logが承認され、Issue #718 / PR #722で2D「dual-write / shadow read」のAGE primary・既定off実装をmergeし、
+> commit `b3b9c73`をmode未設定のまま本番deploy済み。Issue #723でproduction dual-write rollout設定と検証を進めており、
+> shadow read、relational primary switch、AGE cleanupはまだ行わない。
 
 2026-09-03のレビュー対応でstorage公開entry pointへの依存を明示し、SQLの実行時検証とstorage設定なしの
 compare CLI成功検証を追加した。構造差分の合計出力名はnode / edge双方を表す`labelPropertyKeyMismatchCount`とする。
@@ -479,6 +480,18 @@ compare CLI成功検証を追加した。構造差分の合計出力名はnode /
   成功mutation観測は1%に固定し、mismatch / error / timeoutは全件観測する。
 - 2DはDDL / data migrationを追加せず、`0026_relational_graph_schema`を再利用する。本番環境変数設定、deploy、read / write switch、
   AGE cleanupは行わない。
+
+#### 2D production dual-write rollout（Issue #723）
+
+- PR #722のmerge commit `b3b9c73928eba4646ecee1876aebe264a1ad69df`は本番deploy済みだが、mode未設定のため
+  AGE-onlyで稼働している。Issue #723では次の段階として、productionだけ`dual-write`を有効化する設定とdrift testを扱う。
+- Cloud Buildの`_GRAPH_TRANSITION_MODE`はOSSで安全な既定`off`とし、canonical 3値以外をdeploy前に拒否する。production
+  triggerは`dual-write`へ上書きし、Mastra Serverと全Workflow Jobsへ同じserver-only値を配る。production App Hostingも
+  runtime-only `dual-write`、OSS exampleは`off`とする。
+- 新規schema / migration、shadow read、relational primary、AGE cleanupは含めない。config merge後も、直前snapshot、対象commit、
+  migration pending 0、DB余力、retry / sanitized observation監視を確認した承認済みdeployまで稼働modeを変えない。
+- deploy後はWeb / Graph / ingestion smokeと初期負荷を確認する。異常時は全deployment unitを`off`へ戻してAGE-onlyへrollbackし、
+  relational tableはforward-fix / rebuild用に保持する。安定後のbackfill / compareをshadow read開始gateとする。
 
 ### 目的
 

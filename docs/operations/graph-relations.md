@@ -4,8 +4,9 @@ Step 8 では、`documents` と `actors` を AGE graph に materialize し、`em
 
 Plan 018 Step 2A では移行先として `graph_nodes` / `graph_edges` schemaをadditiveに追加し、Step 2B では同schemaを
 使うrelational Graph read / mutation adapterを追加した。ViewerとSynthetic Monitorを含むDB testは明示DIで
-relational adapterを検証する。Step 2Dではproduction composition rootをAGE-primaryのtransition factoryへ統一したが、
-`PUFU_LENS_GRAPH_TRANSITION_MODE`の既定は`off`であり、本番設定・deploy・read / write profileは切り替えていない。
+relational adapterを検証する。Step 2Dではproduction composition rootをAGE-primaryのtransition factoryへ統一した。
+Issue #723はCloud Buildの安全な既定を`off`に保ったまま、production Web / Mastra / Workflow Jobsを`dual-write`へ揃える
+rollout configを追加する。承認済みdeployが完了するまでは稼働revisionのmodeは変わらない。
 
 Plan 018 Step 2C では、source dataからrelational graphをproject単位で再構築し、AGEとの構造差分を監査する
 operator CLIを追加した。CLIはproduction compositionへ接続せず、AGE primary read / writeも変更しない。
@@ -123,9 +124,20 @@ shadow_timeout、固定provider名、整数latency、有限のmismatch category�
 properties、property値、query、error本文、content、PII、secretを出さない。成功mutationは固定1%を観測し、
 mismatch / error / timeoutは全件記録する。
 
-Step 2DのPRは本番設定を変更しない。有効化はmerge後も別の明示承認を必要とし、`dual-write`→backfill / compare確認→
+Step 2Dのapplication PR #722は本番設定を変更しない。有効化はIssue #723の別PRと明示承認を必要とし、`dual-write`→backfill / compare確認→
 `dual-write-shadow-read`の順とする。異常時は環境変数を`off`または未設定へ戻して再deployし、relational tableを削除せず
 forward-fix / rebuild対象として保持する。relational primaryへの切替はStep 2Eの独立gateである。
+
+#### Production dual-write rollout（Issue #723）
+
+- production App Hostingはruntime-onlyの`PUFU_LENS_GRAPH_TRANSITION_MODE=dual-write`をtracked configに持つ。
+- Cloud Buildは`_GRAPH_TRANSITION_MODE=off`を安全な既定値とし、3 canonical mode以外をruntime deploy前に拒否する。
+  production triggerだけを`dual-write`へ上書きし、Mastra Serverと6 Workflow Jobsへ同じ値を渡す。OSS App Hosting exampleは
+  `off`のままにする。
+- merge後のbuild承認前に、対象commit、直前snapshotの`READY`、migration pending 0、3 projectのdecision、DB接続余力、
+  retry監視、sanitized `graph_transition_observation`の保存先を確認する。
+- deploy後はWeb / Mastra / 全Jobsのruntime env一致、Web / Graph / ingestion smoke、secondary error / mismatch、DB CPU /
+  connection / latencyを確認する。異常時はApp Hostingとproduction triggerを`off`へ戻すdeployを優先し、tableを削除しない。
 
 #### Representative queryの計測
 

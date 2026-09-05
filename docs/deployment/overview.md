@@ -32,15 +32,16 @@ Web は provider によって build 方法が異なる。Firebase App Hosting、
 
 ### Common
 
-| name                        | kind   | used by                                              | note                                                                                       |
-| --------------------------- | ------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `DATABASE_URL`              | secret | Web、Mastra Server、Workflow Jobs、migration scripts | PostgreSQL 接続文字列。実値は repository に置かない                                        |
-| `AUTH_SECRET`               | secret | Web                                                  | Auth.js と local encrypted metadata の fallback に使う                                     |
-| `STORAGE_DRIVER`            | env    | Web、Mastra Server、Workflow Jobs                    | 現在の実装値は `local` / `gcs`。production は `gcs` など managed object storage を使う     |
-| `STORAGE_ROOT`              | env    | local storage                                        | local driver の root。production secret ではないが provider 固有値として扱う               |
-| `STORAGE_BUCKET`            | env    | managed object storage                               | bucket / container 名。実 bucket 名は provider example や trigger substitutions で注入する |
-| `APP_BASE_URL` / `AUTH_URL` | env    | Web、OAuth callbacks                                 | public origin。provider の assigned URL または custom domain を設定する                    |
-| `MASTRA_API_URL`            | env    | Web                                                  | Web から Mastra Server を呼ぶ場合の internal / private service URL                         |
+| name                              | kind   | used by                                              | note                                                                                                                         |
+| --------------------------------- | ------ | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                    | secret | Web、Mastra Server、Workflow Jobs、migration scripts | PostgreSQL 接続文字列。実値は repository に置かない                                                                          |
+| `AUTH_SECRET`                     | secret | Web                                                  | Auth.js と local encrypted metadata の fallback に使う                                                                       |
+| `STORAGE_DRIVER`                  | env    | Web、Mastra Server、Workflow Jobs                    | 現在の実装値は `local` / `gcs`。production は `gcs` など managed object storage を使う                                       |
+| `STORAGE_ROOT`                    | env    | local storage                                        | local driver の root。production secret ではないが provider 固有値として扱う                                                 |
+| `STORAGE_BUCKET`                  | env    | managed object storage                               | bucket / container 名。実 bucket 名は provider example や trigger substitutions で注入する                                   |
+| `APP_BASE_URL` / `AUTH_URL`       | env    | Web、OAuth callbacks                                 | public origin。provider の assigned URL または custom domain を設定する                                                      |
+| `MASTRA_API_URL`                  | env    | Web                                                  | Web から Mastra Server を呼ぶ場合の internal / private service URL                                                           |
+| `PUFU_LENS_GRAPH_TRANSITION_MODE` | env    | Web、Mastra Server、Workflow Jobs                    | graph移行profile。`off` / `dual-write` / `dual-write-shadow-read`だけをserver runtimeへ設定し、全deployment unitで一致させる |
 
 ### LLM / Embedding
 
@@ -101,6 +102,7 @@ Provider 固有の project id、region、artifact repository、service account�
 - `_STORAGE_BUCKET`
 - `_MASTRA_SERVICE`
 - `_WEB_BACKEND`
+- `_GRAPH_TRANSITION_MODE`
 
 ## Secret Handling
 

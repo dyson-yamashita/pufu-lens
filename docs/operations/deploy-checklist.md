@@ -53,6 +53,7 @@ API key、DB password は記録しない。
 - `PUFU_LENS_EMBEDDING_PROVIDER`: `gemini` または `openai`。`deterministic` はローカル・テスト・development専用で、`NODE_ENV=production` では共有runtimeがprovider解決時に拒否する。
 - `PUFU_LENS_EMBEDDING_MODEL`: ingestionとquery検索で共有するembedding model。
 - `PUFU_LENS_EMBEDDING_DIMENSIONS`: DBの `vector(1536)` に合わせて `1536`。
+- `PUFU_LENS_GRAPH_TRANSITION_MODE`: server-only graph mode。`off` / `dual-write` / `dual-write-shadow-read`だけを許可し、Web、Mastra、全Workflow Jobsで一致させる。request / projectや`NEXT_PUBLIC_*`から設定しない。
 - `GEMINI_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`: 選択したproviderで必要なものだけをsecret storeから注入し、実値は記録しない。
 - `PUFU_LENS_EMBEDDING_API_KEY`: provider固有secret名を共通名へ割り当てる場合だけ使用可能。実値は記録しない。
 - `GEMINI_CHAT_MODEL` / `GEMINI_EMBEDDING_MODEL` / `GEMINI_EMBEDDING_DIMENSIONS`: 既存環境およびGemini固有のreport/topic抽出経路との互換用。
@@ -164,8 +165,21 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 - chat model: `PUFU_LENS_CHAT_MODEL` のproviderに対応するAPI key secretがMastra Serverへ注入されていることを確認
 - chat hybrid search smoke: Mastra Server の `PUFU_LENS_EMBEDDING_MODEL` と `document_chunks.embedding_model` の値が一致し、固有名詞 / Issue 番号を含む質問で `hybrid-search` が vector / keyword 候補を RRF 統合して返すこと
 - 実行後 smoke:
+- graph transition mode: production App Hosting、Mastra Server、全Workflow Jobsの`PUFU_LENS_GRAPH_TRANSITION_MODE`が承認値と一致することを確認
 - 失敗時の判断: restore / forward fix / 再実行 / deploy 停止
 - 記録先: PR、Issue、release note、または環境別運用ログの URL
+
+## Plan 018 Step 2D production dual-write gate
+
+- [ ] Issue #718の3 project rebuild / compare decisionと、AGE-only legacy構造を移植しない承認を確認した。
+- [ ] 対象main commitとCloud Build triggerを固定し、`_GRAPH_TRANSITION_MODE=dual-write`、App Hosting runtime=`dual-write`、OSS既定=`off`を確認した。
+- [ ] `pg-ai-data`の直前snapshotが`READY`で、source disk / region / retention責任者を記録した。
+- [ ] `pnpm db:migrate --check` / `--plan`でpending 0を確認し、新規DDL / data migrationがない。
+- [ ] DB CPU / connection / latency、ingestion retryの有効な観測先と停止判断を記録した。
+- [ ] `graph_transition_observation`はevent / capability / operation / outcome / provider / latency / mismatch categoryだけを出し、content、PII、secret、query、raw identity、properties値を出さない。
+- [ ] 最新mainと一致するpending buildだけを承認し、Web、Mastra、全Workflow Jobsのruntime mode一致を確認した。
+- [ ] Web / Graph / ingestion smokeを完了し、secondary error / mismatchとDB負荷の初期観測を記録した。
+- [ ] 異常時はApp Hostingとproduction triggerを`off`へ戻して再deployし、AGE / relational dataを削除しない。
 
 ## ActivityPub production gate
 

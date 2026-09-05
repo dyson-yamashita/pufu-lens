@@ -124,6 +124,11 @@ override、provider固有query、graph nameはCore contractへ追加しない。
 この実装に含めず、Step 2Eの独立gateとする。indexingは1 documentのmutationとstatus更新、Data Source削除は
 Document cleanupとsource row削除をそれぞれ同一transactionにまとめ、secondary失敗時に再実行入力を失わない。
 
+Issue #723のproduction rolloutでは、このcomposition境界を変えずにdeployment profileだけを`dual-write`へ進める。
+Cloud Buildの既定は`off`を維持し、production triggerからMastra Serverと全Workflow Jobsへ同じ値を渡す。
+App Hostingもserver runtimeだけに同じ値を設定し、request / project overrideや`NEXT_PUBLIC_*`は追加しない。
+AGE primaryの応答契約、認可、module境界は維持し、shadow readとrelational primaryは別の承認済みdeployへ残す。
+
 ### 2. コンポーネント役割
 
 | コンポーネント      | 役割                                                                                                         | デプロイ先                              |
