@@ -256,11 +256,14 @@ Plan 018 Step 2Dのapplicationは`PUFU_LENS_GRAPH_TRANSITION_MODE`をserver-only
 `dual-write-shadow-read`はdual-writeに加えてAGE responseを返したまま固定10%のrelational readを比較する。
 未知の値はcomposition時にfail closedする。request / project単位overrideや`NEXT_PUBLIC_*`設定を追加しない。
 
-Step 2Dのmergeだけでは環境変数を設定せず、本番動作を変更しない。有効化は別の明示承認、直前backup、対象commit、
-全projectのrebuild / compare decision、DB connection余力、retry監視、sanitized observation保存先を確認してから、
-`dual-write`→backfill / compare確認→`dual-write-shadow-read`の順に別deployで行う。shadow readは固定10%、外側6秒timeoutであり、
-追加DB queryのlatency / connection / CPU costを観測する。異常時は`off`へ戻して再deployし、AGE primaryを維持する。
-relational primaryへの変更はStep 2Eで再度明示承認を得る。
+Step 2Dのapplication mergeだけでは環境変数を設定せず、本番動作を変更しない。Issue #723のrollout configはCloud Buildの
+`_GRAPH_TRANSITION_MODE`を既定`off`のallowlist付きsubstitutionとしてMastra Serverと全Workflow Jobsへ渡し、production
+App Hostingだけ`dual-write`を明示する。production triggerも`dual-write`へ上書きし、3 deployment unitを同じmodeに揃える。
+config mergeだけでは稼働revisionは変わらず、直前backup、対象commit、全projectのrebuild / compare decision、DB connection余力、
+retry監視、sanitized observation保存先を確認した承認済みCloud Buildで初めて有効化する。その後はbackfill / compare確認を挟み、
+`dual-write-shadow-read`を別deployで有効化する。shadow readは固定10%、外側6秒timeoutであり、追加DB queryのlatency /
+connection / CPU costを観測する。異常時はproduction App Hostingとtrigger substitutionを`off`へ戻して再deployし、AGE primaryを
+維持する。relational primaryへの変更はStep 2Eで再度明示承認を得る。
 
 `apps/web/apphosting.yaml` の最小例：
 
@@ -278,11 +281,11 @@ runConfig:
         subnetwork: pufu-lens-serverless
 
 env:
-  # Plan 018 Step 2D merge時は追加しない。有効化は別のproduction approval後に行う。
-  # - variable: PUFU_LENS_GRAPH_TRANSITION_MODE
-  #   value: dual-write
-  #   availability:
-  #     - RUNTIME
+  # Production dual-write rollout only. OSS examples keep this value at `off`.
+  - variable: PUFU_LENS_GRAPH_TRANSITION_MODE
+    value: dual-write
+    availability:
+      - RUNTIME
   - variable: STORAGE_DRIVER
     value: gcs
     availability:

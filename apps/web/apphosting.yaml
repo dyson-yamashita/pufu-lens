@@ -15,6 +15,10 @@ runConfig:
         subnetwork: pufu-lens-serverless
 
 env:
+  - variable: PUFU_LENS_GRAPH_TRANSITION_MODE
+    value: dual-write
+    availability:
+      - RUNTIME
   - variable: STORAGE_DRIVER
     value: gcs
     availability:

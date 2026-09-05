@@ -13,6 +13,10 @@ runConfig:
         subnetwork: '<direct-vpc-subnet-name>'
 
 env:
+  - variable: PUFU_LENS_GRAPH_TRANSITION_MODE
+    value: 'off'
+    availability:
+      - RUNTIME
   - variable: STORAGE_DRIVER
     value: gcs
     availability:
