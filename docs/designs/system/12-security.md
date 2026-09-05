@@ -62,6 +62,10 @@ API は以下の認可をかける：
 - public chat は private chat と同じ処理を使う。private project では public chat を許可せず、public project でも対象 report が `is_public = true` の場合だけ入口を開く。public response の sources は web 由来だけに制限し、Gmail / Drive / GitHub などの private source metadata を返さない
 - レート制限を Cloud Armor または Hono middleware で実装する。public chat は信頼プロキシが付与した `x-forwarded-for` を右端から走査し、private / local IP と無効値を除いた最初の有効値（なければ `x-real-ip`、最後に anonymous bucket）+ report id 単位で 1 時間 / 1 日 / 質問長の上限を設け、クライアントが任意に付与できる左端値は信用しない。private chat は user + project 単位で public より緩い上限にする。Mastra 側で使う rate limit 用 header は OIDC 検証済みの Next.js から来たものだけを信頼する
 - App Hosting の runtime env と secret は `apphosting.yaml` で参照し、secret 値をリポジトリに含めない。
+- Plan 018 Step 2Dのgraph transition modeはserver-only envだけを正とし、Browser request、project設定、公開APIから
+  providerを選ばせない。shadow observationは固定event / operation / outcome / provider / latency / mismatch categoryに
+  allowlistし、project / node / document / edge identity、properties、query、error本文、content、PII、secretを保存・logしない。
+  observer失敗やshadow read timeoutでAGE primary responseを変更せず、認可済み`projectId` scopeを両adapterで再利用する。
 
 ### 3.1 ActivityPub Step 1 / Step 2 / Step 3 / Step 4 / Step 5 / Step 6 / Step 7 security boundary
 

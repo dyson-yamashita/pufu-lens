@@ -393,11 +393,11 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
 
 ## 9. Step 2: Apache AGE を relational graph schema へ置き換える
 
-> 進捗（2026-09-04）: Step 1A〜1C は PR #707 / #709 / #711、2A は Issue #712 / PR #713、
+> 進捗（2026-09-05）: Step 1A〜1C は PR #707 / #709 / #711、2A は Issue #712 / PR #713、
 > 2B は Issue #714 / PR #715、2C「rebuild / compare CLI と source-of-truth audit」は Issue #716 / PR #717 で
-> merge 済み。Issue #718で承認済みのproduction rebuild / compareを3 projectへ実施し、2 projectはpass、595 documentsの
-> projectは差分が残ってblockedとなった。Issue #720 / PR #721でnode properties upsertを補修したが、2Dは実装未着手とし、
-> 既存 AGE primary composition、本番 DB、read / write profile は維持する。
+> merge済み。Issue #718のproduction rebuild / compareと追加source auditでcurrent-source relational出力を採用する
+> decision logが承認され、2D「dual-write / shadow read」を実装中。compositionはAGE primary・既定offであり、
+> 本番環境変数、deploy、read / write switchは変更しない。
 
 2026-09-03のレビュー対応でstorage公開entry pointへの依存を明示し、SQLの実行時検証とstorage設定なしの
 compare CLI成功検証を追加した。構造差分の合計出力名はnode / edge双方を表す`labelPropertyKeyMismatchCount`とする。
@@ -444,21 +444,39 @@ compare CLI成功検証を追加した。構造差分の合計出力名はnode /
 
 #### 2D 開始gate確認（Issue #718 / 補修 Issue #720）
 
-- status: `blocked`（実装未着手）、更新日: 2026-09-04、親Issue: #704、depends-on: #717（merge済み・依存解消）。
-  Issue #718で承認済みのproduction snapshot、schema migration、project-bounded rebuild / compareを実施した。
-- 対象3 projectのうち2 projectはcompareがpassした。595 documentsのprojectは、rebuild完了時点のsanitized結果で
-  AGE-only 30 nodes / 46 edges、relational-only 678 nodes / 975 edges、label / property-key mismatch 116となりblockedした。
-  duplicate / orphan / unknown relation / source audit blockerはいずれも0で、truncationは発生していない。
-- read-onlyの追加分類では595 Document nodeが両側に存在した一方、差分は主にGitHub PRのkeyword Topic / MENTIONS、
-  lifecycle properties、REVIEWED / COMMENTED_ONに分かれた。relational node upsertがpropertiesを全置換していたため、
-  sparse placeholder更新で既存Document propertiesを失う不整合はIssue #720 / PR #721で補修した。
-- inventoryは実行中の更新によりsnapshot間で変動した。追加分類後の30秒安定観測はAGE 824 nodes / 2,219 edges、
-  relational 1,456 nodes / 3,089 edgesであり、単一snapshotの件数から全graphを再生成可能とは断定しない。
-- Issue #720 / PR #721はnode propertiesのmerge契約と回帰testだけを補修した。Topic / edge生成差分の扱い、
-  補修後の再build / compare、差分解消または承認済みdecision logが揃うまでIssue #718と2D開始gateをblockedのまま維持する。
-- AGE primary composition、production read / write profile、dual-write / shadow read、production switchは変更しない。
-  2Eは2D完了、対象projectのbackfill / compare・shadow観測とmismatch判断、性能 / cost、restore point / rollback計画、
-  production切替の明示承認を満たした後、独立タスクで着手する。
+- status: `approved`、更新日: 2026-09-05、親Issue: #704、depends-on: #717 / #721（merge済み・依存解消）。
+  Issue #718で承認済みのproduction snapshot、schema migration、project-bounded rebuild / compareを3 projectへ実施した。
+- 2 projectは差分なしでpassした。596 documentsのprojectは安定snapshotでAGE-only 30 nodes / 46 edges、
+  relational-only 662 nodes / 916 edges、label / property-key mismatch 106だった。duplicate / orphan / unknown relation、
+  source audit blocker、truncationはいずれも0だった。
+- 同じ596 current documentsからread-onlyで再計算した期待値は1,458 nodes / 3,099 edgesで、relationalの
+  missing / mismatchは0だった。relational-onlyはすべてcurrent source由来で、AGE-onlyの30 Topic / 46 MENTIONSは
+  current sourceから生成されないlegacy / stale構造だった。property-key差分106件もrelationalがcurrent GitHub PR lifecycle
+  期待値と一致し、AGE側のkey欠落だった。この判断をcontent、identity、property値を含まないdecision logとしてIssue #718へ記録した。
+- この結果は「current sourceから再構築したrelational graphを後続移行の正当な出力として採用する」という判断であり、
+  AGE graphの全履歴が再生成可能という断定ではない。AGE-only legacy構造をrelationalへ移植しない。
+- AGE primary compositionとproduction read / write profileは維持する。2D実装後も本番有効化・deploy・primary switchは行わず、
+  2Eは対象projectのshadow観測、mismatch判断、性能 / cost、restore point / rollback計画、production切替の明示承認を
+  満たした後の独立タスクとする。
+
+#### 2D 実装記録（Issue #718）
+
+- server-onlyの`PUFU_LENS_GRAPH_TRANSITION_MODE`で`off`、`dual-write`、`dual-write-shadow-read`を選ぶ。
+  unset / 空値は`off`、未知の値はcomposition時にfail closedとし、request / project単位overrideを持たない。
+- 全production composition rootをtransition factoryへ接続するが、AGEをprimaryとして先に実行する。enabled時のmutationは
+  relationalをsecondaryとして全件dual-writeし、readはcombined modeで固定10%だけrelationalをshadow実行する。
+  shadow readはAGE primary完了後に実行し、外側6秒timeoutを設ける。各adapterのread-only transactionと5秒SQL timeoutも維持する。
+- read responseは常にAGE primaryをそのまま返す。count、relation count、related candidate、Viewer presetをcanonical比較し、
+  Viewerのprovider固有ID、preview、raw row、property値は比較しない。shadow error / timeout / mismatch、観測失敗でprimary結果を変えない。
+- retry可能なupsert / project lifecycle / Actor mergeはsecondary失敗・不一致を固定エラーで返す。caller-owned transactionでは
+  AGEとrelationalを同じtransactionへbindして両方rollbackする。transaction外のindexingはAGE先行commitが起こり得るが、
+  idempotent upsertと既存failed queue retryで収束させる。source row削除後のDocument cleanupだけは安全に再試行できないため、
+  secondary error / count差分を観測してAGE primary結果を返す。
+- 観測は固定event / capability / operation / outcome / provider / latency / mismatch categoryだけを許可する。
+  project / node / document / edge identity、properties、query、error本文、content、PII、secretは記録しない。shadow readは10%、
+  成功mutation観測は1%に固定し、mismatch / error / timeoutは全件観測する。
+- 2DはDDL / data migrationを追加せず、`0026_relational_graph_schema`を再利用する。本番環境変数設定、deploy、read / write switch、
+  AGE cleanupは行わない。
 
 ### 目的
 

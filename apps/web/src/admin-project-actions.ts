@@ -1,6 +1,5 @@
 'use server';
 
-import { createPostgresAgeGraphMutationRepository } from '@pufu-lens/graph/postgres-age-mutation';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import type postgres from 'postgres';
@@ -19,6 +18,7 @@ import {
 } from './admin-actions-shared.ts';
 import { isProjectVisibility, type ProjectVisibility } from './admin-data';
 import { deleteProjectUseCase } from './delete-project-use-case.ts';
+import { createPostgresGraphTransitionMutationRepository } from './postgres-graph-transition.ts';
 import {
   HYBRID_SEARCH_DOCUMENT_LIMIT_SETTING_KEY,
   requireHybridSearchDocumentLimit,
@@ -113,7 +113,7 @@ export async function createProject(formData: FormData): Promise<void> {
         ON CONFLICT (project_id, user_id) DO UPDATE SET role = 'admin'
       `;
 
-      await createPostgresAgeGraphMutationRepository(tx).ensureProjectGraph({
+      await createPostgresGraphTransitionMutationRepository(tx).ensureProjectGraph({
         projectId: project.id,
       });
     });
@@ -214,7 +214,7 @@ export async function deleteProject(formData: FormData): Promise<void> {
         slug: project.slug,
         visibility: project.visibility,
       },
-      (tx) => createPostgresAgeGraphMutationRepository(tx),
+      (tx) => createPostgresGraphTransitionMutationRepository(tx),
     ));
   });
 

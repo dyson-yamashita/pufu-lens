@@ -115,7 +115,8 @@ source data からの backfill も実行しない。
 - production適用、relational write、read switchはこのschema PRの範囲外である。適用後に問題が見つかっても
   AGE primaryを維持し、tableを即時dropせずforward-fixを優先する。
 - rebuild / compareと再生成元auditはStep 2Cで実装した。承認済みlive実行では3 project中2 projectがpassし、
-  595 documentsのprojectに差分が残ったため、全graphを再生成可能と判断しない。
+  596 documentsのprojectは追加auditでrelationalがcurrent source期待値と一致した。AGE-only legacy / stale構造は
+  移植せず、AGEの全履歴が再生成可能とは判断しない。
 
 ### Relational Graph Step 2B
 
@@ -149,6 +150,19 @@ Step 2Cの`pnpm graph:migrate`はDDL migrationではなく、project-scopedなop
   deploy checklistへ記録し、明示承認を得る。Step 2CのPR自体はproduction DBへ適用・実行しない。
 - expression indexは代表queryの`EXPLAIN (ANALYZE, BUFFERS, SETTINGS)`と10倍相当fixtureのp50 / p95を根拠に
   別migrationで判断する。Step 2Cでは計測なしのDDLを追加しない。
+
+### Relational Graph Step 2D
+
+Step 2Dはapplication compositionと比較・failure契約だけを追加し、DDL、data migration、`init.sql`、
+`schema_migrations` baselineを変更しない。既存`0026_relational_graph_schema`をそのまま使うため、Step 2D固有の
+migration適用や再実行はない。
+
+- local DB testは同じcaller-owned transactionへAGE / relational mutationをbindし、secondary失敗時に両側が
+  rollbackされ、同じidentityのretry後に両側1件へ収束することを検証する。
+- 本番で`PUFU_LENS_GRAPH_TRANSITION_MODE`を有効化する前に、`0026_relational_graph_schema`適用済みであること、
+  対象projectのrebuild / compare decision、backup、retry queue、観測先を確認する。これはmigration runnerへ組み込まない。
+- rollbackはmodeを`off`へ戻すapplication rollbackであり、`graph_nodes` / `graph_edges`をdropしない。secondary側の
+  部分更新はsanitized compare後にforward-fix / rebuildする。
 
 ### Vector / Embedding
 

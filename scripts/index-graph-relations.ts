@@ -1,4 +1,4 @@
-import { createPostgresAgeGraphMutationRepository } from '@pufu-lens/graph/postgres-age-mutation';
+import { createPostgresGraphTransitionMutationRepository } from '@pufu-lens/graph/postgres-transition-mutation';
 import postgres from 'postgres';
 import { storeGraphRelations } from '../packages/ingestion/dist/index.js';
 import { createObjectStorageFromEnv } from '../packages/storage/dist/factory.js';
@@ -19,7 +19,7 @@ async function main(): Promise<void> {
     dataSourceId: options.dataSourceId,
     sourceType: options.source,
   });
-  const mutationRepository = createPostgresAgeGraphMutationRepository(sql);
+  const mutationRepository = createPostgresGraphTransitionMutationRepository(sql);
 
   try {
     const result = await storeGraphRelations({

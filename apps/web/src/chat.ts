@@ -21,7 +21,7 @@ import {
 import type { GitHubDocumentLifecycle } from './github-lifecycle-contract.ts';
 import { parseGitHubDocumentLifecycle } from './github-lifecycle-contract.ts';
 import { createGcpPostgresCandidateRepositories } from './postgres-chat-candidate-adapters.ts';
-import { createPostgresAgeGraphReadRepository } from './postgres-graph-read-adapter.ts';
+import { createPostgresGraphTransitionReadRepository } from './postgres-graph-transition.ts';
 import { jsonParameter } from './postgres-json.ts';
 import {
   type AgentRawReadViewEnvelope,
@@ -1174,7 +1174,7 @@ export function createPostgresChatRepository(
   const candidateRepositories =
     options.candidateRepositories ?? createGcpPostgresCandidateRepositories(sql);
   const graphReadRepository =
-    options.graphReadRepository ?? createPostgresAgeGraphReadRepository(sql);
+    options.graphReadRepository ?? createPostgresGraphTransitionReadRepository(sql);
   const rawReadViewRepository = options.rawStorage
     ? createPostgresRawReadViewRepository({ sql, storage: options.rawStorage })
     : undefined;

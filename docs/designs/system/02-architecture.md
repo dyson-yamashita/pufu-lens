@@ -112,9 +112,16 @@ relational adapterへproject-scopedなbounded upsertを行う。AGE / relational
 `scripts/lib`のmigration boundaryに閉じ、CLI出力はsanitized count / categoryだけにする。これはproduction
 compositionへ注入されない。rebuildのObject Storage読取は最大8並列、compareのprovider readは同一の
 `REPEATABLE READ READ ONLY` transaction / sessionに固定する。runtimeのdual-write / shadow readはStep 2Dまで
-追加しない。承認済みlive rebuild / compareでは3 project中2 projectがpassし、595 documentsのprojectに差分が
-残ったため、再生成可能性の最終判断と差分対応をStep 2D開始gateに残す。Issue #720ではrelational node upsertの
-propertiesを既存値とのmergeへ補修するが、production composition / profileやmodule boundaryは変更しない。
+追加しない。承認済みlive rebuild / compareでは3 project中2 projectがpassし、596 documentsのprojectは追加auditで
+relationalがcurrent source期待値と一致した。AGE-only legacy / stale構造を移植しないdecision logをStep 2D開始gateとする。
+Issue #720ではrelational node upsertのpropertiesを既存値とのmergeへ補修した。
+
+Plan 018 Step 2DではproductionのGraph composition rootをtransition factoryへ統一する。deployment単位のserver-only
+modeは既定`off`で、AGE read / writeをprimaryとして維持する。enabled時だけ同じ`GraphMutationRepository` inputを
+relational secondaryへdual-writeし、combined modeでは`GraphReadRepository`の10%をshadow比較する。request / project
+override、provider固有query、graph nameはCore contractへ追加しない。Viewer presetは`graphNodeId`へcanonicalizeして
+比較し、provider固有ID / raw row / property値を境界外へ出さない。production設定・deploy・relational primary切替は
+この実装に含めず、Step 2Eの独立gateとする。
 
 ### 2. コンポーネント役割
 

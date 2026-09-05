@@ -10,10 +10,8 @@ import type postgres from 'postgres';
 import { getRequiredAdminSql } from './admin-sql.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
 import { graphPropertyString as propertyString } from './graph-property-utils.ts';
-import {
-  ageGraphPresetPreview,
-  createPostgresAgeGraphReadRepository,
-} from './postgres-graph-read-adapter.ts';
+import { ageGraphPresetPreview } from './postgres-graph-read-adapter.ts';
+import { createPostgresGraphTransitionReadRepository } from './postgres-graph-transition.ts';
 
 export type { GraphPresetId } from '@pufu-lens/graph';
 
@@ -563,7 +561,7 @@ export function createPostgresGraphViewerDependencies(sql: postgres.Sql = getReq
   readonly repository: GraphViewerRepository;
 } {
   return {
-    graphReadRepository: createPostgresAgeGraphReadRepository(sql),
+    graphReadRepository: createPostgresGraphTransitionReadRepository(sql),
     repository: createPostgresGraphViewerRepository(sql),
   };
 }

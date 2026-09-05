@@ -4,7 +4,6 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createPostgresAgeGraphMutationRepository } from '@pufu-lens/graph/postgres-age-mutation';
 import type postgres from 'postgres';
 import {
   type CollectionRepository,
@@ -53,6 +52,7 @@ import {
 } from './admin-data';
 import { resolveAdminIngestEmbeddingProvider } from './admin-ingest-runtime.ts';
 import { insertDefaultDataSourceSchedule } from './data-source-schedules.ts';
+import { createPostgresGraphTransitionMutationRepository } from './postgres-graph-transition.ts';
 import {
   createGitHubInstallationAccessToken,
   readProjectConnectionAccessToken,
@@ -349,7 +349,7 @@ export async function deleteDataSource(formData: FormData): Promise<void> {
     }));
 
     if (graphNodeIds.length > 0) {
-      await createPostgresAgeGraphMutationRepository(sql).deleteDocumentGraphNodes({
+      await createPostgresGraphTransitionMutationRepository(sql).deleteDocumentGraphNodes({
         projectId: project.id,
         graphNodeIds,
       });

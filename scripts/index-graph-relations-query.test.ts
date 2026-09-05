@@ -39,7 +39,8 @@ test('index-graph-relations entrypoint stays a composition root', () => {
   assert.match(entrySource, /storeGraphRelations\(/);
   assert.match(entrySource, /createPostgresGraphProjectResolver\(/);
   assert.match(entrySource, /createPostgresGraphIndexingRepository\(/);
-  assert.match(entrySource, /createPostgresAgeGraphMutationRepository\(/);
+  assert.match(entrySource, /createPostgresGraphTransitionMutationRepository\(/);
+  assert.doesNotMatch(entrySource, /createPostgresAgeGraphMutationRepository\(/);
   assert.doesNotMatch(entrySource, /GraphRelationsRepository/);
   assert.doesNotMatch(entrySource, /graphName/);
   assert.doesNotMatch(entrySource, /cypher\(/);
