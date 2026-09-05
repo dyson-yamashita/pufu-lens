@@ -76,8 +76,9 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
   canonicalizeし、PostgreSQL 側は明示的な `COLLATE "C"` で application と同じ順序を使う。rewire後の競合も
   一件へ吸収する。この順序をDB testで固定し、node cascadeをedge移送に使わない。
 - `0026_relational_graph_schema` は table / constraint / index だけを追加し、AGE export、backfill、既存 row 更新を
-  行わない。AGE-only row と source-of-truth のlocal inventory契約はStep 2Cで実装したが、live AGE inventoryは
-  未実施であり、現時点で全graphが再生成可能とは扱わない。
+  行わない。AGE-only row と source-of-truth のinventory契約はStep 2Cで実装した。live rebuild / compareでは
+  3 project中2 projectがpassし、595 documentsのprojectにnode / edge / property-key差分が残ったため、
+  現時点で全graphが再生成可能とは扱わない。
 
 #### Relational graph adapter（Plan 018 Step 2B）
 
@@ -85,11 +86,14 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
   Viewer preset を bounded SQL で実装し、read-only transaction と5秒timeoutを適用する。
 - mutation adapter は project lifecycle、node / canonical 9 edge type の idempotent upsert、Document node cleanup、
   Actor mergeを実装する。unknown kind / relation type、非object propertiesはSQL binding前に拒否する。
+- node upsertのconflict時は既存`properties`と入力`properties`をJSONB objectとしてmergeし、同名keyは入力値を優先する。
+  full Documentの後にsparse placeholderをupsertしても省略keyを保持し、placeholderからfull Documentへの順序でも
+  placeholder固有keyを保持する。edge propertiesの更新契約は従来どおりで、この補修では変更しない。
 - adapter は `@pufu-lens/graph/postgres-relational-read` と
   `@pufu-lens/graph/postgres-relational-mutation` から明示的に注入する。production の AGE adapter選択、
   `projects.graph_name`、API contract、認可境界は変更しない。
-- Step 2B はDDL、data migration、AGE export、backfillを追加しない。Step 2Cでlocal rebuild / compareと
-  source-of-truth auditを実装した後も、live AGE inventoryが完了するまで全graphを再生成可能とは扱わない。
+- Step 2B はDDL、data migration、AGE export、backfillを追加しない。Step 2Cのrebuild / compareと
+  source-of-truth auditをlive実行した後も差分が残っているため、全graphを再生成可能とは扱わない。
 - `graph_nodes.properties ->> 'documentId'` を使う代表 query はStep 2Cのlocal synthetic fixtureで実行手順を確認した。
   production相当row count / p95は未取得であり、expression indexは後続の実測を根拠に追加可否を判断する。
 
@@ -106,8 +110,9 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
   project解決からsource auditまで同一の`REPEATABLE READ READ ONLY` transaction / sessionを使用する。
 - Actor merge後もsecondary Actorを参照するalias / email quote、merge decision不整合、current documentの
   parsed artifact / status不足、Document rowのないrelational nodeはsource audit blockerとする。
-- local PostgreSQL + AGE fixtureでは再構築と比較契約を確認済みだが、live AGE inventoryは未実施である。
-  live差分がゼロまたは明示的な扱いが承認されるまで、全graphを再生成可能とは扱わず、Step 2D開始gateに残す。
+- local PostgreSQL + AGE fixtureでは再構築と比較契約を確認済みである。live rebuild / compareは3 projectへ実施し、
+  2 projectがpass、595 documentsのprojectは差分が残った。差分がゼロまたは明示的な扱いが承認されるまで、
+  全graphを再生成可能とは扱わず、Step 2D開始gateに残す。
 
 ### 3. OAuth connection と data source
 

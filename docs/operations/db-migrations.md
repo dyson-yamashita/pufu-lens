@@ -114,8 +114,8 @@ source data からの backfill も実行しない。
   project / node cascade、Actor mergeに必要なedge-first / dedupe / rollback契約を検証する。
 - production適用、relational write、read switchはこのschema PRの範囲外である。適用後に問題が見つかっても
   AGE primaryを維持し、tableを即時dropせずforward-fixを優先する。
-- local rebuild / compareと再生成元auditはStep 2Cで実装した。live AGE inventoryは未完了であり、
-  その状態で全graphを再生成可能と判断しない。
+- rebuild / compareと再生成元auditはStep 2Cで実装した。承認済みlive実行では3 project中2 projectがpassし、
+  595 documentsのprojectに差分が残ったため、全graphを再生成可能と判断しない。
 
 ### Relational Graph Step 2B
 
@@ -124,10 +124,12 @@ Step 2B の relational Graph read / mutation adapter は、Step 2A の `0026_rel
 再実行性は引き続き`pnpm db:migrate --check`、`pnpm db:schema-drift`、Web DB testで検証する。
 
 - adapterは明示DIでのみ有効化し、productionのAGE primary compositionと`projects.graph_name`を維持する。
+- node upsert conflict時は既存`properties`と入力`properties`をJSONB objectとしてmergeし、同名keyは入力値を優先する。
+  この補修はapplication SQLとDB testだけで、DDL / data migrationは追加しない。
 - production DBへStep 2B固有のmigration適用やwriteを行わない。rollbackはrelational adapterを注入しない既定経路へ
   戻すことで完了し、`graph_nodes` / `graph_edges`をdropしない。
-- local rebuild / compare実装はStep 2C、live AGE inventory完了とdual-write / shadow readはStep 2D、
-  production switchはStep 2Eのgateとする。
+- rebuild / compare実装とlive inventoryはStep 2C後に実施した。残存差分の解消または承認後に
+  dual-write / shadow readをStep 2D、production switchをStep 2Eのgateとする。
 
 ### Relational Graph Step 2C
 
@@ -142,7 +144,7 @@ Step 2Cの`pnpm graph:migrate`はDDL migrationではなく、project-scopedなop
   同じcursorの再実行はidempotent upsertで吸収し、成功batchのopaque resume cursorだけを運用記録へ残す。
 - compareはAGEをread-only inventory対象とし、project解決を含む全readを同じ`REPEATABLE READ READ ONLY`
   transaction / sessionで実行して、relational tableとsource-of-truthのsanitized countを返す。`pass`以外、
-  またはlive AGE inventory未実施の状態では、dual-write / shadow readの開始判定を完了扱いにしない。
+  または未判断の差分がある状態では、dual-write / shadow readの開始判定を完了扱いにしない。
 - production実行にはbackup、対象project、limit、cursor、実行前後count、失敗時のforward-fix / restore判断を
   deploy checklistへ記録し、明示承認を得る。Step 2CのPR自体はproduction DBへ適用・実行しない。
 - expression indexは代表queryの`EXPLAIN (ANALYZE, BUFFERS, SETTINGS)`と10倍相当fixtureのp50 / p95を根拠に

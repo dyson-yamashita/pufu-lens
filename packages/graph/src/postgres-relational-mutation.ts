@@ -324,7 +324,7 @@ async function upsertRelationalNode(
     ON CONFLICT (project_id, node_key) DO UPDATE SET
       kind = EXCLUDED.kind,
       subtype = EXCLUDED.subtype,
-      properties = EXCLUDED.properties,
+      properties = public.graph_nodes.properties || EXCLUDED.properties,
       updated_at = now()
   `;
 }

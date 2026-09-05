@@ -8,8 +8,9 @@ relational adapterを検証する。現行productionの`ingest:index`、Graph re
 Synthetic Monitorは引き続きAGE adapterを使い、既定compositionやread / write profileは切り替えない。
 
 Plan 018 Step 2C では、source dataからrelational graphをproject単位で再構築し、AGEとの構造差分を監査する
-operator CLIを追加した。CLIはproduction compositionへ接続せず、AGE primary read / writeも変更しない。live AGE
-inventoryは未実施であり、差分ゼロまたは明示的な扱いが決まるまでは全graphを再生成可能と扱わない。
+operator CLIを追加した。CLIはproduction compositionへ接続せず、AGE primary read / writeも変更しない。
+承認済みのlive rebuild / compareは3 project中2 projectがpassし、595 documentsのprojectに差分が残った。
+差分ゼロまたは明示的な扱いが決まるまでは全graphを再生成可能と扱わない。
 
 ### Relational graph schema（Step 2A）
 
@@ -23,8 +24,8 @@ inventoryは未実施であり、差分ゼロまたは明示的な扱いが決�
 - propertiesはprovider-neutral JSON objectに限定する。content、PII、secretをschema test fixtureやlogへ記録しない。
 - outgoing / incoming traversal用indexだけを2Aで作る。relation type単独 / recent document indexは2B以降の
   representative query計測で必要性を判断する。
-- `0026_relational_graph_schema`はAGE dataをcopyしない。2Cでlocal rebuild / compareとsource-of-truth auditを
-  実装したが、live AGE inventoryは未実施である。差分が解消または明示判断されるまで全graphを再生成可能と断定しない。
+- `0026_relational_graph_schema`はAGE dataをcopyしない。2Cでrebuild / compareとsource-of-truth auditを実装し、
+  live実行した結果も差分が残った。差分が解消または明示判断されるまで全graphを再生成可能と断定しない。
 
 ### Relational Graph adapter（Step 2B）
 
@@ -33,11 +34,14 @@ inventoryは未実施であり、差分ゼロまたは明示的な扱いが決�
 - mutation adapterはproject graph lifecycle、node / 9 edge typeのidempotent upsert、Document node cleanup、
   Actor mergeを同一transactionで実装する。SAME_ASはendpointをUTF-8 byte順にcanonicalizeし、PostgreSQLの
   merge SQLでは明示的な`COLLATE "C"`でapplication側と同じ順序を使う。
+- node upsertは既存`properties`と入力`properties`をmergeし、同名keyは入力値を優先する。full Documentの後に
+  sparse placeholderをupsertしても省略keyを保持し、逆順でもplaceholder固有keyを保持する。edge propertiesの
+  conflict更新は従来どおりであり、本補修では変更しない。
 - Viewer / Synthetic Monitorへの接続はtestの明示DIだけであり、productionのAGE primary compositionは維持する。
 - adapter testは専用project fixtureだけを作成・削除し、AGE graphや既存projectには触れない。ログにはproperties、
   node identity、content、PII、secretを出さず、安全なoperation / error種別だけを記録する。
 - Step 2Bはmigration、backfill、live AGE inventory、dual-write / shadow read、production switchを行わない。
-  2Cのlocal rebuild / compare契約を満たした後も、live inventoryと後続gateを順に満たしてから実施する。
+  2Cのrebuild / compareをlive実行した後も差分が残っており、差分補修と後続gateを順に満たしてから実施する。
 - `graph_nodes.properties ->> 'documentId'`を使う代表queryはStep 2Cのlocal synthetic fixtureで実行手順を確認した。
   production相当row count / p95は未取得であり、expression indexは後続の実測なしに追加しない。
 
