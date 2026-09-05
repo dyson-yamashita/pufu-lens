@@ -74,7 +74,10 @@ test('validate-deploy-substitutions accepts canonical graph transition modes and
   assert.match(validateScript, /\*\)\s*\n\s*echo "_GRAPH_TRANSITION_MODE/);
 
   for (const mode of CANONICAL_GRAPH_TRANSITION_MODES) {
-    assert.match(validateScript, new RegExp(mode.replace(/-/g, '\\-')));
+    assert.ok(
+      validateScript.includes(mode),
+      `validate-deploy-substitutions must allow graph transition mode ${mode}`,
+    );
   }
 });
 
