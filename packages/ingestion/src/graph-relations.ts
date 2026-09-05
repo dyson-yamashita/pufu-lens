@@ -123,6 +123,7 @@ export async function storeGraphRelations(
   return { decisions, projectSlug: project.projectSlug };
 }
 
+/** Indexes one target in an optional caller-owned transaction and records failure status outside any rolled-back transaction. */
 async function storeGraphTargetSafely(
   context: GraphRelationContext,
   target: GraphIndexingTarget,

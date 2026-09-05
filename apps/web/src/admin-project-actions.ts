@@ -76,6 +76,7 @@ async function insertCreatedProjectRow(
   return parseOptionalAdminActionIdRow(rows, 'project creation row');
 }
 
+/** Creates project metadata and admin membership, initializes graph storage, and writes visibility artifacts. */
 export async function createProject(formData: FormData): Promise<void> {
   const name = requireFormValue(formData, 'name').trim();
   if (!name) {

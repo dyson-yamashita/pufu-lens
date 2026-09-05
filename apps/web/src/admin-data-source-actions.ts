@@ -296,6 +296,7 @@ export async function updateDataSource(formData: FormData): Promise<void> {
   revalidateProject(projectSlug);
 }
 
+/** Deletes an authorized data source; graph cleanup and row deletion share one transaction, with best-effort storage cleanup after commit. */
 export async function deleteDataSource(formData: FormData): Promise<void> {
   const projectSlug = requireFormValue(formData, 'projectSlug');
   const dataSourceId = requireFormValue(formData, 'dataSourceId');

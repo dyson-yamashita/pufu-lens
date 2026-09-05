@@ -36,6 +36,7 @@ export function createPostgresGraphTransitionMutationRepository(
   });
 }
 
+/** Emits the already-sanitized transition observation as structured JSON. */
 function logGraphTransitionObservation(observation: unknown): void {
   console.info(JSON.stringify(observation));
 }

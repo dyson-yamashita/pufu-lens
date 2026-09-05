@@ -310,6 +310,7 @@ interface Comparison {
   readonly categories: readonly GraphShadowMismatchCategory[];
 }
 
+/** Builds the timing, sampling, and observer runtime used by shadow read and mutation wrappers. */
 function createRuntime(options: GraphShadowRuntimeOptions): Runtime {
   return {
     cancelTimeout:
@@ -322,6 +323,7 @@ function createRuntime(options: GraphShadowRuntimeOptions): Runtime {
   };
 }
 
+/** Runs the AGE primary read, optionally compares a sampled relational shadow read, and always returns the primary result. */
 async function executeShadowRead<T>(
   options: Pick<GraphShadowReadOptions, 'mode'>,
   runtime: Runtime,
@@ -371,6 +373,7 @@ async function executeShadowRead<T>(
   return primaryResult;
 }
 
+/** Applies the AGE primary mutation first, then mirrors it to the relational shadow when dual-write is enabled. */
 async function executeVoidMutation(
   options: Pick<GraphShadowMutationOptions, 'mode'>,
   runtime: Runtime,
@@ -410,6 +413,7 @@ async function executeVoidMutation(
 
 class ShadowTimeoutError extends Error {}
 
+/** Rejects with `ShadowTimeoutError` when the shadow read exceeds the configured outer deadline. */
 async function withTimeout<T>(operation: Promise<T>, runtime: Runtime): Promise<T> {
   let handle: unknown;
   const timeout = new Promise<never>((_resolve, reject) => {
@@ -425,10 +429,12 @@ async function withTimeout<T>(operation: Promise<T>, runtime: Runtime): Promise<
   }
 }
 
+/** Returns non-negative rounded milliseconds elapsed since `startedAt` on the runtime clock. */
 function elapsed(runtime: Runtime, startedAt: number): number {
   return Math.max(0, Math.round(runtime.now() - startedAt));
 }
 
+/** Invokes the configured observer with sampling; observer failures never affect primary graph behavior. */
 async function observe(
   runtime: Runtime,
   observation: GraphShadowObservation,
@@ -447,6 +453,7 @@ async function observe(
   }
 }
 
+/** Builds a sanitized read-capability transition observation for the given outcome and mismatch categories. */
 function readObservation(
   operation: GraphShadowOperation,
   outcome: GraphShadowObservation['outcome'],
@@ -464,6 +471,7 @@ function readObservation(
   );
 }
 
+/** Builds a sanitized mutation-capability transition observation for the given outcome and mismatch categories. */
 function mutationObservation(
   operation: GraphShadowOperation,
   outcome: GraphShadowObservation['outcome'],
@@ -481,6 +489,7 @@ function mutationObservation(
   );
 }
 
+/** Assembles a deduplicated, sorted, identity-free graph transition observation payload. */
 function observation(
   capability: GraphShadowObservation['capability'],
   operation: GraphShadowOperation,
@@ -502,10 +511,12 @@ function observation(
   };
 }
 
+/** Compares scalar counts and labels a mismatch when the primary and shadow values differ. */
 function compareCount(primary: number, shadow: number): Comparison {
   return { categories: primary === shadow ? [] : ['count'] };
 }
 
+/** Compares per-relation-type counts and reports mismatches when any relation total differs. */
 function compareRelationCounts(
   primary: Readonly<Partial<Record<GraphRelationType, number>>>,
   shadow: Readonly<Partial<Record<GraphRelationType, number>>>,
@@ -517,6 +528,7 @@ function compareRelationCounts(
   return { categories: matches ? [] : ['relation_counts'] };
 }
 
+/** Compares related-document read status and candidate sets without exposing graph identities in observations. */
 function compareRelatedDocuments(
   primary: GraphRelatedDocumentReadResult,
   shadow: GraphRelatedDocumentReadResult,
@@ -542,6 +554,7 @@ function compareRelatedDocuments(
   return { categories };
 }
 
+/** Compares preset shape, truncation, and canonical node and edge identities between primary and shadow reads. */
 function comparePreset(primary: GraphPresetReadResult, shadow: GraphPresetReadResult): Comparison {
   const categories: GraphShadowMismatchCategory[] = [];
   if (primary.nodes.length !== shadow.nodes.length) {
@@ -570,6 +583,7 @@ function comparePreset(primary: GraphPresetReadResult, shadow: GraphPresetReadRe
   return { categories };
 }
 
+/** Normalizes a preset into sorted identities and shared label or property-key maps for comparison. */
 function canonicalPreset(result: GraphPresetReadResult): {
   readonly edgeIdentities: string[];
   readonly labels: ReadonlyMap<string, string>;
@@ -610,6 +624,7 @@ function canonicalPreset(result: GraphPresetReadResult): {
   };
 }
 
+/** Returns whether actor merge results are structurally equal under JSON serialization. */
 function equalActorMergeResult(
   primary: GraphActorMergeResult,
   shadow: GraphActorMergeResult,
@@ -617,10 +632,12 @@ function equalActorMergeResult(
   return JSON.stringify(primary) === JSON.stringify(shadow);
 }
 
+/** Returns whether two string arrays have equal length and identical elements in order. */
 function equalStringArrays(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
+/** Returns true when any shared identity key has different values in the primary and shadow maps. */
 function sharedMapValueMismatch(
   primary: ReadonlyMap<string, string>,
   shadow: ReadonlyMap<string, string>,
@@ -634,6 +651,7 @@ function sharedMapValueMismatch(
   return false;
 }
 
+/** Compares two strings by UTF-8 byte order, used to canonicalize undirected SAME_AS edge endpoints. */
 function compareUtf8ByteOrder(left: string, right: string): number {
   return Buffer.compare(Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'));
 }

@@ -10,6 +10,7 @@ import {
   parseIndexGraphRelationsCliArgs,
 } from './lib/postgres-graph-indexing-adapter.ts';
 
+/** Composes the bounded graph-indexing CLI and runs each document's mutations in a caller-owned transaction. */
 async function main(): Promise<void> {
   const options = parseIndexGraphRelationsCliArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
@@ -48,6 +49,7 @@ async function main(): Promise<void> {
   }
 }
 
+/** Validates that a required CLI option is present and returns its value. */
 function requiredOption(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(`${name} is required.`);
