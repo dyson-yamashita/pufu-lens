@@ -126,8 +126,9 @@ Optional report 観測:
 ```
 
 任意 query 文字列、storage URI、provider path、SQL、Cypher は request に含めません。
-Graph stage は server-side で認可済み project ID を `GraphReadRepository` へ渡し、provider graph 名や
-query language は AGE adapter 内で解決します。request / response / monitor log には露出しません。
+Graph stageはserver-sideで認可済みproject IDを`GraphReadRepository`へ渡し、provider graph名やquery languageは
+AGE / relational adapter内で解決します。Step 2D combined modeでもAGE結果を返し、固定10%のrelational shadow比較は
+identityを含まない専用観測eventへ分離します。request / response / monitor logにはprovider詳細を露出しません。
 
 ## Response 例
 

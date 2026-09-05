@@ -251,6 +251,17 @@ read-only AGE inventory、実行前後のsanitized count、rollback / forward-fi
 明示承認後にoperatorがproject単位で実行する。live compareが`pass`または差分のdecision logが承認されるまで、
 dual-write / shadow read、relational primary切替、AGE停止を進めない。
 
+Plan 018 Step 2Dのapplicationは`PUFU_LENS_GRAPH_TRANSITION_MODE`をserver-only deployment profileとして読む。
+未設定 / 空値 / `off`はAGE-only、`dual-write`はAGE primary + relational secondary write、
+`dual-write-shadow-read`はdual-writeに加えてAGE responseを返したまま固定10%のrelational readを比較する。
+未知の値はcomposition時にfail closedする。request / project単位overrideや`NEXT_PUBLIC_*`設定を追加しない。
+
+Step 2Dのmergeだけでは環境変数を設定せず、本番動作を変更しない。有効化は別の明示承認、直前backup、対象commit、
+全projectのrebuild / compare decision、DB connection余力、retry監視、sanitized observation保存先を確認してから、
+`dual-write`→backfill / compare確認→`dual-write-shadow-read`の順に別deployで行う。shadow readは固定10%、外側6秒timeoutであり、
+追加DB queryのlatency / connection / CPU costを観測する。異常時は`off`へ戻して再deployし、AGE primaryを維持する。
+relational primaryへの変更はStep 2Eで再度明示承認を得る。
+
 `apps/web/apphosting.yaml` の最小例：
 
 ```yaml
@@ -267,6 +278,11 @@ runConfig:
         subnetwork: pufu-lens-serverless
 
 env:
+  # Plan 018 Step 2D merge時は追加しない。有効化は別のproduction approval後に行う。
+  # - variable: PUFU_LENS_GRAPH_TRANSITION_MODE
+  #   value: dual-write
+  #   availability:
+  #     - RUNTIME
   - variable: STORAGE_DRIVER
     value: gcs
     availability:

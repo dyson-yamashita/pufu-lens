@@ -74,6 +74,11 @@ async function assertMutationCompositionSourcesAvoidProviderSyntax(): Promise<vo
   assert.ok(deleteDataSourceMatch, 'deleteDataSource should exist');
   const deleteDataSourceSource = deleteDataSourceMatch[0] ?? '';
   assert.match(deleteDataSourceSource, /deleteDocumentGraphNodes\(/);
+  assert.ok(
+    deleteDataSourceSource.indexOf('deleteDocumentGraphNodes') <
+      deleteDataSourceSource.indexOf('DELETE FROM public.raw_documents'),
+    'graph cleanup must run before source rows are deleted in the same transaction',
+  );
   assert.match(deleteDataSourceSource, /projectId:\s*project\.id/);
   assert.doesNotMatch(deleteDataSourceSource, /graphName/);
 }

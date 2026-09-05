@@ -19,6 +19,14 @@
     "./postgres-relational-mutation": {
       "types": "./dist/postgres-relational-mutation.d.ts",
       "import": "./dist/postgres-relational-mutation.js"
+    },
+    "./postgres-transition-mutation": {
+      "types": "./dist/postgres-transition-mutation.d.ts",
+      "import": "./dist/postgres-transition-mutation.js"
+    },
+    "./shadow": {
+      "types": "./dist/shadow.d.ts",
+      "import": "./dist/shadow.js"
     }
   },
   "scripts": {

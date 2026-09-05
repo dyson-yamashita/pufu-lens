@@ -1,6 +1,6 @@
 import type { OAuth2Client } from 'google-auth-library';
 import postgres from 'postgres';
-import { createPostgresAgeGraphReadRepository } from './postgres-graph-read-adapter.ts';
+import { createPostgresGraphTransitionReadRepository } from './postgres-graph-transition.ts';
 import { createReportStorageFromEnv } from './report.ts';
 import {
   loadSyntheticMonitorAuthConfig,
@@ -73,7 +73,7 @@ export async function handleSyntheticMonitorObservationsRequest(input: {
       const response = await withRequestTimeout(
         runSyntheticMonitorObservations({
           allowedProjectSlugs,
-          graphReadRepository: createPostgresAgeGraphReadRepository(sql),
+          graphReadRepository: createPostgresGraphTransitionReadRepository(sql),
           repository,
           request,
           storage,

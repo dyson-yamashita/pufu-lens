@@ -26,7 +26,21 @@ export interface StoreGraphRelationsOptions {
   readonly mutationRepository: GraphMutationRepository;
   readonly projectResolver: ProjectResolver;
   readonly projectSlug: string;
+  readonly runInTargetTransaction?: GraphTargetTransactionRunner;
 }
+
+/** Provider-neutral collaborators rebound to one document's caller-owned transaction. */
+export interface GraphTargetTransactionRepositories {
+  readonly indexingRepository: GraphIndexingRepository;
+  readonly mutationRepository: GraphMutationRepository;
+}
+
+/** Runs one document's graph mutations and status update in a shared transaction. */
+export type GraphTargetTransactionRunner = (
+  callback: (
+    repositories: GraphTargetTransactionRepositories,
+  ) => Promise<StoreGraphRelationDecision>,
+) => Promise<StoreGraphRelationDecision>;
 
 /** Result of a graph relation indexing batch for one project slug. */
 export interface StoreGraphRelationsResult {
@@ -54,6 +68,7 @@ interface GraphRelationContext {
   readonly mutationRepository: GraphMutationRepository;
   readonly projectId: string;
   readonly projectSlug: string;
+  readonly runInTargetTransaction?: GraphTargetTransactionRunner;
 }
 
 type GraphIndexingActorAliasType = 'email' | 'github_login' | 'domain';
@@ -97,6 +112,7 @@ export async function storeGraphRelations(
     mutationRepository: options.mutationRepository,
     projectId: project.projectId,
     projectSlug: project.projectSlug,
+    runInTargetTransaction: options.runInTargetTransaction,
   };
   const decisions: StoreGraphRelationDecision[] = [];
 
@@ -107,12 +123,26 @@ export async function storeGraphRelations(
   return { decisions, projectSlug: project.projectSlug };
 }
 
+/** Indexes one target in an optional caller-owned transaction and records failure status outside any rolled-back transaction. */
 async function storeGraphTargetSafely(
   context: GraphRelationContext,
   target: GraphIndexingTarget,
 ): Promise<StoreGraphRelationDecision> {
   try {
-    return await storeGraphTarget(context, target);
+    if (!context.runInTargetTransaction) {
+      return await storeGraphTarget(context, target);
+    }
+    return await context.runInTargetTransaction(async (repositories) =>
+      storeGraphTarget(
+        {
+          ...context,
+          indexingRepository: repositories.indexingRepository,
+          mutationRepository: repositories.mutationRepository,
+          runInTargetTransaction: undefined,
+        },
+        target,
+      ),
+    );
   } catch (error) {
     const errorMessage = safeErrorMessage(error);
     await context.indexingRepository.markFailed({

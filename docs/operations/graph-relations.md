@@ -4,13 +4,14 @@ Step 8 では、`documents` と `actors` を AGE graph に materialize し、`em
 
 Plan 018 Step 2A では移行先として `graph_nodes` / `graph_edges` schemaをadditiveに追加し、Step 2B では同schemaを
 使うrelational Graph read / mutation adapterを追加した。ViewerとSynthetic Monitorを含むDB testは明示DIで
-relational adapterを検証する。現行productionの`ingest:index`、Graph read / Viewer、Actor merge、Document cleanup、
-Synthetic Monitorは引き続きAGE adapterを使い、既定compositionやread / write profileは切り替えない。
+relational adapterを検証する。Step 2Dではproduction composition rootをAGE-primaryのtransition factoryへ統一したが、
+`PUFU_LENS_GRAPH_TRANSITION_MODE`の既定は`off`であり、本番設定・deploy・read / write profileは切り替えていない。
 
 Plan 018 Step 2C では、source dataからrelational graphをproject単位で再構築し、AGEとの構造差分を監査する
 operator CLIを追加した。CLIはproduction compositionへ接続せず、AGE primary read / writeも変更しない。
-承認済みのlive rebuild / compareは3 project中2 projectがpassし、595 documentsのprojectに差分が残った。
-差分ゼロまたは明示的な扱いが決まるまでは全graphを再生成可能と扱わない。
+承認済みのlive rebuild / compareは3 project中2 projectがpassした。596 documentsのprojectは追加source auditにより
+relationalがcurrent source期待値と完全一致し、AGE側にlegacy / stale差分があると判断した。このdecisionは
+current-source relational出力の採用であり、AGEの全履歴が再生成可能という断定ではない。
 
 ### Relational graph schema（Step 2A）
 
@@ -37,7 +38,8 @@ operator CLIを追加した。CLIはproduction compositionへ接続せず、AGE 
 - node upsertは既存`properties`と入力`properties`をmergeし、同名keyは入力値を優先する。full Documentの後に
   sparse placeholderをupsertしても省略keyを保持し、逆順でもplaceholder固有keyを保持する。edge propertiesの
   conflict更新は従来どおりであり、本補修では変更しない。
-- Viewer / Synthetic Monitorへの接続はtestの明示DIだけであり、productionのAGE primary compositionは維持する。
+- Step 2B完了時点ではViewer / Synthetic Monitorへの接続はtestの明示DIだけだった。Step 2Dでproduction compositionを
+  transition factoryへ統一した後も、AGE primaryと既定`off`を維持する。
 - adapter testは専用project fixtureだけを作成・削除し、AGE graphや既存projectには触れない。ログにはproperties、
   node identity、content、PII、secretを出さず、安全なoperation / error種別だけを記録する。
 - Step 2Bはmigration、backfill、live AGE inventory、dual-write / shadow read、production switchを行わない。
@@ -90,6 +92,40 @@ pnpm graph:migrate compare --project sample-a --limit 50000
 productionのrebuild / compare、live AGE inventory、deploy、read / write切替はStep 2Cの実装作業では行わない。
 実行時は事前backup、対象project、batch上限、cursor記録、rollback判断をdeploy checklistへ残し、live compareの
 `pass`または承認済みdecision logをStep 2D開始gateとする。
+
+### Dual-write / shadow read（Step 2D）
+
+`PUFU_LENS_GRAPH_TRANSITION_MODE`はdeployment単位のserver-only設定である。request、project、API inputから変更しない。
+
+| 値                       | write                                  | read                                 |
+| ------------------------ | -------------------------------------- | ------------------------------------ |
+| 未設定 / 空 / `off`      | AGEのみ                                | AGEのみ                              |
+| `dual-write`             | AGE primaryの後にrelationalへ全件write | AGEのみ                              |
+| `dual-write-shadow-read` | AGE primaryの後にrelationalへ全件write | AGEを返し、固定10%でrelationalを比較 |
+
+未知の値は起動後のcomposition時にfail closedする。shadow readはAGE primary完了後に実行し、外側6秒、adapter SQL 5秒の
+timeoutを適用する。shadowのtimeout / error / mismatch、観測出力の失敗でuser responseは変えず、AGE結果を返す。
+
+mutationは次のfailure契約を使う。
+
+- node / edge upsert、project graph lifecycle、Actor mergeはAGE→relationalの順に実行する。secondary失敗または
+  Actor merge outcome不一致は`GraphShadowMutationError`として呼出元へ返す。caller-owned transaction内なら両backendを
+  同じtransactionへbindするため、AGE側を含めてrollbackされる。
+- `ingest:index`は1 documentのnode / edge mutation、`email_quotes`、indexed statusをcaller-owned transactionへまとめる。
+  secondary失敗時は両graphとstatus更新をrollbackし、transaction外でfailed statusを記録する。既存failed queue retryは
+  source rowを保ったまま同じ入力を再実行する。
+- Data Source削除はDocument cleanupを`raw_documents` / `data_sources`削除より先に同じtransactionで実行する。
+  secondary errorまたはAGE / relational count差分は`GraphShadowMutationError`にしてsource削除ごとrollbackするため、
+  source rowとgraph node IDが再実行入力として残る。別outboxやcleanup queueは追加しない。
+
+比較eventは`graph_transition_observation`で、capability、operation、match / mismatch / shadow_error /
+shadow_timeout、固定provider名、整数latency、有限のmismatch categoryだけを出す。project / node / document / edge identity、
+properties、property値、query、error本文、content、PII、secretを出さない。成功mutationは固定1%を観測し、
+mismatch / error / timeoutは全件記録する。
+
+Step 2DのPRは本番設定を変更しない。有効化はmerge後も別の明示承認を必要とし、`dual-write`→backfill / compare確認→
+`dual-write-shadow-read`の順とする。異常時は環境変数を`off`または未設定へ戻して再deployし、relational tableを削除せず
+forward-fix / rebuild対象として保持する。relational primaryへの切替はStep 2Eの独立gateである。
 
 #### Representative queryの計測
 

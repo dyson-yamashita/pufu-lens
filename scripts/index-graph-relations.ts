@@ -1,5 +1,6 @@
-import { createPostgresAgeGraphMutationRepository } from '@pufu-lens/graph/postgres-age-mutation';
+import { createPostgresGraphTransitionMutationRepository } from '@pufu-lens/graph/postgres-transition-mutation';
 import postgres from 'postgres';
+import type { GraphTargetTransactionRunner } from '../packages/ingestion/dist/index.js';
 import { storeGraphRelations } from '../packages/ingestion/dist/index.js';
 import { createObjectStorageFromEnv } from '../packages/storage/dist/factory.js';
 import { requiredEnv } from './lib/cli.ts';
@@ -9,17 +10,28 @@ import {
   parseIndexGraphRelationsCliArgs,
 } from './lib/postgres-graph-indexing-adapter.ts';
 
+/** Composes the bounded graph-indexing CLI and runs each document's mutations in a caller-owned transaction. */
 async function main(): Promise<void> {
   const options = parseIndexGraphRelationsCliArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const sql = postgres(requiredEnv('DATABASE_URL'), { max: 1 });
   const storage = createObjectStorageFromEnv(process.env);
   const projectResolver = createPostgresGraphProjectResolver(sql);
-  const indexingRepository = createPostgresGraphIndexingRepository(sql, storage, {
+  const indexingOptions = {
     dataSourceId: options.dataSourceId,
     sourceType: options.source,
-  });
-  const mutationRepository = createPostgresAgeGraphMutationRepository(sql);
+  };
+  const indexingRepository = createPostgresGraphIndexingRepository(sql, storage, indexingOptions);
+  const mutationRepository = createPostgresGraphTransitionMutationRepository(sql);
+  const runInTargetTransaction: GraphTargetTransactionRunner = async (callback) => {
+    const result = await sql.begin(async (tx) =>
+      callback({
+        indexingRepository: createPostgresGraphIndexingRepository(tx, storage, indexingOptions),
+        mutationRepository: createPostgresGraphTransitionMutationRepository(tx),
+      }),
+    );
+    return result;
+  };
 
   try {
     const result = await storeGraphRelations({
@@ -28,6 +40,7 @@ async function main(): Promise<void> {
       mutationRepository,
       projectResolver,
       projectSlug,
+      runInTargetTransaction,
     });
 
     console.log(JSON.stringify(result, null, 2));
@@ -36,6 +49,7 @@ async function main(): Promise<void> {
   }
 }
 
+/** Validates that a required CLI option is present and returns its value. */
 function requiredOption(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(`${name} is required.`);

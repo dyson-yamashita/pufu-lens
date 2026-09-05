@@ -193,7 +193,8 @@ Collection Pipeline / Agent と Ingestion Workflow の責務を整理すると�
                     同じ論理 document の最新版 raw だけを対象にし、更新・再 index 時は
                     旧 document_chunks を旧 raw_document_id 付きで document_chunk_history に退避する。
                     同一 transaction で documents.raw_document_id と chunk を最新版へ切り替える
-6. storeGraph       documents 行 + AGE グラフへ MERGE（Document ノード 1 つ + 関係）
+6. storeGraph       documents 行 + AGE primaryへMERGE。Step 2D mode有効時はrelational graphへも同じmutationをwrite
+                    1 documentのgraph mutation、email_quotes、indexed statusをcaller-owned transactionへまとめる
                     引用チェーンは REPLY_TO で繋ぎ、email_quotes に詳細を保存
                     ソースをまたぐ意味的同一を検出したら SAME_AS 関係を張る（[複数データソース・重複データの扱い](03-data-model.md) 参照）
                     raw_documents.ingest_status を indexed に更新
@@ -278,7 +279,10 @@ export const ingestWorkflow = createWorkflow({
 
 - 原本保存は Collection Pipeline の source adapter が責任を持ち、Ingestion Workflow は `raw_documents` を起点に動く。
 - LLM / Agent は通常の取り込み判定には使わず、未知形式・低 confidence・parser 修正などの例外処理に限定する。
-- すべてのステップで `projectId` を必須コンテキストにし、AGE グラフ名・ストレージプレフィックスを動的に解決する。
+- すべてのステップで`projectId`を必須コンテキストにし、AGE graph名・storage prefixをserver側で動的に解決する。
+  Step 2D transitionはrequest / project overrideを持たず、deployment modeが有効な場合だけAGE primary成功後に
+  relationalへdual-writeする。1 documentのmutationとstatus更新は同じtransactionへbindし、secondary失敗時は
+  両graphをrollbackした後、transaction外でfailed statusを記録して既存retryへ戻す。
 - `MERGE` を使用してノード・エッジ・チャンクの重複を回避する。
 - メールは Gmail API の `threadId` で同一スレッドを判定し、**スレッド内の最新メールだけ** `documents` に登録、それ以前は `email_quotes` に分解。
 - Drive Doc は file ID を論理 ID、`revisionId` を版 ID とし、過去版は `raw_documents` に保持したまま同じ Document ID を最新版へ切り替える。
@@ -286,6 +290,6 @@ export const ingestWorkflow = createWorkflow({
 
 ### Synthetic Monitor の readonly 観測境界
 
-Synthetic Monitor は `POST /internal/monitoring/v1/observations` から ingestion pipeline の各 stage（`raw` / `currentDocument` / `chunks` / `graph` / `schedule`）を **読み取り専用** で観測する。source schedule は expected raw version ではなく logical source identity（`project_id` + `source_type` + `logical_source_id`）で `data_source_schedules` を辿る。graph stage の Document node / 9 relation count は provider-neutral `GraphReadRepository` に `projectId` と `graphNodeId` を渡し、現行 AGE の graph name、Cypher、agtype count parser は adapter 内に閉じる。内部の `raw_documents` / `documents` / graph schema や storage URI、provider payload は response に含めず、stage ごとの `ok` / `pending` / `failed` / `not_found` と schedule の `nextRunDue` だけを返す。queue 投入、parser 切替、graph 更新、schedule 変更は行わない。
+Synthetic Monitor は `POST /internal/monitoring/v1/observations` から ingestion pipeline の各 stage（`raw` / `currentDocument` / `chunks` / `graph` / `schedule`）を **読み取り専用** で観測する。source schedule は expected raw version ではなく logical source identity（`project_id` + `source_type` + `logical_source_id`）で `data_source_schedules` を辿る。graph stage の Document node / 9 relation count は provider-neutral `GraphReadRepository` に `projectId` と `graphNodeId` を渡す。AGEのgraph name / Cypher / agtypeとrelational SQLは各adapter内に閉じ、Step 2D combined modeでもAGE responseを維持して固定10%だけsanitized shadow比較する。内部の `raw_documents` / `documents` / graph schema や storage URI、provider payload は response に含めず、stage ごとの `ok` / `pending` / `failed` / `not_found` と schedule の `nextRunDue` だけを返す。queue 投入、parser 切替、graph 更新、schedule 変更は行わない。
 
 ---

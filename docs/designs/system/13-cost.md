@@ -28,6 +28,12 @@ LLM を使う主な場面は、チャット応答、レポート生成、embeddi
 
 GCE VM 上の PostgreSQL は常時稼働させる。DB 依存機能（チャット、管理 UI、取り込み状況、データソース管理、手動 ingestion、レポート閲覧）と定期 `curate-workflow` / `ingest-workflow` / `generate-report` / `source-sync-dispatcher` / `report-schedule-dispatcher` job は時刻による利用制限や VM 起動制御を前提にしない。
 
+Plan 018 Step 2Dのgraph transitionは新しいVM / service / storageを作らないため、既定`off`では固定費・DB負荷とも
+増加しない。`dual-write`有効化後はgraph mutationごとにrelational writeが1回増え、combined modeではさらに
+Graph readの固定10%でrelational queryが1回増える。追加課金は主に既存PostgreSQL VM、App Hosting / Jobの処理時間、
+log量の従量増分である。有効化前後でDB CPU / connection / latency、ingestion retry、観測event件数を比較し、
+既存VMの余力を超える場合は`off`へ戻す。成功mutation観測は1%に抑え、mismatch / error / timeoutだけ全件記録する。
+
 public report / public chat は private report / private chat と同じ処理を使い、DB 上の `projects.visibility` と `reports.is_public` でアクセス権を確認する。時刻による利用制限は設けず、公開用 artifact は互換・検証用途として保存できるが、表示可否の正は DB metadata とする。
 
 ### 2. コスト最適化施策

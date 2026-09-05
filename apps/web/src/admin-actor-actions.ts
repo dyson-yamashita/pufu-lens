@@ -1,6 +1,5 @@
 'use server';
 
-import { createPostgresAgeGraphMutationRepository } from '@pufu-lens/graph/postgres-age-mutation';
 import { revalidatePath } from 'next/cache';
 import { executeActorMerge } from './actor-merge-use-case.ts';
 import {
@@ -9,6 +8,7 @@ import {
   revalidateProject,
   withSql,
 } from './admin-actions-shared.ts';
+import { createPostgresGraphTransitionMutationRepository } from './postgres-graph-transition.ts';
 
 /**
  * Merges a secondary actor into a primary actor for an admin project.
@@ -29,7 +29,7 @@ export async function mergeActors(formData: FormData): Promise<void> {
   await withSql(async (sql) => {
     const project = await requireAdminProject(sql, projectSlug);
     await sql.begin(async (tx) => {
-      await executeActorMerge(tx, createPostgresAgeGraphMutationRepository(tx), {
+      await executeActorMerge(tx, createPostgresGraphTransitionMutationRepository(tx), {
         adminUserId: project.adminUserId,
         primaryActorId,
         projectId: project.id,

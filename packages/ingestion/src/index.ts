@@ -196,6 +196,8 @@ export {
   scanGmailDataSource,
 } from './gmail-source.js';
 export type {
+  GraphTargetTransactionRepositories,
+  GraphTargetTransactionRunner,
   StoreGraphRelationDecision,
   StoreGraphRelationsOptions,
   StoreGraphRelationsResult,
