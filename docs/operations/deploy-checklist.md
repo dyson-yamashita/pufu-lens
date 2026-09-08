@@ -181,6 +181,21 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 - [ ] Web / Graph / ingestion smokeを完了し、secondary error / mismatchとDB負荷の初期観測を記録した。
 - [ ] 異常時はApp Hostingとproduction triggerを`off`へ戻して再deployし、AGE / relational dataを削除しない。
 
+## Plan 018 Step 2D production shadow read gate（Issue #726）
+
+tracked configの準備と本番有効化を区別する。開始gateは未達で、mergeだけを承認理由にしない。
+
+- [ ] 子process経由を含むsanitized observation経路と実dual-write成功証跡を確認した。ログ0件をsamplingやerrorなしと断定しない。
+- [ ] 全projectのbounded compare / current-source auditを再確認し、未判断差分、truncation、source audit blockerがない。件数減少だけで既存decision内と判断しない。
+- [ ] source-sync失敗 / Web500の原因とretry回復を確認し、DB CPU / connection / latencyの十分なbaselineを記録した。
+- [ ] 必要な観測修正は全unit `dual-write`のまま先行反映・観測済みである。Webだけshadow modeにしない。
+- [ ] ユーザーがPRをmergeし、直前snapshot `READY`、migration pending 0、最新main commit / trigger / pending approvalを再照合した。
+- [ ] trigger substitutionとtracked App Hostingが`dual-write-shadow-read`で一致する。Cloud Build / OSS既定は`off`のまま、古いpending buildを承認しない。
+- [ ] deploy後にWeb、Mastra、production 6 Jobsのruntime modeを照合し、AGE応答維持、固定10% shadow、Web / Graph / ingestion smokeを確認した。
+- [ ] mismatch / error / timeout、DB CPU / connection / latency、retryの観測期間・件数と停止判断を記録した。自然sample不足は未検証として残す。
+- [ ] rollbackでtracked Web / triggerを`off`へ戻して全unitを揃える手順が実行可能で、AGE / relational data / snapshotを保持する。
+- [ ] Step 2Eの独立gate（十分なshadow観測、差分判断、性能 / cost、restore point、rollback、明示承認）とStep 2F対象外を確認した。
+
 ## ActivityPub production gate
 
 ActivityPubを無効のままdeployする場合も、将来有効化する環境では値と責任者を記録する。本番有効化、Actor key変更、domain block変更、observability適用は通常のproduction change approvalを必要とする。

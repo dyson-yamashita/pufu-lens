@@ -116,6 +116,8 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
 
 #### AGE-primary transition（Plan 018 Step 2D）
 
+- Issue #726は次段階のtracked `dual-write-shadow-read`設定と観測経路修正を準備するが、本番は未切替である。
+  ログ欠落と新しいcompare差分の説明が未解決のため、開始gateは未達とする。schemaや正本の変更はない。
 - 新しいtable、column、constraint、index、migrationは追加しない。既存`graph_nodes` / `graph_edges`へ同じ
   provider-neutral mutation contractをdual-writeし、fresh / migrated schemaの既存parityを維持する。
 - production compositionはAGEをprimaryとして先に実行する。caller-owned transactionを受けるproject lifecycleと
