@@ -6,8 +6,8 @@ Plan 018 Step 2A では移行先として `graph_nodes` / `graph_edges` schema�
 使うrelational Graph read / mutation adapterを追加した。ViewerとSynthetic Monitorを含むDB testは明示DIで
 relational adapterを検証する。Step 2Dではproduction composition rootをAGE-primaryのtransition factoryへ統一した。
 Issue #723はCloud Buildの安全な既定を`off`に保ったまま、production Web / Mastra / Workflow Jobsを`dual-write`へ揃える
-rollout configを追加し、2026-09-05にdeployした。Issue #726のtracked configは次段階の
-`dual-write-shadow-read`を準備するが、開始gate未達・本番未反映であり、稼働modeの最終確認値は`dual-write`である。
+rollout configを追加し、2026-09-05にdeployした。Issue #726ではPR #729の観測ログ修正を先行反映するため、
+tracked configを`dual-write`へ戻す。shadow read開始gateは未達であり、稼働modeも`dual-write`を維持する。
 
 Plan 018 Step 2C では、source dataからrelational graphをproject単位で再構築し、AGEとの構造差分を監査する
 operator CLIを追加した。CLIはproduction compositionへ接続せず、AGE primary read / writeも変更しない。
@@ -147,7 +147,8 @@ forward-fix / rebuild対象として保持する。relational primaryへの切�
 
 #### Production shadow read 準備（Issue #726、未deploy）
 
-- production App Hostingのtracked値は`dual-write-shadow-read`、Cloud Build / OSS exampleの既定は引き続き`off`。
+- PR #729で準備したproduction App Hostingのtracked値`dual-write-shadow-read`を`dual-write`へ戻し、
+  観測ログ修正だけの先行deployを準備する。Cloud Build / OSS exampleの既定は引き続き`off`。
   triggerのsubstitutionは自動変更されない。最新mainのbuild承認前に、Web / Mastra / production 6 Jobsへ配る値を一致させる。
 - 2026-09-07のread-only確認ではrelational node 30件 / edge 43件のrollout後更新を確認した。ただし観測0件は、
   samplingだけでなく子process出力欠落の影響もあり得る。secondary errorがない証拠とはしない。
@@ -155,8 +156,10 @@ forward-fix / rebuild対象として保持する。relational primaryへの切�
   承認済みdecision内と断定せず、current-sourceとのbounded auditを再確認する。AGE全履歴の再生成可能性は主張しない。
 - source-sync失敗 / Web500の原因、retry回復、十分なlatency観測も未確認である。
   [gate訂正記録](https://github.com/dyson-yamashita/pufu-lens/issues/726#issuecomment-5578306276)を正とし、開始gateは未達とする。
-- ユーザーmerge後もgate未達のbuildは承認しない。観測修正の先行deployが必要なら、tracked Web値を含め全unitを
-  `dual-write`へ揃えた変更を先にreview / merge / deployして再観測する。Webだけcombined modeにしない。
+- shadow readの開始gate未達ではcombined modeのbuildを承認しない。観測修正の先行deployはユーザー承認済みで、
+  tracked Web値を`dual-write`へ戻すPRのユーザーmerge後、最新main / trigger / buildと全unitの`dual-write`一致を照合する。
+  snapshotの`READY`、migration pending 0を確認してdeployし、sanitized observation / retry / DB負荷を再観測する。
+  PR #729直後のbuildはWebとtriggerのmodeが不一致のため承認しない。先行deployではshadow readを有効化しない。
 - gate合格後に直前snapshotの`READY`、migration pending 0、最新main / trigger / pending build / modeを照合してdeployする。
   AGE response、固定10% sampling、外側6秒 / SQL 5秒timeoutを維持し、mismatch / error / timeout、DB負荷、retryを監視する。
 - rollbackはtracked App Hostingとtriggerを`off`へ戻し、Web / Mastra / 全JobsをAGE-onlyへ揃える。

@@ -500,7 +500,8 @@ compare CLI成功検証を追加した。構造差分の合計出力名はnode /
 
 #### 2D production shadow read 準備（Issue #726、未deploy）
 
-- production tracked App Hostingをruntime-only `dual-write-shadow-read`へ準備し、config drift testを更新する。
+- PR #729で準備したproduction tracked App Hostingのruntime-only `dual-write-shadow-read`を`dual-write`へ戻し、
+  config drift testを更新する。観測ログ修正だけの先行deployがユーザー承認済みであり、shadow readは有効化しない。
   Cloud Build / OSS既定`off`、AGE primary、固定10% shadow、外側6秒 / SQL 5秒timeout、request overrideなしを維持する。
 - 子scriptの観測JSONが`ingest-workflow`のstdout bufferで失われ、最終resultと誤認され得る経路を修正する。
   子script終了後にallowlist項目だけを転送し、非zero終了時も記録する。PII / identity / error本文は転送しない。
@@ -509,8 +510,9 @@ compare CLI成功検証を追加した。構造差分の合計出力名はnode /
   source-sync失敗 / Web500の原因・retry回復、十分なlatency観測を残し、開始gateは未達として扱う。
 - 2026-09-08にread-onlyでtrigger、Web、Mastra、6 Jobsの`dual-write`一致と既存snapshot `READY`を再確認した。
   shadow read deploy、trigger変更、新snapshot、build承認は未実施。古い`off` pending buildは承認しない。
-- PRはユーザーがmergeする。観測修正の先行deployが必要ならtracked Webを含め全unit `dual-write`で揃えた変更を先に
-  review / mergeし、gate証跡を再取得する。開始gate合格後にsnapshot、migration pending 0、最新main / trigger / modeを
+- PRはユーザーがmergeする。設定PRのmerge後、最新main / trigger / build、snapshot `READY`、migration pending 0を確認し、
+  tracked Webを含め全unit `dual-write`で観測修正を先行deployしてgate証跡を再取得する。PR #729直後の不一致buildは承認しない。
+  shadow readは開始gate合格後の別設定PRで準備し、snapshot、migration pending 0、最新main / trigger / modeを
   照合し、全unitをcombined modeへdeployする。rollbackは全unit `off`、AGE / relational data / snapshotは保持する。
 - Step 2Eは十分なshadow観測、差分解消または明示decision、性能 / cost、restore point、rollback計画、明示承認を独立gateとし、
   本Issueでは開始しない。Step 2F cleanupも対象外とする。
