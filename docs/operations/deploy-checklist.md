@@ -185,6 +185,10 @@ pnpm auth:create-user -- --email '<user@example.com>' --password '<at-least-12-c
 
 tracked configの準備と本番有効化を区別する。開始gateは未達で、mergeだけを承認理由にしない。
 
+観測修正の先行deployではtracked Webを`dual-write`へ戻し、ユーザーmerge後に最新main / trigger / pending build、
+snapshot `READY`、migration pending 0を確認する。Web / Mastra / 6 Jobsを`dual-write`へ揃え、観測修正のみ反映する。
+PR #729直後のmode不一致buildは承認しない。以下のcombined mode gateは先行deployとは別であり、引き続き未達とする。
+
 - [ ] 子process経由を含むsanitized observation経路と実dual-write成功証跡を確認した。ログ0件をsamplingやerrorなしと断定しない。
 - [ ] 全projectのbounded compare / current-source auditを再確認し、未判断差分、truncation、source audit blockerがない。件数減少だけで既存decision内と判断しない。
 - [ ] source-sync失敗 / Web500の原因とretry回復を確認し、DB CPU / connection / latencyの十分なbaselineを記録した。
