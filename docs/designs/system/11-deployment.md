@@ -270,7 +270,13 @@ connection / CPU costを観測する。異常時はproduction App Hostingとtrig
 Mastra Server、production 6 Workflow Jobsのmodeを`dual-write`へ揃えた。readはAGE primaryを維持し、shadow read、
 relational primary switch、AGE停止・削除は実施していない。
 
-`apps/web/apphosting.yaml` の最小例：
+Issue #726のtracked App Hostingは次段階の`dual-write-shadow-read`を準備する。本番の最終確認modeは
+`dual-write`で、shadow read開始gateは未達である。子script観測の欠落、current-source差分の説明、retry / latencyの
+再確認を先に行う。観測修正を先行deployする場合はtracked App Hostingを含む全unitを`dual-write`へ揃えた変更を
+review / mergeしてからdeployする。gate合格後の最新mainだけを対象にtrigger / Web / Mastra / 6 Jobsをcombined modeへ
+揃え、snapshot `READY`を確認して承認する。詳細は[shadow read gate](../../operations/deploy-checklist.md#plan-018-step-2d-production-shadow-read-gateissue-726)を参照。
+
+`apps/web/apphosting.yaml` の最小例（Issue #723のdual-write rollout時点）：
 
 ```yaml
 runConfig:

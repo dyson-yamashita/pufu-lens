@@ -16,7 +16,7 @@ runConfig:
 
 env:
   - variable: PUFU_LENS_GRAPH_TRANSITION_MODE
-    value: dual-write
+    value: dual-write-shadow-read
     availability:
       - RUNTIME
   - variable: STORAGE_DRIVER

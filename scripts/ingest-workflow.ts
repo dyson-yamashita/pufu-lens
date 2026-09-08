@@ -7,6 +7,7 @@ import type { SourceType } from '../packages/ingestion/dist/index.js';
 import { resolveEmbeddingRuntimeConfig } from '../packages/ingestion/dist/index.js';
 import { ensureIngestionQueueLeaseColumn } from './ingestion-queue-lease.ts';
 import { requiredEnv } from './lib/cli.ts';
+import { consumeGraphTransitionOutput } from './lib/graph-transition-output.ts';
 import {
   type DrainRemainingState,
   drainLimitErrorMessage,
@@ -849,6 +850,11 @@ function appendDataSourceId(args: string[], dataSourceId: string | undefined): v
   }
 }
 
+/**
+ * Runs a child script and summarizes its final JSON result after filtering graph transition observations.
+ * Allowlisted observations are forwarded after the child closes, including on nonzero exit, before
+ * final-result parsing. Observer failures do not change workflow outcome.
+ */
 async function runNodeScript(args: string[]): Promise<ScriptResult> {
   const child = spawn(process.execPath, [...process.execArgv, ...args], {
     cwd: repoRoot,
@@ -872,11 +878,15 @@ async function runNodeScript(args: string[]): Promise<ScriptResult> {
     child.on('close', resolve);
   });
 
+  const resultOutput = consumeGraphTransitionOutput(stdout, (observation) => {
+    console.info(JSON.stringify(observation));
+  });
+
   if (exitCode !== 0) {
-    throw new Error(safeErrorMessage(stderr || stdout || `script exited with ${exitCode}`));
+    throw new Error(safeErrorMessage(stderr || resultOutput || `script exited with ${exitCode}`));
   }
 
-  return parseScriptOutput(stdout);
+  return parseScriptOutput(resultOutput);
 }
 
 function parseScriptOutput(stdout: string): ScriptResult {

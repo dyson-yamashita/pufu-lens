@@ -498,6 +498,23 @@ compare CLI成功検証を追加した。構造差分の合計出力名はnode /
   DB connection余力とerror logを確認した。観測期間内にgraph mutationがなかったためsanitized observationは0件であり、
   実mutation時の継続監視とbackfill / compare再確認はshadow read開始gateに残す。
 
+#### 2D production shadow read 準備（Issue #726、未deploy）
+
+- production tracked App Hostingをruntime-only `dual-write-shadow-read`へ準備し、config drift testを更新する。
+  Cloud Build / OSS既定`off`、AGE primary、固定10% shadow、外側6秒 / SQL 5秒timeout、request overrideなしを維持する。
+- 子scriptの観測JSONが`ingest-workflow`のstdout bufferで失われ、最終resultと誤認され得る経路を修正する。
+  子script終了後にallowlist項目だけを転送し、非zero終了時も記録する。PII / identity / error本文は転送しない。
+- 2026-09-07の集計では実relational更新を確認したが、観測0件をsamplingのみの結果やsecondary errorなしとは断定できない。
+  compareのrelational-only node 662→661も件数だけで承認済みdecision内と判断しない。current-source bounded audit、
+  source-sync失敗 / Web500の原因・retry回復、十分なlatency観測を残し、開始gateは未達として扱う。
+- 2026-09-08にread-onlyでtrigger、Web、Mastra、6 Jobsの`dual-write`一致と既存snapshot `READY`を再確認した。
+  shadow read deploy、trigger変更、新snapshot、build承認は未実施。古い`off` pending buildは承認しない。
+- PRはユーザーがmergeする。観測修正の先行deployが必要ならtracked Webを含め全unit `dual-write`で揃えた変更を先に
+  review / mergeし、gate証跡を再取得する。開始gate合格後にsnapshot、migration pending 0、最新main / trigger / modeを
+  照合し、全unitをcombined modeへdeployする。rollbackは全unit `off`、AGE / relational data / snapshotは保持する。
+- Step 2Eは十分なshadow観測、差分解消または明示decision、性能 / cost、restore point、rollback計画、明示承認を独立gateとし、
+  本Issueでは開始しない。Step 2F cleanupも対象外とする。
+
 ### 目的
 
 Pufu Lens が使う bounded graph capability を通常の relational node / edge schema で実装し、まず GCP

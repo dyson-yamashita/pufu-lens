@@ -112,11 +112,11 @@ test('deploy-workflow-jobs passes PUFU_LENS_GRAPH_TRANSITION_MODE to every env s
   );
 });
 
-test('production App Hosting declares runtime-only PUFU_LENS_GRAPH_TRANSITION_MODE dual-write', () => {
+test('production App Hosting declares runtime-only PUFU_LENS_GRAPH_TRANSITION_MODE dual-write-shadow-read', () => {
   const config = parseAppHostingConfig(productionAppHosting);
   const entry = findAppHostingEnvEntry(config, 'PUFU_LENS_GRAPH_TRANSITION_MODE');
   assert.ok(entry, 'PUFU_LENS_GRAPH_TRANSITION_MODE env entry is required');
-  assert.equal(entry.value, 'dual-write');
+  assert.equal(entry.value, 'dual-write-shadow-read');
   assert.deepEqual(entry.availability, ['RUNTIME']);
 });
 

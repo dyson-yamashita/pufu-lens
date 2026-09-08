@@ -283,6 +283,9 @@ export const ingestWorkflow = createWorkflow({
   Step 2D transitionはrequest / project overrideを持たず、deployment modeが有効な場合だけAGE primary成功後に
   relationalへdual-writeする。1 documentのmutationとstatus更新は同じtransactionへbindし、secondary失敗時は
   両graphをrollbackした後、transaction外でfailed statusを記録して既存retryへ戻す。
+- `ingest-workflow`は子script終了後、stdoutの`graph_transition_observation`を最終resultから分離し、
+  identityを含まないallowlist項目だけを親stdoutへ転送する。非zero終了時も転送し、observer例外で結果を変えない。
+  親processが終了前に停止した場合のbuffer欠落を考慮し、観測0件を成功証拠としない。
 - `MERGE` を使用してノード・エッジ・チャンクの重複を回避する。
 - メールは Gmail API の `threadId` で同一スレッドを判定し、**スレッド内の最新メールだけ** `documents` に登録、それ以前は `email_quotes` に分解。
 - Drive Doc は file ID を論理 ID、`revisionId` を版 ID とし、過去版は `raw_documents` に保持したまま同じ Document ID を最新版へ切り替える。
