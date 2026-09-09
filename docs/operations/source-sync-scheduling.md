@@ -68,7 +68,8 @@ ORDER BY next_run_at;
 
 収集CLIの接続検索（project / data source指定、明示connection ID指定の両方）は、Google接続に空でないrefresh tokenが
 保存されている場合、アクセストークンの期限切れだけでは除外しない。既存のtoken resolverで更新が成功して初めて収集へ進み、
-新しいaccess tokenは暗号化して有効期限とともに保存する。project / data sourceの紐付け、provider、Drive / Gmail scope、
+新しいaccess tokenは暗号化して保存する。更新応答の`expires_in`が数値の場合は有効期限も保存し、欠落または数値以外の場合は
+`expires_at`に`null`を保存する。project / data sourceの紐付け、provider、Drive / Gmail scope、
 切断状態、`connectionError` / `scopeMissing`の拒否条件は維持する。refresh tokenがない期限切れ接続は再認証が必要であり、
 refresh APIの失敗時は古いtokenを使って収集を続行しない。GitHub接続の期限判定は変更しない。
 
