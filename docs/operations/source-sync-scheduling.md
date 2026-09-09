@@ -75,8 +75,15 @@ refresh APIの失敗時は古いtokenを使って収集を続行しない。GitH
 
 定期収集Jobには、WebのGoogle連携と同じOAuth clientの`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`、および保存済みtokenを
 復号できる`CONNECTION_SECRET_KEY`（未指定時は`AUTH_SECRET`）が必要である。secret値はログへ出さず、runtime設定の存在と
-参照先だけを確認する。Cloud Build exampleはGoogle用runtime設定を自動追加しないため、環境側で設定してから反映する。
-コードのmergeだけでは既存Jobの設定不足は解消しない。
+参照先だけを確認する。Cloud Build exampleでは`_GOOGLE_CLIENT_ID_SECRET_REF`と`_GOOGLE_CLIENT_SECRET_REF`を両方設定すると、
+curate / ingest / source-syncの3種類のJobへGoogle参照を追加する。値は同一projectの`secret名:バージョン`で、
+バージョンは正の整数または`latest`を使う。独自暗号化keyを使う場合は`_CONNECTION_SECRET_KEY_REF`も設定する。
+未設定時は従来の`AUTH_SECRET` fallbackを維持するため、Webと同じ保存済みtokenを復号できることを事前確認する。
+secretは既存のものを参照し、この設定を理由に鍵を新規生成・交換しない。
+
+Jobのsecret参照はdeployごとに宣言値で置き換わる。手動追加だけでは次回deployで消えるため、triggerのsubstitutionへ
+保持し、build作成前に設定する。すでにpendingのbuildへtrigger更新は反映されない。Google参照の既定値は空なので、
+コードのmergeだけでは設定不足は解消しない。形式・IAM・適用対象の詳細は[Cloud Build手順](../deployment/gcp-cloud-build.md#google-oauth収集jobのsecret参照)を参照する。
 
 この修正対象は収集CLIであり、Web管理画面の接続可否判定や未紐付けdata sourceの自動修復は含まない。
 再試行上限後も`retry_count`は0へ戻るため、復旧は`last_succeeded_at`が直近の失敗より新しいことと、実際の収集結果で確認する。

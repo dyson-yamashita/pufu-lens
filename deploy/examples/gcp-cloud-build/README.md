@@ -156,6 +156,9 @@ Set these trigger substitutions in the user's GCP project:
 | `_EMBEDDING_DIMENSIONS`                     | `1536`                                              | Must match the current pgvector schema.                                                           |
 | `_EMBEDDING_API_KEY_SECRET`                 | `GEMINI_API_KEY`                                    | Secret Manager secret backing the selected embedding provider.                                    |
 | `_GRAPH_TRANSITION_MODE`                    | `off`                                               | Server-only graph mode; allowlisted values are `off`, `dual-write`, and `dual-write-shadow-read`. |
+| `_GOOGLE_CLIENT_ID_SECRET_REF`              | `GOOGLE_CLIENT_ID:1`                                | Optional; set together with the client secret reference. Empty by default.                        |
+| `_GOOGLE_CLIENT_SECRET_REF`                 | `GOOGLE_CLIENT_SECRET:1`                            | Optional; same OAuth client as Web. Empty by default.                                             |
+| `_CONNECTION_SECRET_KEY_REF`                | `CONNECTION_SECRET_KEY:1`                           | Optional; empty keeps the existing `AUTH_SECRET` fallback.                                        |
 
 `PROJECT_ID` and `SHORT_SHA` are Cloud Build built-in substitutions. The example uses `SHORT_SHA` as the immutable image tag and also pushes `latest` as a convenience tag.
 
@@ -198,11 +201,26 @@ The secret values are not read into the build log. Cloud Run receives secret ref
 
 Claude Chat + OpenAI Embedding の例では、`_CHAT_MODEL=anthropic/...`、`_CHAT_API_KEY_ENV=ANTHROPIC_API_KEY`、`_CHAT_API_KEY_SECRET=ANTHROPIC_API_KEY`、`_EMBEDDING_PROVIDER=openai`、`_EMBEDDING_MODEL=text-embedding-3-small`、`_EMBEDDING_API_KEY_SECRET=OPENAI_API_KEY` とする。providerまたはmodelを変更した後は、既存document chunkを新しいembedding spaceで再生成する。
 
-If your environment uses Google or GitHub OAuth data-source refresh in jobs, add the corresponding runtime secrets in your fork or environment-specific copy:
+For Google data-source refresh, set both `_GOOGLE_CLIENT_ID_SECRET_REF` and `_GOOGLE_CLIENT_SECRET_REF`
+on the environment's deploy trigger. These inject `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` only into
+`curate-workflow`, `ingest-workflow`, and `source-sync-dispatcher`. `_CONNECTION_SECRET_KEY_REF` independently
+injects the encryption key into the same three Jobs; omit it only when the existing `AUTH_SECRET` fallback
+can decrypt the tokens saved by Web. Do not rotate or replace an encryption key as part of this setup.
 
-- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
-- `GITHUB_CLIENT_SECRET` / `AUTH_GITHUB_SECRET`
-- `CONNECTION_SECRET_KEY` when you do not want to fall back to `AUTH_SECRET`
+References must use a same-project secret name (1–255 ASCII letters, digits, `_` or `-`), followed by `:`
+and a positive integer version or `latest`. No payloads, project paths, or custom version aliases are accepted.
+Validation rejects one-sided Google pairs and malformed references before build/deploy; secret existence,
+enabled state, and runtime access are checked by Cloud Run, not by reading payloads in Cloud Build.
+Provision the secrets and grant the existing Job runtime identity access to the selected secrets beforehand.
+Keep the OAuth client and encryption key compatible with the environment-specific Web configuration.
+
+The deploy step deliberately retains `--set-secrets`: each deployment reconstructs the declared set.
+Hand-added Job secrets are not preserved. Empty substitutions mean no Google references are deployed, so
+merging this config alone does not enable Google refresh. Configure the trigger **before creating the build**;
+editing the trigger does not update substitutions already captured by a pending build. Create a new build
+for the intended main commit if necessary and approve only after checking its substitutions.
+
+GitHub-specific additional runtime secrets remain an environment-specific customization.
 
 ## Deploy Service Account
 
