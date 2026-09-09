@@ -441,7 +441,12 @@ test('deploy-workflow-jobs appends Google OAuth secrets only to collection jobs'
       }
     }
 
-    assert.doesNotMatch(result.log, /versions access/);
+    for (const argv of parseGcloudLog(result.log)) {
+      assert.ok(
+        !(argv[0] === 'secrets' && argv[1] === 'versions' && argv[2] === 'access'),
+        'unexpected secret payload access',
+      );
+    }
   }
 });
 
