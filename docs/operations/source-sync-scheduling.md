@@ -64,6 +64,22 @@ ORDER BY next_run_at;
 - disabled schedule / disabled source はclaimされない。意図的な停止かを管理画面で確認してから再有効化する。
 - connection失効・scope不足はconnectionを修復してから再実行する。schedule errorへOAuth応答本文を転記しない。
 
+### Googleアクセストークンの期限切れ
+
+収集CLIの接続検索（project / data source指定、明示connection ID指定の両方）は、Google接続に空でないrefresh tokenが
+保存されている場合、アクセストークンの期限切れだけでは除外しない。既存のtoken resolverで更新が成功して初めて収集へ進み、
+新しいaccess tokenは暗号化して有効期限とともに保存する。project / data sourceの紐付け、provider、Drive / Gmail scope、
+切断状態、`connectionError` / `scopeMissing`の拒否条件は維持する。refresh tokenがない期限切れ接続は再認証が必要であり、
+refresh APIの失敗時は古いtokenを使って収集を続行しない。GitHub接続の期限判定は変更しない。
+
+定期収集Jobには、WebのGoogle連携と同じOAuth clientの`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`、および保存済みtokenを
+復号できる`CONNECTION_SECRET_KEY`（未指定時は`AUTH_SECRET`）が必要である。secret値はログへ出さず、runtime設定の存在と
+参照先だけを確認する。Cloud Build exampleはGoogle用runtime設定を自動追加しないため、環境側で設定してから反映する。
+コードのmergeだけでは既存Jobの設定不足は解消しない。
+
+この修正対象は収集CLIであり、Web管理画面の接続可否判定や未紐付けdata sourceの自動修復は含まない。
+再試行上限後も`retry_count`は0へ戻るため、復旧は`last_succeeded_at`が直近の失敗より新しいことと、実際の収集結果で確認する。
+
 多重起動を疑う場合は同じscheduleの `worker_token` と `lease_expires_at` を確認するが、token値自体をIssue、PR、chat、恒久ログへ貼らない。手動でleaseやworker tokenを書き換えず、実行中workerがないことを確認したうえでlease期限切れを待つ。
 
 ## 本番確認

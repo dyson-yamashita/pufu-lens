@@ -54,6 +54,8 @@ export function requiredCollectionToken(
 
 /**
  * Resolves the OAuth connection for a project-scoped data source.
+ * Expired Google connections with a refresh token remain eligible; the returned
+ * token is available only after a successful refresh.
  */
 export async function readProjectCollectionConnection(input: {
   dataSourceId?: string;
@@ -90,7 +92,14 @@ export async function readProjectCollectionConnection(input: {
             AND ds.connection_id = oc.id
         )
       )
-      AND (oc.expires_at IS NULL OR oc.expires_at > now())
+      AND (
+        oc.expires_at IS NULL
+        OR oc.expires_at > now()
+        OR (
+          oc.provider = 'google'
+          AND NULLIF(oc.refresh_token_secret, '') IS NOT NULL
+        )
+      )
       AND (oc.metadata->>'connectionError') IS DISTINCT FROM 'true'
       AND (oc.metadata->>'scopeMissing') IS DISTINCT FROM 'true'
       AND COALESCE(oc.metadata->>'status', 'connected') = 'connected'
@@ -110,6 +119,8 @@ export async function readProjectCollectionConnection(input: {
 
 /**
  * Resolves an explicit OAuth connection within project and data-source boundaries.
+ * Expired Google connections with a refresh token remain eligible; the returned
+ * token is available only after a successful refresh.
  */
 export async function readCollectionConnection(input: {
   connectionId: string;
@@ -149,7 +160,14 @@ export async function readCollectionConnection(input: {
             AND ds.connection_id = oc.id
         )
       )
-      AND (oc.expires_at IS NULL OR oc.expires_at > now())
+      AND (
+        oc.expires_at IS NULL
+        OR oc.expires_at > now()
+        OR (
+          oc.provider = 'google'
+          AND NULLIF(oc.refresh_token_secret, '') IS NOT NULL
+        )
+      )
       AND (oc.metadata->>'connectionError') IS DISTINCT FROM 'true'
       AND (oc.metadata->>'scopeMissing') IS DISTINCT FROM 'true'
       AND COALESCE(oc.metadata->>'status', 'connected') = 'connected'
