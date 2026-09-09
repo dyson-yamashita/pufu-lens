@@ -370,6 +370,29 @@ Cloud Run resource には secret reference を渡す。secret 値そのものを
 | 選択したChat providerのAPI key secret      | Mastra Server、Workflow Jobs                                          |
 | 選択したEmbedding providerのAPI key secret | Mastra Server、Workflow Jobs                                          |
 
+### Google OAuth収集Jobのsecret参照
+
+Google連携を使う環境では、deploy triggerに次のsubstitutionを設定する。値はsecret payloadではなく、同一GCP projectの
+`secret名:バージョン`参照である。secret名はASCII英数字・`_`・`-`の1〜255文字、バージョンは正の整数または`latest`のみ許可する。
+
+| substitution                   | 設定例                    | 動作                                     |
+| ------------------------------ | ------------------------- | ---------------------------------------- |
+| `_GOOGLE_CLIENT_ID_SECRET_REF` | `GOOGLE_CLIENT_ID:1`      | 下のclient secret参照と必ず同時に設定    |
+| `_GOOGLE_CLIENT_SECRET_REF`    | `GOOGLE_CLIENT_SECRET:1`  | Webと同じOAuth clientのsecretを参照      |
+| `_CONNECTION_SECRET_KEY_REF`   | `CONNECTION_SECRET_KEY:1` | 任意。空なら既存の`AUTH_SECRET` fallback |
+
+既定値はすべて空。片側だけのGoogle設定、不正形式の参照はbuild/deploy前に拒否する。参照はstepの環境変数経由で渡し、
+shellのソースへ直接展開しない。secretの存在・有効なversion・runtimeの参照権限はCloud Run側で検証されるため、
+事前にsecretを用意し、Job runtime SAへ対象secretのaccessorを付与する。Cloud Buildはpayloadを読み取らず、IAMも追加しない。
+
+追加先は`${_ENV}-curate-workflow`、`${_ENV}-ingest-workflow`、`${_ENV}-source-sync-dispatcher`の3 Jobのみ。
+report系・ActivityPub・Mastra・migration Job・Webへはこのsubstitutionから追加しない。WebはApp Hosting設定を別途管理し、
+OAuth clientと暗号化keyの互換性を維持する。既存tokenを復号できないkeyへの交換・新規生成は行わない。
+
+`--set-secrets`による宣言的な置換を維持するため、手動追加したJob参照は次回deployで消える。必ずtriggerで参照を保持し、
+build作成前に設定する。既存pending buildのsubstitutionはtrigger更新では変わらないので、必要なら対象main commitで
+新しいbuildを作成し、その参照設定を確認して承認する。mergeだけではGoogle参照は有効にならない。
+
 ## Firebase App Hosting
 
 利用者 fork または release workspace で `deploy/examples/gcp-cloud-build/apphosting.example.yaml` を `apps/web/apphosting.yaml` にコピーし、placeholder を利用者環境の値へ置き換える。

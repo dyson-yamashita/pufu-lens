@@ -42,15 +42,52 @@ substitutions:
   _EMBEDDING_DIMENSIONS: '1536'
   _EMBEDDING_API_KEY_SECRET: GEMINI_API_KEY
   _GRAPH_TRANSITION_MODE: 'off'
+  _GOOGLE_CLIENT_ID_SECRET_REF: ''
+  _GOOGLE_CLIENT_SECRET_REF: ''
+  _CONNECTION_SECRET_KEY_REF: ''
 
 steps:
   - id: validate-deploy-substitutions
     name: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
     entrypoint: bash
+    env:
+      - 'GOOGLE_CLIENT_ID_SECRET_REF=${_GOOGLE_CLIENT_ID_SECRET_REF}'
+      - 'GOOGLE_CLIENT_SECRET_REF=${_GOOGLE_CLIENT_SECRET_REF}'
+      - 'CONNECTION_SECRET_KEY_REF=${_CONNECTION_SECRET_KEY_REF}'
     args:
       - -c
       - |
         set -euo pipefail
+
+        google_client_id_secret_ref="$${GOOGLE_CLIENT_ID_SECRET_REF:-}"
+        google_client_secret_ref="$${GOOGLE_CLIENT_SECRET_REF:-}"
+        connection_secret_key_ref="$${CONNECTION_SECRET_KEY_REF:-}"
+
+        if [[ -n "$${google_client_id_secret_ref}" && -z "$${google_client_secret_ref}" ]] || [[ -z "$${google_client_id_secret_ref}" && -n "$${google_client_secret_ref}" ]]; then
+          echo "GOOGLE_CLIENT_ID_SECRET_REF and GOOGLE_CLIENT_SECRET_REF must both be set or both be empty." >&2
+          exit 1
+        fi
+
+        validate_secret_manager_ref() {
+          local var_name="$$1"
+          local ref_value="$$2"
+          if [[ -z "$${ref_value}" ]]; then
+            return 0
+          fi
+          if ! [[ "$${ref_value}" =~ ^[a-zA-Z0-9_-]+:(latest|[1-9][0-9]*)$$ ]]; then
+            echo "$${var_name} must be a valid Secret Manager reference." >&2
+            exit 1
+          fi
+          local secret_name="$${ref_value%%:*}"
+          if [[ "$${#secret_name}" -gt 255 ]]; then
+            echo "$${var_name} must be a valid Secret Manager reference." >&2
+            exit 1
+          fi
+        }
+
+        validate_secret_manager_ref "GOOGLE_CLIENT_ID_SECRET_REF" "$${google_client_id_secret_ref}"
+        validate_secret_manager_ref "GOOGLE_CLIENT_SECRET_REF" "$${google_client_secret_ref}"
+        validate_secret_manager_ref "CONNECTION_SECRET_KEY_REF" "$${connection_secret_key_ref}"
 
         case "${_ENV}" in
           staging|production) ;;
@@ -366,6 +403,10 @@ steps:
       - push-workflow-job
       - run-db-migration
     entrypoint: bash
+    env:
+      - 'GOOGLE_CLIENT_ID_SECRET_REF=${_GOOGLE_CLIENT_ID_SECRET_REF}'
+      - 'GOOGLE_CLIENT_SECRET_REF=${_GOOGLE_CLIENT_SECRET_REF}'
+      - 'CONNECTION_SECRET_KEY_REF=${_CONNECTION_SECRET_KEY_REF}'
     args:
       - -c
       - |
@@ -378,6 +419,14 @@ steps:
           if [[ "$${workflow_id}" == "activitypub-dispatcher" ]]; then
             env_vars="STORAGE_DRIVER=gcs,STORAGE_BUCKET=${_STORAGE_BUCKET},WORKFLOW_ID=activitypub-dispatcher,ACTIVITYPUB_ENABLED=1,ACTIVITYPUB_CANONICAL_ORIGIN=${_ACTIVITYPUB_CANONICAL_ORIGIN},PUFU_LENS_GRAPH_TRANSITION_MODE=${_GRAPH_TRANSITION_MODE},PUFU_LENS_CHAT_MODEL=${_CHAT_MODEL},PUFU_LENS_EMBEDDING_PROVIDER=${_EMBEDDING_PROVIDER},PUFU_LENS_EMBEDDING_MODEL=${_EMBEDDING_MODEL},PUFU_LENS_EMBEDDING_DIMENSIONS=${_EMBEDDING_DIMENSIONS},GEMINI_CHAT_MODEL=gemini-2.5-flash,GOOGLE_GENAI_USE_VERTEXAI=false"
             secrets="DATABASE_URL=DATABASE_URL:latest,${_CHAT_API_KEY_ENV}=${_CHAT_API_KEY_SECRET}:latest,PUFU_LENS_EMBEDDING_API_KEY=${_EMBEDDING_API_KEY_SECRET}:latest,AUTH_SECRET=AUTH_SECRET:latest,ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY=${_ACTIVITYPUB_ACTOR_KEY_SECRET}:latest"
+          fi
+          if [[ "$${workflow_id}" == "curate-workflow" || "$${workflow_id}" == "ingest-workflow" || "$${workflow_id}" == "source-sync-dispatcher" ]]; then
+            if [[ -n "$${GOOGLE_CLIENT_ID_SECRET_REF}" && -n "$${GOOGLE_CLIENT_SECRET_REF}" ]]; then
+              secrets="$${secrets},GOOGLE_CLIENT_ID=$${GOOGLE_CLIENT_ID_SECRET_REF},GOOGLE_CLIENT_SECRET=$${GOOGLE_CLIENT_SECRET_REF}"
+            fi
+            if [[ -n "$${CONNECTION_SECRET_KEY_REF}" ]]; then
+              secrets="$${secrets},CONNECTION_SECRET_KEY=$${CONNECTION_SECRET_KEY_REF}"
+            fi
           fi
           job_args=(
             "$${job_name}"
