@@ -15,9 +15,9 @@ runConfig:
         subnetwork: pufu-lens-serverless
 
 env:
-  # observation-first rollout: dual-write only; enable shadow reads after gate passes
+  # Approved shadow-read preparation; align trigger mode before an authorized deploy.
   - variable: PUFU_LENS_GRAPH_TRANSITION_MODE
-    value: dual-write
+    value: dual-write-shadow-read
     availability:
       - RUNTIME
   - variable: STORAGE_DRIVER

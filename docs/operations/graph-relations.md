@@ -6,8 +6,8 @@ Plan 018 Step 2A では移行先として `graph_nodes` / `graph_edges` schema�
 使うrelational Graph read / mutation adapterを追加した。ViewerとSynthetic Monitorを含むDB testは明示DIで
 relational adapterを検証する。Step 2Dではproduction composition rootをAGE-primaryのtransition factoryへ統一した。
 Issue #723はCloud Buildの安全な既定を`off`に保ったまま、production Web / Mastra / Workflow Jobsを`dual-write`へ揃える
-rollout configを追加し、2026-09-05にdeployした。Issue #726ではPR #729の観測ログ修正を先行反映するため、
-tracked configを`dual-write`へ戻す。shadow read開始gateは未達であり、稼働modeも`dual-write`を維持する。
+rollout configを追加し、2026-09-05にdeployした。Issue #726では観測修正の先行反映後、2026-09-12のユーザーによる
+残余リスク承認に基づきtracked Webを`dual-write-shadow-read`へ変更する。本番への反映は別途承認待ちで、稼働modeは`dual-write`のままである。
 
 Plan 018 Step 2C では、source dataからrelational graphをproject単位で再構築し、AGEとの構造差分を監査する
 operator CLIを追加した。CLIはproduction compositionへ接続せず、AGE primary read / writeも変更しない。
@@ -145,7 +145,7 @@ forward-fix / rebuild対象として保持する。relational primaryへの切�
 - deploy後はWeb / Mastra / 全Jobsのruntime env一致、Web / Graph / ingestion smoke、secondary error / mismatch、DB CPU /
   connection / latencyを確認する。異常時はApp Hostingとproduction triggerを`off`へ戻すdeployを優先し、tableを削除しない。
 
-#### Production shadow read 準備（Issue #726、未deploy）
+#### Production shadow read 準備の履歴（Issue #726、2026-09-08時点）
 
 - PR #729で準備したproduction App Hostingのtracked値`dual-write-shadow-read`を`dual-write`へ戻し、
   観測ログ修正だけの先行deployを準備する。Cloud Build / OSS exampleの既定は引き続き`off`。
@@ -165,6 +165,26 @@ forward-fix / rebuild対象として保持する。relational primaryへの切�
 - rollbackはtracked App Hostingとtriggerを`off`へ戻し、Web / Mastra / 全JobsをAGE-onlyへ揃える。
   AGE graph、relational table、snapshotは保持する。Step 2Eは十分なshadow観測、差分解消または明示decision、性能 / cost、
   restore point、rollback計画、独立した明示承認が揃ってから開始する。Step 2Fは本変更の対象外。
+
+#### 2026-09-12 更新差分・性能のリスク受容と設定準備
+
+- [ユーザー承認記録](https://github.com/dyson-yamashita/pufu-lens/issues/726#issuecomment-5642923527)に基づき、
+  差分と性能の保留をリスク受容として解除する。技術的なcompare passや十分な性能実測を証明したという意味ではない。
+- 3 projectのread-only compareは、`test` / `pufu-tomonokai`がpass。`pufu-lens-dev-pj`はAGE-only 29 nodes / 46 edges、
+  relational-only 661 nodes / 916 edges、label/property-key mismatch 107で`blocked`。全projectでtruncated=false、
+  duplicate / orphan / unknown relation / source audit blockerは0。9月5日の承認値から変化した箇所の原因は未検証である。
+- 9月9日09:30 UTC以降の確認時点でmutation観測11件は全match（ensure_project_graph 10、upsert_edge 1）。
+  primary最大8ms / secondary最大2ms。graph unavailable / source-sync execution failed / Web HTTP 5xxの対象ログは0件。
+  DB接続9/100、deadlock0、全4同期scheduleはretry0・active lease0・直近失敗より新しい成功あり。
+- Graph HTTPは3件すべて200、最大3.71秒。少数sampleであり性能gateの統計的裏付けにはしない。
+  Drive追加1件のindexed完了とChatでの利用は確認済みだが、過去の全失敗原因を個別に証明したものではない。
+- 本PRではtracked Webのruntime値とconfig testのみをcombined modeへ変更する。Cloud Build / OSS既定`off`、
+  AGE primary、10% sampling、timeout、OAuth secret参照、認可・PII方針は変更しない。
+- **PR mergeだけでdeployしない。** 本番反映の別途承認後、直前snapshotのREADY、migration pending 0、最新mainを確認し、
+  triggerを`dual-write-shadow-read`へ変更して新buildを作成する。既存OAuth参照とapproval requiredを保持する。
+  古いbuildのsubstitutionは変わらないため、Webとtriggerのmodeが不一致のpending buildは承認しない。
+- 反映時はWeb / Mastra / 全6 Jobsを同一modeへ揃え、AGE応答、shadow mismatch / error / timeout、DB負荷・latency・retryを確認する。
+  異常時は全unitを`off`へ戻す。AGE / relational data / snapshotは保持する。Step 2E / 2Fは別gateのままである。
 
 #### Representative queryの計測
 
