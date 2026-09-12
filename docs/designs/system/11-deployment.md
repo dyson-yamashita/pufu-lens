@@ -270,12 +270,12 @@ connection / CPU costを観測する。異常時はproduction App Hostingとtrig
 Mastra Server、production 6 Workflow Jobsのmodeを`dual-write`へ揃えた。readはAGE primaryを維持し、shadow read、
 relational primary switch、AGE停止・削除は実施していない。
 
-Issue #726ではPR #729の観測修正を先行deployするため、tracked App Hostingを`dual-write`へ戻す。本番も
-`dual-write`で、shadow read開始gateは未達である。子script観測の欠落、current-source差分の説明、retry / latencyの
-再確認を先に行う。先行deployはユーザー承認済みで、設定PRのユーザーmerge後、最新main / trigger / build、
-snapshot `READY`、migration pending 0を確認し、Web / Mastra / 6 Jobsを`dual-write`へ揃えて観測修正のみ反映する。
-PR #729直後の不一致buildは承認しない。shadow readはgate合格後の別設定PRで初めてcombined modeへ
-揃え、snapshot `READY`を確認して承認する。詳細は[shadow read gate](../../operations/deploy-checklist.md#plan-018-step-2d-production-shadow-read-gateissue-726)を参照。
+Issue #726の観測修正とOAuth参照の先行反映はPR #734まで完了し、本番は`dual-write`を維持する。
+2026-09-12にユーザーが差分と性能の残余リスクを了承したため、tracked App Hostingを`dual-write-shadow-read`へ変更する。
+これは技術的なcompare pass / 十分な性能実測ではなく、設定PR準備の承認である。本番反映は別途承認を要する。
+承認後に最新main、snapshot `READY`、migration pending 0を確認し、既存OAuth参照を保持してtriggerの`_GRAPH_TRANSITION_MODE`を`dual-write-shadow-read`へ更新する。
+更新後の新buildでWeb / Mastra / 6 Jobsを揃え、古いmode不一致buildは承認しない。
+詳細は[リスク受容と設定準備](../../operations/graph-relations.md#2026-09-12-更新差分性能のリスク受容と設定準備)を参照。
 
 `apps/web/apphosting.yaml` の最小例（Issue #723のdual-write rollout時点）：
 

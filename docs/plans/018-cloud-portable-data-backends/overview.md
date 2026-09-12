@@ -498,7 +498,7 @@ compare CLI成功検証を追加した。構造差分の合計出力名はnode /
   DB connection余力とerror logを確認した。観測期間内にgraph mutationがなかったためsanitized observationは0件であり、
   実mutation時の継続監視とbackfill / compare再確認はshadow read開始gateに残す。
 
-#### 2D production shadow read 準備（Issue #726、未deploy）
+#### 2D production shadow read 準備の履歴（Issue #726、2026-09-08時点）
 
 - PR #729で準備したproduction tracked App Hostingのruntime-only `dual-write-shadow-read`を`dual-write`へ戻し、
   config drift testを更新する。観測ログ修正だけの先行deployがユーザー承認済みであり、shadow readは有効化しない。
@@ -516,6 +516,16 @@ compare CLI成功検証を追加した。構造差分の合計出力名はnode /
   照合し、全unitをcombined modeへdeployする。rollbackは全unit `off`、AGE / relational data / snapshotは保持する。
 - Step 2Eは十分なshadow観測、差分解消または明示decision、性能 / cost、restore point、rollback計画、明示承認を独立gateとし、
   本Issueでは開始しない。Step 2F cleanupも対象外とする。
+
+#### 2D shadow read設定準備の再開（2026-09-12、Issue #726）
+
+- 観測修正とOAuth secret参照の先行反映は完了し、productionは全unit `dual-write`。追加Driveファイルは定期同期でindexedまで完了し、ユーザーがChatでの利用を確認した。
+- compareは2 projectがpass、開発projectはAGE-only 29/46、relational-only 661/916（node/edge）、label/property-key mismatch 107でblocked。原因の追加検証は未完了。
+- mutation観測11件は全match。Graph HTTPは3件200・最大3.71秒で、十分な性能実測とはしない。
+- ユーザーが更新差分と性能の残余リスクを了承し、設定PR準備を承認した。これは技術的合格ではなく明示的なリスク受容である。
+  証跡・反映手順は[Graph運用文書](../../operations/graph-relations.md#2026-09-12-更新差分性能のリスク受容と設定準備)に記録する。
+- tracked Webとtestを`dual-write-shadow-read`へ変更する。本番反映は別途承認待ちで、trigger更新・新snapshot・build承認は行わない。
+  承認後は既存OAuth参照を保持したtrigger更新後の新buildだけを照合し、全unitのmodeを揃える。Step 2E/2Fは対象外。
 
 ### 目的
 
