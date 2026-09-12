@@ -171,6 +171,73 @@ test('preset comparison canonicalizes provider IDs and ignores values and compat
   assert.equal(observations[0]?.outcome, 'match');
 });
 
+test('preset comparison normalizes AGE metadata but retains semantic differences', async () => {
+  const primary: GraphPresetReadResult = {
+    ...preset('age-node', 'age-edge', 'value', 'preview'),
+    nodes: [
+      {
+        id: 'age-node',
+        label: 'Document',
+        labels: ['Document'],
+        properties: {
+          ageId: 'age-node',
+          graphNodeId: 'canonical-node',
+          graphLabels: ['Document', 'WebPage'],
+          title: 'value',
+        },
+      },
+    ],
+  };
+  let shadow: GraphPresetReadResult = {
+    ...preset('rel-node', 'rel-edge', 'value', 'preview'),
+    nodes: [
+      {
+        id: 'rel-node',
+        label: 'Document',
+        labels: ['WebPage', 'Document'],
+        properties: {
+          graphNodeId: 'canonical-node',
+          graphLabels: ['Document', 'WebPage'],
+          title: 'value',
+        },
+      },
+    ],
+  };
+  const original = structuredClone(primary);
+  const observations: GraphShadowObservation[] = [];
+  const repository = createGraphShadowReadRepository({
+    mode: 'dual-write-shadow-read',
+    observer: (observation) => {
+      observations.push(observation);
+    },
+    primary: readRepository({ readPreset: async () => primary }),
+    random: () => 0,
+    shadow: readRepository({ readPreset: async () => shadow }),
+  });
+  const input = {
+    documentGraphNodeIds: ['private'],
+    presetId: 'recent-relations' as const,
+    projectId: 'private',
+  };
+  assert.equal(await repository.readPreset(input), primary);
+  assert.equal(observations[0]?.outcome, 'match');
+  assert.deepEqual(primary, original);
+
+  shadow = {
+    ...shadow,
+    nodes: [
+      {
+        id: 'rel-node',
+        label: 'Document',
+        labels: ['Document', 'Note'],
+        properties: { graphNodeId: 'canonical-node', graphLabels: ['Document', 'Note'] },
+      },
+    ],
+  };
+  await repository.readPreset(input);
+  assert.deepEqual(observations[1]?.mismatchCategories, ['labels', 'property_keys']);
+});
+
 test('preset identity drift does not create false label or property-key categories', async () => {
   const observations: GraphShadowObservation[] = [];
   const primary = preset('age-node', 'age-edge', 'value', 'preview');
