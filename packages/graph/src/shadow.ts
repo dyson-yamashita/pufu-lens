@@ -583,7 +583,7 @@ function comparePreset(primary: GraphPresetReadResult, shadow: GraphPresetReadRe
   return { categories };
 }
 
-/** Normalizes a preset into sorted identities and shared label or property-key maps for comparison. */
+/** Normalizes comparison-only metadata without changing the primary response or stored properties. */
 function canonicalPreset(result: GraphPresetReadResult): {
   readonly edgeIdentities: string[];
   readonly labels: ReadonlyMap<string, string>;
@@ -601,8 +601,25 @@ function canonicalPreset(result: GraphPresetReadResult): {
         : `invalid:${node.id}`;
     idToNodeKey.set(node.id, graphNodeId);
     nodeIdentities.push(graphNodeId);
-    labels.set(graphNodeId, JSON.stringify([node.label, [...node.labels].sort()]));
-    propertyKeys.set(`node:${graphNodeId}`, JSON.stringify(Object.keys(node.properties).sort()));
+    const storedLabels = node.properties.graphLabels;
+    const graphLabels =
+      Array.isArray(storedLabels) &&
+      storedLabels.every(
+        (label): label is string => typeof label === 'string' && label.trim() !== '',
+      )
+        ? storedLabels
+        : [];
+    // AGE exposes the storage label; relational reads expose the full logical label set.
+    const canonicalLabels = [...new Set([...node.labels, ...graphLabels])].sort();
+    labels.set(graphNodeId, JSON.stringify([node.label, canonicalLabels]));
+    propertyKeys.set(
+      `node:${graphNodeId}`,
+      JSON.stringify(
+        Object.keys(node.properties)
+          .filter((key) => key !== 'ageId')
+          .sort(),
+      ),
+    );
   }
   const edgeIdentities: string[] = [];
   for (const edge of result.edges) {

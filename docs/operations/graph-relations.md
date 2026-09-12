@@ -108,6 +108,11 @@ productionのrebuild / compare、live AGE inventory、deploy、read / write切�
 未知の値は起動後のcomposition時にfail closedする。shadow readはAGE primary完了後に実行し、外側6秒、adapter SQL 5秒の
 timeoutを適用する。shadowのtimeout / error / mismatch、観測出力の失敗でuser responseは変えず、AGE結果を返す。
 
+Viewer presetの比較では、node property keyからAGE読取時に追加される`ageId`だけを除外する。
+ラベルはadapterの`labels`と、有効な文字列配列の`properties.graphLabels`を統合・重複排除・ソートして比較する。
+これによりAGEの単一label表現とrelationalの複数label表現を揃え、実際のラベル差分・通常property keyの欠落は検出する。
+正規化は比較内に限定し、画面へ返すAGE結果、保存データ、edge property key、sampling率は変更しない。
+
 mutationは次のfailure契約を使う。
 
 - node / edge upsert、project graph lifecycle、Actor mergeはAGE→relationalの順に実行する。secondary失敗または
