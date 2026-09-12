@@ -187,7 +187,7 @@ tracked configの準備と本番有効化を区別する。2026-09-12に差分�
 技術的合格とは扱わず、mergeだけを本番反映の承認理由にしない。
 [証跡とリスク受容](graph-relations.md#2026-09-12-更新差分性能のリスク受容と設定準備)を確認する。
 観測修正とOAuth参照は全unit `dual-write`のまま先行反映済み。本番は別途承認後にtriggerを更新して新buildを作り、
-tracked Web / Mastra / 全6 Jobsをcombined modeへ揃える。既存OAuth参照を保持し、古いmode不一致buildは承認しない。
+tracked Web / Mastra / 全6 Jobsの`PUFU_LENS_GRAPH_TRANSITION_MODE`を`dual-write-shadow-read`へ揃える。既存OAuth参照を保持し、古いmode不一致buildは承認しない。
 
 - [ ] 子process経由を含むsanitized observation経路と実dual-write成功証跡を確認した。ログ0件をsamplingやerrorなしと断定しない。
 - [ ] 全projectのbounded compare / current-source auditと明示的な差分リスク受容を確認した。今回の開発projectはblockedのままで、原因検証済みとはしない。

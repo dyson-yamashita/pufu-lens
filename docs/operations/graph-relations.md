@@ -178,7 +178,7 @@ forward-fix / rebuild対象として保持する。relational primaryへの切�
   DB接続9/100、deadlock0、全4同期scheduleはretry0・active lease0・直近失敗より新しい成功あり。
 - Graph HTTPは3件すべて200、最大3.71秒。少数sampleであり性能gateの統計的裏付けにはしない。
   Drive追加1件のindexed完了とChatでの利用は確認済みだが、過去の全失敗原因を個別に証明したものではない。
-- 本PRではtracked Webのruntime値とconfig testのみをcombined modeへ変更する。Cloud Build / OSS既定`off`、
+- 本PRではtracked Webのruntime値`PUFU_LENS_GRAPH_TRANSITION_MODE`とconfig testの期待値のみを`dual-write-shadow-read`へ変更する。Cloud Build / OSS既定`off`、
   AGE primary、10% sampling、timeout、OAuth secret参照、認可・PII方針は変更しない。
 - **PR mergeだけでdeployしない。** 本番反映の別途承認後、直前snapshotのREADY、migration pending 0、最新mainを確認し、
   triggerを`dual-write-shadow-read`へ変更して新buildを作成する。既存OAuth参照とapproval requiredを保持する。
