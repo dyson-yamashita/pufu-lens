@@ -527,6 +527,17 @@ compare CLI成功検証を追加した。構造差分の合計出力名はnode /
 - tracked Webとtestを`dual-write-shadow-read`へ変更する。本番反映は別途承認待ちで、trigger更新・新snapshot・build承認は行わない。
   承認後は既存OAuth参照を保持したtrigger更新後の新buildだけを照合し、全unitのmodeを揃える。Step 2E/2Fは対象外。
 
+#### 2D反映済み / 2E実装準備（2026-09-13、Issue #738）
+
+- PR #737まで本番反映済み。全unit `dual-write-shadow-read`で、OAuth参照も維持する。前節は準備当時の履歴である。
+- Step 2Eの読み取り実装準備は`active`。独立タスクで最新mainからIssue #738のbranchを作成した。
+  `relational-primary`を追加し、正常空結果・入力不正・認可拒否を迂回しないAGE fallback、各backend 6秒deadline、
+  二重失敗契約、sanitized観測と回帰テストを実装する。AGE→relational dual-writeは維持する。
+- 2026-09-13のread_preset match 1件は誤検知修正の確認であり、全project gate合格ではない。
+  開発projectの既存差分、性能sample不足の受容は技術的合格とはしない。代表query coverage、費用、restore point /
+  rollback window、本番切替承認は独立gate。実装準備の承認で本番設定変更・deploy・切替・AGE write停止・cleanupは行わない。
+- 切替・切り戻しの契約は[Graph運用文書](../../operations/graph-relations.md)を参照する。
+
 ### 目的
 
 Pufu Lens が使う bounded graph capability を通常の relational node / edge schema で実装し、まず GCP

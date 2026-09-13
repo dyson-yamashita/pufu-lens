@@ -13,6 +13,73 @@ import {
 const PROJECT_ID = '71400000-0000-0000-0000-000000000001';
 const GRAPH_NODE_ID = 'document:issue-714-seed';
 
+test('strict primary reads normalize availability codes but preserve input/permission/unknown errors', async () => {
+  for (const code of ['42P01', '57014', 'ECONNRESET', '42501', '22P02', 'XX000', undefined]) {
+    const failure = Object.assign(new Error('private detail'), { code });
+    const sql = Object.assign(() => Promise.resolve([]), {
+      begin: async () => {
+        throw failure;
+      },
+    }) as unknown as postgres.Sql;
+    const reader = createPostgresRelationalGraphReadRepository(sql, { strictUnavailable: true });
+    const recoverable = ['42P01', '57014', 'ECONNRESET'].includes(code ?? '');
+    await assert.rejects(
+      reader.countDocumentNode({ projectId: PROJECT_ID, graphNodeId: GRAPH_NODE_ID }),
+      (error) => (recoverable ? isReadUnavailableError(error) : error === failure),
+    );
+    const result = reader.findRelatedDocuments({
+      projectId: PROJECT_ID,
+      seedDocumentIds: ['seed'],
+    });
+    if (recoverable) assert.deepEqual(await result, { candidates: [], status: 'unavailable' });
+    else await assert.rejects(result, (error) => error === failure);
+  }
+});
+
+test('strict primary validation rejects malformed input before SQL and allows zero relation pools', async () => {
+  const sql = Object.assign(
+    () => {
+      assert.fail('must not query');
+    },
+    {
+      begin: async () => {
+        assert.fail('must not open transaction');
+      },
+    },
+  ) as unknown as postgres.Sql;
+  const reader = createPostgresRelationalGraphReadRepository(sql, { strictUnavailable: true });
+  await assert.rejects(
+    reader.countDocumentNode({ projectId: 'not-a-uuid', graphNodeId: GRAPH_NODE_ID }),
+    /Invalid/,
+  );
+  await assert.rejects(
+    reader.readPreset({
+      projectId: PROJECT_ID,
+      presetId: 'actor-documents',
+      documentGraphNodeIds: [''],
+    }),
+    /Invalid/,
+  );
+  for (const limit of [-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    await assert.rejects(
+      reader.findRelatedDocuments({
+        projectId: PROJECT_ID,
+        seedDocumentIds: [],
+        relationLimits: { MENTIONS: limit },
+      }),
+      /Invalid/,
+    );
+  }
+  assert.deepEqual(
+    await reader.findRelatedDocuments({
+      projectId: PROJECT_ID,
+      seedDocumentIds: [],
+      relationLimits: { MENTIONS: 0 },
+    }),
+    { candidates: [], status: 'success' },
+  );
+});
+
 function createReadRepositoryMock(
   transactionResult: unknown,
   transactionExtras?: Record<string, unknown>,

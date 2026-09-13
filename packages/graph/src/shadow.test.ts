@@ -18,10 +18,7 @@ test('graph transition mode defaults to off and rejects unknown values', () => {
   assert.equal(parseGraphTransitionMode('  '), 'off');
   assert.equal(parseGraphTransitionMode('dual-write'), 'dual-write');
   assert.equal(parseGraphTransitionMode('dual-write-shadow-read'), 'dual-write-shadow-read');
-  assert.throws(
-    () => parseGraphTransitionMode('relational-primary'),
-    /Invalid graph transition mode/,
-  );
+  assert.throws(() => parseGraphTransitionMode('unknown-mode'), /Invalid graph transition mode/);
 });
 
 test('off mode reads only AGE and returns the identical primary value', async () => {

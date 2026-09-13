@@ -35,7 +35,10 @@ import {
   withReadOnlyTransaction,
 } from './postgres-relational-read-sql.js';
 
-export { deriveRelationalGraphNodeKindSubtype } from './postgres-relational-common.js';
+export {
+  deriveRelationalGraphNodeKindSubtype,
+  GraphReadUnavailableError,
+} from './postgres-relational-common.js';
 export { parseRelationalGraphReadRow, type RelationalGraphReadRow };
 
 const PRESET_DESCRIPTIONS: Readonly<Record<GraphPresetId, string>> = {
@@ -54,13 +57,27 @@ export function relationalGraphPresetPreview(presetId: GraphPresetId): string {
  * Creates the PostgreSQL relational-table implementation of provider-neutral graph reads.
  *
  * @param sql - A postgres.js connection used for project-scoped read-only graph queries.
+ * @param options - Strict classification is required for primary routing; legacy shadow behavior is unchanged.
  */
 export function createPostgresRelationalGraphReadRepository(
   sql: postgres.Sql,
+  options: { readonly strictUnavailable?: boolean } = {},
 ): GraphReadRepository {
+  function checkFailure(error: unknown): void {
+    if (options.strictUnavailable && !isRecoverableReadFailure(error)) throw error;
+  }
+  function validateProject(projectId: string): void {
+    requireProjectId(projectId);
+    if (
+      options.strictUnavailable &&
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId)
+    ) {
+      throw new Error('Invalid graph project identifier.');
+    }
+  }
   return {
     async countDocumentNode(input) {
-      requireProjectId(input.projectId);
+      validateProject(input.projectId);
       requireNonEmptyString(input.graphNodeId, 'graphNodeId');
       try {
         return await withReadOnlyTransaction(sql, async (transaction) => {
@@ -74,11 +91,12 @@ export function createPostgresRelationalGraphReadRepository(
           return parseGraphCountFromRows(rows, 'document node count');
         });
       } catch (error) {
+        checkFailure(error);
         throwReadUnavailable('count_document_node', error);
       }
     },
     async countRelations(input) {
-      requireProjectId(input.projectId);
+      validateProject(input.projectId);
       requireNonEmptyString(input.graphNodeId, 'graphNodeId');
       const relationTypes = parseGraphRelationTypes(input.relationTypes);
       if (relationTypes.length === 0) {
@@ -108,11 +126,25 @@ export function createPostgresRelationalGraphReadRepository(
           return counts;
         });
       } catch (error) {
+        checkFailure(error);
         throwReadUnavailable('count_relations', error);
       }
     },
     async findRelatedDocuments(input) {
-      requireProjectId(input.projectId);
+      validateProject(input.projectId);
+      if (options.strictUnavailable) {
+        for (const id of input.seedDocumentIds) requireNonEmptyString(id, 'seedDocumentId');
+        for (const [relation, limit] of Object.entries(input.relationLimits ?? {})) {
+          if (
+            !Object.hasOwn(GRAPH_RELATED_DOCUMENT_POOL_LIMITS, relation) ||
+            typeof limit !== 'number' ||
+            !Number.isSafeInteger(limit) ||
+            limit < 0
+          ) {
+            throw new Error('Invalid graph relation limit.');
+          }
+        }
+      }
       const seedDocumentIds = [...new Set(input.seedDocumentIds)].slice(0, 10);
       if (seedDocumentIds.length === 0) {
         return { candidates: [], status: 'success' };
@@ -144,13 +176,17 @@ export function createPostgresRelationalGraphReadRepository(
         });
         return { candidates, status: 'success' };
       } catch (error) {
+        checkFailure(error);
         logRelationalReadUnavailable('find_related_documents', error);
         return { candidates: [], status: 'unavailable' };
       }
     },
     async readPreset(input) {
-      requireProjectId(input.projectId);
+      validateProject(input.projectId);
       const presetId = parseGraphPresetId(input.presetId);
+      if (options.strictUnavailable) {
+        for (const id of input.documentGraphNodeIds) requireNonEmptyString(id, 'graphNodeId');
+      }
       const preview = relationalGraphPresetPreview(presetId);
       const documentGraphNodeIds = [...new Set(input.documentGraphNodeIds)];
       if (documentGraphNodeIds.length === 0) {
@@ -181,10 +217,40 @@ export function createPostgresRelationalGraphReadRepository(
           rowCount: normalized.rawRows.length,
         });
       } catch (error) {
+        checkFailure(error);
         throwReadUnavailable('read_preset', error);
       }
     },
   };
+}
+
+/** Only known SQL/transport availability failures may trigger a second backend read. */
+function isRecoverableReadFailure(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null || !('code' in error)) return false;
+  const code = error.code;
+  return (
+    typeof code === 'string' &&
+    [
+      '08000',
+      '08001',
+      '08003',
+      '08006',
+      '42P01',
+      '57014',
+      '57P01',
+      '57P02',
+      '57P03',
+      '53300',
+      '53400',
+      'CONNECTION_CLOSED',
+      'CONNECTION_ENDED',
+      'CONNECT_TIMEOUT',
+      'ECONNRESET',
+      'ECONNREFUSED',
+      'ETIMEDOUT',
+      'EPIPE',
+    ].includes(code)
+  );
 }
 
 function requireProjectId(projectId: string): void {

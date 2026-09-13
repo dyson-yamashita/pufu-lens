@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { GRAPH_EDGE_TYPES, GRAPH_PRESET_IDS } from '@pufu-lens/graph';
 import { createPostgresRelationalGraphMutationRepository } from '@pufu-lens/graph/postgres-relational-mutation';
 import { createPostgresRelationalGraphReadRepository } from '@pufu-lens/graph/postgres-relational-read';
+import { createGraphPrimaryReadRepository } from '@pufu-lens/graph/shadow';
 import { MemoryObjectStorage } from '@pufu-lens/storage/testing';
 import postgres from 'postgres';
 import { type GraphViewerRepository, runGraphPresetQuery } from './graph-viewer.ts';
@@ -23,7 +24,23 @@ if (!databaseUrl) {
 
 const sql = postgres(databaseUrl, { max: 1 });
 const mutationRepository = createPostgresRelationalGraphMutationRepository(sql);
-const graphReadRepository = createPostgresRelationalGraphReadRepository(sql);
+const graphReadRepository = createGraphPrimaryReadRepository({
+  primary: createPostgresRelationalGraphReadRepository(sql, { strictUnavailable: true }),
+  fallback: {
+    countDocumentNode: async () => {
+      assert.fail('healthy relational count must not fall back');
+    },
+    countRelations: async () => {
+      assert.fail('healthy relational relations must not fall back');
+    },
+    findRelatedDocuments: async () => {
+      assert.fail('healthy relational search must not fall back');
+    },
+    readPreset: async () => {
+      assert.fail('healthy relational preset must not fall back');
+    },
+  },
+});
 
 const projectId = '10000000-0000-0000-0000-000000000714';
 const otherProjectId = '10000000-0000-0000-0000-000000007141';
