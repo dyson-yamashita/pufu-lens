@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { parse as parseYaml } from 'yaml';
@@ -21,7 +22,12 @@ const deploy = parseYaml(deployYaml) as {
   substitutions?: Record<string, string>;
 };
 
-const CANONICAL_GRAPH_TRANSITION_MODES = ['off', 'dual-write', 'dual-write-shadow-read'] as const;
+const CANONICAL_GRAPH_TRANSITION_MODES = [
+  'off',
+  'dual-write',
+  'dual-write-shadow-read',
+  'relational-primary',
+] as const;
 
 function extractStepScript(deployYamlContent: string, stepId: string): string {
   const stepStart = deployYamlContent.indexOf(`- id: ${stepId}`);
@@ -66,10 +72,10 @@ test('validate-deploy-substitutions accepts canonical graph transition modes and
   const validateScript = extractStepScript(deployYaml, 'validate-deploy-substitutions');
 
   assert.match(validateScript, /case "\$\{_GRAPH_TRANSITION_MODE\}"/);
-  assert.match(validateScript, /off\|dual-write\|dual-write-shadow-read\) ;;/);
+  assert.match(validateScript, /off\|dual-write\|dual-write-shadow-read\|relational-primary\) ;;/);
   assert.match(
     validateScript,
-    /echo "_GRAPH_TRANSITION_MODE must be off, dual-write, or dual-write-shadow-read\." >&2/,
+    /echo "_GRAPH_TRANSITION_MODE must be off, dual-write, dual-write-shadow-read, or relational-primary\." >&2/,
   );
   assert.match(validateScript, /\*\)\s*\n\s*echo "_GRAPH_TRANSITION_MODE/);
 
@@ -78,6 +84,21 @@ test('validate-deploy-substitutions accepts canonical graph transition modes and
       validateScript.includes(mode),
       `validate-deploy-substitutions must allow graph transition mode ${mode}`,
     );
+  }
+});
+
+test('graph mode validation shell accepts all supported modes and rejects unknown values', () => {
+  const block = extractStepScript(deployYaml, 'validate-deploy-substitutions').match(
+    /case "\$\{_GRAPH_TRANSITION_MODE\}" in[\s\S]*?esac/,
+  )?.[0];
+  assert.ok(block);
+  for (const value of [...CANONICAL_GRAPH_TRANSITION_MODES, '', 'relational-only', 'unknown']) {
+    const result: SpawnSyncReturns<string> = spawnSync('bash', ['-c', block], {
+      env: { ...process.env, _GRAPH_TRANSITION_MODE: value },
+      encoding: 'utf8',
+    });
+    const accepted = CANONICAL_GRAPH_TRANSITION_MODES.some((mode) => mode === value);
+    assert.equal(result.status, accepted ? 0 : 1, `${value}: ${result.stderr}`);
   }
 });
 
@@ -112,11 +133,11 @@ test('deploy-workflow-jobs passes PUFU_LENS_GRAPH_TRANSITION_MODE to every env s
   );
 });
 
-test('production App Hosting declares runtime-only PUFU_LENS_GRAPH_TRANSITION_MODE dual-write-shadow-read', () => {
+test('production App Hosting prepares runtime-only PUFU_LENS_GRAPH_TRANSITION_MODE relational-primary', () => {
   const config = parseAppHostingConfig(productionAppHosting);
   const entry = findAppHostingEnvEntry(config, 'PUFU_LENS_GRAPH_TRANSITION_MODE');
   assert.ok(entry, 'PUFU_LENS_GRAPH_TRANSITION_MODE env entry is required');
-  assert.equal(entry.value, 'dual-write-shadow-read');
+  assert.equal(entry.value, 'relational-primary');
   assert.deepEqual(entry.availability, ['RUNTIME']);
 });
 

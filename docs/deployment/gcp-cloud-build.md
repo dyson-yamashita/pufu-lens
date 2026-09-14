@@ -93,8 +93,12 @@ private PostgreSQL VM を使う場合、default Cloud Build worker pool から D
 ActivityPub dispatcher を有効にする trigger は `_ACTIVITYPUB_CANONICAL_ORIGIN`、`_ACTIVITYPUB_DISPATCHER_JOB`、`_ACTIVITYPUB_DISPATCHER_SCHEDULER`、固定 Mastra service URL の `_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE`、designated Scheduler SA の numeric subject を指定する `_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT`、Actor key暗号化secret名の `_ACTIVITYPUB_ACTOR_KEY_SECRET` を必須にする。canonical origin は公開 Web / federation origin、OIDC audience は内部 route を提供する Mastra service の固定 URL であり、同一値とは限らない。どちらも request の Host や外部入力から組み立てない。secret実値やOIDC tokenをsubstitutionへ入れない。
 
 graph移行profileはCloud Buildの`_GRAPH_TRANSITION_MODE`でMastra Serverと全Workflow Jobsへ配る。既定は`off`とし、
-`off` / `dual-write` / `dual-write-shadow-read`以外をdeploy前に拒否する。Webは環境別の`apps/web/apphosting.yaml`から
+`off` / `dual-write` / `dual-write-shadow-read` / `relational-primary`以外をdeploy前に拒否する。Webは環境別の`apps/web/apphosting.yaml`から
 同名の`PUFU_LENS_GRAPH_TRANSITION_MODE`を読むため、本番有効化・rollbackではtriggerとtracked App Hosting設定を同じ値に揃える。
+
+Issue #740ではtracked Webを`relational-primary`へ切り替える設定を準備する。本番は引き続き`dual-write-shadow-read`で、
+mergeだけではbuildを承認しない。切替条件、直前backup、全unitのmode照合、切り戻しは
+[Step 2E切替準備](../operations/graph-relations.md#step-2e-切替設定準備issue-7402026-09-14)に従う。
 request / project入力や`NEXT_PUBLIC_*`でmodeを上書きしない。
 
 `_RUN_DB_MIGRATIONS=false` にして deploy 時 migration を skip する場合は、IAP tunnel を張った管理端末、private pool、または利用者環境のネットワーク設計に合わせて `pnpm db:migrate` を手動実行し、runtime rollout 前に schema を揃える。

@@ -538,6 +538,16 @@ compare CLI成功検証を追加した。構造差分の合計出力名はnode /
   rollback window、本番切替承認は独立gate。実装準備の承認で本番設定変更・deploy・切替・AGE write停止・cleanupは行わない。
 - 切替・切り戻しの契約は[Graph運用文書](../../operations/graph-relations.md)を参照する。
 
+#### 2E切替設定準備（2026-09-14、Issue #740）
+
+- PR #739は`797f631`でmainへmerge済み。本番は全unit `dual-write-shadow-read`のまま。
+- 同Stepの継続として最新mainからIssue #740 branchでCloud Buildの許可値拡張とtracked Webの
+  `relational-primary`設定、drift test、切替・切り戻し手順を準備する。設定準備は`active`、本番切替は未承認。
+- read 1件・mutation 11件のmatchを確認したが、代表query・性能・費用のgate合格とはしない。
+  直前restore point、最低7日のrollback window、live migration pending 0、本番承認を残す。
+- trigger / build承認・本番deploy・AGE write停止・cleanupは行わない。
+  [運用手順](../../operations/graph-relations.md#step-2e-切替設定準備issue-7402026-09-14)を参照する。
+
 ### 目的
 
 Pufu Lens が使う bounded graph capability を通常の relational node / edge schema で実装し、まず GCP
