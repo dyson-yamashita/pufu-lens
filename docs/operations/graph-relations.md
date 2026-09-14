@@ -7,7 +7,30 @@ Plan 018 Step 2A では移行先として `graph_nodes` / `graph_edges` schema�
 relational adapterを検証する。Step 2Dではproduction composition rootをAGE-primaryのtransition factoryへ統一した。
 Issue #723はCloud Buildの安全な既定を`off`に保ったまま、production Web / Mastra / Workflow Jobsを`dual-write`へ揃える
 rollout configを追加し、2026-09-05にdeployした。Issue #726では観測修正の先行反映後、2026-09-12のユーザーによる
-残余リスク承認に基づきtracked Webを`dual-write-shadow-read`へ変更する。本番への反映は別途承認待ちで、稼働modeは`dual-write`のままである。
+残余リスク承認に基づき`dual-write-shadow-read`へ変更し、PR #737まで2026-09-12に本番反映済みである。
+全unitの稼働modeは`dual-write-shadow-read`。以下の過去の設定準備記録は当時の状態を示す。
+
+### Relational優先読み取りの実装準備（Step 2E / Issue #738）
+
+- server-only `relational-primary`を追加する。Web compositionでrelational readを先行し、mutationは既存の
+  AGE→relational dual-writeとcaller-owned transactionの原子性を維持する。request / project overrideは追加しない。
+- 正常な0件・空配列・空presetは確定結果とし、AGEを読まない。正規化済み利用不能または応答timeoutのみ1回fallbackする。
+  厳格なrelational adapterは接続障害、table未作成、SQL timeout、shutdown / capacityの既知codeだけを利用不能にする。
+  入力不正、SQL認可拒否、未知の例外・不正rowはそのまま失敗し、AGEへ迂回しない。既存modeの例外契約は維持する。
+- 各backendの外側応答deadlineは6秒、合計最大約12秒。adapterのSQL timeoutは5秒のまま。
+  外側deadlineはDB処理のcancelではなく、複数SQLやpool待ちが残る可能性がある。両backendは同じPostgreSQLを使うため、
+  DB全体障害への冗長性はない。AGE fallbackも失敗・timeoutなら関連文書検索は空候補の`unavailable`、count / presetは
+  固定`GraphReadUnavailableError`を返し、生の二重失敗情報を応答へ追加しない。
+- `graph_primary_read_observation`は全readで固定operation / outcome / reason / providerとlatencyだけを記録する。
+  project / node / document ID、query、properties、error本文は含めない。観測失敗・未完了は応答を遅延させない。
+- API shape、graphNodeId、candidate relation / hop / orderはadapterの既存契約を維持する。presetのprovider固有ID / preview /
+  rawRows内容は選択backendのものになる。認可は既存のpublic / private入口で完了させ、同じproject-scoped入力でfallbackする。
+- このPRは本番設定・deployを変更しない。Cloud Buildの許可値拡張も切替設定PRに残す。切り戻しは全unitを
+  `dual-write-shadow-read`へ戻し、AGE / relational dataを保持する。AGE write停止・cleanupは別工程。
+- PR #737の本番build `a8e2c485-7a2d-46b9-9f1f-c387a14fef4c`はSUCCESS。2026-09-13のread_preset match 1件と
+  mutation match 5件・対象error 0件は誤検知修正の確認であり、全project gate合格ではない。ログはproject識別子を含まない。
+  既存compareの開発project差分、性能sample不足はIssue #726のリスク受容として残す。代表query coverage、費用、
+  restore point / rollback window、本番切替承認は独立gateであり、この実装の検証成功で置き換えない。
 
 Plan 018 Step 2C では、source dataからrelational graphをproject単位で再構築し、AGEとの構造差分を監査する
 operator CLIを追加した。CLIはproduction compositionへ接続せず、AGE primary read / writeも変更しない。
@@ -99,11 +122,12 @@ productionのrebuild / compare、live AGE inventory、deploy、read / write切�
 
 `PUFU_LENS_GRAPH_TRANSITION_MODE`はdeployment単位のserver-only設定である。request、project、API inputから変更しない。
 
-| 値                       | write                                  | read                                 |
-| ------------------------ | -------------------------------------- | ------------------------------------ |
-| 未設定 / 空 / `off`      | AGEのみ                                | AGEのみ                              |
-| `dual-write`             | AGE primaryの後にrelationalへ全件write | AGEのみ                              |
-| `dual-write-shadow-read` | AGE primaryの後にrelationalへ全件write | AGEを返し、固定10%でrelationalを比較 |
+| 値                       | write                                  | read                                                               |
+| ------------------------ | -------------------------------------- | ------------------------------------------------------------------ |
+| 未設定 / 空 / `off`      | AGEのみ                                | AGEのみ                                                            |
+| `dual-write`             | AGE primaryの後にrelationalへ全件write | AGEのみ                                                            |
+| `dual-write-shadow-read` | AGE primaryの後にrelationalへ全件write | AGEを返し、固定10%でrelationalを比較                               |
+| `relational-primary`     | AGE primaryの後にrelationalへ全件write | relational優先、利用不能・timeout時のみAGEへfallback。本番未有効化 |
 
 未知の値は起動後のcomposition時にfail closedする。shadow readはAGE primary完了後に実行し、外側6秒、adapter SQL 5秒の
 timeoutを適用する。shadowのtimeout / error / mismatch、観測出力の失敗でuser responseは変えず、AGE結果を返す。

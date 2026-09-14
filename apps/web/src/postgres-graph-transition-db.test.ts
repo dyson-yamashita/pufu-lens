@@ -9,6 +9,7 @@ import {
 } from '@pufu-lens/graph/shadow';
 import postgres from 'postgres';
 import { createPostgresAgeGraphReadRepository } from './postgres-graph-read-adapter.ts';
+import { createPostgresGraphTransitionReadRepository } from './postgres-graph-transition.ts';
 
 const databaseUrl = process.env.DATABASE_URL?.trim();
 if (!databaseUrl) {
@@ -22,9 +23,14 @@ const committedNode = 'document:issue-718-committed';
 const rollbackNode = 'document:issue-718-rollback';
 const cleanupRollbackNode = 'document:issue-718-cleanup-rollback';
 
-await main();
+try {
+  await main('dual-write');
+  await main('relational-primary');
+} finally {
+  await sql.end();
+}
 
-async function main(): Promise<void> {
+async function main(transitionMode: 'dual-write' | 'relational-primary'): Promise<void> {
   try {
     await resetFixture();
     await sql`
@@ -43,17 +49,28 @@ async function main(): Promise<void> {
     await sql.begin(async (tx) => {
       await createPostgresGraphTransitionMutationRepository(tx, {
         observer: () => undefined,
-        transitionMode: 'dual-write',
+        transitionMode,
       }).upsertNode(nodeInput(committedNode));
     });
     await assertCounts(committedNode, 1);
+    const primaryReader = createPostgresGraphTransitionReadRepository(sql, {
+      transitionMode: 'relational-primary',
+    });
+    assert.equal(
+      await primaryReader.countDocumentNode({ projectId, graphNodeId: committedNode }),
+      1,
+    );
+    assert.equal(
+      await primaryReader.countDocumentNode({ projectId, graphNodeId: 'document:missing' }),
+      0,
+    );
 
     await assert.rejects(
       () =>
         sql.begin(async (tx) => {
           const relational = createPostgresRelationalGraphMutationRepository(tx);
           const repository = createGraphShadowMutationRepository({
-            mode: 'dual-write',
+            mode: transitionMode,
             primary: createPostgresAgeGraphMutationRepository(tx),
             shadow: {
               ...relational,
@@ -72,7 +89,7 @@ async function main(): Promise<void> {
     await sql.begin(async (tx) => {
       await createPostgresGraphTransitionMutationRepository(tx, {
         observer: () => undefined,
-        transitionMode: 'dual-write',
+        transitionMode,
       }).upsertNode(nodeInput(rollbackNode));
     });
     await assertCounts(rollbackNode, 1);
@@ -80,7 +97,7 @@ async function main(): Promise<void> {
     await sql.begin(async (tx) => {
       await createPostgresGraphTransitionMutationRepository(tx, {
         observer: () => undefined,
-        transitionMode: 'dual-write',
+        transitionMode,
       }).upsertNode(nodeInput(cleanupRollbackNode));
     });
     await assertCounts(cleanupRollbackNode, 1);
@@ -90,7 +107,7 @@ async function main(): Promise<void> {
         sql.begin(async (tx) => {
           const relational = createPostgresRelationalGraphMutationRepository(tx);
           const repository = createGraphShadowMutationRepository({
-            mode: 'dual-write',
+            mode: transitionMode,
             primary: createPostgresAgeGraphMutationRepository(tx),
             shadow: {
               ...relational,
@@ -112,7 +129,7 @@ async function main(): Promise<void> {
     await sql.begin(async (tx) => {
       await createPostgresGraphTransitionMutationRepository(tx, {
         observer: () => undefined,
-        transitionMode: 'dual-write',
+        transitionMode,
       }).deleteDocumentGraphNodes({ graphNodeIds: [cleanupRollbackNode], projectId });
     });
     await assertCounts(cleanupRollbackNode, 0);
@@ -120,7 +137,6 @@ async function main(): Promise<void> {
     console.log('graph transition database tests passed');
   } finally {
     await resetFixture();
-    await sql.end();
   }
 }
 

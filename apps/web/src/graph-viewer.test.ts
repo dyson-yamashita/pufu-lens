@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import type { GraphReadRepository } from '@pufu-lens/graph';
+import { GraphReadUnavailableError } from '@pufu-lens/graph/postgres-relational-read';
+import { createGraphPrimaryReadRepository } from '@pufu-lens/graph/shadow';
 import {
   countGraphDocumentNodes,
   fetchGraphDocumentChunks,
@@ -415,6 +417,63 @@ await assert.rejects(
     ),
   GraphAccessDeniedError,
 );
+
+for (const unavailable of [false, true]) {
+  const reads: string[] = [];
+  const base: GraphReadRepository = {
+    ...createGraphReadRepository(),
+    countDocumentNode: async () => 0,
+    countRelations: async () => ({}),
+    findRelatedDocuments: async () => ({ candidates: [], status: 'success' }),
+  };
+  const graphReadRepository = createGraphPrimaryReadRepository({
+    primary: {
+      ...base,
+      readPreset: async (input) => {
+        reads.push('relational');
+        if (unavailable) throw new GraphReadUnavailableError();
+        return base.readPreset(input);
+      },
+    },
+    fallback: {
+      ...base,
+      readPreset: async (input) => {
+        reads.push('AGE');
+        return base.readPreset(input);
+      },
+    },
+  });
+  const dependencies = { graphReadRepository, repository: createRepository(50) };
+  for (const publicly of [false, true]) {
+    const input = { projectSlug: 'sample-a', queryId: 'recent-relations', userId: 'user-a' };
+    const response = await (publicly ? runPublicGraphPresetQuery : runGraphPresetQuery)(
+      input,
+      dependencies,
+    );
+    assert.equal(response.nodes.length, result.nodes.length);
+    assert.equal(response.graphName, result.graphName);
+  }
+  assert.deepEqual(
+    reads,
+    unavailable ? ['relational', 'AGE', 'relational', 'AGE'] : ['relational', 'relational'],
+  );
+  reads.length = 0;
+  await assert.rejects(
+    runGraphPresetQuery(
+      { projectSlug: 'sample-b', queryId: 'recent-relations', userId: 'user-a' },
+      dependencies,
+    ),
+    GraphAccessDeniedError,
+  );
+  await assert.rejects(
+    runPublicGraphPresetQuery(
+      { projectSlug: 'missing-public', queryId: 'recent-relations' },
+      dependencies,
+    ),
+    GraphAccessDeniedError,
+  );
+  assert.deepEqual(reads, []);
+}
 
 assert.equal(normalizeGraphLimit(1), 1);
 assert.equal(normalizeGraphLimit(500), 500);

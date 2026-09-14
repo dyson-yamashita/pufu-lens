@@ -270,12 +270,15 @@ connection / CPU costを観測する。異常時はproduction App Hostingとtrig
 Mastra Server、production 6 Workflow Jobsのmodeを`dual-write`へ揃えた。readはAGE primaryを維持し、shadow read、
 relational primary switch、AGE停止・削除は実施していない。
 
-Issue #726の観測修正とOAuth参照の先行反映はPR #734まで完了し、本番は`dual-write`を維持する。
-2026-09-12にユーザーが差分と性能の残余リスクを了承したため、tracked App Hostingを`dual-write-shadow-read`へ変更する。
-これは技術的なcompare pass / 十分な性能実測ではなく、設定PR準備の承認である。本番反映は別途承認を要する。
-承認後に最新main、snapshot `READY`、migration pending 0を確認し、既存OAuth参照を保持してtriggerの`_GRAPH_TRANSITION_MODE`を`dual-write-shadow-read`へ更新する。
-更新後の新buildでWeb / Mastra / 6 Jobsを揃え、古いmode不一致buildは承認しない。
+Issue #726の観測修正とOAuth参照の先行反映後、2026-09-12にshadow readとPR #737の比較正規化修正まで本番反映済み。
+Web / Mastra / 6 Jobsは全unit `dual-write-shadow-read`で、OAuth参照を維持する。
+ユーザーによる差分と性能の残余リスク受容は、技術的なcompare pass / 十分な性能実測とは扱わない。
 詳細は[リスク受容と設定準備](../../operations/graph-relations.md#2026-09-12-更新差分性能のリスク受容と設定準備)を参照。
+
+Step 2E / Issue #738ではapplicationへ`relational-primary`を追加するが、本番設定・deploy・切替は行わない。
+Cloud Buildの許可値は既存3値を維持し、拡張は本番gate確認後の切替設定PRに含める。代表query / 性能 / 費用、
+restore point / rollback window、本番切替承認を確認してから全unitを揃える。切り戻しは全unit
+`dual-write-shadow-read`とし、両graphのデータを保持する。AGE write停止・cleanupは別工程とする。
 
 `apps/web/apphosting.yaml` の最小例（Issue #723のdual-write rollout時点）：
 

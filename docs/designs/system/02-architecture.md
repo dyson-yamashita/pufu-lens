@@ -129,6 +129,13 @@ Cloud Buildの既定は`off`を維持し、production triggerからMastra Server
 App Hostingもserver runtimeだけに同じ値を設定し、request / project overrideや`NEXT_PUBLIC_*`は追加しない。
 AGE primaryの応答契約、認可、module境界は維持し、shadow readとrelational primaryは別の承認済みdeployへ残す。
 
+Step 2E / Issue #738ではserver-only `relational-primary`の読み取りcompositionを追加する。relationalの正常空結果を
+確定結果とし、既知の利用不能・timeoutのみ同じ入力でAGEへ1回fallbackする。入力不正・認可拒否は再試行しない。
+各backendの応答deadlineは6秒。二重失敗は既存の関連文書`unavailable`または固定count / preset例外へ統一する。
+書き込みはAGE→relational dual-writeを維持する。既定`off`と本番`dual-write-shadow-read`を変更しない。
+本番shadow readはPR #737まで反映済み。relational主系切替は未実施で、性能・費用・restore / rollback・承認gateを残す。
+詳細は[Graph運用文書](../../operations/graph-relations.md)を参照する。
+
 ### 2. コンポーネント役割
 
 | コンポーネント      | 役割                                                                                                         | デプロイ先                              |

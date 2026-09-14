@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import type { GraphPrimaryReadObservation, GraphShadowObservation } from '@pufu-lens/graph/shadow';
 import type postgres from 'postgres';
 import {
   createPostgresGraphTransitionMutationRepository,
@@ -16,6 +17,48 @@ const productionCompositionFiles = [
   './chat.ts',
   './synthetic-monitor-route-handler.ts',
 ] as const;
+
+test('relational-primary composition reads relational rows without resolving an AGE graph', async () => {
+  let reads = 0;
+  const observations: (GraphPrimaryReadObservation | GraphShadowObservation)[] = [];
+  const transaction = async (strings: TemplateStringsArray) => {
+    const query = strings.join('?');
+    if (query.includes('SELECT')) {
+      assert.match(query, /public\.graph_nodes/);
+      reads++;
+      return [{ count: 7 }];
+    }
+    return [];
+  };
+  const sql = Object.assign(
+    () => {
+      assert.fail('AGE project lookup must not run');
+    },
+    {
+      begin: async (callback: (tx: typeof transaction) => Promise<unknown>) =>
+        callback(transaction),
+    },
+  ) as unknown as postgres.Sql;
+  const reader = createPostgresGraphTransitionReadRepository(sql, {
+    transitionMode: 'relational-primary',
+    observer: async (observation) => {
+      observations.push(observation);
+      throw new Error('observer failure must not change the read');
+    },
+  });
+  assert.equal(
+    await reader.countDocumentNode({
+      projectId: '73800000-0000-0000-0000-000000000001',
+      graphNodeId: 'document:fixture',
+    }),
+    7,
+  );
+  assert.equal(reads, 1);
+  assert.equal(observations.length, 1);
+  assert.equal(observations[0]?.event, 'graph_primary_read_observation');
+  assert.equal(observations[0]?.outcome, 'success');
+  assert.doesNotMatch(JSON.stringify(observations), /73800000|document:fixture|SELECT/);
+});
 
 test('transition composition fails closed for an invalid deployment mode', () => {
   const sql = {} as postgres.Sql;

@@ -9,7 +9,16 @@ import type {
 } from './index.js';
 
 /** Server-owned migration profile for the AGE to relational graph transition. */
-export type GraphTransitionMode = 'off' | 'dual-write' | 'dual-write-shadow-read';
+export type GraphTransitionMode =
+  | 'off'
+  | 'dual-write'
+  | 'dual-write-shadow-read'
+  | 'relational-primary';
+
+export {
+  createGraphPrimaryReadRepository,
+  type GraphPrimaryReadObservation,
+} from './primary-read.js';
 
 /** Read and mutation operations that can emit sanitized transition observations. */
 export type GraphShadowOperation =
@@ -96,7 +105,11 @@ export function parseGraphTransitionMode(value: string | undefined): GraphTransi
   if (!normalized) {
     return 'off';
   }
-  if (normalized === 'dual-write' || normalized === 'dual-write-shadow-read') {
+  if (
+    normalized === 'dual-write' ||
+    normalized === 'dual-write-shadow-read' ||
+    normalized === 'relational-primary'
+  ) {
     return normalized;
   }
   if (normalized === 'off') {
