@@ -47,8 +47,23 @@ substitutions:
   _CONNECTION_SECRET_KEY_REF: ''
 
 steps:
+  - id: validate-production-graph-mode
+    name: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/firebase-tools:${_FIREBASE_TOOLS_VERSION}
+    entrypoint: bash
+    env:
+      - 'DEPLOY_ENV=${_ENV}'
+      - 'GRAPH_TRANSITION_MODE=${_GRAPH_TRANSITION_MODE}'
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        export NODE_PATH="$$(npm root -g)/firebase-tools/node_modules"
+        node scripts/validate-production-graph-mode.cjs
+
   - id: validate-deploy-substitutions
     name: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+    waitFor:
+      - validate-production-graph-mode
     entrypoint: bash
     env:
       - 'GOOGLE_CLIENT_ID_SECRET_REF=${_GOOGLE_CLIENT_ID_SECRET_REF}'
@@ -248,9 +263,9 @@ steps:
         fi
 
         case "${_GRAPH_TRANSITION_MODE}" in
-          off|dual-write|dual-write-shadow-read) ;;
+          off|dual-write|dual-write-shadow-read|relational-primary) ;;
           *)
-            echo "_GRAPH_TRANSITION_MODE must be off, dual-write, or dual-write-shadow-read." >&2
+            echo "_GRAPH_TRANSITION_MODE must be off, dual-write, dual-write-shadow-read, or relational-primary." >&2
             exit 1
             ;;
         esac

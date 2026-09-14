@@ -10,7 +10,7 @@ rollout configを追加し、2026-09-05にdeployした。Issue #726では観測�
 残余リスク承認に基づき`dual-write-shadow-read`へ変更し、PR #737まで2026-09-12に本番反映済みである。
 全unitの稼働modeは`dual-write-shadow-read`。以下の過去の設定準備記録は当時の状態を示す。
 
-### Relational優先読み取りの実装準備（Step 2E / Issue #738）
+### Relational優先読み取りの実装（Step 2E / Issue #738、PR #739 merge済み）
 
 - server-only `relational-primary`を追加する。Web compositionでrelational readを先行し、mutationは既存の
   AGE→relational dual-writeとcaller-owned transactionの原子性を維持する。request / project overrideは追加しない。
@@ -31,6 +31,43 @@ rollout configを追加し、2026-09-05にdeployした。Issue #726では観測�
   mutation match 5件・対象error 0件は誤検知修正の確認であり、全project gate合格ではない。ログはproject識別子を含まない。
   既存compareの開発project差分、性能sample不足はIssue #726のリスク受容として残す。代表query coverage、費用、
   restore point / rollback window、本番切替承認は独立gateであり、この実装の検証成功で置き換えない。
+
+### Step 2E 切替設定準備（Issue #740、2026-09-14）
+
+PR #739はmerge commit `797f631`でmainへmerge済み、本番未反映。Issue #740は同Stepの継続としてCloud Buildの許可値へ
+`relational-primary`を追加し、tracked Webを同modeにする設定PRを準備する。OSS / Cloud Build既定は`off`を維持する。
+本番buildの先頭でtriggerとtracked Webのmodeを機械的に照合し、不一致や設定不備は全deploy・migrationより前に拒否する。
+この照合は`_FIREBASE_DEPLOY=false`でも実行し、Web稼働値の確認は引き続き別途必要となる。
+これは本番適用の承認ではなく、以下のgate確認と明示承認までtrigger変更・build承認を行わない。
+
+#### 読み取りで確認した現在値
+
+- Web `pufu-lens-web-build-2026-09-12-002`、Mastra `mastra-server-00112-mjx`、production 6 Jobsは
+  全unit `dual-write-shadow-read`。旧名のnon-production Jobsは切替対象に含めない。
+- 最新pending build `f3326640-e4db-4dae-b674-68ed2c09abe5`はmain `797f631`と一致するが、modeは
+  `dual-write-shadow-read`。これは主系切替用buildではなく、この準備では承認しない。
+- `pg-ai-data-pre-shadow-read-20260912`はREADY。新snapshot作成、restore試験、live migration照合は今回未実施。
+  PR #739でmigrationファイル変更はないが、切替直前のlive pending 0確認を省略しない。
+- 2026-09-13 00:00 UTC以降、照会時点の観測12件はread_preset match 1件、mutation match 11件。
+  primary latency最大283ms / shadow最大12ms、対象graph unavailable / Web HTTP 5xxは0件。
+  read 1件では性能・費用・全project coverageを判断できず、project対応もログ単独では断定しない。
+
+#### 適用前の判断と手順
+
+1. 代表query（2 preset、関連文書のSAME_AS / RELATED_TO / MENTIONS、count、public/private・project隔離）の
+   coverage、開発project差分、性能・費用を判断する。既存Issue #726の残余リスク受容を主系切替承認へ読み替えない。
+   常時read観測への変更によるログ量とDB read負荷も費用確認に含める。未測定の項目を残す場合は個別に判断を記録する。
+2. 切替時刻、担当、直前restore point、保存期限、復旧手順、最低7日のrollback windowを確定する。
+   直前snapshot READY、live migration pending 0、DB余力、旧revision・imageを確認し、本番切替の明示承認を得る。
+3. 設定PR merge後、既存OAuth secret参照とapproval requiredを保持してtriggerを`relational-primary`へ更新する。
+   既存pendingのsubstitutionは変わらないため、更新後の新buildだけで最新main SHA・branch・trigger・modeを照合する。
+4. 承認済みbuildでWeb / Mastra / production 6 Jobsを揃える。サービス単位のdeployは全unit同時のtransactionではないので、
+   移行中の一時的なmode混在を監視し、途中失敗時は放置せず全unitを切り戻す。AGE→relational dual-writeは常に維持する。
+5. public/private Graph、関連検索、monitor、自然起動のmutationとsanitized観測を確認する。認可・project越境、
+   応答回帰、fallback / unavailable発生、許容範囲外のDB負荷時は切り戻しを優先する。0件の観測だけでsoak完了としない。
+
+切り戻しはtracked Webを`dual-write-shadow-read`へ戻す修正とtrigger値を揃えたbuildで、全unitのmodeとAGE応答を確認する。
+DB schema / dataは削除せず、backupも保持する。fallback残存・AGE write停止・cleanupは最低7日の安定soakと別gateに従う。
 
 Plan 018 Step 2C では、source dataからrelational graphをproject単位で再構築し、AGEとの構造差分を監査する
 operator CLIを追加した。CLIはproduction compositionへ接続せず、AGE primary read / writeも変更しない。
