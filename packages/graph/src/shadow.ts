@@ -15,7 +15,10 @@ export type GraphTransitionMode =
   | 'dual-write-shadow-read'
   | 'relational-primary';
 
-export { createGraphPrimaryReadRepository } from './primary-read.js';
+export {
+  createGraphPrimaryReadRepository,
+  type GraphPrimaryReadObservation,
+} from './primary-read.js';
 
 /** Read and mutation operations that can emit sanitized transition observations. */
 export type GraphShadowOperation =

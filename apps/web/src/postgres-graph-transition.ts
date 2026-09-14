@@ -4,7 +4,8 @@ import { createPostgresGraphTransitionMutationRepository as createPackageMutatio
 import {
   createGraphPrimaryReadRepository,
   createGraphShadowReadRepository,
-  type GraphShadowObserver,
+  type GraphPrimaryReadObservation,
+  type GraphShadowObservation,
   parseGraphTransitionMode,
 } from '@pufu-lens/graph/shadow';
 import type postgres from 'postgres';
@@ -13,7 +14,10 @@ import { createPostgresAgeGraphReadRepository } from './postgres-graph-read-adap
 type GraphTransitionExecutor = postgres.Sql | postgres.TransactionSql;
 
 export interface PostgresGraphTransitionOptions {
-  readonly observer?: GraphShadowObserver;
+  /** Receives sanitized primary-read or shadow events; observer failures do not affect reads. */
+  readonly observer?: (
+    observation: GraphPrimaryReadObservation | GraphShadowObservation,
+  ) => Promise<void> | void;
   readonly random?: () => number;
   readonly transitionMode?: string;
 }
@@ -30,7 +34,7 @@ export function createPostgresGraphTransitionReadRepository(
     return createGraphPrimaryReadRepository({
       primary: createPostgresRelationalGraphReadRepository(sql, { strictUnavailable: true }),
       fallback: createPostgresAgeGraphReadRepository(sql),
-      observer: logGraphTransitionObservation,
+      observer: options.observer ?? logGraphTransitionObservation,
     });
   }
   return createGraphShadowReadRepository({
