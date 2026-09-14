@@ -36,6 +36,8 @@ rollout configを追加し、2026-09-05にdeployした。Issue #726では観測�
 
 PR #739はmerge commit `797f631`でmainへmerge済み、本番未反映。Issue #740は同Stepの継続としてCloud Buildの許可値へ
 `relational-primary`を追加し、tracked Webを同modeにする設定PRを準備する。OSS / Cloud Build既定は`off`を維持する。
+本番buildの先頭でtriggerとtracked Webのmodeを機械的に照合し、不一致や設定不備は全deploy・migrationより前に拒否する。
+この照合は`_FIREBASE_DEPLOY=false`でも実行し、Web稼働値の確認は引き続き別途必要となる。
 これは本番適用の承認ではなく、以下のgate確認と明示承認までtrigger変更・build承認を行わない。
 
 #### 読み取りで確認した現在値

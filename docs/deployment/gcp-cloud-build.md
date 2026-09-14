@@ -95,6 +95,9 @@ ActivityPub dispatcher を有効にする trigger は `_ACTIVITYPUB_CANONICAL_OR
 graph移行profileはCloud Buildの`_GRAPH_TRANSITION_MODE`でMastra Serverと全Workflow Jobsへ配る。既定は`off`とし、
 `off` / `dual-write` / `dual-write-shadow-read` / `relational-primary`以外をdeploy前に拒否する。Webは環境別の`apps/web/apphosting.yaml`から
 同名の`PUFU_LENS_GRAPH_TRANSITION_MODE`を読むため、本番有効化・rollbackではtriggerとtracked App Hosting設定を同じ値に揃える。
+先頭の`validate-production-graph-mode`が本番の両値を照合し、不一致、設定欠落、重複、runtime対象外なら
+image build・migration・Mastra・Jobs・Webの変更前に停止する。Firebase CLI builderに同梱された`yaml`で設定を解析するため、
+`_FIREBASE_DEPLOY=false`の場合も同builderが必要となる（stagingでは照合をskipする）。別release processのWeb稼働値は別途照合する。
 
 Issue #740ではtracked Webを`relational-primary`へ切り替える設定を準備する。本番は引き続き`dual-write-shadow-read`で、
 mergeだけではbuildを承認しない。切替条件、直前backup、全unitのmode照合、切り戻しは

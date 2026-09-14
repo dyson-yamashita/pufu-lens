@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 
 const deployPath = new URL(
@@ -20,7 +23,69 @@ const exampleAppHosting = await readFile(exampleAppHostingPath, 'utf8');
 
 const deploy = parseYaml(deployYaml) as {
   substitutions?: Record<string, string>;
+  steps: Array<{ id: string; waitFor?: string[]; args?: string[]; env?: string[] }>;
 };
+
+test('all Cloud Build steps depend on production graph validation before mutation', () => {
+  assert.equal(deploy.steps[0]?.id, 'validate-production-graph-mode');
+  const guarded = new Set(['validate-production-graph-mode']);
+  for (const step of deploy.steps.slice(1)) {
+    const dependencies = step.waitFor ?? [...guarded];
+    assert.ok(
+      dependencies.some((id) => guarded.has(id)),
+      `${step.id} bypasses validation`,
+    );
+    guarded.add(step.id);
+  }
+  const guard = deploy.steps[0];
+  assert.ok(guard?.args?.[1]?.includes('node scripts/validate-production-graph-mode.cjs'));
+  assert.deepEqual(guard?.env, [
+    `DEPLOY_ENV=\${_ENV}`,
+    `GRAPH_TRANSITION_MODE=\${_GRAPH_TRANSITION_MODE}`,
+  ]);
+});
+
+test('production graph guard accepts matching modes and fails closed on invalid Web configuration', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'graph-mode-'));
+  const path = join(root, 'apps/web/apphosting.yaml');
+  const script = fileURLToPath(new URL('./validate-production-graph-mode.cjs', import.meta.url));
+  await mkdir(join(root, 'apps/web'), { recursive: true });
+  const fixture = (mode: string) =>
+    `env:\n  - variable: PUFU_LENS_GRAPH_TRANSITION_MODE\n    value: '${mode}'\n    availability: [RUNTIME]\n`;
+  try {
+    const cases = [
+      ...CANONICAL_GRAPH_TRANSITION_MODES.map((mode) => ({ yaml: fixture(mode), mode, ok: true })),
+      { yaml: fixture('relational-primary'), mode: 'dual-write-shadow-read', ok: false },
+      { yaml: fixture('off'), mode: 'unknown', ok: false },
+      { yaml: 'env: []', mode: 'off', ok: false },
+      { yaml: fixture('off').replace('[RUNTIME]', '[BUILD]'), mode: 'off', ok: false },
+      { yaml: `${fixture('off')}    secret: graph-mode\n`, mode: 'off', ok: false },
+      { yaml: fixture('off') + fixture('off').replace('env:\n', ''), mode: 'off', ok: false },
+      { yaml: `${fixture('off')}    value: off\n`, mode: 'off', ok: false },
+      { yaml: 'env: [', mode: 'off', ok: false },
+    ];
+    for (const entry of cases) {
+      await writeFile(path, entry.yaml);
+      const result = spawnSync(process.execPath, [script], {
+        cwd: root,
+        env: { ...process.env, DEPLOY_ENV: 'production', GRAPH_TRANSITION_MODE: entry.mode },
+        encoding: 'utf8',
+      });
+      assert.equal(result.status, entry.ok ? 0 : 1, `${entry.yaml}: ${result.stderr}`);
+    }
+    await rm(path);
+    for (const environment of ['production', 'staging']) {
+      const result = spawnSync(process.execPath, [script], {
+        cwd: root,
+        env: { ...process.env, DEPLOY_ENV: environment, GRAPH_TRANSITION_MODE: 'off' },
+        encoding: 'utf8',
+      });
+      assert.equal(result.status, environment === 'production' ? 1 : 0);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 const CANONICAL_GRAPH_TRANSITION_MODES = [
   'off',
