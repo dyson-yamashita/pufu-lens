@@ -1,6 +1,8 @@
 # Graph / Relation 構築
 
-Step 8 では、`documents` と `actors` を AGE graph に materialize し、`email_quotes` と最小 relation を保存する。
+既存のAGE利用modeでは、`documents` と `actors` をAGE graphにmaterializeする。
+`relational-only`では`graph_nodes` / `graph_edges`のみを使い、AGE graph名を解決・参照・更新しない。
+どちらも`email_quotes`と必要なrelationを保存する。
 
 Plan 018 Step 2A では移行先として `graph_nodes` / `graph_edges` schemaをadditiveに追加し、Step 2B では同schemaを
 使うrelational Graph read / mutation adapterを追加した。ViewerとSynthetic Monitorを含むDB testは明示DIで

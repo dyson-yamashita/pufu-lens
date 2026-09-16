@@ -30,7 +30,7 @@
 │   2. parse  : 原本を解析し本文・メタデータ・引用構造を抽出           │
 │   3. resolve: 送信者・作者を actors/aliases に名寄せ              │
 │   4. chunk  : 本文をチャンク化 + embedding 生成                  │
-│   5. graph  : Document ノード + 関係を AGE グラフへ MERGE         │
+│   5. graph  : Document ノード + 関係を選択backendへ upsert       │
 └────┬─────────────────────────────────┬───────────────────────┘
      │ parsed JSON                     │ relational + graph + vector
      ▼                                  ▼
