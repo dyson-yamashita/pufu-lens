@@ -76,7 +76,10 @@ AGE write停止後はこの旧切戻し手順を使わず、下記Step 2Fに従�
 
 ### Step 2F relational-only有効化（後続の承認済みdeploy）
 
+Issue #744の設定PRをmergeしても本番承認のgateは自動で通らない。入口停止・drainはCloud Buildで自動化していない。
+
 - [ ] 最新mainの設定PRでtracked Web / triggerを揃え、approval required、OAuth参照、restore pointと保持期限を確認した。
+- [ ] App Hosting / 直接URL / Mastra / 手動Job・CLI / 3 Schedulerの停止・復帰手段を確定し、deploy中も停止を維持できる。
 - [ ] 全graph入口とScheduler / workflow起動を停止し、実行中request / Jobsと旧revisionをdrainした。
 - [ ] 全8 unitがrelational-only、旧revisionへのtraffic 0であることを確認してから再開した。
 - [ ] 最初のrelational-only write時刻、read unavailable / latency、mutation失敗・retry、DB負荷、認可拒否と機能確認を記録した。

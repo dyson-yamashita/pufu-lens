@@ -393,11 +393,13 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
 
 ## 9. Step 2: Apache AGE を relational graph schema へ置き換える
 
-> 最新状態（2026-09-16、Issue #742）: PR #739 / #741は2026-09-15 10:10 JSTに本番反映済み。
+> 最新状態（2026-09-16、Issue #744）: PR #739 / #741は2026-09-15 10:10 JSTに本番反映済み。
 > 全8 unitはrelational-primary。約25時間の限定観測に異常がなく、ユーザー指定の観測期間短縮でStep 2F開始判定OK。
 > 7日間観測達成や自然mutation全経路の確認とはしない。Step 2F第一段階は`active`、独立タスクとIssue #742で
-> relational-only read/write、AGE fallback・二重write停止、ingestion選別・project作成CLIのrelational化を実装・隔離DB検証済み（PR merge待ち）。
-> Step 2E write switch残件を停止の依存関係として含める。旧mode・本番設定は保持し、merge / deploy・破壊的削除は含めない。
+> relational-only read/write、AGE fallback・二重write停止、ingestion選別・project作成CLIのrelational化をPR #743でmerge済み。
+> Issue #744でtracked Webのrelational-only設定と回帰test・手順を準備する。同Stepの継続であり、本番反映は未実施。
+> Step 2E write switch残件も#743に含む。旧mode・OSS既定offは維持し、本番承認前に全入口停止・drain手段を確定する。
+> trigger変更・build承認・deploy・破壊的削除はこの設定準備に含めない。
 > 実測値、開発project差分の受容、混在を防ぐ停止切替、AGE停止後の復旧制約は
 > [Graph運用文書](../../operations/graph-relations.md#step-2f-relational単独運用issue-7422026-09-16)に記録する。
 > 以下の日付付き進捗は各時点の履歴である。snapshot / backup / 旧imageの保持期限は短縮しない。
