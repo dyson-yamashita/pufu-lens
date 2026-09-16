@@ -15,9 +15,13 @@ if (process.env.DEPLOY_ENV === 'production') {
       entries.length !== 1 ||
       typeof entry.value !== 'string' ||
       entry.secret !== undefined ||
-      !['off', 'dual-write', 'dual-write-shadow-read', 'relational-primary'].includes(
-        entry.value,
-      ) ||
+      ![
+        'off',
+        'dual-write',
+        'dual-write-shadow-read',
+        'relational-primary',
+        'relational-only',
+      ].includes(entry.value) ||
       (entry.availability !== undefined &&
         (!Array.isArray(entry.availability) || !entry.availability.includes('RUNTIME'))) ||
       entry.value !== process.env.GRAPH_TRANSITION_MODE

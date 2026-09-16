@@ -121,44 +121,44 @@ Production deploy triggers should require approval. After a protected branch mer
 
 Set these trigger substitutions in the user's GCP project:
 
-| substitution                                | example value                                       | note                                                                                              |
-| ------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `_ENV`                                      | `staging`                                           | Must be `staging` or `production`; passed to `deploy:smoke`.                                      |
-| `_REGION`                                   | `asia-east1`                                        | Cloud Run, Cloud Run Jobs, Artifact Registry, and App Hosting region.                             |
-| `_ARTIFACT_REPO`                            | `pufu-lens`                                         | Existing Artifact Registry Docker repository.                                                     |
-| `_RUNTIME_SERVICE_ACCOUNT`                  | `mastra-runtime@PROJECT_ID.iam.gserviceaccount.com` | Runtime identity for Cloud Run service and jobs.                                                  |
-| `_SCHEDULER_SERVICE_ACCOUNT`                | `scheduler-oidc@PROJECT_ID.iam.gserviceaccount.com` | OIDC identity for the five-minute dispatcher Schedulers and smoke checks.                         |
-| `_STORAGE_BUCKET`                           | `YOUR_STORAGE_BUCKET`                               | Object storage bucket name; do not commit the real value.                                         |
-| `_VPC_NETWORK`                              | `default`                                           | Direct VPC network used to reach private PostgreSQL.                                              |
-| `_VPC_SUBNET`                               | `pufu-lens-serverless`                              | Regional Direct VPC subnet reserved for serverless runtimes.                                      |
-| `_MASTRA_SERVICE`                           | `mastra-server`                                     | Cloud Run service name.                                                                           |
-| `_MASTRA_IMAGE`                             | `mastra-server`                                     | Artifact Registry image name for Mastra Server.                                                   |
-| `_JOBS_IMAGE`                               | `workflow-job`                                      | Artifact Registry image name for workflow jobs.                                                   |
-| `_FIREBASE_DEPLOY`                          | `true`                                              | Set to `false` only when Web deploy is handled outside Cloud Build.                               |
-| `_FIREBASE_TOOLS_VERSION`                   | `15.25.1`                                           | Firebase CLI version for Direct VPC-capable App Hosting deploy.                                   |
-| `_RUN_DB_MIGRATIONS`                        | `true`                                              | Set to `false` to skip deploy-time Cloud Run Job migration.                                       |
-| `_DB_MIGRATION_JOB`                         | `db-migrate`                                        | Cloud Run Job name used to run `pnpm db:migrate` before runtime deploy.                           |
-| `_SOURCE_SYNC_DISPATCHER_JOB`               | `source-sync-dispatcher`                            | Environment-prefixed dispatcher Cloud Run Job suffix.                                             |
-| `_SOURCE_SYNC_SCHEDULER`                    | `source-sync-dispatcher`                            | Environment-prefixed five-minute Cloud Scheduler suffix.                                          |
-| `_REPORT_SCHEDULE_DISPATCHER_JOB`           | `report-schedule-dispatcher`                        | Environment-prefixed report dispatcher Cloud Run Job suffix.                                      |
-| `_REPORT_SCHEDULE_SCHEDULER`                | `report-schedule-dispatcher`                        | Environment-prefixed five-minute report Cloud Scheduler suffix.                                   |
-| `_ACTIVITYPUB_DISPATCHER_JOB`               | `activitypub-dispatcher`                            | Environment-prefixed ActivityPub dispatcher Cloud Run Job suffix.                                 |
-| `_ACTIVITYPUB_DISPATCHER_SCHEDULER`         | `activitypub-dispatcher`                            | Environment-prefixed ActivityPub Cloud Scheduler suffix.                                          |
-| `_ACTIVITYPUB_CANONICAL_ORIGIN`             | `https://lens.example`                              | Public Web / federation origin; never derive it from request headers.                             |
-| `_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE`     | `https://mastra.example`                            | Fixed Mastra service URL used by the first revision and Scheduler token.                          |
-| `_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT` | `123456789012345678901`                             | Numeric subject of the designated Scheduler service account.                                      |
-| `_ACTIVITYPUB_ACTOR_KEY_SECRET`             | `ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY`              | Secret Manager secret name only; never put the secret value here.                                 |
-| `_CHAT_MODEL`                               | `google/gemini-2.5-flash`                           | Deploy check validates `google/...`, `openai/...`, or `anthropic/...`.                            |
-| `_CHAT_API_KEY_ENV`                         | `GEMINI_API_KEY`                                    | Runtime key name: Gemini, OpenAI, or Anthropic.                                                   |
-| `_CHAT_API_KEY_SECRET`                      | `GEMINI_API_KEY`                                    | Secret Manager secret backing the selected Chat provider.                                         |
-| `_EMBEDDING_PROVIDER`                       | `gemini`                                            | `gemini` or `openai`; shared by ingestion and query retrieval.                                    |
-| `_EMBEDDING_MODEL`                          | `gemini-embedding-2`                                | Model shared by ingestion and query retrieval.                                                    |
-| `_EMBEDDING_DIMENSIONS`                     | `1536`                                              | Must match the current pgvector schema.                                                           |
-| `_EMBEDDING_API_KEY_SECRET`                 | `GEMINI_API_KEY`                                    | Secret Manager secret backing the selected embedding provider.                                    |
-| `_GRAPH_TRANSITION_MODE`                    | `off`                                               | Server-only graph mode; allowlisted values are `off`, `dual-write`, and `dual-write-shadow-read`. |
-| `_GOOGLE_CLIENT_ID_SECRET_REF`              | `GOOGLE_CLIENT_ID:1`                                | Optional; set together with the client secret reference. Empty by default.                        |
-| `_GOOGLE_CLIENT_SECRET_REF`                 | `GOOGLE_CLIENT_SECRET:1`                            | Optional; same OAuth client as Web. Empty by default.                                             |
-| `_CONNECTION_SECRET_KEY_REF`                | `CONNECTION_SECRET_KEY:1`                           | Optional; empty keeps the existing `AUTH_SECRET` fallback.                                        |
+| substitution                                | example value                                       | note                                                                                                            |
+| ------------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `_ENV`                                      | `staging`                                           | Must be `staging` or `production`; passed to `deploy:smoke`.                                                    |
+| `_REGION`                                   | `asia-east1`                                        | Cloud Run, Cloud Run Jobs, Artifact Registry, and App Hosting region.                                           |
+| `_ARTIFACT_REPO`                            | `pufu-lens`                                         | Existing Artifact Registry Docker repository.                                                                   |
+| `_RUNTIME_SERVICE_ACCOUNT`                  | `mastra-runtime@PROJECT_ID.iam.gserviceaccount.com` | Runtime identity for Cloud Run service and jobs.                                                                |
+| `_SCHEDULER_SERVICE_ACCOUNT`                | `scheduler-oidc@PROJECT_ID.iam.gserviceaccount.com` | OIDC identity for the five-minute dispatcher Schedulers and smoke checks.                                       |
+| `_STORAGE_BUCKET`                           | `YOUR_STORAGE_BUCKET`                               | Object storage bucket name; do not commit the real value.                                                       |
+| `_VPC_NETWORK`                              | `default`                                           | Direct VPC network used to reach private PostgreSQL.                                                            |
+| `_VPC_SUBNET`                               | `pufu-lens-serverless`                              | Regional Direct VPC subnet reserved for serverless runtimes.                                                    |
+| `_MASTRA_SERVICE`                           | `mastra-server`                                     | Cloud Run service name.                                                                                         |
+| `_MASTRA_IMAGE`                             | `mastra-server`                                     | Artifact Registry image name for Mastra Server.                                                                 |
+| `_JOBS_IMAGE`                               | `workflow-job`                                      | Artifact Registry image name for workflow jobs.                                                                 |
+| `_FIREBASE_DEPLOY`                          | `true`                                              | Set to `false` only when Web deploy is handled outside Cloud Build.                                             |
+| `_FIREBASE_TOOLS_VERSION`                   | `15.25.1`                                           | Firebase CLI version for Direct VPC-capable App Hosting deploy.                                                 |
+| `_RUN_DB_MIGRATIONS`                        | `true`                                              | Set to `false` to skip deploy-time Cloud Run Job migration.                                                     |
+| `_DB_MIGRATION_JOB`                         | `db-migrate`                                        | Cloud Run Job name used to run `pnpm db:migrate` before runtime deploy.                                         |
+| `_SOURCE_SYNC_DISPATCHER_JOB`               | `source-sync-dispatcher`                            | Environment-prefixed dispatcher Cloud Run Job suffix.                                                           |
+| `_SOURCE_SYNC_SCHEDULER`                    | `source-sync-dispatcher`                            | Environment-prefixed five-minute Cloud Scheduler suffix.                                                        |
+| `_REPORT_SCHEDULE_DISPATCHER_JOB`           | `report-schedule-dispatcher`                        | Environment-prefixed report dispatcher Cloud Run Job suffix.                                                    |
+| `_REPORT_SCHEDULE_SCHEDULER`                | `report-schedule-dispatcher`                        | Environment-prefixed five-minute report Cloud Scheduler suffix.                                                 |
+| `_ACTIVITYPUB_DISPATCHER_JOB`               | `activitypub-dispatcher`                            | Environment-prefixed ActivityPub dispatcher Cloud Run Job suffix.                                               |
+| `_ACTIVITYPUB_DISPATCHER_SCHEDULER`         | `activitypub-dispatcher`                            | Environment-prefixed ActivityPub Cloud Scheduler suffix.                                                        |
+| `_ACTIVITYPUB_CANONICAL_ORIGIN`             | `https://lens.example`                              | Public Web / federation origin; never derive it from request headers.                                           |
+| `_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE`     | `https://mastra.example`                            | Fixed Mastra service URL used by the first revision and Scheduler token.                                        |
+| `_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT` | `123456789012345678901`                             | Numeric subject of the designated Scheduler service account.                                                    |
+| `_ACTIVITYPUB_ACTOR_KEY_SECRET`             | `ACTIVITYPUB_ACTOR_KEY_ENCRYPTION_KEY`              | Secret Manager secret name only; never put the secret value here.                                               |
+| `_CHAT_MODEL`                               | `google/gemini-2.5-flash`                           | Deploy check validates `google/...`, `openai/...`, or `anthropic/...`.                                          |
+| `_CHAT_API_KEY_ENV`                         | `GEMINI_API_KEY`                                    | Runtime key name: Gemini, OpenAI, or Anthropic.                                                                 |
+| `_CHAT_API_KEY_SECRET`                      | `GEMINI_API_KEY`                                    | Secret Manager secret backing the selected Chat provider.                                                       |
+| `_EMBEDDING_PROVIDER`                       | `gemini`                                            | `gemini` or `openai`; shared by ingestion and query retrieval.                                                  |
+| `_EMBEDDING_MODEL`                          | `gemini-embedding-2`                                | Model shared by ingestion and query retrieval.                                                                  |
+| `_EMBEDDING_DIMENSIONS`                     | `1536`                                              | Must match the current pgvector schema.                                                                         |
+| `_EMBEDDING_API_KEY_SECRET`                 | `GEMINI_API_KEY`                                    | Secret Manager secret backing the selected embedding provider.                                                  |
+| `_GRAPH_TRANSITION_MODE`                    | `off`                                               | Server-only graph mode: `off`, `dual-write`, `dual-write-shadow-read`, `relational-primary`, `relational-only`. |
+| `_GOOGLE_CLIENT_ID_SECRET_REF`              | `GOOGLE_CLIENT_ID:1`                                | Optional; set together with the client secret reference. Empty by default.                                      |
+| `_GOOGLE_CLIENT_SECRET_REF`                 | `GOOGLE_CLIENT_SECRET:1`                            | Optional; same OAuth client as Web. Empty by default.                                                           |
+| `_CONNECTION_SECRET_KEY_REF`                | `CONNECTION_SECRET_KEY:1`                           | Optional; empty keeps the existing `AUTH_SECRET` fallback.                                                      |
 
 `PROJECT_ID` and `SHORT_SHA` are Cloud Build built-in substitutions. The example uses `SHORT_SHA` as the immutable image tag and also pushes `latest` as a convenience tag.
 
@@ -166,7 +166,7 @@ Set these trigger substitutions in the user's GCP project:
 
 `cloudbuild.deploy.yaml` performs:
 
-1. Validate required substitutions and `_ENV`. `_GRAPH_TRANSITION_MODE` is rejected unless it is `off`, `dual-write`, or `dual-write-shadow-read`. ActivityPub values are additionally checked as HTTPS-only origins, the Scheduler numeric subject must match the configured service account, and the Actor key secret must exist with an enabled version. The validation reads secret metadata only, never its payload.
+1. Validate required substitutions and `_ENV`. `_GRAPH_TRANSITION_MODE` must be one of the five values in the table above. ActivityPub values are additionally checked as HTTPS-only origins, the Scheduler numeric subject must match the configured service account, and the Actor key secret must exist with an enabled version. The validation reads secret metadata only, never its payload.
 2. In parallel, build the Mastra Server image and build the Workflow Job image.
 3. Push each image after its build finishes.
 4. Create or update the DB migration Cloud Run Job from the Workflow Job image, then execute `pnpm db:migrate` with `--wait` when `_RUN_DB_MIGRATIONS=true`. When `_RUN_DB_MIGRATIONS=false`, this step exits immediately and still acts as the deploy barrier for later steps.
@@ -177,7 +177,9 @@ Set these trigger substitutions in the user's GCP project:
 9. Deploy the Web app with Firebase App Hosting after Mastra Server, Workflow Jobs, and Scheduler finish when `_FIREBASE_DEPLOY=true`. The step uses a prebuilt `firebase-tools` builder image from Artifact Registry instead of installing Firebase CLI on every deploy. It skips App Hosting deploy when there are no web-related changes since the last successful App Hosting deploy SHA stored in GCS.
 10. Read the deployed Mastra Server URL dynamically and run `deploy:smoke` from the immutable `SHORT_SHA` Workflow Job image after all deploy steps finish.
 
-Firebase App Hosting reads `PUFU_LENS_GRAPH_TRANSITION_MODE` from the tracked environment-specific `apps/web/apphosting.yaml`; `_GRAPH_TRANSITION_MODE` controls Mastra Server and Workflow Jobs only. Before a production rollout, set both controls to the same approved value. For rollback, return both to `off` and redeploy; changing the trigger substitution alone does not change the Web runtime.
+Firebase App Hosting reads `PUFU_LENS_GRAPH_TRANSITION_MODE` from the tracked environment-specific `apps/web/apphosting.yaml`; `_GRAPH_TRANSITION_MODE` controls Mastra Server and Workflow Jobs. Production validation rejects a mismatch before deployment. Changing the trigger substitution alone does not change the Web runtime.
+
+`relational-only` stops AGE reads and writes together. Before enabling it, pause graph traffic and scheduled workflows, drain old requests and Jobs, and verify every deployment unit and revision before resuming. After the first relational-only write, AGE is stale: do not roll back to `off`, dual-write modes, `relational-primary`, or an old image without a separately validated resynchronization or consistent restore and replay. Preserve AGE data and backups. See the [Graph operations runbook](../../../docs/operations/graph-relations.md).
 
 The deploy config keeps the default Cloud Build worker and uses `waitFor` only to remove avoidable serial waits. Docker image builds use `docker buildx` registry caches at each image's `:buildcache` tag so unchanged layers, including multi-stage intermediate layers, can be reused without pulling the full previous runtime image first. App Hosting deploy still waits for backend deploy completion so the Web rollout does not expose a newer frontend before the matching backend is live. Runtime deploy steps wait for the migration barrier so new Cloud Run / App Hosting code is not rolled out before pending schema migrations are applied. Cost-sensitive environments should keep this default-worker shape unless they explicitly accept higher per-minute build costs.
 

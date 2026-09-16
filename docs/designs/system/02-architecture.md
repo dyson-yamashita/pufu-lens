@@ -132,8 +132,11 @@ AGE primaryの応答契約、認可、module境界は維持し、shadow readとr
 Step 2E / Issue #738ではserver-only `relational-primary`の読み取りcompositionを追加する。relationalの正常空結果を
 確定結果とし、既知の利用不能・timeoutのみ同じ入力でAGEへ1回fallbackする。入力不正・認可拒否は再試行しない。
 各backendの応答deadlineは6秒。二重失敗は既存の関連文書`unavailable`または固定count / preset例外へ統一する。
-書き込みはAGE→relational dual-writeを維持する。既定`off`と本番`dual-write-shadow-read`を変更しない。
-本番shadow readはPR #737まで反映済み。relational主系切替は未実施で、性能・費用・restore / rollback・承認gateを残す。
+書き込みはAGE→relational dual-writeを維持する。既定`off`は維持し、PR #739 / #741を2026-09-15に本番反映して
+全8 unitは`relational-primary`へ切替済み。
+Step 2F / Issue #742は`relational-only`でread / mutationを一体選択し、AGE fallbackと二重writeを停止する。
+ingestionの既存node / RELATED_TO選別もrelationalへ切り替える。認可・project scope・transaction・API契約は維持し、
+本番有効化は別途承認する。全unit切替中は入口停止とdrainを行い、停止後に古くなったAGEへの単純切戻しをしない。
 詳細は[Graph運用文書](../../operations/graph-relations.md)を参照する。
 
 ### 2. コンポーネント役割

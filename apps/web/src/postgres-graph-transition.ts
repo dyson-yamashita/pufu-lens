@@ -22,7 +22,7 @@ export interface PostgresGraphTransitionOptions {
   readonly transitionMode?: string;
 }
 
-/** Selects server-owned read routing; relational-primary retains AGE fallback and dual writes. */
+/** Selects server-owned routing; relational-only disables AGE reads and writes together. */
 export function createPostgresGraphTransitionReadRepository(
   sql: postgres.Sql,
   options: PostgresGraphTransitionOptions = {},
@@ -30,10 +30,11 @@ export function createPostgresGraphTransitionReadRepository(
   const mode = parseGraphTransitionMode(
     options.transitionMode ?? process.env.PUFU_LENS_GRAPH_TRANSITION_MODE,
   );
-  if (mode === 'relational-primary') {
+  if (mode === 'relational-primary' || mode === 'relational-only') {
     return createGraphPrimaryReadRepository({
       primary: createPostgresRelationalGraphReadRepository(sql, { strictUnavailable: true }),
-      fallback: createPostgresAgeGraphReadRepository(sql),
+      fallback:
+        mode === 'relational-primary' ? createPostgresAgeGraphReadRepository(sql) : undefined,
       observer: options.observer ?? logGraphTransitionObservation,
     });
   }
@@ -46,7 +47,7 @@ export function createPostgresGraphTransitionReadRepository(
   });
 }
 
-/** Creates AGE-primary graph mutations with deployment-controlled relational dual-write. */
+/** Selects relational-only mutations or legacy AGE-primary writes using the same read mode. */
 export function createPostgresGraphTransitionMutationRepository(
   sql: GraphTransitionExecutor,
   options: PostgresGraphTransitionOptions = {},

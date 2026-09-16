@@ -393,6 +393,17 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
 
 ## 9. Step 2: Apache AGE を relational graph schema へ置き換える
 
+> 最新状態（2026-09-16、Issue #742）: PR #739 / #741は2026-09-15 10:10 JSTに本番反映済み。
+> 全8 unitはrelational-primary。約25時間の限定観測に異常がなく、ユーザー指定の観測期間短縮でStep 2F開始判定OK。
+> 7日間観測達成や自然mutation全経路の確認とはしない。Step 2F第一段階は`active`、独立タスクとIssue #742で
+> relational-only read/write、AGE fallback・二重write停止、ingestion選別・project作成CLIのrelational化を実装・隔離DB検証済み（PR merge待ち）。
+> Step 2E write switch残件を停止の依存関係として含める。旧mode・本番設定は保持し、merge / deploy・破壊的削除は含めない。
+> 実測値、開発project差分の受容、混在を防ぐ停止切替、AGE停止後の復旧制約は
+> [Graph運用文書](../../operations/graph-relations.md#step-2f-relational単独運用issue-7422026-09-16)に記録する。
+> 以下の日付付き進捗は各時点の履歴である。snapshot / backup / 旧imageの保持期限は短縮しない。
+
+### Step 2の実装履歴
+
 > 進捗（2026-09-05）: Step 1A〜1C は PR #707 / #709 / #711、2A は Issue #712 / PR #713、
 > 2B は Issue #714 / PR #715、2C「rebuild / compare CLI と source-of-truth audit」は Issue #716 / PR #717 で
 > merge済み。Issue #718のproduction rebuild / compareと追加source auditでcurrent-source relational出力を採用する

@@ -6,10 +6,20 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createPostgresAgeGraphMutationRepository } from '@pufu-lens/graph/postgres-age-mutation';
 import { createPostgresRelationalGraphMutationRepository } from '@pufu-lens/graph/postgres-relational-mutation';
+import { createPostgresGraphTransitionMutationRepository } from '@pufu-lens/graph/postgres-transition-mutation';
 import type { ObjectInfo, ObjectStorage } from '@pufu-lens/storage';
 import postgres from 'postgres';
+import { storeGraphRelations } from '../../packages/ingestion/dist/index.js';
+import {
+  createPostgresGraphIndexingRepository,
+  createPostgresGraphProjectResolver,
+} from './postgres-graph-indexing-adapter.ts';
 import { runGraphCompare, runGraphRebuild } from './postgres-graph-migration.ts';
 import { auditGraphSourceOfTruth } from './postgres-graph-source-audit.ts';
+import {
+  listRelationalDocumentNodeIds,
+  listRelationalRelatedEdgeKeys,
+} from './relational-graph-indexing-presence.ts';
 
 const execFileAsync = promisify(execFile);
 const graphMigrationScript = fileURLToPath(new URL('../graph-migration.ts', import.meta.url));
@@ -47,6 +57,111 @@ const parsedDocument = JSON.stringify({
   sourceId: 'example-org/pufu-sample/issues/716',
   sourceType: 'github',
   title: 'Graph rebuild fixture',
+});
+
+test('relational-only ingestion indexes and retries without an AGE graph or stale selection', {
+  skip: !databaseUrl,
+}, async () => {
+  const sql = postgres(databaseUrl as string, { max: 1 });
+  const previousMode = process.env.PUFU_LENS_GRAPH_TRANSITION_MODE;
+  process.env.PUFU_LENS_GRAPH_TRANSITION_MODE = 'relational-only';
+  const storage = createInMemoryStorage({
+    [fixture.parsedUri]: JSON.stringify({
+      ...JSON.parse(parsedDocument),
+      relations: [{ type: 'RELATED_TO', target: 'target-source' }],
+    }),
+  });
+  try {
+    await resetFixture(sql);
+    await seedFixture(sql);
+    const indexingRepository = createPostgresGraphIndexingRepository(sql, storage);
+    const run = () =>
+      storeGraphRelations({
+        projectSlug: fixture.projectSlug,
+        limit: 10,
+        projectResolver: createPostgresGraphProjectResolver(sql),
+        indexingRepository,
+        mutationRepository: createPostgresGraphTransitionMutationRepository(sql),
+        runInTargetTransaction: async (callback) =>
+          sql.begin(async (tx) =>
+            callback({
+              indexingRepository: createPostgresGraphIndexingRepository(tx, storage),
+              mutationRepository: createPostgresGraphTransitionMutationRepository(tx),
+            }),
+          ),
+      });
+    await run();
+    assert.ok((await countGraphNodes(sql, fixture.projectId)) > 0);
+    const mutation = createPostgresGraphTransitionMutationRepository(sql);
+    const peer = 'document:issue:relational-peer';
+    await mutation.upsertNode({
+      projectId: fixture.projectId,
+      graphNodeId: peer,
+      labels: ['Document'],
+      properties: { graphNodeId: peer, docType: 'issue' },
+    });
+    await sql`
+      INSERT INTO public.raw_documents (id, project_id, source_type, source_id, logical_source_id, source_version, storage_uri, content_hash, ingest_status)
+      SELECT ${fixture.rawDocumentIdInvalid}::uuid, project_id, source_type, 'target-source', 'target-source', source_version, storage_uri, content_hash, 'indexed'
+      FROM public.raw_documents WHERE id = ${fixture.rawDocumentId}::uuid
+    `;
+    await sql`
+      INSERT INTO public.documents (id, project_id, raw_document_id, logical_source_id, doc_type, graph_node_id)
+      VALUES (${fixture.compareDocumentId}, ${fixture.projectId}, ${fixture.rawDocumentIdInvalid}, 'target-source', 'issue', ${peer})
+    `;
+    assert.equal(
+      (await indexingRepository.readGraphTargets({ projectId: fixture.projectId, limit: 10 }))
+        .length,
+      1,
+    );
+    await run();
+    const pair = { fromGraphNodeId: fixture.documentGraphNodeId, toGraphNodeId: peer };
+    assert.equal((await listRelationalRelatedEdgeKeys(sql, fixture.projectId, [pair])).size, 1);
+    assert.equal(
+      (await listRelationalRelatedEdgeKeys(sql, fixture.sentinelProjectId, [pair])).size,
+      0,
+    );
+    assert.equal(
+      (await listRelationalDocumentNodeIds(sql, fixture.sentinelProjectId, [peer])).size,
+      0,
+    );
+    await assert.rejects(
+      sql.begin(async (tx) => {
+        await createPostgresGraphTransitionMutationRepository(tx).deleteDocumentGraphNodes({
+          projectId: fixture.projectId,
+          graphNodeIds: [peer],
+        });
+        throw new Error('rollback cleanup');
+      }),
+      /rollback cleanup/,
+    );
+    assert.equal((await listRelationalRelatedEdgeKeys(sql, fixture.projectId, [pair])).size, 1);
+    assert.equal(
+      (await indexingRepository.readGraphTargets({ projectId: fixture.projectId, limit: 10 }))
+        .length,
+      0,
+    );
+    await createPostgresGraphTransitionMutationRepository(sql).deleteDocumentGraphNodes({
+      projectId: fixture.projectId,
+      graphNodeIds: [fixture.documentGraphNodeId],
+    });
+    assert.equal(
+      (await indexingRepository.readGraphTargets({ projectId: fixture.projectId, limit: 10 }))
+        .length,
+      1,
+    );
+    await run();
+    assert.equal(
+      (await indexingRepository.readGraphTargets({ projectId: fixture.projectId, limit: 10 }))
+        .length,
+      0,
+    );
+  } finally {
+    if (previousMode === undefined) delete process.env.PUFU_LENS_GRAPH_TRANSITION_MODE;
+    else process.env.PUFU_LENS_GRAPH_TRANSITION_MODE = previousMode;
+    await resetFixture(sql);
+    await sql.end();
+  }
 });
 
 test('runGraphRebuild dry-run does not write relational graph rows or mutate ingestion state', {

@@ -17,7 +17,7 @@ export interface PostgresGraphTransitionMutationOptions {
 }
 
 /**
- * Composes AGE-primary graph mutations with a deployment-controlled relational shadow write.
+ * Selects relational-only mutations or the legacy AGE-primary dual-write modes atomically.
  *
  * Passing a caller-owned transaction keeps retryable primary and shadow mutations atomic.
  */
@@ -25,10 +25,14 @@ export function createPostgresGraphTransitionMutationRepository(
   sql: GraphTransitionExecutor,
   options: PostgresGraphTransitionMutationOptions = {},
 ): GraphMutationRepository {
+  const mode = parseGraphTransitionMode(
+    options.transitionMode ?? process.env.PUFU_LENS_GRAPH_TRANSITION_MODE,
+  );
+  if (mode === 'relational-only') {
+    return createPostgresRelationalGraphMutationRepository(sql);
+  }
   return createGraphShadowMutationRepository({
-    mode: parseGraphTransitionMode(
-      options.transitionMode ?? process.env.PUFU_LENS_GRAPH_TRANSITION_MODE,
-    ),
+    mode,
     observer: options.observer ?? logGraphTransitionObservation,
     primary: createPostgresAgeGraphMutationRepository(sql),
     random: options.random,

@@ -26,9 +26,9 @@ const dbTestFiles = [
   resolve(repoRoot, 'scripts/lib/postgres-graph-migration-db.test.ts'),
 ];
 
-async function runTestFile(testFile: string): Promise<number | null> {
+async function runTestFile(testFile: string, env = process.env): Promise<number | null> {
   const child = spawn(process.execPath, ['--experimental-strip-types', testFile], {
-    env: process.env,
+    env,
     stdio: 'inherit',
   });
 
@@ -55,5 +55,11 @@ for (const testFile of dbTestFiles) {
     process.exit(exitCode ?? 1);
   }
 }
+
+const relationalOnlyExit = await runTestFile(
+  resolve(webTestRoot, 'postgres-relational-graph-adapter-db.test.ts'),
+  { ...process.env, PUFU_LENS_GRAPH_TRANSITION_MODE: 'relational-only' },
+);
+if (relationalOnlyExit !== 0) process.exit(relationalOnlyExit ?? 1);
 
 console.log('web database integration tests passed');

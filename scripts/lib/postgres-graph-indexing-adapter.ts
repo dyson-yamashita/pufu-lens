@@ -8,6 +8,7 @@ import {
   parseGraphProjectResolverResult,
   type ReplaceGraphIndexingEmailQuotesInput,
 } from '@pufu-lens/graph';
+import { parseGraphTransitionMode } from '@pufu-lens/graph/shadow';
 import type { ObjectStorage } from '@pufu-lens/storage';
 import type postgres from 'postgres';
 import type { SourceType } from '../../packages/ingestion/dist/index.js';
@@ -18,6 +19,10 @@ import {
   selectGraphIndexTargets,
   selectRelatedDocumentBackfillTargets,
 } from './graph-target-selection.ts';
+import {
+  listRelationalDocumentNodeIds,
+  listRelationalRelatedEdgeKeys,
+} from './relational-graph-indexing-presence.ts';
 
 const RESUME_CURSOR_PATTERN = /^[0-9a-f]{64}$/;
 
@@ -107,7 +112,10 @@ export function createPostgresGraphProjectResolver(sql: PostgresGraphExecutor): 
   };
 }
 
-/** Creates a PostgreSQL-backed graph indexing repository for ingestion workflows. */
+/**
+ * Creates a project-scoped ingestion repository, selecting presence checks from the server mode.
+ * Relational-only never consults AGE; status and email quote writes retain caller transactions.
+ */
 export function createPostgresGraphIndexingRepository(
   sql: PostgresGraphExecutor,
   storage: ObjectStorage,
@@ -164,6 +172,8 @@ class PostgresGraphIndexingRepository implements GraphIndexingRepository {
   private readonly sourceType: SourceType | undefined;
   private readonly sql: PostgresGraphExecutor;
   private readonly storage: ObjectStorage;
+  private readonly relationalOnly =
+    parseGraphTransitionMode(process.env.PUFU_LENS_GRAPH_TRANSITION_MODE) === 'relational-only';
 
   constructor(
     sql: PostgresGraphExecutor,
@@ -181,7 +191,9 @@ class PostgresGraphIndexingRepository implements GraphIndexingRepository {
     readonly limit: number;
     readonly projectId: string;
   }): Promise<readonly GraphIndexingTarget[]> {
-    const graphName = await resolveProjectGraphName(this.sql, input.projectId);
+    const graphName = this.relationalOnly
+      ? undefined
+      : await resolveProjectGraphName(this.sql, input.projectId);
     const selectedRows: GraphTargetRow[] = [];
     const parsedTextByRawDocumentId = new Map<string, string>();
     const pageSize = Math.max(
@@ -195,17 +207,23 @@ class PostgresGraphIndexingRepository implements GraphIndexingRepository {
       if (rows.length === 0) {
         break;
       }
-      const existingGraphNodeIds = graphName
-        ? await listExistingDocumentGraphNodeIds(
+      const existingGraphNodeIds = this.relationalOnly
+        ? await listRelationalDocumentNodeIds(
             this.sql,
-            graphName,
+            input.projectId,
             rows.map((row) => row.graphNodeId),
           )
-        : new Set<string>();
+        : graphName
+          ? await listExistingDocumentGraphNodeIds(
+              this.sql,
+              graphName,
+              rows.map((row) => row.graphNodeId),
+            )
+          : new Set<string>();
       selectedRows.push(
         ...selectGraphIndexTargets(rows, existingGraphNodeIds, input.limit - selectedRows.length),
       );
-      if (selectedRows.length < input.limit && graphName) {
+      if (selectedRows.length < input.limit && (this.relationalOnly || graphName)) {
         const selectedGraphNodeIds = new Set(selectedRows.map((row) => row.graphNodeId));
         for (const row of await this.selectRelatedDocumentBackfillRows({
           existingGraphNodeIds,
@@ -252,7 +270,7 @@ class PostgresGraphIndexingRepository implements GraphIndexingRepository {
 
   private async selectRelatedDocumentBackfillRows(input: {
     readonly existingGraphNodeIds: ReadonlySet<string>;
-    readonly graphName: string;
+    readonly graphName: string | undefined;
     readonly limit: number;
     readonly parsedTextByRawDocumentId: Map<string, string>;
     readonly projectId: string;
@@ -320,11 +338,11 @@ class PostgresGraphIndexingRepository implements GraphIndexingRepository {
           toGraphNodeId: document.graphNodeId,
         })),
     );
-    const existingEdgeKeys = await listExistingRelatedDocumentEdgeKeys(
-      this.sql,
-      input.graphName,
-      pairs,
-    );
+    const existingEdgeKeys = this.relationalOnly
+      ? await listRelationalRelatedEdgeKeys(this.sql, input.projectId, pairs)
+      : input.graphName
+        ? await listExistingRelatedDocumentEdgeKeys(this.sql, input.graphName, pairs)
+        : new Set<string>();
     const missingRelatedEdgeGraphNodeIds = new Set(
       pairs
         .filter(

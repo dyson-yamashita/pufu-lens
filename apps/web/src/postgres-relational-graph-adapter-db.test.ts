@@ -7,6 +7,10 @@ import { MemoryObjectStorage } from '@pufu-lens/storage/testing';
 import postgres from 'postgres';
 import { type GraphViewerRepository, runGraphPresetQuery } from './graph-viewer.ts';
 import {
+  createPostgresGraphTransitionMutationRepository,
+  createPostgresGraphTransitionReadRepository,
+} from './postgres-graph-transition.ts';
+import {
   nullableStringField,
   numberField,
   requireJsonObjectField,
@@ -23,24 +27,29 @@ if (!databaseUrl) {
 }
 
 const sql = postgres(databaseUrl, { max: 1 });
-const mutationRepository = createPostgresRelationalGraphMutationRepository(sql);
-const graphReadRepository = createGraphPrimaryReadRepository({
-  primary: createPostgresRelationalGraphReadRepository(sql, { strictUnavailable: true }),
-  fallback: {
-    countDocumentNode: async () => {
-      assert.fail('healthy relational count must not fall back');
-    },
-    countRelations: async () => {
-      assert.fail('healthy relational relations must not fall back');
-    },
-    findRelatedDocuments: async () => {
-      assert.fail('healthy relational search must not fall back');
-    },
-    readPreset: async () => {
-      assert.fail('healthy relational preset must not fall back');
-    },
-  },
-});
+const relationalOnly = process.env.PUFU_LENS_GRAPH_TRANSITION_MODE === 'relational-only';
+const mutationRepository = relationalOnly
+  ? createPostgresGraphTransitionMutationRepository(sql)
+  : createPostgresRelationalGraphMutationRepository(sql);
+const graphReadRepository = relationalOnly
+  ? createPostgresGraphTransitionReadRepository(sql)
+  : createGraphPrimaryReadRepository({
+      primary: createPostgresRelationalGraphReadRepository(sql, { strictUnavailable: true }),
+      fallback: {
+        countDocumentNode: async () => {
+          assert.fail('healthy relational count must not fall back');
+        },
+        countRelations: async () => {
+          assert.fail('healthy relational relations must not fall back');
+        },
+        findRelatedDocuments: async () => {
+          assert.fail('healthy relational search must not fall back');
+        },
+        readPreset: async () => {
+          assert.fail('healthy relational preset must not fall back');
+        },
+      },
+    });
 
 const projectId = '10000000-0000-0000-0000-000000000714';
 const otherProjectId = '10000000-0000-0000-0000-000000007141';
@@ -955,7 +964,9 @@ async function assertMergeActorGraphNodesRollback(): Promise<void> {
   await assert.rejects(
     () =>
       sql.begin(async (tx) => {
-        const boundRepository = createPostgresRelationalGraphMutationRepository(tx);
+        const boundRepository = relationalOnly
+          ? createPostgresGraphTransitionMutationRepository(tx)
+          : createPostgresRelationalGraphMutationRepository(tx);
         await boundRepository.mergeActorGraphNodes({
           primaryActorId: '71400000-0000-0000-0000-000000000030',
           primaryGraphNodeId: rollbackPrimaryNodeKey,

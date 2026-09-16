@@ -64,6 +64,17 @@ test('buildCreateProjectSql is idempotent for project row and graph creation', (
   assert.match(sql, /'private'\)/);
 });
 
+test('buildCreateProjectSql omits AGE lifecycle for relational-only composition', () => {
+  const sql = buildCreateProjectSql(
+    { slug: 'relational-project', name: 'Relational' },
+    { createAgeGraph: false },
+  );
+  assert.match(sql, /INSERT INTO public.projects/);
+  assert.match(sql, /graph_relational_project/);
+  assert.match(sql, /BEGIN;[\s\S]*COMMIT;/);
+  assert.doesNotMatch(sql, /LOAD|ag_catalog|create_graph/);
+});
+
 test('buildCreateProjectSql accepts public visibility', () => {
   const sql = buildCreateProjectSql({
     description: 'Public sample',

@@ -2,6 +2,11 @@
 
 ## Ingestion ワークフロー
 
+Plan 018 Step 2F / Issue #742ではserver-only `relational-only`を追加する。graph mutationと既存Document /
+RELATED_TOの取り込み対象選別をrelationalへ一体で切り替え、AGEを参照・更新しない。全取り込み元の共通indexing、
+再parse、retry、lifecycle更新に同じ境界を適用し、1 documentのgraph / email_quotes / indexed status transactionを維持する。
+既存modeは従来動作を保つ。本番は2026-09-15から`relational-primary`で、AGEへの二重write停止は後続の承認済みdeployで行う。
+
 ### 1. Collection Pipeline と Agent の責務
 
 通常の取り込みは、LLM / Agent に毎回判断させず、**データソースごとの決定的な scanner / collector / parser / validator** を中心に実行する。Collection Pipeline は **プロジェクトごとに** 有効な `data_sources` を巡回し、各データソースの `config` / `ingest_window` に従って新規・更新済みの収集候補を発見する。候補の skip / dedup / queue 投入は source contract、DB 制約、hash、設定ルールで判定する。
