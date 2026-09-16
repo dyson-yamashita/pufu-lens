@@ -39,6 +39,7 @@ const methods = [
 
 test('server-owned primary mode is explicit and legacy default remains off', () => {
   assert.equal(parseGraphTransitionMode('relational-primary'), 'relational-primary');
+  assert.equal(parseGraphTransitionMode('relational-only'), 'relational-only');
   assert.equal(parseGraphTransitionMode(undefined), 'off');
 });
 
@@ -76,6 +77,37 @@ test('relational-primary keeps AGE first dual writes and secondary failure propa
 });
 
 for (const method of methods) {
+  test(`${method}: relational-only preserves success and fails closed without fallback`, async () => {
+    const observations: GraphPrimaryReadObservation[] = [];
+    const reader = createGraphPrimaryReadRepository({ primary: empty });
+    assert.deepEqual(await reader[method](input), await empty[method](input));
+    for (const failure of ['unavailable', 'timeout', 'rejected'] as const) {
+      const rejected = new Error('permission or validation rejection');
+      const failing = createGraphPrimaryReadRepository({
+        primary: {
+          ...empty,
+          [method]: async () => {
+            if (failure === 'timeout') return new Promise(() => {});
+            throw failure === 'unavailable' ? new GraphReadUnavailableError() : rejected;
+          },
+        },
+        observer: (observation) => {
+          observations.push(observation);
+        },
+        scheduleTimeout: (callback) => setTimeout(callback, 1),
+      });
+      if (method === 'findRelatedDocuments' && failure !== 'rejected') {
+        assert.deepEqual(await failing[method](input), { candidates: [], status: 'unavailable' });
+      } else {
+        await assert.rejects(
+          failing[method](input),
+          failure === 'rejected' ? rejected : GraphReadUnavailableError,
+        );
+      }
+      assert.equal(observations.at(-1)?.fallbackProvider, 'none');
+      assert.equal(observations.at(-1)?.fallbackLatencyMs, 0);
+    }
+  });
   test(`${method}: authoritative empty results never call AGE`, async () => {
     const fallback = {
       ...empty,

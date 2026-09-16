@@ -2,6 +2,11 @@
 
 ## Ingestion ワークフロー
 
+Plan 018 Step 2F / Issue #742ではserver-only `relational-only`を追加する。graph mutationと既存Document /
+RELATED_TOの取り込み対象選別をrelationalへ一体で切り替え、AGEを参照・更新しない。全取り込み元の共通indexing、
+再parse、retry、lifecycle更新に同じ境界を適用し、1 documentのgraph / email_quotes / indexed status transactionを維持する。
+既存modeは従来動作を保つ。本番は2026-09-15から`relational-primary`で、AGEへの二重write停止は後続の承認済みdeployで行う。
+
 ### 1. Collection Pipeline と Agent の責務
 
 通常の取り込みは、LLM / Agent に毎回判断させず、**データソースごとの決定的な scanner / collector / parser / validator** を中心に実行する。Collection Pipeline は **プロジェクトごとに** 有効な `data_sources` を巡回し、各データソースの `config` / `ingest_window` に従って新規・更新済みの収集候補を発見する。候補の skip / dedup / queue 投入は source contract、DB 制約、hash、設定ルールで判定する。
@@ -279,10 +284,11 @@ export const ingestWorkflow = createWorkflow({
 
 - 原本保存は Collection Pipeline の source adapter が責任を持ち、Ingestion Workflow は `raw_documents` を起点に動く。
 - LLM / Agent は通常の取り込み判定には使わず、未知形式・低 confidence・parser 修正などの例外処理に限定する。
-- すべてのステップで`projectId`を必須コンテキストにし、AGE graph名・storage prefixをserver側で動的に解決する。
-  Step 2D transitionはrequest / project overrideを持たず、deployment modeが有効な場合だけAGE primary成功後に
-  relationalへdual-writeする。1 documentのmutationとstatus更新は同じtransactionへbindし、secondary失敗時は
-  両graphをrollbackした後、transaction外でfailed statusを記録して既存retryへ戻す。
+- すべてのステップで`projectId`を必須コンテキストにし、storage prefixをserver側で解決する。AGE graph名の解決・
+  AGE mutationは既存のAGE利用modeに限る。`relational-only`は`graph_nodes` / `graph_edges`のみを使い、AGE graph名を解決せず参照・更新もしない。
+  request / project overrideは持たず、旧dual-write modeではAGE primary成功後にrelationalへ書き込む。
+  1 documentのmutationとstatus更新は同じtransactionへbindし、失敗時は対象backendの更新をrollbackした後、
+  transaction外でfailed statusを記録して既存retryへ戻す。
 - `ingest-workflow`は子script終了後、stdoutの`graph_transition_observation`を最終resultから分離し、
   identityを含まないallowlist項目だけを親stdoutへ転送する。非zero終了時も転送し、observer例外で結果を変えない。
   親processが終了前に停止した場合のbuffer欠落を考慮し、観測0件を成功証拠としない。

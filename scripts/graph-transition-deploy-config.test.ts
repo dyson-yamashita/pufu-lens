@@ -92,6 +92,7 @@ const CANONICAL_GRAPH_TRANSITION_MODES = [
   'dual-write',
   'dual-write-shadow-read',
   'relational-primary',
+  'relational-only',
 ] as const;
 
 function extractStepScript(deployYamlContent: string, stepId: string): string {
@@ -137,10 +138,13 @@ test('validate-deploy-substitutions accepts canonical graph transition modes and
   const validateScript = extractStepScript(deployYaml, 'validate-deploy-substitutions');
 
   assert.match(validateScript, /case "\$\{_GRAPH_TRANSITION_MODE\}"/);
-  assert.match(validateScript, /off\|dual-write\|dual-write-shadow-read\|relational-primary\) ;;/);
   assert.match(
     validateScript,
-    /echo "_GRAPH_TRANSITION_MODE must be off, dual-write, dual-write-shadow-read, or relational-primary\." >&2/,
+    /off\|dual-write\|dual-write-shadow-read\|relational-primary\|relational-only\) ;;/,
+  );
+  assert.match(
+    validateScript,
+    /echo "_GRAPH_TRANSITION_MODE must be off, dual-write, dual-write-shadow-read, relational-primary, or relational-only\." >&2/,
   );
   assert.match(validateScript, /\*\)\s*\n\s*echo "_GRAPH_TRANSITION_MODE/);
 

@@ -263,9 +263,9 @@ steps:
         fi
 
         case "${_GRAPH_TRANSITION_MODE}" in
-          off|dual-write|dual-write-shadow-read|relational-primary) ;;
+          off|dual-write|dual-write-shadow-read|relational-primary|relational-only) ;;
           *)
-            echo "_GRAPH_TRANSITION_MODE must be off, dual-write, dual-write-shadow-read, or relational-primary." >&2
+            echo "_GRAPH_TRANSITION_MODE must be off, dual-write, dual-write-shadow-read, relational-primary, or relational-only." >&2
             exit 1
             ;;
         esac

@@ -4,6 +4,10 @@
 
 関連ドキュメント:
 
+Graphのread backendはserver-only transition factoryで選ぶ。`relational-only`ではnode / relation countを
+relationalのみで確認し、AGE fallbackは行わない。stage / 認可 / project隔離のAPI契約は維持する。
+Graph read観測の`fallbackProvider`は`none`となる。自然mutation実行0件を正常経路の実稼働確認とみなさない。
+
 - API 一覧: [API デザイン](../designs/system/05-api-design.md)
 - 認証境界: [セキュリティ](../designs/system/12-security.md)
 - 契約: [synthetic-monitor-v1.json](../contracts/synthetic-monitor-v1.json)

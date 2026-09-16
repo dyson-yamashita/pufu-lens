@@ -13,7 +13,8 @@ export type GraphTransitionMode =
   | 'off'
   | 'dual-write'
   | 'dual-write-shadow-read'
-  | 'relational-primary';
+  | 'relational-primary'
+  | 'relational-only';
 
 export {
   createGraphPrimaryReadRepository,
@@ -73,13 +74,13 @@ interface GraphShadowRuntimeOptions {
 }
 
 export interface GraphShadowReadOptions extends GraphShadowRuntimeOptions {
-  readonly mode: GraphTransitionMode;
+  readonly mode: Exclude<GraphTransitionMode, 'relational-only'>;
   readonly primary: GraphReadRepository;
   readonly shadow: GraphReadRepository;
 }
 
 export interface GraphShadowMutationOptions extends GraphShadowRuntimeOptions {
-  readonly mode: GraphTransitionMode;
+  readonly mode: Exclude<GraphTransitionMode, 'relational-only'>;
   readonly primary: GraphMutationRepository;
   readonly shadow: GraphMutationRepository;
 }
@@ -108,7 +109,8 @@ export function parseGraphTransitionMode(value: string | undefined): GraphTransi
   if (
     normalized === 'dual-write' ||
     normalized === 'dual-write-shadow-read' ||
-    normalized === 'relational-primary'
+    normalized === 'relational-primary' ||
+    normalized === 'relational-only'
   ) {
     return normalized;
   }

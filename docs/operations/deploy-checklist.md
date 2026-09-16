@@ -53,12 +53,16 @@ API key、DB password は記録しない。
 - `PUFU_LENS_EMBEDDING_PROVIDER`: `gemini` または `openai`。`deterministic` はローカル・テスト・development専用で、`NODE_ENV=production` では共有runtimeがprovider解決時に拒否する。
 - `PUFU_LENS_EMBEDDING_MODEL`: ingestionとquery検索で共有するembedding model。
 - `PUFU_LENS_EMBEDDING_DIMENSIONS`: DBの `vector(1536)` に合わせて `1536`。
-- `PUFU_LENS_GRAPH_TRANSITION_MODE`: server-only graph mode。`off` / `dual-write` / `dual-write-shadow-read` / `relational-primary`だけを許可し、Web、Mastra、全Workflow Jobsで一致させる。request / projectや`NEXT_PUBLIC_*`から設定しない。
+- `PUFU_LENS_GRAPH_TRANSITION_MODE`: server-only graph mode。`off` / `dual-write` / `dual-write-shadow-read` / `relational-primary` / `relational-only`だけを許可し、Web、Mastra、全Workflow Jobsで一致させる。request / projectや`NEXT_PUBLIC_*`から設定しない。
 - `GEMINI_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`: 選択したproviderで必要なものだけをsecret storeから注入し、実値は記録しない。
 - `PUFU_LENS_EMBEDDING_API_KEY`: provider固有secret名を共通名へ割り当てる場合だけ使用可能。実値は記録しない。
 - `GEMINI_CHAT_MODEL` / `GEMINI_EMBEDDING_MODEL` / `GEMINI_EMBEDDING_DIMENSIONS`: 既存環境およびGemini固有のreport/topic抽出経路との互換用。
 
 ### Step 2E relational主系への切替
+
+2026-09-15に全8 unitへ反映済み。以下は切替時の確認用テンプレート。
+当初の7日soakは9/16のユーザー指定で約25時間へ短縮した。backup保持期限は短縮しない。
+AGE write停止後はこの旧切戻し手順を使わず、下記Step 2Fに従う。
 
 - [ ] 代表query coverage、開発project差分のdecision、性能・費用の判断と本番切替承認を記録した。未測定を合格扱いにしない。
 - [ ] 直前のrestore pointがREADYで、対象disk・時刻・保存期間・復旧手順と責任者を記録した。既存snapshotの存在だけで復旧試験済みとしない。
@@ -69,6 +73,17 @@ API key、DB password は記録しない。
 - [ ] 切り戻しではtracked Webとtriggerを`dual-write-shadow-read`へ揃え、対応buildを反映して全unitとAGE応答を確認した。AGE write停止・cleanupを行わない。
 
 最新状態と具体的な順序は[Graph運用文書](graph-relations.md#step-2e-切替設定準備issue-7402026-09-14)を参照。
+
+### Step 2F relational-only有効化（後続の承認済みdeploy）
+
+- [ ] 最新mainの設定PRでtracked Web / triggerを揃え、approval required、OAuth参照、restore pointと保持期限を確認した。
+- [ ] 全graph入口とScheduler / workflow起動を停止し、実行中request / Jobsと旧revisionをdrainした。
+- [ ] 全8 unitがrelational-only、旧revisionへのtraffic 0であることを確認してから再開した。
+- [ ] 最初のrelational-only write時刻、read unavailable / latency、mutation失敗・retry、DB負荷、認可拒否と機能確認を記録した。
+- [ ] 障害時は入口停止とrelational forward-fixを優先する。再同期または整合した復元・更新再適用なしにAGEへ切り戻さない。
+- [ ] AGEデータ / extension / backup / 旧imageを削除せず保持期限も短縮していない。
+
+詳細・残余リスクは[Step 2F運用手順](graph-relations.md#step-2f-relational単独運用issue-7422026-09-16)を参照。
 
 ## Provider 連携設定
 

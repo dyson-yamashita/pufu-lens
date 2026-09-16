@@ -59,15 +59,23 @@ export function deriveProjectIdentifiers(slug: string): ProjectIdentifiers {
   };
 }
 
-export function buildCreateProjectSql(input: CreateProjectInput): string {
+/**
+ * Builds idempotent project creation SQL in one transaction.
+ * The server composition must disable createAgeGraph for relational-only deployments;
+ * graph_name remains reserved metadata without creating an AGE graph.
+ */
+export function buildCreateProjectSql(
+  input: CreateProjectInput,
+  { createAgeGraph = true }: { readonly createAgeGraph?: boolean } = {},
+): string {
   const slug = validateProjectSlug(input.slug);
   const visibility = validateProjectVisibility(input.visibility ?? 'private');
   const identifiers = deriveProjectIdentifiers(slug);
 
   return [
-    "LOAD 'age';",
+    ...(createAgeGraph ? ["LOAD 'age';"] : []),
     'SET standard_conforming_strings = on;',
-    'SET search_path = ag_catalog, "$user", public;',
+    ...(createAgeGraph ? ['SET search_path = ag_catalog, "$user", public;'] : []),
     'BEGIN;',
     `INSERT INTO public.projects (slug, name, description, graph_name, storage_prefix, visibility)`,
     `VALUES (${escapeSqlLiteral(slug)}, ${escapeSqlLiteral(input.name)}, ${escapeOptionalSqlLiteral(
@@ -76,11 +84,15 @@ export function buildCreateProjectSql(input: CreateProjectInput): string {
       identifiers.storagePrefix,
     )}, ${escapeSqlLiteral(visibility)})`,
     'ON CONFLICT (slug) DO NOTHING;',
-    `SELECT create_graph(${escapeSqlLiteral(identifiers.graphName)})`,
-    'WHERE NOT EXISTS (',
-    '  SELECT 1 FROM ag_catalog.ag_graph',
-    `  WHERE name = ${escapeSqlLiteral(identifiers.graphName)}`,
-    ');',
+    ...(createAgeGraph
+      ? [
+          `SELECT create_graph(${escapeSqlLiteral(identifiers.graphName)})`,
+          'WHERE NOT EXISTS (',
+          '  SELECT 1 FROM ag_catalog.ag_graph',
+          `  WHERE name = ${escapeSqlLiteral(identifiers.graphName)}`,
+          ');',
+        ]
+      : []),
     'COMMIT;',
   ].join('\n');
 }

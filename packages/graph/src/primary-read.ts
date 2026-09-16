@@ -10,21 +10,22 @@ export interface GraphPrimaryReadObservation {
   readonly outcome: 'success' | 'fallback_success' | 'unavailable' | 'rejected';
   readonly reason: 'none' | 'unavailable' | 'timeout';
   readonly primaryProvider: 'postgres_relational';
-  readonly fallbackProvider: 'postgres_age';
+  readonly fallbackProvider: 'postgres_age' | 'none';
   readonly primaryLatencyMs: number;
   readonly fallbackLatencyMs: number;
 }
 
 interface Options {
   readonly primary: GraphReadRepository;
-  readonly fallback: GraphReadRepository;
+  readonly fallback?: GraphReadRepository;
   readonly observer?: (observation: GraphPrimaryReadObservation) => void | Promise<void>;
   readonly scheduleTimeout?: (callback: () => void, delayMs: number) => unknown;
   readonly cancelTimeout?: (handle: unknown) => void;
 }
 
 /**
- * Reads relational data first, using AGE once only on normalized unavailability or timeout.
+ * Reads relational data, optionally using AGE once on normalized unavailability or timeout.
+ * Omitting fallback disables AGE access, including after errors; use this after AGE writes stop.
  * Callers must authorize and validate project scope before entering this repository. Successful
  * empty results are authoritative; unexpected/validation/permission errors are never retried.
  * Dual failure returns related-document unavailable, or throws a fixed unavailable error for
@@ -34,7 +35,7 @@ export function createGraphPrimaryReadRepository(options: Options): GraphReadRep
   async function execute<T>(
     operation: keyof GraphReadRepository,
     primary: () => Promise<T>,
-    fallback: () => Promise<T>,
+    fallback: (repository: GraphReadRepository) => Promise<T>,
     unavailable: (result: T) => boolean = () => false,
   ): Promise<T> {
     const started = Date.now();
@@ -51,7 +52,7 @@ export function createGraphPrimaryReadRepository(options: Options): GraphReadRep
             outcome,
             reason,
             primaryProvider: 'postgres_relational',
-            fallbackProvider: 'postgres_age',
+            fallbackProvider: options.fallback ? 'postgres_age' : 'none',
             primaryLatencyMs,
             fallbackLatencyMs: fallbackStarted ? Math.max(0, Date.now() - fallbackStarted) : 0,
           }),
@@ -76,9 +77,14 @@ export function createGraphPrimaryReadRepository(options: Options): GraphReadRep
       }
       reason = error instanceof ReadTimeoutError ? 'timeout' : 'unavailable';
     }
+    const fallbackRepository = options.fallback;
+    if (!fallbackRepository) {
+      observe('unavailable');
+      throw new GraphReadUnavailableError();
+    }
     fallbackStarted = Date.now();
     try {
-      const result = await deadline(fallback, options);
+      const result = await deadline(() => fallback(fallbackRepository), options);
       if (unavailable(result)) throw new GraphReadUnavailableError();
       observe('fallback_success');
       return result;
@@ -92,26 +98,26 @@ export function createGraphPrimaryReadRepository(options: Options): GraphReadRep
       execute(
         'countDocumentNode',
         () => options.primary.countDocumentNode(input),
-        () => options.fallback.countDocumentNode(input),
+        (repository) => repository.countDocumentNode(input),
       ),
     countRelations: (input) =>
       execute(
         'countRelations',
         () => options.primary.countRelations(input),
-        () => options.fallback.countRelations(input),
+        (repository) => repository.countRelations(input),
       ),
     readPreset: (input) =>
       execute(
         'readPreset',
         () => options.primary.readPreset(input),
-        () => options.fallback.readPreset(input),
+        (repository) => repository.readPreset(input),
       ),
     async findRelatedDocuments(input) {
       try {
         return await execute(
           'findRelatedDocuments',
           () => options.primary.findRelatedDocuments(input),
-          () => options.fallback.findRelatedDocuments(input),
+          (repository) => repository.findRelatedDocuments(input),
           (result) => result.status === 'unavailable',
         );
       } catch (error) {

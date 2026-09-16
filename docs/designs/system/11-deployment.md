@@ -275,13 +275,14 @@ Web / Mastra / 6 Jobsは全unit `dual-write-shadow-read`で、OAuth参照を維�
 ユーザーによる差分と性能の残余リスク受容は、技術的なcompare pass / 十分な性能実測とは扱わない。
 詳細は[リスク受容と設定準備](../../operations/graph-relations.md#2026-09-12-更新差分性能のリスク受容と設定準備)を参照。
 
-Step 2E / Issue #738ではapplicationへ`relational-primary`を追加するが、本番設定・deploy・切替は行わない。
-Issue #740の切替設定PRでCloud Buildの許可値を4値へ拡張し、tracked Webを`relational-primary`へ準備する。
+Step 2E / Issue #738・#740（PR #739 / #741）を2026-09-15 10:10 JSTに反映し、全8 unitは`relational-primary`へ切替済み。
+Step 2F / Issue #742ではCloud Build許可値を`relational-only`を含む5値へ拡張する。tracked Webの本番modeは維持する。
 本番では先頭の検証stepがtriggerとtracked Webのmode不一致・設定不備を拒否し、image build、migration、各unitの更新を開始させない。
 Web deployを省略する場合も照合し、別release processのWeb稼働値は運用で確認する。
-稼働環境のmodeは変えず、実際のdeploy前に代表query / 性能 / 費用、
-restore point / rollback window、本番切替承認を確認してから全unitを揃える。切り戻しは全unit
-`dual-write-shadow-read`とし、両graphのデータを保持する。AGE write停止・cleanupは別工程とする。
+relational-onlyの本番有効化は後続の承認済みdeployとし、入口停止・Scheduler停止・旧request / Jobsのdrain後に全unitを揃える。
+AGE write停止後はAGEが古くなるため単純な旧modeへの切戻しを行わず、relational forward-fixまたは別途承認された
+再同期・整合した復元を使う。約25時間への観測期間短縮、backup保持と混在防止の詳細は
+[Graph運用文書](../../operations/graph-relations.md#step-2f-relational単独運用issue-7422026-09-16)を参照する。
 
 `apps/web/apphosting.yaml` の最小例（Issue #723のdual-write rollout時点）：
 

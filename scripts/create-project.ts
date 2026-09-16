@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { parseGraphTransitionMode } from '@pufu-lens/graph/shadow';
 import {
   buildCreateProjectSql,
   type CreateProjectInput,
@@ -26,7 +27,10 @@ const SAMPLE_PROJECTS: CreateProjectInput[] = [
   },
 ];
 
+/** Creates local project metadata and storage, omitting AGE lifecycle in relational-only mode. */
 async function main(): Promise<void> {
+  const createAgeGraph =
+    parseGraphTransitionMode(process.env.PUFU_LENS_GRAPH_TRANSITION_MODE) !== 'relational-only';
   const options = parseArgs(process.argv.slice(2));
   const projects = options.seedSamples
     ? SAMPLE_PROJECTS
@@ -50,7 +54,7 @@ async function main(): Promise<void> {
   const storage = createLocalObjectStorageFromEnv();
 
   for (const { identifiers, project } of projectPlans) {
-    await runPsql(databaseUrl, buildCreateProjectSql(project));
+    await runPsql(databaseUrl, buildCreateProjectSql(project, { createAgeGraph }));
     const prefixes = await storage.ensureProjectPrefixes(project.slug);
 
     console.log(

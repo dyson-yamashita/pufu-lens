@@ -1,6 +1,8 @@
 # Graph / Relation 構築
 
-Step 8 では、`documents` と `actors` を AGE graph に materialize し、`email_quotes` と最小 relation を保存する。
+既存のAGE利用modeでは、`documents` と `actors` をAGE graphにmaterializeする。
+`relational-only`では`graph_nodes` / `graph_edges`のみを使い、AGE graph名を解決・参照・更新しない。
+どちらも`email_quotes`と必要なrelationを保存する。
 
 Plan 018 Step 2A では移行先として `graph_nodes` / `graph_edges` schemaをadditiveに追加し、Step 2B では同schemaを
 使うrelational Graph read / mutation adapterを追加した。ViewerとSynthetic Monitorを含むDB testは明示DIで
@@ -8,7 +10,63 @@ relational adapterを検証する。Step 2Dではproduction composition rootをA
 Issue #723はCloud Buildの安全な既定を`off`に保ったまま、production Web / Mastra / Workflow Jobsを`dual-write`へ揃える
 rollout configを追加し、2026-09-05にdeployした。Issue #726では観測修正の先行反映後、2026-09-12のユーザーによる
 残余リスク承認に基づき`dual-write-shadow-read`へ変更し、PR #737まで2026-09-12に本番反映済みである。
-全unitの稼働modeは`dual-write-shadow-read`。以下の過去の設定準備記録は当時の状態を示す。
+2026-09-15 10:10 JSTにPR #739 / #741を本番反映し、全8 unitは`relational-primary`となった。
+以下の過去の設定準備記録は当時の状態を示す。
+
+### Step 2F relational単独運用（Issue #742、2026-09-16）
+
+server-only `PUFU_LENS_GRAPH_TRANSITION_MODE=relational-only`を追加する。readはrelationalのみ、mutationも
+relationalのみへ同じ値で選択し、AGE fallbackと二重書込みを一体で停止する。既存4 modeの動作と既定`off`は保持する。
+このPRではtracked Webの`relational-primary`を維持し、本番mode変更・deployは行わない。
+
+- count / preset / related search / monitorは6秒の応答deadlineと5秒SQL timeoutを維持する。失敗時にもAGEを読まない。
+  正常空結果は確定値、利用不能時はcount / presetの固定例外、related searchの`unavailable`契約を維持する。
+  read観測は`fallbackProvider: none`、`fallbackLatencyMs: 0`となる。
+- ensure / project delete / Document cleanup / Actor merge / node・全9種edgeのupsertはrelational adapterへ直接委譲する。
+  caller-owned transaction、認可、project scope、row parserは維持する。AGEとの比較観測は新modeでは発生しない。
+- Step 2E write switchの依存残件として、ingestionの既存Document / RELATED_TO選別もrelational tableで行う。
+  stale AGEを理由に取り込みをskipしたり繰り返したりしない。status / email_quotesとgraph mutationは同じtransactionを使う。
+- `create-project` / `seed:projects`も新modeではAGEを作成せず、project rowとstorageを作る。`graph_name`は予約済みmetadataとして保持する。
+  `graph:query --cypher`はAGE専用のため新modeではDB接続前に拒否する。通常の確認はGraph API / monitorと
+  project-scoped relational SQLを使う。`graph:migrate compare`は明示的なAGE比較診断として保持するが、
+  AGE停止後の差分は想定されるため現行データの整合性gateとして扱わない。rebuildをAGE復旧とみなさない。
+- Cloud Buildは新modeを許可し、tracked Webとの不一致をdeploy前に拒否する。Mastra / production 6 Jobsにも同じ値を渡す。
+  startup時の未知mode拒否、request / project overrideなし、server-only境界を維持する。
+
+#### 切替実績と観測期間短縮の判断
+
+build `8530966f-334e-4c50-a25a-c5e6aba7092a`はSUCCESS、Web revisionは
+`pufu-lens-web-build-2026-09-15-001`。直前snapshot `pg-ai-data-pre-relational-primary-20260915`はREADY。
+2026-09-16 11:00 JST頃まで約25時間の観測ではreadPreset 22件がsuccess/none、fallback 0、
+primary latency p50 15ms / p95 31ms / max 118ms。自然ensure_project_graph 1件はmatch、Cloud Run ERROR / 5xxは0。
+source-sync / report-schedule各298回は全成功、ActivityPub Scheduler→Mastra 298件は202だった。
+ingest / curate / generate-report Jobは期間中0件で、自然mutation全経路のcoverageは未達である。
+DB接続10/100、deadlocks 0。初回HTTP約4.9秒は新instance起動と同時刻でcold start寄与が示唆されるが断定しない。
+公開Graph 4件200、private公開API404・未ログイン401、隔離DBでSAME_AS、ログイン後member200 / non-member403を確認済み。
+02:00 UTC以降の追加確認もERROR / 5xxなし、新規read観測0であり追加の成功実績には数えない。
+
+ユーザー指示「前倒しのため問題なければ判定OKとして作業進めてください」に基づき、限定実測と期間短縮による
+次工程判定をOKとした。7日間観測を完了したものではない。長期負荷・費用・自然mutation coverageの残余リスクを保持する。
+開発projectのAGE-only 29 nodes / 46 edges、relational-only 661 nodes / 916 edges、label/property-key mismatch 108は
+主系切替で受容済み。test / pufu-tomonokaiは差分なし。これはAGE全履歴の再生成可能性の保証ではない。
+
+#### 後続の本番有効化と復旧
+
+1. merge後、最新mainからtracked Webとtriggerの新modeを揃える設定を別途準備し、対象commit・全8 unit・snapshot・
+   pending migration 0・DB余力を確認する。approval requiredとOAuth参照を保持し、本番承認を得る。
+2. **全unitのdeployは原子的ではない。** 最初のrelational-only write以降に旧revisionがAGEへfallbackする混在を防ぐため、
+   全graph利用入口のtrafficとScheduler / workflow起動を停止し、実行中request / Jobs・旧revisionをdrainする。
+   全8 unitの新modeと旧revisionへのtraffic 0を確認するまで処理を再開しない。無停止での順次切替をしない。
+3. 再開後はpublic/private・project拒否、preset / related search、monitor、ingestion / Actor merge / cleanupを確認する。
+   最初のrelational-only write時刻を記録し、read unavailable / latency、mutation失敗・retry、DB負荷を監視する。
+4. **AGE書込み停止後は旧modeへの単純な切戻しは安全でない。** AGEは古くなるため`off`、dual-write系、
+   `relational-primary`への変更、旧imageへの復帰でAGEを再び正としない。障害時は入口停止を維持してrelationalをforward-fixする。
+   AGEへ戻す必要がある場合は、書込み停止中の完全な再同期（merge・削除を含む）または整合した時点への全DB復元と
+   その後の更新再適用、差分・認可・mutation検証を別途計画・承認する。既存rebuild CLIはrelational向けで逆移行機能ではない。
+
+AGEデータ、extension、snapshot / backup、旧imageは保持する。今回の期間短縮で保持期限は短縮しない。
+切替時の最低保持期限2026-09-22 10:10 JSTを維持し、期限満了だけで自動削除しない。新snapshotからの復元試験は未実施。
+破壊的削除とStep 4全体は対象外。DBのAGEインストール依存自体の撤去も後続工程とする。
 
 ### Relational優先読み取りの実装（Step 2E / Issue #738、PR #739 merge済み）
 
@@ -34,7 +92,7 @@ rollout configを追加し、2026-09-05にdeployした。Issue #726では観測�
 
 ### Step 2E 切替設定準備（Issue #740、2026-09-14）
 
-PR #739はmerge commit `797f631`でmainへmerge済み、本番未反映。Issue #740は同Stepの継続としてCloud Buildの許可値へ
+2026-09-14時点ではPR #739はmerge commit `797f631`でmainへmerge済み、本番未反映だった。Issue #740は同Stepの継続としてCloud Buildの許可値へ
 `relational-primary`を追加し、tracked Webを同modeにする設定PRを準備する。OSS / Cloud Build既定は`off`を維持する。
 本番buildの先頭でtriggerとtracked Webのmodeを機械的に照合し、不一致や設定不備は全deploy・migrationより前に拒否する。
 この照合は`_FIREBASE_DEPLOY=false`でも実行し、Web稼働値の確認は引き続き別途必要となる。
@@ -67,7 +125,8 @@ PR #739はmerge commit `797f631`でmainへmerge済み、本番未反映。Issue 
    応答回帰、fallback / unavailable発生、許容範囲外のDB負荷時は切り戻しを優先する。0件の観測だけでsoak完了としない。
 
 切り戻しはtracked Webを`dual-write-shadow-read`へ戻す修正とtrigger値を揃えたbuildで、全unitのmodeとAGE応答を確認する。
-DB schema / dataは削除せず、backupも保持する。fallback残存・AGE write停止・cleanupは最低7日の安定soakと別gateに従う。
+DB schema / dataは削除せず、backupも保持する。当初の最低7日soakは上記2026-09-16の明示判断で短縮した。
+この旧切戻し手順はAGE write停止前だけに適用する。停止後はStep 2Fの復旧手順に従う。
 
 Plan 018 Step 2C では、source dataからrelational graphをproject単位で再構築し、AGEとの構造差分を監査する
 operator CLIを追加した。CLIはproduction compositionへ接続せず、AGE primary read / writeも変更しない。
@@ -159,12 +218,13 @@ productionのrebuild / compare、live AGE inventory、deploy、read / write切�
 
 `PUFU_LENS_GRAPH_TRANSITION_MODE`はdeployment単位のserver-only設定である。request、project、API inputから変更しない。
 
-| 値                       | write                                  | read                                                               |
-| ------------------------ | -------------------------------------- | ------------------------------------------------------------------ |
-| 未設定 / 空 / `off`      | AGEのみ                                | AGEのみ                                                            |
-| `dual-write`             | AGE primaryの後にrelationalへ全件write | AGEのみ                                                            |
-| `dual-write-shadow-read` | AGE primaryの後にrelationalへ全件write | AGEを返し、固定10%でrelationalを比較                               |
-| `relational-primary`     | AGE primaryの後にrelationalへ全件write | relational優先、利用不能・timeout時のみAGEへfallback。本番未有効化 |
+| 値                       | write                                  | read                                                                         |
+| ------------------------ | -------------------------------------- | ---------------------------------------------------------------------------- |
+| 未設定 / 空 / `off`      | AGEのみ                                | AGEのみ                                                                      |
+| `dual-write`             | AGE primaryの後にrelationalへ全件write | AGEのみ                                                                      |
+| `dual-write-shadow-read` | AGE primaryの後にrelationalへ全件write | AGEを返し、固定10%でrelationalを比較                                         |
+| `relational-primary`     | AGE primaryの後にrelationalへ全件write | relational優先、利用不能・timeout時のみAGEへfallback。2026-09-15本番反映済み |
+| `relational-only`        | relationalのみ                         | relationalのみ、AGE fallbackなし。Issue #742で実装、本番未有効化             |
 
 未知の値は起動後のcomposition時にfail closedする。shadow readはAGE primary完了後に実行し、外側6秒、adapter SQL 5秒の
 timeoutを適用する。shadowのtimeout / error / mismatch、観測出力の失敗でuser responseは変えず、AGE結果を返す。

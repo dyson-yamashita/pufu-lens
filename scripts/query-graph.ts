@@ -1,8 +1,15 @@
 import { createHash } from 'node:crypto';
+import { parseGraphTransitionMode } from '@pufu-lens/graph/shadow';
 import postgres from 'postgres';
 import { requiredEnv, validateGraphName } from './lib/cli.ts';
 
+/** Runs the AGE diagnostic CLI; relational-only mode rejects access before opening the database. */
 async function main(): Promise<void> {
+  if (parseGraphTransitionMode(process.env.PUFU_LENS_GRAPH_TRANSITION_MODE) === 'relational-only') {
+    throw new Error(
+      'graph:query is an AGE-only diagnostic and is disabled in relational-only mode.',
+    );
+  }
   const options = parseArgs(process.argv.slice(2));
   const projectSlug = requiredOption(options.project, '--project');
   const cypher = requiredOption(options.cypher, '--cypher');
