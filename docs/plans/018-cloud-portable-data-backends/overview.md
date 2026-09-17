@@ -709,6 +709,11 @@ Step 4 の AGE removal は、全 project backfill、shadow mismatch 解消、res
 
 ## 10. Step 3: PGroonga keyword search を portable 実装へ置き換える
 
+### Step 3A 進捗
+
+- 2026-09-17: Issue #747でStep 3Aの固定合成keywordコーパス（22 query / 37 chunk / 2 project）、品質指標、offline runnerとローカルPGroonga baseline収集を実装・検証。運用手順と既知の品質残差は [keyword評価](../../operations/keyword-evaluation.md) を参照する。
+- provider選定・本番変更は後続Stepの対象とする。
+
 ### 目的
 
 GCP PostgreSQL VM 上の keyword candidate retrieval を、Pufu Lens の日本語・固有名詞・技術語 query

@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "corpusHash": "306cabd10f619937fba37784c8d5f0012c376e07a6d3efbb34f29fe735d800c4",
+  "provider": "pgroonga",
+  "environment": "PostgreSQL 18.1 (Debian 18.1-1.pgdg13+2); PGroonga 4.0.6; isolated index; seqscan off; warmup=1; repetitions=3",
+  "cases": [
+    {
+      "id": "japanese",
+      "status": "ok",
+      "chunkIds": ["c01", "c02"],
+      "latencyMs": [1.070791999999983, 0.6557500000000118, 1.1507909999999981]
+    },
+    {
+      "id": "mixed",
+      "status": "ok",
+      "chunkIds": ["c04"],
+      "latencyMs": [0.546166999999997, 0.4192920000000129, 0.4199999999999875]
+    },
+    {
+      "id": "person",
+      "status": "ok",
+      "chunkIds": ["c03"],
+      "latencyMs": [0.4446660000000122, 0.4964170000000081, 1.1836250000000064]
+    },
+    {
+      "id": "project",
+      "status": "ok",
+      "chunkIds": ["c01", "c02", "c03"],
+      "latencyMs": [1.5330409999999972, 0.4344999999999857, 0.8846660000000099]
+    },
+    {
+      "id": "product",
+      "status": "ok",
+      "chunkIds": ["c04", "c11"],
+      "latencyMs": [0.441709000000003, 0.39295799999999304, 0.39991699999998787]
+    },
+    {
+      "id": "issue",
+      "status": "ok",
+      "chunkIds": ["c05"],
+      "latencyMs": [0.4295840000000055, 0.3658749999999884, 1.18154100000001]
+    },
+    {
+      "id": "pr",
+      "status": "ok",
+      "chunkIds": ["c06"],
+      "latencyMs": [0.27950000000001296, 0.31979100000000926, 0.2658749999999941]
+    },
+    {
+      "id": "url",
+      "status": "ok",
+      "chunkIds": ["c07"],
+      "latencyMs": [0.3334169999999972, 0.36208400000001006, 0.3023340000000019]
+    },
+    {
+      "id": "repository",
+      "status": "ok",
+      "chunkIds": ["c07"],
+      "latencyMs": [0.4674169999999833, 0.323332999999991, 0.3448750000000018]
+    },
+    {
+      "id": "technical",
+      "status": "ok",
+      "chunkIds": ["c08"],
+      "latencyMs": [0.3260410000000036, 0.30424999999999613, 0.2975409999999954]
+    },
+    {
+      "id": "technical-vector",
+      "status": "ok",
+      "chunkIds": ["c09"],
+      "latencyMs": [0.3353749999999991, 0.3320420000000013, 0.3173330000000192]
+    },
+    {
+      "id": "partial",
+      "status": "ok",
+      "chunkIds": ["c10"],
+      "latencyMs": [0.29504199999999514, 0.295708999999988, 0.27933299999997985]
+    },
+    {
+      "id": "typo",
+      "status": "ok",
+      "chunkIds": [],
+      "latencyMs": [0.26241699999999923, 0.3079999999999927, 0.2704999999999984]
+    },
+    {
+      "id": "width",
+      "status": "ok",
+      "chunkIds": ["c04", "c11"],
+      "latencyMs": [0.2751660000000129, 0.3262499999999875, 0.2962090000000046]
+    },
+    {
+      "id": "empty",
+      "status": "ok",
+      "chunkIds": [],
+      "latencyMs": [0.00012499999999704414, 0.00008400000001529406, 0.00008400000001529406]
+    },
+    {
+      "id": "symbols",
+      "status": "ok",
+      "chunkIds": [],
+      "latencyMs": [0.2532500000000084, 0.28087500000000887, 0.2906669999999849]
+    },
+    {
+      "id": "sql-injection",
+      "status": "ok",
+      "chunkIds": [],
+      "latencyMs": [0.49766700000000696, 0.43600000000000705, 0.4357080000000053]
+    },
+    {
+      "id": "query-injection",
+      "status": "ok",
+      "chunkIds": ["c08"],
+      "latencyMs": [0.4019580000000076, 0.3984580000000051, 0.3979579999999885]
+    },
+    {
+      "id": "isolation",
+      "status": "ok",
+      "chunkIds": [],
+      "latencyMs": [0.26983300000000554, 0.29212499999999864, 0.26420799999999645]
+    },
+    {
+      "id": "beta-positive",
+      "status": "ok",
+      "chunkIds": ["c13"],
+      "latencyMs": [0.28016700000000583, 0.26616599999999835, 0.29241700000000037]
+    },
+    {
+      "id": "max-length",
+      "status": "ok",
+      "chunkIds": [],
+      "latencyMs": [0.3154169999999965, 0.3576659999999947, 0.40033299999998917]
+    },
+    {
+      "id": "over-length",
+      "status": "rejected",
+      "chunkIds": [],
+      "latencyMs": [0]
+    }
+  ]
+}
