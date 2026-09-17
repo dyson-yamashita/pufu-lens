@@ -11,20 +11,47 @@ Issue #723はCloud Buildの安全な既定を`off`に保ったまま、productio
 rollout configを追加し、2026-09-05にdeployした。Issue #726では観測修正の先行反映後、2026-09-12のユーザーによる
 残余リスク承認に基づき`dual-write-shadow-read`へ変更し、PR #737まで2026-09-12に本番反映済みである。
 2026-09-15 10:10 JSTにPR #739 / #741を本番反映し、全8 unitは`relational-primary`となった。
+2026-09-17 14:34 JSTにPR #745を本番反映し、全8 unitは`relational-only`となった。
 以下の過去の設定準備記録は当時の状態を示す。
+
+### 2026-09-17 relational-only本番反映（Issue #746）
+
+- main `94cb5e15d94bbf3a6008b22f2ce9ae85576a5339`、build `8040c298-2491-4533-ac1a-977d935e441e`はSUCCESS。
+  Webを含む全deploy stepと自動remote smokeが成功した。
+- ユーザーは混在時のstale AGE readリスクの説明を受け、「ほぼ利用がないので停止は不要」と指定した。
+  今回は停止・drainを省略する明示的な例外として実行した。以下の通常手順の停止gateを満たした扱いにはしない。
+- triggerは`_GRAPH_TRANSITION_MODE`のみ変更し、全field比較でOAuth参照、approval required、`_FIREBASE_DEPLOY=true`の維持を確認。
+  旧modeのpending buildは未承認のまま残した。
+- Web、Mastra、production 6 Jobsすべて`relational-only`を確認。Web revision `pufu-lens-web-build-2026-09-17-001`、
+  Mastra revision `mastra-server-00114-wcs`へ各100%配信。旧Web revisionのtag106件を除去し、旧配信tag URLの404を確認した。
+  3 SchedulerはENABLEDを維持し、旧revision・image・AGEデータは削除していない。
+- snapshot `pg-ai-data-pre-relational-only-20260917`はREADY。既存backup保持期限は短縮しない。復元試験は未実施。
+- ブラウザでProjects / Overview / Reports / Chat / Graph / Loginの表示・遷移、Graphの2 presetを確認。
+  console error/warnと観測HTTP 4xx/5xxは0。RSCのキャンセル通信はあったが遷移先は正常表示した。
+- 切替後のreadPreset観測2件はsuccess、`postgres_relational`、`fallbackProvider: none`、115 / 26ms。
+  完了確認時点でdeploy開始以降のCloud Run ERROR / HTTP 5xxは0。DB接続12件、deadlocks 0。
+- ユーザーから切替後のログイン・レポート作成成功の報告を受けた。エージェントによる認証済み画面確認や
+  本番mutation試験は実施していない。最初のrelational-only graph write時刻は未確定であり、レポート作成成功を
+  ingestion / Actor merge / cleanup等の全mutation経路の検証とは扱わない。長期観測とStep 4の削除gateは残る。
+
+[Cloud Build実行記録](https://console.cloud.google.com/cloud-build/builds;region=asia-east1/8040c298-2491-4533-ac1a-977d935e441e?project=578766200457)
+
+Step 3Aの検索評価基盤は[Issue #747](https://github.com/dyson-yamashita/pufu-lens/issues/747)の独立タスクで進める。
+自然mutation全経路・長期観測・復元試験はStep 2の運用残件として保持し、検索評価のIssue #747へ移管しない。
+これらはStep 4の削除判断前にも確認する。本番検索切替やAGE / extension削除は今回に含めない。
 
 ### Step 2F relational単独運用（Issue #742、2026-09-16）
 
 server-only `PUFU_LENS_GRAPH_TRANSITION_MODE=relational-only`を追加する。readはrelationalのみ、mutationも
 relationalのみへ同じ値で選択し、AGE fallbackと二重書込みを一体で停止する。既存4 modeの動作と既定`off`は保持する。
-実装PR #743はtracked Webの`relational-primary`を維持したままmerge済み。本番mode変更・deployは行っていない。
+実装PR #743ではtracked Webの`relational-primary`を維持し、本番mode変更・deployを含めなかった。
 
 #### Step 2F 切替設定準備（Issue #744）
 
 PR #743は2026-09-16にmain `3c4309e`へmerge済み。同じStep 2Fの継続としてtracked Webをruntime-only
 `relational-only`へ変更し、設定の回帰testを同期する。Cloud Build / OSS既定は`off`を維持する。
 これは設定PRであり、本番trigger変更・build承認・deploy・Scheduler停止・traffic変更の実行は含めない。
-本番は最終確認時点の全8 unit `relational-primary`からの切替として扱い、承認直前にlive設定を再取得する。
+設定PR準備時点の本番は全8 unit `relational-primary`だった。実際の切替結果は上の2026-09-17記録を参照する。
 
 merge後は古いpending buildを使わず、既存OAuth参照とapproval requiredを保持してtriggerの
 `_GRAPH_TRANSITION_MODE=relational-only`を設定した後の新buildを使う。最新main SHA / trigger / branch、
@@ -249,7 +276,7 @@ productionのrebuild / compare、live AGE inventory、deploy、read / write切�
 | `dual-write`             | AGE primaryの後にrelationalへ全件write | AGEのみ                                                                      |
 | `dual-write-shadow-read` | AGE primaryの後にrelationalへ全件write | AGEを返し、固定10%でrelationalを比較                                         |
 | `relational-primary`     | AGE primaryの後にrelationalへ全件write | relational優先、利用不能・timeout時のみAGEへfallback。2026-09-15本番反映済み |
-| `relational-only`        | relationalのみ                         | relationalのみ、AGE fallbackなし。Issue #742で実装、本番未有効化             |
+| `relational-only`        | relationalのみ                         | relationalのみ、AGE fallbackなし。Issue #742で実装、2026-09-17本番有効化済み |
 
 未知の値は起動後のcomposition時にfail closedする。shadow readはAGE primary完了後に実行し、外側6秒、adapter SQL 5秒の
 timeoutを適用する。shadowのtimeout / error / mismatch、観測出力の失敗でuser responseは変えず、AGE結果を返す。

@@ -93,7 +93,7 @@ private PostgreSQL VM を使う場合、default Cloud Build worker pool から D
 ActivityPub dispatcher を有効にする trigger は `_ACTIVITYPUB_CANONICAL_ORIGIN`、`_ACTIVITYPUB_DISPATCHER_JOB`、`_ACTIVITYPUB_DISPATCHER_SCHEDULER`、固定 Mastra service URL の `_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE`、designated Scheduler SA の numeric subject を指定する `_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT`、Actor key暗号化secret名の `_ACTIVITYPUB_ACTOR_KEY_SECRET` を必須にする。canonical origin は公開 Web / federation origin、OIDC audience は内部 route を提供する Mastra service の固定 URL であり、同一値とは限らない。どちらも request の Host や外部入力から組み立てない。secret実値やOIDC tokenをsubstitutionへ入れない。
 
 graph移行profileはCloud Buildの`_GRAPH_TRANSITION_MODE`でMastra Serverと全Workflow Jobsへ配る。既定は`off`とし、
-`off` / `dual-write` / `dual-write-shadow-read` / `relational-primary`以外をdeploy前に拒否する。Webは環境別の`apps/web/apphosting.yaml`から
+`off` / `dual-write` / `dual-write-shadow-read` / `relational-primary` / `relational-only`以外をdeploy前に拒否する。Webは環境別の`apps/web/apphosting.yaml`から
 同名の`PUFU_LENS_GRAPH_TRANSITION_MODE`を読むため、本番有効化・rollbackではtriggerとtracked App Hosting設定を同じ値に揃える。
 先頭の`validate-production-graph-mode`が本番の両値を照合し、不一致、設定欠落、重複、runtime対象外なら
 image build・migration・Mastra・Jobs・Webの変更前に停止する。Firebase CLI builderに同梱された`yaml`で設定を解析するため、
