@@ -1,7 +1,7 @@
-# Keyword評価（Plan 018 Step 3A）
+# Keyword評価（Plan 018 Step 3A / 3B）
 
 `pnpm keyword:eval` は固定合成コーパスのkeyword順位を評価する。アプリケーションの検索方式や
-normalizationを変更せず、provider選定と本番切替は後続Stepで行う。
+normalizationを変更せず、評価用spikeでproviderを比較する。本番への接続・切替は後続Stepで行う。
 
 ## コーパスと再利用範囲
 
@@ -110,9 +110,44 @@ SQLはbind parameterと既存adapter同様の`pgroonga_query_escape`を使用す
 既存escape処理で検索構文の意図を完全に無効化できるとは扱わない。このため総合判定はFAILである。
 baselineをpassさせるために正解や閾値を調整せず、Step 3Bの比較・normalization検討事項として保持する。
 
-このStepではprovider選定、hybrid最終document / RRF採用差、期間filter、index容量、write amplification、
-backfill、EXPLAIN比較、同時ingest、production SLO・コストの評価は未実施。Step 3B以降で補完する。
+Step 3Aではprovider選定、hybrid最終document / RRF採用差、期間filter、index容量、write amplification、
+backfill、EXPLAIN比較、同時ingest、production SLO・コストの評価は未実施。Step 3Bの補完範囲は次節を参照する。
 既存HTTP Chat evalは別途必要であり、このrunnerはChatのend-to-end品質を保証しない。
+
+## Step 3B: portable比較spike
+
+比較結果と採用提案は [ADR-005](../adr/ADR-005-portable-keyword-spike.md) を正本とする。
+FTS simple、pg_trgm LIKE / similarity / word similarity、LIKE OR word（GIN / GiST）、application
+bigram / trigram（strict / fuzzy）、bigram OR wordの11方式を同一corpusで収集する。
+LIKE OR wordとfuzzy n-gram等の5方式が全gate合格。GCPの次の候補にLIKE OR word / GiSTを提案する。
+この結果は本番採用・デプロイ・PGroonga削除の承認ではない。
+
+上記の専用DBに`pg_trgm`も事前installし、次を実行する。extensionの作成はcollector自身では行わない。
+
+```bash
+docker exec keyword-eval psql -U postgres -d keyword_eval -c 'CREATE EXTENSION pg_trgm'
+KEYWORD_EVAL_DATABASE_URL=postgres://postgres@127.0.0.1:5747/keyword_eval \
+  pnpm keyword:eval spike --output /tmp/portable-spike.json
+pnpm keyword:eval evaluate-spike --input /tmp/portable-spike.json \
+  --baseline fixtures/keyword/pgroonga-baseline-v1.json --output /tmp/portable-reports.json
+KEYWORD_EVAL_DATABASE_URL=postgres://postgres@127.0.0.1:5747/keyword_eval \
+  node --experimental-strip-types --test scripts/lib/keyword-eval-portable.test.ts
+```
+
+`spike`は収集成功でexit 0、`evaluate-spike`は1方式でもgate不合格なら全reportを書いたうえでexit 1。
+候補の不合格は想定された評価結果である。baselineなしでは相対比較が未完了なので、採用判断には必ず指定する。
+DBなしで再評価する場合はinputを`fixtures/keyword/portable-spike-v1.json`に置き換える。
+単一snapshot用の既存`evaluate`は引き続き利用できる。
+
+spikeの出力は`{ run, diagnostics }`の配列。`run`は既存snapshot契約、`diagnostics`はload / build /
+write時間、token数、relation容量、FTS parser token、EXPLAINを持つ。
+**diagnosticsには合成query / 本文断片が含まれる**ため、実データへ流用しない。品質reportはそれらを転記しない。
+schemaは`keyword_eval_portable`。方式ごとのtransactionで作成・削除し、既存schemaは拒否する。
+loopback制限だけでは本番port forwardを検知できないので、専用の使い捨てcontainerにのみ接続する。
+
+候補方式は評価用にNFKC / lowercaseを揃え、現行アプリのnormalizationを変更しない。
+seqscan off / onのEXPLAIN、3回の本文再書込み後の容量を保存する。latencyは3sampleのみ、37 chunkで
+通常plannerがSeq Scanを選ぶ規模であり、production性能・WAL・同時負荷・hybrid品質は未検証。
 
 ## 自動検証
 

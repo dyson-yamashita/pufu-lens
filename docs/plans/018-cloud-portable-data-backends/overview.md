@@ -717,6 +717,11 @@ Step 4 の AGE removal は、全 project backfill、shadow mismatch 解消、res
 - 2026-09-17: Issue #747でStep 3Aの固定合成keywordコーパス（22 query / 37 chunk / 2 project）、品質指標、offline runnerとローカルPGroonga baseline収集を実装・検証。運用手順と既知の品質残差は [keyword評価](../../operations/keyword-evaluation.md) を参照する。
 - provider選定・本番変更は後続Stepの対象とする。
 
+### Step 3B 進捗
+
+- 2026-09-17: Issue #750でFTS / pg_trgm / application n-gramの11方式を固定corpusで比較。LIKE OR word similarity（GIN / GiST）、fuzzy bigram / trigram、bigram OR wordの5方式が全gate合格。GCPの次候補に運用が単純なLIKE OR word similarity / GiSTを提案し、[ADR-005](../../adr/ADR-005-portable-keyword-spike.md)に品質・latency・容量・再書込み・EXPLAINと限界を記録した。
+- Step 3Bは評価spikeと採用提案まで。Step 3C以降のproduction schema / adapter / backfill、hybrid / Chat評価、切替は未実施。本番状態とStep 2の運用残件を維持する。
+
 ### 目的
 
 GCP PostgreSQL VM 上の keyword candidate retrieval を、Pufu Lens の日本語・固有名詞・技術語 query
@@ -1221,20 +1226,20 @@ CI では hermetic contract / metric testsを毎回実行し、remote GCP / Clou
 
 ## 15. Decision Log
 
-| Decision                     | 状態               | 判断 / decision gate                                                                                  |
-| ---------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------- |
-| Graph repository 境界        | decided            | ProjectResolver / GraphIndexing / GraphRead / GraphMutation に分け、既存 interface は直接再利用しない |
-| graph schema                 | decided            | project-scoped relational nodes / edges、既存 `graphNodeId` を `node_key` として維持                  |
-| AGE migration                | conditional        | source rebuild + dual-write / shadow を推奨。AGE-only row audit が通らなければ export/import を選ぶ   |
-| GCP keyword provider         | pending Step 3     | built-in FTS、pg_trgm、application n-gram を固定 corpus で比較して選ぶ                                |
-| GCP vector provider          | decided            | pgvector 継続、adapter 内へ隔離                                                                       |
-| final GCP extensions         | conditional        | vector + selected keyword dependency。AGE / PGroonga は削除、pgcrypto は core UUID 確認後に削除候補   |
-| custom PostgreSQL image      | pending Step 4     | official PostgreSQL base + reproducible extension install と current custom image を比較              |
-| Cloudflare graph provider    | candidate          | D1 relational graph。Step 6 の transaction / throughput / query limit で確定                          |
-| Cloudflare semantic provider | candidate          | Vectorize cosine 1536。filter / namespace / consistency / quality で確定                              |
-| Cloudflare keyword provider  | pending Step 6 / 7 | D1 FTS5 または application n-gram を Step 3 corpus で選ぶ                                             |
-| provider selection           | decided            | deployment-level `PUFU_LENS_DATA_PROFILE` を composition root で解決。per-request selection なし      |
-| parity tolerance             | decided            | rank / relevance based。security / tenant / graph mutation は 100%、raw score 一致は要求しない        |
+| Decision                     | 状態                        | 判断 / decision gate                                                                                                |
+| ---------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Graph repository 境界        | decided                     | ProjectResolver / GraphIndexing / GraphRead / GraphMutation に分け、既存 interface は直接再利用しない               |
+| graph schema                 | decided                     | project-scoped relational nodes / edges、既存 `graphNodeId` を `node_key` として維持                                |
+| AGE migration                | conditional                 | source rebuild + dual-write / shadow を推奨。AGE-only row audit が通らなければ export/import を選ぶ                 |
+| GCP keyword provider         | Step 3B提案済み・実装未着手 | 固定corpusで合格したLIKE OR pg_trgm word similarity / GiSTを提案。大規模負荷・hybrid品質・切替は後続gate（ADR-005） |
+| GCP vector provider          | decided                     | pgvector 継続、adapter 内へ隔離                                                                                     |
+| final GCP extensions         | conditional                 | vector + selected keyword dependency。AGE / PGroonga は削除、pgcrypto は core UUID 確認後に削除候補                 |
+| custom PostgreSQL image      | pending Step 4              | official PostgreSQL base + reproducible extension install と current custom image を比較                            |
+| Cloudflare graph provider    | candidate                   | D1 relational graph。Step 6 の transaction / throughput / query limit で確定                                        |
+| Cloudflare semantic provider | candidate                   | Vectorize cosine 1536。filter / namespace / consistency / quality で確定                                            |
+| Cloudflare keyword provider  | pending Step 6 / 7          | D1 FTS5 または application n-gram を Step 3 corpus で選ぶ                                                           |
+| provider selection           | decided                     | deployment-level `PUFU_LENS_DATA_PROFILE` を composition root で解決。per-request selection なし                    |
+| parity tolerance             | decided                     | rank / relevance based。security / tenant / graph mutation は 100%、raw score 一致は要求しない                      |
 
 ## 16. Documentation update matrix
 
