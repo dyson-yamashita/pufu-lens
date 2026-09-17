@@ -39,4 +39,8 @@
 
 ## 運用ルール
 
+Plan 018 Step 3A（2026-09-17、Issue #747）: 固定合成keywordコーパスとoffline評価runner、
+PGroonga baseline収集・品質残差の記録を実装・検証済み。Step 3Bのprovider選定は未着手。
+本番状態はStep 2の記録を正本とし、この評価基盤の追加では変更しない。plan全体は`active`を維持する。
+
 plan の参照・更新ルールは `.codex/rules/plan-rule.md` に従う。

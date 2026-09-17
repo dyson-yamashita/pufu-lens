@@ -10,6 +10,7 @@
   "scripts": {
     "build": "turbo run build",
     "chat:eval": "node --experimental-strip-types scripts/chat-eval.ts",
+    "keyword:eval": "node --experimental-strip-types scripts/keyword-eval.ts",
     "create-project": "pnpm --filter @pufu-lens/graph... build && node --experimental-strip-types scripts/create-project.ts",
     "deploy:dry-run": "node --experimental-strip-types scripts/deploy-dry-run.ts",
     "deploy:smoke": "node --experimental-strip-types scripts/deploy-smoke.ts",
