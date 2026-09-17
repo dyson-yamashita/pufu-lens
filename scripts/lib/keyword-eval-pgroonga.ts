@@ -2,6 +2,7 @@ import { performance } from 'node:perf_hooks';
 import postgres from 'postgres';
 import { corpusHash, type KeywordRun } from './keyword-eval.ts';
 import { type KeywordEvalCase, keywordCorpus } from './keyword-eval-corpus.ts';
+import { validateKeywordEvalUrl } from './keyword-eval-local.ts';
 
 /**
  * Measures the existing PGroonga ranking policy against synthetic data on a local evaluation DB.
@@ -9,17 +10,7 @@ import { type KeywordEvalCase, keywordCorpus } from './keyword-eval-corpus.ts';
  * Rejects remote URLs and does not read DATABASE_URL. No credentials or query text enter the result.
  */
 export async function collectPgroongaBaseline(databaseUrl: string): Promise<KeywordRun> {
-  const url = new URL(databaseUrl);
-  if (
-    !['postgres:', 'postgresql:'].includes(url.protocol) ||
-    !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) ||
-    url.pathname !== '/keyword_eval' ||
-    url.search
-  ) {
-    throw new Error(
-      'KEYWORD_EVAL_DATABASE_URL must be a loopback evaluation DB URL without options.',
-    );
-  }
+  validateKeywordEvalUrl(databaseUrl);
   const sql = postgres(databaseUrl, { max: 1, connect_timeout: 10, onnotice: () => {} });
   try {
     const run = await sql.begin(async (tx) => {

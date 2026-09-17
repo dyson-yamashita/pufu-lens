@@ -40,7 +40,9 @@
 ## 運用ルール
 
 Plan 018 Step 3A（2026-09-17、[Issue #747](https://github.com/dyson-yamashita/pufu-lens/issues/747) / PR #749）: 固定合成keywordコーパスとoffline評価runner、
-PGroonga baseline収集・品質残差の記録を実装・検証済み。Step 3Bのprovider選定は未着手。
+PGroonga baseline収集・品質残差の記録を実装・検証済み。
+Step 3B（Issue #750）で11方式を比較し、5方式が固定品質gate合格。LIKE OR pg_trgm word similarity / GiSTを次候補に提案し、
+ADR-005へ実測と限界を記録。Step 3Cのproduction実装・切替は未着手で、plan全体は`active`を維持する。
 本番状態はStep 2の記録を正本とし、この評価基盤の追加では変更しない。plan全体は`active`を維持する。
 自然mutation全経路・長期観測・復元試験はStep 2の運用残件として保持し、Issue #747へ移管しない。Step 4の削除判断前にも確認する。
 
