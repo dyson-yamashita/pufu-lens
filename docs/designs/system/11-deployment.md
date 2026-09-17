@@ -277,10 +277,12 @@ Web / Mastra / 6 Jobsは全unit `dual-write-shadow-read`で、OAuth参照を維�
 
 Step 2E / Issue #738・#740（PR #739 / #741）を2026-09-15 10:10 JSTに反映し、全8 unitは`relational-primary`へ切替済み。
 Step 2F / Issue #742（PR #743 merge済み）でCloud Build許可値を`relational-only`を含む5値へ拡張した。
-Issue #744でtracked Webのruntime-only `relational-only`設定を準備する。本番反映は未実施で、triggerと稼働unitは承認直前に再確認する。
+Issue #744 / PR #745のtracked Webのruntime-only `relational-only`設定は2026-09-17 14:34 JSTに本番反映済み。
+Web / Mastra / production 6 Jobsの全8 unitで新modeを確認した。切替結果はIssue #746で記録する。
 本番では先頭の検証stepがtriggerとtracked Webのmode不一致・設定不備を拒否し、image build、migration、各unitの更新を開始させない。
 Web deployを省略する場合も照合し、別release processのWeb稼働値は運用で確認する。
-relational-onlyの本番有効化は後続の承認済みdeployとし、入口停止・Scheduler停止・旧request / Jobsのdrain後に全unitを揃える。
+通常は入口停止・Scheduler停止・旧request / Jobsのdrain後に全unitを揃える。
+今回の切替はユーザーによる混在リスク受容と停止不要の明示により停止・drainを省略した例外であり、通常gate達成とは扱わない。
 AGE write停止後はAGEが古くなるため単純な旧modeへの切戻しを行わず、relational forward-fixまたは別途承認された
 再同期・整合した復元を使う。約25時間への観測期間短縮、backup保持と混在防止の詳細は
 [Graph運用文書](../../operations/graph-relations.md#step-2f-relational単独運用issue-7422026-09-16)を参照する。

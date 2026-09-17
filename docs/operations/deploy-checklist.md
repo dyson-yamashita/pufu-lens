@@ -74,7 +74,11 @@ AGE write停止後はこの旧切戻し手順を使わず、下記Step 2Fに従�
 
 最新状態と具体的な順序は[Graph運用文書](graph-relations.md#step-2e-切替設定準備issue-7402026-09-14)を参照。
 
-### Step 2F relational-only有効化（後続の承認済みdeploy）
+### Step 2F relational-only有効化
+
+2026-09-17の実行は全8 unitへの反映とsmokeが成功済み。ユーザー指定で停止・drainを省略したため、
+以下の停止・再開項目を実施済みとはしない。ユーザーによるログイン・レポート作成成功も含む実績と残件は
+[切替記録](graph-relations.md#2026-09-17-relational-only本番反映issue-746)を参照する。以下は通常手順のチェック項目である。
 
 Issue #744の設定PRをmergeしても本番承認のgateは自動で通らない。入口停止・drainはCloud Buildで自動化していない。
 
