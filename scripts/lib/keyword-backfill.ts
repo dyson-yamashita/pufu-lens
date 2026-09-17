@@ -93,7 +93,8 @@ export async function backfillKeywords(sql: postgres.Sql, options: KeywordBackfi
   return sql.begin(options.dryRun || options.status ? 'read only' : '', async (tx) => {
     await tx`SET LOCAL statement_timeout = '30s'`;
     await tx`SET LOCAL lock_timeout = '5s'`;
-    const projects = await tx`SELECT id FROM public.projects WHERE id = ${options.projectId}`;
+    const projects: readonly unknown[] =
+      await tx`SELECT id FROM public.projects WHERE id = ${options.projectId}`;
     if (!projects.length) throw new Error('Unknown project.');
     const range = tx`project_id = ${options.projectId}
       AND (${options.documentFrom}::uuid IS NULL OR document_id >= ${options.documentFrom}::uuid)
