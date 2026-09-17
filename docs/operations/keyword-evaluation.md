@@ -69,6 +69,12 @@ pnpm keyword:eval evaluate --input /tmp/candidate.json \
   `gate: true`だけでprovider採用・deploy可能とは判断しない。
 - latencyはnearest-rankのp50 / p95。ローカルの小規模測定のため性能合否には使わない。
 
+## Step 3Cの選定adapter検証
+
+実アプリschema上の候補adapter・trigger・backfill検証は[keyword backfill運用](keyword-backfill.md)を参照する。
+固定v1を既存baselineと比較して全gate通過を確認した。追加の短query / Unicode境界例も検証したが、数字の近似誤検出を
+確認したため広いholdoutの品質gate合格とは扱わない。本番切替・hybrid / Chat / 負荷評価は後続に残る。
+
 ## ローカルPGroonga baseline収集
 
 専用の使い捨てDB `keyword_eval` を用意する。`KEYWORD_EVAL_DATABASE_URL` のloopback接続だけを受け付け、

@@ -300,7 +300,7 @@ pnpm chat:eval --project sample-a --fixture fixtures/chat/private-chat-raw-injec
 - rate limit: process 内 memory bucket で user + project 単位に制限する
 - 評価: `pnpm chat:eval --fixture fixtures/chat/private-chat-eval.json` で running web server に対して source / tool call を確認する
 - keyword単体の固定合成コーパス・PGroonga baseline・offline品質評価は `pnpm keyword:eval` を使う。手順・指標・既知の不足は [keyword評価](../../operations/keyword-evaluation.md) を参照する。Chat HTTP評価とprovider採用判断は別途必要。
-- Step 3Bのportable比較は [ADR-005](../../adr/ADR-005-portable-keyword-spike.md) に記録する。LIKE OR pg_trgm word similarity / GiSTを次候補に提案したが、現行runtimeはPGroongaのまま。production adapter、backfill、hybrid / Chat検証・切替はStep 3C以降で行う。
+- Step 3Bのportable比較は [ADR-005](../../adr/ADR-005-portable-keyword-spike.md) に記録する。Step 3CでLIKE OR pg_trgm word similarity / GiSTの明示DI用adapterとmaterialized column / backfillを追加した。現行runtimeはPGroongaのまま。数字の近似誤検出を含む追加品質gate、hybrid / Chat検証・本番切替はStep 3D以降で行う。[backfill運用](../../operations/keyword-backfill.md)を参照。
 - score-aware 選別の回帰: fixture source を `sample-a` に ingest / parse / embed した状態で、`pnpm chat:eval --project sample-a --fixture fixtures/chat/private-chat-score-aware-eval.json` を実行する。`archived notes` の質問では `Indexer should skip archived notes` が source に含まれること、corpus に存在しない量子テレポーテーション障害の質問では source が 0 件であることを確認する。fixture は response の内部 score や confidence を検証せず、公開しない retrieval 判定の結果だけを source 件数・title で検証する。
 
 この初期実装は Step 12 の確認用であり、Mastra Agent 化、streaming、Object Storage からの raw / parsed 本文取得、AGE Cypher の本格利用、永続 rate limit / audit log は後続で置き換える。

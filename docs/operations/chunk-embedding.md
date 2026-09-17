@@ -4,6 +4,10 @@ Step 7 では parsed JSON から `documents` を upsert し、本文を chunk �
 
 GitHub lifecycle-only refresh（`metadata.lifecycleOnly=true`）では chunk 本文が変わらない限り embedding を再生成せず、`documents.metadata.githubLifecycle` だけを更新する。
 
+Plan 018 Step 3Cの`keyword_content`はDB triggerがINSERT / content UPDATE時に同じtransactionで生成する。
+chunkのdelete/reinsert・cascade deleteで補助rowの同期は不要。同一hashによるskipで残る旧NULL行は
+[keyword backfill CLI](keyword-backfill.md)で処理する。PGroonga primaryとembedding生成契約は維持する。
+
 ## 実行
 
 ```bash
