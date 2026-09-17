@@ -55,6 +55,8 @@ test('production graph guard accepts matching modes and fails closed on invalid 
   try {
     const cases = [
       ...CANONICAL_GRAPH_TRANSITION_MODES.map((mode) => ({ yaml: fixture(mode), mode, ok: true })),
+      { yaml: productionAppHosting, mode: 'relational-only', ok: true },
+      { yaml: productionAppHosting, mode: 'relational-primary', ok: false },
       { yaml: fixture('relational-primary'), mode: 'dual-write-shadow-read', ok: false },
       { yaml: fixture('off'), mode: 'unknown', ok: false },
       { yaml: 'env: []', mode: 'off', ok: false },
@@ -202,11 +204,11 @@ test('deploy-workflow-jobs passes PUFU_LENS_GRAPH_TRANSITION_MODE to every env s
   );
 });
 
-test('production App Hosting prepares runtime-only PUFU_LENS_GRAPH_TRANSITION_MODE relational-primary', () => {
+test('production App Hosting prepares runtime-only PUFU_LENS_GRAPH_TRANSITION_MODE relational-only', () => {
   const config = parseAppHostingConfig(productionAppHosting);
   const entry = findAppHostingEnvEntry(config, 'PUFU_LENS_GRAPH_TRANSITION_MODE');
   assert.ok(entry, 'PUFU_LENS_GRAPH_TRANSITION_MODE env entry is required');
-  assert.equal(entry.value, 'relational-primary');
+  assert.equal(entry.value, 'relational-only');
   assert.deepEqual(entry.availability, ['RUNTIME']);
 });
 

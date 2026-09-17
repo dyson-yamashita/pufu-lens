@@ -17,7 +17,32 @@ rollout configを追加し、2026-09-05にdeployした。Issue #726では観測�
 
 server-only `PUFU_LENS_GRAPH_TRANSITION_MODE=relational-only`を追加する。readはrelationalのみ、mutationも
 relationalのみへ同じ値で選択し、AGE fallbackと二重書込みを一体で停止する。既存4 modeの動作と既定`off`は保持する。
-このPRではtracked Webの`relational-primary`を維持し、本番mode変更・deployは行わない。
+実装PR #743はtracked Webの`relational-primary`を維持したままmerge済み。本番mode変更・deployは行っていない。
+
+#### Step 2F 切替設定準備（Issue #744）
+
+PR #743は2026-09-16にmain `3c4309e`へmerge済み。同じStep 2Fの継続としてtracked Webをruntime-only
+`relational-only`へ変更し、設定の回帰testを同期する。Cloud Build / OSS既定は`off`を維持する。
+これは設定PRであり、本番trigger変更・build承認・deploy・Scheduler停止・traffic変更の実行は含めない。
+本番は最終確認時点の全8 unit `relational-primary`からの切替として扱い、承認直前にlive設定を再取得する。
+
+merge後は古いpending buildを使わず、既存OAuth参照とapproval requiredを保持してtriggerの
+`_GRAPH_TRANSITION_MODE=relational-only`を設定した後の新buildを使う。最新main SHA / trigger / branch、
+tracked Web・Mastra・production 6 Jobsの対象とmodeを照合する。設定の不一致は既存guardで全deployより前に拒否する。
+`_FIREBASE_DEPLOY=true`とWeb deploy対象差分を確認し、Webを旧modeのまま残すdeployは行わない。
+
+入口停止・drainは現行Cloud Buildで自動化していない。**この設定PRのmergeだけでは本番有効化のgateは通らない。**
+本番承認前にWeb（App Hosting経由と直接URL、private/public Graph・Chat・管理操作）、Mastra、手動CLI / Job起動、
+3 Scheduler（source sync / report schedule / ActivityPub）の全入口に対する停止手段・復帰手段・確認担当を確定する。
+停止後は新規request / Jobが入らないこと、実行中request / Jobsが終了したことを実測する。Cloud BuildのScheduler更新や
+Web deployで受付が再開されないことも確認し、全8 unitのmode一致まで停止を維持する。証明できない場合はbuildを承認しない。
+変更前のtraffic / Scheduler状態を記録し、再開時は元から停止中だった入口を勝手に有効化しない。
+
+停止切替中のsmokeは受付停止によって失敗し得る。自動smoke成功だけで再開可能とせず、全unit・旧revision traffic 0・
+relational-only writeがまだ発生していないことを確認してから、承認した順序で受付を戻す。最初のwrite時刻を記録し、read / mutation / 認可のsmokeを行う。
+途中失敗時は停止を維持して状況を確認し、下記復旧手順に従う。AGEへ単純切戻しはしない。
+
+#### 実装済みの切替境界
 
 - count / preset / related search / monitorは6秒の応答deadlineと5秒SQL timeoutを維持する。失敗時にもAGEを読まない。
   正常空結果は確定値、利用不能時はcount / presetの固定例外、related searchの`unavailable`契約を維持する。
@@ -52,7 +77,7 @@ DB接続10/100、deadlocks 0。初回HTTP約4.9秒は新instance起動と同時�
 
 #### 後続の本番有効化と復旧
 
-1. merge後、最新mainからtracked Webとtriggerの新modeを揃える設定を別途準備し、対象commit・全8 unit・snapshot・
+1. Issue #744の設定PR merge後、最新mainとtracked Webにtriggerの新modeを揃え、対象commit・全8 unit・snapshot・
    pending migration 0・DB余力を確認する。approval requiredとOAuth参照を保持し、本番承認を得る。
 2. **全unitのdeployは原子的ではない。** 最初のrelational-only write以降に旧revisionがAGEへfallbackする混在を防ぐため、
    全graph利用入口のtrafficとScheduler / workflow起動を停止し、実行中request / Jobs・旧revisionをdrainする。
