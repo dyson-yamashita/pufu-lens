@@ -39,4 +39,7 @@
 
 ## 運用ルール
 
+Plan 018 Step 3Aの評価基盤は[Issue #747](https://github.com/dyson-yamashita/pufu-lens/issues/747)で進める。
+自然mutation全経路・長期観測・復元試験はStep 2の運用残件として保持し、Issue #747へ移管しない。Step 4の削除判断前にも確認する。
+
 plan の参照・更新ルールは `.codex/rules/plan-rule.md` に従う。

@@ -399,7 +399,9 @@ Step 2 / 3 は、旧 / 新 facade parity、project 越境 test、runtime guard�
 > Webの主要画面とGraph 2 preset、自動smokeを確認し、ユーザーもログイン・レポート作成成功を報告した。
 > Step 2E write switch依存残件とStep 2Fの本番有効化は反映済み。自然mutation全経路・最初のgraph write時刻・
 > 長期観測・復元試験は未確認で、Step 2全体やStep 4の削除gateを完了扱いにしない。
-> AGE / extension / backup / 旧imageは保持し、旧modeへ単純に戻さない。Step 3Aの評価基盤は独立タスクで進められる。
+> AGE / extension / backup / 旧imageは保持し、旧modeへ単純に戻さない。
+> Step 3Aの評価基盤は[Issue #747](https://github.com/dyson-yamashita/pufu-lens/issues/747)の独立タスクで進める。
+> 自然mutation全経路・長期観測・復元試験はStep 2の運用残件であり、Issue #747には移管しない。Step 4の削除判断前にも確認する。
 > 実測値、停止省略の判断と残件は[切替記録](../../operations/graph-relations.md#2026-09-17-relational-only本番反映issue-746)、
 > AGE停止後の復旧制約は[Graph運用文書](../../operations/graph-relations.md#step-2f-relational単独運用issue-7422026-09-16)を参照する。
 > 以下の日付付き進捗は各時点の履歴である。snapshot / backup / 旧imageの保持期限は短縮しない。
@@ -705,7 +707,8 @@ Step 4 の AGE removal は、全 project backfill、shadow mismatch 解消、res
 - 2C: rebuild / compare CLI と source-of-truth audit
 - 2D: dual-write / shadow read
 - 2E: production read / write switch
-- 2F: AGE fallback / compatibility cleanup（Step 4 と連携）
+- 2F: relational-only本番有効化（反映済み）。AGE fallback / compatibilityのコード整理とAGE / extension削除はStep 4と連携する後続作業。
+  AGE / extension / backup / 旧imageを保持し、Step 4の削除gateは未完了として扱う。
 
 ## 10. Step 3: PGroonga keyword search を portable 実装へ置き換える
 

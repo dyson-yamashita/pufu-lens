@@ -36,7 +36,9 @@ rollout configを追加し、2026-09-05にdeployした。Issue #726では観測�
 
 [Cloud Build実行記録](https://console.cloud.google.com/cloud-build/builds;region=asia-east1/8040c298-2491-4533-ac1a-977d935e441e?project=578766200457)
 
-Step 3Aの検索評価基盤は独立したタスクで着手できる。本番検索切替やAGE / extension削除は今回に含めない。
+Step 3Aの検索評価基盤は[Issue #747](https://github.com/dyson-yamashita/pufu-lens/issues/747)の独立タスクで進める。
+自然mutation全経路・長期観測・復元試験はStep 2の運用残件として保持し、検索評価のIssue #747へ移管しない。
+これらはStep 4の削除判断前にも確認する。本番検索切替やAGE / extension削除は今回に含めない。
 
 ### Step 2F relational単独運用（Issue #742、2026-09-16）
 
