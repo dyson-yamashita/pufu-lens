@@ -135,9 +135,9 @@ KEYWORD_EVAL_DATABASE_URL=postgres://postgres@127.0.0.1:5747/keyword_eval \
 ```
 
 `spike`は収集成功でexit 0、`evaluate-spike`は1方式でもgate不合格なら全reportを書いたうえでexit 1。
-候補の不合格は想定された評価結果である。baselineなしでは相対比較が未完了なので、採用判断には必ず指定する。
+候補の不合格は想定された評価結果である。`evaluate-spike`の`--baseline`は必須で、省略時は評価・report生成前にexit 1となる。
 DBなしで再評価する場合はinputを`fixtures/keyword/portable-spike-v1.json`に置き換える。
-単一snapshot用の既存`evaluate`は引き続き利用できる。
+単一snapshot用の既存`evaluate`はbaseline任意で引き続き利用できる。
 
 spikeの出力は`{ run, diagnostics }`の配列。`run`は既存snapshot契約、`diagnostics`はload / build /
 write時間、token数、relation容量、FTS parser token、EXPLAINを持つ。

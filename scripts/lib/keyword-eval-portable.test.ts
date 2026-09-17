@@ -68,6 +68,37 @@ test('recorded candidates retain fixed judgments and quality failures', async ()
 });
 
 const databaseUrl = process.env.KEYWORD_EVAL_DATABASE_URL;
+test('spike refuses missing baseline without a report, while single evaluation permits it', () => {
+  const spike = spawnSync(
+    process.execPath,
+    [
+      '--experimental-strip-types',
+      'scripts/keyword-eval.ts',
+      'evaluate-spike',
+      '--input',
+      'fixtures/keyword/portable-spike-v1.json',
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.equal(spike.status, 1);
+  assert.equal(spike.stdout, '');
+  assert.match(spike.stderr, /Keyword evaluation failed/);
+  const single = spawnSync(
+    process.execPath,
+    [
+      '--experimental-strip-types',
+      'scripts/keyword-eval.ts',
+      'evaluate',
+      '--input',
+      'fixtures/keyword/pgroonga-baseline-v1.json',
+    ],
+    { encoding: 'utf8' },
+  );
+  // This recorded baseline has known quality failures, but evaluation still produces a report.
+  assert.equal(single.status, 1);
+  assert.equal(JSON.parse(single.stdout).comparisonComplete, false);
+});
+
 test('offline spike CLI reports every candidate and fails for recorded negative controls', () => {
   const result = spawnSync(
     process.execPath,

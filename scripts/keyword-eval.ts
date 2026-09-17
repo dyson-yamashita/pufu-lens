@@ -5,7 +5,9 @@ import { keywordCorpus } from './lib/keyword-eval-corpus.ts';
 import { collectPgroongaBaseline } from './lib/keyword-eval-pgroonga.ts';
 import { collectPortableKeywords } from './lib/keyword-eval-portable.ts';
 
-/** Runs synthetic collection or offline evaluation; failed gates exit 1 after writing the report. */
+/** Runs synthetic collection or offline evaluation; spike comparison requires a baseline.
+ * Failed gates exit 1 after writing the report; invalid arguments fail before evaluation.
+ */
 async function main(): Promise<void> {
   const args = parseScriptArgv(process.argv.slice(2), {
     commands: ['corpus', 'collect', 'spike', 'evaluate', 'evaluate-spike'],
@@ -39,6 +41,8 @@ async function main(): Promise<void> {
     const input = get('--input');
     if (!input) throw new Error('evaluate requires --input.');
     const baseline = get('--baseline');
+    if (args.command === 'evaluate-spike' && !baseline)
+      throw new Error('evaluate-spike requires --baseline.');
     const reference = baseline
       ? parseKeywordRun(JSON.parse(await readFile(baseline, 'utf8')))
       : undefined;
