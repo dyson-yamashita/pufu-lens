@@ -197,6 +197,18 @@ test('selected adapter and materialization/backfill on synthetic migrated DB', {
         });
         const before = await backfillKeywords(sql, options('--status'));
         assert.equal(before.pending, '36');
+        // Inject a mid-batch row failure, then retry after removing only this synthetic guard.
+        await sql`ALTER TABLE public.document_chunks ADD CONSTRAINT keyword_test_abort_batch
+          CHECK (content_hash <> 'c12' OR keyword_content IS NULL) NOT VALID`;
+        try {
+          await assert.rejects(
+            backfillKeywords(sql, options('--execute', '--limit', '1000')),
+            (error: unknown) => error instanceof Error && 'code' in error && error.code === '23514',
+          );
+          assert.equal((await backfillKeywords(sql, options('--status'))).pending, before.pending);
+        } finally {
+          await sql`ALTER TABLE public.document_chunks DROP CONSTRAINT keyword_test_abort_batch`;
+        }
         const dry = await backfillKeywords(sql, options('--dry-run', '--limit', '2'));
         assert.equal(dry.updated, 0);
         assert.equal(dry.selected, 2);
