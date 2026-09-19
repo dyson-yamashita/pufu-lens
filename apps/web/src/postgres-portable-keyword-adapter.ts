@@ -1,6 +1,6 @@
-import type { KeywordCandidateRepository } from '@pufu-lens/retrieval';
+import { type KeywordCandidateRepository, KeywordQueryRejectedError } from '@pufu-lens/retrieval';
 import type postgres from 'postgres';
-import { parsePostgresKeywordCandidateRow } from './postgres-chat-candidate-adapters.ts';
+import { parsePostgresKeywordCandidateRow } from './postgres-chat-candidate-rows.ts';
 
 /**
  * Creates the opt-in LIKE/pg_trgm candidate adapter; deployment composition stays PGroonga.
@@ -14,10 +14,10 @@ export function createPostgresPortableKeywordCandidateRepository(
   return {
     async search({ limit, normalizedQuery, projectId }) {
       if (normalizedQuery.length > 1000 || normalizedQuery.includes('\u0000')) {
-        throw new Error('Invalid portable keyword query.');
+        throw new KeywordQueryRejectedError('Invalid portable keyword query.');
       }
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
-        throw new Error('Invalid portable keyword candidate limit.');
+        throw new KeywordQueryRejectedError('Invalid portable keyword candidate limit.');
       }
       if (!normalizedQuery.trim()) return [];
       return sql.begin(async (tx) => {

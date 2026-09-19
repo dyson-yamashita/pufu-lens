@@ -17,6 +17,10 @@ env:
     value: 'off'
     availability:
       - RUNTIME
+  - variable: PUFU_LENS_KEYWORD_TRANSITION_MODE
+    value: 'pgroonga-primary'
+    availability:
+      - RUNTIME
   - variable: STORAGE_DRIVER
     value: gcs
     availability:

@@ -48,6 +48,22 @@ export interface KeywordCandidateRepository {
   }): Promise<readonly RankedChunkCandidate[]>;
 }
 
+export {
+  createKeywordTransitionRepository,
+  KEYWORD_TRANSITION_TIMEOUT_MS,
+  KeywordCandidateUnavailableError,
+  KeywordQueryRejectedError,
+  type KeywordTransitionMismatchCategory,
+  type KeywordTransitionMode,
+  type KeywordTransitionObservation,
+  type KeywordTransitionObserver,
+  type KeywordTransitionOutcome,
+  type KeywordTransitionProvider,
+  type KeywordTransitionRepositoryOptions,
+  type KeywordTransitionRuntimeOptions,
+  parseKeywordTransitionMode,
+} from './keyword-transition.js';
+
 /** Candidate repositories selected together by one deployment composition root. */
 export interface CandidateRepositories {
   readonly keywordCandidateRepository: KeywordCandidateRepository;
