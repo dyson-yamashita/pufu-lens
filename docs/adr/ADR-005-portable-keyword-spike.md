@@ -115,6 +115,19 @@ bigram OR wordはpg_trgmとtoken tableの両方を要し、同品質で複雑に
 5. hybrid最終document・RRF後採用差・Chat HTTP評価、shadow / primary switch、fallback 0・7日soak・復元を後続で確認する。
    Step 2本番は全8 unit relational-onlyの記録を維持。AGE / 旧image / backup保持、extension削除gateは未達。
 
+## Step 3Cの実装検証追記（2026-09-17、Issue #752）
+
+LIKE OR word similarity / GiSTを明示DI用adapterとして実装し、nullableなmaterialized本文、共有DB正規化関数、
+更新trigger、concurrent index migration、bounded backfillを追加した。PGroonga primaryは維持する。
+query・write・backfillは同じNFKC / Unicode full lowercase / ECMAScript trimを使い、threshold 0.6と5秒timeoutは
+検索transactionに限定する。実装・検証手順は[backfill運用](../operations/keyword-backfill.md)を参照する。
+
+実schema上でv1の固定judgment・既存PGroonga baselineを維持して全gate通過。追加6文書による短query、結合文字、emoji、
+literal metacharacter等の境界例を確認した。ただし関連なしの数字query `31417`が`invoice 31415` / `invoice 31416`に
+近似一致した（2件のfalse positive）。これはquality不合格残件であり、閾値・v1期待値を緩めて吸収しない。
+体系的holdoutの新baseline、日本語typo・否定・複数語、大規模負荷、hybrid / Chat、production soak / restoreは未確認。
+本番切替許可・性能gate合格・extension削除の根拠にはしない。Step 2の本番状態・残件は変更しない。
+
 ## 参考・再現
 
 - [実行手順とgate](../operations/keyword-evaluation.md)

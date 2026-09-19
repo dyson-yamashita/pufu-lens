@@ -213,7 +213,8 @@ function parsePostgresSemanticCandidateRow(value: unknown): SemanticChunkCandida
   });
 }
 
-function parsePostgresKeywordCandidateRow(value: unknown): RankedChunkCandidate {
+/** Validates SQL identity, provenance and rank before crossing the keyword provider boundary. */
+export function parsePostgresKeywordCandidateRow(value: unknown): RankedChunkCandidate {
   const record = requireRow(value);
   return parseRankedChunkCandidate({
     ...baseCandidateFromRow(record),

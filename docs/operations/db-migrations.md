@@ -2,6 +2,13 @@
 
 この文書は、Pufu Lens の DB schema 変更を fresh DB と既存 DB の両方へ反映するための作成・レビュー手順である。
 
+## Portable keyword Step 3C
+
+`0027_portable_keyword_schema`はpg_trgm、nullable正規化本文、共有関数・triggerを追加し、既存行の全件更新は行わない。
+`0028_portable_keyword_index`はGiSTをconcurrent作成する。中断時のinvalid indexはrunner再実行でdrop/recreateする。
+fresh `init.sql`とseedも同期する。データは[bounded backfill CLI](keyword-backfill.md)で別途処理する。
+PGroonga index / primaryを維持し、本番適用・backfill・切替は今回の実装範囲に含めない。
+
 ## 正本
 
 | 対象                             | 正本                                                              |

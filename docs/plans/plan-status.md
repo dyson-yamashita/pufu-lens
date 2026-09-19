@@ -35,14 +35,16 @@
 | `docs/plans/015-chat-search-candidate-coverage/overview.md` | `completed` | 2026-07-19 | Issue #622 で Step 5 の score-aware eval fixture、回帰実行条件、07-chat.md 更新を完了。Step 1–4 のスコア透過、決定論的カットオフ、分類別 selection policy、多様性 quota と retrieval confidence 伝搬を含め、plan 全体を完了。 |
 | `docs/plans/016-gcp-cost-optimization/overview.md` | `active` | 2026-08-03 | Issue #663 で Direct VPC egress 移行、DB VM の `e2-custom-small-3072` 化と deletion protection 有効化、停止済み旧 `pg-ai` VM / disk 廃止、60 分の post-resize soak、ドキュメント更新まで完了。2026-08-10 以降の Billing Report 7 日比較を残す。 |
 | `docs/plans/017-activitypub-report-federation/overview.md` | `completed` | 2026-08-12 | Issue #665 で追加。Issue #667 で Step 1、Issue #669 / PR #670 で Step 2、Issue #671 で Step 3、Issue #673 / PR #674 で Step 4、Issue #676 / PR #677 で Step 5、Issue #678 / PR #679 で Step 6 を完了。Issue #682 / PR #683 で Step 7 の本文なしqueue / origin / inbox metrics・alert、retry exhausted再投入 / 破棄と監査、Actor key / domain block / canonical origin / Fedify advisory runbook、月次request / Job / DB / egress計測、system / API / data / security / deployment / cost docsとproduction checklist同期を完了した。外部 instance、本番deploy、実GCP observability適用は未実施で、実 Mastodon 固有挙動は未確認リスクとして残る。 |
-| `docs/plans/018-cloud-portable-data-backends/overview.md` | `active` | 2026-09-17 | Step 1A–1C / 2A–2D完了。PR #743 / #745のrelational-onlyを9/17本番反映し全8 unitで確認、Issue #746で実績を記録。ユーザー指定で停止・drain省略。自動smoke・主要画面・Graphを確認し、ユーザーもログイン・レポート作成成功を報告。2E write switch依存残件と2F本番有効化は反映済みだが、自然mutation全経路・長期観測・復元試験は未確認。AGE / backup / 旧image保持、Step 4削除gateは未達。Step 3A評価基盤は独立タスクで進める。7 Step全体はactive。 |
+| `docs/plans/018-cloud-portable-data-backends/overview.md` | `active` | 2026-09-17 | Step 1A–1C / 2A–2D完了。PR #743 / #745のrelational-onlyを9/17本番反映し全8 unitで確認、Issue #746で実績を記録。ユーザー指定で停止・drain省略。自動smoke・主要画面・Graphを確認し、ユーザーもログイン・レポート作成成功を報告。2E write switch依存残件と2F本番有効化は反映済みだが、自然mutation全経路・長期観測・復元試験は未確認。AGE / backup / 旧image保持、Step 4削除gateは未達。Step 3Cの候補schema / adapter / backfillをIssue #752 / PR #753で実装・ローカル検証済み。PGroonga primaryを維持し切替gateは残る。7 Step全体はactive。 |
 
 ## 運用ルール
 
 Plan 018 Step 3A（2026-09-17、[Issue #747](https://github.com/dyson-yamashita/pufu-lens/issues/747) / PR #749）: 固定合成keywordコーパスとoffline評価runner、
 PGroonga baseline収集・品質残差の記録を実装・検証済み。
 Step 3B（Issue #750）で11方式を比較し、5方式が固定品質gate合格。LIKE OR pg_trgm word similarity / GiSTを次候補に提案し、
-ADR-005へ実測と限界を記録。Step 3Cのproduction実装・切替は未着手で、plan全体は`active`を維持する。
+ADR-005へ実測と限界を記録。Step 3C（Issue #752 / PR #753）でschema / candidate adapter / bounded backfillを実装し、
+ローカル合成DBの品質・整合・schema driftを検証。数字の近似誤検出を確認し、広いholdout・大規模負荷・hybrid / Chat・
+本番適用 / 切替はStep 3D以降のgateに残す。plan全体は`active`を維持する。
 本番状態はStep 2の記録を正本とし、この評価基盤の追加では変更しない。plan全体は`active`を維持する。
 自然mutation全経路・長期観測・復元試験はStep 2の運用残件として保持し、Issue #747へ移管しない。Step 4の削除判断前にも確認する。
 
