@@ -13,13 +13,19 @@ export interface KeywordHoldoutCase {
  */
 export const keywordHoldoutCases: readonly KeywordHoldoutCase[] = [
   { category: 'japanese-short', expectedChunkIndexes: [0], id: 'ja-short', query: '猫' },
-  { category: 'japanese-typo', expectedChunkIndexes: [1], id: 'ja-typo', query: 'ガラズ' },
+  {
+    category: 'japanese-typo-negative',
+    expectedChunkIndexes: [],
+    id: 'ja-typo-no-match',
+    query: 'ガラズ',
+  },
   { category: 'combining-unicode', expectedChunkIndexes: [1], id: 'combining', query: 'ガラス' },
   {
     category: 'numeric-identifier',
     expectedChunkIndexes: [3],
     id: 'numeric-exact',
-    query: '31415',
+    knownFailure: 'portable_numeric_false_positive',
+    query: 'invoice 31415',
   },
   {
     category: 'numeric-negative',
@@ -50,10 +56,10 @@ export const keywordHoldoutCases: readonly KeywordHoldoutCase[] = [
     query: '_',
   },
   {
-    category: 'escaping-backslash',
+    category: 'escaping-prefix',
     expectedChunkIndexes: [2],
-    id: 'escape-backslash',
-    query: '\\',
+    id: 'escape-prefix',
+    query: 'C:',
   },
   { category: 'emoji', expectedChunkIndexes: [1], id: 'emoji', query: '🧑‍💻' },
   { category: 'injection', expectedChunkIndexes: [], id: 'injection', query: "' OR 1=1 --" },

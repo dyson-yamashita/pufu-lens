@@ -729,7 +729,7 @@ Step 4 の AGE removal は、全 project backfill、shadow mismatch 解消、res
 
 ### Step 3D 進捗
 
-- 2026-09-19: Issue #754 / PR #755でPGroonga primaryを既定のまま維持し、portable candidateのshadow比較、portable primary + PGroonga fallback、sanitized observability、切替 / rollback設定を実装した。unit / config / scripts / full test、専用synthetic DBの候補・backfill・shadow・14-case holdout、migration check / schema driftを検証し、数字query `31417`の近似誤ヒット2件を記録した。hybrid / Chat、負荷・容量・write、production backfill / shadow / soak / restoreは品質・運用gateとして未達のまま維持し、閾値・v1 judgmentは緩めていない。本番変更・AGE / PGroonga cleanupは行っていない。
+- 2026-09-19: Issue #754 / PR #755でPGroonga primaryを既定のまま維持し、portable candidateのshadow比較、portable primary + PGroonga fallback、sanitized observability、切替 / rollback設定を実装した。unit / config / scripts / full test、専用synthetic DBの候補・backfill・shadow・14-case holdout、migration check / schema driftを検証し、`invoice 31415`の近似追加候補と数字query `31417`の近似誤ヒット2件をcandidate known failureとして記録した。baselineはholdout全件を満たし、未記録のcandidate failureはgateで許可しない。hybrid / Chat、負荷・容量・write、production backfill / shadow / soak / restoreは品質・運用gateとして未達のまま維持し、閾値・v1 judgmentは緩めていない。本番変更・AGE / PGroonga cleanupは行っていない。
 
 ### 目的
 

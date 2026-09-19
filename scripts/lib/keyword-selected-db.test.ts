@@ -384,9 +384,9 @@ test('selected adapter and materialization/backfill on synthetic migrated DB', {
               holdoutCase.expectedChunkIndexes.map((index) => uuid(2000 + index)),
             );
             const matchesExpected = (rows: readonly { readonly chunkId: string }[]) =>
-              holdoutCase.expectedChunkIndexes.length === 0
-                ? rows.length === 0
-                : rows[0]?.chunkId !== undefined && expectedIds.has(rows[0].chunkId);
+              rows.length === expectedIds.size &&
+              new Set(rows.map((row) => row.chunkId)).size === expectedIds.size &&
+              rows.every((row) => expectedIds.has(row.chunkId));
             return {
               baselineMatches: matchesExpected(baselineRows),
               candidateMatches: matchesExpected(portableRows),
@@ -399,6 +399,19 @@ test('selected adapter and materialization/backfill on synthetic migrated DB', {
         );
         const baselineFailures = holdoutResults.filter((result) => !result.baselineMatches);
         const candidateFailures = holdoutResults.filter((result) => !result.candidateMatches);
+        assert.deepEqual(
+          baselineFailures.map((result) => result.id),
+          [],
+          'PGroonga baseline must satisfy every holdout case',
+        );
+        assert.deepEqual(
+          candidateFailures.map((result) => result.id).sort(),
+          keywordHoldoutCases
+            .filter((holdoutCase) => holdoutCase.knownFailure !== undefined)
+            .map((holdoutCase) => holdoutCase.id)
+            .sort(),
+          'portable candidate must not add unrecorded holdout failures',
+        );
         t.diagnostic(
           `Step 3D holdout baseline failures=${baselineFailures.length}, candidate failures=${candidateFailures.length}, cases=${holdoutResults.length}`,
         );

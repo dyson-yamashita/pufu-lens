@@ -88,9 +88,10 @@ KEYWORD_EVAL_DATABASE_URL="postgres://postgres@127.0.0.1:5747/keyword_eval" \
   node --experimental-strip-types --test scripts/lib/keyword-selected-db.test.ts
 ```
 
-数字query `31417`は`invoice 31415` / `invoice 31416`へ近似一致する既知のportable false positiveとして、candidate holdoutを
-不合格のまま記録する。v1の期待値、threshold `0.6`、入力境界を緩めてPASSへ変えない。日本語typo、否定 / 複数語の結果は
-baselineとの差分とともに診断へ残し、実行環境がない場合は未検証として扱う。
+数字queryでは、`invoice 31415`が`invoice 31416`を余分に返す近似overmatchと、関連なしの`31417`が
+`invoice 31415` / `invoice 31416`へ近似一致する2件のportable false positiveを既知失敗としてcandidate holdoutへ明示する。
+baselineは全14ケースで期待集合に一致し、candidateの不一致はこの2ケースだけを許可する。v1の期待値、threshold `0.6`、入力境界を
+緩めてPASSへ変えない。日本語typo、否定 / 複数語の結果はbaselineとの差分とともに診断へ残し、実行環境がない場合は未検証として扱う。
 
 transitionのtracked modeは`pgroonga-primary`、`pgroonga-shadow`、`portable-primary`の3値だけである。shadowはPGroongaの
 結果を返しportableを比較する。portable primaryは成功0件をauthoritativeとし、error / timeout時だけPGroongaへfallbackする。

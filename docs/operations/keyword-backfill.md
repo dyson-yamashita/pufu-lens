@@ -103,8 +103,9 @@ CIの`db-check`でも専用DBを作成して実行する。DB環境変数なし�
 固定v1の22 query / 37 chunkは既存PGroonga baseline必須で評価し、portable候補はRecall / MRR / nDCG = 1、全gateを通過した。
 NFKC・Unicode lowercase（İ、Greek sigma）、trim、短query、結合文字、emoji、LIKE特殊文字、SQL注入否定例を確認した。
 Step 3D holdoutでは日本語typo、1文字query、数字 / 識別子、否定 / 複数語、Unicode、literal escapingをPGroonga baselineと
-portable候補へ同じproject scopeで実行する。関連なしの数字query `31417`は`invoice 31415` / `invoice 31416`へ近似一致する
-2件のfalse positiveを再現し、holdout gateを不合格として記録する。これは既知の失敗を可視化するものであり、閾値・v1 judgmentを調整しない。
+portable候補へ同じproject scopeで実行する。`invoice 31415`への関連queryで`invoice 31416`が余分に返る近似overmatchと、関連なしの
+数字query `31417`が`invoice 31415` / `invoice 31416`へ近似一致する2件のfalse positiveを再現し、candidateの既知失敗として
+holdout gateへ明示する。baseline失敗や未記録のcandidate失敗はgateで許可しない。これは既知の失敗を可視化するものであり、閾値・v1 judgmentを調整しない。
 
 広いholdoutの品質合否は上記known failureのため未達。大規模・長文・project偏り・同時ingest負荷、自然plannerでのGIN/GiST比較、
 WAL/容量/latency SLO、hybrid・RRF後選択・Chat HTTP、production backfill・7日soak・restoreも未検証。

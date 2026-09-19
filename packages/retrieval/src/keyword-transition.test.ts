@@ -175,6 +175,27 @@ test('portable primary falls back once on provider failure and preserves PGroong
   assert.doesNotMatch(JSON.stringify(observations), /portable unavailable/);
 });
 
+test('portable primary records provider latency separately from fallback latency', async () => {
+  const observations: KeywordTransitionObservation[] = [];
+  const clockValues = [0, 7, 7, 19];
+  let clockIndex = 0;
+  const result = await createKeywordTransitionRepository({
+    mode: 'portable-primary',
+    now: () => clockValues[clockIndex++] ?? 19,
+    observer: (observation) => {
+      observations.push(observation);
+    },
+    pgroonga: repository(async () => [candidate()]),
+    portable: repository(async () => {
+      throw new Error('portable unavailable');
+    }),
+  }).search({ limit: 5, normalizedQuery: 'query', projectId: 'project-a' });
+
+  assert.equal(result.length, 1);
+  assert.equal(observations[0]?.primaryLatencyMs, 7);
+  assert.equal(observations[0]?.fallbackLatencyMs, 12);
+});
+
 test('portable query rejection never falls back', async () => {
   let fallbackCalls = 0;
   const rejected = new KeywordQueryRejectedError('invalid query');

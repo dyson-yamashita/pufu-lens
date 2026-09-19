@@ -196,13 +196,14 @@ function createPortablePrimaryRepository(
         );
         return primaryResult;
       } catch (error) {
+        const primaryLatencyMs = elapsed(runtime, primaryStartedAt);
         if (error instanceof KeywordQueryRejectedError) {
           notify(
             runtime,
             buildObservation(options.mode, {
               mismatchCategories: [],
               outcome: 'rejected',
-              primaryLatencyMs: elapsed(runtime, primaryStartedAt),
+              primaryLatencyMs,
               primaryProvider: 'portable',
               reason: 'query_rejected',
             }),
@@ -219,7 +220,7 @@ function createPortablePrimaryRepository(
               fallbackLatencyMs: elapsed(runtime, fallbackStartedAt),
               fallbackProvider: 'pgroonga',
               outcome: 'fallback_success',
-              primaryLatencyMs: elapsed(runtime, primaryStartedAt),
+              primaryLatencyMs,
               primaryProvider: 'portable',
               reason: 'primary_error',
             }),
@@ -232,7 +233,7 @@ function createPortablePrimaryRepository(
               fallbackLatencyMs: elapsed(runtime, fallbackStartedAt),
               fallbackProvider: 'pgroonga',
               outcome: 'unavailable',
-              primaryLatencyMs: elapsed(runtime, primaryStartedAt),
+              primaryLatencyMs,
               primaryProvider: 'portable',
               reason: 'fallback_error',
             }),
