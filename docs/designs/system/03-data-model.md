@@ -4,7 +4,8 @@
 
 この章はテーブルの役割、分離方針、設計意図を説明する。fresh DB の実際の DDL は `infra/docker/postgres/init.sql` を正とし、既存 DB への差分適用履歴は `infra/db/migrations/*.sql` を正とする。この文書にはフル DDL を写さない。制約、カラム、index を変更する場合は `init.sql` と migration を更新し、この文書は意図や運用上の注意だけを同期する。
 
-Plan 018 Step 3C（Issue #752）は`document_chunks.keyword_content`をnullableな正規化本文として追加する。
+Plan 018 Step 3C（Issue #752）は`document_chunks.keyword_content`をnullableな正規化本文として追加する。Step 3D（Issue #754）は
+この列とGiST候補を切替wrapperへ接続するが、初期runtimeはPGroonga primaryのままにする。
 PostgreSQL 18の共有関数でNFKC / Unicode lowercase / trimを行い、INSERT・本文UPDATE triggerとbackfill、
 候補adapterのqueryで同じ定義を使う。既存行はNULLを残してbounded backfillし、GiST indexは別のconcurrent migrationで作成する。
 削除はchunk自体の削除・既存cascadeで整合し、履歴tableは対象外。PGroonga indexとruntime primaryは維持する。

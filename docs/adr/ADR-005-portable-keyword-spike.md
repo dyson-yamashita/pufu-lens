@@ -1,7 +1,7 @@
 # ADR-005: GCP portable keywordの評価spike
 
 - 日付: 2026-09-17
-- 状態: Step 3Bの採用提案。本番切替は未承認・未実施
+- 状態: Step 3Bの採用提案とStep 3Dの切替準備。本番切替は未承認・未実施
 - 対象: Plan 018 Step 3B / Issue #750
 
 ## 判断
@@ -127,6 +127,28 @@ literal metacharacter等の境界例を確認した。ただし関連なしの�
 近似一致した（2件のfalse positive）。これはquality不合格残件であり、閾値・v1期待値を緩めて吸収しない。
 体系的holdoutの新baseline、日本語typo・否定・複数語、大規模負荷、hybrid / Chat、production soak / restoreは未確認。
 本番切替許可・性能gate合格・extension削除の根拠にはしない。Step 2の本番状態・残件は変更しない。
+
+## Step 3Dのshadow / primary切替準備（Issue #754）
+
+Step 3Cのcandidate adapterをprovider-neutralなtransition wrapperへ接続し、deployment-level modeを次の3値に固定する。
+
+- `pgroonga-primary`: 既定。既存PGroongaだけを呼び、portable queryを発生させない。
+- `pgroonga-shadow`: PGroongaの順位付き結果を返し、portable結果をbounded shadow比較する。shadowのerror、timeout、mismatchはprimary結果を変えない。
+- `portable-primary`: portable結果を返す。成功0件は空の成功として採用し、portable error / timeoutのときだけPGroongaへ一度fallbackする。
+  fallbackも失敗した場合は固定unavailable errorとする。入力rejectedはfallbackしない。
+
+Coreの候補DTO、project scope、chunk上限→document dedupe→1始まりrank、選択chunkの原文snippet、RRF `k=60`は変更しない。
+観測は`keyword_transition_observation`としてprovider、mode、outcome、candidate count、latency、有限の
+`candidate_count` / `candidate_set` / `rank` / `snippet_provenance`だけを出力する。query本文、snippet、raw score、identity、
+error本文、secretは出力しない。session-local `word_similarity_threshold=0.6`と5秒statement timeoutの契約も維持する。
+
+### Step 3D品質結果と未達gate
+
+固定v1は既存baseline比較でcandidateの全gateを維持した。追加holdoutには日本語typo、短query、数字 / 識別子、否定 / 複数語、
+Unicode / escapingを含め、`invoice 31415`への関連queryの近似overmatchと、`31417`の関連なしnumeric queryがinvoice 2件へ近似一致する
+不合格を再現・記録する。baselineは全holdoutを満たし、candidateは明示したnumeric known failureだけを許可する。thresholdやv1 judgmentは緩めない。large / long / project-skewed corpus、自然plannerでのGIN/GiST、WAL / capacity / write amplification / latency
+SLO、同時ingest、hybrid / RRF final selection、Chat HTTP、production shadow / primary、全chunk backfill、fallback 0、7日soak、
+restoreは未検証である。Step 2の全8 unit relational-only、AGE / backup / 旧image保持、自然mutation全経路・長期観測・復元試験の残件は維持する。
 
 ## 参考・再現
 

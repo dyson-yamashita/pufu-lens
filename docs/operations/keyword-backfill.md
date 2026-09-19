@@ -1,8 +1,9 @@
-# Portable keyword materialization（Step 3C）
+# Portable keyword materialization（Step 3C / 3D）
 
-Issue #752で候補adapterとadditive schemaを実装した。通常runtimeのkeyword primaryはPGroongaのままで、
-Core RRF `k=60`、Chat API、期間付き検索の既存経路は変更しない。本番migration・backfill・shadow・切替は未実施。
-本番実行はStep 3Dの別承認・品質gate・backup確認が必要。PGroonga indexを維持する。
+Issue #752で候補adapterとadditive schemaを実装し、Issue #754でshadow / primary + fallbackの切替準備を追加した。
+通常runtimeのkeyword primaryは`pgroonga-primary`（PGroonga）のままで、Core RRF `k=60`、Chat API、期間付き検索の
+既存経路は変更しない。本番migration・backfill・shadow有効化・切替は未実施。本番実行は別承認、品質gate、backup確認が必要であり、
+PGroonga indexはrollback window中維持する。
 
 ## Schemaと正規化
 
@@ -31,6 +32,29 @@ Core RRF `k=60`、Chat API、期間付き検索の既存経路は変更しない
   chunk limit → document dedupe → 1始まりrank、同じ採用chunkの原文snippet（最大700文字）を返す。
 - NULLの未backfill行は候補にならない。0件は空配列、DB errorは伝搬し、adapter内部でPGroonga fallbackを行わない。
   本番fallback / unavailable / shadow、期間filterを含むhybrid最終品質はStep 3Dで扱う。
+
+## Step 3D transition / rollback準備
+
+server-onlyの`PUFU_LENS_KEYWORD_TRANSITION_MODE`をdeployment composition rootで一度だけ解決する。未知の値はfail closedし、
+request body、project settings、URLからproviderを選択しない。
+
+| mode               | primary                         | portable候補 | fallback / 戻し方                                                                          |
+| ------------------ | ------------------------------- | ------------ | ------------------------------------------------------------------------------------------ |
+| `pgroonga-primary` | PGroonga                        | 実行しない   | 初期既定。設定をこの値へ戻せばPGroongaのみへ戻る                                           |
+| `pgroonga-shadow`  | PGroonga                        | shadow比較   | primary結果を常に返す。shadow error / timeout / mismatchは結果を変えない                   |
+| `portable-primary` | portable LIKE / word similarity | primary      | portableのerror / timeoutだけPGroongaへ1回fallback。成功0件はauthoritativeでfallbackしない |
+
+成功0件は`success`として扱い、provider error / timeout、fallback成功、両系統unavailable、入力rejectedと混同しない。
+shadow観測はprovider、mode、outcome、候補件数、latency、有限のmismatch categoryだけを記録する。
+query本文、snippet、provider raw score、document / chunk identity、error本文、secretはログへ出さない。
+portable primaryのfallbackは固定のunavailable errorを返し、DB error本文を上位へ再掲しない。入力不正は別providerへretryしない。
+
+現在のtracked App Hosting / Cloud Build設定は`pgroonga-primary`である。切替準備で変更するのは設定と検証だけであり、
+本番migration、backfill、shadow有効化、primary切替、deployは含まない。rollbackは全runtime unitを
+`pgroonga-primary`へ揃え、portable schema / index / backfill済みrowを削除せず原因調査とforward fixへ進む。
+
+Step 4の削除gateは変更しない。全chunk backfill、fallback 0、最低7日soak、restore point / isolated restore確認が完了するまで、
+PGroonga package / extension / indexのcleanupを開始しない。
 
 ## Backfill CLI
 
@@ -67,21 +91,23 @@ cursorはsnapshotではない。既存NULL行がcursorより前へ移動した�
 
 ```bash
 pnpm --filter @pufu-lens/retrieval build
-KEYWORD_EVAL_DATABASE_URL="$DATABASE_URL" node --experimental-strip-types --test \
+KEYWORD_EVAL_DATABASE_URL="postgres://postgres@127.0.0.1:5747/keyword_eval" node --experimental-strip-types --test \
   scripts/lib/keyword-selected-db.test.ts scripts/lib/keyword-backfill.test.ts
-pnpm db:migrate --check
-pnpm db:schema-drift
+DATABASE_URL="postgres://postgres@127.0.0.1:5747/keyword_eval" pnpm db:migrate --check
+DATABASE_URL="postgres://postgres@127.0.0.1:5747/keyword_eval" pnpm db:schema-drift
 ```
 
 DB testは実アプリschema上の合成projectだけを作成・削除する。実データを持つDBでは実行しない。
 CIの`db-check`でも専用DBを作成して実行する。DB環境変数なしのunit実行ではDB testをskipする。
 
-固定v1の22 query / 37 chunkは既存PGroonga baseline必須で評価し、Recall / MRR / nDCG = 1、全gateを通過した。
+固定v1の22 query / 37 chunkは既存PGroonga baseline必須で評価し、portable候補はRecall / MRR / nDCG = 1、全gateを通過した。
 NFKC・Unicode lowercase（İ、Greek sigma）、trim、短query、結合文字、emoji、LIKE特殊文字、SQL注入否定例を確認した。
-追加6文書の例では、関連なしの数字query `31417`が`invoice 31415` / `invoice 31416`の2件に近似一致した。
-これは既知のfalse positiveとしてtestで可視化し、quality合格には数えない。v1の期待値・閾値を調整していない。
+Step 3D holdoutでは日本語typo、1文字query、数字 / 識別子、否定 / 複数語、Unicode、literal escapingをPGroonga baselineと
+portable候補へ同じproject scopeで実行する。`invoice 31415`への関連queryで`invoice 31416`が余分に返る近似overmatchと、関連なしの
+数字query `31417`が`invoice 31415` / `invoice 31416`へ近似一致する2件のfalse positiveを再現し、candidateの既知失敗として
+holdout gateへ明示する。baseline失敗や未記録のcandidate失敗はgateで許可しない。これは既知の失敗を可視化するものであり、閾値・v1 judgmentを調整しない。
 
-広い独立holdoutの新baseline、日本語typo、複数語・否定表現の品質、大規模・長文・project偏り・同時ingest負荷、
-自然plannerでのGIN/GiST比較、WAL/容量/latency SLO、hybrid・RRF後選択・Chat HTTP、production backfill・7日soak・restoreは未検証。
+広いholdoutの品質合否は上記known failureのため未達。大規模・長文・project偏り・同時ingest負荷、自然plannerでのGIN/GiST比較、
+WAL/容量/latency SLO、hybrid・RRF後選択・Chat HTTP、production backfill・7日soak・restoreも未検証。
 今回の境界testと小規模成功は本番品質・性能の証明ではない。Step 2の全8 unit relational-only、AGE / backup /旧image保持と
 自然mutation全経路・長期観測・復元試験の残件を維持する。

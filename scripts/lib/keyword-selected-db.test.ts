@@ -11,6 +11,7 @@ import {
 } from './keyword-eval.ts';
 import { keywordCorpus } from './keyword-eval-corpus.ts';
 import { validateKeywordEvalUrl } from './keyword-eval-local.ts';
+import { keywordHoldoutCases } from './keyword-holdout.ts';
 
 const url = process.env.KEYWORD_EVAL_DATABASE_URL;
 const uuid = (n: number) => `75200000-0000-0000-0000-${String(n).padStart(12, '0')}`;
@@ -122,6 +123,34 @@ test('selected adapter and materialization/backfill on synthetic migrated DB', {
             .length,
           0,
         );
+      },
+    );
+    await t.test(
+      'shadow mode preserves PGroonga primary and emits sanitized comparison only',
+      async () => {
+        const observations: unknown[] = [];
+        const primary = createGcpPostgresCandidateRepositories(sql).keywordCandidateRepository;
+        const shadow = createGcpPostgresCandidateRepositories(sql, {
+          keywordObserver: (observation) => {
+            observations.push(observation);
+          },
+          keywordTransitionMode: 'pgroonga-shadow',
+        }).keywordCandidateRepository;
+        const input = { limit: 20, normalizedQuery: 'NebulaNtoe', projectId: alpha };
+        const [primaryRows, shadowRows, portableRows] = await Promise.all([
+          primary.search(input),
+          shadow.search(input),
+          repository.search(input),
+        ]);
+        assert.deepEqual(shadowRows, primaryRows);
+        assert.ok(observations.length > 0);
+        assert.doesNotMatch(JSON.stringify(observations), /NebulaNtoe|Synthetic|content|score/);
+        const observation = observations.at(-1) as Record<string, unknown> | undefined;
+        assert.equal(observation?.event, 'keyword_transition_observation');
+        assert.equal(observation?.primaryProvider, 'pgroonga');
+        assert.equal(observation?.shadowProvider, 'portable');
+        assert.equal(observation?.primaryCandidateCount, primaryRows.length);
+        assert.equal(observation?.shadowCandidateCount, portableRows.length);
       },
     );
     await t.test('normalization matches spike for Unicode and whitespace edge cases', async () => {
@@ -344,6 +373,58 @@ test('selected adapter and materialization/backfill on synthetic migrated DB', {
           const rows = await search(query, gamma);
           assert.equal(rows[0]?.chunkId, uuid(2000 + expected), query);
         }
+        const primary = createGcpPostgresCandidateRepositories(sql).keywordCandidateRepository;
+        const holdoutResults = await Promise.all(
+          keywordHoldoutCases.map(async (holdoutCase) => {
+            const [baselineRows, portableRows] = await Promise.all([
+              primary.search({ limit: 20, normalizedQuery: holdoutCase.query, projectId: gamma }),
+              search(holdoutCase.query, gamma),
+            ]);
+            const expectedIds = new Set(
+              holdoutCase.expectedChunkIndexes.map((index) => uuid(2000 + index)),
+            );
+            const matchesExpected = (rows: readonly { readonly chunkId: string }[]) =>
+              rows.length === expectedIds.size &&
+              new Set(rows.map((row) => row.chunkId)).size === expectedIds.size &&
+              rows.every((row) => expectedIds.has(row.chunkId));
+            return {
+              baselineMatches: matchesExpected(baselineRows),
+              candidateMatches: matchesExpected(portableRows),
+              id: holdoutCase.id,
+              knownFailure: holdoutCase.knownFailure,
+              baselineCount: baselineRows.length,
+              candidateCount: portableRows.length,
+            };
+          }),
+        );
+        const baselineFailures = holdoutResults.filter((result) => !result.baselineMatches);
+        const candidateFailures = holdoutResults.filter((result) => !result.candidateMatches);
+        assert.deepEqual(
+          baselineFailures.map((result) => result.id),
+          [],
+          'PGroonga baseline must satisfy every holdout case',
+        );
+        assert.deepEqual(
+          candidateFailures.map((result) => result.id).sort(),
+          keywordHoldoutCases
+            .filter((holdoutCase) => holdoutCase.knownFailure !== undefined)
+            .map((holdoutCase) => holdoutCase.id)
+            .sort(),
+          'portable candidate must not add unrecorded holdout failures',
+        );
+        t.diagnostic(
+          `Step 3D holdout baseline failures=${baselineFailures.length}, candidate failures=${candidateFailures.length}, cases=${holdoutResults.length}`,
+        );
+        const numericFailure = holdoutResults.find(
+          (result) => result.knownFailure === 'portable_numeric_false_positive',
+        );
+        assert.ok(numericFailure && numericFailure.candidateCount > 0);
+        assert.ok(
+          candidateFailures.some(
+            (result) => result.knownFailure === 'portable_numeric_false_positive',
+          ),
+          'known numeric false positive must remain visible in the holdout gate',
+        );
         assert.deepEqual(await search('absent OR blackhole', gamma), []);
         assert.deepEqual(await search("' OR 1=1 --", gamma), []);
         // Preserve and expose a known fuzzy false positive, rather than relax judgments or threshold.

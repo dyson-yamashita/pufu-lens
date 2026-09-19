@@ -20,6 +20,11 @@ env:
     value: relational-only
     availability:
       - RUNTIME
+  # Keyword transition remains on the PGroonga primary until Step 3D gates are approved.
+  - variable: PUFU_LENS_KEYWORD_TRANSITION_MODE
+    value: pgroonga-primary
+    availability:
+      - RUNTIME
   - variable: STORAGE_DRIVER
     value: gcs
     availability:

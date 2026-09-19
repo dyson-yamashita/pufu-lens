@@ -1,4 +1,4 @@
-# Keyword評価（Plan 018 Step 3A / 3B）
+# Keyword評価（Plan 018 Step 3A / 3B / 3D）
 
 `pnpm keyword:eval` は固定合成コーパスのkeyword順位を評価する。アプリケーションの検索方式や
 normalizationを変更せず、評価用spikeでproviderを比較する。本番への接続・切替は後続Stepで行う。
@@ -74,6 +74,33 @@ pnpm keyword:eval evaluate --input /tmp/candidate.json \
 実アプリschema上の候補adapter・trigger・backfill検証は[keyword backfill運用](keyword-backfill.md)を参照する。
 固定v1を既存baselineと比較して全gate通過を確認した。追加の短query / Unicode境界例も検証したが、数字の近似誤検出を
 確認したため広いholdoutの品質gate合格とは扱わない。本番切替・hybrid / Chat / 負荷評価は後続に残る。
+
+## Step 3D: holdoutとtransition比較
+
+`scripts/lib/keyword-holdout.ts` の固定holdoutはv1のjudgmentを変更せず、日本語typo、1–2文字query、数字 / 識別子、
+否定 / 複数語、NFKC / combining mark / emoji、`%`・`_`・backslash・SQL風文字列を含む。実アプリschema上のDB testは
+PGroongaをbaseline、portable GiST候補をcandidateとして同じsynthetic projectへ投入し、候補件数・expected empty・先頭順位・
+project scopeを比較する。query / content / snippet / scoreはreportへ転記しない。
+
+```bash
+pnpm --filter @pufu-lens/web... build
+KEYWORD_EVAL_DATABASE_URL="postgres://postgres@127.0.0.1:5747/keyword_eval" \
+  node --experimental-strip-types --test scripts/lib/keyword-selected-db.test.ts
+```
+
+数字queryでは、`invoice 31415`が`invoice 31416`を余分に返す近似overmatchと、関連なしの`31417`が
+`invoice 31415` / `invoice 31416`へ近似一致する2件のportable false positiveを既知失敗としてcandidate holdoutへ明示する。
+baselineは全14ケースで期待集合に一致し、candidateの不一致はこの2ケースだけを許可する。v1の期待値、threshold `0.6`、入力境界を
+緩めてPASSへ変えない。日本語typo、否定 / 複数語の結果はbaselineとの差分とともに診断へ残し、実行環境がない場合は未検証として扱う。
+
+transitionのtracked modeは`pgroonga-primary`、`pgroonga-shadow`、`portable-primary`の3値だけである。shadowはPGroongaの
+結果を返しportableを比較する。portable primaryは成功0件をauthoritativeとし、error / timeout時だけPGroongaへfallbackする。
+両系統失敗はunavailable、入力不正はrejectedとして区別する。観測はprovider、mode、outcome、件数、latency、有限カテゴリだけで、
+query本文・snippet・raw score・identity・secretを出さない。
+
+品質・切替gateは、全chunk backfill、fallback 0、最低7日soak、restore point / isolated restore確認であり、Step 3Dのローカル
+実装検証だけでは満たさない。hybrid最終document、Core RRF `k=60`後の採用差、期間filter、Chat HTTP、large / long / skewed
+corpus、同時ingest、GIN/GiST自然planner、WAL / 容量 / latency SLO、production shadow / primaryは未検証のまま残す。
 
 ## ローカルPGroonga baseline収集
 

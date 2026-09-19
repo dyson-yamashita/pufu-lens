@@ -32,16 +32,17 @@ Web は provider によって build 方法が異なる。Firebase App Hosting、
 
 ### Common
 
-| name                              | kind   | used by                                              | note                                                                                                                         |
-| --------------------------------- | ------ | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`                    | secret | Web、Mastra Server、Workflow Jobs、migration scripts | PostgreSQL 接続文字列。実値は repository に置かない                                                                          |
-| `AUTH_SECRET`                     | secret | Web                                                  | Auth.js と local encrypted metadata の fallback に使う                                                                       |
-| `STORAGE_DRIVER`                  | env    | Web、Mastra Server、Workflow Jobs                    | 現在の実装値は `local` / `gcs`。production は `gcs` など managed object storage を使う                                       |
-| `STORAGE_ROOT`                    | env    | local storage                                        | local driver の root。production secret ではないが provider 固有値として扱う                                                 |
-| `STORAGE_BUCKET`                  | env    | managed object storage                               | bucket / container 名。実 bucket 名は provider example や trigger substitutions で注入する                                   |
-| `APP_BASE_URL` / `AUTH_URL`       | env    | Web、OAuth callbacks                                 | public origin。provider の assigned URL または custom domain を設定する                                                      |
-| `MASTRA_API_URL`                  | env    | Web                                                  | Web から Mastra Server を呼ぶ場合の internal / private service URL                                                           |
-| `PUFU_LENS_GRAPH_TRANSITION_MODE` | env    | Web、Mastra Server、Workflow Jobs                    | graph移行profile。`off` / `dual-write` / `dual-write-shadow-read`だけをserver runtimeへ設定し、全deployment unitで一致させる |
+| name                                | kind   | used by                                              | note                                                                                                                                   |
+| ----------------------------------- | ------ | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                      | secret | Web、Mastra Server、Workflow Jobs、migration scripts | PostgreSQL 接続文字列。実値は repository に置かない                                                                                    |
+| `AUTH_SECRET`                       | secret | Web                                                  | Auth.js と local encrypted metadata の fallback に使う                                                                                 |
+| `STORAGE_DRIVER`                    | env    | Web、Mastra Server、Workflow Jobs                    | 現在の実装値は `local` / `gcs`。production は `gcs` など managed object storage を使う                                                 |
+| `STORAGE_ROOT`                      | env    | local storage                                        | local driver の root。production secret ではないが provider 固有値として扱う                                                           |
+| `STORAGE_BUCKET`                    | env    | managed object storage                               | bucket / container 名。実 bucket 名は provider example や trigger substitutions で注入する                                             |
+| `APP_BASE_URL` / `AUTH_URL`         | env    | Web、OAuth callbacks                                 | public origin。provider の assigned URL または custom domain を設定する                                                                |
+| `MASTRA_API_URL`                    | env    | Web                                                  | Web から Mastra Server を呼ぶ場合の internal / private service URL                                                                     |
+| `PUFU_LENS_GRAPH_TRANSITION_MODE`   | env    | Web、Mastra Server、Workflow Jobs                    | graph移行profile。`off` / `dual-write` / `dual-write-shadow-read`だけをserver runtimeへ設定し、全deployment unitで一致させる           |
+| `PUFU_LENS_KEYWORD_TRANSITION_MODE` | env    | Web、Mastra Server、Workflow Jobs                    | keyword移行profile。`pgroonga-primary` / `pgroonga-shadow` / `portable-primary`をserver runtimeへ設定し、全deployment unitで一致させる |
 
 ### LLM / Embedding
 
@@ -103,6 +104,7 @@ Provider 固有の project id、region、artifact repository、service account�
 - `_MASTRA_SERVICE`
 - `_WEB_BACKEND`
 - `_GRAPH_TRANSITION_MODE`
+- `_KEYWORD_TRANSITION_MODE`
 
 ## Secret Handling
 
@@ -131,7 +133,7 @@ private data は authenticated runtime だけが読める。public report に必
 
 ## Database Contract
 
-Database は PostgreSQL を前提にする。Graph 機能には Apache AGE、embedding / vector data には pgvector、チャットの日本語 keyword retrieval には PGroonga、id / token 補助には pgcrypto を使う。
+Database は PostgreSQL を前提にする。Graph 機能には Apache AGE、embedding / vector data には pgvector、チャットの日本語 keyword retrieval の既定には PGroongaを使う。portable LIKE / pg_trgm候補は明示的な切替profileとbackfill / 品質gateが揃った場合だけ候補になる。id / token 補助には pgcrypto を使う。
 
 provider が managed PostgreSQL を提供していても、Apache AGE を有効化できない場合は別の運用方式が必要になる。GCP の既存設計では Cloud SQL ではなく PostgreSQL + AGE の container / VM 構成を採る。
 

@@ -99,6 +99,12 @@ graph移行profileはCloud Buildの`_GRAPH_TRANSITION_MODE`でMastra Serverと�
 image build・migration・Mastra・Jobs・Webの変更前に停止する。Firebase CLI builderに同梱された`yaml`で設定を解析するため、
 `_FIREBASE_DEPLOY=false`の場合も同builderが必要となる（stagingでは照合をskipする）。別release processのWeb稼働値は別途照合する。
 
+keyword移行profileはCloud Buildの`_KEYWORD_TRANSITION_MODE`でMastra Serverと全Workflow Jobsへ配る。既定は`pgroonga-primary`とし、
+`pgroonga-primary` / `pgroonga-shadow` / `portable-primary`以外をdeploy前に拒否する。Webはtracked `apps/web/apphosting.yaml`の
+`PUFU_LENS_KEYWORD_TRANSITION_MODE`を読むため、triggerとApp Hosting設定を同じ値に揃える。`validate-production-keyword-mode`は本番の
+両値を照合し、不一致、設定欠落、重複、runtime対象外、secret化をimage build・migration・Mastra・Jobs・Webの変更前に停止する。
+初期設定は既定値のままであり、Step 3Dの準備だけではmigration、backfill、shadow有効化、primary切替を実行しない。
+
 Issue #740ではtracked Webを`relational-primary`へ切り替える設定を準備する。本番は引き続き`dual-write-shadow-read`で、
 mergeだけではbuildを承認しない。切替条件、直前backup、全unitのmode照合、切り戻しは
 [Step 2E切替準備](../operations/graph-relations.md#step-2e-切替設定準備issue-7402026-09-14)に従う。
@@ -187,10 +193,10 @@ gcloud builds triggers create github \
   --service-account "$PRODUCTION_DEPLOY_SA" \
   --require-approval \
   --included-files 'apps/**,packages/**,scripts/**,infra/**,deploy/examples/gcp-cloud-build/cloudbuild.deploy.yaml,.dockerignore,.firebaserc,firebase.json,pnpm-lock.yaml,pnpm-workspace.yaml,package.json,turbo.json,tsconfig*.json' \
-  --substitutions "_ENV=production,_REGION=${RUNTIME_REGION},_ARTIFACT_REPO=<artifact-repo>,_RUNTIME_SERVICE_ACCOUNT=${RUNTIME_SA},_SCHEDULER_SERVICE_ACCOUNT=${SCHEDULER_SA},_STORAGE_BUCKET=<storage-bucket>,_VPC_NETWORK=default,_VPC_SUBNET=<serverless-subnet>,_MASTRA_SERVICE=mastra-server,_MASTRA_IMAGE=mastra-server,_JOBS_IMAGE=workflow-job,_FIREBASE_DEPLOY=true,_FIREBASE_TOOLS_VERSION=15.25.1,_RUN_DB_MIGRATIONS=true,_DB_MIGRATION_JOB=db-migrate,_SOURCE_SYNC_DISPATCHER_JOB=source-sync-dispatcher,_SOURCE_SYNC_SCHEDULER=source-sync-dispatcher,_REPORT_SCHEDULE_DISPATCHER_JOB=report-schedule-dispatcher,_REPORT_SCHEDULE_SCHEDULER=report-schedule-dispatcher,_ACTIVITYPUB_CANONICAL_ORIGIN=${ACTIVITYPUB_CANONICAL_ORIGIN},_ACTIVITYPUB_DISPATCHER_JOB=activitypub-dispatcher,_ACTIVITYPUB_DISPATCHER_SCHEDULER=activitypub-dispatcher,_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE=${ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE},_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT=${SCHEDULER_SUBJECT},_ACTIVITYPUB_ACTOR_KEY_SECRET=${ACTIVITYPUB_ACTOR_KEY_SECRET},_CHAT_MODEL=google/gemini-2.5-flash,_CHAT_API_KEY_ENV=GEMINI_API_KEY,_CHAT_API_KEY_SECRET=GEMINI_API_KEY,_EMBEDDING_PROVIDER=gemini,_EMBEDDING_MODEL=gemini-embedding-2,_EMBEDDING_DIMENSIONS=1536,_EMBEDDING_API_KEY_SECRET=GEMINI_API_KEY,_GRAPH_TRANSITION_MODE=off"
+  --substitutions "_ENV=production,_REGION=${RUNTIME_REGION},_ARTIFACT_REPO=<artifact-repo>,_RUNTIME_SERVICE_ACCOUNT=${RUNTIME_SA},_SCHEDULER_SERVICE_ACCOUNT=${SCHEDULER_SA},_STORAGE_BUCKET=<storage-bucket>,_VPC_NETWORK=default,_VPC_SUBNET=<serverless-subnet>,_MASTRA_SERVICE=mastra-server,_MASTRA_IMAGE=mastra-server,_JOBS_IMAGE=workflow-job,_FIREBASE_DEPLOY=true,_FIREBASE_TOOLS_VERSION=15.25.1,_RUN_DB_MIGRATIONS=true,_DB_MIGRATION_JOB=db-migrate,_SOURCE_SYNC_DISPATCHER_JOB=source-sync-dispatcher,_SOURCE_SYNC_SCHEDULER=source-sync-dispatcher,_REPORT_SCHEDULE_DISPATCHER_JOB=report-schedule-dispatcher,_REPORT_SCHEDULE_SCHEDULER=report-schedule-dispatcher,_ACTIVITYPUB_CANONICAL_ORIGIN=${ACTIVITYPUB_CANONICAL_ORIGIN},_ACTIVITYPUB_DISPATCHER_JOB=activitypub-dispatcher,_ACTIVITYPUB_DISPATCHER_SCHEDULER=activitypub-dispatcher,_ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE=${ACTIVITYPUB_DISPATCHER_OIDC_AUDIENCE},_ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT=${SCHEDULER_SUBJECT},_ACTIVITYPUB_ACTOR_KEY_SECRET=${ACTIVITYPUB_ACTOR_KEY_SECRET},_CHAT_MODEL=google/gemini-2.5-flash,_CHAT_API_KEY_ENV=GEMINI_API_KEY,_CHAT_API_KEY_SECRET=GEMINI_API_KEY,_EMBEDDING_PROVIDER=gemini,_EMBEDDING_MODEL=gemini-embedding-2,_EMBEDDING_DIMENSIONS=1536,_EMBEDDING_API_KEY_SECRET=GEMINI_API_KEY,_GRAPH_TRANSITION_MODE=off,_KEYWORD_TRANSITION_MODE=pgroonga-primary"
 ```
 
-既存 trigger を更新する場合も、同じincluded filesとActivityPub / graph transition substitutionを設定する。Cloud Build repository connection（`repositoryEventConfig`）を使う2nd gen triggerでは、`--update-substitutions`だけの更新が`INVALID_ARGUMENT`になるCLI versionがあるため、現在の完全なtrigger configを一時ファイルへexportし、接続、branch、approval、service account、included files、既存substitutionを保持したまま必要なsubstitutionだけを追加する。値を編集したファイルにはsecret payloadを含めず、作業後は組織の一時ファイル処理規程に従う。
+既存 trigger を更新する場合も、同じincluded filesとActivityPub / graph / keyword transition substitutionを設定する。Cloud Build repository connection（`repositoryEventConfig`）を使う2nd gen triggerでは、`--update-substitutions`だけの更新が`INVALID_ARGUMENT`になるCLI versionがあるため、現在の完全なtrigger configを一時ファイルへexportし、接続、branch、approval、service account、included files、既存substitutionを保持したまま必要なsubstitutionだけを追加する。値を編集したファイルにはsecret payloadを含めず、作業後は組織の一時ファイル処理規程に従う。
 
 ```bash
 TRIGGER_ID="<trigger-id-or-name>"
@@ -209,6 +215,7 @@ gcloud builds triggers describe "$TRIGGER_ID" \
 # _ACTIVITYPUB_DISPATCHER_SCHEDULER_SUBJECT: '${SCHEDULER_SUBJECT}'
 # _ACTIVITYPUB_ACTOR_KEY_SECRET: ${ACTIVITYPUB_ACTOR_KEY_SECRET}
 # _GRAPH_TRANSITION_MODE: off
+# _KEYWORD_TRANSITION_MODE: pgroonga-primary
 
 gcloud builds triggers update github "$TRIGGER_ID" \
   --project "$PROJECT_ID" \
@@ -238,7 +245,7 @@ Cloud Console から作成する場合は、Cloud Build > Triggers で次を設�
 - Service account: production deploy 用 service account。
 - Approval: production は required。
 - Included files: 上記 CLI 例と同じ runtime / deploy config path だけを設定し、docs-only 変更で deploy が走らないようにする。
-- Substitution variables: deploy trigger の `_ENV`、`_REGION`、`_RUN_DB_MIGRATIONS`、`_DB_MIGRATION_JOB`、`_GRAPH_TRANSITION_MODE` などを設定する。
+- Substitution variables: deploy trigger の `_ENV`、`_REGION`、`_RUN_DB_MIGRATIONS`、`_DB_MIGRATION_JOB`、`_GRAPH_TRANSITION_MODE`、`_KEYWORD_TRANSITION_MODE` などを設定する。
 
 ## IAM
 
