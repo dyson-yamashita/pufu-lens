@@ -1019,8 +1019,10 @@ monitor / alert definition は前 version へ戻せる。restore drill は isola
 
 ### 次 Step gate
 
-Step 7 の GCP baseline は、デプロイ当日の stable metrics、最新 restore drill、全 scheduled workload、
-retrieval eval snapshot が揃ってから固定する。
+Step 7 の安定稼働確認 gate は、デプロイ当日の stable metrics、最新 restore drill、全 scheduled workload、
+retrieval eval snapshot が揃ってから判定する。
+GCP baseline（CPU / memory / connection / disk / bloat / vacuum / latency / error）は別途7〜30日の観測後に固定する。
+長期baselineの計測期間は当日の安定稼働確認とは区別し、その確認の待機期間には含めない。
 
 ### 想定 Issue / PR
 
