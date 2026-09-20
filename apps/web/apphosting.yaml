@@ -20,9 +20,9 @@ env:
     value: relational-only
     availability:
       - RUNTIME
-  # Keyword transition remains on the PGroonga primary until Step 3D gates are approved.
+  # Step 3D observation profile: PGroonga remains primary and portable runs only as shadow.
   - variable: PUFU_LENS_KEYWORD_TRANSITION_MODE
-    value: pgroonga-primary
+    value: pgroonga-shadow
     availability:
       - RUNTIME
   - variable: STORAGE_DRIVER

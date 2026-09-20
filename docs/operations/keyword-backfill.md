@@ -2,8 +2,15 @@
 
 Issue #752で候補adapterとadditive schemaを実装し、Issue #754でshadow / primary + fallbackの切替準備を追加した。
 通常runtimeのkeyword primaryは`pgroonga-primary`（PGroonga）のままで、Core RRF `k=60`、Chat API、期間付き検索の
-既存経路は変更しない。本番migration・backfill・shadow有効化・切替は未実施。本番実行は別承認、品質gate、backup確認が必要であり、
+既存経路は変更しない。本番migrationと全4 projectのbackfillは完了したが、production shadow有効化・primary切替は別承認と品質gateに残る。
 PGroonga indexはrollback window中維持する。
+
+## 2026-09-20 production backfill記録
+
+- `book-read-log`、`pufu-lens-dev-pj`、`pufu-tomonokai`、`test` の全4 projectを対象に実行した。
+- 100件単位のbounded transactionで3,420件を更新し、全projectで`pending=0`、`normalize_keyword(content)`との不一致0件を確認した。
+- `pgroonga-primary`は維持し、portable providerのprimary切替やPGroonga cleanupは行っていない。
+- shadow観測の設定準備とrollback条件はIssue #756で管理する。
 
 ## Schemaと正規化
 
@@ -49,8 +56,9 @@ shadow観測はprovider、mode、outcome、候補件数、latency、有限のmis
 query本文、snippet、provider raw score、document / chunk identity、error本文、secretはログへ出さない。
 portable primaryのfallbackは固定のunavailable errorを返し、DB error本文を上位へ再掲しない。入力不正は別providerへretryしない。
 
-現在のtracked App Hosting / Cloud Build設定は`pgroonga-primary`である。切替準備で変更するのは設定と検証だけであり、
-本番migration、backfill、shadow有効化、primary切替、deployは含まない。rollbackは全runtime unitを
+tracked App HostingはIssue #756で`pgroonga-shadow`へ準備し、Cloud Buildの汎用既定値は`pgroonga-primary`のまま維持する。
+production triggerのsubstitutionとtracked Webが同じ値になるまでdeployしない。shadow開始後もprimary結果を変えない。
+rollbackは全runtime unitを
 `pgroonga-primary`へ揃え、portable schema / index / backfill済みrowを削除せず原因調査とforward fixへ進む。
 
 Step 4の削除gateは変更しない。全chunk backfill、fallback 0、最低7日soak、restore point / isolated restore確認が完了するまで、
@@ -108,6 +116,6 @@ portable候補へ同じproject scopeで実行する。`invoice 31415`への関�
 holdout gateへ明示する。baseline失敗や未記録のcandidate失敗はgateで許可しない。これは既知の失敗を可視化するものであり、閾値・v1 judgmentを調整しない。
 
 広いholdoutの品質合否は上記known failureのため未達。大規模・長文・project偏り・同時ingest負荷、自然plannerでのGIN/GiST比較、
-WAL/容量/latency SLO、hybrid・RRF後選択・Chat HTTP、production backfill・7日soak・restoreも未検証。
+WAL/容量/latency SLO、hybrid・RRF後選択・Chat HTTP、production shadow・7日soak・restoreも未検証。
 今回の境界testと小規模成功は本番品質・性能の証明ではない。Step 2の全8 unit relational-only、AGE / backup /旧image保持と
 自然mutation全経路・長期観測・復元試験の残件を維持する。

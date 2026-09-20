@@ -99,11 +99,12 @@ graph移行profileはCloud Buildの`_GRAPH_TRANSITION_MODE`でMastra Serverと�
 image build・migration・Mastra・Jobs・Webの変更前に停止する。Firebase CLI builderに同梱された`yaml`で設定を解析するため、
 `_FIREBASE_DEPLOY=false`の場合も同builderが必要となる（stagingでは照合をskipする）。別release processのWeb稼働値は別途照合する。
 
-keyword移行profileはCloud Buildの`_KEYWORD_TRANSITION_MODE`でMastra Serverと全Workflow Jobsへ配る。既定は`pgroonga-primary`とし、
+keyword移行profileはCloud Buildの`_KEYWORD_TRANSITION_MODE`でMastra Serverと全Workflow Jobsへ配る。汎用既定は`pgroonga-primary`とし、
 `pgroonga-primary` / `pgroonga-shadow` / `portable-primary`以外をdeploy前に拒否する。Webはtracked `apps/web/apphosting.yaml`の
 `PUFU_LENS_KEYWORD_TRANSITION_MODE`を読むため、triggerとApp Hosting設定を同じ値に揃える。`validate-production-keyword-mode`は本番の
 両値を照合し、不一致、設定欠落、重複、runtime対象外、secret化をimage build・migration・Mastra・Jobs・Webの変更前に停止する。
-初期設定は既定値のままであり、Step 3Dの準備だけではmigration、backfill、shadow有効化、primary切替を実行しない。
+Issue #756ではtracked Webを`pgroonga-shadow`へ準備するが、production triggerのsubstitution更新と承認済みbuildが揃うまで実行中runtimeは`pgroonga-primary`のままとする。
+shadowはPGroonga結果をprimaryとして返し、portableのerror / timeout / mismatchで結果を変更しない。rollbackは全unitを`pgroonga-primary`へ戻す。
 
 Issue #740ではtracked Webを`relational-primary`へ切り替える設定を準備する。本番は引き続き`dual-write-shadow-read`で、
 mergeだけではbuildを承認しない。切替条件、直前backup、全unitのmode照合、切り戻しは
