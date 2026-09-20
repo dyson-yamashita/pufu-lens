@@ -1,8 +1,8 @@
 # Portable keyword materialization（Step 3C / 3D）
 
 Issue #752で候補adapterとadditive schemaを実装し、Issue #754でshadow / primary + fallbackの切替準備を追加した。
-通常runtimeのkeyword primaryは`pgroonga-primary`（PGroonga）のままで、Core RRF `k=60`、Chat API、期間付き検索の
-既存経路は変更しない。本番migrationと全4 projectのbackfillは完了したが、production shadow有効化・primary切替は別承認と品質gateに残る。
+本番は`pgroonga-shadow`を反映済みで、keyword primaryはPGroongaのまま、Core RRF `k=60`、Chat API、期間付き検索の
+既存経路は変更しない。本番migrationと全4 projectのbackfillは完了したが、portable primary切替は別承認と品質gateに残る。
 PGroonga indexはrollback window中維持する。
 
 ## 2026-09-20 production backfill記録
@@ -11,6 +11,17 @@ PGroonga indexはrollback window中維持する。
 - 100件単位のbounded transactionで3,420件を更新し、全projectで`pending=0`、`normalize_keyword(content)`との不一致0件を確認した。
 - `pgroonga-primary`は維持し、portable providerのprimary切替やPGroonga cleanupは行っていない。
 - shadow観測の設定準備とrollback条件はIssue #756で管理する。
+
+## 当日の安定稼働確認（2026-09-21、Issue #759）
+
+ユーザー指定で最低7日soakをデプロイ当日（Asia/Tokyo）の確認へ変更する。品質閾値、fallback 0、復元試験、rollback用資産の保持期間は短縮しない。
+日次・週次負荷を網羅した証明ではなく、当日中に実行されなかった経路は未検証として残す。
+
+- PR #757のmerge commit `20a6b6dae700f63c9a1bd0872fbd71448d91e81f` をbuild `a9988267-013c-4564-a63b-308a5993cb9c` で反映し、2026-09-20 22:10:14 JSTに全16工程SUCCESS（smokeを含む）を確認した。
+- 同日22:10:14〜24:00のCloud Run request logはMastra 202が63件、Web 200が4件、307が2件、404が12件、5xxが0件。404の原因は未分類であり、正常と断定しない。
+- 同期間の `keyword_transition_observation` は0件。検索が実行された証拠がないため、shadow品質・fallback 0のgateは未判定。
+- 翌日のブラウザ確認でProjects / Overview / Chat / Reports / Graph / Loginが表示され、Graphは36 documentsを読み込んだ。これは当日の観測とは分けて扱う。console/network詳細は未確認。
+- 本番shadow設定は反映済みだが、primary切替・PGroonga削除は未実施。検索評価・復元試験を完了するまで移行完了とはしない。
 
 ## Schemaと正規化
 
@@ -56,12 +67,12 @@ shadow観測はprovider、mode、outcome、候補件数、latency、有限のmis
 query本文、snippet、provider raw score、document / chunk identity、error本文、secretはログへ出さない。
 portable primaryのfallbackは固定のunavailable errorを返し、DB error本文を上位へ再掲しない。入力不正は別providerへretryしない。
 
-tracked App HostingはIssue #756で`pgroonga-shadow`へ準備し、Cloud Buildの汎用既定値は`pgroonga-primary`のまま維持する。
+tracked App HostingはIssue #756 / PR #757で`pgroonga-shadow`へ変更し、本番反映済み。Cloud Buildの汎用既定値は`pgroonga-primary`のまま維持する。
 production triggerのsubstitutionとtracked Webが同じ値になるまでdeployしない。shadow開始後もprimary結果を変えない。
 rollbackは全runtime unitを
 `pgroonga-primary`へ揃え、portable schema / index / backfill済みrowを削除せず原因調査とforward fixへ進む。
 
-Step 4の削除gateは変更しない。全chunk backfill、fallback 0、最低7日soak、restore point / isolated restore確認が完了するまで、
+Step 4の削除gateは、全chunk backfill、fallback 0、デプロイ当日の安定稼働確認、restore point / isolated restore確認が完了するまで、
 PGroonga package / extension / indexのcleanupを開始しない。
 
 ## Backfill CLI
@@ -116,6 +127,6 @@ portable候補へ同じproject scopeで実行する。`invoice 31415`への関�
 holdout gateへ明示する。baseline失敗や未記録のcandidate失敗はgateで許可しない。これは既知の失敗を可視化するものであり、閾値・v1 judgmentを調整しない。
 
 広いholdoutの品質合否は上記known failureのため未達。大規模・長文・project偏り・同時ingest負荷、自然plannerでのGIN/GiST比較、
-WAL/容量/latency SLO、hybrid・RRF後選択・Chat HTTP、production shadow・7日soak・restoreも未検証。
+WAL/容量/latency SLO、hybrid・RRF後選択・Chat HTTP、production shadowの検索観測・restoreも未検証。
 今回の境界testと小規模成功は本番品質・性能の証明ではない。Step 2の全8 unit relational-only、AGE / backup /旧image保持と
 自然mutation全経路・長期観測・復元試験の残件を維持する。

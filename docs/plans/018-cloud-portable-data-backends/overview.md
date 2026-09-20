@@ -698,7 +698,7 @@ additive なので rollback 時に削除せず、原因調査後に forward fix 
 ### 次 Step gate
 
 Step 4 の AGE removal は、全 project backfill、shadow mismatch 解消、restore point、rollback window、
-最低 7 日の relational primary soak が完了してから行う。
+relational primary のデプロイ当日の安定稼働確認が完了してから行う。
 
 ### 想定 Issue / PR
 
@@ -728,6 +728,8 @@ Step 4 の AGE removal は、全 project backfill、shadow mismatch 解消、res
 - 追加例で数字の近似誤検出2件を確認。広いholdout・新baseline・日本語typo・否定例、大規模負荷、hybrid / Chat、production shadow・soak / restoreは残る。全4 projectのproduction backfillは2026-09-20に完了し、pending 0・正規化不一致0を確認した。Step 2の全8 unit relational-only・AGE / backup /旧image保持・運用残件を維持する。[backfill運用](../../operations/keyword-backfill.md)を参照する。
 
 ### Step 3D 進捗
+
+- 2026-09-21: Issue #759でユーザー指定を反映し、安定稼働の確認期間をデプロイ当日（Asia/Tokyo）へ短縮。品質・restore・rollback資産保持条件は維持する。PR #757のshadow deployは9/20 22:10 JSTに成功。当日の5xxは0件だが検索観測0件・404未分類であり、品質gate合格とはしない。[運用記録](../../operations/keyword-backfill.md)を参照する。
 
 - 2026-09-19: Issue #754 / PR #755でPGroonga primaryを既定のまま維持し、portable candidateのshadow比較、portable primary + PGroonga fallback、sanitized observability、切替 / rollback設定を実装した。unit / config / scripts / full test、専用synthetic DBの候補・backfill・shadow・14-case holdout、migration check / schema driftを検証し、`invoice 31415`の近似追加候補と数字query `31417`の近似誤ヒット2件をcandidate known failureとして記録した。baselineはholdout全件を満たし、未記録のcandidate failureはgateで許可しない。hybrid / Chat、負荷・容量・write、production shadow / soak / restoreは品質・運用gateとして未達のまま維持し、閾値・v1 judgmentは緩めていない。本番変更・AGE / PGroonga cleanupは行っていない。
 - 2026-09-20: production deploy後、`book-read-log`、`pufu-lens-dev-pj`、`pufu-tomonokai`、`test`の全4 projectへbounded backfillを実施し、3,420件を更新した。全projectでpending 0、`normalize_keyword(content)`との不一致0を確認した。PGroonga primary、portable primary未切替、PGroonga cleanup未実施を維持する。Issue #756でtracked Webの`pgroonga-shadow`設定、trigger整合、shadow観測・rollback・7日soak開始条件の記録を準備する。
@@ -821,7 +823,7 @@ PGroonga cleanup 後の rollback は旧 image + backup / forward migration を�
 
 ### 次 Step gate
 
-Step 4 の PGroonga removal は、固定 eval の合格、全 chunk backfill、fallback 0、最低 7 日 soak、
+Step 4 の PGroonga removal は、固定 eval の合格、全 chunk backfill、fallback 0、デプロイ当日の安定稼働確認、
 restore point 完了後にだけ行う。
 
 ### 想定 Issue / PR
@@ -1017,7 +1019,7 @@ monitor / alert definition は前 version へ戻せる。restore drill は isola
 
 ### 次 Step gate
 
-Step 7 の GCP baseline は、最低 7 日の stable metrics、最新 restore drill、全 scheduled workload、
+Step 7 の GCP baseline は、デプロイ当日の stable metrics、最新 restore drill、全 scheduled workload、
 retrieval eval snapshot が揃ってから固定する。
 
 ### 想定 Issue / PR

@@ -98,7 +98,7 @@ transitionのtracked modeは`pgroonga-primary`、`pgroonga-shadow`、`portable-p
 両系統失敗はunavailable、入力不正はrejectedとして区別する。観測はprovider、mode、outcome、件数、latency、有限カテゴリだけで、
 query本文・snippet・raw score・identity・secretを出さない。
 
-品質・切替gateは、全chunk backfill、fallback 0、最低7日soak、restore point / isolated restore確認であり、Step 3Dのローカル
+品質・切替gateは、全chunk backfill、fallback 0、デプロイ当日の安定稼働確認、restore point / isolated restore確認であり、Step 3Dのローカル
 実装検証だけでは満たさない。hybrid最終document、Core RRF `k=60`後の採用差、期間filter、Chat HTTP、large / long / skewed
 corpus、同時ingest、GIN/GiST自然planner、WAL / 容量 / latency SLO、production shadow / primaryは未検証のまま残す。
 
