@@ -101,6 +101,8 @@ query本文・snippet・raw score・identity・secretを出さない。
 品質・切替gateは、全chunk backfill、fallback 0、デプロイ当日の安定稼働確認、restore point / isolated restore確認であり、Step 3Dのローカル
 実装検証だけでは満たさない。hybrid最終document、Core RRF `k=60`後の採用差、期間filter、Chat HTTP、large / long / skewed
 corpus、同時ingest、GIN/GiST自然planner、WAL / 容量 / latency SLO、production shadow / primaryは未検証のまま残す。
+上記は運用条件であり、切替には固定eval合格と本節のholdout品質条件も必須とする。既存の閾値・v1 judgmentを維持し、
+既知失敗2件の記録だけでは広いholdoutの合格としない。数字の近似誤検出を含む広いholdoutの品質条件未達のまま切替へ進めない。
 
 ## ローカルPGroonga baseline収集
 
