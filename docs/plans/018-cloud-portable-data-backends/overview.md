@@ -725,11 +725,12 @@ Step 4 の AGE removal は、全 project backfill、shadow mismatch 解消、res
 ### Step 3C 進捗
 
 - 2026-09-17: Issue #752の独立タスクでadditive schema / GiST concurrent index、candidate adapter、project/document範囲・dry-run・resume・進捗付きbackfillを実装。共有DB正規化とtriggerで更新削除整合を保つ。ローカル合成DBでv1の全品質gate、Unicode / 短query / escaping、project isolation、backfill再開・再実行、更新削除とschema driftを検証した。本番操作・read switchは未実施。
-- 追加例で数字の近似誤検出2件を確認。広いholdout・新baseline・日本語typo・否定例、大規模負荷、hybrid / Chat、production backfill・soak / restoreは残る。Step 2の全8 unit relational-only・AGE / backup /旧image保持・運用残件を維持する。[backfill運用](../../operations/keyword-backfill.md)を参照。
+- 追加例で数字の近似誤検出2件を確認。広いholdout・新baseline・日本語typo・否定例、大規模負荷、hybrid / Chat、production shadow・soak / restoreは残る。全4 projectのproduction backfillは2026-09-20に完了し、pending 0・正規化不一致0を確認した。Step 2の全8 unit relational-only・AGE / backup /旧image保持・運用残件を維持する。[backfill運用](../../operations/keyword-backfill.md)を参照する。
 
 ### Step 3D 進捗
 
-- 2026-09-19: Issue #754 / PR #755でPGroonga primaryを既定のまま維持し、portable candidateのshadow比較、portable primary + PGroonga fallback、sanitized observability、切替 / rollback設定を実装した。unit / config / scripts / full test、専用synthetic DBの候補・backfill・shadow・14-case holdout、migration check / schema driftを検証し、`invoice 31415`の近似追加候補と数字query `31417`の近似誤ヒット2件をcandidate known failureとして記録した。baselineはholdout全件を満たし、未記録のcandidate failureはgateで許可しない。hybrid / Chat、負荷・容量・write、production backfill / shadow / soak / restoreは品質・運用gateとして未達のまま維持し、閾値・v1 judgmentは緩めていない。本番変更・AGE / PGroonga cleanupは行っていない。
+- 2026-09-19: Issue #754 / PR #755でPGroonga primaryを既定のまま維持し、portable candidateのshadow比較、portable primary + PGroonga fallback、sanitized observability、切替 / rollback設定を実装した。unit / config / scripts / full test、専用synthetic DBの候補・backfill・shadow・14-case holdout、migration check / schema driftを検証し、`invoice 31415`の近似追加候補と数字query `31417`の近似誤ヒット2件をcandidate known failureとして記録した。baselineはholdout全件を満たし、未記録のcandidate failureはgateで許可しない。hybrid / Chat、負荷・容量・write、production shadow / soak / restoreは品質・運用gateとして未達のまま維持し、閾値・v1 judgmentは緩めていない。本番変更・AGE / PGroonga cleanupは行っていない。
+- 2026-09-20: production deploy後、`book-read-log`、`pufu-lens-dev-pj`、`pufu-tomonokai`、`test`の全4 projectへbounded backfillを実施し、3,420件を更新した。全projectでpending 0、`normalize_keyword(content)`との不一致0を確認した。PGroonga primary、portable primary未切替、PGroonga cleanup未実施を維持する。Issue #756でtracked Webの`pgroonga-shadow`設定、trigger整合、shadow観測・rollback・7日soak開始条件の記録を準備する。
 
 ### 目的
 

@@ -47,7 +47,7 @@ function extractStepScript(yaml: string, stepId: string): string {
   return script[1];
 }
 
-test('keyword deployment defaults keep PGroonga primary and pass one server-owned mode', () => {
+test('production Web uses shadow while the generic deploy default stays PGroonga primary', () => {
   const parsed = parseYaml(deployYaml) as { substitutions?: Record<string, string> };
   assert.equal(parsed.substitutions?._KEYWORD_TRANSITION_MODE, 'pgroonga-primary');
   assert.match(deployYaml, /PUFU_LENS_KEYWORD_TRANSITION_MODE=\$\{_KEYWORD_TRANSITION_MODE\}/);
@@ -60,7 +60,7 @@ test('keyword deployment defaults keep PGroonga primary and pass one server-owne
   const productionEntry = findEntry(productionAppHosting, 'PUFU_LENS_KEYWORD_TRANSITION_MODE');
   assert.deepEqual(productionEntry, {
     variable: 'PUFU_LENS_KEYWORD_TRANSITION_MODE',
-    value: 'pgroonga-primary',
+    value: 'pgroonga-shadow',
     availability: ['RUNTIME'],
   });
   const exampleEntry = findEntry(exampleAppHosting, 'PUFU_LENS_KEYWORD_TRANSITION_MODE');
