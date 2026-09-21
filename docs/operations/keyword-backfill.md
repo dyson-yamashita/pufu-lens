@@ -74,6 +74,8 @@ rollbackは全runtime unitを
 
 Step 4の削除gateは、全chunk backfill、fallback 0、デプロイ当日の安定稼働確認、restore point / isolated restore確認が完了するまで、
 PGroonga package / extension / indexのcleanupを開始しない。
+これは運用条件の列挙であり、別途、固定eval合格と[holdout品質条件](keyword-evaluation.md#step-3d-holdoutとtransition比較)の達成も必須とする。
+既知失敗の記録は広いholdoutの合格を意味せず、品質条件未達のまま削除へ進めない。
 
 ## Backfill CLI
 
