@@ -732,6 +732,7 @@ relational primary のデプロイ当日の安定稼働確認が完了してか�
 - 2026-09-21: Issue #759でユーザー指定を反映し、安定稼働の確認期間をデプロイ当日（Asia/Tokyo）へ短縮。品質・restore・rollback資産保持条件は維持する。PR #757のshadow deployは9/20 22:10 JSTに成功。当日の5xxは0件だが検索観測0件・404未分類であり、品質gate合格とはしない。[運用記録](../../operations/keyword-backfill.md)を参照する。
 
 - 2026-09-19: Issue #754 / PR #755でPGroonga primaryを既定のまま維持し、portable candidateのshadow比較、portable primary + PGroonga fallback、sanitized observability、切替 / rollback設定を実装した。unit / config / scripts / full test、専用synthetic DBの候補・backfill・shadow・14-case holdout、migration check / schema driftを検証し、`invoice 31415`の近似追加候補と数字query `31417`の近似誤ヒット2件をcandidate known failureとして記録した。baselineはholdout全件を満たし、未記録のcandidate failureはgateで許可しない。hybrid / Chat、負荷・容量・write、production shadow / soak / restoreは品質・運用gateとして未達のまま維持し、閾値・v1 judgmentは緩めていない。本番変更・AGE / PGroonga cleanupは行っていない。
+- 2026-09-24: Issue #764で数字を含むportable queryをliteral LIKEへ限定し、Step 3Cで再現した`31417`の`invoice 31415` / `31416`近似誤ヒットを修正した。専用合成DBの14-case holdoutはPGroonga baseline / portable candidateとも失敗0件。閾値0.6・v1 judgmentは維持し、large / long / skewed corpus、natural planner、WAL / write、hybrid / Chat、production shadow / restoreは未検証のまま、本番切替不可のgateを維持する。
 - 2026-09-20: production deploy後、`book-read-log`、`pufu-lens-dev-pj`、`pufu-tomonokai`、`test`の全4 projectへbounded backfillを実施し、3,420件を更新した。全projectでpending 0、`normalize_keyword(content)`との不一致0を確認した。PGroonga primary、portable primary未切替、PGroonga cleanup未実施を維持する。Issue #756でtracked Webの`pgroonga-shadow`設定、trigger整合、shadow観測・rollback・7日soak開始条件の記録を準備する。
 
 ### 目的

@@ -124,11 +124,12 @@ CIの`db-check`でも専用DBを作成して実行する。DB環境変数なし�
 固定v1の22 query / 37 chunkは既存PGroonga baseline必須で評価し、portable候補はRecall / MRR / nDCG = 1、全gateを通過した。
 NFKC・Unicode lowercase（İ、Greek sigma）、trim、短query、結合文字、emoji、LIKE特殊文字、SQL注入否定例を確認した。
 Step 3D holdoutでは日本語typo、1文字query、数字 / 識別子、否定 / 複数語、Unicode、literal escapingをPGroonga baselineと
-portable候補へ同じproject scopeで実行する。`invoice 31415`への関連queryで`invoice 31416`が余分に返る近似overmatchと、関連なしの
-数字query `31417`が`invoice 31415` / `invoice 31416`へ近似一致する2件のfalse positiveを再現し、candidateの既知失敗として
-holdout gateへ明示する。baseline失敗や未記録のcandidate失敗はgateで許可しない。これは既知の失敗を可視化するものであり、閾値・v1 judgmentを調整しない。
+portable候補へ同じproject scopeで実行する。Step 3Cで再現した`invoice 31415`の近似追加候補と、関連なしの`31417`が
+`invoice 31415` / `invoice 31416`へ一致する2件のfalse positiveは、Issue #764で数字を含むqueryをliteral LIKEへ限定して修正した。
+専用合成DBの14-case holdoutはbaseline / candidateとも失敗0件で、閾値0.6・v1 judgmentは変更していない。baseline失敗や未記録のcandidate失敗は
+gateで許可しない。
 
-広いholdoutの品質合否は上記known failureのため未達。大規模・長文・project偏り・同時ingest負荷、自然plannerでのGIN/GiST比較、
+広いholdoutの品質合否は未判定。大規模・長文・project偏り・同時ingest負荷、自然plannerでのGIN/GiST比較、
 WAL/容量/latency SLO、hybrid・RRF後選択・Chat HTTP、production shadowの検索観測・restoreも未検証。
 今回の境界testと小規模成功は本番品質・性能の証明ではない。Step 2の全8 unit relational-only、AGE / backup /旧image保持と
 自然mutation全経路・長期観測・復元試験の残件を維持する。

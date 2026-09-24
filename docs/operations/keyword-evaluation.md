@@ -88,10 +88,11 @@ KEYWORD_EVAL_DATABASE_URL="postgres://postgres@127.0.0.1:5747/keyword_eval" \
   node --experimental-strip-types --test scripts/lib/keyword-selected-db.test.ts
 ```
 
-数字queryでは、`invoice 31415`が`invoice 31416`を余分に返す近似overmatchと、関連なしの`31417`が
-`invoice 31415` / `invoice 31416`へ近似一致する2件のportable false positiveを既知失敗としてcandidate holdoutへ明示する。
-baselineは全14ケースで期待集合に一致し、candidateの不一致はこの2ケースだけを許可する。v1の期待値、threshold `0.6`、入力境界を
-緩めてPASSへ変えない。日本語typo、否定 / 複数語の結果はbaselineとの差分とともに診断へ残し、実行環境がない場合は未検証として扱う。
+Step 3Cで再現した数字queryの近似誤検出は、Issue #764で数字を含むqueryをliteral LIKEに限定する安全側の分岐を追加して修正した。
+word similarityのthreshold `0.6`やv1の期待値は変更していない。専用合成DBの14-case holdoutではPGroonga baseline / portable candidateとも
+期待集合への不一致が0件となり、`invoice 31415`の余分な近似候補と関連なし`31417`の2件のfalse positiveは再発しない。
+これは新しい小規模holdoutの合格であり、large / long / skewed corpus、自然planner、hybrid / Chat、同時ingest、production shadow / restoreの
+gateを満たしたことを意味しない。実行環境がない場合は未検証として扱う。
 
 transitionのtracked modeは`pgroonga-primary`、`pgroonga-shadow`、`portable-primary`の3値だけである。shadowはPGroongaの
 結果を返しportableを比較する。portable primaryは成功0件をauthoritativeとし、error / timeout時だけPGroongaへfallbackする。
@@ -102,7 +103,7 @@ query本文・snippet・raw score・identity・secretを出さない。
 実装検証だけでは満たさない。hybrid最終document、Core RRF `k=60`後の採用差、期間filter、Chat HTTP、large / long / skewed
 corpus、同時ingest、GIN/GiST自然planner、WAL / 容量 / latency SLO、production shadow / primaryは未検証のまま残す。
 上記は運用条件であり、切替には固定eval合格と本節のholdout品質条件も必須とする。既存の閾値・v1 judgmentを維持し、
-既知失敗2件の記録だけでは広いholdoutの合格としない。数字の近似誤検出を含む広いholdoutの品質条件未達のまま切替へ進めない。
+14-case holdoutの合格だけで広いholdout・本番切替・PGroonga cleanupへ進めない。
 
 ## ローカルPGroonga baseline収集
 
