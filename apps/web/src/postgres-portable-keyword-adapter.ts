@@ -6,6 +6,7 @@ import { parsePostgresKeywordCandidateRow } from './postgres-chat-candidate-rows
  * Creates the opt-in LIKE/pg_trgm candidate adapter; deployment composition stays PGroonga.
  * Uses the write-side DB normalizer and transaction-local threshold/timeout, never pool state.
  * Unbackfilled chunks are unavailable here. Errors propagate; this adapter invents no fallback.
+ * Numeric query tokens use exact digit-run boundaries while non-numeric terms retain fuzzy matching.
  * Queries over 1000 UTF-16 units or limits outside 1..1000 are rejected before DB access.
  */
 export function createPostgresPortableKeywordCandidateRepository(
@@ -32,6 +33,8 @@ export function createPostgresPortableKeywordCandidateRepository(
         const query = row.query;
         if (!query) return [];
         const pattern = `%${query.replace(/[\\%_]/g, '\\$&')}%`;
+        const numericTokenPatterns =
+          query.match(/[0-9]+/g)?.map((token) => `(^|[^0-9])${token}([^0-9]|$)`) ?? [];
         const rows: readonly unknown[] = await tx`
           WITH limited AS (
             SELECT dc.id::text AS chunk_id, dc.chunk_index, dc.document_id, dc.content,
@@ -40,6 +43,11 @@ export function createPostgresPortableKeywordCandidateRepository(
             FROM public.document_chunks dc
             JOIN public.documents d ON d.id = dc.document_id AND d.project_id = dc.project_id
             WHERE dc.project_id = ${projectId}
+              AND NOT EXISTS (
+                SELECT 1
+                FROM unnest(${tx.array(numericTokenPatterns)}::text[]) AS required(pattern)
+                WHERE dc.keyword_content !~ required.pattern
+              )
               AND (dc.keyword_content LIKE ${pattern} OR dc.keyword_content OPERATOR(public.%>) ${query})
             ORDER BY score DESC, dc.id LIMIT ${limit}
           ), deduped AS (

@@ -3,7 +3,6 @@ export interface KeywordHoldoutCase {
   readonly category: string;
   readonly expectedChunkIndexes: readonly number[];
   readonly id: string;
-  readonly knownFailure?: 'portable_numeric_false_positive';
   readonly query: string;
 }
 
@@ -24,14 +23,12 @@ export const keywordHoldoutCases: readonly KeywordHoldoutCase[] = [
     category: 'numeric-identifier',
     expectedChunkIndexes: [3],
     id: 'numeric-exact',
-    knownFailure: 'portable_numeric_false_positive',
     query: 'invoice 31415',
   },
   {
     category: 'numeric-negative',
     expectedChunkIndexes: [],
     id: 'numeric-near-miss',
-    knownFailure: 'portable_numeric_false_positive',
     query: '31417',
   },
   { category: 'identifier', expectedChunkIndexes: [5], id: 'identifier-api', query: 'API' },

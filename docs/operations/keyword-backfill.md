@@ -45,6 +45,7 @@ PGroonga indexはrollback window中維持する。
 
 - queryは最大1000 UTF-16 code unit、NUL拒否、空は0件。limitは整数1–1000。
 - LIKEの`%` / `_` / backslashをliteral escapeしbind。`LIKE OR %>`、word threshold 0.6。
+- queryに数字列が含まれる場合は、近似`word_similarity`を残しつつ、各数字列が文書側の数字列境界と完全一致することを追加で要求する。
 - 検索transaction内でのみthresholdと5秒statement timeoutを設定し、成功・失敗後もpool session設定を復元する。
 - chunkとdocumentのproject一致を検索上限より前に要求する。literal一致score 2、その他word similarity、chunk ID順。
   chunk limit → document dedupe → 1始まりrank、同じ採用chunkの原文snippet（最大700文字）を返す。
@@ -124,11 +125,11 @@ CIの`db-check`でも専用DBを作成して実行する。DB環境変数なし�
 固定v1の22 query / 37 chunkは既存PGroonga baseline必須で評価し、portable候補はRecall / MRR / nDCG = 1、全gateを通過した。
 NFKC・Unicode lowercase（İ、Greek sigma）、trim、短query、結合文字、emoji、LIKE特殊文字、SQL注入否定例を確認した。
 Step 3D holdoutでは日本語typo、1文字query、数字 / 識別子、否定 / 複数語、Unicode、literal escapingをPGroonga baselineと
-portable候補へ同じproject scopeで実行する。`invoice 31415`への関連queryで`invoice 31416`が余分に返る近似overmatchと、関連なしの
-数字query `31417`が`invoice 31415` / `invoice 31416`へ近似一致する2件のfalse positiveを再現し、candidateの既知失敗として
-holdout gateへ明示する。baseline失敗や未記録のcandidate失敗はgateで許可しない。これは既知の失敗を可視化するものであり、閾値・v1 judgmentを調整しない。
+portable候補へ同じproject scopeで実行する。Issue #763で数字列の完全一致guardを追加し、`invoice 31415`は正しいchunkだけ、関連なしの
+`31417`は空結果となるよう修正した。2026-09-24の専用合成DBではbaseline / candidateとも14ケースの失敗0件で、baseline失敗や
+未記録のcandidate失敗はなかった。threshold `0.6`、v1 judgment、入力境界は調整していない。
 
-広いholdoutの品質合否は上記known failureのため未達。大規模・長文・project偏り・同時ingest負荷、自然plannerでのGIN/GiST比較、
+広いholdoutの品質合否は未判定のまま維持する。大規模・長文・project偏り・同時ingest負荷、自然plannerでのGIN/GiST比較、
 WAL/容量/latency SLO、hybrid・RRF後選択・Chat HTTP、production shadowの検索観測・restoreも未検証。
 今回の境界testと小規模成功は本番品質・性能の証明ではない。Step 2の全8 unit relational-only、AGE / backup /旧image保持と
 自然mutation全経路・長期観測・復元試験の残件を維持する。
