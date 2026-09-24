@@ -43,7 +43,12 @@ export function keywordNumericTokenPatterns(value: string): string[] {
   return value.match(/[0-9]+/g)?.map((token) => `(^|[^0-9])${token}([^0-9]|$)`) ?? [];
 }
 
-/** Builds only eval-schema queries; project filtering precedes the fixed chunk limit/dedupe. */
+/**
+ * Builds only eval-schema queries; project filtering precedes the fixed chunk limit/dedupe.
+ * All providers require each ASCII digit run in the query to appear in chunk content
+ * bounded by characters other than ASCII digits or by string boundaries.
+ * Queries without ASCII digit runs apply no numeric-boundary filter.
+ */
 export function portableQuery(
   tx: TransactionSql,
   provider: PortableProvider,
