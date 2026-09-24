@@ -72,8 +72,8 @@ pnpm keyword:eval evaluate --input /tmp/candidate.json \
 ## Step 3Cの選定adapter検証
 
 実アプリschema上の候補adapter・trigger・backfill検証は[keyword backfill運用](keyword-backfill.md)を参照する。
-固定v1を既存baselineと比較して全gate通過を確認した。追加の短query / Unicode境界例も検証したが、数字の近似誤検出を
-確認したため広いholdoutの品質gate合格とは扱わない。本番切替・hybrid / Chat / 負荷評価は後続に残る。
+固定v1を既存baselineと比較して全gate通過を確認した。追加の短query / Unicode境界例と数字境界はStep 3Dのholdoutで検証する。
+本番切替・hybrid / Chat / 負荷評価は後続gateに残る。
 
 ## Step 3D: holdoutとtransition比較
 
@@ -89,9 +89,14 @@ KEYWORD_EVAL_DATABASE_URL="postgres://postgres@127.0.0.1:5747/keyword_eval" \
 ```
 
 数字queryでは、`invoice 31415`が`invoice 31416`を余分に返す近似overmatchと、関連なしの`31417`が
-`invoice 31415` / `invoice 31416`へ近似一致する2件のportable false positiveを既知失敗としてcandidate holdoutへ明示する。
-baselineは全14ケースで期待集合に一致し、candidateの不一致はこの2ケースだけを許可する。v1の期待値、threshold `0.6`、入力境界を
-緩めてPASSへ変えない。日本語typo、否定 / 複数語の結果はbaselineとの差分とともに診断へ残し、実行環境がない場合は未検証として扱う。
+`invoice 31415` / `invoice 31416`へ近似一致する2件のportable false positiveを再現する赤テストを追加した。
+Issue #763で、`word_similarity`のthreshold `0.6`を変えず、数字列だけ文書側の数字列境界との完全一致を要求するguardを追加した。
+2026-09-24の専用合成DB検証ではbaseline / candidateとも14ケースの期待集合に一致し、candidate failureは0件となった。
+固定v1の期待値、threshold、入力境界は緩めていない。日本語typo、否定 / 複数語、Unicode、literal escaping、project isolation、
+正規化境界も同じ検証で維持した。
+
+同日のportable live evalは11方式の記録済み順位を再現し、専用schemaの既存保護・失敗時rollbackも通過した。これは合成DB上の
+固定v1 / 14-case境界品質の合格を示すが、実利用分布の広いholdout全体の証明ではない。
 
 transitionのtracked modeは`pgroonga-primary`、`pgroonga-shadow`、`portable-primary`の3値だけである。shadowはPGroongaの
 結果を返しportableを比較する。portable primaryは成功0件をauthoritativeとし、error / timeout時だけPGroongaへfallbackする。
@@ -101,8 +106,8 @@ query本文・snippet・raw score・identity・secretを出さない。
 品質・切替gateは、全chunk backfill、fallback 0、デプロイ当日の安定稼働確認、restore point / isolated restore確認であり、Step 3Dのローカル
 実装検証だけでは満たさない。hybrid最終document、Core RRF `k=60`後の採用差、期間filter、Chat HTTP、large / long / skewed
 corpus、同時ingest、GIN/GiST自然planner、WAL / 容量 / latency SLO、production shadow / primaryは未検証のまま残す。
-上記は運用条件であり、切替には固定eval合格と本節のholdout品質条件も必須とする。既存の閾値・v1 judgmentを維持し、
-既知失敗2件の記録だけでは広いholdoutの合格としない。数字の近似誤検出を含む広いholdoutの品質条件未達のまま切替へ進めない。
+上記は運用条件であり、切替には固定eval合格と本節のholdout品質条件も必須とする。14-case holdoutは合格したが、広いholdout、
+hybrid / Chat、負荷、production shadowの検索観測、restoreが未達のままportable primary切替やPGroonga cleanupへ進めない。
 
 ## ローカルPGroonga baseline収集
 

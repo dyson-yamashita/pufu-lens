@@ -9,6 +9,7 @@ import { collectPortableKeywords } from './keyword-eval-portable.ts';
 import {
   keywordLike,
   keywordNgrams,
+  keywordNumericTokenPatterns,
   normalizeKeyword,
   portableProviders,
   portableQuery,
@@ -17,6 +18,8 @@ import {
 test('normalization and grams preserve literal/code-point semantics', () => {
   assert.equal(normalizeKeyword(' ＮｅｂｕｌａＮｏｔｅ '), 'nebulanote');
   assert.equal(keywordLike('a%_\\b'), '%a\\%\\_\\\\b%');
+  assert.deepEqual(keywordNumericTokenPatterns('invoice 31415'), ['(^|[^0-9])31415([^0-9]|$)']);
+  assert.deepEqual(keywordNumericTokenPatterns('日本語'), []);
   assert.deepEqual(keywordNgrams('𠮷野家', 2), ['𠮷野', '野家']);
   assert.deepEqual(keywordNgrams('aaaa', 2), ['aa']);
   assert.deepEqual(keywordNgrams('', 2), []);

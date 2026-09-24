@@ -38,6 +38,11 @@ export function keywordLike(value: string): string {
   return `%${value.replace(/[\\%_]/g, '\\$&')}%`;
 }
 
+/** Returns regex guards that keep approximate matching from crossing numeric identifier boundaries. */
+export function keywordNumericTokenPatterns(value: string): string[] {
+  return value.match(/[0-9]+/g)?.map((token) => `(^|[^0-9])${token}([^0-9]|$)`) ?? [];
+}
+
 /** Builds only eval-schema queries; project filtering precedes the fixed chunk limit/dedupe. */
 export function portableQuery(
   tx: TransactionSql,
@@ -48,6 +53,11 @@ export function portableQuery(
   const like = tx`content LIKE ${keywordLike(query)}`;
   const word = tx`content %> ${query}`;
   const fts = tx`search @@ plainto_tsquery('simple', ${query})`;
+  const numericTokenPatterns = keywordNumericTokenPatterns(query);
+  const numericGuard = tx`NOT EXISTS (
+    SELECT 1 FROM unnest(${tx.array(numericTokenPatterns)}::text[]) AS required(pattern)
+    WHERE chunks.content !~ required.pattern
+  )`;
   const ngrams = keywordNgrams(query, provider.startsWith('trigram') ? 3 : 2);
   const coverage = tx`(SELECT count(*)::float / ${Math.max(1, ngrams.length)} FROM keyword_eval_portable.tokens WHERE chunk_id = chunks.id AND token = ANY(${tx.array(ngrams)}::text[]))`;
   const fuzzy = tx`id IN (SELECT chunk_id FROM keyword_eval_portable.tokens
@@ -88,7 +98,7 @@ export function portableQuery(
               : tx`CASE WHEN ${like} THEN 2.0 ELSE word_similarity(${query}, content) END`;
   return tx`WITH limited AS (
     SELECT id, document_id, ${score} AS score FROM keyword_eval_portable.chunks
-    WHERE project_id = ${projectId} AND (${where})
+    WHERE project_id = ${projectId} AND ${numericGuard} AND (${where})
     ORDER BY score DESC, id LIMIT ${keywordCorpus.k}
   ), deduped AS (
     SELECT DISTINCT ON (document_id) id, document_id, score FROM limited

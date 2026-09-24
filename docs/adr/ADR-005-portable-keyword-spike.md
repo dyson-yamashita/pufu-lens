@@ -142,13 +142,21 @@ Coreの候補DTO、project scope、chunk上限→document dedupe→1始まりran
 `candidate_count` / `candidate_set` / `rank` / `snippet_provenance`だけを出力する。query本文、snippet、raw score、identity、
 error本文、secretは出力しない。session-local `word_similarity_threshold=0.6`と5秒statement timeoutの契約も維持する。
 
-### Step 3D品質結果と未達gate
+### Step 3D品質結果と未達gate（Issue #754 / PR #755時点）
 
 固定v1は既存baseline比較でcandidateの全gateを維持した。追加holdoutには日本語typo、短query、数字 / 識別子、否定 / 複数語、
 Unicode / escapingを含め、`invoice 31415`への関連queryの近似overmatchと、`31417`の関連なしnumeric queryがinvoice 2件へ近似一致する
-不合格を再現・記録する。baselineは全holdoutを満たし、candidateは明示したnumeric known failureだけを許可する。thresholdやv1 judgmentは緩めない。large / long / project-skewed corpus、自然plannerでのGIN/GiST、WAL / capacity / write amplification / latency
+不合格を再現・記録した。baselineは全holdoutを満たし、candidateのnumeric known failureを品質未達として保持した。thresholdやv1 judgmentは緩めない。large / long / project-skewed corpus、自然plannerでのGIN/GiST、WAL / capacity / write amplification / latency
 SLO、同時ingest、hybrid / RRF final selection、Chat HTTP、production shadow / primary、全chunk backfill、fallback 0、7日soak、
 restoreは未検証である。Step 2の全8 unit relational-only、AGE / backup / 旧image保持、自然mutation全経路・長期観測・復元試験の残件は維持する。
+
+### Issue #763 数字境界修正結果（2026-09-24）
+
+portable adapterの`word_similarity`はthreshold `0.6`のまま維持し、queryに含まれる数字列だけ文書側の数字列境界との完全一致を追加で要求する。
+赤テストで再現した`invoice 31415`の近似追加候補と`31417`の2件の誤ヒットは、専用合成DBの14-case holdoutで解消し、baseline / candidateとも
+期待集合一致・candidate failure 0件を確認した。固定v1の11方式live evalも記録順位を再現し、既存schema保護とrollback testを通過した。
+この結果は数字境界を含む小規模holdoutの合格であり、large / long / skewed corpus、hybrid / Chat、負荷、production shadow検索観測、restore、
+portable primary切替、PGroonga cleanupの承認ではない。
 
 ## 参考・再現
 
