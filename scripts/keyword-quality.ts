@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises';
+import { writeAtomicJson } from './lib/atomic-json.ts';
 import { collectKeywordQuality } from './lib/keyword-quality.ts';
 
 /** Local-only quality CLI: writes evidence before returning exit 1 for an unmet quality gate. */
@@ -10,7 +10,7 @@ if (!url || !output || process.argv.length !== 3) {
   );
 }
 const report = await collectKeywordQuality(url);
-await writeFile(output, `${JSON.stringify(report, null, 2)}\n`);
+await writeAtomicJson(output, report);
 console.info(
   JSON.stringify({ keywordExactGate: report.keywordExactGate, hybridGate: report.hybridGate }),
 );

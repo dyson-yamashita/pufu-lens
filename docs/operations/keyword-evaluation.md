@@ -166,7 +166,8 @@ KEYWORD_EVAL_DATABASE_URL=postgres://postgres@127.0.0.1:5767/keyword_eval \
   scripts/lib/keyword-quality.test.ts scripts/lib/keyword-selected-db.test.ts
 ```
 
-collectorはreportを書いてから品質未達でexit 1となる。`keywordExactGate`は全case集合一致、`hybridGate`はTop-5/source overlap
+collectorは同じfilesystemの一時ファイルへreportを書き、renameで原子的に置換してから品質未達でexit 1となる。
+書き込み・rename失敗時は既存reportを保持し、一時ファイルを削除する。`keywordExactGate`は全case集合一致、`hybridGate`はTop-5/source overlap
 0.80以上・nDCG@10差-0.05以上・必須source欠落なしを要求する。DB/HTTP errorは品質0件へ置き換えず異常終了する。
 testの成功は既知のmissing / extraと選択差の再現であって、品質合格ではない。改善・新しい失敗とも自動snapshot更新せず根拠を確認する。
 CI `db-check`にも追加し、table lockを使う旧testとの競合を避けるため直列実行する。作成済みの専用projectだけfinallyで削除し、
