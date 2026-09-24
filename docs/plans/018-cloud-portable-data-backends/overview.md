@@ -729,7 +729,7 @@ relational primary のデプロイ当日の安定稼働確認が完了してか�
 
 ### Step 3D 進捗
 
-- 2026-09-24: Issue #767で56-queryの独立holdout、8シナリオの実RRF / Chat最終source、16回のloopback workflow HTTP検証を追加した。index優先のbaseline / candidateは各13件の集合差、candidate Recall@20は0.9091で品質未達。hybrid比較gateも4/8不合格。固定v1 judgment・threshold 0.6を維持する。semantic順位とsynthesisは制御済みで、Next認証route・実LLM・全workflowの品質を証明しない。負荷・自然planner・production shadow観測・restore・Step 4 gateは維持する。[広いholdout実測](../../operations/keyword-evaluation.md#step-3dの広いholdout実測2026-09-24issue-767)を参照。
+- 2026-09-24: Issue #767で56-queryの独立holdout、8シナリオの実RRF / Chat最終source、16回のloopback workflow HTTP検証を追加した。index優先のbaseline 12 / candidateは13件の集合差、candidate Recall@20は0.9091で品質未達。hybrid比較gateも4/8不合格。固定v1 judgment・threshold 0.6を維持する。semantic順位とsynthesisは制御済みで、Next認証route・実LLM・全workflowの品質を証明しない。負荷・自然planner・production shadow観測・restore・Step 4 gateは維持する。[広いholdout実測](../../operations/keyword-evaluation.md#step-3dの広いholdout実測2026-09-24issue-767)を参照。
 - 2026-09-24: Issue #763で数字queryの既知誤検出2件を赤テストで再現し、`word_similarity`のthreshold `0.6`とv1 judgmentを維持したまま、数字列の完全一致guardをportable adapter / 評価queryへ追加した。専用合成DBの14-case holdoutはPGroonga baseline / portable candidateとも失敗0件、固定v1の11方式live evalは記録順位再現・schema保護・rollbackを確認した。広いholdout、hybrid / Chat、負荷・容量・write、production shadow検索観測、restoreは未検証gateとして維持し、本番primary切替・PGroonga cleanupは行わない。
 - 2026-09-21: Issue #759でユーザー指定を反映し、安定稼働の確認期間をデプロイ当日（Asia/Tokyo）へ短縮。品質・restore・rollback資産保持条件は維持する。PR #757のshadow deployは9/20 22:10 JSTに成功。当日の5xxは0件だが検索観測0件・404未分類であり、品質gate合格とはしない。[運用記録](../../operations/keyword-backfill.md)を参照する。
 

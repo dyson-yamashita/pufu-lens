@@ -129,7 +129,7 @@ portable候補へ同じproject scopeで実行する。Issue #763で数字列の�
 `31417`は空結果となるよう修正した。2026-09-24の専用合成DBではbaseline / candidateとも14ケースの失敗0件で、baseline失敗や
 未記録のcandidate失敗はなかった。threshold `0.6`、v1 judgment、入力境界は調整していない。
 
-Issue #767で独立56-query holdoutを追加し、index優先のbaseline / candidate各13件の集合差、candidate Recall@20 0.9091で
+Issue #767で独立56-query holdoutを追加し、index優先のbaseline 12 / candidate 13件の集合差、candidate Recall@20 0.9091で
 広いholdoutは品質未達と判定した。8シナリオの実RRF / Chat最終sourceは比較gate 4/8不合格。16回のloopback workflow HTTPは
 通過したが、semantic順位とsynthesisは制御済みでNext認証route・実LLM・全workflowは未検証である。
 [詳細と再現手順](keyword-evaluation.md#step-3dの広いholdout実測2026-09-24issue-767)を参照する。

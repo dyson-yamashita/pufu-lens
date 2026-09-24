@@ -119,15 +119,16 @@ typoで意図した文書、literal記号を評価する。否定例の`not` / `
 
 専用ローカルPostgreSQL 18.1 / PGroonga 4.0.6 / pg_trgm 1.6で実測した。runnerは既存v1 collectorと同様に
 `ANALYZE`と専用接続の`enable_seqscan=off`でindex優先にする。初回の自然plannerではPGroongaに21ケースの集合差があり、
-統計更新後のindex優先では13ケースとなった。数字の部分一致とbackslash等で計画依存差があり、自然plannerの品質・負荷は未解決である。
+統計更新後のindex優先では13ケースとなった。最終runnerはChatと同じ`normalizeHybridKeywordQuery`を両providerへ適用し、
+trim境界の1件が解消してbaselineは12ケースとなった。数字の部分一致とbackslash等で計画依存差があり、自然plannerの品質・負荷は未解決である。
 この設定は評価接続だけで、本番adapterやpool設定を変更しない。
 
 | 指標                    | PGroonga baseline | portable candidate |
 | ----------------------- | ----------------- | ------------------ |
 | 期待集合との差          | 13 / 56           | 13 / 56            |
-| Recall@20               | 0.8409            | 0.9091             |
-| MRR@20                  | 0.8295            | 0.9091             |
-| nDCG@20                 | 0.8325            | 0.9091             |
+| Recall@20               | 0.8636            | 0.9091             |
+| MRR@20                  | 0.8523            | 0.9091             |
+| nDCG@20                 | 0.8552            | 0.9091             |
 | 正解なしqueryの誤ヒット | 3                 | 2                  |
 
 portableのcategory別Recallはtypo 0.50、numeric 0.8889、multi-number 0.80、その他の正解ありcategoryは1.0。

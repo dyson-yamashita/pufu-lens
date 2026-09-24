@@ -6,11 +6,11 @@
     {
       "provider": "pgroonga-primary",
       "count": 56,
-      "exactFailures": 13,
+      "exactFailures": 12,
       "negativeFailures": 3,
-      "recall": 0.8409090909090909,
-      "mrr": 0.8295454545454546,
-      "ndcg": 0.8325211307629877,
+      "recall": 0.8636363636363636,
+      "mrr": 0.8522727272727273,
+      "ndcg": 0.8552484034902604,
       "categories": [
         {
           "category": "japanese-short",
@@ -78,11 +78,11 @@
         {
           "category": "unicode",
           "count": 7,
-          "exactFailures": 1,
+          "exactFailures": 0,
           "negativeFailures": 0,
-          "recall": 0.8571428571428571,
-          "mrr": 0.8571428571428571,
-          "ndcg": 0.8571428571428571
+          "recall": 1,
+          "mrr": 1,
+          "ndcg": 1
         },
         {
           "category": "escaping",
@@ -739,13 +739,13 @@
       "provider": "pgroonga-primary",
       "id": "unicode-trim",
       "category": "unicode",
-      "actual": [],
-      "missing": ["width"],
+      "actual": ["width"],
+      "missing": [],
       "extra": [],
-      "recall": 0,
-      "mrr": 0,
-      "ndcg": 0,
-      "exact": false
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
     },
     {
       "provider": "pgroonga-primary",

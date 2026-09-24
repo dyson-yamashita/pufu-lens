@@ -97,9 +97,11 @@ export function summarizeKeywordQuality(
  */
 export async function collectKeywordQuality(databaseUrl: string) {
   validateKeywordEvalUrl(databaseUrl);
-  const { createPostgresChatRepository, privateChatSourcesForResponse } = await import(
-    '../../apps/web/src/chat.ts'
-  );
+  const {
+    createPostgresChatRepository,
+    normalizeHybridKeywordQuery,
+    privateChatSourcesForResponse,
+  } = await import('../../apps/web/src/chat.ts');
   const { createGcpPostgresCandidateRepositories } = await import(
     '../../apps/web/src/postgres-chat-candidate-adapters.ts'
   );
@@ -152,7 +154,7 @@ export async function collectKeywordQuality(databaseUrl: string) {
       });
       for (const c of qualityCases) {
         const rows = await candidates.keywordCandidateRepository.search({
-          normalizedQuery: c.query,
+          normalizedQuery: normalizeHybridKeywordQuery(c.query),
           projectId,
           limit: 20,
         });

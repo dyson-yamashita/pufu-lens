@@ -40,7 +40,7 @@
 ## 運用ルール
 
 Plan 018 Step 3D（2026-09-24、Issue #767）: 56-queryの独立holdout、8シナリオの実RRF / Chat source選択と16回のloopback workflow HTTPを追加。
-index優先でbaseline / candidate各13ケースの集合差、candidate Recall@20 0.9091、hybrid比較gate 4/8不合格を確認した。
+index優先でbaseline 12 / candidate 13ケースの集合差、candidate Recall@20 0.9091、hybrid比較gate 4/8不合格を確認した。
 広い品質gateは未達。semantic順位とsynthesisは制御済みで、Next認証route・実LLM・全workflow・自然planner・大規模負荷・production shadow観測・restoreは残る。
 固定v1・threshold 0.6、PGroonga primary、本番設定、Step 2運用残件とStep 4削除gateを維持する。
 
