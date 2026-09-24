@@ -237,7 +237,7 @@ jobs:
           docker exec pufu-lens-postgres-ci createdb -U pufu_lens keyword_eval
           sed 's/ALTER DATABASE pufu_lens /ALTER DATABASE keyword_eval /' infra/docker/postgres/init.sql \
             | docker exec -i pufu-lens-postgres-ci psql -v ON_ERROR_STOP=1 -U pufu_lens -d keyword_eval
-          node --experimental-strip-types --test scripts/lib/keyword-selected-db.test.ts
+          node --experimental-strip-types --test --test-concurrency=1 scripts/lib/keyword-selected-db.test.ts scripts/lib/keyword-quality.test.ts
         env:
           KEYWORD_EVAL_DATABASE_URL: postgres://pufu_lens:pufu_lens@localhost:5432/keyword_eval
 

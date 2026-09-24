@@ -1,0 +1,1945 @@
+{
+  "schemaVersion": 1,
+  "planner": "index-preferred; enable_seqscan=off; synthetic-only",
+  "corpusHash": "eaaaacea55ae461525fd50a2576f0c31e43f772be86cf0a5c97ea174a93487af",
+  "summary": [
+    {
+      "provider": "pgroonga-primary",
+      "count": 56,
+      "exactFailures": 12,
+      "negativeFailures": 3,
+      "recall": 0.8636363636363636,
+      "mrr": 0.8522727272727273,
+      "ndcg": 0.8552484034902604,
+      "categories": [
+        {
+          "category": "japanese-short",
+          "count": 4,
+          "exactFailures": 0,
+          "negativeFailures": 0,
+          "recall": 1,
+          "mrr": 1,
+          "ndcg": 1
+        },
+        {
+          "category": "typo",
+          "count": 4,
+          "exactFailures": 4,
+          "negativeFailures": 0,
+          "recall": 0,
+          "mrr": 0,
+          "ndcg": 0
+        },
+        {
+          "category": "numeric",
+          "count": 12,
+          "exactFailures": 1,
+          "negativeFailures": 0,
+          "recall": 0.8888888888888888,
+          "mrr": 0.8888888888888888,
+          "ndcg": 0.8888888888888888
+        },
+        {
+          "category": "multi-number",
+          "count": 7,
+          "exactFailures": 4,
+          "negativeFailures": 1,
+          "recall": 1,
+          "mrr": 0.9,
+          "ndcg": 0.9261859507142916
+        },
+        {
+          "category": "identifier",
+          "count": 7,
+          "exactFailures": 1,
+          "negativeFailures": 1,
+          "recall": 1,
+          "mrr": 1,
+          "ndcg": 1
+        },
+        {
+          "category": "multiword",
+          "count": 3,
+          "exactFailures": 0,
+          "negativeFailures": 0,
+          "recall": 1,
+          "mrr": 1,
+          "ndcg": 1
+        },
+        {
+          "category": "negative",
+          "count": 5,
+          "exactFailures": 1,
+          "negativeFailures": 1,
+          "recall": null,
+          "mrr": null,
+          "ndcg": null
+        },
+        {
+          "category": "unicode",
+          "count": 7,
+          "exactFailures": 0,
+          "negativeFailures": 0,
+          "recall": 1,
+          "mrr": 1,
+          "ndcg": 1
+        },
+        {
+          "category": "escaping",
+          "count": 7,
+          "exactFailures": 1,
+          "negativeFailures": 0,
+          "recall": 0.8333333333333334,
+          "mrr": 0.8333333333333334,
+          "ndcg": 0.8333333333333334
+        }
+      ]
+    },
+    {
+      "provider": "portable-primary",
+      "count": 56,
+      "exactFailures": 13,
+      "negativeFailures": 2,
+      "recall": 0.9090909090909091,
+      "mrr": 0.9090909090909091,
+      "ndcg": 0.9090909090909091,
+      "categories": [
+        {
+          "category": "japanese-short",
+          "count": 4,
+          "exactFailures": 0,
+          "negativeFailures": 0,
+          "recall": 1,
+          "mrr": 1,
+          "ndcg": 1
+        },
+        {
+          "category": "typo",
+          "count": 4,
+          "exactFailures": 2,
+          "negativeFailures": 0,
+          "recall": 0.5,
+          "mrr": 0.5,
+          "ndcg": 0.5
+        },
+        {
+          "category": "numeric",
+          "count": 12,
+          "exactFailures": 2,
+          "negativeFailures": 1,
+          "recall": 0.8888888888888888,
+          "mrr": 0.8888888888888888,
+          "ndcg": 0.8888888888888888
+        },
+        {
+          "category": "multi-number",
+          "count": 7,
+          "exactFailures": 4,
+          "negativeFailures": 0,
+          "recall": 0.8,
+          "mrr": 0.8,
+          "ndcg": 0.8
+        },
+        {
+          "category": "identifier",
+          "count": 7,
+          "exactFailures": 0,
+          "negativeFailures": 0,
+          "recall": 1,
+          "mrr": 1,
+          "ndcg": 1
+        },
+        {
+          "category": "multiword",
+          "count": 3,
+          "exactFailures": 2,
+          "negativeFailures": 0,
+          "recall": 1,
+          "mrr": 1,
+          "ndcg": 1
+        },
+        {
+          "category": "negative",
+          "count": 5,
+          "exactFailures": 1,
+          "negativeFailures": 1,
+          "recall": null,
+          "mrr": null,
+          "ndcg": null
+        },
+        {
+          "category": "unicode",
+          "count": 7,
+          "exactFailures": 0,
+          "negativeFailures": 0,
+          "recall": 1,
+          "mrr": 1,
+          "ndcg": 1
+        },
+        {
+          "category": "escaping",
+          "count": 7,
+          "exactFailures": 2,
+          "negativeFailures": 0,
+          "recall": 1,
+          "mrr": 1,
+          "ndcg": 1
+        }
+      ]
+    }
+  ],
+  "http": {
+    "protocolRoundTrips": 16,
+    "nextRouteAndAuth": "not-evaluated",
+    "synthesis": "stub",
+    "semantic": "controlled-ranks"
+  },
+  "keyword": [
+    {
+      "provider": "pgroonga-primary",
+      "id": "ja-one",
+      "category": "japanese-short",
+      "actual": ["cat"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "ja-two",
+      "category": "japanese-short",
+      "actual": ["cat"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "ja-place",
+      "category": "japanese-short",
+      "actual": ["tokyo"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "ja-search",
+      "category": "japanese-short",
+      "actual": ["search", "year", "year-neighbor"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "ja-typo",
+      "category": "typo",
+      "actual": [],
+      "missing": ["glass", "unicode"],
+      "extra": [],
+      "recall": 0,
+      "mrr": 0,
+      "ndcg": 0,
+      "exact": false
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "ja-transpose",
+      "category": "typo",
+      "actual": [],
+      "missing": ["search"],
+      "extra": [],
+      "recall": 0,
+      "mrr": 0,
+      "ndcg": 0,
+      "exact": false
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "latin-typo",
+      "category": "typo",
+      "actual": [],
+      "missing": ["nebula"],
+      "extra": [],
+      "recall": 0,
+      "mrr": 0,
+      "ndcg": 0,
+      "exact": false
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "technical-typo",
+      "category": "typo",
+      "actual": [],
+      "missing": ["activity", "disabled"],
+      "extra": [],
+      "recall": 0,
+      "mrr": 0,
+      "ndcg": 0,
+      "exact": false
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "digits-exact",
+      "category": "numeric",
+      "actual": ["invoice"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "digits-prefix",
+      "category": "numeric",
+      "actual": ["invoice-short"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "digits-middle",
+      "category": "numeric",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "digits-absent",
+      "category": "numeric",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "digits-natural",
+      "category": "numeric",
+      "actual": ["invoice"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "digits-natural-typo",
+      "category": "numeric",
+      "actual": [],
+      "missing": ["invoice"],
+      "extra": [],
+      "recall": 0,
+      "mrr": 0,
+      "ndcg": 0,
+      "exact": false
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "digits-unrelated-word",
+      "category": "numeric",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "digits-fullwidth",
+      "category": "numeric",
+      "actual": ["invoice"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "digits-two",
+      "category": "multi-number",
+      "actual": ["release", "release-reverse"],
+      "missing": [],
+      "extra": ["release-reverse"],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": false
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "digits-two-reverse",
+      "category": "multi-number",
+      "actual": ["release", "release-reverse"],
+      "missing": [],
+      "extra": ["release"],
+      "recall": 1,
+      "mrr": 0.5,
+      "ndcg": 0.6309297535714575,
+      "exact": false
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "digits-two-absent",
+      "category": "multi-number",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "digits-repeated",
+      "category": "multi-number",
+      "actual": ["release-repeat", "release", "release-neighbor", "release-reverse"],
+      "missing": [],
+      "extra": ["release", "release-neighbor", "release-reverse"],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": false
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "digits-pair",
+      "category": "multi-number",
+      "actual": ["release", "release-reverse"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "ticket-exact",
+      "category": "identifier",
+      "actual": ["ticket"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "ticket-prefix",
+      "category": "identifier",
+      "actual": ["ticket", "ticket-neighbor", "ticket-long"],
+      "missing": [],
+      "extra": ["ticket", "ticket-neighbor", "ticket-long"],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": false
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "ticket-natural",
+      "category": "identifier",
+      "actual": ["ticket"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "ticket-width",
+      "category": "identifier",
+      "actual": ["ticket"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "year-width",
+      "category": "numeric",
+      "actual": ["year"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "year-natural",
+      "category": "numeric",
+      "actual": ["year"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "decimal",
+      "category": "multi-number",
+      "actual": ["decimal"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "decimal-absent",
+      "category": "multi-number",
+      "actual": ["decimal", "decimal-neighbor"],
+      "missing": [],
+      "extra": ["decimal", "decimal-neighbor"],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": false
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "leading-zero",
+      "category": "numeric",
+      "actual": ["leading-zero"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "plain-seven",
+      "category": "numeric",
+      "actual": ["plain-seven"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "multi-enabled",
+      "category": "multiword",
+      "actual": ["activity"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "multi-disabled",
+      "category": "multiword",
+      "actual": ["disabled"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "multi-reordered",
+      "category": "multiword",
+      "actual": ["activity"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "negative-or",
+      "category": "negative",
+      "actual": ["activity", "disabled"],
+      "missing": [],
+      "extra": ["activity", "disabled"],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": false
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "negative-not",
+      "category": "negative",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "negative-term",
+      "category": "negative",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "negative-ja",
+      "category": "negative",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "negative-unrelated",
+      "category": "negative",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "unicode-combining",
+      "category": "unicode",
+      "actual": ["glass", "unicode"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "unicode-composed",
+      "category": "unicode",
+      "actual": ["unicode"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "unicode-ligature",
+      "category": "unicode",
+      "actual": ["width"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "unicode-width",
+      "category": "unicode",
+      "actual": ["width"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "unicode-emoji",
+      "category": "unicode",
+      "actual": ["unicode"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "unicode-accent",
+      "category": "unicode",
+      "actual": ["accent"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "unicode-trim",
+      "category": "unicode",
+      "actual": ["width"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "percent",
+      "category": "escaping",
+      "actual": ["escape"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "underscore",
+      "category": "escaping",
+      "actual": ["escape", "identifier"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "backslash",
+      "category": "escaping",
+      "actual": [],
+      "missing": ["escape"],
+      "extra": [],
+      "recall": 0,
+      "mrr": 0,
+      "ndcg": 0,
+      "exact": false
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "literal-percent",
+      "category": "escaping",
+      "actual": ["escape"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "literal-underscore",
+      "category": "escaping",
+      "actual": ["escape"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "literal-path",
+      "category": "escaping",
+      "actual": ["escape"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "sql-injection",
+      "category": "escaping",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "url",
+      "category": "identifier",
+      "actual": ["url"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "hyphen",
+      "category": "identifier",
+      "actual": ["identifier"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "identifier-underscore",
+      "category": "identifier",
+      "actual": ["identifier"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "ja-one",
+      "category": "japanese-short",
+      "actual": ["cat"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "ja-two",
+      "category": "japanese-short",
+      "actual": ["cat"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "ja-place",
+      "category": "japanese-short",
+      "actual": ["tokyo"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "ja-search",
+      "category": "japanese-short",
+      "actual": ["search", "year", "year-neighbor"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "ja-typo",
+      "category": "typo",
+      "actual": [],
+      "missing": ["glass", "unicode"],
+      "extra": [],
+      "recall": 0,
+      "mrr": 0,
+      "ndcg": 0,
+      "exact": false
+    },
+    {
+      "provider": "portable-primary",
+      "id": "ja-transpose",
+      "category": "typo",
+      "actual": [],
+      "missing": ["search"],
+      "extra": [],
+      "recall": 0,
+      "mrr": 0,
+      "ndcg": 0,
+      "exact": false
+    },
+    {
+      "provider": "portable-primary",
+      "id": "latin-typo",
+      "category": "typo",
+      "actual": ["nebula"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "technical-typo",
+      "category": "typo",
+      "actual": ["activity", "disabled"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "digits-exact",
+      "category": "numeric",
+      "actual": ["invoice"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "digits-prefix",
+      "category": "numeric",
+      "actual": ["invoice-short"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "digits-middle",
+      "category": "numeric",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "digits-absent",
+      "category": "numeric",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "digits-natural",
+      "category": "numeric",
+      "actual": ["invoice"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "digits-natural-typo",
+      "category": "numeric",
+      "actual": [],
+      "missing": ["invoice"],
+      "extra": [],
+      "recall": 0,
+      "mrr": 0,
+      "ndcg": 0,
+      "exact": false
+    },
+    {
+      "provider": "portable-primary",
+      "id": "digits-unrelated-word",
+      "category": "numeric",
+      "actual": ["invoice"],
+      "missing": [],
+      "extra": ["invoice"],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": false
+    },
+    {
+      "provider": "portable-primary",
+      "id": "digits-fullwidth",
+      "category": "numeric",
+      "actual": ["invoice"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "digits-two",
+      "category": "multi-number",
+      "actual": ["release", "release-reverse"],
+      "missing": [],
+      "extra": ["release-reverse"],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": false
+    },
+    {
+      "provider": "portable-primary",
+      "id": "digits-two-reverse",
+      "category": "multi-number",
+      "actual": ["release-reverse", "release"],
+      "missing": [],
+      "extra": ["release"],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": false
+    },
+    {
+      "provider": "portable-primary",
+      "id": "digits-two-absent",
+      "category": "multi-number",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "digits-repeated",
+      "category": "multi-number",
+      "actual": ["release-repeat", "release", "release-neighbor", "release-reverse"],
+      "missing": [],
+      "extra": ["release", "release-neighbor", "release-reverse"],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": false
+    },
+    {
+      "provider": "portable-primary",
+      "id": "digits-pair",
+      "category": "multi-number",
+      "actual": [],
+      "missing": ["release", "release-reverse"],
+      "extra": [],
+      "recall": 0,
+      "mrr": 0,
+      "ndcg": 0,
+      "exact": false
+    },
+    {
+      "provider": "portable-primary",
+      "id": "ticket-exact",
+      "category": "identifier",
+      "actual": ["ticket"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "ticket-prefix",
+      "category": "identifier",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "ticket-natural",
+      "category": "identifier",
+      "actual": ["ticket"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "ticket-width",
+      "category": "identifier",
+      "actual": ["ticket"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "year-width",
+      "category": "numeric",
+      "actual": ["year"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "year-natural",
+      "category": "numeric",
+      "actual": ["year"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "decimal",
+      "category": "multi-number",
+      "actual": ["decimal"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "decimal-absent",
+      "category": "multi-number",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "leading-zero",
+      "category": "numeric",
+      "actual": ["leading-zero"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "plain-seven",
+      "category": "numeric",
+      "actual": ["plain-seven"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "multi-enabled",
+      "category": "multiword",
+      "actual": ["activity", "disabled"],
+      "missing": [],
+      "extra": ["disabled"],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": false
+    },
+    {
+      "provider": "portable-primary",
+      "id": "multi-disabled",
+      "category": "multiword",
+      "actual": ["disabled"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "multi-reordered",
+      "category": "multiword",
+      "actual": ["activity", "disabled"],
+      "missing": [],
+      "extra": ["disabled"],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": false
+    },
+    {
+      "provider": "portable-primary",
+      "id": "negative-or",
+      "category": "negative",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "negative-not",
+      "category": "negative",
+      "actual": ["activity", "disabled"],
+      "missing": [],
+      "extra": ["activity", "disabled"],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": false
+    },
+    {
+      "provider": "portable-primary",
+      "id": "negative-term",
+      "category": "negative",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "negative-ja",
+      "category": "negative",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "negative-unrelated",
+      "category": "negative",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "unicode-combining",
+      "category": "unicode",
+      "actual": ["glass", "unicode"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "unicode-composed",
+      "category": "unicode",
+      "actual": ["unicode"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "unicode-ligature",
+      "category": "unicode",
+      "actual": ["width"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "unicode-width",
+      "category": "unicode",
+      "actual": ["width"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "unicode-emoji",
+      "category": "unicode",
+      "actual": ["unicode"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "unicode-accent",
+      "category": "unicode",
+      "actual": ["accent"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "unicode-trim",
+      "category": "unicode",
+      "actual": ["width"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "percent",
+      "category": "escaping",
+      "actual": ["escape"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "underscore",
+      "category": "escaping",
+      "actual": ["escape", "identifier"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "backslash",
+      "category": "escaping",
+      "actual": ["escape"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "literal-percent",
+      "category": "escaping",
+      "actual": ["escape", "escape-neighbor"],
+      "missing": [],
+      "extra": ["escape-neighbor"],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": false
+    },
+    {
+      "provider": "portable-primary",
+      "id": "literal-underscore",
+      "category": "escaping",
+      "actual": ["escape"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "literal-path",
+      "category": "escaping",
+      "actual": ["escape", "escape-neighbor"],
+      "missing": [],
+      "extra": ["escape-neighbor"],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": false
+    },
+    {
+      "provider": "portable-primary",
+      "id": "sql-injection",
+      "category": "escaping",
+      "actual": [],
+      "missing": [],
+      "extra": [],
+      "recall": null,
+      "mrr": null,
+      "ndcg": null,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "url",
+      "category": "identifier",
+      "actual": ["url"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "hyphen",
+      "category": "identifier",
+      "actual": ["identifier"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    },
+    {
+      "provider": "portable-primary",
+      "id": "identifier-underscore",
+      "category": "identifier",
+      "actual": ["identifier"],
+      "missing": [],
+      "extra": [],
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "exact": true
+    }
+  ],
+  "hybrid": [
+    {
+      "provider": "pgroonga-primary",
+      "id": "numeric-competition",
+      "actual": [
+        "invoice",
+        "invoice-neighbor",
+        "invoice-prefix",
+        "invoice-suffix",
+        "invoice-short"
+      ],
+      "final": ["invoice", "invoice-neighbor", "invoice-prefix", "invoice-suffix", "invoice-short"],
+      "requiredMissing": [],
+      "finalMissing": [],
+      "ndcg": 1,
+      "toolCalls": [
+        {
+          "name": "hybrid-search",
+          "resultCount": 6
+        },
+        {
+          "name": "document-fetch",
+          "resultCount": 5
+        }
+      ]
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "numeric-typo-competition",
+      "actual": [
+        "invoice-neighbor",
+        "invoice-prefix",
+        "invoice-suffix",
+        "invoice-short",
+        "unrelated"
+      ],
+      "final": [
+        "invoice-neighbor",
+        "invoice-prefix",
+        "invoice-suffix",
+        "invoice-short",
+        "unrelated"
+      ],
+      "requiredMissing": ["invoice"],
+      "finalMissing": ["invoice"],
+      "ndcg": 0,
+      "toolCalls": [
+        {
+          "name": "hybrid-search",
+          "resultCount": 5
+        },
+        {
+          "name": "document-fetch",
+          "resultCount": 5
+        }
+      ]
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "ticket-competition",
+      "actual": ["ticket", "ticket-neighbor", "ticket-long", "unrelated", "year"],
+      "final": ["ticket", "ticket-neighbor", "ticket-long", "unrelated", "year"],
+      "requiredMissing": [],
+      "finalMissing": [],
+      "ndcg": 1,
+      "toolCalls": [
+        {
+          "name": "hybrid-search",
+          "resultCount": 6
+        },
+        {
+          "name": "document-fetch",
+          "resultCount": 5
+        }
+      ]
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "typo-keyword-only",
+      "actual": [],
+      "final": [],
+      "requiredMissing": ["nebula"],
+      "finalMissing": ["nebula"],
+      "ndcg": 0,
+      "toolCalls": [
+        {
+          "name": "hybrid-search",
+          "resultCount": 0
+        },
+        {
+          "name": "document-fetch",
+          "resultCount": 0
+        }
+      ]
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "ja-typo-keyword-only",
+      "actual": [],
+      "final": [],
+      "requiredMissing": ["glass", "unicode"],
+      "finalMissing": ["glass", "unicode"],
+      "ndcg": 0,
+      "toolCalls": [
+        {
+          "name": "hybrid-search",
+          "resultCount": 0
+        },
+        {
+          "name": "document-fetch",
+          "resultCount": 0
+        }
+      ]
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "multi-consensus",
+      "actual": ["activity", "disabled", "unrelated", "nebula", "search"],
+      "final": ["activity", "disabled", "unrelated", "nebula", "search"],
+      "requiredMissing": [],
+      "finalMissing": [],
+      "ndcg": 1,
+      "toolCalls": [
+        {
+          "name": "hybrid-search",
+          "resultCount": 5
+        },
+        {
+          "name": "document-fetch",
+          "resultCount": 5
+        }
+      ]
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "unicode-consensus",
+      "actual": ["unicode", "accent", "glass", "unrelated", "cat"],
+      "final": ["unicode", "accent", "glass", "unrelated", "cat"],
+      "requiredMissing": [],
+      "finalMissing": [],
+      "ndcg": 1,
+      "toolCalls": [
+        {
+          "name": "hybrid-search",
+          "resultCount": 5
+        },
+        {
+          "name": "document-fetch",
+          "resultCount": 5
+        }
+      ]
+    },
+    {
+      "provider": "pgroonga-primary",
+      "id": "escaping-keyword-only",
+      "actual": ["escape"],
+      "final": ["escape"],
+      "requiredMissing": [],
+      "finalMissing": [],
+      "ndcg": 1,
+      "toolCalls": [
+        {
+          "name": "hybrid-search",
+          "resultCount": 1
+        },
+        {
+          "name": "document-fetch",
+          "resultCount": 1
+        }
+      ]
+    },
+    {
+      "provider": "portable-primary",
+      "id": "numeric-competition",
+      "actual": [
+        "invoice",
+        "invoice-neighbor",
+        "invoice-prefix",
+        "invoice-suffix",
+        "invoice-short"
+      ],
+      "final": ["invoice", "invoice-neighbor", "invoice-prefix", "invoice-suffix", "invoice-short"],
+      "requiredMissing": [],
+      "finalMissing": [],
+      "ndcg": 1,
+      "toolCalls": [
+        {
+          "name": "hybrid-search",
+          "resultCount": 6
+        },
+        {
+          "name": "document-fetch",
+          "resultCount": 5
+        }
+      ]
+    },
+    {
+      "provider": "portable-primary",
+      "id": "numeric-typo-competition",
+      "actual": [
+        "invoice-neighbor",
+        "invoice-prefix",
+        "invoice-suffix",
+        "invoice-short",
+        "unrelated"
+      ],
+      "final": [
+        "invoice-neighbor",
+        "invoice-prefix",
+        "invoice-suffix",
+        "invoice-short",
+        "unrelated"
+      ],
+      "requiredMissing": ["invoice"],
+      "finalMissing": ["invoice"],
+      "ndcg": 0,
+      "toolCalls": [
+        {
+          "name": "hybrid-search",
+          "resultCount": 5
+        },
+        {
+          "name": "document-fetch",
+          "resultCount": 5
+        }
+      ]
+    },
+    {
+      "provider": "portable-primary",
+      "id": "ticket-competition",
+      "actual": ["ticket", "ticket-neighbor", "ticket-long", "unrelated", "year"],
+      "final": ["ticket", "ticket-neighbor", "ticket-long", "unrelated", "year"],
+      "requiredMissing": [],
+      "finalMissing": [],
+      "ndcg": 1,
+      "toolCalls": [
+        {
+          "name": "hybrid-search",
+          "resultCount": 6
+        },
+        {
+          "name": "document-fetch",
+          "resultCount": 5
+        }
+      ]
+    },
+    {
+      "provider": "portable-primary",
+      "id": "typo-keyword-only",
+      "actual": ["nebula"],
+      "final": ["nebula"],
+      "requiredMissing": [],
+      "finalMissing": [],
+      "ndcg": 1,
+      "toolCalls": [
+        {
+          "name": "hybrid-search",
+          "resultCount": 1
+        },
+        {
+          "name": "document-fetch",
+          "resultCount": 1
+        }
+      ]
+    },
+    {
+      "provider": "portable-primary",
+      "id": "ja-typo-keyword-only",
+      "actual": [],
+      "final": [],
+      "requiredMissing": ["glass", "unicode"],
+      "finalMissing": ["glass", "unicode"],
+      "ndcg": 0,
+      "toolCalls": [
+        {
+          "name": "hybrid-search",
+          "resultCount": 0
+        },
+        {
+          "name": "document-fetch",
+          "resultCount": 0
+        }
+      ]
+    },
+    {
+      "provider": "portable-primary",
+      "id": "multi-consensus",
+      "actual": ["activity", "disabled", "unrelated", "nebula", "search"],
+      "final": ["activity", "disabled", "unrelated", "nebula", "search"],
+      "requiredMissing": [],
+      "finalMissing": [],
+      "ndcg": 1,
+      "toolCalls": [
+        {
+          "name": "hybrid-search",
+          "resultCount": 5
+        },
+        {
+          "name": "document-fetch",
+          "resultCount": 5
+        }
+      ]
+    },
+    {
+      "provider": "portable-primary",
+      "id": "unicode-consensus",
+      "actual": ["unicode", "accent", "glass", "unrelated", "cat"],
+      "final": ["unicode", "accent", "glass", "unrelated", "cat"],
+      "requiredMissing": [],
+      "finalMissing": [],
+      "ndcg": 1,
+      "toolCalls": [
+        {
+          "name": "hybrid-search",
+          "resultCount": 5
+        },
+        {
+          "name": "document-fetch",
+          "resultCount": 5
+        }
+      ]
+    },
+    {
+      "provider": "portable-primary",
+      "id": "escaping-keyword-only",
+      "actual": ["escape", "escape-neighbor"],
+      "final": ["escape", "escape-neighbor"],
+      "requiredMissing": [],
+      "finalMissing": [],
+      "ndcg": 1,
+      "toolCalls": [
+        {
+          "name": "hybrid-search",
+          "resultCount": 2
+        },
+        {
+          "name": "document-fetch",
+          "resultCount": 2
+        }
+      ]
+    }
+  ],
+  "comparisons": [
+    {
+      "id": "numeric-competition",
+      "top5Overlap": 1,
+      "finalOverlap": 1,
+      "ndcgDelta": 0,
+      "gate": true
+    },
+    {
+      "id": "numeric-typo-competition",
+      "top5Overlap": 1,
+      "finalOverlap": 1,
+      "ndcgDelta": 0,
+      "gate": false
+    },
+    {
+      "id": "ticket-competition",
+      "top5Overlap": 1,
+      "finalOverlap": 1,
+      "ndcgDelta": 0,
+      "gate": true
+    },
+    {
+      "id": "typo-keyword-only",
+      "top5Overlap": 0,
+      "finalOverlap": 0,
+      "ndcgDelta": 1,
+      "gate": false
+    },
+    {
+      "id": "ja-typo-keyword-only",
+      "top5Overlap": 1,
+      "finalOverlap": 1,
+      "ndcgDelta": 0,
+      "gate": false
+    },
+    {
+      "id": "multi-consensus",
+      "top5Overlap": 1,
+      "finalOverlap": 1,
+      "ndcgDelta": 0,
+      "gate": true
+    },
+    {
+      "id": "unicode-consensus",
+      "top5Overlap": 1,
+      "finalOverlap": 1,
+      "ndcgDelta": 0,
+      "gate": true
+    },
+    {
+      "id": "escaping-keyword-only",
+      "top5Overlap": 0.5,
+      "finalOverlap": 0.5,
+      "ndcgDelta": 0,
+      "gate": false
+    }
+  ],
+  "keywordExactGate": false,
+  "hybridGate": false
+}
