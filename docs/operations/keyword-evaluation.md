@@ -109,6 +109,72 @@ corpus、同時ingest、GIN/GiST自然planner、WAL / 容量 / latency SLO、pro
 上記は運用条件であり、切替には固定eval合格と本節のholdout品質条件も必須とする。14-case holdoutは合格したが、広いholdout、
 hybrid / Chat、負荷、production shadowの検索観測、restoreが未達のままportable primary切替やPGroonga cleanupへ進めない。
 
+## Step 3Dの広いholdout実測（2026-09-24、Issue #767）
+
+`scripts/lib/keyword-quality-corpus.ts`は、既存v1と14-case holdoutを変更せず追加した独立の56 query / 33文書である。
+同一文書の重複chunkと別projectの同文keywordを加え、計35 chunk / 34文書 / 2 projectで実行する。
+期待値はproviderの収集前に固定し、数字列の完全一致、複数数字の役割（release番号とbuild番号）、全検索概念の一致、
+typoで意図した文書、literal記号を評価する。否定例の`not` / `OR`は検索演算子としてではなくliteral語として扱う。
+既存14-caseの`ガラズ`はempty判定だったが、新holdoutはtypoの正解を明示して取りこぼしを評価する。
+
+専用ローカルPostgreSQL 18.1 / PGroonga 4.0.6 / pg_trgm 1.6で実測した。runnerは既存v1 collectorと同様に
+`ANALYZE`と専用接続の`enable_seqscan=off`でindex優先にする。初回の自然plannerではPGroongaに21ケースの集合差があり、
+統計更新後のindex優先では13ケースとなった。数字の部分一致とbackslash等で計画依存差があり、自然plannerの品質・負荷は未解決である。
+この設定は評価接続だけで、本番adapterやpool設定を変更しない。
+
+| 指標                    | PGroonga baseline | portable candidate |
+| ----------------------- | ----------------- | ------------------ |
+| 期待集合との差          | 13 / 56           | 13 / 56            |
+| Recall@20               | 0.8409            | 0.9091             |
+| MRR@20                  | 0.8295            | 0.9091             |
+| nDCG@20                 | 0.8325            | 0.9091             |
+| 正解なしqueryの誤ヒット | 3                 | 2                  |
+
+portableのcategory別Recallはtypo 0.50、numeric 0.8889、multi-number 0.80、その他の正解ありcategoryは1.0。
+全体0.95 / category 0.90の既存品質条件を満たさない。MRRのbaseline差が正でも、取りこぼしや余分なヒットを免除しない。
+`fixtures/keyword/quality-holdout-v2.json`へcorpus hash、全caseの合成文書ID順位、missing / extra、category集計を保存した。
+query / 本文 / snippet / raw score / UUID / 接続URLはreportに含めない。
+
+portableの残差は次の13ケースである。判断を実装に合わせる変更やthreshold 0.6の調整は行っていない。
+
+- missing: `ja-typo`、`ja-transpose`、`digits-natural-typo`、`digits-pair`。
+- extra: `digits-unrelated-word`、`digits-two`、`digits-two-reverse`、`digits-repeated`、`multi-enabled`、
+  `multi-reordered`、`negative-not`、`literal-percent`、`literal-path`。
+
+数字guardは数字列の存在を要求するが、その役割や出現回数まで保証しない。word similarityは語・記号を無視して近似一致し得る。
+これらの解消には検索語の組合せ・近似検索の契約を再検討する必要があり、本PRは観測を固定し、runtime検索仕様は変更しない。
+
+hybridは同じ固定semantic順位を両providerへ渡す8シナリオを用い、実Chat repositoryのCore RRF `k=60`、Top-5、
+nDCG@10、実`preparing → retrieving → detail`の最終sourceを評価した。比較gateは4/8合格、4/8不合格。
+数字typoと日本語typoでは必須文書が最終sourceに欠落する。英語typoはportableで改善してもbaseline overlapが0のため
+比較gateはFAILのまま。literal percentでは余分な文書が最終sourceに残り、overlapは0.5である。
+合成semantic順位は実embedding品質を示さず、分類・query展開・retry・graph・timelineの全workflow実行も含めない。
+
+各provider×8シナリオの実取得sourceを、OS割当loopback portのMastra protocol stubと本番workflow HTTP clientで16往復した。
+create-run / stream、requestのproject・question・limit、progress、sourceとtoolの保持、内部score/provenanceの除去を確認した。
+**Next Chat route・認証・実Mastra server・外部LLM回答/citationの評価ではない**。synthesisは固定合成回答で、外部課金はない。
+
+再実行は専用の使い捨てDBへinit.sqlを適用後、次を実行する。下記5767は例であり他タスクと重複しないportを使う。
+
+```bash
+pnpm --filter @pufu-lens/web^... build
+KEYWORD_EVAL_DATABASE_URL=postgres://postgres@127.0.0.1:5767/keyword_eval \
+  node --experimental-strip-types scripts/keyword-quality.ts /tmp/keyword-quality.json
+KEYWORD_EVAL_DATABASE_URL=postgres://postgres@127.0.0.1:5767/keyword_eval \
+  node --experimental-strip-types --test --test-concurrency=1 \
+  scripts/lib/keyword-quality.test.ts scripts/lib/keyword-selected-db.test.ts
+```
+
+collectorはreportを書いてから品質未達でexit 1となる。`keywordExactGate`は全case集合一致、`hybridGate`はTop-5/source overlap
+0.80以上・nDCG@10差-0.05以上・必須source欠落なしを要求する。DB/HTTP errorは品質0件へ置き換えず異常終了する。
+testの成功は既知のmissing / extraと選択差の再現であって、品質合格ではない。改善・新しい失敗とも自動snapshot更新せず根拠を確認する。
+CI `db-check`にも追加し、table lockを使う旧testとの競合を避けるため直列実行する。作成済みの専用projectだけfinallyで削除し、
+既存ID衝突は拒否する。専用Docker containerはoperatorが終了後に削除する。
+
+広いholdoutの品質は**未達と実測確定**した。大規模・長文・偏り・同時ingest、自然planner、容量/WAL/latency SLO、
+実semantic / 全Chat HTTP、production shadow検索観測、isolated restoreは未検証として維持する。
+本評価の追加でprimary切替・cleanup・Step 4へ進めない。
+
 ## ローカルPGroonga baseline収集
 
 専用の使い捨てDB `keyword_eval` を用意する。`KEYWORD_EVAL_DATABASE_URL` のloopback接続だけを受け付け、
