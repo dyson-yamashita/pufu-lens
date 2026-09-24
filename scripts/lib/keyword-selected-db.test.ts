@@ -391,7 +391,6 @@ test('selected adapter and materialization/backfill on synthetic migrated DB', {
               baselineMatches: matchesExpected(baselineRows),
               candidateMatches: matchesExpected(portableRows),
               id: holdoutCase.id,
-              knownFailure: holdoutCase.knownFailure,
               baselineCount: baselineRows.length,
               candidateCount: portableRows.length,
             };
@@ -406,33 +405,15 @@ test('selected adapter and materialization/backfill on synthetic migrated DB', {
         );
         assert.deepEqual(
           candidateFailures.map((result) => result.id).sort(),
-          keywordHoldoutCases
-            .filter((holdoutCase) => holdoutCase.knownFailure !== undefined)
-            .map((holdoutCase) => holdoutCase.id)
-            .sort(),
-          'portable candidate must not add unrecorded holdout failures',
+          [],
+          'portable candidate must satisfy every current holdout case',
         );
         t.diagnostic(
           `Step 3D holdout baseline failures=${baselineFailures.length}, candidate failures=${candidateFailures.length}, cases=${holdoutResults.length}`,
         );
-        const numericFailure = holdoutResults.find(
-          (result) => result.knownFailure === 'portable_numeric_false_positive',
-        );
-        assert.ok(numericFailure && numericFailure.candidateCount > 0);
-        assert.ok(
-          candidateFailures.some(
-            (result) => result.knownFailure === 'portable_numeric_false_positive',
-          ),
-          'known numeric false positive must remain visible in the holdout gate',
-        );
         assert.deepEqual(await search('absent OR blackhole', gamma), []);
         assert.deepEqual(await search("' OR 1=1 --", gamma), []);
-        // Preserve and expose a known fuzzy false positive, rather than relax judgments or threshold.
-        const numericFalsePositives = await search('31417', gamma);
-        assert.ok(numericFalsePositives.length > 0);
-        t.diagnostic(
-          `holdout numeric no-relevance query: ${numericFalsePositives.length} false positives; rollout gate remains open`,
-        );
+        assert.deepEqual(await search('31417', gamma), []);
         assert.deepEqual(await search('黒猫', beta), []);
         await sql`DELETE FROM public.projects WHERE id = ${gamma}`;
         assert.deepEqual(await search('猫', gamma), []);

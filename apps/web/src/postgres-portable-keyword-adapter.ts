@@ -32,6 +32,12 @@ export function createPostgresPortableKeywordCandidateRepository(
         const query = row.query;
         if (!query) return [];
         const pattern = `%${query.replace(/[\\%_]/g, '\\$&')}%`;
+        const literalMatch = tx`dc.keyword_content LIKE ${pattern}`;
+        const fuzzyMatch = tx`dc.keyword_content OPERATOR(public.%>) ${query}`;
+        // Numeric near-misses are unsafe for retrieval: word_similarity('31417', 'invoice 31415')
+        // can clear the fixed threshold even though the identifier is different. Keep numeric
+        // queries exact while preserving typo tolerance for natural-language queries.
+        const match = /\p{N}/u.test(query) ? literalMatch : tx`(${literalMatch} OR ${fuzzyMatch})`;
         const rows: readonly unknown[] = await tx`
           WITH limited AS (
             SELECT dc.id::text AS chunk_id, dc.chunk_index, dc.document_id, dc.content,
@@ -40,7 +46,7 @@ export function createPostgresPortableKeywordCandidateRepository(
             FROM public.document_chunks dc
             JOIN public.documents d ON d.id = dc.document_id AND d.project_id = dc.project_id
             WHERE dc.project_id = ${projectId}
-              AND (dc.keyword_content LIKE ${pattern} OR dc.keyword_content OPERATOR(public.%>) ${query})
+              AND ${match}
             ORDER BY score DESC, dc.id LIMIT ${limit}
           ), deduped AS (
             SELECT DISTINCT ON (d.id)

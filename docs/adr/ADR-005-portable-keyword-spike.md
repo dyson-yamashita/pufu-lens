@@ -145,8 +145,9 @@ error本文、secretは出力しない。session-local `word_similarity_threshol
 ### Step 3D品質結果と未達gate
 
 固定v1は既存baseline比較でcandidateの全gateを維持した。追加holdoutには日本語typo、短query、数字 / 識別子、否定 / 複数語、
-Unicode / escapingを含め、`invoice 31415`への関連queryの近似overmatchと、`31417`の関連なしnumeric queryがinvoice 2件へ近似一致する
-不合格を再現・記録する。baselineは全holdoutを満たし、candidateは明示したnumeric known failureだけを許可する。thresholdやv1 judgmentは緩めない。large / long / project-skewed corpus、自然plannerでのGIN/GiST、WAL / capacity / write amplification / latency
+Unicode / escapingを含めた。Step 3Cで`invoice 31415`への近似追加候補と`31417`の関連なしnumeric queryがinvoice 2件へ近似一致する
+不合格を再現したため、Issue #764で数字を含むqueryをliteral LIKEに限定した。threshold `0.6`とv1 judgmentは緩めていない。修正後の専用合成DBでは
+baseline / candidateの14-case holdout失敗は0件である。large / long / project-skewed corpus、自然plannerでのGIN/GiST、WAL / capacity / write amplification / latency
 SLO、同時ingest、hybrid / RRF final selection、Chat HTTP、production shadow / primary、全chunk backfill、fallback 0、7日soak、
 restoreは未検証である。Step 2の全8 unit relational-only、AGE / backup / 旧image保持、自然mutation全経路・長期観測・復元試験の残件は維持する。
 
