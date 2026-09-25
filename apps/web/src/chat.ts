@@ -13,6 +13,7 @@ import {
 import type postgres from 'postgres';
 import type { ObjectStorage } from '../../../packages/storage/src/object-storage.ts';
 import { lookupProjectMemberAccess } from './authz.ts';
+import { findChatGitHubReferenceDocumentIds } from './chat-github-reference.ts';
 import {
   type ChatSearchPeriod,
   hasChatSearchPeriod,
@@ -259,6 +260,8 @@ export interface ChatRequest {
 }
 
 export interface ChatRepository {
+  /** Optionally resolves a single explicit PR/Issue reference inside the authorized project. */
+  referencedDocumentFetch?(input: { question: string; projectId: string }): Promise<ChatSource[]>;
   documentFetch(input: {
     documentIds: readonly string[];
     projectId: string;
@@ -1188,6 +1191,10 @@ export function createPostgresChatRepository(
             slug: access.slug,
           }
         : undefined;
+    },
+    async referencedDocumentFetch({ question, projectId }) {
+      const documentIds = await findChatGitHubReferenceDocumentIds(sql, { question, projectId });
+      return fetchChatSourcesByDocumentIds(sql, { documentIds, projectId });
     },
     async hybridSearch({ embedding, embeddingModel, limit, projectId, query }) {
       const keywordQuery = normalizeHybridKeywordQuery(query);
