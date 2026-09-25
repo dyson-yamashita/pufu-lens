@@ -226,6 +226,10 @@ Issue #772の回答表現補修後は、同じ実Chatケースで両方式7/7成
 内部診断混入0件を確認した。今回のsource overlapは全件1.0だが、旧v1の観測と既存比較gate未達は維持する。
 詳細と脚注記号が残る書式上の限界は[実Chat E2E](live-chat-e2e.md#回答表現の補修issue-772)を参照。
 
+Issue #775でpublic Chatも両方式8/8成功。実LLM回答5件の公開source overlapはすべて1.0で、
+公開IDへの変換、匿名UI、公開制御の拒否系を確認した。合成Web資料の代表検証であり、既存比較gateの未達は維持する。
+再現手順・範囲は[実Chat E2E](live-chat-e2e.md#public-chatの実経路issue-775)を参照。
+
 ## ローカルPGroonga baseline収集
 
 専用の使い捨てDB `keyword_eval` を用意する。`KEYWORD_EVAL_DATABASE_URL` のloopback接続だけを受け付け、

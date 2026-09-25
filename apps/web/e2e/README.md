@@ -67,7 +67,7 @@ DATABASE_URL=postgresql://pufu_lens:pufu_lens@localhost:5432/pufu_lens \
 - ログイン済み admin の E2E は credentials 環境変数がある場合に実行する。member の private chat write-to-read は `local-dev` project の E2E user seed 後に実 DB 接続モードで実行する。非 admin の project 境界は追加の fixture user 整備後に拡張する。
 - `/projects` のログイン状態別 matrix は `docs/plans/002-account-login-public-projects/overview.md` の Step 4 / Step 5 と同期して追加する。
 - private route / private API への非 member、非 admin アクセス拒否は、認証境界の実装と合わせて E2E または route test に追加する。
-- report 生成、公開、public report 閲覧、public chat までを実 API / fixture DB でつなぐ統合シナリオは未整備。現在は UI シナリオを API mock で安定化し、API 安全性は route handler で確認している。
+- report生成から公開までの一貫した実LLMシナリオは未整備。通常CIのUIはAPI mockで安定化し、API安全性はroute handlerで確認する。任意実行の`live-e2e/public-chat.spec.ts`では合成reportをローカルに実公開し、実DB・Mastra・Geminiを通すpublic Chatと公開artifact表示を確認する。手順と範囲は[実Chat E2E](../../../docs/operations/live-chat-e2e.md)を参照。
 - viewport ごとのレイアウト崩れは `@mobile` タグ付きシナリオと `mobile` project で確認する。全 UI シナリオを desktop / mobile で二重実行はしない。スクリーンショット比較は導入していない。
 
 ## 追加時の基準
