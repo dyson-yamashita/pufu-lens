@@ -300,6 +300,7 @@ pnpm chat:eval --project sample-a --fixture fixtures/chat/private-chat-raw-injec
 - rate limit: process 内 memory bucket で user + project 単位に制限する
 - 評価: `pnpm chat:eval --fixture fixtures/chat/private-chat-eval.json` で running web server に対して source / tool call を確認する
 - keyword単体の固定合成コーパス・PGroonga baseline・offline品質評価は `pnpm keyword:eval` を使う。手順・指標・既知の不足は [keyword評価](../../operations/keyword-evaluation.md) を参照する。Chat HTTP評価とprovider採用判断は別途必要。
+- Issue #771の[実Chat E2E](../../operations/live-chat-e2e.md)では実Next認証・Mastra・Gemini・embedding・DB・表示・履歴を接続し、両方式7/7・障害時1/1成功。代表private Chat経路の機能確認であり、source比較1件と回答表現（Issue #772）は未達。大規模負荷はユーザー指定でスキップし、public Chat・非空Graph等の網羅と本番観測・restoreは残す。
 - Issue #767の独立56-query holdoutはportable Recall@20 0.9091で品質未達。8シナリオの実Core RRF / retrieving / detail後のsource比較、16回のloopback workflow HTTP transport検証を追加した。semantic順位とsynthesisは制御済みで、Next route認証・実LLM回答/citation・全workflowのE2E品質は未検証。runtime検索契約、v1 judgment、threshold 0.6は変更しない。
 - Issue #769でportableを全term必須・記号literal・ASCII label/数字対応へ修正し、3–12文字の制限付きtypo補完を追加。固定v1・56-case期待値・threshold 0.6を維持し、56-case集合差0 / Recall 1.0、hybrid必須source欠落0となった。比較gateはbaseline未取得のtypo 2件のoverlap差で未達。旧14-caseの日本語typo期待値はユーザー承認で新56-caseへ統一。性能・未知queryの誤検出・全Chat E2Eは未検証で、PGroonga primaryと切替gateは維持する。
 - Step 3Bのportable比較は [ADR-005](../../adr/ADR-005-portable-keyword-spike.md) に記録する。Step 3CでLIKE OR pg_trgm word similarity / GiSTの明示DI用adapterとmaterialized column / backfillを追加した。現行runtimeはPGroongaのまま。数字の近似誤検出を含む追加品質gate、hybrid / Chat検証・本番切替はStep 3D以降で行う。[backfill運用](../../operations/keyword-backfill.md)を参照。
