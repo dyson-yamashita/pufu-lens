@@ -89,9 +89,44 @@ JSON reporterの`live-chat-evidence` attachmentには合成回答・progress・s
 
 ## 範囲の限界
 
-この評価はprivate Chatの全workflowを通す代表ケースである。public report Chat、実raw / parsedファイル読込、
+v1 / v2の評価はprivate Chatの全workflowを通す代表ケースである。public Chatは次節のIssue #775で別途検証する。実raw / parsedファイル読込、
 非空Graphの関係網、全質問分布、実ユーザーの履歴文脈、本番の認証・ネットワーク構成の網羅を意味しない。
 大規模負荷はユーザー指定で未実施。production shadow観測・restore・本番primary切替は別工程とする。
+
+## Public Chatの実経路（Issue #775）
+
+public project Chatは公開レポートを入口の条件にし、privateと同じ実検索workflowで回答を生成する。
+別の使い捨てDBで上記seedを実行するとき、環境ファイルへ`PUFU_LENS_LIVE_CHAT_PUBLIC=true`を追加する。
+`STORAGE_DRIVER=local`と明示的な`STORAGE_ROOT`が必須。seedは`local-dev`と空projectだけを公開扱いにし、
+合成資料6件を参照する公開レポート1件と未公開レポート1件を追加する。公開処理とmanifest生成は既存実装を使うが、
+保存先はローカルのみで外部への公開は行わない。既存文書があるDBへの再seedは拒否する。
+
+Web / Mastraを起動後、各providerで次を実行する。
+
+```bash
+PUFU_LENS_LIVE_CHAT_MODE=pgroonga-primary \
+  PUFU_LENS_LIVE_CHAT_REPORT=/tmp/live-public-chat-pgroonga.json \
+  pnpm --filter @pufu-lens/web exec playwright test --config playwright.live-chat.config.ts public-chat.spec.ts
+```
+
+未ログインのブラウザから4質問を送信し、実stream・事実・Sources表示・公開参照ID・内部IDフィールド不在・
+他projectの合成機密コード不在を検証する。report指定JSON API、private project / 未公開report / project不一致の404、
+公開reportなしの`no_public_report`、公開レポートの実artifact表示も確認する。
+public Chatは履歴を保存する契約ではなく、privateの履歴再表示テストをpublicには適用しない。
+公開レポート生成のLLM、PDF、公開取り消し、rate limit、同一project内の非Web資料を含む全データ種別はこのfixtureの対象外。
+今回の合成資料はWeb資料のみで、公開レスポンス全般の機密保護を網羅的に証明するものではない。
+
+### 実測（2026-09-25）
+
+runtime `fabab63`、Chat `google/gemini-2.5-flash`、embedding `gemini-embedding-2` / 1536次元。
+PGroongaは7件に公開artifact表示1件を追加実行して計8/8、portableは8/8成功した。
+各providerで実LLMは4つのstream質問とreport指定JSON質問1件の計5回。必要な事実・公開source ID・画面表示を保持し、
+内部IDフィールド・他projectの合成機密コード・内部診断の混入は観測しなかった。公開source集合のoverlapは全5回答で1.0。
+portable keywordは63回success、fallback 0、候補非空2回であり、意味検索による補完を含む結果である。
+
+証跡は`fixtures/chat/live-public-chat-e2e-v1.json`。合成回答・公開source・tool件数・進捗・各テストの結果とseedのSHA-256を保存した。
+初回seedのreport期間metadata不足を補修し、合成データを入れ直してから実行した。runtime変更や期待値の緩和は行っていない。
+各質問は単回観測であり、未確認範囲と従来の比較gateは維持する。専用プロセス・DBは停止し、APIキー入り一時ファイルは削除済み。
 
 ## 実測（2026-09-25）
 

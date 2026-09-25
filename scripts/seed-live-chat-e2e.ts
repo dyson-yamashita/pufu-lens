@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import postgres from 'postgres';
 import { createEmbeddingProviderFromEnv } from '../packages/ingestion/dist/embedding-runtime.js';
 import { liveChatDocuments } from './lib/live-chat-corpus.ts';
+import { seedLivePublicChat } from './lib/live-chat-public.ts';
 
 /** Seeds only an empty, explicitly named loopback evaluation DB using real paid embeddings. */
 async function main(): Promise<void> {
@@ -16,6 +17,12 @@ async function main(): Promise<void> {
     url.hash
   ) {
     throw new Error('Use only the loopback chat_e2e_eval database without URL options.');
+  }
+  const publicChat = process.env.PUFU_LENS_LIVE_CHAT_PUBLIC === 'true';
+  if (publicChat && (process.env.STORAGE_DRIVER !== 'local' || !process.env.STORAGE_ROOT)) {
+    throw new Error(
+      'Public Chat evaluation requires explicit local STORAGE_DRIVER and STORAGE_ROOT.',
+    );
   }
   const provider = createEmbeddingProviderFromEnv({ env: process.env });
   if (provider.provider === 'deterministic')
@@ -64,6 +71,7 @@ async function main(): Promise<void> {
           VALUES (${scope},${id},0,${doc.content},${id},${JSON.stringify(vector)}::vector,${provider.model})`;
       }
     });
+    if (publicChat) await seedLivePublicChat(sql, projectId);
     console.log(
       JSON.stringify({
         documents: liveChatDocuments.length + 1,

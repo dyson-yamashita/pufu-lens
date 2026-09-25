@@ -1,0 +1,628 @@
+{
+  "schemaVersion": 1,
+  "runtimeCommit": "fabab6314243200d0305f12016cfc541883b1486",
+  "chatModel": "google/gemini-2.5-flash",
+  "embeddingModel": "gemini-embedding-2",
+  "dimensions": 1536,
+  "corpusSha256": "b4b0c4d6ded66db982168625519b3c645975079690fd8d1273790e01cb6adcf5",
+  "corpusHashEncoding": "SHA-256 of sorted-key compact UTF-8 JSON {cases,documents}; scripts/lib/live-chat-corpus.ts exports",
+  "fixtureFilesSha256": {
+    "scripts/seed-live-chat-e2e.ts": "6fa5f42633f0277c5a234bd65306d9b15f99bf1b8e22557450186de58ea33935",
+    "scripts/lib/live-chat-public.ts": "0afa334c209a407eb826622ff78af62afac00be837870bff892dde88daa10c59"
+  },
+  "scope": "Unauthenticated public project Chat via real browser / Next / Mastra / Gemini / PostgreSQL; synthetic web documents and local publication artifacts only.",
+  "reports": {
+    "baseline": {
+      "startedAt": "2026-09-25T09:15:56.368Z",
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "tests": [
+        {
+          "title": "live public Chat: numeric",
+          "status": "passed"
+        },
+        {
+          "title": "live public Chat: japanese-typo",
+          "status": "passed"
+        },
+        {
+          "title": "live public Chat: literal-percent",
+          "status": "passed"
+        },
+        {
+          "title": "live public Chat: timeline",
+          "status": "passed"
+        },
+        {
+          "title": "live public report API returns JSON with public source IDs",
+          "status": "passed"
+        },
+        {
+          "title": "live public Chat rejects private projects and unpublished reports",
+          "status": "passed"
+        },
+        {
+          "title": "live public Chat without a published report does not invent evidence",
+          "status": "passed"
+        }
+      ],
+      "cases": [
+        {
+          "id": "numeric",
+          "response": {
+            "answer": "release 42 build 17 は架空担当者の青葉ミナが承認し、承認コードは SYNTH-AOBA-4217 です¹。\n\n¹ [release 42 build 17 承認記録](https://example.test/release)",
+            "editing": {
+              "caveats": ["質問意図を特定の編集方針に寄せず、通常の根拠確認を優先します。"],
+              "confidence": "low",
+              "inferredMode": "default",
+              "operations": ["収集", "選択", "引用"],
+              "questionType": "unknown"
+            },
+            "projectSlug": "local-dev",
+            "reportId": "11111111-1111-4111-8111-111111111111",
+            "sources": [
+              {
+                "label": "release 42 build 17 承認記録",
+                "publicSourceId": "src_progress_1",
+                "sectionId": "progress"
+              },
+              {
+                "label": "release 420 build 17 承認記録",
+                "publicSourceId": "src_progress_2",
+                "sectionId": "progress"
+              }
+            ],
+            "status": "answered",
+            "toolCalls": [
+              {
+                "name": "hybrid-search",
+                "resultCount": 32
+              },
+              {
+                "name": "graph-query",
+                "resultCount": 0
+              },
+              {
+                "name": "document-fetch",
+                "resultCount": 2
+              }
+            ]
+          },
+          "progressStages": [
+            "preparing",
+            "classifying",
+            "expanding",
+            "retrieving",
+            "retrying",
+            "relating",
+            "reasoning"
+          ]
+        },
+        {
+          "id": "japanese-typo",
+          "response": {
+            "answer": "ガラス試料は遮光箱に保管され、保管庫の識別番号はSYNTH-GLASS-73です[ガラス保管手順](https://example.test/glass)。",
+            "editing": {
+              "caveats": ["質問意図を特定の編集方針に寄せず、通常の根拠確認を優先します。"],
+              "confidence": "low",
+              "inferredMode": "default",
+              "operations": ["収集", "選択", "引用"],
+              "questionType": "unknown"
+            },
+            "projectSlug": "local-dev",
+            "reportId": "11111111-1111-4111-8111-111111111111",
+            "sources": [
+              {
+                "label": "ガラス保管手順",
+                "publicSourceId": "src_progress_3",
+                "sectionId": "progress"
+              }
+            ],
+            "status": "answered",
+            "toolCalls": [
+              {
+                "name": "hybrid-search",
+                "resultCount": 31
+              },
+              {
+                "name": "graph-query",
+                "resultCount": 0
+              },
+              {
+                "name": "document-fetch",
+                "resultCount": 1
+              }
+            ]
+          },
+          "progressStages": [
+            "preparing",
+            "classifying",
+            "expanding",
+            "retrieving",
+            "retrying",
+            "relating",
+            "reasoning"
+          ]
+        },
+        {
+          "id": "literal-percent",
+          "response": {
+            "answer": "ストレージ使用率が80%に達した場合の通知先は架空の監視担当「若葉班」です。識別コードはSYNTH-PERCENT-80です[80% 警告設定](https://example.test/percent)。",
+            "editing": {
+              "caveats": ["質問意図を特定の編集方針に寄せず、通常の根拠確認を優先します。"],
+              "confidence": "low",
+              "inferredMode": "default",
+              "operations": ["収集", "選択", "引用"],
+              "questionType": "unknown"
+            },
+            "projectSlug": "local-dev",
+            "reportId": "11111111-1111-4111-8111-111111111111",
+            "sources": [
+              {
+                "label": "80% 警告設定",
+                "publicSourceId": "src_progress_4",
+                "sectionId": "progress"
+              }
+            ],
+            "status": "answered",
+            "toolCalls": [
+              {
+                "name": "hybrid-search",
+                "resultCount": 31
+              },
+              {
+                "name": "graph-query",
+                "resultCount": 0
+              },
+              {
+                "name": "document-fetch",
+                "resultCount": 1
+              }
+            ]
+          },
+          "progressStages": [
+            "preparing",
+            "classifying",
+            "expanding",
+            "retrieving",
+            "retrying",
+            "relating",
+            "reasoning"
+          ]
+        },
+        {
+          "id": "timeline",
+          "response": {
+            "answer": "2026年8月5日から2026年8月6日にかけての合成移行テストの方針変更は以下の通りです。\n\n*   **2026年8月5日**: 合成移行テストが開始され、この時点では方式Aが採用されました[合成移行テスト 初期決定](https://example.test/timeline-one)。\n*   **2026年8月6日**: 合成移行テストの方針が、方式Aから方式Bへ変更されました。この際の識別コードはSYNTH-MIGRATION-Bです[合成移行テスト 方針変更](https://example.test/timeline-two)。",
+            "editing": {
+              "caveats": ["時系列は日付や actor hint が確認できる範囲に限定します。"],
+              "confidence": "high",
+              "inferredMode": "timeline",
+              "operations": ["系統", "順番", "注釈", "場面"],
+              "questionType": "timeline"
+            },
+            "projectSlug": "local-dev",
+            "reportId": "11111111-1111-4111-8111-111111111111",
+            "sources": [
+              {
+                "label": "合成移行テスト 初期決定",
+                "publicSourceId": "src_progress_5",
+                "sectionId": "progress"
+              },
+              {
+                "label": "合成移行テスト 方針変更",
+                "publicSourceId": "src_progress_6",
+                "sectionId": "progress"
+              }
+            ],
+            "status": "answered",
+            "toolCalls": [
+              {
+                "name": "hybrid-search",
+                "resultCount": 32
+              },
+              {
+                "name": "graph-query",
+                "resultCount": 0
+              },
+              {
+                "name": "timeline-search",
+                "resultCount": 0
+              },
+              {
+                "name": "document-fetch",
+                "resultCount": 2
+              }
+            ]
+          },
+          "progressStages": [
+            "preparing",
+            "classifying",
+            "expanding",
+            "retrieving",
+            "retrying",
+            "relating",
+            "timeline",
+            "reasoning"
+          ]
+        },
+        {
+          "id": "report-json",
+          "response": {
+            "answer": "release 42 build 17 は、架空担当者の青葉ミナが承認しました。承認コードは SYNTH-AOBA-4217 です¹。\n\n---\n¹ [release 42 build 17 承認記録](https://example.test/release)",
+            "editing": {
+              "caveats": ["質問意図を特定の編集方針に寄せず、通常の根拠確認を優先します。"],
+              "confidence": "low",
+              "inferredMode": "default",
+              "operations": ["収集", "選択", "引用"],
+              "questionType": "unknown"
+            },
+            "projectSlug": "local-dev",
+            "reportId": "11111111-1111-4111-8111-111111111111",
+            "sources": [
+              {
+                "label": "release 42 build 17 承認記録",
+                "publicSourceId": "src_progress_1",
+                "sectionId": "progress"
+              },
+              {
+                "label": "release 420 build 17 承認記録",
+                "publicSourceId": "src_progress_2",
+                "sectionId": "progress"
+              }
+            ],
+            "status": "answered",
+            "toolCalls": [
+              {
+                "name": "hybrid-search",
+                "resultCount": 32
+              },
+              {
+                "name": "graph-query",
+                "resultCount": 0
+              },
+              {
+                "name": "document-fetch",
+                "resultCount": 2
+              }
+            ]
+          },
+          "progressStages": []
+        }
+      ]
+    },
+    "baselineArtifactSupplement": {
+      "startedAt": "2026-09-25T09:17:28.036Z",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "tests": [
+        {
+          "title": "published synthetic report renders from real local artifacts",
+          "status": "passed"
+        }
+      ],
+      "cases": []
+    },
+    "portable": {
+      "startedAt": "2026-09-25T09:17:59.569Z",
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "tests": [
+        {
+          "title": "live public Chat: numeric",
+          "status": "passed"
+        },
+        {
+          "title": "live public Chat: japanese-typo",
+          "status": "passed"
+        },
+        {
+          "title": "live public Chat: literal-percent",
+          "status": "passed"
+        },
+        {
+          "title": "live public Chat: timeline",
+          "status": "passed"
+        },
+        {
+          "title": "live public report API returns JSON with public source IDs",
+          "status": "passed"
+        },
+        {
+          "title": "live public Chat rejects private projects and unpublished reports",
+          "status": "passed"
+        },
+        {
+          "title": "live public Chat without a published report does not invent evidence",
+          "status": "passed"
+        },
+        {
+          "title": "published synthetic report renders from real local artifacts",
+          "status": "passed"
+        }
+      ],
+      "cases": [
+        {
+          "id": "numeric",
+          "response": {
+            "answer": "release 42 build 17 は、架空担当者の青葉ミナが承認しました。承認コードは SYNTH-AOBA-4217 です¹。\n\n---\n¹ [release 42 build 17 承認記録](https://example.test/release)",
+            "editing": {
+              "caveats": ["質問意図を特定の編集方針に寄せず、通常の根拠確認を優先します。"],
+              "confidence": "low",
+              "inferredMode": "default",
+              "operations": ["収集", "選択", "引用"],
+              "questionType": "unknown"
+            },
+            "projectSlug": "local-dev",
+            "reportId": "11111111-1111-4111-8111-111111111111",
+            "sources": [
+              {
+                "label": "release 42 build 17 承認記録",
+                "publicSourceId": "src_progress_1",
+                "sectionId": "progress"
+              },
+              {
+                "label": "release 420 build 17 承認記録",
+                "publicSourceId": "src_progress_2",
+                "sectionId": "progress"
+              }
+            ],
+            "status": "answered",
+            "toolCalls": [
+              {
+                "name": "hybrid-search",
+                "resultCount": 32
+              },
+              {
+                "name": "graph-query",
+                "resultCount": 0
+              },
+              {
+                "name": "document-fetch",
+                "resultCount": 2
+              }
+            ]
+          },
+          "progressStages": [
+            "preparing",
+            "classifying",
+            "expanding",
+            "retrieving",
+            "retrying",
+            "relating",
+            "reasoning"
+          ]
+        },
+        {
+          "id": "japanese-typo",
+          "response": {
+            "answer": "ガラス試料は遮光箱に保管され、保管庫の識別番号はSYNTH-GLASS-73です[ガラス保管手順](https://example.test/glass)。",
+            "editing": {
+              "caveats": ["質問意図を特定の編集方針に寄せず、通常の根拠確認を優先します。"],
+              "confidence": "low",
+              "inferredMode": "default",
+              "operations": ["収集", "選択", "引用"],
+              "questionType": "unknown"
+            },
+            "projectSlug": "local-dev",
+            "reportId": "11111111-1111-4111-8111-111111111111",
+            "sources": [
+              {
+                "label": "ガラス保管手順",
+                "publicSourceId": "src_progress_3",
+                "sectionId": "progress"
+              }
+            ],
+            "status": "answered",
+            "toolCalls": [
+              {
+                "name": "hybrid-search",
+                "resultCount": 25
+              },
+              {
+                "name": "graph-query",
+                "resultCount": 0
+              },
+              {
+                "name": "document-fetch",
+                "resultCount": 1
+              }
+            ]
+          },
+          "progressStages": [
+            "preparing",
+            "classifying",
+            "expanding",
+            "retrieving",
+            "retrying",
+            "relating",
+            "reasoning"
+          ]
+        },
+        {
+          "id": "literal-percent",
+          "response": {
+            "answer": "ストレージ使用率が80%に達した場合の通知先は「若葉班」で、識別コードは「SYNTH-PERCENT-80」です[80% 警告設定](https://example.test/percent)。",
+            "editing": {
+              "caveats": ["質問意図を特定の編集方針に寄せず、通常の根拠確認を優先します。"],
+              "confidence": "low",
+              "inferredMode": "default",
+              "operations": ["収集", "選択", "引用"],
+              "questionType": "unknown"
+            },
+            "projectSlug": "local-dev",
+            "reportId": "11111111-1111-4111-8111-111111111111",
+            "sources": [
+              {
+                "label": "80% 警告設定",
+                "publicSourceId": "src_progress_4",
+                "sectionId": "progress"
+              }
+            ],
+            "status": "answered",
+            "toolCalls": [
+              {
+                "name": "hybrid-search",
+                "resultCount": 31
+              },
+              {
+                "name": "graph-query",
+                "resultCount": 0
+              },
+              {
+                "name": "document-fetch",
+                "resultCount": 1
+              }
+            ]
+          },
+          "progressStages": [
+            "preparing",
+            "classifying",
+            "expanding",
+            "retrieving",
+            "retrying",
+            "relating",
+            "reasoning"
+          ]
+        },
+        {
+          "id": "timeline",
+          "response": {
+            "answer": "2026年8月5日から2026年8月6日にかけての合成移行テストの方針変更は以下の通りです。\n\n*   2026年8月5日に合成移行テストの開始が決定され、この時点では方式Aが採用されました。[^1]\n*   2026年8月6日には、合成移行テストの方式が方式Aから方式Bへ変更されました。[^2]\n\n[^1]: [合成移行テスト 初期決定](https://example.test/timeline-one)\n[^2]: [合成移行テスト 方針変更](https://example.test/timeline-two)",
+            "editing": {
+              "caveats": ["時系列は日付や actor hint が確認できる範囲に限定します。"],
+              "confidence": "high",
+              "inferredMode": "timeline",
+              "operations": ["系統", "順番", "注釈", "場面"],
+              "questionType": "timeline"
+            },
+            "projectSlug": "local-dev",
+            "reportId": "11111111-1111-4111-8111-111111111111",
+            "sources": [
+              {
+                "label": "合成移行テスト 初期決定",
+                "publicSourceId": "src_progress_5",
+                "sectionId": "progress"
+              },
+              {
+                "label": "合成移行テスト 方針変更",
+                "publicSourceId": "src_progress_6",
+                "sectionId": "progress"
+              }
+            ],
+            "status": "answered",
+            "toolCalls": [
+              {
+                "name": "hybrid-search",
+                "resultCount": 32
+              },
+              {
+                "name": "graph-query",
+                "resultCount": 0
+              },
+              {
+                "name": "timeline-search",
+                "resultCount": 0
+              },
+              {
+                "name": "document-fetch",
+                "resultCount": 2
+              }
+            ]
+          },
+          "progressStages": [
+            "preparing",
+            "classifying",
+            "expanding",
+            "retrieving",
+            "retrying",
+            "relating",
+            "timeline",
+            "reasoning"
+          ]
+        },
+        {
+          "id": "report-json",
+          "response": {
+            "answer": "release 42 build 17 は架空担当者の青葉ミナが承認し、承認コードは SYNTH-AOBA-4217 です[release 42 build 17 承認記録](https://example.test/release)。",
+            "editing": {
+              "caveats": ["質問意図を特定の編集方針に寄せず、通常の根拠確認を優先します。"],
+              "confidence": "low",
+              "inferredMode": "default",
+              "operations": ["収集", "選択", "引用"],
+              "questionType": "unknown"
+            },
+            "projectSlug": "local-dev",
+            "reportId": "11111111-1111-4111-8111-111111111111",
+            "sources": [
+              {
+                "label": "release 42 build 17 承認記録",
+                "publicSourceId": "src_progress_1",
+                "sectionId": "progress"
+              },
+              {
+                "label": "release 420 build 17 承認記録",
+                "publicSourceId": "src_progress_2",
+                "sectionId": "progress"
+              }
+            ],
+            "status": "answered",
+            "toolCalls": [
+              {
+                "name": "hybrid-search",
+                "resultCount": 32
+              },
+              {
+                "name": "graph-query",
+                "resultCount": 0
+              },
+              {
+                "name": "document-fetch",
+                "resultCount": 2
+              }
+            ]
+          },
+          "progressStages": []
+        }
+      ]
+    }
+  },
+  "comparison": [
+    {
+      "id": "numeric",
+      "publicSourceOverlap": 1.0
+    },
+    {
+      "id": "japanese-typo",
+      "publicSourceOverlap": 1.0
+    },
+    {
+      "id": "literal-percent",
+      "publicSourceOverlap": 1.0
+    },
+    {
+      "id": "timeline",
+      "publicSourceOverlap": 1.0
+    },
+    {
+      "id": "report-json",
+      "publicSourceOverlap": 1.0
+    }
+  ],
+  "portableKeywordObservations": {
+    "total": 63,
+    "success": 63,
+    "fallback": 0,
+    "nonemptyCandidates": 2
+  },
+  "limitations": [
+    "Baseline ran seven checks, then the added report-render check separately; portable ran all eight. Five real LLM questions per provider, one run per question.",
+    "Single synthetic run does not guarantee nondeterministic LLM compliance or production quality. Earlier keyword/hybrid gates remain unchanged.",
+    "Web documents only; non-Web sources inside the public project, revoked reports, rate limiting, PDF, generated report quality, nonempty Graph and raw/parsed file reads are not covered.",
+    "Public Chat has no persisted history contract; private history checks were not applied.",
+    "Large-scale load skipped by user request. No production deployment, primary switch, shadow observation or restore."
+  ]
+}

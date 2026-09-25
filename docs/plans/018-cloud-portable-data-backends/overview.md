@@ -729,6 +729,8 @@ relational primary のデプロイ当日の安定稼働確認が完了してか�
 
 ### Step 3D 進捗
 
+- 2026-09-25: Issue #775でpublic project Chatの実Next・Mastra・Gemini・DB・ローカル公開artifactを検証し、両方式8/8成功。4質問のstreamとreport指定JSONで事実・公開source・表示を保持、private project / 未公開report / project不一致の404と公開reportなしの空状態を確認。公開source overlapは全5回答で1.0。合成Web資料の代表ケースであり、非Web資料・非空Graph・raw / parsed・本番shadow・restore等の残件と大規模負荷スキップは維持する。[実Chat E2E](../../operations/live-chat-e2e.md)を参照。
+
 - 2026-09-25: Issue #772で回答生成contextからgraph診断を除き、GitHub資料がある場合のみlifecycle指示を加え、本文引用を明確化した。実Chat再検証は両方式7/7、必要な本文リンク・事実を保持、内部診断混入0件。今回のsource overlapは全件1.0だが、旧v1と既存hybrid比較の未達は維持する。脚注記号が残る書式の限界、大規模負荷スキップ、本番shadow・restore等の残件は[実Chat E2E](../../operations/live-chat-e2e.md)を参照。
 
 - 2026-09-25: Issue #771で実Next認証・Mastra・Gemini・embedding・DB・表示・履歴のprivate Chat代表E2Eを実施し、両方式7/7、障害時1/1成功。source overlap 0.5の1件と本文引用欠落・内部診断混入（Issue #772）により全品質gateは未達。大規模負荷検証はユーザー指定でスキップし、public Chat・非空Graph等の網羅、本番shadow観測・restoreは残す。[実Chat E2E](../../operations/live-chat-e2e.md)を参照。
