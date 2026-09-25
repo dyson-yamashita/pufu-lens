@@ -44,7 +44,11 @@ PGroonga indexはrollback window中維持する。
 通常の`createGcpPostgresCandidateRepositories`はPGroongaを返す。
 
 - queryは最大1000 UTF-16 code unit、NUL拒否、空は0件。limitは整数1–1000。
-- LIKEの`%` / `_` / backslashをliteral escapeしbind。`LIKE OR %>`、word threshold 0.6。
+- LIKEの`%` / `_` / backslashをliteral escapeしbind。空白区切りの全termを必須とし、記号を含むtermはliteral一致だけを許可する。
+  記号を含まないtermは`LIKE OR %>`、word threshold 0.6を維持し、3–12 code pointの限定typo候補を補完する。
+  英字は隣接2文字の交換、日本語は1文字の移動、カタカナは1文字のカタカナ置換を許可する。辞書・外部APIは使わない。
+  ASCII label直後の数字は同一phraseとして一致させ、`release 12 build 34`の対応関係と繰返し数字を保護する。
+  label単語内の部分一致や数字末尾の延長は許可せず、数字だけの複数termは順不同で全数字列を要求する。
 - queryに数字列が含まれる場合は、近似`word_similarity`を残しつつ、各数字列が文書側の数字列境界と完全一致することを追加で要求する。
 - 検索transaction内でのみthresholdと5秒statement timeoutを設定し、成功・失敗後もpool session設定を復元する。
 - chunkとdocumentのproject一致を検索上限より前に要求する。literal一致score 2、その他word similarity、chunk ID順。
@@ -134,5 +138,9 @@ Issue #767で独立56-query holdoutを追加し、index優先のbaseline 12 / ca
 通過したが、semantic順位とsynthesisは制御済みでNext認証route・実LLM・全workflowは未検証である。
 [詳細と再現手順](keyword-evaluation.md#step-3dの広いholdout実測2026-09-24issue-767)を参照する。
 大規模・長文・project偏り・同時ingest負荷、自然plannerでのGIN/GiST比較、WAL/容量/latency SLO、production shadowの検索観測・restoreも未検証。
-今回の境界testと小規模成功は本番品質・性能の証明ではない。Step 2の全8 unit relational-only、AGE / backup /旧image保持と
+2026-09-25、Issue #769で前記13残差を修正し、同じ56-queryのportable集合差0 / Recall・MRR・nDCG各1.0を確認した。
+hybrid 8件の必須source欠落0、HTTP transport 16/16成功。比較gateはbaselineがtypoを取得しない2件のoverlap差で未達のまま。
+ユーザー承認で旧14-caseの`ガラズ`を関連ありへ統一したため、旧holdoutはbaseline miss 1 / candidate miss 0となる。
+別語彙の15-query実DB回帰も追加した。PGroonga primary、切替・restore・負荷・全Chat E2Eの残るgateは維持する。
+今回の小規模成功は本番品質・性能の証明ではない。Step 2の全8 unit relational-only、AGE / backup /旧image保持と
 自然mutation全経路・長期観測・復元試験の残件を維持する。

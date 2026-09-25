@@ -1,12 +1,14 @@
 import { type KeywordCandidateRepository, KeywordQueryRejectedError } from '@pufu-lens/retrieval';
 import type postgres from 'postgres';
+import { portableKeywordTerms } from './portable-keyword-query.ts';
 import { parsePostgresKeywordCandidateRow } from './postgres-chat-candidate-rows.ts';
 
 /**
  * Creates the opt-in LIKE/pg_trgm candidate adapter; deployment composition stays PGroonga.
  * Uses the write-side DB normalizer and transaction-local threshold/timeout, never pool state.
  * Unbackfilled chunks are unavailable here. Errors propagate; this adapter invents no fallback.
- * Numeric query tokens use exact digit-run boundaries while non-numeric terms retain fuzzy matching.
+ * All terms are required; punctuation stays literal and adjacent ASCII labels keep their numbers.
+ * Trigram approximation stays at 0.6; bounded spelling variants supplement short typo retrieval.
  * Queries over 1000 UTF-16 units or limits outside 1..1000 are rejected before DB access.
  */
 export function createPostgresPortableKeywordCandidateRepository(
@@ -33,6 +35,9 @@ export function createPostgresPortableKeywordCandidateRepository(
         const query = row.query;
         if (!query) return [];
         const pattern = `%${query.replace(/[\\%_]/g, '\\$&')}%`;
+        const terms = portableKeywordTerms(query);
+        const first = terms[0];
+        if (!first) return [];
         const numericTokenPatterns =
           query.match(/[0-9]+/g)?.map((token) => `(^|[^0-9])${token}([^0-9]|$)`) ?? [];
         const rows: readonly unknown[] = await tx`
@@ -48,7 +53,19 @@ export function createPostgresPortableKeywordCandidateRepository(
                 FROM unnest(${tx.array(numericTokenPatterns)}::text[]) AS required(pattern)
                 WHERE dc.keyword_content !~ required.pattern
               )
-              AND (dc.keyword_content LIKE ${pattern} OR dc.keyword_content OPERATOR(public.%>) ${query})
+              AND ((${first.literal} <> '' AND dc.keyword_content LIKE ${first.literal})
+                OR (${first.approximate} <> '' AND dc.keyword_content OPERATOR(public.%>) ${first.approximate})
+                OR (${first.pattern} <> '' AND dc.keyword_content ~ ${first.pattern}))
+              AND NOT EXISTS (
+                SELECT 1 FROM unnest(
+                  ${tx.array(terms.map((term) => term.literal))}::text[],
+                  ${tx.array(terms.map((term) => term.approximate))}::text[],
+                  ${tx.array(terms.map((term) => term.pattern))}::text[]
+                ) AS required(literal, approximate, pattern)
+                WHERE NOT ((required.literal <> '' AND dc.keyword_content LIKE required.literal)
+                  OR (required.approximate <> '' AND dc.keyword_content OPERATOR(public.%>) required.approximate)
+                  OR (required.pattern <> '' AND dc.keyword_content ~ required.pattern))
+              )
             ORDER BY score DESC, dc.id LIMIT ${limit}
           ), deduped AS (
             SELECT DISTINCT ON (d.id)

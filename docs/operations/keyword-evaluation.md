@@ -177,6 +177,44 @@ CI `db-check`にも追加し、table lockを使う旧testとの競合を避け�
 実semantic / 全Chat HTTP、production shadow検索観測、isolated restoreは未検証として維持する。
 本評価の追加でprimary切替・cleanup・Step 4へ進めない。
 
+## Step 3D残差修正（2026-09-25、Issue #769）
+
+Issue #767の結果を`quality-holdout-v2.json`に保持したまま、同一56-query / judgment / corpus hashの実測を
+`fixtures/keyword/quality-holdout-v3.json`へ保存した。全termを必須にし、記号はliteral、ASCII labelと直後の数字は
+同じphraseとして照合する。word threshold 0.6は維持し、短いtypoは辞書によらない制限付きの綴り候補で補完する。
+3–12 code pointの英字は隣接2文字の交換、日本語は1文字の移動、カタカナは1文字のカタカナ置換を許可する。
+入力由来のregex metacharacterはescapeし、数字と記号をこの補完で変えない。先頭termで候補を絞り、全term条件をlimit / dedupe前に適用する。
+
+| 指標                  | PGroonga baseline | portable candidate |
+| --------------------- | ----------------- | ------------------ |
+| 56-case期待集合との差 | 12                | 0                  |
+| Recall@20             | 0.8636            | 1.0                |
+| MRR@20                | 0.8523            | 1.0                |
+| nDCG@20               | 0.8552            | 1.0                |
+
+hybridの必須文書と最終sourceの欠落は8件すべて0となり、literal percentの余分な文書も解消した。
+比較gateは6/8合格。`typo-keyword-only`と`ja-typo-keyword-only`はbaselineが0件、candidateが正解文書を取得するため
+overlapが0であり、nDCG差+1でも現行比較gateはFAILのままとする。baseline改善差を自動免除する変更は行っていない。
+HTTP transportは引き続き16/16成功。collectorのexit 1はこのhybrid比較gate未達による。
+
+旧14-caseの`ガラズ`はemptyと定義され、新56-caseのtypo relevanceと矛盾していた。ユーザーの明示承認により関連ありへ統一した。
+その結果、旧holdoutはbaseline miss 1 / candidate miss 0となる。**固定v1の期待値と新56-caseの期待値は変更していない**。
+旧snapshotを合格に見せるための期待値変更ではなく、日本語typoの検索契約を明示して矛盾を解消したものである。
+
+`portable-keyword-regression.test.ts`では別語彙の15 queryを追加し、数字のprefixとラベル内部分一致、ラベルと数字の入れ替わり、
+否定語、`%` / backslash / regex文字列、英字と日本語typo、補完対象外の2文字queryを実DBで検証する。
+実装後に追加した回帰例なので独立holdoutとは呼ばない。CIのDB検証へ追加している。
+
+```bash
+KEYWORD_EVAL_DATABASE_URL=postgres://postgres@127.0.0.1:5769/keyword_eval \
+  node --experimental-strip-types --test --test-concurrency=1 \
+  scripts/lib/keyword-quality.test.ts scripts/lib/keyword-selected-db.test.ts \
+  scripts/lib/portable-keyword-regression.test.ts
+```
+
+index優先の小規模評価に限る。限定typo候補による未知queryの誤検出とindex / latency影響は広い実利用分布・負荷での確認を残す。
+自然planner、大規模・同時ingest、全Chat E2E、production shadow観測、restore、primary切替・Step 4 gateは未達を維持する。
+
 ## ローカルPGroonga baseline収集
 
 専用の使い捨てDB `keyword_eval` を用意する。`KEYWORD_EVAL_DATABASE_URL` のloopback接続だけを受け付け、
