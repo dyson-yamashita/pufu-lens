@@ -1212,6 +1212,41 @@ test('formatPrivateChatRetrievalContext returns consistent structured untrusted 
   assert.doesNotMatch(serializedContext, /<\/workflow_retrieval>/);
 });
 
+test('non-GitHub evidence does not ask synthesis to describe GitHub lifecycle', () => {
+  for (const sources of [[], [{ ...sampleSource, docType: 'web_page' as const }]]) {
+    const context = JSON.parse(
+      formatPrivateChatRetrievalContext(sources, 'weak', {
+        lifecycleHint: 'include_all',
+      }),
+    );
+    assert.equal(context.lifecycleSelection, undefined);
+  }
+});
+
+test('detail keeps graph diagnostics in workflow state but out of synthesis evidence', async () => {
+  const source = { ...sampleSource, docType: 'web_page' as const };
+  const { repository } = createRetrievalRepositoryMock({ documentFetch: async () => [source] });
+  const prepared = runPrivateChatPreparingStep({
+    projectId: 'project-a',
+    question: '保管方法は？',
+    graphName: null,
+    nowIso: TEST_NOW_ISO,
+  });
+  const result = await runPrivateChatDetailStep(
+    {
+      ...prepared,
+      mergedVectorSources: [source],
+      graphStatus: 'success',
+      graphDiagnostics: { ...prepared.graphDiagnostics, seedCount: 3 },
+    },
+    repository as never,
+  );
+  assert.equal(result.graphDiagnostics.seedCount, 3);
+  const context = JSON.parse(result.retrievalContext);
+  assert.equal(context.graphCoverage, undefined);
+  assert.equal(context.sources[0].documentId, source.documentId);
+});
+
 test('mergePrivateChatDetailSources and enrichHybridSourceWithDetail follow explicit precedence', () => {
   const hybrid = {
     ...sampleSource,

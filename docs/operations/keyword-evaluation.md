@@ -222,6 +222,10 @@ Next認証・実Mastra・Gemini・embedding・DB・表示・履歴を通した�
 ただしsource overlap 0.5の1件、本文引用欠落・内部診断混入があり、全品質gate合格にはしない。
 大規模負荷検証はユーザー指定でスキップする。production shadow観測・restoreは残る。
 
+Issue #772の回答表現補修後は、同じ実Chatケースで両方式7/7成功、必要な本文リンク・事実を保持し、
+内部診断混入0件を確認した。今回のsource overlapは全件1.0だが、旧v1の観測と既存比較gate未達は維持する。
+詳細と脚注記号が残る書式上の限界は[実Chat E2E](live-chat-e2e.md#回答表現の補修issue-772)を参照。
+
 ## ローカルPGroonga baseline収集
 
 専用の使い捨てDB `keyword_eval` を用意する。`KEYWORD_EVAL_DATABASE_URL` のloopback接続だけを受け付け、
