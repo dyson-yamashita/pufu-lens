@@ -1,0 +1,335 @@
+{
+  "schemaVersion": 1,
+  "runtimeCommit": "6ddede16dd41fdaae7424efb7123ac27b3a2e267",
+  "chatModel": "google/gemini-2.5-flash",
+  "embeddingModel": "gemini-embedding-2",
+  "dimensions": 1536,
+  "fixtureFilesSha256": {
+    "scripts/seed-live-chat-e2e.ts": "441a3183b65d71df396cf76a2087284499c032a1a91f535a1a925809671da4cb",
+    "scripts/lib/live-chat-details.ts": "b68eebe04cdc53848a66a99cbfc928353faa3bc1260baf2ada980f3d35a18742"
+  },
+  "reports": {
+    "baseline": {
+      "startedAt": "2026-09-25T10:46:03.959Z",
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "id": "raw",
+          "testStatus": "passed",
+          "answer": "「ガラス保管手順」の原文によると、点検曜日は毎週水曜日で、点検確認コードは SYNTH-RAW-GLASS-91 です[ガラス保管手順](https://example.test/glass)。",
+          "sources": [
+            {
+              "title": "ガラス保管手順",
+              "uri": "https://example.test/glass"
+            },
+            {
+              "title": "80% 警告設定",
+              "uri": "https://example.test/percent"
+            },
+            {
+              "title": "合成移行テスト 初期決定",
+              "uri": "https://example.test/timeline-one"
+            }
+          ],
+          "toolCalls": [
+            {
+              "name": "hybrid-search",
+              "resultCount": 31
+            },
+            {
+              "name": "graph-query",
+              "resultCount": 2
+            },
+            {
+              "name": "document-fetch",
+              "resultCount": 3
+            },
+            {
+              "name": "raw-document-fetch",
+              "resultCount": 1
+            }
+          ]
+        },
+        {
+          "id": "graph",
+          "testStatus": "passed",
+          "answer": "「ガラス保管手順」を起点に関連資料を確認したところ、「80% 警告設定」が見つかりました。\n\nこの設定によると、ストレージ使用率が80%に達した場合、架空の監視担当である「若葉班」へ通知されます。識別コードはSYNTH-PERCENT-80です[80% 警告設定](https://example.test/percent)。",
+          "sources": [
+            {
+              "title": "80% 警告設定",
+              "uri": "https://example.test/percent"
+            },
+            {
+              "title": "合成移行テスト 初期決定",
+              "uri": "https://example.test/timeline-one"
+            },
+            {
+              "title": "release 420 build 17 承認記録",
+              "uri": "https://example.test/neighbor"
+            },
+            {
+              "title": "ガラス保管手順",
+              "uri": "https://example.test/glass"
+            }
+          ],
+          "toolCalls": [
+            {
+              "name": "hybrid-search",
+              "resultCount": 37
+            },
+            {
+              "name": "graph-query",
+              "resultCount": 2
+            },
+            {
+              "name": "document-fetch",
+              "resultCount": 5
+            }
+          ]
+        }
+      ],
+      "directParsedMetadata": [
+        {
+          "scope": "local",
+          "sources": [
+            {
+              "title": "合成移行テスト 方針変更",
+              "snippet": "合成移行テストは2026年8月6日に方式Aから方式Bへ変更した。識別コードは SYNTH-MIGRATION-B。"
+            },
+            {
+              "title": "合成移行テスト 初期決定",
+              "snippet": "合成移行テストは2026年8月5日に開始を決定した。この時点では方式Aを採用した。"
+            },
+            {
+              "title": "80% 警告設定",
+              "snippet": "ストレージ使用率が80%に達したら架空の監視担当「若葉班」へ通知する。識別コードは SYNTH-PERCENT-80。"
+            },
+            {
+              "title": "ガラス保管手順",
+              "snippet": "ガラス試料は遮光箱に保管する。架空の保管庫の識別番号は SYNTH-GLASS-73。"
+            },
+            {
+              "title": "release 420 build 17 承認記録",
+              "snippet": "release 420 build 17 は架空担当者の赤石ユウが承認した。承認コードは SYNTH-AKAISHI-42017。"
+            },
+            {
+              "title": "release 42 build 17 承認記録",
+              "snippet": "release 42 build 17 は架空担当者の青葉ミナが承認した。承認コードは SYNTH-AOBA-4217。"
+            }
+          ]
+        },
+        {
+          "scope": "foreign",
+          "sources": []
+        }
+      ]
+    },
+    "portable": {
+      "startedAt": "2026-09-25T10:47:22.231Z",
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "id": "raw",
+          "testStatus": "passed",
+          "answer": "ガラス保管手順の原文によると、点検曜日は毎週水曜日、点検確認コードは SYNTH-RAW-GLASS-91 です。[ガラス保管手順](https://example.test/glass)",
+          "sources": [
+            {
+              "title": "ガラス保管手順",
+              "uri": "https://example.test/glass"
+            },
+            {
+              "title": "80% 警告設定",
+              "uri": "https://example.test/percent"
+            },
+            {
+              "title": "合成移行テスト 初期決定",
+              "uri": "https://example.test/timeline-one"
+            }
+          ],
+          "toolCalls": [
+            {
+              "name": "hybrid-search",
+              "resultCount": 31
+            },
+            {
+              "name": "graph-query",
+              "resultCount": 2
+            },
+            {
+              "name": "document-fetch",
+              "resultCount": 3
+            },
+            {
+              "name": "raw-document-fetch",
+              "resultCount": 1
+            }
+          ]
+        },
+        {
+          "id": "graph",
+          "testStatus": "passed",
+          "answer": "「ガラス保管手順」の関連資料として、「80% 警告設定」が見つかりました [80% 警告設定](https://example.test/percent)。\n\nストレージ使用率が80%に達した場合の通知先は架空の監視担当「若葉班」です [80% 警告設定](https://example.test/percent)。",
+          "sources": [
+            {
+              "title": "80% 警告設定",
+              "uri": "https://example.test/percent"
+            },
+            {
+              "title": "ガラス保管手順",
+              "uri": "https://example.test/glass"
+            },
+            {
+              "title": "release 420 build 17 承認記録",
+              "uri": "https://example.test/neighbor"
+            },
+            {
+              "title": "合成移行テスト 初期決定",
+              "uri": "https://example.test/timeline-one"
+            }
+          ],
+          "toolCalls": [
+            {
+              "name": "hybrid-search",
+              "resultCount": 30
+            },
+            {
+              "name": "graph-query",
+              "resultCount": 2
+            },
+            {
+              "name": "document-fetch",
+              "resultCount": 5
+            }
+          ]
+        }
+      ],
+      "directParsedMetadata": [
+        {
+          "scope": "local",
+          "sources": [
+            {
+              "title": "合成移行テスト 方針変更",
+              "snippet": "合成移行テストは2026年8月6日に方式Aから方式Bへ変更した。識別コードは SYNTH-MIGRATION-B。"
+            },
+            {
+              "title": "合成移行テスト 初期決定",
+              "snippet": "合成移行テストは2026年8月5日に開始を決定した。この時点では方式Aを採用した。"
+            },
+            {
+              "title": "80% 警告設定",
+              "snippet": "ストレージ使用率が80%に達したら架空の監視担当「若葉班」へ通知する。識別コードは SYNTH-PERCENT-80。"
+            },
+            {
+              "title": "ガラス保管手順",
+              "snippet": "ガラス試料は遮光箱に保管する。架空の保管庫の識別番号は SYNTH-GLASS-73。"
+            },
+            {
+              "title": "release 420 build 17 承認記録",
+              "snippet": "release 420 build 17 は架空担当者の赤石ユウが承認した。承認コードは SYNTH-AKAISHI-42017。"
+            },
+            {
+              "title": "release 42 build 17 承認記録",
+              "snippet": "release 42 build 17 は架空担当者の青葉ミナが承認した。承認コードは SYNTH-AOBA-4217。"
+            }
+          ]
+        },
+        {
+          "scope": "foreign",
+          "sources": []
+        }
+      ]
+    }
+  },
+  "parsedToolSelectionAttempts": [
+    {
+      "id": "parsed",
+      "testStatus": "failed",
+      "answer": "「ガラス保管手順」に記載されている保管庫識別番号は SYNTH-GLASS-73 です[ガラス保管手順](https://example.test/glass)。\n\n「80% 警告設定」に記載されている保管庫識別番号は SYNTH-PERCENT-80 で、通知先は架空の監視担当「若葉班」です[80% 警告設定](https://example.test/percent)。",
+      "sources": [
+        {
+          "title": "ガラス保管手順",
+          "uri": "https://example.test/glass"
+        },
+        {
+          "title": "80% 警告設定",
+          "uri": "https://example.test/percent"
+        },
+        {
+          "title": "合成移行テスト 初期決定",
+          "uri": "https://example.test/timeline-one"
+        }
+      ],
+      "toolCalls": [
+        {
+          "name": "hybrid-search",
+          "resultCount": 32
+        },
+        {
+          "name": "graph-query",
+          "resultCount": 1
+        },
+        {
+          "name": "document-fetch",
+          "resultCount": 3
+        }
+      ]
+    },
+    {
+      "id": "parsed",
+      "testStatus": "failed",
+      "answer": "「ガラス保管手順」によると、ガラス試料の架空の保管庫識別番号は SYNTH-GLASS-73 です[ガラス保管手順](https://example.test/glass)。\n\n「80% 警告設定」によると、ストレージ使用率が80%に達した際の通知先は架空の監視担当「若葉班」であり、識別コードは SYNTH-PERCENT-80 です[80% 警告設定](https://example.test/percent)。",
+      "sources": [
+        {
+          "title": "ガラス保管手順",
+          "uri": "https://example.test/glass"
+        },
+        {
+          "title": "80% 警告設定",
+          "uri": "https://example.test/percent"
+        },
+        {
+          "title": "合成移行テスト 初期決定",
+          "uri": "https://example.test/timeline-one"
+        }
+      ],
+      "toolCalls": [
+        {
+          "name": "hybrid-search",
+          "resultCount": 8
+        },
+        {
+          "name": "graph-query",
+          "resultCount": 1
+        },
+        {
+          "name": "document-fetch",
+          "resultCount": 3
+        }
+      ]
+    }
+  ],
+  "directDatabaseAssertions": {
+    "RELATED_TO_1hop": true,
+    "SAME_AS_1hop": true,
+    "MENTIONS_2hop": true,
+    "foreignProjectIsolation": true,
+    "rawMarkerAbsentFromSummaryAndChunks": true
+  },
+  "portableKeywordObservations": {
+    "total": 24,
+    "success": 24,
+    "fallback": 0,
+    "nonemptyCandidates": 0
+  },
+  "limitations": [
+    "Raw and graph are real authenticated Chat / LLM / saved-history tests. Parsed metadata is a separate direct Mastra HTTP tool test, not LLM tool selection.",
+    "Two parsed metadata questions (natural and explicit tool name) did not invoke parsed-doc-fetch; both failed that exploratory assertion and are retained here.",
+    "parsed-doc-fetch reads DB metadata, not parsed file bodies. Local parsed artifacts were normalized to the existing schema before the final runs.",
+    "Synthetic edge topology is seeded, not generated by a relation-extraction LLM. Raw reads cover one small Web HTML document only.",
+    "Single-run observations do not waive existing quality gates. Large-scale load skipped by user request; no production deployment, primary switch, shadow observation or restore."
+  ]
+}
