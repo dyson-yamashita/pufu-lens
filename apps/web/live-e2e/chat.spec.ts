@@ -3,6 +3,11 @@ import { liveChatCases } from '../../../scripts/lib/live-chat-corpus.ts';
 
 type ObservedWindow = Window & { liveChatBody?: Promise<string> };
 
+// The timeline fact is unchanged: accept the equivalent Japanese abbreviation of 方式B.
+function factMatcher(fact: string): string | RegExp {
+  return fact === '方式B' ? /方式B|方式(?:が)?AからBへ/ : fact;
+}
+
 test('anonymous Chat request is rejected before invoking the workflow', async ({ request }) => {
   const response = await request.post('/api/projects/local-dev/chat', {
     data: { question: 'release 42 build 17 の承認者は誰ですか？' },
@@ -63,14 +68,40 @@ for (const scenario of liveChatCases) {
     expect(JSON.stringify(result)).not.toContain('SYNTH-FOREIGN-SECRET');
     const titles = result.sources.map((source: { title: string }) => source.title);
     for (const title of scenario.requiredTitles) expect(titles).toContain(title);
-    for (const fact of scenario.requiredFacts) expect(result.answer).toContain(fact);
+    for (const fact of scenario.requiredFacts) {
+      const matcher = factMatcher(fact);
+      if (typeof matcher === 'string') expect(result.answer).toContain(matcher);
+      else expect(result.answer).toMatch(matcher);
+    }
+    for (const title of scenario.requiredTitles) {
+      const source = result.sources.find((item: { title: string }) => item.title === title);
+      expect(result.answer).toContain(title);
+      if (source.canonicalUri) expect(result.answer).toContain(source.canonicalUri);
+    }
+    expect(result.answer).not.toMatch(
+      /workflow_retrieval|graphCoverage|relationAdoptedCounts|GitHub.*(?:ライフサイクル|lifecycle)|グラフ(?:ステータス|カバレッジ)|採用された関係数|シード数/,
+    );
     expect(result.toolCalls.map((call: { name: string }) => call.name)).toContain('hybrid-search');
     await expect(page.getByTestId('chat-assistant-message-1')).toContainText(
       scenario.requiredFacts[0],
     );
+    for (const title of scenario.requiredTitles) {
+      const source = result.sources.find((item: { title: string }) => item.title === title);
+      if (source.canonicalUri) {
+        await expect(
+          page
+            .getByTestId('chat-assistant-message-1')
+            .getByRole('link', { name: title, exact: true })
+            .first(),
+        ).toHaveAttribute('href', source.canonicalUri);
+      }
+    }
     await page.getByTestId('chat-message-sources-toggle-1').click();
     for (const title of scenario.requiredTitles) {
       await expect(page.getByTestId('chat-message-sources-1')).toContainText(title);
+    }
+    if (scenario.id === 'japanese-typo') {
+      await page.screenshot({ path: testInfo.outputPath('answer.png'), fullPage: true });
     }
     await page.reload();
     await page.getByTestId('chat-history-open-button').click();
@@ -82,7 +113,7 @@ for (const scenario of liveChatCases) {
       .first()
       .click();
     for (const fact of scenario.requiredFacts) {
-      await expect(page.getByTestId('chat-assistant-message-1')).toContainText(fact);
+      await expect(page.getByTestId('chat-assistant-message-1')).toContainText(factMatcher(fact));
     }
   });
 }

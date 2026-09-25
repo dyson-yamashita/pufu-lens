@@ -22,7 +22,6 @@ import {
 } from './chat.ts';
 import {
   applyGraphCoverageFinalSelection,
-  formatGraphCoverageDiagnostics,
   type GraphCoverageDiagnostics,
   runPrivateChatGraphCoveragePass,
   shouldPrioritizeGraphCoverageSupplement,
@@ -941,6 +940,8 @@ export function applyGitHubLifecycleRetrievalSelection(
 
 /**
  * Serializes untrusted retrieval evidence with a score-derived confidence instruction.
+ * Operational graph counters stay in workflow state, outside the answer evidence. GitHub
+ * lifecycle guidance is included only when the selected evidence contains GitHub documents.
  *
  * Each source object includes `occurredAt` only when the field is defined on the input;
  * an explicit `null` value is preserved. When `confidence` is omitted, it defaults to
@@ -949,7 +950,7 @@ export function applyGitHubLifecycleRetrievalSelection(
  * @param sources - Final merged sources exposed to synthesis (may include graph / timeline)
  * @param confidence - Score-derived label written to `retrievalConfidence`; defaults to
  *   `none` when `sources` is empty, otherwise `weak`
- * @param lifecycleHint - Optional lifecycle selection hint used to add synthesis guidance
+ * @param options - Optional lifecycle selection hint used for GitHub evidence only
  * @returns JSON text containing `retrievalConfidence`, an instruction `note`, and sources,
  *   with `<` and `>` Unicode-escaped so the payload remains safe untrusted content
  */
@@ -957,12 +958,18 @@ export function formatPrivateChatRetrievalContext(
   sources: readonly ChatSource[],
   confidence: PrivateChatRetrievalConfidence = sources.length === 0 ? 'none' : 'weak',
   options?: {
-    readonly graphDiagnostics?: GraphCoverageDiagnostics;
-    readonly graphStatus?: ChatGraphCoverageStatus;
     readonly lifecycleHint?: GitHubLifecycleSelectionHint;
   },
 ): string {
-  const lifecycleNote = lifecycleSelectionNote(options?.lifecycleHint);
+  const hasGitHubSource = sources.some(
+    (source) =>
+      source.docType === 'issue' ||
+      source.docType === 'pull_request' ||
+      source.githubLifecycle !== undefined,
+  );
+  const lifecycleNote = hasGitHubSource
+    ? lifecycleSelectionNote(options?.lifecycleHint)
+    : undefined;
   return JSON.stringify(
     {
       note:
@@ -972,14 +979,6 @@ export function formatPrivateChatRetrievalContext(
             ? 'Workflow が取得した回答根拠候補です。検索根拠は限定的なため、確証が薄い前提で回答してください。'
             : 'Workflow が取得した回答根拠候補です。',
       ...(lifecycleNote ? { lifecycleSelection: lifecycleNote } : {}),
-      ...(options?.graphStatus && options.graphDiagnostics
-        ? {
-            graphCoverage: formatGraphCoverageDiagnostics(
-              options.graphStatus,
-              options.graphDiagnostics,
-            ),
-          }
-        : {}),
       retrievalConfidence: confidence,
       sources: sources.map((source) => ({
         canonicalUri: source.canonicalUri || null,
@@ -1399,8 +1398,6 @@ export async function runPrivateChatDetailStep(
     detailSources,
     graphDiagnostics,
     retrievalContext: formatPrivateChatRetrievalContext(sources, confidence, {
-      graphDiagnostics,
-      graphStatus: state.graphStatus,
       lifecycleHint: lifecycleSelection.hint,
     }),
     sources,

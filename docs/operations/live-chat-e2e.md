@@ -11,6 +11,8 @@ Geminiの分類・query展開・回答生成、実embedding、PostgreSQL検索�
 - 数字、カタカナtypo、literal percent、時系列の4質問は必要な資料・事実を実行前に固定する。
 - ブラウザから質問し、実streamのcloneを観測する。HTTP 200、回答成功、reasoning進捗、必須source / fact、
   hybrid-search、別project情報の不在、Sources表示、再読込後に履歴を開いた本文を検証する。
+- Issue #772以降は回答本文の必須資料名・URI、実際のリンク要素のhref、内部診断表現の不在も検証する。
+  時系列の「方式B」は同じ意味の「方式がAからBへ」という表記も受け入れ、元の事実要件は維持する。
 - 未ログイン401、非memberの実在projectへの403、空projectでsource 0・合成コードの捏造なしを確認する。
 - 専用Mastra停止時のエラー表示と、失敗回答が履歴へ保存されないことを別実行で確認する。
 - 生成文は非決定的。回答中の引用表現、内部診断の混入、source overlapも保存した結果から確認する。
@@ -121,3 +123,27 @@ hybrid側から取得した。Graph / timeline固有の取得品質は残る。
 `mastra dev`ではworkspace共有chunkのエラーが出たため、`mastra:build`後の実serverを使用した。
 初回のPlaywright stream本文読込エラーと履歴プレビュー長によるassert不備を修正後、上記15テストを実行した。
 LLM出力は再実行で変化するため、これは固定質問の1回ずつの観測であり、再現性や本番品質の保証ではない。
+
+## 回答表現の補修（Issue #772）
+
+graph coverageの件数・除外理由を回答生成用contextから外し、workflow stateの診断は保持した。
+GitHub資料が選定された場合だけlifecycle説明の指示を加える。Agentには内部診断を本文へ転記せず、
+実際に根拠として使った資料を`[title](canonicalUri)`で引用するよう指示する。URIがない資料だけ資料名で示す。
+検索順位、threshold、source選定、固定corpusの期待値は変更しない。
+
+途中試行で時系列回答の同義表記を誤って不合格にしたため、事実を変えず表記判定を補修した。
+また、資料名だけの引用とrenderer未対応の脚注構文が発生したため、指示を明確化し、本文文字列だけでなく
+画面のリンク要素とhrefも検証するようにした。
+
+最終版ではPGroonga / portable各7/7成功。4質問の必要な事実・資料名・本文リンクと履歴再表示を確認し、
+内部診断混入は0件だった。source overlapは全ケース1.0。ただし検索実装は変更しておらず、
+旧v1の0.5という観測や既存hybrid比較の未達を今回の単回観測で免除しない。
+portableのkeyword観測58回はすべてsuccess / fallback 0、候補非空は1回で、意味検索による補完は継続している。
+
+証跡は`fixtures/chat/live-chat-e2e-v2.json`。base commitと変更runtimeファイルのSHA-256、合成回答、
+source、tool件数、進捗、検証結果を保存した。最終指示に変更後の各provider 1回ずつの結果であり、
+同じ指示を成功まで再試行した結果ではない。旧v1は保持した。
+portableの時系列回答では脚注記号が残ったが、資料名のMarkdownリンクは実画面で機能した。
+引用の欠落は再観測しなかったものの、指示への完全な書式遵守や本番での再現性は保証しない。
+障害時テストは回答表現に関係しないため今回再実行せず、v1の実測を参照する。
+大規模負荷はスキップを維持し、public Chat・非空Graph・実raw / parsed・本番shadow・restore・primary切替は未実施。
