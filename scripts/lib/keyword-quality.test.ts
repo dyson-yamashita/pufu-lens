@@ -9,7 +9,7 @@ import {
 } from './keyword-quality.ts';
 import { qualityCases, qualityDocuments, qualityHybridCases } from './keyword-quality-corpus.ts';
 
-const snapshotUrl = new URL('../../fixtures/keyword/quality-holdout-v2.json', import.meta.url);
+const snapshotUrl = new URL('../../fixtures/keyword/quality-holdout-v3.json', import.meta.url);
 
 test('independent holdout judgments are complete and distinct from provider observations', async () => {
   const snapshot = JSON.parse(await readFile(snapshotUrl, 'utf8'));
@@ -26,7 +26,7 @@ test('independent holdout judgments are complete and distinct from provider obse
     assert.ok(qualityCases.some((query) => query.id === row.queryId));
     assert.ok([...row.semantic, ...row.required].every((id) => documentIds.has(id)));
   }
-  assert.equal(snapshot.keywordExactGate, false, 'Recorded failures must not become acceptance');
+  assert.equal(snapshot.keywordExactGate, true);
   assert.equal(snapshot.hybridGate, false);
 });
 
@@ -62,12 +62,21 @@ test('quality metrics preserve misses, false positives, rank loss, and negative 
   assert.equal(summary?.exactFailures, 2);
 });
 
-test('live keyword, hybrid selection and loopback workflow HTTP reproduce documented residuals', {
+test('live keyword acceptance and hybrid / HTTP reproduce the reviewed quality evidence', {
   skip: !process.env.KEYWORD_EVAL_DATABASE_URL,
 }, async () => {
   const url = process.env.KEYWORD_EVAL_DATABASE_URL;
   assert.ok(url);
   const report = await collectKeywordQuality(url);
+  for (const row of report.keyword) {
+    if (row.provider === 'portable-primary') {
+      assert.equal(
+        row.exact,
+        true,
+        JSON.stringify({ id: row.id, missing: row.missing, extra: row.extra }),
+      );
+    }
+  }
   const snapshot = JSON.parse(await readFile(snapshotUrl, 'utf8'));
   // Freeze missing/extra evidence, not arbitrary provider raw scores or exact tied ranks.
   const residuals = (rows: typeof report.keyword) =>
@@ -78,7 +87,7 @@ test('live keyword, hybrid selection and loopback workflow HTTP reproduce docume
       extra: [...extra].sort(),
     }));
   assert.deepEqual(residuals(report.keyword), residuals(snapshot.keyword));
-  assert.equal(report.keywordExactGate, false);
+  assert.equal(report.keywordExactGate, true);
   assert.equal(report.hybridGate, false);
   assert.deepEqual(report.comparisons, snapshot.comparisons);
   const selections = (rows: typeof report.hybrid) =>

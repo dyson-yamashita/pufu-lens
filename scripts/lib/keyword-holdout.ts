@@ -13,9 +13,10 @@ export interface KeywordHoldoutCase {
 export const keywordHoldoutCases: readonly KeywordHoldoutCase[] = [
   { category: 'japanese-short', expectedChunkIndexes: [0], id: 'ja-short', query: '猫' },
   {
-    category: 'japanese-typo-negative',
-    expectedChunkIndexes: [],
-    id: 'ja-typo-no-match',
+    // Issue #769: user-approved alignment with the independent v2 typo relevance judgment.
+    category: 'japanese-typo',
+    expectedChunkIndexes: [1],
+    id: 'ja-typo',
     query: 'ガラズ',
   },
   { category: 'combining-unicode', expectedChunkIndexes: [1], id: 'combining', query: 'ガラス' },
