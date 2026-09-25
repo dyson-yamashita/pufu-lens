@@ -21,6 +21,10 @@ import {
   reciprocalRankFusionScore,
 } from './chat.ts';
 import {
+  matchesChatGitHubReference,
+  prioritizeChatGitHubReference,
+} from './chat-github-reference.ts';
+import {
   applyGraphCoverageFinalSelection,
   type GraphCoverageDiagnostics,
   runPrivateChatGraphCoveragePass,
@@ -1166,7 +1170,8 @@ export function shouldRunPrivateChatTimelineStep(
 }
 
 /**
- * Runs the primary private-chat retrieval with a query vector from the indexed embedding space.
+ * Runs primary retrieval and supplements it with a project-scoped, unambiguous explicit PR/Issue.
+ * Existing hybrid chunk evidence takes precedence over the referenced document's summary.
  *
  * @param state - Prepared workflow state containing the primary query
  * @param repository - Project-scoped chat retrieval repository
@@ -1178,6 +1183,11 @@ export async function runPrivateChatRetrievingStep(
   repository: ChatRepository,
   embeddingProvider: ChatEmbeddingProvider,
 ): Promise<PrivateChatSearchWorkflowState> {
+  const referencedSources =
+    (await repository.referencedDocumentFetch?.({
+      question: state.question,
+      projectId: state.projectId,
+    })) ?? [];
   const [embedding] = await embedPrivateChatQueries(embeddingProvider, [state.plan.primaryQuery]);
   if (!embedding) {
     throw new Error('Private chat primary query embedding is unavailable.');
@@ -1204,9 +1214,15 @@ export async function runPrivateChatRetrievingStep(
   );
   return {
     ...state,
-    mergedVectorSources: diversePrimaryVectorSources,
+    mergedVectorSources: prioritizeChatGitHubReference(
+      state.question,
+      mergeChatSourcesDeterministically(diversePrimaryVectorSources, referencedSources),
+    ).slice(0, selectionPolicy.kMax),
     scoreQualifiedVectorSources: primaryVectorSources,
     toolCalls: mergeChatToolCallsDeterministically(state.toolCalls, [
+      ...(referencedSources.length
+        ? [{ name: 'document-fetch' as const, resultCount: referencedSources.length }]
+        : []),
       { name: 'hybrid-search', resultCount: diversePrimaryVectorSources.length },
     ]),
   };
@@ -1265,11 +1281,19 @@ export async function runPrivateChatRetryingStep(
     ),
     fusedSelectionPolicy,
   );
-  const mergedVectorSources = selectDiverseChatSources(
-    scoreQualifiedVectorSources,
-    fusedSelectionPolicy,
-    fusedSelectionPolicy.kMax,
-  );
+  const mergedVectorSources = prioritizeChatGitHubReference(
+    state.question,
+    mergeChatSourcesDeterministically(
+      state.mergedVectorSources.filter((source) =>
+        matchesChatGitHubReference(state.question, source),
+      ),
+      selectDiverseChatSources(
+        scoreQualifiedVectorSources,
+        fusedSelectionPolicy,
+        fusedSelectionPolicy.kMax,
+      ),
+    ),
+  ).slice(0, fusedSelectionPolicy.kMax);
   return {
     ...state,
     didRetry: true,
@@ -1323,7 +1347,10 @@ export async function runPrivateChatTimelineStep(
   };
 }
 
-/** Enriches ranked retrieval candidates and applies the project's final document limit. */
+/**
+ * Enriches ranked candidates and reserves the explicit GitHub reference within the final limit.
+ * A selected reference without vector evidence supplies weak, never strong, confidence.
+ */
 export async function runPrivateChatDetailStep(
   state: PrivateChatSearchWorkflowState,
   repository: ChatRepository,
@@ -1363,7 +1390,7 @@ export async function runPrivateChatDetailStep(
     },
   );
   const diverseSources = selectDiverseChatSources(
-    lifecycleSelection.sources,
+    prioritizeChatGitHubReference(state.question, lifecycleSelection.sources),
     selectionPolicy,
     state.hybridSearchDocumentLimit,
   );
@@ -1378,7 +1405,12 @@ export async function runPrivateChatDetailStep(
   const graphFinalSelection = applyGraphCoverageFinalSelection({
     documentLimit: state.hybridSearchDocumentLimit,
     graphOnlySources,
-    prioritizeGraphSupplement: shouldPrioritizeGraphCoverageSupplement(state.classification),
+    prioritizeGraphSupplement:
+      shouldPrioritizeGraphCoverageSupplement(state.classification) &&
+      !(
+        state.hybridSearchDocumentLimit === 1 &&
+        diverseSources.some((source) => matchesChatGitHubReference(state.question, source))
+      ),
     selectedSources: diverseSources,
   });
   const sources = graphFinalSelection.selected;
@@ -1397,9 +1429,16 @@ export async function runPrivateChatDetailStep(
     ...state,
     detailSources,
     graphDiagnostics,
-    retrievalContext: formatPrivateChatRetrievalContext(sources, confidence, {
-      lifecycleHint: lifecycleSelection.hint,
-    }),
+    retrievalContext: formatPrivateChatRetrievalContext(
+      sources,
+      confidence === 'none' &&
+        sources.some((source) => matchesChatGitHubReference(state.question, source))
+        ? 'weak'
+        : confidence,
+      {
+        lifecycleHint: lifecycleSelection.hint,
+      },
+    ),
     sources,
     toolCalls: mergeChatToolCallsDeterministically(state.toolCalls, [
       { name: 'document-fetch', resultCount: detailSources.length },

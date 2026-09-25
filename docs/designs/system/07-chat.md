@@ -20,6 +20,14 @@ Private Chat Agent は **プロジェクトをコンテキストとして固定*
 
 Chat API はユーザー発話から編集方針を deterministic に推定し、`editing` metadata として `inferredMode`、`operations`、`questionType`、`confidence`、`caveats` を返す。UI に mode selector は置かず、通常の自然言語入力から `summary` / `issue_mapping` / `risk_scan` / `timeline` / `next_actions` / `structure` / `default` を推定する。metadata は回答構成の補助であり、source 制約や raw read view の未信頼データ扱いを弱めない。
 
+#### 明示されたGitHub番号の取得
+
+質問に単一の `PR #770` / `Issue #779` 形式がある場合、認可済みproject内のdocumentを種類とGitHub canonical URLの番号で完全一致検索する。
+候補が一意なときだけ通常のhybrid検索に加え、再検索・最終source上限でも指定資料を優先する。本文中の番号言及や `7700` は一致としない。
+同番号が複数repositoryに存在する場合、複数番号、URL・repository付き指定はこの補助経路では解決せず、従来の検索を使う。
+取得するのは既存の上限付きdocument summaryであり、vector距離を捏造しない。選定済みの指定資料がある場合、vector根拠がなくてもretrieval confidenceは `weak` とし、根拠なしと扱わない。
+この優先処理は通常のprovider順位・閾値、認可、公開responseのsource変換を変更しない。広い現状質問で古い資料が混入する問題全般を解決するものではない。
+
 #### 期間指定検索
 
 Private / Public Chat の期間指定検索は、同じ `private-chat-search` Workflow と `timeline-search` repository 契約を使う。Next.js はブラウザ入力ではなく server-side の現在時刻を strict ISO-8601 `nowIso` として Workflow に渡し、Workflow は次の表現だけを deterministic に解釈する。

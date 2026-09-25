@@ -33,6 +33,7 @@ import {
   resolvePrivateChatRetryQueries,
   runPrivateChatDetailStep,
   runPrivateChatPreparingStep,
+  runPrivateChatRetrievingStep,
   runPrivateChatRetryingStep,
   runPrivateChatSearchRetrieval,
   selectChatSourcesByScoreProfile,
@@ -78,6 +79,121 @@ const testEmbeddingProvider: ChatEmbeddingProvider = {
 };
 
 const TEST_NOW_ISO = '2026-07-22T00:30:00.000Z';
+
+test('explicit PR survives unrelated semantic retrieval, retry and final source limit', async () => {
+  const reference = {
+    ...sampleSource,
+    documentId: 'referenced-pr',
+    docType: 'pull_request',
+    canonicalUri: 'https://github.com/example/project/pull/770',
+    snippet: 'word_similarity threshold 0.6',
+  };
+  const unrelated = { ...sampleSource, documentId: 'unrelated-graph', vectorDistance: 0.2 };
+  const repository = {
+    async referencedDocumentFetch(input: { projectId: string; question: string }) {
+      assert.equal(input.projectId, 'project-a');
+      assert.match(input.question, /#770/);
+      return [reference];
+    },
+    async hybridSearch() {
+      return [unrelated];
+    },
+    async documentFetch() {
+      return [reference];
+    },
+  };
+  const prepared = runPrivateChatPreparingStep({
+    graphName: null,
+    nowIso: TEST_NOW_ISO,
+    projectId: 'project-a',
+    question: 'PR #770で修正した検索の問題とword_similarityの閾値は？',
+    hybridSearchDocumentLimit: 1,
+  });
+  const retrieved = await runPrivateChatRetrievingStep(
+    prepared,
+    repository as never,
+    testEmbeddingProvider,
+  );
+  assert.equal(retrieved.mergedVectorSources[0]?.documentId, reference.documentId);
+  const retried = await runPrivateChatRetryingStep(
+    {
+      ...retrieved,
+      plan: {
+        ...retrieved.plan,
+        expandedQueries: [
+          {
+            query: 'PR #770 word_similarity',
+            purpose: '指定資料の確認',
+            operation: 'identification',
+          },
+        ],
+      },
+    },
+    repository as never,
+    testEmbeddingProvider,
+  );
+  const result = await runPrivateChatDetailStep(
+    {
+      ...retried,
+      scoreQualifiedVectorSources: [],
+      classification: { ...retried.classification, primaryOperation: 'cause', confidence: 'high' },
+      graphSources: [
+        createGraphCoverageCandidate({
+          ...unrelated,
+          rawDocumentId: 'graph-raw',
+          title: 'Old graph deployment',
+          relationType: 'RELATED_TO',
+          seedDocumentId: reference.documentId,
+          hopCount: 1,
+        }),
+      ],
+    },
+    repository as never,
+  );
+  assert.deepEqual(
+    result.sources.map((s) => s.documentId),
+    [reference.documentId],
+  );
+  assert.equal(JSON.parse(result.retrievalContext).retrievalConfidence, 'weak');
+  assert.match(result.retrievalContext, /threshold 0.6/);
+});
+
+test('reference supplementation preserves selected hybrid chunk provenance', async () => {
+  const reference = {
+    ...sampleSource,
+    docType: 'pull_request',
+    canonicalUri: 'https://github.com/demo/repo/pull/770',
+    snippet: 'summary',
+  };
+  const chunk = {
+    ...reference,
+    chunkId: 'selected-chunk',
+    chunkIndex: 2,
+    snippet: 'selected chunk evidence',
+    vectorDistance: 0.2,
+  };
+  const state = runPrivateChatPreparingStep({
+    graphName: null,
+    nowIso: TEST_NOW_ISO,
+    projectId: 'a',
+    question: 'PR #770の修正は？',
+  });
+  const result = await runPrivateChatRetrievingStep(
+    state,
+    {
+      async referencedDocumentFetch() {
+        return [reference];
+      },
+      async hybridSearch() {
+        return [chunk];
+      },
+    } as never,
+    testEmbeddingProvider,
+  );
+  assert.equal(result.mergedVectorSources.length, 1);
+  assert.equal(result.mergedVectorSources[0]?.chunkId, 'selected-chunk');
+  assert.equal(result.mergedVectorSources[0]?.snippet, 'selected chunk evidence');
+});
 
 function createGraphCoverageCandidate(overrides: Record<string, unknown> = {}) {
   return {
