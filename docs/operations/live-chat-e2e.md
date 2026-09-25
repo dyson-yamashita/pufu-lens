@@ -130,6 +130,8 @@ portable keywordは63回success、fallback 0、候補非空2回であり、意�
 
 ## 実測（2026-09-25）
 
+以下はIssue #771のprivate Chat初回実測である。
+
 runtime commit `681dab1`、Chat `google/gemini-2.5-flash`、embedding `gemini-embedding-2` / 1536次元。
 証跡は`fixtures/chat/live-chat-e2e-v1.json`。合成回答とsource title / URIを保存し、cookie・APIキー・実データは保存しない。
 PGroonga / portableそれぞれ7/7、Mastra停止時1/1が成功した。空projectも両方式でsource 0・根拠の捏造なし。
@@ -182,3 +184,43 @@ portableの時系列回答では脚注記号が残ったが、資料名のMarkdo
 引用の欠落は再観測しなかったものの、指示への完全な書式遵守や本番での再現性は保証しない。
 障害時テストは回答表現に関係しないため今回再実行せず、v1の実測を参照する。
 大規模負荷はスキップを維持し、public Chat・非空Graph・実raw / parsed・本番shadow・restore・primary切替は未実施。
+
+## 非空Graphと原文・解析済みmetadata（Issue #777）
+
+使い捨てDBのseed時に`PUFU_LENS_LIVE_CHAT_DETAILS=true`を指定し、`STORAGE_DRIVER=local`と
+明示的な`STORAGE_ROOT`を設定する。既存の合成資料6件へ実raw HTML、schema検証済みparsed JSON、
+GraphのRELATED_TO / SAME_AS / 共通Topic MENTIONSを追加する。関係はfixtureで定義した合成の接続であり、
+関係抽出LLMの品質を測るものではない。原文だけに点検曜日と`SYNTH-RAW-GLASS-91`を置き、DBのsummary / chunkには入れない。
+
+実認証後のprivate Chat JSON APIでraw / Graphを質問し、必要事実とtoolの非空取得、保存後の履歴表示を確認する。
+`parsed-doc-fetch`はparsedファイル本文を読む契約ではなく、`parsed_uri`がある資料のDB metadataを取得する。
+このtoolはローカルMastraの実HTTP execute APIからproject指定で呼び、6件の取得と他projectでの0件を確認する。
+LLMが選択したtoolの検証と、toolを直接呼ぶ接続検証を区別する。
+
+```bash
+# IDは専用DBのprojectsから取得する。既存の開発DB・本番DBは使用しない。
+PUFU_LENS_LIVE_CHAT_MODE=pgroonga-primary \
+  PUFU_LENS_LIVE_CHAT_PROJECT_ID='<local-devのUUID>' \
+  PUFU_LENS_LIVE_CHAT_FOREIGN_PROJECT_ID='<chat-e2e-foreignのUUID>' \
+  PUFU_LENS_LIVE_CHAT_REPORT=/tmp/live-chat-details-pgroonga.json \
+  pnpm --filter @pufu-lens/web exec playwright test --config playwright.live-chat.config.ts details.spec.ts
+```
+
+初回の通常質問とtool名を指定した質問では、LLMは`parsed-doc-fetch`を呼ばず検索結果から回答した。
+この2回は専用tool利用の確認に失敗した観測として保存する。parsedの自動選択やparsed本文読込の成功には数えない。
+初回回答では80%設定の識別コードを「保管庫識別番号」と呼ぶ誤った説明もあり、一般的な回答品質の合格とはしない。
+今回の対象は非空Graphとrawの実Chat、およびparsed metadata toolの実接続である。
+
+### 実測（2026-09-25、runtime `6ddede1`）
+
+最終構成はPGroonga / portableそれぞれ3/3成功（実LLM Chat 2件 + Mastra tool直接接続1件）。
+両方式でraw取得1件、各Chatのgraph取得2件を確認し、原文限定の点検曜日・コードと関連資料の通知先を回答・履歴で保持した。
+GraphのDB直接読取でもRELATED_TO 1-hop / SAME_AS 1-hop / MENTIONS 2-hopとproject越境防止を確認した。
+原文限定コードはDB summary / chunk内に0件であり、raw読込の成功を既存検索だけで代替していない。
+parsedのHTTP取得は対象projectで6件、別projectで0件。parsed本文読込を確認したという意味ではない。
+
+証跡は`fixtures/chat/live-chat-details-e2e-v1.json`。最終成功と、解析済みtoolを選ばなかった2回の探索結果を別に保存した。
+portable keywordは24回success / fallback 0だが候補非空0回で、意味検索とGraphによる取得である。
+初回seedのJSONB parameter指定を補修後にfixtureを入れ直し、parsed artifactを既存schemaで検証して最終確認した。
+LLMは非決定的で、原文は小さいWeb HTMLのみ。全source種別・ページング・上限到達の品質は未検証。
+大規模負荷スキップと既存品質gateは維持する。専用server / DBは停止し、APIキー入り一時ファイルは削除した。

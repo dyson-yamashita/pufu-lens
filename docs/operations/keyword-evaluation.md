@@ -230,6 +230,10 @@ Issue #775でpublic Chatも両方式8/8成功。実LLM回答5件の公開source 
 公開IDへの変換、匿名UI、公開制御の拒否系を確認した。合成Web資料の代表検証であり、既存比較gateの未達は維持する。
 再現手順・範囲は[実Chat E2E](live-chat-e2e.md#public-chatの実経路issue-775)を参照。
 
+Issue #777では非空Graph・raw原文の実Chat 2件とparsed metadataの直接HTTP確認1件が両方式3/3成功。
+原文限定情報とGraph非空取得を確認した。portable keywordは24回success / fallback 0、候補非空0回であり、
+keyword単独の品質証明にはしない。parsedのLLM tool選択失敗2回を含む証跡は[実Chat E2E](live-chat-e2e.md)を参照。
+
 ## ローカルPGroonga baseline収集
 
 専用の使い捨てDB `keyword_eval` を用意する。`KEYWORD_EVAL_DATABASE_URL` のloopback接続だけを受け付け、
