@@ -1,0 +1,446 @@
+{
+  "schemaVersion": 1,
+  "runtimeCommit": "681dab1b9c0f956e842c32188d4e8b5e43bacb28",
+  "chatModel": "google/gemini-2.5-flash",
+  "embeddingModel": "gemini-embedding-2",
+  "dimensions": 1536,
+  "corpusSha256": "b4b0c4d6ded66db982168625519b3c645975079690fd8d1273790e01cb6adcf5",
+  "corpusHashEncoding": "SHA-256 of sorted-key compact UTF-8 JSON {cases,documents}; scripts/lib/live-chat-corpus.ts exports",
+  "scope": "Private Chat real Auth.js / Next / Mastra / Gemini / PostgreSQL; synthetic data only",
+  "reports": {
+    "baseline": {
+      "startedAt": "2026-09-25T04:36:00.955Z",
+      "testsPassed": 7,
+      "testsFailed": 0,
+      "testsSkipped": 0,
+      "cases": [
+        {
+          "id": "numeric",
+          "answer": "release 42 build 17 は架空担当者の青葉ミナが承認しました。承認コードは SYNTH-AOBA-4217 です。\n\n---\n**根拠資料**\n*   release 42 build 17 承認記録 (https://example.test/release)",
+          "sources": [
+            {
+              "title": "release 42 build 17 承認記録",
+              "uri": "https://example.test/release"
+            },
+            {
+              "title": "release 420 build 17 承認記録",
+              "uri": "https://example.test/neighbor"
+            }
+          ],
+          "toolCalls": [
+            {
+              "name": "hybrid-search",
+              "resultCount": 32
+            },
+            {
+              "name": "graph-query",
+              "resultCount": 0
+            },
+            {
+              "name": "document-fetch",
+              "resultCount": 2
+            }
+          ],
+          "progressStages": [
+            "preparing",
+            "classifying",
+            "expanding",
+            "retrieving",
+            "retrying",
+            "relating",
+            "reasoning"
+          ],
+          "requiredSourcesPresent": true,
+          "requiredFactsPresent": true,
+          "explicitCitationInAnswer": true
+        },
+        {
+          "id": "japanese-typo",
+          "answer": "ガラス試料は遮光箱に保管されます。保管庫の識別番号は SYNTH-GLASS-73 です。\n\nSource:\n* タイトル: ガラス保管手順 (https://example.test/glass)",
+          "sources": [
+            {
+              "title": "ガラス保管手順",
+              "uri": "https://example.test/glass"
+            }
+          ],
+          "toolCalls": [
+            {
+              "name": "hybrid-search",
+              "resultCount": 31
+            },
+            {
+              "name": "graph-query",
+              "resultCount": 0
+            },
+            {
+              "name": "document-fetch",
+              "resultCount": 1
+            }
+          ],
+          "progressStages": [
+            "preparing",
+            "classifying",
+            "expanding",
+            "retrieving",
+            "retrying",
+            "relating",
+            "reasoning"
+          ],
+          "requiredSourcesPresent": true,
+          "requiredFactsPresent": true,
+          "explicitCitationInAnswer": true
+        },
+        {
+          "id": "literal-percent",
+          "answer": "ストレージ使用率が80%に達した場合の通知先は「若葉班」です。識別コードは「SYNTH-PERCENT-80」です。\n\n[出典: 80% 警告設定](https://example.test/percent)",
+          "sources": [
+            {
+              "title": "80% 警告設定",
+              "uri": "https://example.test/percent"
+            },
+            {
+              "title": "ガラス保管手順",
+              "uri": "https://example.test/glass"
+            }
+          ],
+          "toolCalls": [
+            {
+              "name": "hybrid-search",
+              "resultCount": 32
+            },
+            {
+              "name": "graph-query",
+              "resultCount": 0
+            },
+            {
+              "name": "document-fetch",
+              "resultCount": 2
+            }
+          ],
+          "progressStages": [
+            "preparing",
+            "classifying",
+            "expanding",
+            "retrieving",
+            "retrying",
+            "relating",
+            "reasoning"
+          ],
+          "requiredSourcesPresent": true,
+          "requiredFactsPresent": true,
+          "explicitCitationInAnswer": true
+        },
+        {
+          "id": "timeline",
+          "answer": "2026年8月5日から2026年8月6日までの合成移行テストの方針変更は以下の通りです。\n\n*   **2026年8月5日**: 合成移行テストの開始が決定され、この時点で方式Aが採用されました。\n*   **2026年8月6日**: 合成移行テストの方式が方式Aから方式Bへ変更されました。識別コードはSYNTH-MIGRATION-Bです。\n\n提供された情報源には、GitHubのライフサイクルステータス（open / closed / merged）に関する記載はありませんでした。\n（情報源：合成移行テスト 初期決定、合成移行テスト 方針変更）",
+          "sources": [
+            {
+              "title": "合成移行テスト 初期決定",
+              "uri": "https://example.test/timeline-one"
+            },
+            {
+              "title": "合成移行テスト 方針変更",
+              "uri": "https://example.test/timeline-two"
+            }
+          ],
+          "toolCalls": [
+            {
+              "name": "hybrid-search",
+              "resultCount": 32
+            },
+            {
+              "name": "graph-query",
+              "resultCount": 0
+            },
+            {
+              "name": "timeline-search",
+              "resultCount": 0
+            },
+            {
+              "name": "document-fetch",
+              "resultCount": 2
+            }
+          ],
+          "progressStages": [
+            "preparing",
+            "classifying",
+            "expanding",
+            "retrieving",
+            "retrying",
+            "relating",
+            "timeline",
+            "reasoning"
+          ],
+          "requiredSourcesPresent": true,
+          "requiredFactsPresent": true,
+          "explicitCitationInAnswer": true
+        },
+        {
+          "id": "empty",
+          "answer": "申し訳ありませんが、このプロジェクトの承認者と承認コードに関する情報は、現在のデータからは見つけることができませんでした。",
+          "sources": [],
+          "toolCalls": [
+            {
+              "name": "hybrid-search",
+              "resultCount": 0
+            },
+            {
+              "name": "graph-query",
+              "resultCount": 0
+            },
+            {
+              "name": "document-fetch",
+              "resultCount": 0
+            }
+          ],
+          "progressStages": [],
+          "requiredSourcesPresent": true,
+          "requiredFactsPresent": true,
+          "explicitCitationInAnswer": true
+        }
+      ]
+    },
+    "portable": {
+      "startedAt": "2026-09-25T04:38:07.060Z",
+      "testsPassed": 7,
+      "testsFailed": 0,
+      "testsSkipped": 0,
+      "cases": [
+        {
+          "id": "numeric",
+          "answer": "資料によると、release 42 build 17 は架空担当者の青葉ミナが承認し、承認コードは SYNTH-AOBA-4217 です。\n\n---\n#### 根拠\n*   **release 42 build 17 承認記録**: release 42 build 17 は架空担当者の青葉ミナが承認した。承認コードは SYNTH-AOBA-4217。",
+          "sources": [
+            {
+              "title": "release 42 build 17 承認記録",
+              "uri": "https://example.test/release"
+            },
+            {
+              "title": "release 420 build 17 承認記録",
+              "uri": "https://example.test/neighbor"
+            }
+          ],
+          "toolCalls": [
+            {
+              "name": "hybrid-search",
+              "resultCount": 32
+            },
+            {
+              "name": "graph-query",
+              "resultCount": 0
+            },
+            {
+              "name": "document-fetch",
+              "resultCount": 2
+            }
+          ],
+          "progressStages": [
+            "preparing",
+            "classifying",
+            "expanding",
+            "retrieving",
+            "retrying",
+            "relating",
+            "reasoning"
+          ],
+          "requiredSourcesPresent": true,
+          "requiredFactsPresent": true,
+          "explicitCitationInAnswer": true
+        },
+        {
+          "id": "japanese-typo",
+          "answer": "資料によると、ガラス試料は遮光箱に保管し、保管庫の識別番号は SYNTH-GLASS-73 です。",
+          "sources": [
+            {
+              "title": "ガラス保管手順",
+              "uri": "https://example.test/glass"
+            }
+          ],
+          "toolCalls": [
+            {
+              "name": "hybrid-search",
+              "resultCount": 31
+            },
+            {
+              "name": "graph-query",
+              "resultCount": 0
+            },
+            {
+              "name": "document-fetch",
+              "resultCount": 1
+            }
+          ],
+          "progressStages": [
+            "preparing",
+            "classifying",
+            "expanding",
+            "retrieving",
+            "retrying",
+            "relating",
+            "reasoning"
+          ],
+          "requiredSourcesPresent": true,
+          "requiredFactsPresent": true,
+          "explicitCitationInAnswer": false
+        },
+        {
+          "id": "literal-percent",
+          "answer": "ストレージ使用率80%の通知先は「若葉班」で、識別コードは「SYNTH-PERCENT-80」です。\n\n[ソース](https://example.test/percent)",
+          "sources": [
+            {
+              "title": "80% 警告設定",
+              "uri": "https://example.test/percent"
+            }
+          ],
+          "toolCalls": [
+            {
+              "name": "hybrid-search",
+              "resultCount": 31
+            },
+            {
+              "name": "graph-query",
+              "resultCount": 0
+            },
+            {
+              "name": "document-fetch",
+              "resultCount": 1
+            }
+          ],
+          "progressStages": [
+            "preparing",
+            "classifying",
+            "expanding",
+            "retrieving",
+            "retrying",
+            "relating",
+            "reasoning"
+          ],
+          "requiredSourcesPresent": true,
+          "requiredFactsPresent": true,
+          "explicitCitationInAnswer": true
+        },
+        {
+          "id": "timeline",
+          "answer": "2026年8月5日から2026年8月6日までの合成移行テストの方針変更について、以下の情報が確認されています。\n\n*   **2026年8月5日**: 合成移行テストの開始が決定され、この時点では方式Aが採用されました。\n    *   出典: 「合成移行テスト 初期決定」(https://example.test/timeline-one)\n*   **2026年8月6日**: 合成移行テストの方針が方式Aから方式Bへ変更されました。識別コードはSYNTH-MIGRATION-Bです。\n    *   出典: 「合成移行テスト 方針変更」(https://example.test/timeline-two)\n\nこれらの情報は、提供されたソースに基づいています。",
+          "sources": [
+            {
+              "title": "合成移行テスト 初期決定",
+              "uri": "https://example.test/timeline-one"
+            },
+            {
+              "title": "合成移行テスト 方針変更",
+              "uri": "https://example.test/timeline-two"
+            }
+          ],
+          "toolCalls": [
+            {
+              "name": "hybrid-search",
+              "resultCount": 32
+            },
+            {
+              "name": "graph-query",
+              "resultCount": 0
+            },
+            {
+              "name": "timeline-search",
+              "resultCount": 0
+            },
+            {
+              "name": "document-fetch",
+              "resultCount": 2
+            }
+          ],
+          "progressStages": [
+            "preparing",
+            "classifying",
+            "expanding",
+            "retrieving",
+            "retrying",
+            "relating",
+            "timeline",
+            "reasoning"
+          ],
+          "requiredSourcesPresent": true,
+          "requiredFactsPresent": true,
+          "explicitCitationInAnswer": true
+        },
+        {
+          "id": "empty",
+          "answer": "このプロジェクトの承認者と承認コードに関する情報は見つかりませんでした。",
+          "sources": [],
+          "toolCalls": [
+            {
+              "name": "hybrid-search",
+              "resultCount": 0
+            },
+            {
+              "name": "graph-query",
+              "resultCount": 0
+            },
+            {
+              "name": "document-fetch",
+              "resultCount": 0
+            }
+          ],
+          "progressStages": [],
+          "requiredSourcesPresent": true,
+          "requiredFactsPresent": true,
+          "explicitCitationInAnswer": true
+        }
+      ]
+    }
+  },
+  "comparisons": [
+    {
+      "id": "numeric",
+      "sourceOverlap": 1.0,
+      "sourceOverlapPass": true
+    },
+    {
+      "id": "japanese-typo",
+      "sourceOverlap": 1.0,
+      "sourceOverlapPass": true
+    },
+    {
+      "id": "literal-percent",
+      "sourceOverlap": 0.5,
+      "sourceOverlapPass": false
+    },
+    {
+      "id": "timeline",
+      "sourceOverlap": 1.0,
+      "sourceOverlapPass": true
+    },
+    {
+      "id": "empty",
+      "sourceOverlap": 1,
+      "sourceOverlapPass": true
+    }
+  ],
+  "failureTest": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0
+  },
+  "portableKeywordObservations": {
+    "count": 59,
+    "success": 59,
+    "fallback": 0,
+    "nonemptyCandidates": 1
+  },
+  "functionalGate": true,
+  "fullQualityGate": false,
+  "remainingFindings": [
+    "literal-percent source overlap 0.5 < 0.8; baseline extra source is absent in portable; no exemption applied",
+    "portable japanese-typo answer omits explicit citation although Sources UI has required source",
+    "baseline timeline answer includes unrelated GitHub lifecycle diagnostics"
+  ],
+  "largeLoad": "skipped by explicit user instruction",
+  "unverified": [
+    "public report Chat",
+    "nonempty graph relations",
+    "real raw/parsed storage",
+    "broad query distribution",
+    "production shadow search",
+    "restore"
+  ]
+}

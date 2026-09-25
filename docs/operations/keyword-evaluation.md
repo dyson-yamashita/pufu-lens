@@ -215,6 +215,13 @@ KEYWORD_EVAL_DATABASE_URL=postgres://postgres@127.0.0.1:5769/keyword_eval \
 index優先の小規模評価に限る。限定typo候補による未知queryの誤検出とindex / latency影響は広い実利用分布・負荷での確認を残す。
 自然planner、大規模・同時ingest、全Chat E2E、production shadow観測、restore、primary切替・Step 4 gateは未達を維持する。
 
+## 実Chat E2E（2026-09-25、Issue #771）
+
+2026-09-25、Issue #771で[実Chat E2E](live-chat-e2e.md)を実行した。
+Next認証・実Mastra・Gemini・embedding・DB・表示・履歴を通した代表ケースは両方式7/7、障害時1/1成功。
+ただしsource overlap 0.5の1件、本文引用欠落・内部診断混入があり、全品質gate合格にはしない。
+大規模負荷検証はユーザー指定でスキップする。production shadow観測・restoreは残る。
+
 ## ローカルPGroonga baseline収集
 
 専用の使い捨てDB `keyword_eval` を用意する。`KEYWORD_EVAL_DATABASE_URL` のloopback接続だけを受け付け、

@@ -729,6 +729,8 @@ relational primary のデプロイ当日の安定稼働確認が完了してか�
 
 ### Step 3D 進捗
 
+- 2026-09-25: Issue #771で実Next認証・Mastra・Gemini・embedding・DB・表示・履歴のprivate Chat代表E2Eを実施し、両方式7/7、障害時1/1成功。source overlap 0.5の1件と本文引用欠落・内部診断混入（Issue #772）により全品質gateは未達。大規模負荷検証はユーザー指定でスキップし、public Chat・非空Graph等の網羅、本番shadow観測・restoreは残す。[実Chat E2E](../../operations/live-chat-e2e.md)を参照。
+
 - 2026-09-25: Issue #769で全term条件・literal記号・label/数字対応・制限付きtypo補完を追加し、56-queryのportable集合差13→0、Recall / MRR / nDCG各1.0を確認した。固定v1・56-case judgment・threshold 0.6は維持。ユーザー承認で旧14-caseの日本語typoを関連ありへ統一した。hybrid必須source欠落は0、比較gateはbaselineがtypoを未取得の2/8件で未達。別語彙15-queryのDB回帰とHTTP 16往復を検証した。自然planner・負荷・全Chat E2E・production shadow観測・restore・本番切替は残す。[残差修正](../../operations/keyword-evaluation.md#step-3d残差修正2026-09-25issue-769)を参照。
 - 2026-09-24: Issue #767で56-queryの独立holdout、8シナリオの実RRF / Chat最終source、16回のloopback workflow HTTP検証を追加した。index優先のbaseline 12 / candidateは13件の集合差、candidate Recall@20は0.9091で品質未達。hybrid比較gateも4/8不合格。固定v1 judgment・threshold 0.6を維持する。semantic順位とsynthesisは制御済みで、Next認証route・実LLM・全workflowの品質を証明しない。負荷・自然planner・production shadow観測・restore・Step 4 gateは維持する。[広いholdout実測](../../operations/keyword-evaluation.md#step-3dの広いholdout実測2026-09-24issue-767)を参照。
 - 2026-09-24: Issue #763で数字queryの既知誤検出2件を赤テストで再現し、`word_similarity`のthreshold `0.6`とv1 judgmentを維持したまま、数字列の完全一致guardをportable adapter / 評価queryへ追加した。専用合成DBの14-case holdoutはPGroonga baseline / portable candidateとも失敗0件、固定v1の11方式live evalは記録順位再現・schema保護・rollbackを確認した。広いholdout、hybrid / Chat、負荷・容量・write、production shadow検索観測、restoreは未検証gateとして維持し、本番primary切替・PGroonga cleanupは行わない。
