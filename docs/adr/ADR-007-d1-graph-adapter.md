@@ -83,6 +83,7 @@ Actor merge/dedupe/再試行/並行実行、mid-batch rollback、100件超cleanu
 remote resource作成、deploy、課金、実データ、GCP変更は0。ローカルの結果でremote latency/CPU/memory、
 quota、replication、migration運用・Time Travel、全Graph backend parityを合格扱いしない。
 remote検証は6Bのローカル到達点に不可欠ではない。6C keyword、6D Vectorize/outbox/embedding、6E stagingを残す。
+後続6Cのローカルkeyword実装・評価結果は[ADR-008](ADR-008-d1-keyword-adapter.md)を参照する。
 大規模負荷はユーザー指定でスキップ。Chat品質未達、本番shadow観測、restore、Step 4削除gate、
 PGroonga primary / pgroonga-shadow、Graph relational-only、AGE/PGroonga資産保持を維持する。
 Issue #779を前提条件にせず、親Issue #704はclosedのままとする。

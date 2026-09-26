@@ -10,7 +10,7 @@
   "scripts": {
     "build": "turbo run build",
     "chat:eval": "node --experimental-strip-types scripts/chat-eval.ts",
-    "keyword:eval": "node --experimental-strip-types scripts/keyword-eval.ts",
+    "keyword:eval": "pnpm --filter @pufu-lens/retrieval build && node --experimental-strip-types scripts/keyword-eval.ts",
     "create-project": "pnpm --filter @pufu-lens/graph... build && node --experimental-strip-types scripts/create-project.ts",
     "deploy:dry-run": "node --experimental-strip-types scripts/deploy-dry-run.ts",
     "deploy:smoke": "node --experimental-strip-types scripts/deploy-smoke.ts",
@@ -51,8 +51,8 @@
     "auth:migrate": "node --experimental-strip-types scripts/migrate-auth-login.ts",
     "auth:create-user": "node --experimental-strip-types scripts/create-credentials-user.ts",
     "seed:projects": "pnpm create-project --seed-samples",
-    "scripts:test": "pnpm --filter @pufu-lens/ingestion... build && node --experimental-strip-types --test \"scripts/**/*.test.ts\"",
-    "scripts:test:coverage": "pnpm --filter @pufu-lens/ingestion... build && node --experimental-strip-types --experimental-test-coverage --test \"scripts/**/*.test.ts\"",
+    "scripts:test": "pnpm --filter @pufu-lens/retrieval build && pnpm --filter @pufu-lens/ingestion... build && node --experimental-strip-types --test \"scripts/**/*.test.ts\"",
+    "scripts:test:coverage": "pnpm --filter @pufu-lens/retrieval build && pnpm --filter @pufu-lens/ingestion... build && node --experimental-strip-types --experimental-test-coverage --test \"scripts/**/*.test.ts\"",
     "scripts:typecheck": "tsc --noEmit -p tsconfig.scripts.json",
     "activitypub:dispatch": "pnpm --filter @pufu-lens/activitypub build && node --experimental-strip-types scripts/activitypub-dispatch-once.ts --once",
     "activitypub:queue": "pnpm --filter @pufu-lens/activitypub build && node --experimental-strip-types scripts/activitypub-queue-admin.ts",
@@ -78,6 +78,7 @@
   "dependencies": {
     "@pufu-lens/activitypub": "workspace:*",
     "@pufu-lens/graph": "workspace:*",
+    "@pufu-lens/retrieval": "workspace:*",
     "@pufu-lens/storage": "workspace:*",
     "postgres": "^3.4.9"
   }

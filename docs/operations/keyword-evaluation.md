@@ -316,5 +316,12 @@ seqscan off / onのEXPLAIN、3回の本文再書込み後の容量を保存す�
 
 ## 自動検証
 
+Plan 018 Step 6CのD1は、`pnpm exec turbo run build typecheck test --filter=@pufu-lens/workers-spike`で
+実ローカルD1/workerdを起動する。remote認証・resource・本番データは使わない。
+固定v1/PGroonga baseline、56-query holdout、14-case境界をそのまま利用し、FTS5 unicode61/trigramと
+文字posting＋bigram方式を比較する。再生成artifactは`packages/workers-spike/dist/keyword-*-evaluation.json`。
+選定根拠と候補予算・文書サイズ制約は[ADR-008](../adr/ADR-008-d1-keyword-adapter.md)を参照する。
+この検証は6D/6E/7・remote/Chat parity・本番切替のgateを満たしたことにはならない。
+
 `pnpm scripts:test` / `pnpm test` が指標・意図的失敗・snapshot検証・CLIのhermetic testを実行する。
 DB testは`KEYWORD_EVAL_DATABASE_URL`を明示したときだけ動く。rootのformat / lint / typecheckも対象。

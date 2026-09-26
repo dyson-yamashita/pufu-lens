@@ -1044,6 +1044,16 @@ GCP baseline（CPU / memory / connection / disk / bloat / vacuum / latency / err
 
 ## 13. Step 6: Cloudflare adapter を追加できる設計を具体化する
 
+### Step 6C 実施状況
+
+- 2026-09-26: [Issue #788](https://github.com/dyson-yamashita/pufu-lens/issues/788) で着手。
+  Step 6B merge後の最新main `05162c2` から独立タスクでD1 keyword adapterを実装・ローカル検証する。
+  固定fixture/期待値/thresholdを維持。6D/6E/7、remote、本番変更、大規模負荷は対象外。
+- 6C結果: 文字posting＋単語bigram/共有typo規則を実装。実D1/workerdの固定v1でRecall/MRR/nDCG各1.0、
+  56-query期待集合差0、14-case/別語彙15-queryも成功。FTS5 unicode61/trigramの未達理由、
+  原子的索引置換、project scope、予算超過unavailableとローカル制約を[ADR-008](../../adr/ADR-008-d1-keyword-adapter.md)へ記録。
+  6Cのローカル到達点を完了し、6D/6E/7・本番shadow/restore・既存Chat品質/資産保持gateを維持する。
+
 ### Step 6B 実施状況
 
 - 2026-09-26: [Issue #786](https://github.com/dyson-yamashita/pufu-lens/issues/786) で着手。
@@ -1283,7 +1293,7 @@ CI では hermetic contract / metric testsを毎回実行し、remote GCP / Clou
 | custom PostgreSQL image      | pending Step 4              | official PostgreSQL base + reproducible extension install と current custom image を比較                                                                                                                                                                                                                                                              |
 | Cloudflare graph provider    | candidate                   | D1 relational graph。Step 6 の transaction / throughput / query limit で確定                                                                                                                                                                                                                                                                          |
 | Cloudflare semantic provider | candidate                   | Vectorize cosine 1536。filter / namespace / consistency / quality で確定                                                                                                                                                                                                                                                                              |
-| Cloudflare keyword provider  | pending Step 6 / 7          | D1 FTS5 または application n-gram を Step 3 corpus で選ぶ                                                                                                                                                                                                                                                                                             |
+| Cloudflare keyword provider  | local candidate             | Step 6Cで文字posting＋単語bigram/typoをローカル検証済み。固定品質は合格、候補予算/remote性能/全backend parityは未評価（ADR-008）                                                                                                                                                                                                                      |
 | provider selection           | decided                     | deployment-level `PUFU_LENS_DATA_PROFILE` を composition root で解決。per-request selection なし                                                                                                                                                                                                                                                      |
 | parity tolerance             | decided                     | rank / relevance based。security / tenant / graph mutation は 100%、raw score 一致は要求しない                                                                                                                                                                                                                                                        |
 

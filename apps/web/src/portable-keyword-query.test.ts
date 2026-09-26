@@ -11,6 +11,13 @@ test('literal punctuation is never sent to trigram or typo approximation', () =>
   }
 });
 
+test('PostgreSQL boundary preserves LIKE escaping and POSIX spaces after shared term parsing', () => {
+  assert.equal(portableKeywordTerms('x_y')[0]?.literal, '%x\\_y%');
+  assert.equal(portableKeywordTerms('80%')[0]?.literal, '%80\\%%');
+  assert.equal(portableKeywordTerms('D:\\logs')[0]?.literal, '%D:\\\\logs%');
+  assert.ok(portableKeywordTerms('release 12')[0]?.pattern.includes('[[:space:]]+12'));
+});
+
 test('label-number phrases preserve role and cannot bypass boundary via substring matching', () => {
   const terms = portableKeywordTerms('deployment 42 cycle 17');
   assert.equal(terms.length, 2);

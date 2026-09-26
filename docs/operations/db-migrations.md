@@ -8,6 +8,10 @@
 Graph read/mutation/rollbackを検証する。下記PostgreSQL migration runner、`init.sql`、baselineとは独立する。
 remote migration/deploy/Time Travel運用は未実施。再現手順と限界は[ADR-007](../adr/ADR-007-d1-graph-adapter.md)を参照する。
 
+Step 6Cでは続けて`0002_keyword.sql`を適用し、keyword metadata/chunk/文字postingの複合FK・unique・cascadeと
+4 statement索引置換batchを実D1で検証する。本文/snapshot/検索候補の上限と品質評価は
+[ADR-008](../adr/ADR-008-d1-keyword-adapter.md)を参照する。PostgreSQL側のDDL/migrationには追加しない。
+
 ## Portable keyword Step 3C
 
 `0027_portable_keyword_schema`はpg_trgm、nullable正規化本文、共有関数・triggerを追加し、既存行の全件更新は行わない。

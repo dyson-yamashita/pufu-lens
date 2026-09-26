@@ -37,6 +37,9 @@ importers:
       '@pufu-lens/graph':
         specifier: workspace:*
         version: link:packages/graph
+      '@pufu-lens/retrieval':
+        specifier: workspace:*
+        version: link:packages/retrieval
       '@pufu-lens/storage':
         specifier: workspace:*
         version: link:packages/storage
