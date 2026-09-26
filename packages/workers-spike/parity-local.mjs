@@ -7,6 +7,7 @@ import { corpusHash } from '../../scripts/lib/keyword-eval.ts';
 import { collectPgroongaBaseline } from '../../scripts/lib/keyword-eval-pgroonga.ts';
 import { collectSyntheticChat } from '../../scripts/lib/parity-chat.ts';
 import { collectLocalChatFailures } from '../../scripts/lib/parity-chat-failures.ts';
+import { readParityEmbeddingArtifact } from '../../scripts/lib/parity-embedding-artifact.ts';
 import { evaluateParity, parseParityRun } from '../../scripts/lib/parity-eval.ts';
 import { parityFixture } from '../../scripts/lib/parity-fixture.ts';
 import { collectPostgresGraphParity } from '../../scripts/lib/parity-graph-postgres.ts';
@@ -114,8 +115,12 @@ export async function collectD1ParityKeywords() {
 
 /** Local CLI: fresh observations only; optional loopback PGroonga, no remote execution path.
  * Writes identifiers/metrics only. A successful process means collection completed, not quality passed.
+ * A saved artifact is validated before DB work and used for retrieval only; Chat is skipped.
  */
-export async function runLocalParity(outputDirectory, databaseUrl) {
+export async function runLocalParity(outputDirectory, databaseUrl, artifactPath) {
+  // Fail closed before any collector creates a DB; never fall back to hash vectors.
+  const artifact =
+    artifactPath === undefined ? null : await readParityEmbeddingArtifact(artifactPath);
   const gitOptions = { cwd: fileURLToPath(new URL('../..', import.meta.url)), encoding: 'utf8' };
   const codeCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
     cwd: fileURLToPath(new URL('../..', import.meta.url)),
@@ -154,18 +159,36 @@ export async function runLocalParity(outputDirectory, databaseUrl) {
             rows: run.rows,
           }),
         };
-  const syntheticRetrieval = {
-    gcp: syntheticEvidence(
-      baseline,
-      databaseUrl ? await collectPostgresSyntheticRetrieval(databaseUrl) : null,
-      'local-pgvector-pgroonga',
-    ),
-    cloudflare: syntheticEvidence(
-      candidate,
-      await collectD1SyntheticRetrieval(),
-      'real-d1-workerd-fake-vectorize',
-    ),
-  };
+  const syntheticRetrieval = artifact
+    ? null
+    : {
+        gcp: syntheticEvidence(
+          baseline,
+          databaseUrl ? await collectPostgresSyntheticRetrieval(databaseUrl) : null,
+          'local-pgvector-pgroonga',
+        ),
+        cloudflare: syntheticEvidence(
+          candidate,
+          await collectD1SyntheticRetrieval(),
+          'real-d1-workerd-fake-vectorize',
+        ),
+      };
+  const artifactRetrieval = artifact
+    ? {
+        provenance: artifact.provenance,
+        gcp: databaseUrl
+          ? {
+              ...(await collectPostgresSyntheticRetrieval(databaseUrl, artifact.input)),
+              adapters: 'local-pgvector-pgroonga',
+            }
+          : null,
+        cloudflare: {
+          ...(await collectD1SyntheticRetrieval(artifact.input)),
+          adapters: 'real-d1-workerd-fake-vectorize',
+        },
+        qualityGate: false,
+      }
+    : null;
   const report = {
     ...evaluateParity(candidate.snapshot, baseline.snapshot),
     localEvidence: {
@@ -173,20 +196,24 @@ export async function runLocalParity(outputDirectory, databaseUrl) {
       gcp: baseline.evidence,
       cloudflare: candidate.evidence,
       syntheticRetrieval,
-      syntheticChat: {
-        gcp: syntheticEvidence(
-          baseline,
-          databaseUrl
-            ? await withPostgresParityCandidates(databaseUrl, collectSyntheticChat)
-            : null,
-          'local-pgvector-pgroonga',
-        ),
-        cloudflare: syntheticEvidence(
-          candidate,
-          await collectD1SyntheticChat(),
-          'real-d1-workerd-fake-vectorize',
-        ),
-      },
+      artifactRetrieval,
+      chatArtifactSupport: 'unsupported-derived-query-vectors-not-provided',
+      syntheticChat: artifact
+        ? null
+        : {
+            gcp: syntheticEvidence(
+              baseline,
+              databaseUrl
+                ? await withPostgresParityCandidates(databaseUrl, collectSyntheticChat)
+                : null,
+              'local-pgvector-pgroonga',
+            ),
+            cloudflare: syntheticEvidence(
+              candidate,
+              await collectD1SyntheticChat(),
+              'real-d1-workerd-fake-vectorize',
+            ),
+          },
       sharedChatFailures: await collectLocalChatFailures(),
     },
   };
@@ -202,16 +229,28 @@ export async function runLocalParity(outputDirectory, databaseUrl) {
     );
   await writeFile(
     resolve(outputDirectory, 'summary.md'),
-    `# Local backend parity\n\nGCP: ${baseline.snapshot.rows.length}/52; Cloudflare: ${candidate.snapshot.rows.length}/52 measured rows.\n\nqualityGate: ${report.qualityGate}; Step 7: ${report.step7Gate}.\n\nSeparate synthetic retrieval evidence: GCP ${syntheticRetrieval.gcp?.snapshot.rows.length ?? 0}/6; Cloudflare ${syntheticRetrieval.cloudflare.snapshot.rows.length}/6. Hash vectors and fake Vectorize are connection tests, not semantic quality or remote parity. Quality snapshots keep these cases missing.\n\nGraph includes persisted before/after state, retry and tenant-sentinel checks. Keyword/retrieval mutation, Chat rubric, real embedding and remote metrics remain unmeasured. MENTIONS v1 expects direct 1-hop; adapters support Topic-mediated 2-hop, so inspect its mismatch in report.json.\n`,
+    `# Local backend parity\n\nGCP: ${baseline.snapshot.rows.length}/52; Cloudflare: ${candidate.snapshot.rows.length}/52 measured rows.\n\nqualityGate: ${report.qualityGate}; Step 7: ${report.step7Gate}.\n\nRetrieval input: ${artifact ? 'saved-artifact; origin unverified; Chat unsupported and skipped' : 'synthetic hash vectors'}. Separate local retrieval evidence: GCP ${artifactRetrieval?.gcp?.rows.length ?? syntheticRetrieval?.gcp?.snapshot.rows.length ?? 0}/6; Cloudflare ${artifactRetrieval?.cloudflare.rows.length ?? syntheticRetrieval?.cloudflare.snapshot.rows.length ?? 0}/6. Fake Vectorize is not remote evidence. Quality snapshots keep these cases missing.\n\nGraph includes persisted before/after state, retry and tenant-sentinel checks. Keyword/retrieval mutation, Chat rubric, real embedding quality and remote metrics remain unmeasured. MENTIONS v1 expects direct 1-hop; adapters support Topic-mediated 2-hop, so inspect its mismatch in report.json.\n`,
   );
   return report;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  if (process.argv.length > 3) throw new Error('Usage: parity-local.mjs [output-directory]');
+  const args = process.argv.slice(2);
+  const output = args[0] && !args[0].startsWith('--') ? args.shift() : undefined;
+  let artifactPath;
+  if (
+    args.length === 2 &&
+    args[0] === '--embedding-artifact' &&
+    args[1] &&
+    !args[1].startsWith('--')
+  )
+    artifactPath = args[1];
+  else if (args.length)
+    throw new Error('Usage: parity-local.mjs [output-directory] [--embedding-artifact path]');
   const report = await runLocalParity(
-    process.argv[2] ?? fileURLToPath(new URL('dist/parity-local', import.meta.url)),
+    output ?? fileURLToPath(new URL('dist/parity-local', import.meta.url)),
     process.env.KEYWORD_EVAL_DATABASE_URL,
+    artifactPath,
   );
   console.log(
     JSON.stringify({

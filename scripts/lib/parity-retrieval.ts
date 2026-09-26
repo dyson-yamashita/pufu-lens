@@ -12,6 +12,7 @@ import {
   selectChatSourcesByScoreProfile,
   selectDiverseChatSources,
 } from '../../apps/web/src/private-chat-search.ts';
+import type { ParityRetrievalInput } from './parity-embedding-artifact.ts';
 import type { ParityRow } from './parity-eval.ts';
 import { parityFixture } from './parity-fixture.ts';
 
@@ -37,8 +38,11 @@ export function syntheticParityVector(text: string): number[] {
   return values.map((value) => value / norm);
 }
 
-/** Maps the entire immutable corpus into shared provider inputs; no relevance labels are read. */
-export function parityRetrievalDocuments() {
+/** Maps the immutable corpus using validated artifact vectors, or hash vectors when omitted.
+ * Artifact lookups must be complete; missing values throw without synthetic fallback.
+ * No relevance labels are read.
+ */
+export function parityRetrievalDocuments(input?: ParityRetrievalInput) {
   return [...new Set(parityFixture.chunks.map((chunk) => chunk.documentId))].map((documentId) => {
     const chunks = parityFixture.chunks.filter((chunk) => chunk.documentId === documentId);
     if (!chunks[0]) throw new Error('Empty parity document');
@@ -46,9 +50,9 @@ export function parityRetrievalDocuments() {
       projectId: chunks[0].projectId,
       documentId,
       revision: 1,
-      model: syntheticEmbedding.model,
+      model: input?.embedding.model ?? syntheticEmbedding.model,
       chunks: chunks.map((chunk, chunkIndex) => ({
-        values: syntheticParityVector(chunk.content),
+        values: input ? input.chunkVector(chunk.id) : syntheticParityVector(chunk.content),
         candidate: {
           canonicalUri: `https://synthetic.invalid/${documentId}`,
           chunkId: chunk.id,
@@ -91,10 +95,15 @@ function checkCandidates(candidates: readonly RankedChunkCandidate[]) {
 }
 
 /** Calls real candidate boundaries for six shared cases and reuses Core RRF and source selection.
- * Returned rows are synthetic local evidence only. Scope checks cover returned IDs, not HTTP authz;
+ * Optional input must come from the artifact parser; omission selects the default hash projection.
+ * Returned rows are local connection evidence only, even for self-declared real vectors.
+ * Scope checks cover returned IDs, not HTTP authz;
  * mutation/rubric remain null. Exceptions abort collection instead of fabricating successful rows.
  */
-export async function collectSyntheticRetrieval(repositories: CandidateRepositories) {
+export async function collectSyntheticRetrieval(
+  repositories: CandidateRepositories,
+  input?: ParityRetrievalInput,
+) {
   const rows: ParityRow[] = [];
   const observations = [];
   const selectionPolicy = {
@@ -110,8 +119,8 @@ export async function collectSyntheticRetrieval(repositories: CandidateRepositor
     const semantic = (
       await repositories.semanticCandidateRepository.search({
         projectId: test.projectId,
-        embedding: syntheticParityVector(test.query),
-        embeddingModel: syntheticEmbedding.model,
+        embedding: input ? input.queryVector(test.id) : syntheticParityVector(test.query),
+        embeddingModel: input?.embedding.model ?? syntheticEmbedding.model,
         limit: 10,
         preDedupLimit: 37,
       })
@@ -177,8 +186,8 @@ export async function collectSyntheticRetrieval(repositories: CandidateRepositor
   return {
     rows,
     observations,
-    inputHash: parityVectorInputHash,
-    embedding: syntheticEmbedding,
+    inputHash: input?.inputHash ?? parityVectorInputHash,
+    embedding: input?.embedding ?? syntheticEmbedding,
     selection: { ...selectionPolicy, finalLimit: 5, runtime: 'node-local' },
     qualityGate: false as const,
   };

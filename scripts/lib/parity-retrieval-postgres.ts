@@ -11,23 +11,35 @@ import {
 } from '../../apps/web/src/postgres-chat-candidate-adapters.ts';
 import { validateKeywordEvalUrl } from './keyword-eval-local.ts';
 import { seedChatConnectionGraph } from './parity-chat-graph.ts';
+import type { ParityRetrievalInput } from './parity-embedding-artifact.ts';
 import { collectSyntheticRetrieval, parityRetrievalDocuments } from './parity-retrieval.ts';
 
 /** Runs the existing pgvector/PGroonga adapters in a newly created loopback-only DB.
  * Uses text fixture IDs at the SQL boundary; no production tables or credentials are consulted.
  * Requires installed vector/PGroonga extensions and CREATEDB; only its own created DB is dropped.
+ * Optional input is a validated saved artifact; omission uses synthetic hash vectors.
  */
-export async function collectPostgresSyntheticRetrieval(databaseUrl: string) {
-  return withPostgresParityCandidates(databaseUrl, collectSyntheticRetrieval);
+export async function collectPostgresSyntheticRetrieval(
+  databaseUrl: string,
+  input?: ParityRetrievalInput,
+) {
+  return withPostgresParityCandidates(
+    databaseUrl,
+    (repositories) => collectSyntheticRetrieval(repositories, input),
+    input,
+  );
 }
 
-/** Runs a bounded local collector against the shared disposable fixture; always drops its own DB. */
+/** Runs a local collector against the disposable fixture; always drops its own DB.
+ * Optional parsed artifact input seeds the database; the collector must use that same input.
+ */
 export async function withPostgresParityCandidates<T>(
   databaseUrl: string,
   collect: (
     repositories: CandidateRepositories,
     database: Pick<ChatRepository, 'documentFetch' | 'graphCoverageQuery'>,
   ) => Promise<T>,
+  input?: ParityRetrievalInput,
 ): Promise<T> {
   validateKeywordEvalUrl(databaseUrl);
   const admin = postgres(databaseUrl, { max: 1, connect_timeout: 10, onnotice: () => {} });
@@ -52,7 +64,7 @@ export async function withPostgresParityCandidates<T>(
       metadata jsonb DEFAULT '{}', occurred_at timestamptz, updated_at timestamptz DEFAULT now())`;
     await sql`CREATE TABLE public.document_chunks (id text PRIMARY KEY, document_id text REFERENCES documents(id),
       project_id text NOT NULL, chunk_index integer NOT NULL, content text, embedding_model text, embedding vector(1536))`;
-    for (const document of parityRetrievalDocuments()) {
+    for (const document of parityRetrievalDocuments(input)) {
       const candidate = document.chunks[0]?.candidate;
       if (!candidate) throw new Error('Empty parity document');
       await sql`INSERT INTO public.documents (id, project_id, raw_document_id, doc_type, title, canonical_uri, summary) VALUES (${document.documentId}, ${document.projectId},

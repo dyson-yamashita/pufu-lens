@@ -107,6 +107,47 @@ synthetic embedding、両側の越境、必須source / citation / tool欠落、G
 
 ## 7B ローカルrunner
 
+### 保存済みembedding artifact（Issue #810）
+
+`parity:local [output-directory] --embedding-artifact /absolute/path/input.json` で、
+同じ保存済みvectorをPostgreSQLとD1の既存collectorへ渡せる。DB URLの制限は下記と同じ。
+artifactは最初に一度だけ読み、全検証完了後にDB処理を開始する。API生成やremote実行機能はない。
+引数省略時は従来のsynthetic retrieval/Chat経路を維持する。
+
+入力JSONの正本は `scripts/lib/parity-embedding-artifact.ts`。
+rootには次のfieldだけを必須とする。
+
+- `version`: `parity-embedding-artifact-v1`
+- `fixtureVersion` / `fixtureHash` / `schemaVersion` / `mappingHash`: 固定v1 fixtureの値
+- `schemaHash`: 同moduleの `parityEmbeddingSchemaHash`（artifact入力構造のSHA-256）
+- `embedding`: `model: text-embedding-3-small`, `dimensions: 1536`, `metric: cosine`,
+  `mode: synthetic | real`。modeは提供者の自己申告。
+- `chunks`: 全37件の `{id, documentId, projectId, textHash, values}`
+- `queries`: 共通3質問の `{caseIds, projectId, textHash, values}`。
+  `caseIds` は同じ質問を使うsemantic/hybridの2 IDをfixture順で含める。
+
+`parityEmbeddingInputs()` が本文/質問を含まない正確なidentity一覧を返す。
+`textHash` はfixtureの本文/質問そのもののUTF-8 SHA-256（正規化なし）。各配列の行順は任意。
+未知field、hash不一致、ID/project/documentの不一致、余剰・欠損・重複を拒否する。
+vectorは1536数値、有限、float32変換でoverflowせず非ゼロであることを必須とする。
+不正値を補完したり、hash vectorへfallbackしたりしない。入力エラーに本文/vectorを含めない。
+
+reportの `localEvidence.artifactRetrieval` にchecksum（読み込んだUTF-8 JSONのSHA-256）、
+入力元 `saved-artifact`、固定契約hash、`declaredEmbedding`、両backendの観測IDを保存する。
+ファイルpath・質問・本文・vectorは保存しない。checksumは入力同一性だけを示し、生成元の証明ではない。
+`originVerified=false` / `semanticQualityMeasured=false` / `qualityGate=false` を維持する。
+`mode: real` と申告されても、実embedding生成元の検証や品質合格へ昇格しない。
+Cloudflare側のVectorizeは引き続きexact-cosine fake、GCP側もlocal pgvector/PGroongaである。
+通常の品質snapshotへ6行を追加せず、各39/52行・13件欠損を維持する。
+
+artifactはChatの派生検索語用vectorを含まないため、artifact入力時は `syntheticChat=null` として
+Chatをskipする。`chatArtifactSupport` に未対応を明示し、synthetic fallbackを混在させない。
+共通Node障害試験は独立証拠として継続する。Chat artifact対応、実embedding品質、remoteは未測定。
+テスト専用 `syntheticEmbeddingArtifactFixture()` は本文hashから独立合成vectorを作り、
+明示的にsyntheticと申告する。実embedding artifactは未提供であり生成APIは呼ばない。
+
+### 実行方法
+
 ```bash
 pnpm --filter @pufu-lens/ingestion... build
 pnpm --filter @pufu-lens/retrieval build
@@ -164,7 +205,8 @@ semantic/hybrid/Chat行へ流用しない。既存keyword/chat eval資産も期�
 
 Issue #802で `scripts/lib/parity-retrieval.ts` に全37 chunk/36 documentと各3質問の共通mappingを追加。
 本文/質問とblock番号のSHA-256を1536次元の単位vectorへ変換する。judgment、required source、oracle順位は
-生成に使わず、意味的類似度を表さない。実embedding APIや保存済みembedding artifactの入力機能は追加しない。
+生成に使わず、意味的類似度を表さない。実embedding APIは呼ばない。
+Issue #810で保存済みembedding artifact入力を別経路として追加した（上記参照）。
 
 `report.json` の `localEvidence.syntheticRetrieval.{gcp,cloudflare}` に、実際に呼んだadapterの候補から
 生成した6行の別snapshot、入力hash、embedding `synthetic/sha256-text-v1/1536/cosine`、adapter種別、

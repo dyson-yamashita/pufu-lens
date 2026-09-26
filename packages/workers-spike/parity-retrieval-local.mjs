@@ -8,7 +8,6 @@ import {
 import {
   collectSyntheticRetrieval,
   parityRetrievalDocuments,
-  syntheticEmbedding,
 } from '../../scripts/lib/parity-retrieval.ts';
 import { buildWorker } from './build.mjs';
 
@@ -74,13 +73,19 @@ export function createParityVectorizeFake() {
 
 /** Seeds all 37 chunks/36 documents into real D1/workerd and calls real candidate adapters.
  * Vectorize alone is a cosine fake. All other egress is denied, including embedding/LLM APIs.
+ * Optional input comes from the artifact parser; omission uses synthetic hash vectors.
  */
-export async function collectD1SyntheticRetrieval() {
-  return withD1ParityCandidates(collectSyntheticRetrieval);
+export async function collectD1SyntheticRetrieval(input) {
+  return withD1ParityCandidates(
+    (repositories) => collectSyntheticRetrieval(repositories, input),
+    input,
+  );
 }
 
-/** Owns a disposable D1 fixture for local collectors and optional stale-revision fault injection. */
-export async function withD1ParityCandidates(collect) {
+/** Owns a disposable D1 fixture and optional stale-revision fault injection.
+ * Optional parsed artifact input seeds the database; the collector must use that same input.
+ */
+export async function withD1ParityCandidates(collect, input) {
   const { script } = await buildWorker('parity-retrieval-worker');
   const fake = createParityVectorizeFake();
   const runtime = new Miniflare({
@@ -104,13 +109,13 @@ export async function withD1ParityCandidates(collect) {
           .map((s) => db.prepare(s)),
       );
     }
-    const documents = parityRetrievalDocuments();
+    const documents = parityRetrievalDocuments(input);
     for (const project of new Set(documents.map((d) => d.projectId)))
       await db.prepare('INSERT INTO projects VALUES (?)').bind(project).run();
     const call = async (capability, operation, input) => {
       const response = await runtime.dispatchFetch(`http://local.test/${capability}`, {
         method: 'POST',
-        body: JSON.stringify({ operation, input, config: { model: syntheticEmbedding.model } }),
+        body: JSON.stringify({ operation, input, config: { model: documents[0].model } }),
       });
       if (!response.ok) {
         const body = await response.json();
