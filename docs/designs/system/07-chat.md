@@ -108,6 +108,8 @@ hybrid search の採用 document を seed として、Graph を **coverage audit
 - relation 共通の先着 5 件枠は使わない。各 relation は独立した pool を持ち、SAME_AS だけで後続 relation の候補枠を消費しない。
 - Graph 候補は project boundary、許可された relation / hop の組み合わせ、seed との重複除外、`title` / `snippet` の有無を確認したうえで、**元の質問または query plan の hybrid search** で chunk evidence を再確認する。evidence が得られない候補は接続だけを理由に採用しない。
 - `relation` / `comparison` / `cause` / `process` では Graph 補完候補を優先し、最終 document 上限内で Graph-only evidence を最低 1 件程度予約できる。
+- ローカルparity検証ではdetail stepの任意observerから優先枠の直前/直後とGraph-only候補のコピー済みIDを取得する。
+  通常workflowはobserverを指定せず、response契約とselection policyは変えない。分類stub・置換/追加/無変化・既存重複追加の限定観測は[backend評価契約](../../operations/backend-parity-evaluation.md)を参照。
 - 採用された Graph source の `relationType` / `seedDocumentId` / `hopCount` は `retrievalContext` の `untrusted_external_content` 内 `graphProvenance` として synthesis にだけ渡す。private / public chat response、履歴、UI、public API には公開しない。
 - Workflow 内部 diagnostics では `graphStatus`（`success` / `unavailable` のみ）、seed 数、relation 別候補数・採用数、重複 / evidence なし / source 上限などの除外理由を区別する。Graph に候補が無い成功と Graph capability 実行不能（seed なし、project graph 未解決、provider query 失敗）は別扱いとする。Agent 向け `graph-query` tool は `graphQueryStatus` で `fallback` / `success` / `unavailable` を返し、title / summary fallback は `fallback` として区別する。coverage pass 本体では fallback に依存しない。
 - Graph adapter が graph name validation、read-only transaction、`statement_timeout`、projectId 固定、候補 pool の上限を所有する。Core / Workflow は Cypher、agtype、graph name を Graph read contract へ渡さず、evidence 確認と採用 policy を所有する。

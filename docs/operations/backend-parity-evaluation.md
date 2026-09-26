@@ -300,6 +300,45 @@ orphanケースはv1入力内のdocument全削除を検査し、任意の孤立A
 
 ### Chat / expected-failureの限定接続試験
 
+#### Issue #816: 分類stub付き独立計画のGraph優先枠
+
+通常のsynthetic実行で `localEvidence.syntheticChat.{gcp,cloudflare}.classifiedPriority` に
+`chat-classified-priority-v1` を別保存する。`parity-chat-controls.ts` の質問・project・case ID・分類stub・
+初回allowlist・document limitをinputHashへ含める。保存artifact v1/20入力/manifest hashは変更せず、
+artifact実行ではこの計画を実行しない。新しい保存vector契約やmanifestは追加していない。
+embeddingは従来の本文SHA-256 synthetic生成、phaseはprimary/retry/coverage、質問本文はreportへ保存しない。
+
+分類は自然planner/LLMの出力ではなく、明示fixtureの `cause / high` または `relation / high` stub。
+既存 `applyPrivateChatQuestionClassification` を適用し、準備処理へ既存契約内のdocument limitを渡す。
+制御するのは初回の実adapter/RRF結果のallowlistだけで、score・順位・Graph relation・retry/coverage・
+文書取得結果を改変しない。detail欠損faultも使わない。本番policy・固定品質閾値は変更しない。
+
+`runPrivateChatDetailStep` の任意observerは、実Graph優先枠処理の直前/直後とGraph-only候補の
+コピーしたID配列だけを受け取る。評価用にselectionを再現計算せず、同じ実dataflowで観測する。
+呼出し側へsource objectや本文を渡さず、通常呼出しではobserverを指定しない。
+`finalSelectionBoundary` は前後ID・追加/除去ID・outcomeを保存し、重複IDの追加も件数付きで区別する。
+上限到達・除去あり・Graph-only追加ありを観測した場合だけ `priorityReplacementMeasured=true` とする。
+
+専用PostgreSQLと実D1/workerdで以下を確認した。どのケースも実Graph取得・実detail repositoryを通る。
+
+| case              | 分類/上限/初回allowlist | 優先枠の直前 → 直後   | 観測                                                                      |
+| ----------------- | ----------------------- | --------------------- | ------------------------------------------------------------------------- |
+| classified-full   | cause / 2 / d01,d09     | d09,d01 → d09,d02     | 上限2のselectionからd01を除去し、実Graph-only d02へ置換                   |
+| classified-quota  | relation / 2 / d01,d09  | d09 → d09,d02         | 同一web_page種別のquotaで直前は1資料。置換ではなく追加                    |
+| classified-single | relation / 1 / d01      | d01 → d01             | 唯一のvector資料は除去できず無変化。sourceLimitExcluded=1                 |
+| classified-room   | relation / 5 / d01      | d01,d02 → d01,d02,d02 | detail取得済みd02にGraph属性付きd02が重複追加される既存挙動をそのまま保持 |
+| classified-retry  | relation / 1 / 空       | noise-04 → noise-04   | simplified retry 1回、実候補10件。Graph evidence不足で採用0、無変化       |
+
+置換ケースのdetail repositoryはd09/d01を返す。d02はd01から実SAME_AS 1-hopで取得・hydrationしたもので、
+最終sourceの `relationType/seedDocumentId/hopCount` を保持する。既存responseの6属性allowlistと
+loopback HTTP 2往復で除去を確認した。重複追加は正常品質の証拠にせず、本番policyを修正して隠さない。
+候補が空の回帰試験でも置換成功を作らず、空selection/無変化/未達を保持する。
+
+D1文書取得はローカルbridge、Vectorizeはexact cosine fake、分類/embedding/synthesisはstub。
+実embedding品質・自然planner・実LLM・引用・HTTP認可・remoteは未測定。
+通常品質各39/52行・13件欠損、qualityGate=false、step7Gate=not-evaluated、MENTIONS残差、
+7B全能力/7C・Step 6/7開始gate未達と既存品質/restore/削除gateを維持する。
+
 #### Issue #814: Graph属性を保持する最終sourceと優先枠の到達条件
 
 `localEvidence.{artifactChat,syntheticChat}.{gcp,cloudflare}.finalSourceBoundary` に独立した
@@ -335,7 +374,7 @@ coverage、retryは実経路を維持する。`detailControl`、fixture inputHas
 本番の優先枠処理はrelation/comparison/cause/process分類、Graph-only候補あり、非空selectionを要求する。
 既に属性付きGraph-onlyがあれば何もしない。上限未満なら追加、上限に達していて除去可能なsourceがある場合に
 置換する（上限1の明示GitHub参照は保護）。Graph元オブジェクトを使うため、この経路でも属性保持は可能だが、
-そのend-to-end接続は未検証。今後分類stepを加える場合は別の明示計画契約が必要であり、v1入力の黙った再解釈や
+そのend-to-end接続は#814時点で未検証（#816の別synthetic計画で限定観測）。分類stepを加える場合は別の明示計画契約が必要であり、v1入力の黙った再解釈や
 分類の捏造で今回の到達点を拡大しない。本番実装・selection policyは変更していない。
 
 通常品質各39/52行・13件欠損、qualityGate=false / step7Gate=not-evaluated、MENTIONS残差、

@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { assertClassifiedPriority } from '../../../scripts/lib/parity-chat-classified.fixture.ts';
 import { parseParityRun } from '../../../scripts/lib/parity-eval.ts';
 import { runLocalParity } from '../parity-local.mjs';
 
@@ -28,6 +29,7 @@ test('real workerd keyword/Graph runner preserves observations and missing capab
     assert.equal(report.localEvidence.syntheticChat.cloudflare.snapshot.rows.length, 3);
     assert.equal(report.localEvidence.syntheticChat.cloudflare.qualityGate, false);
     const chat = report.localEvidence.syntheticChat.cloudflare;
+    assertClassifiedPriority(chat.classifiedPriority);
     assert.ok(chat.observations.every((row) => !row.retry.decision && !row.retry.executed));
     assert.ok(chat.observations.every((row) => row.finalGraphDocumentIds.length === 0));
     assert.deepEqual(chat.observations[0].graphExcludedFromFinalDocumentIds, ['d02']);

@@ -57,6 +57,11 @@ Plan 018 Step 7B（2026-09-26、Issue #808）: 最新mainから独立タスク�
 
 ## 運用ルール
 
+Plan 018 Step 7B（2026-09-26、Issue #816）: 分類stub付き独立synthetic計画でGraph優先枠を検証。
+実candidate/RRF・DB文書・Graph・retryから実selection前後を観測し、上限2資料からGraph-onlyへの置換を確認。
+追加/無変化/重複追加の観測も保持。保存artifact v1と本番policyは不変、通常品質各39/52行・13件欠損、
+7B全能力/7CとStep 6/7開始gate未達を維持する。
+
 Plan 018 Step 7B（2026-09-26、Issue #806）: Chat文書取得を実PostgreSQL repository / 実D1読取りへ接続。
 独立したGraph接続fixtureから既存relating/coverageを実行し、3質問の呼出し・取得・採用診断を保存する。
 自然planner/回答/引用/HTTP認可、7B全能力/7CとStep 6/7開始gateは未達。v1/hash/閾値と品質各39/52行を維持する。

@@ -85,6 +85,12 @@ test('real selection and HTTP reflect candidate changes, not relevance expectati
   const first = await collect('d01');
   const changed = await collect('d05');
   const empty = await collect(null);
+  for (const row of empty.classifiedPriority.observations) {
+    assert.equal(row.finalSelectionBoundary.priorityReplacementMeasured, false);
+    assert.equal(row.finalSelectionBoundary.outcome, 'unchanged');
+    assert.deepEqual(row.finalSelectionBoundary.beforeDocumentIds, []);
+    assert.deepEqual(row.finalDocumentIds, []);
+  }
   assert.ok(first.rows.every((row) => row.finalDocumentIds.join() === 'd01'));
   assert.ok(changed.rows.every((row) => row.finalDocumentIds.join() === 'd05'));
   assert.ok(

@@ -95,6 +95,7 @@ test('saved Chat vectors drive fixed steps on real DBs and remain separate from 
         ...run.finalSourceBoundary.observations,
       ].map(({ latencyMs: _, ...row }) => row);
     for (const run of [artifact.gcp, artifact.cloudflare].filter(Boolean)) {
+      assert.equal('classifiedPriority' in run, false);
       assert.equal(run.inputHash, artifact.provenance.checksum);
       assert.equal(run.rows.length, 3);
       assert.equal(run.controlled.observations.length, 2);
