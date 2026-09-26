@@ -4,6 +4,7 @@ packages:
 allowBuilds:
   esbuild: true
   sharp: false
+  workerd: true
 overrides:
   '@fedify/fedify': 2.3.4
   '@fedify/next': 2.3.4
