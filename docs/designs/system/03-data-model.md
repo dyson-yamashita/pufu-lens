@@ -89,6 +89,11 @@ fresh DB では `init.sql` の末尾で `public.schema_migrations` を作成し�
 
 #### Relational graph adapter（Plan 018 Step 2B）
 
+Step 6BのローカルD1版は`packages/workers-spike/d1/0001_graph.sql`で独立管理する。
+TEXT identity / JSON TEXTにmappingし、node/edge複合PK・project複合FK・cascade・9 relation制約を保持する。
+`projects`は試験用最小identity table、timestampはCore未使用のため省略する。GCP schemaは変更しない。
+D1 batch内のActor mergeとJSON浅いmerge、read上限、実D1検証は[ADR-007](../../adr/ADR-007-d1-graph-adapter.md)を参照する。
+
 - read adapter は project-scoped な node / relation count、SAME_AS / RELATED_TO 1-hop、MENTIONS 2-hop、
   Viewer preset を bounded SQL で実装し、read-only transaction と5秒timeoutを適用する。
 - mutation adapter は project lifecycle、node / canonical 9 edge type の idempotent upsert、Document node cleanup、

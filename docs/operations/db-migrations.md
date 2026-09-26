@@ -2,6 +2,12 @@
 
 この文書は、Pufu Lens の DB schema 変更を fresh DB と既存 DB の両方へ反映するための作成・レビュー手順である。
 
+## D1 Graph Step 6B（ローカル試験のみ）
+
+`packages/workers-spike/d1/0001_graph.sql`を空のMiniflare D1へ適用し、workspace testでFK/unique/JSON制約と
+Graph read/mutation/rollbackを検証する。下記PostgreSQL migration runner、`init.sql`、baselineとは独立する。
+remote migration/deploy/Time Travel運用は未実施。再現手順と限界は[ADR-007](../adr/ADR-007-d1-graph-adapter.md)を参照する。
+
 ## Portable keyword Step 3C
 
 `0027_portable_keyword_schema`はpg_trgm、nullable正規化本文、共有関数・triggerを追加し、既存行の全件更新は行わない。

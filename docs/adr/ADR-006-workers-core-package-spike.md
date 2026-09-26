@@ -49,7 +49,7 @@ ingestion 混入を拒否する。Node builtin は browser build で解決不能
 | project-tenancy root | slug validation を実行可能         | `buildCreateProjectSql` は PostgreSQL/AGE専用。D1に流用しない                             |
 | ingestion embedding  | 今回の bundle 対象外               | `chunk-embedding.ts` の `node:crypto`、`ingestion-fixtures.ts` 等の依存を分離してから検証 |
 
-最短の次工程は6BのD1 Graph adapterである。embedding は6Dで fetch ベースの client を必要最小限の
+6BのD1 Graph adapterとローカル検証は[ADR-007](ADR-007-d1-graph-adapter.md)へ記録する。embedding は6Dで fetch ベースの client を必要最小限の
 公開入口へ分離するか、互換 API を明示採用し実行検証する。今回は巨大な共通 abstraction や
 Node polyfill を追加しない。Core package 全 export、Web / Mastra / ingestion 全体の互換性は主張しない。
 
