@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  collectArtifactChat,
   collectSyntheticChat as collectChat,
   localChatRepository,
   parityChatInputs,
 } from './parity-chat.ts';
+import { parseParityChatArtifact } from './parity-chat-artifact.ts';
 import { collectLocalChatFailures, normalizeLocalChatError } from './parity-chat-failures.ts';
+import { syntheticChatArtifactFixture } from './parity-embedding-artifact.fixture.ts';
 import { parityRetrievalDocuments } from './parity-retrieval.ts';
 
 const testDatabase = {
@@ -24,6 +27,31 @@ const testDatabase = {
 };
 const collectSyntheticChat = (repositories: Parameters<typeof collectChat>[0]) =>
   collectChat(repositories, testDatabase);
+
+test('artifact runtime query mismatch aborts before candidate reads without synthetic fallback', async () => {
+  const { input } = parseParityChatArtifact(JSON.stringify(syntheticChatArtifactFixture()));
+  let reads = 0;
+  const search = async () => {
+    reads++;
+    return [];
+  };
+  await assert.rejects(
+    collectArtifactChat(
+      {
+        semanticCandidateRepository: { search },
+        keywordCandidateRepository: { search },
+      },
+      testDatabase,
+      {
+        ...input,
+        chatVector: (caseId, projectId, phase, text) =>
+          input.chatVector(caseId, projectId, phase, `${text} unknown-derived-query`),
+      },
+    ),
+    /Unknown Chat embedding artifact input/,
+  );
+  assert.equal(reads, 0);
+});
 
 test('Chat mapping excludes oracle fields and unsupported capabilities fail closed', () => {
   assert.equal(parityChatInputs().length, 7);
