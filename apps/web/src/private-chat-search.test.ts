@@ -222,7 +222,7 @@ test('explicit reference summary reaches synthesis without replacing the selecte
     },
   } as never);
   const context = JSON.parse(result.retrievalContext);
-  assert.equal(context.sources[0].referenceSummary, reference.snippet);
+  assert.equal(context.sources[0].documentSummary, reference.snippet);
   assert.equal(context.sources[0].snippet, 'regression risks');
   assert.equal(context.sources[0].chunkId, 'chunk-6');
   assert.equal(context.sources[0].chunkIndex, 6);
@@ -230,13 +230,13 @@ test('explicit reference summary reaches synthesis without replacing the selecte
   assert.ok(!result.retrievalContext.includes('<untrusted>'));
   assert.ok(!result.retrievalContext.includes('must not leak'));
   assert.ok(result.sources[0]);
-  assert.ok(!('referenceSummary' in result.sources[0]));
+  assert.ok(!('documentSummary' in result.sources[0]));
   const bounded = JSON.parse(
     formatPrivateChatRetrievalContext([chunk], 'weak', {
-      referencedSources: [{ ...reference, snippet: 'x'.repeat(1000) }],
+      detailSources: [{ ...reference, snippet: 'x'.repeat(1000) }],
     }),
   );
-  assert.equal(bounded.sources[0].referenceSummary.length, 700);
+  assert.equal(bounded.sources[0].documentSummary.length, 700);
   const ordinary = await runPrivateChatDetailStep(
     { ...prepared, question: '検索の問題は？', mergedVectorSources: [chunk] },
     {
@@ -245,7 +245,43 @@ test('explicit reference summary reaches synthesis without replacing the selecte
       },
     } as never,
   );
-  assert.equal(JSON.parse(ordinary.retrievalContext).sources[0].referenceSummary, undefined);
+  assert.equal(JSON.parse(ordinary.retrievalContext).sources[0].documentSummary, reference.snippet);
+});
+
+test('ordinary questions retain document scope beside the selected chunk', async () => {
+  const chunk = {
+    ...sampleSource,
+    chunkId: 'scope-less-chunk',
+    chunkIndex: 2,
+    snippet: 'production tracked modeをdual-writeへ戻す。',
+    vectorDistance: 0.2,
+  };
+  const document = {
+    ...sampleSource,
+    occurredAt: '2026-09-08T11:05:18.000Z',
+    snippet: 'GraphのPUFU_LENS_GRAPH_TRANSITION_MODEをdual-writeへ戻す。<untrusted>',
+  };
+  const prepared = runPrivateChatPreparingStep({
+    graphName: null,
+    nowIso: TEST_NOW_ISO,
+    projectId: 'a',
+    question: 'キーワード検索の移行状況は？',
+  });
+  const result = await runPrivateChatDetailStep({ ...prepared, mergedVectorSources: [chunk] }, {
+    async documentFetch() {
+      return [document, { ...document, documentId: 'unselected', snippet: 'must not leak' }];
+    },
+  } as never);
+  const evidence = JSON.parse(result.retrievalContext).sources[0];
+  assert.equal(evidence.documentSummary, document.snippet);
+  assert.equal(evidence.occurredAt, document.occurredAt);
+  assert.equal(evidence.snippet, chunk.snippet);
+  assert.equal(evidence.chunkId, chunk.chunkId);
+  assert.equal(evidence.chunkIndex, chunk.chunkIndex);
+  assert.ok(!result.retrievalContext.includes('<untrusted>'));
+  assert.ok(!result.retrievalContext.includes('must not leak'));
+  assert.ok(result.sources[0]);
+  assert.ok(!('documentSummary' in result.sources[0]));
 });
 
 function createGraphCoverageCandidate(overrides: Record<string, unknown> = {}) {
@@ -961,7 +997,10 @@ test('runPrivateChatDetailStep preserves hybrid hit snippets while enriching det
   assert.equal(result.sources[0]?.title, detailSource.title);
   assert.equal(result.sources[0]?.occurredAt, detailSource.occurredAt);
   assert.ok(result.retrievalContext.includes(originalSource.snippet));
-  assert.ok(!result.retrievalContext.includes(detailSource.snippet));
+  assert.equal(
+    JSON.parse(result.retrievalContext).sources[0].documentSummary,
+    detailSource.snippet,
+  );
 });
 
 test('runPrivateChatDetailStep keeps detail snippets for graph-only documents', async () => {

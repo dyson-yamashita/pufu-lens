@@ -954,8 +954,8 @@ export function applyGitHubLifecycleRetrievalSelection(
  * @param sources - Final merged sources exposed to synthesis (may include graph / timeline)
  * @param confidence - Score-derived label written to `retrievalConfidence`; defaults to
  *   `none` when `sources` is empty, otherwise `weak`
- * @param options - GitHub lifecycle hint and project-scoped summaries for explicitly referenced
- * documents. Only selected document IDs receive a bounded summary; chunk provenance stays intact.
+ * @param options - GitHub lifecycle hint and project-scoped document summaries from detail retrieval.
+ * Only selected document IDs receive a bounded summary; chunk provenance stays intact.
  * @returns JSON text containing `retrievalConfidence`, an instruction `note`, and sources,
  *   with `<` and `>` Unicode-escaped so the payload remains safe untrusted content
  */
@@ -964,7 +964,7 @@ export function formatPrivateChatRetrievalContext(
   confidence: PrivateChatRetrievalConfidence = sources.length === 0 ? 'none' : 'weak',
   options?: {
     readonly lifecycleHint?: GitHubLifecycleSelectionHint;
-    readonly referencedSources?: readonly ChatSource[];
+    readonly detailSources?: readonly ChatSource[];
   },
 ): string {
   const hasGitHubSource = sources.some(
@@ -1004,8 +1004,8 @@ export function formatPrivateChatRetrievalContext(
           : {}),
         ...(source.occurredAt === undefined ? {} : { occurredAt: source.occurredAt }),
         rawDocumentId: source.rawDocumentId,
-        referenceSummary: options?.referencedSources
-          ?.find((reference) => reference.documentId === source.documentId)
+        documentSummary: options?.detailSources
+          ?.find((detail) => detail.documentId === source.documentId)
           ?.snippet?.slice(0, 700),
         snippet: source.snippet ?? null,
         title: source.title,
@@ -1442,9 +1442,7 @@ export async function runPrivateChatDetailStep(
         : confidence,
       {
         lifecycleHint: lifecycleSelection.hint,
-        referencedSources: detailSources.filter((source) =>
-          matchesChatGitHubReference(state.question, source),
-        ),
+        detailSources,
       },
     ),
     sources,
