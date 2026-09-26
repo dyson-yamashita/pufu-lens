@@ -41,7 +41,9 @@
 
 Plan 018 Step 6E（2026-09-26、Issue #792）: PR #791 merge後の最新mainから独立タスクで着手。
 認証付きsynthetic composition、shared revision原子更新、dispatcher/repairと固定fixtureをローカル検証。
-実D1/workerd59件と40 HTTP往復成功。Vectorizeはfake。詳細と未承認remote案は
+実D1/workerd59件と40 HTTP往復成功。Vectorizeはfake。Issue #794で限定remote検証・削除が承認され、
+利用量付きrunnerとmetadata preflightを追加。remote固定fixture2 project/105 request成功、専用resource削除済み。
+実施結果は
 [ADR-010](../adr/ADR-010-cloudflare-staging-composition.md)。6D/6E remote gate・Step 7・既存残件を維持する。
 
 Plan 018 Step 6D（2026-09-26、Issue #790）: PR #789 merge後の最新mainから独立タスクで着手。

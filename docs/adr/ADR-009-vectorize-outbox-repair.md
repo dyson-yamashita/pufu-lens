@@ -28,7 +28,8 @@ ingestion fixture、Postgres driver、node_modules、外部importの混入を拒
 
 ## readの契約
 
-- `describe()`の1536/cosineを検証し、model identityと`projectId`/`model`のmetadata index設定を必須化する。
+- `describe()`の1536を検証し、model identityと`projectId`/`model`のmetadata index設定を必須化する。
+  Issue #794でV2 describeにはmetricがないと判明したため、cosineは管理APIで投入前に照合する。
   設定はdeployment側の証跡であり、bindingのdescribeでmetadata index実在やmodelを検証できるわけではない。
   remote開始前にlist-metadata-indexの結果と固定modelを照合する。
 - 全queryにproject namespaceとindexed `projectId`/`model` filterを必須指定する。
@@ -100,7 +101,7 @@ pnpm --filter @pufu-lens/workers-spike repair:local --state-dir /absolute/local-
 2026-09-26確認。採用時に再確認する。
 
 - [Vectorize API](https://developers.cloudflare.com/vectorize/reference/client-api/): upsert/deleteは非同期でmutation IDを返す。
-  query可能になるまで通常数秒かかる。describeはdimensions/metricを取得できる。
+  query可能になるまで通常数秒かかる。V2 describeはdimensionsを返し、metricは管理APIで確認する。
 - [Vectorize limits](https://developers.cloudflare.com/vectorize/platform/limits/): 1536次元/float32、ID/namespace 64 bytes、
   metadata 10 KiB、metadata index 10、Worker upsert batch 1000。metadata付きtopKは保守的に50までとする。
 - [metadata filtering](https://developers.cloudflare.com/vectorize/reference/metadata-filtering/): namespace→metadata→topKの順。
@@ -130,7 +131,10 @@ root testの既存DB条件付きskipを実行済みとは扱わない。最初�
 restore、Step 4削除gateを残す。PGroonga primary/pgroonga-shadow、Graph relational-only、AGE/PGroonga資産を維持する。
 Issue #779を前提条件にせず、親Issue #704はclosedのままとする。
 
-## remote確認案（未承認・未実行）
+## remote確認案（Step 6D時点の記録）
+
+以下はStep 6D時点の未承認案。後続のIssue #794でaccount指定と限定検証・削除が承認された。
+現行compositionの実施結果・残件は[ADR-010](ADR-010-cloudflare-staging-composition.md)を参照する。
 
 承認対象は専用の`pufu-6d-vectorize-check` index（cosine/1536）、同名の専用D1と認証付き検証Worker各1つ。
 対象Cloudflare accountはユーザー指定が必要。既存本番resourceやGCPを変更しない。

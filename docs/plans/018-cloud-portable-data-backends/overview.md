@@ -1052,7 +1052,10 @@ GCP baseline（CPU / memory / connection / disk / bloat / vacuum / latency / err
   keyword/semantic revision更新、bounded dispatcher/repair、固定fixture/runnerをローカル実装・検証した。
   実D1/workerdは59件成功、固定2 project/8 documentの40 HTTP往復成功。Vectorizeはfake契約試験のみ。
 - ローカル到達点とremote承認案は[ADR-010](../../adr/ADR-010-cloudflare-staging-composition.md)を参照。
-  remote deploy/実Vectorize/品質gateは未承認・未実施。Step 6全完了、Step 7開始gate達成とは扱わない。
+  Issue #794で専用remote作成・検証・削除の承認を受け、metadata preflightと利用量付きrunnerを追加。
+  remote固定fixtureは2 project/105 requestで成功し、専用resource削除済み。
+  実施結果は[検証記録](../../operations/cloudflare-synthetic-validation.md)を参照。全体のremote semantic gateは未達。
+  Step 6全完了、Step 7開始gate達成とは扱わない。
   既存Chat品質・本番shadow/restore・Step 4削除gate・資産保持と大規模負荷スキップは維持する。
 
 ### Step 6C 実施状況
@@ -1194,7 +1197,8 @@ Cloudflare metrics が固定されてから開始する。
     fetch-only embedding境界をローカル検証。詳細とremote承認対象は[ADR-009](../../adr/ADR-009-vectorize-outbox-repair.md)。
     6Eでcompositionとkeywordとのrevision統合をローカル実装。remote semantic gateと7 parityは未完了。
 - 6E: Cloudflare composition / staging fixture
-  - Issue #792でローカルcompositionと固定fixtureを検証。remoteは未承認・未実行（ADR-010）。
+  - Issue #792でローカルcompositionと固定fixtureを検証。Issue #794でremote preflightとrunnerを追加。
+    remote固定fixture成功・resource削除済み。全体のremote semantic gateは未達（ADR-010）。
 
 ## 14. Step 7: GCP / Cloudflare backend parity を評価する
 

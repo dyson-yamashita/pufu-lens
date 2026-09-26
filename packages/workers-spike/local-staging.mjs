@@ -24,7 +24,7 @@ export async function localStaging({ bindings = {}, migrate = true, nativeEntry 
   const calls = [];
   const state = {
     failure: null,
-    description: { dimensions: 1536, metric: 'cosine' },
+    description: { dimensions: 1536, vectorCount: 0 },
     override: null,
     afterQuery: null,
   };

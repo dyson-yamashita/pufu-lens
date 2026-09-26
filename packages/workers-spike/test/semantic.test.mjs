@@ -98,7 +98,7 @@ beforeEach(async () => {
   vectors = new Map();
   calls = [];
   failure = override = embeddingReply = afterUpsert = undefined;
-  description = { dimensions: 1536, metric: 'cosine' };
+  description = { dimensions: 1536, vectorCount: 0 };
   await db.batch(
     ['semantic_outbox', 'semantic_heads', 'semantic_versions'].map((t) =>
       db.prepare(`DELETE FROM ${t}`),
