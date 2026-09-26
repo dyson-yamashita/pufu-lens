@@ -195,6 +195,59 @@ test('reference supplementation preserves selected hybrid chunk provenance', asy
   assert.equal(result.mergedVectorSources[0]?.snippet, 'selected chunk evidence');
 });
 
+test('explicit reference summary reaches synthesis without replacing the selected chunk', async () => {
+  const reference = {
+    ...sampleSource,
+    documentId: 'ref',
+    docType: 'pull_request',
+    canonicalUri: 'https://github.com/demo/repo/pull/770',
+    snippet: 'word_similarity threshold 0.6 <untrusted>',
+  };
+  const chunk = {
+    ...reference,
+    chunkId: 'chunk-6',
+    chunkIndex: 6,
+    snippet: 'regression risks',
+    vectorDistance: 0.2,
+  };
+  const prepared = runPrivateChatPreparingStep({
+    graphName: null,
+    nowIso: TEST_NOW_ISO,
+    projectId: 'a',
+    question: 'PR #770の閾値は？',
+  });
+  const result = await runPrivateChatDetailStep({ ...prepared, mergedVectorSources: [chunk] }, {
+    async documentFetch() {
+      return [reference, { ...reference, documentId: 'not-selected', snippet: 'must not leak' }];
+    },
+  } as never);
+  const context = JSON.parse(result.retrievalContext);
+  assert.equal(context.sources[0].referenceSummary, reference.snippet);
+  assert.equal(context.sources[0].snippet, 'regression risks');
+  assert.equal(context.sources[0].chunkId, 'chunk-6');
+  assert.equal(context.sources[0].chunkIndex, 6);
+  assert.equal(context.trust, 'untrusted_external_content');
+  assert.ok(!result.retrievalContext.includes('<untrusted>'));
+  assert.ok(!result.retrievalContext.includes('must not leak'));
+  assert.ok(result.sources[0]);
+  assert.ok(!('referenceSummary' in result.sources[0]));
+  const bounded = JSON.parse(
+    formatPrivateChatRetrievalContext([chunk], 'weak', {
+      referencedSources: [{ ...reference, snippet: 'x'.repeat(1000) }],
+    }),
+  );
+  assert.equal(bounded.sources[0].referenceSummary.length, 700);
+  const ordinary = await runPrivateChatDetailStep(
+    { ...prepared, question: '検索の問題は？', mergedVectorSources: [chunk] },
+    {
+      async documentFetch() {
+        return [reference];
+      },
+    } as never,
+  );
+  assert.equal(JSON.parse(ordinary.retrievalContext).sources[0].referenceSummary, undefined);
+});
+
 function createGraphCoverageCandidate(overrides: Record<string, unknown> = {}) {
   return {
     ...sampleSource,

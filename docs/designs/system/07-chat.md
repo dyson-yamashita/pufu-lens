@@ -26,6 +26,7 @@ Chat API はユーザー発話から編集方針を deterministic に推定し�
 候補が一意なときだけ通常のhybrid検索に加え、再検索・最終source上限でも指定資料を優先する。本文中の番号言及や `7700` は一致としない。
 同番号が複数repositoryに存在する場合、複数番号、URL・repository付き指定はこの補助経路では解決せず、従来の検索を使う。
 取得するのは既存の上限付きdocument summaryであり、vector距離を捏造しない。選定済みの指定資料がある場合、vector根拠がなくてもretrieval confidenceは `weak` とし、根拠なしと扱わない。
+指定資料のsummaryは、回答生成用の `retrievalContext.sources[].referenceSummary` に最大700文字で併記する。hybridが選んだchunkのsnippet・ID・indexは保持し、summaryだけに含まれる事実も回答生成へ渡す。最終選定されなかった資料のsummaryは含めず、通常質問・公開response・履歴のsource形状は変更しない。summaryも他の根拠と同じ未信頼コンテンツとして扱う。
 この優先処理は通常のprovider順位・閾値、認可、公開responseのsource変換を変更しない。広い現状質問で古い資料が混入する問題全般を解決するものではない。
 
 #### 期間指定検索
