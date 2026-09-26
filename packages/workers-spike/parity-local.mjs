@@ -7,8 +7,10 @@ import { corpusHash } from '../../scripts/lib/keyword-eval.ts';
 import { collectPgroongaBaseline } from '../../scripts/lib/keyword-eval-pgroonga.ts';
 import { evaluateParity } from '../../scripts/lib/parity-eval.ts';
 import { parityFixture } from '../../scripts/lib/parity-fixture.ts';
+import { collectPostgresGraphParity } from '../../scripts/lib/parity-graph-postgres.ts';
 import { localKeywordSnapshot } from '../../scripts/lib/parity-runner.ts';
 import { buildWorker } from './build.mjs';
+import { collectD1GraphParity } from './parity-graph-local.mjs';
 
 /** Measures the fixed parity keyword inputs in disposable real D1/workerd with all egress denied.
  * Uses the existing D1 adapter harness, not the fixed Step 6 composition endpoint/Vectorize fake.
@@ -118,12 +120,14 @@ export async function runLocalParity(outputDirectory, databaseUrl) {
     codeCommit,
     `${runId}-gcp`,
     databaseUrl ? await collectPgroongaBaseline(databaseUrl) : null,
+    databaseUrl ? await collectPostgresGraphParity(databaseUrl) : null,
   );
   const candidate = localKeywordSnapshot(
     'cloudflare',
     codeCommit,
     `${runId}-cloudflare`,
     await collectD1ParityKeywords(),
+    await collectD1GraphParity(),
   );
   const report = {
     ...evaluateParity(candidate.snapshot, baseline.snapshot),
@@ -141,7 +145,7 @@ export async function runLocalParity(outputDirectory, databaseUrl) {
     );
   await writeFile(
     resolve(outputDirectory, 'summary.md'),
-    `# Local backend parity\n\nGCP: ${baseline.snapshot.rows.length}/52; Cloudflare: ${candidate.snapshot.rows.length}/52 measured rows.\n\nqualityGate: ${report.qualityGate}; Step 7: ${report.step7Gate}.\n\nKeyword scope is result-ID inspection only. Mutation, Chat rubric, real embedding and remote metrics are unmeasured. See report.json for missing cases and local timing.\n`,
+    `# Local backend parity\n\nGCP: ${baseline.snapshot.rows.length}/52; Cloudflare: ${candidate.snapshot.rows.length}/52 measured rows.\n\nqualityGate: ${report.qualityGate}; Step 7: ${report.step7Gate}.\n\nGraph includes persisted before/after state, retry and tenant-sentinel checks. Keyword mutation, Chat rubric, real embedding and remote metrics remain unmeasured. MENTIONS v1 expects direct 1-hop; adapters support Topic-mediated 2-hop, so inspect its mismatch in report.json.\n`,
   );
   return report;
 }

@@ -1300,6 +1300,11 @@ CI では hermetic contract / metric testsを毎回実行し、remote GCP / Clou
     baseline欠損・未実測・契約不一致は不合格。詳細は[評価契約](../../operations/backend-parity-evaluation.md)。
     Step 6全完了・Step 7実評価開始gate達成とは扱わず、7B以降のrunner / 実測 / SLO / cost判断を残す。
 - 7B: backend runners / remote evaluation workflow
+  - 2026-09-26、Issue #800で最新mainから独立タスクとしてGraph read/mutationのローカルmappingを追加。
+    実PostgreSQL relational / D1-workerdで17ケースを共通入力から収集し、keywordと合わせ各39/52行。
+    mutation 14件の期待集合・retry・他project不変性を確認。MENTIONS v1の直接1-hop期待と既存Topic経由
+    2-hop契約の不一致を実測として保持する。fixture/hash/閾値を変更せず、残り13件・実embedding・remote、
+    Step 6全完了 / Step 7開始gate・7C未実施を維持する。
   - 2026-09-26、Issue #798でローカル準備。実D1/workerdとloopback PGroongaのkeyword 22ケースを
     共通snapshot/reportへ接続。残り30ケース・mutation/rubric観測・実embeddingは欠損として保持する。
     remote実行手順と承認metadata/SLO境界を評価契約へ記載。7B全能力・7C実評価・Step 6/7 gateは未達。
