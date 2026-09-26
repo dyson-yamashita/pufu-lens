@@ -54,8 +54,9 @@ async function control(request: Request) {
     throw new Error('Invalid control');
   fixtureSnapshot(input.projectId, input.document, input.revision);
   if (
+    typeof input.operation !== 'string' ||
     !['health', 'seed', 'graph', 'dispatch', 'repair', 'inspect', 'query'].includes(
-      String(input.operation),
+      input.operation,
     )
   )
     throw new Error('Unknown operation');

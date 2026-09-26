@@ -56,6 +56,7 @@ test('unauthenticated/invalid controls touch no bindings and expose no details',
   ])
     assert.equal((await local.call('seed', input)).status, 400);
   assert.equal((await local.call('unknown')).status, 400);
+  assert.equal((await local.call(['seed'])).status, 400);
   for (const body of ['{', 'x'.repeat(1025)]) {
     const response = await local.runtime.dispatchFetch('http://local.test/evaluate', {
       method: 'POST',
