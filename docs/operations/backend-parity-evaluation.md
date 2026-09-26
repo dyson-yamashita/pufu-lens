@@ -1,5 +1,8 @@
 # Backend parityのローカル評価契約
 
+Issue #818で[共通fixtureの認証付きbinding入口と移行critical path](cloudflare-parity-binding.md)を追加。
+実workerd/D1＋明示fakeでretrieval接続を準備した。remote実測・全52ケースmappingは未完了。
+
 ## 到達点と開始条件
 
 Plan 018 Step 7A / Issue #796は、共通synthetic fixtureと採点ライブラリのローカル準備である。
