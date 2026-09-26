@@ -1,5 +1,9 @@
 # Plan Status
 
+Plan 018 Step 7B（2026-09-26、Issue #808）: 最新mainから独立タスクでChat retryとGraph最終sourceの
+ローカル接続を検証。自然3質問はretry未発火、独立controlled証拠でsimplified retryとGraph d02の
+最終source残存を両DBで確認。品質各39/52行・13件欠損、7C・Step 6/7開始gate未達を維持する。
+
 このファイルは `docs/plans/` 配下の plan ファイルの状態を管理するための索引である。
 エージェントは個別の plan を読む前にこのファイルを確認し、`completed` / `deprecated` の plan を通常作業の参照対象にしない。
 

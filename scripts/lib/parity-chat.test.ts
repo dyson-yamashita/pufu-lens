@@ -77,6 +77,27 @@ test('real selection and HTTP reflect candidate changes, not relevance expectati
     first.observations.every((row) => row.sourceRedactionPass && row.workflowHttpRequests === 2),
   );
   assert.equal(first.qualityGate, false);
+  assert.ok(first.observations.every((row) => !row.retry.executed && !row.retry.decision));
+  const retry = first.controlled.observations.find((row) => row.id === 'primary-empty-retry');
+  assert.ok(retry?.retry.executed);
+  assert.equal(retry.retry.decision, true);
+  assert.deepEqual(retry.retry.beforeDocumentIds, []);
+  assert.deepEqual(retry.retry.afterDocumentIds, ['d01']);
+  assert.equal(retry.hybridReads.filter((read) => read.phase === 'retry').length, 1);
+  for (const read of retry.hybridReads.filter((read) => read.phase !== 'primary'))
+    assert.deepEqual(read.returnedDocumentIds, read.adapterDocumentIds);
+  const changedRetry = changed.controlled.observations.find(
+    (row) => row.id === 'primary-empty-retry',
+  );
+  assert.deepEqual(changedRetry?.retry.afterDocumentIds, ['d05']);
+  const emptyRetry = empty.controlled.observations.find((row) => row.id === 'primary-empty-retry');
+  assert.equal(emptyRetry?.retry.executed, true);
+  assert.deepEqual(emptyRetry.retry.afterDocumentIds, []);
+  const absentSeed = changed.controlled.observations.find(
+    (row) => row.id === 'single-seed-graph-final',
+  );
+  assert.deepEqual(absentSeed?.hybridReads[0]?.returnedDocumentIds, []);
+  assert.deepEqual(absentSeed?.finalGraphDocumentIds, []);
 });
 
 test('membership and HTTP faults propagate through real use-case/client boundaries', async () => {

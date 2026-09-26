@@ -7,12 +7,16 @@ import {
   privateChatSourcesForResponse,
 } from '../../apps/web/src/chat.ts';
 import {
+  resolvePrivateChatRetryQueries,
   runPrivateChatDetailStep,
   runPrivateChatPreparingStep,
   runPrivateChatRelatingStep,
   runPrivateChatRetrievingStep,
+  runPrivateChatRetryingStep,
+  shouldRunPrivateChatRetryStep,
 } from '../../apps/web/src/private-chat-search.ts';
 import { verifyQualityWorkflowHttp } from './keyword-quality-http.ts';
+import { chatControlledScenarios } from './parity-chat-controls.ts';
 import { chatGraphConnectionFixture } from './parity-chat-graph.ts';
 import type { ParityRow } from './parity-eval.ts';
 import { parityFixture } from './parity-fixture.ts';
@@ -51,12 +55,67 @@ export async function collectSyntheticChat(
   database: Pick<ChatRepository, 'documentFetch' | 'graphCoverageQuery'>,
 ) {
   const inputs = parityChatInputs();
+  const natural = await collectChatCases(repositories, database, inputs);
+  const controlled = [];
+  for (const scenario of chatControlledScenarios) {
+    const result = await collectChatCases(
+      repositories,
+      database,
+      [scenario],
+      scenario.primaryDocumentAllowlist,
+    );
+    controlled.push(...result.observations);
+  }
+  return {
+    ...natural,
+    embedding: syntheticEmbedding,
+    inputHash: hashText(JSON.stringify(inputs)),
+    qualityGate: false as const,
+    connectionFixture: chatGraphConnectionFixture,
+    controlled: {
+      version: 'chat-controlled-connection-v1',
+      inputHash: hashText(JSON.stringify(chatControlledScenarios)),
+      observations: controlled,
+      qualityGate: false as const,
+    },
+    stubs: ['sha256-embedding', 'loopback-synthesis'],
+    unmeasured: [
+      'natural-planner',
+      'expanded-query-retry',
+      'HTTP-authz',
+      'answer-rubric',
+      'citations',
+      'mutation',
+    ],
+  };
+}
+
+function hashText(text: string) {
+  return createHash('sha256').update(text).digest('hex');
+}
+
+/** Runs the same steps for natural and controlled inputs. An optional allowlist only filters
+ * actual primary results after adapter/RRF execution; retry and coverage reads remain unmodified.
+ */
+async function collectChatCases(
+  repositories: CandidateRepositories,
+  database: Pick<ChatRepository, 'documentFetch' | 'graphCoverageQuery'>,
+  inputs: readonly { id: string; projectId: string; question: string }[],
+  primaryDocumentAllowlist?: readonly string[],
+) {
   const rows: ParityRow[] = [];
   const observations = [];
   for (const input of inputs.filter((test) => !test.id.startsWith('failure-'))) {
     const start = performance.now();
     const candidateIds: string[] = [];
     const calls: string[] = [];
+    let phase: 'primary' | 'retry' | 'coverage' = 'primary';
+    const hybridReads: {
+      phase: 'primary' | 'retry' | 'coverage';
+      queryHash: string;
+      adapterDocumentIds: string[];
+      returnedDocumentIds: string[];
+    }[] = [];
     const documentReads: { requested: string[]; returned: string[] }[] = [];
     const graphReads: {
       seeds: string[];
@@ -90,16 +149,29 @@ export async function collectSyntheticChat(
           )
             throw new Error('Invalid Chat candidate provenance');
         }
-        return fuseRankedChunkCandidates({ semanticCandidates, keywordCandidates, limit: 10 }).map(
-          (candidate): ChatSource => {
-            candidateIds.push(candidate.chunkId);
-            return {
-              ...candidate,
-              vectorDistance: candidate.cosineDistance,
-              vectorRank: candidate.semanticRank,
-            };
-          },
-        );
+        const fused = fuseRankedChunkCandidates({
+          semanticCandidates,
+          keywordCandidates,
+          limit: 10,
+        }).map((candidate): ChatSource => {
+          candidateIds.push(candidate.chunkId);
+          return {
+            ...candidate,
+            vectorDistance: candidate.cosineDistance,
+            vectorRank: candidate.semanticRank,
+          };
+        });
+        const returned =
+          phase === 'primary' && primaryDocumentAllowlist !== undefined
+            ? fused.filter((source) => primaryDocumentAllowlist.includes(source.documentId))
+            : fused;
+        hybridReads.push({
+          phase,
+          queryHash: hashText(query.query),
+          adapterDocumentIds: fused.map((source) => source.documentId),
+          returnedDocumentIds: returned.map((source) => source.documentId),
+        });
+        return returned;
       },
       async documentFetch(query) {
         calls.push('document-fetch');
@@ -149,7 +221,14 @@ export async function collectSyntheticChat(
       },
     };
     const retrieved = await runPrivateChatRetrievingStep(prepared, repository, embeddingProvider);
-    const related = await runPrivateChatRelatingStep(retrieved, repository, embeddingProvider);
+    const retryDecision = shouldRunPrivateChatRetryStep(retrieved);
+    const retryQueryHashes = resolvePrivateChatRetryQueries(retrieved).map(hashText);
+    phase = 'retry';
+    const retried = retryDecision
+      ? await runPrivateChatRetryingStep(retrieved, repository, embeddingProvider)
+      : retrieved;
+    phase = 'coverage';
+    const related = await runPrivateChatRelatingStep(retried, repository, embeddingProvider);
     const final = await runPrivateChatDetailStep(related, repository);
     const sources = privateChatSourcesForResponse(final.sources);
     await verifyQualityWorkflowHttp({
@@ -181,44 +260,62 @@ export async function collectSyntheticChat(
       id: input.id,
       latencyMs: [performance.now() - start],
       calls,
+      input: { projectId: input.projectId, questionHash: hashText(input.question) },
+      control:
+        primaryDocumentAllowlist === undefined
+          ? null
+          : {
+              boundary: 'primary-hybrid-result-after-real-adapters-and-rrf',
+              primaryDocumentAllowlist: [...primaryDocumentAllowlist],
+            },
+      hybridReads,
+      retry: {
+        decision: retryDecision,
+        executed: retried.didRetry,
+        queryHashes: retryQueryHashes,
+        beforeDocumentIds: retrieved.mergedVectorSources.map((s) => s.documentId),
+        afterDocumentIds: retried.mergedVectorSources.map((s) => s.documentId),
+      },
       documentReads,
       graphReads,
       graphStatus: related.graphStatus,
       graphDiagnostics: related.graphDiagnostics,
+      finalGraphDiagnostics: final.graphDiagnostics,
       graphAdoptedDocumentIds: related.graphSources.map((s) => s.documentId),
+      // Detail hydration can replace graph objects, so track graph-only lineage by ID.
+      finalGraphDocumentIds: related.graphSources
+        .filter(
+          (s) =>
+            !retried.mergedVectorSources.some((hybrid) => hybrid.documentId === s.documentId) &&
+            sources.some((finalSource) => finalSource.documentId === s.documentId),
+        )
+        .map((s) => s.documentId),
+      finalDocumentIds: sources.map((s) => s.documentId),
+      graphExcludedFromFinalDocumentIds: related.graphSources
+        .filter((s) => !sources.some((finalSource) => finalSource.documentId === s.documentId))
+        .map((s) => s.documentId),
       candidateProvenancePass: true,
       workflowHttpRequests: 2,
+      graphMetadataAtFinalSelection: final.sources.some((s) =>
+        ['relationType', 'seedDocumentId', 'hopCount'].some((key) => key in s),
+      ),
       sourceRedactionPass: sources.every((source) =>
-        [
-          'chunkId',
-          'chunkIndex',
-          'fusedScore',
-          'vectorDistance',
-          'vectorRank',
-          'keywordRank',
-          'semanticRank',
-        ].every((key) => !(key in source)),
+        Object.keys(source).every((key) =>
+          ['canonicalUri', 'documentId', 'docType', 'rawDocumentId', 'snippet', 'title'].includes(
+            key,
+          ),
+        ),
       ),
       plannerPass: null,
       citationPass: null,
+      scopePass: null,
+      mutationPass: null,
+      rubricPass: null,
       criticalErrorsMeasured: false,
     });
   }
   return {
     rows,
     observations,
-    embedding: syntheticEmbedding,
-    inputHash: createHash('sha256').update(JSON.stringify(inputs)).digest('hex'),
-    qualityGate: false as const,
-    connectionFixture: chatGraphConnectionFixture,
-    stubs: ['sha256-embedding', 'loopback-synthesis'],
-    unmeasured: [
-      'natural-planner',
-      'retry',
-      'HTTP-authz',
-      'answer-rubric',
-      'citations',
-      'mutation',
-    ],
   };
 }
