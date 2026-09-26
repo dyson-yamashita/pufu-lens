@@ -209,6 +209,41 @@ orphanケースはv1入力内のdocument全削除を検査し、任意の孤立A
 
 ### Chat / expected-failureの限定接続試験
 
+#### Issue #808: retry判定とGraph最終sourceの接続
+
+共通3質問を既存 `shouldRunPrivateChatRetryStep` / `resolvePrivateChatRetryQueries` で判定し、
+必要な場合だけ `runPrivateChatRetryingStep` を実行する。各observationの `retry` に判定・実行有無・
+検索語hash・前後IDを、`hybridReads` にprimary/retry/coverage別のRRF結果と返却IDを記録する。
+質問・本文・検索語そのものはreportへ保存しない。自然3質問では両backendとも判定false、retry呼出し0回。
+各質問のhybrid-search 3回はprimary 1回＋coverage 2回であり、retry実行と数えない。
+
+未発火の分岐は `parity-chat-controls.ts` の独立入力 `chat-controlled-connection-v1` を使い、
+`localEvidence.syntheticChat.{gcp,cloudflare}.controlled` にversion/inputHashと観測を別保存する。
+v1 snapshotへ行を追加しない。両シナリオは明示した同一合成質問を使い、初回の実adapter＋RRF結果だけを
+allowlistで除外する。DBの候補、関係、順位、score、retry/coverage結果を生成・補完しない。
+control境界・allowlist・入力hash・除外前後IDを残す。既存Graph接続fixtureは変更しない。
+
+| シナリオ                | 制御                               | 両backendのローカル実観測                                                                                                    |
+| ----------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| primary-empty-retry     | 初回RRF結果を空にする              | 既存simplified retryが1回発火、実candidate 10件取得、最終5資料。RELATED_TOとMENTIONSでd03取得、hybrid evidence不足で両方除外 |
+| single-seed-graph-final | 初回RRF結果に実在するd01だけを残す | retryなし。SAME_AS d02を採用、MENTIONS d03はevidence不足で除外。実文書取得後の最終sourceはd01/d02                            |
+
+自然3質問のfinal sourceは従来どおり各5資料で両側一致。design/ownerで採用されたd02は最終上限外、
+timeoutはGraph空。`graphExcludedFromFinalDocumentIds` に実際の欠落を記録する。
+既存diagnosticsの `sourceLimitExcluded` は全ての最終欠落を数える契約ではなく、このケースでも0を保つため、
+runnerで改変しない。coverage時点とdetail後のdiagnosticsを両方保存する。
+`finalGraphDocumentIds` はGraph採用IDからhybrid採用IDを除き、最終IDとの共通集合で追跡する。
+既存detail mergeがDB文書でGraph objectを置換するため、Graph属性の有無だけでは取得元を判定できない。
+controlled d02ではdetail後にGraph属性が既に無く、残る内部score/chunk属性をresponse整形で除去し、
+許可した6属性以外がないことと実workflow HTTP clientの2要求往復を確認した。
+Graph属性を保持したままresponse整形へ渡す別経路やGraph優先枠の置換分岐まで網羅したものではない。
+
+この検証は既存Node stepとDB/adapterの限定接続試験であり、自然LLM planner、expanded-query retry、
+実回答/引用、Next/HTTP認可、本番E2Eは未測定。hash embedding、fake Vectorize、固定synthesisを維持する。
+scope/mutation/rubricはnull、criticalErrorsMeasured=false。controlled側もqualityGate=false。
+品質snapshot各39/52行・13件欠損、MENTIONS v1不一致、qualityGate=false / step7Gate=not-evaluatedと
+7B全能力/7C・Step 6/7開始gate未達を維持する。専用PGと実D1/workerdの回帰試験で確認し、remote/APIは未使用。
+
 #### Issue #806: DB文書取得とGraph接続
 
 `fixture-document-fetch` stubを廃止し、PostgreSQLは既存 `createPostgresChatRepository` の

@@ -27,6 +27,24 @@ test('real workerd keyword/Graph runner preserves observations and missing capab
     assert.equal(report.localEvidence.syntheticChat.gcp, null);
     assert.equal(report.localEvidence.syntheticChat.cloudflare.snapshot.rows.length, 3);
     assert.equal(report.localEvidence.syntheticChat.cloudflare.qualityGate, false);
+    const chat = report.localEvidence.syntheticChat.cloudflare;
+    assert.ok(chat.observations.every((row) => !row.retry.decision && !row.retry.executed));
+    assert.ok(chat.observations.every((row) => row.finalGraphDocumentIds.length === 0));
+    assert.deepEqual(chat.observations[0].graphExcludedFromFinalDocumentIds, ['d02']);
+    const retry = chat.controlled.observations.find((row) => row.id === 'primary-empty-retry');
+    assert.equal(retry.retry.executed, true);
+    assert.equal(retry.hybridReads.filter((read) => read.phase === 'retry').length, 1);
+    assert.ok(retry.retry.afterDocumentIds.length > 0);
+    assert.ok(retry.graphReads[0].relations.some((tuple) => tuple[1] === 'RELATED_TO'));
+    const graph = chat.controlled.observations.find((row) => row.id === 'single-seed-graph-final');
+    assert.deepEqual(graph.graphReads[0].seeds, ['d01']);
+    assert.deepEqual(graph.graphAdoptedDocumentIds, ['d02']);
+    assert.deepEqual(graph.finalGraphDocumentIds, ['d02']);
+    assert.deepEqual(graph.finalDocumentIds, ['d01', 'd02']);
+    assert.equal(graph.graphMetadataAtFinalSelection, false);
+    assert.equal(graph.sourceRedactionPass, true);
+    assert.equal(graph.workflowHttpRequests, 2);
+    assert.equal(chat.controlled.qualityGate, false);
     assert.equal(
       report.localEvidence.syntheticChat.cloudflare.staleRead.actualError,
       'unavailable',

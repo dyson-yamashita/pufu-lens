@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { collectSyntheticChat } from './parity-chat.ts';
 import { parityRetrievalDocuments } from './parity-retrieval.ts';
 import { withPostgresParityCandidates } from './parity-retrieval-postgres.ts';
 
@@ -37,4 +38,25 @@ test('disposable PostgreSQL Chat hydrates first stored chunk and scopes document
     });
     assert.deepEqual(foreign.candidates, []);
   });
+});
+
+test('PostgreSQL real candidates drive controlled retry and Graph final selection', {
+  skip: !url,
+}, async () => {
+  assert.ok(url);
+  const result = await withPostgresParityCandidates(url, collectSyntheticChat);
+  assert.ok(result.observations.every((row) => !row.retry.decision && !row.retry.executed));
+  const retry = result.controlled.observations.find((row) => row.id === 'primary-empty-retry');
+  assert.equal(retry?.retry.executed, true);
+  assert.equal(retry.hybridReads.filter((read) => read.phase === 'retry').length, 1);
+  assert.ok(retry.retry.afterDocumentIds.length > 0);
+  assert.ok(retry.graphReads[0]?.relations.some((tuple) => tuple[1] === 'RELATED_TO'));
+  const graph = result.controlled.observations.find((row) => row.id === 'single-seed-graph-final');
+  assert.deepEqual(graph?.graphReads[0]?.seeds, ['d01']);
+  assert.deepEqual(graph?.graphAdoptedDocumentIds, ['d02']);
+  assert.deepEqual(graph?.finalGraphDocumentIds, ['d02']);
+  assert.deepEqual(graph?.finalDocumentIds, ['d01', 'd02']);
+  assert.equal(graph?.graphMetadataAtFinalSelection, false);
+  assert.equal(graph?.sourceRedactionPass, true);
+  assert.equal(graph?.workflowHttpRequests, 2);
 });

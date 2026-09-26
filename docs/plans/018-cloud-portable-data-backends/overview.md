@@ -1300,6 +1300,10 @@ CI では hermetic contract / metric testsを毎回実行し、remote GCP / Clou
     baseline欠損・未実測・契約不一致は不合格。詳細は[評価契約](../../operations/backend-parity-evaluation.md)。
     Step 6全完了・Step 7実評価開始gate達成とは扱わず、7B以降のrunner / 実測 / SLO / cost判断を残す。
 - 7B: backend runners / remote evaluation workflow
+  - 2026-09-26、Issue #808でPR #807 merge後の最新mainから独立タスクで着手。
+    既存retry判定/stepとGraphの最終source/redactionを両DBへローカル接続した。自然3質問はretry未発火。
+    独立controlled証拠でsimplified retry 1回・実候補10件とGraph d02の最終source残存を確認。
+    実API/remote/本番変更なし。v1/hash/閾値、品質各39/52行・13件欠損とStep 6/7開始gate未達を維持する。
   - 2026-09-26、Issue #806でChatのfixture文書lookupを実PostgreSQL repository / 実D1 SQLへ置換。
     独立Graph接続fixtureを既存adapter/relating/coverageへ通し、3質問の取得・採用・除外を別証拠へ保存。
     v1/hash/閾値は不変。品質各39/52行、13件欠損、qualityGate=falseと7B全能力/7C・Step 6/7開始gate未達を維持。
