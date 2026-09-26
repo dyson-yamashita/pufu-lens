@@ -8,7 +8,7 @@ test('D1 Chat records real selection and stale adapter failure without claiming 
   assert.equal(result.qualityGate, false);
   assert.ok(
     result.rows.every(
-      (row) => row.tools.includes('hybrid-search') && !row.tools.includes('graph-query'),
+      (row) => row.tools.includes('hybrid-search') && row.tools.includes('graph-query'),
     ),
   );
   assert.ok(result.rows.every((row) => row.scopePass === null && row.rubricPass === null));
@@ -16,4 +16,9 @@ test('D1 Chat records real selection and stale adapter failure without claiming 
   assert.equal(result.staleRead.returnedCandidates, null);
   assert.equal(result.staleRead.controlBeforeCount, 10);
   assert.equal(result.staleRead.controlAfterCount, 10);
+  assert.ok(!result.stubs.includes('fixture-document-fetch'));
+  assert.ok(
+    result.observations.every((o) => o.documentReads.length > 0 && o.graphReads.length === 1),
+  );
+  assert.ok(result.observations.some((o) => o.graphReads.some((r) => r.returned.length > 0)));
 });

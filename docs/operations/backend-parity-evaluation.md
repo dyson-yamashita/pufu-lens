@@ -6,6 +6,7 @@ Plan 018 Step 7A / Issue #796は、共通synthetic fixtureと採点ライブラ�
 Step 6全完了、Step 7の実評価開始gate達成、GCP / Cloudflareの品質同等性を意味しない。
 7B / Issue #798でkeyword、Issue #800でGraph、Issue #802でsemantic/hybrid、Issue #804でChat/failureの限定ローカル証拠を追加した。
 remote実行、実embedding生成、cloud resource作成、本番変更は含まない。
+Issue #806でChat文書取得を実DBへ置換し、独立Graph接続fixtureを既存relating/coverageへ接続した。
 
 Step 7B以降で、同一fixture・論理schema・ID mapping・embeddingを両backendへ投入する手順と、
 Cloudflareのmetrics収集、absolute SLOを固定する。実GCP baseline、実embedding、CPU・請求・restore、
@@ -207,6 +208,45 @@ comparisonComplete=false / contractPass=false / qualityGate=false、step7Gate=no
 orphanケースはv1入力内のdocument全削除を検査し、任意の孤立Actor/Topic回収まで成功とは扱わない。
 
 ### Chat / expected-failureの限定接続試験
+
+#### Issue #806: DB文書取得とGraph接続
+
+`fixture-document-fetch` stubを廃止し、PostgreSQLは既存 `createPostgresChatRepository` の
+`documentFetch` / `graphCoverageQuery`、D1は同じdisposable DBの `keyword_documents` /
+`keyword_chunks` を実workerdで読むローカル専用readerへ接続する。D1には本番Chat文書repositoryが
+ないため、このreaderを本番adapter完成とは扱わない。SQL結果は既存 `parseChatSourceRow` で検証する。
+最初のchunkを700文字まで取得し、本文はreportへ保存しない。PostgreSQLの最小tableには既存readerが
+必要とするmetadata/occurred_at/updated_atのみ追加し、本番schema/migrationは変更しない。
+
+v1 Chat入力にはGraph関係がないため、`parity-chat-graph.ts` の独立fixture
+`chat-graph-connection-v1` を `syntheticChat.connectionFixture` に保存する。
+alphaのd01/d02/d03とTopic 1個、SAME_AS 1辺・RELATED_TO 1辺・TopicへのMENTIONS 2辺を
+既存mutation adapterで投入する。本文/質問/意味的関係を再現するfixtureではなく、judgmentやoracleから
+生成しない接続入力である。元のGraph v1/hash/閾値・MENTIONSの1-hop不一致は変更しない。
+既存PostgreSQL relational / D1 Graph readとDB hydrationから、既存Nodeの
+`runPrivateChatRelatingStep` / coverage evidence re-check / detail / redaction / loopback HTTPへ通す。
+D1のGraph候補と文書取得を結ぶ薄いbridgeもローカル専用で、relation pool上限は既存定数を再利用する。
+
+各3質問について `observations.documentReads` に要求/返却ID、`graphReads` にseed/返却IDと
+relation/hop、`graphDiagnostics` と `graphAdoptedDocumentIds` にcoverageの実採否を保存する。
+`calls` はworkflowが実際に呼ぶrepository能力を記録する。Graph内部のhydrationはGraph候補返却に含まれ、
+独立したdocument-fetch tool呼出しには数えない。snapshotのgraph空配列はv1品質未測定のschema値のままとし、
+独立fixtureの関係をv1 Graph測定へ転記しない。candidate IDsにはcoverage再検索で観測した候補も含まれる。
+
+両backendでChat 3質問を収集した。各質問でhybrid-search 3回、graph-query 1回、detailのdocument-fetch 1回、
+workflow HTTP 2往復を観測。design/ownerはSAME_ASのd02と2-hop MENTIONSのd03を取得し、
+coverageはd02を採用、d03はhybrid evidence不足で除外した。timeoutのGraph候補は空のまま。
+RELATED_TOはこの3質問のseedでは返却されず、coverage採用の証拠はない。
+最終5資料は両側一致し、Graphのd02は最終上限内には入らなかった。detail返却順はDB間で異なるが、
+既存selection後の順序は一致した。source内部属性除去も確認した。
+
+PostgreSQLの実文書取得・project隔離・missing ID・Topic 2-hopと、D1の本文更新/削除反映・first chunk・
+project隔離・missing/空IDを回帰試験で確認する。これらはHTTP認可全体の証拠ではない。
+hash embedding / fake Vectorize / 固定synthesisは維持し、自然planner、実LLM回答/引用、retry全経路、
+HTTP認可は未測定。scope/mutation/rubricはnull、criticalErrorsMeasured=falseを維持。
+通常品質各39/52行・13件欠損、qualityGate=false、step7Gate=not-evaluated、7B全能力/7CとStep 6/7開始gateは未達。
+
+#### Issue #804時点の限定観測（文書stub/Graph未接続は#806で更新）
 
 2026-09-26、Issue #804で共通fixtureのChat 3質問とfailure 4入力をmappingした。
 `parityChatInputs`は入力ID/project/質問だけを読み、judgment/required/expectedFailureはrunnerへ渡さない。

@@ -1,11 +1,16 @@
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { createPostgresRelationalGraphMutationRepository } from '@pufu-lens/graph/postgres-relational-mutation';
+import { createPostgresRelationalGraphReadRepository } from '@pufu-lens/graph/postgres-relational-read';
 import type { CandidateRepositories } from '@pufu-lens/retrieval';
 import postgres from 'postgres';
+import { type ChatRepository, createPostgresChatRepository } from '../../apps/web/src/chat.ts';
 import {
   createPostgresKeywordCandidateRepository,
   createPostgresSemanticCandidateRepository,
 } from '../../apps/web/src/postgres-chat-candidate-adapters.ts';
 import { validateKeywordEvalUrl } from './keyword-eval-local.ts';
+import { seedChatConnectionGraph } from './parity-chat-graph.ts';
 import { collectSyntheticRetrieval, parityRetrievalDocuments } from './parity-retrieval.ts';
 
 /** Runs the existing pgvector/PGroonga adapters in a newly created loopback-only DB.
@@ -19,7 +24,10 @@ export async function collectPostgresSyntheticRetrieval(databaseUrl: string) {
 /** Runs a bounded local collector against the shared disposable fixture; always drops its own DB. */
 export async function withPostgresParityCandidates<T>(
   databaseUrl: string,
-  collect: (repositories: CandidateRepositories) => Promise<T>,
+  collect: (
+    repositories: CandidateRepositories,
+    database: Pick<ChatRepository, 'documentFetch' | 'graphCoverageQuery'>,
+  ) => Promise<T>,
 ): Promise<T> {
   validateKeywordEvalUrl(databaseUrl);
   const admin = postgres(databaseUrl, { max: 1, connect_timeout: 10, onnotice: () => {} });
@@ -40,13 +48,14 @@ export async function withPostgresParityCandidates<T>(
     await sql`CREATE EXTENSION vector`;
     await sql`CREATE EXTENSION pgroonga`;
     await sql`CREATE TABLE public.documents (id text PRIMARY KEY, project_id text NOT NULL,
-      raw_document_id text NOT NULL, doc_type text NOT NULL, title text, canonical_uri text, summary text)`;
+      raw_document_id text NOT NULL, doc_type text NOT NULL, title text, canonical_uri text, summary text,
+      metadata jsonb DEFAULT '{}', occurred_at timestamptz, updated_at timestamptz DEFAULT now())`;
     await sql`CREATE TABLE public.document_chunks (id text PRIMARY KEY, document_id text REFERENCES documents(id),
       project_id text NOT NULL, chunk_index integer NOT NULL, content text, embedding_model text, embedding vector(1536))`;
     for (const document of parityRetrievalDocuments()) {
       const candidate = document.chunks[0]?.candidate;
       if (!candidate) throw new Error('Empty parity document');
-      await sql`INSERT INTO public.documents VALUES (${document.documentId}, ${document.projectId},
+      await sql`INSERT INTO public.documents (id, project_id, raw_document_id, doc_type, title, canonical_uri, summary) VALUES (${document.documentId}, ${document.projectId},
         ${candidate.rawDocumentId}, ${candidate.docType}, ${candidate.title}, ${candidate.canonicalUri}, NULL)`;
       for (const chunk of document.chunks) {
         await sql`INSERT INTO public.document_chunks VALUES (${chunk.candidate.chunkId}, ${document.documentId},
@@ -57,10 +66,39 @@ export async function withPostgresParityCandidates<T>(
     await sql`CREATE INDEX ON public.document_chunks USING pgroonga(content)`;
     await sql`ANALYZE public.document_chunks`;
     await sql`SET enable_seqscan = off`;
-    return await collect({
+    const graphProject = '80000000-0000-0000-0000-000000000001';
+    await sql`CREATE TABLE public.projects (id uuid PRIMARY KEY)`;
+    await sql`INSERT INTO public.projects VALUES (${graphProject})`;
+    await sql.unsafe(
+      await readFile(
+        new URL('../../infra/db/migrations/0026_relational_graph_schema.sql', import.meta.url),
+        'utf8',
+      ),
+    );
+    const mutation = createPostgresRelationalGraphMutationRepository(sql);
+    await seedChatConnectionGraph({
+      upsertNode: (input) => mutation.upsertNode({ ...input, projectId: graphProject }),
+      upsertEdge: (input) => mutation.upsertEdge({ ...input, projectId: graphProject }),
+    });
+    const read = createPostgresRelationalGraphReadRepository(sql, { strictUnavailable: true });
+    const graphReadRepository = {
+      ...read,
+      findRelatedDocuments: (input: Parameters<typeof read.findRelatedDocuments>[0]) =>
+        read.findRelatedDocuments({
+          ...input,
+          projectId:
+            input.projectId === 'alpha' ? graphProject : '80000000-0000-0000-0000-000000000002',
+        }),
+    };
+    const candidates = {
       semanticCandidateRepository: createPostgresSemanticCandidateRepository(sql),
       keywordCandidateRepository: createPostgresKeywordCandidateRepository(sql),
+    };
+    const chat = createPostgresChatRepository(sql, {
+      candidateRepositories: candidates,
+      graphReadRepository,
     });
+    return await collect(candidates, chat);
   } finally {
     try {
       if (sql) await sql.end();

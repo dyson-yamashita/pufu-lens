@@ -6,8 +6,8 @@ import { withD1ParityCandidates } from './parity-retrieval-local.mjs';
  * The adapter's observed unavailable error is retained, never relabeled from the expected outcome.
  */
 export async function collectD1SyntheticChat() {
-  return withD1ParityCandidates(async (repositories, faults) => {
-    const result = await collectSyntheticChat(repositories);
+  return withD1ParityCandidates(async (repositories, faults, database) => {
+    const result = await collectSyntheticChat(repositories, database);
     const input = parityChatInputs().find((input) => input.id === 'failure-stale_read');
     if (!input) throw new Error('Missing stale fixture input');
     const query = {

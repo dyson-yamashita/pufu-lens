@@ -1,8 +1,29 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { collectSyntheticChat, localChatRepository, parityChatInputs } from './parity-chat.ts';
+import {
+  collectSyntheticChat as collectChat,
+  localChatRepository,
+  parityChatInputs,
+} from './parity-chat.ts';
 import { collectLocalChatFailures, normalizeLocalChatError } from './parity-chat-failures.ts';
 import { parityRetrievalDocuments } from './parity-retrieval.ts';
+
+const testDatabase = {
+  async documentFetch(input: { projectId: string; documentIds: readonly string[] }) {
+    return parityRetrievalDocuments()
+      .filter((d) => d.projectId === input.projectId && input.documentIds.includes(d.documentId))
+      .flatMap((d) => (d.chunks[0] ? [d.chunks[0].candidate] : []));
+  },
+  async graphCoverageQuery() {
+    return {
+      candidates: [],
+      queryFailed: false,
+      relationCandidateCounts: { SAME_AS: 0, RELATED_TO: 0, MENTIONS: 0 },
+    };
+  },
+};
+const collectSyntheticChat = (repositories: Parameters<typeof collectChat>[0]) =>
+  collectChat(repositories, testDatabase);
 
 test('Chat mapping excludes oracle fields and unsupported capabilities fail closed', () => {
   assert.equal(parityChatInputs().length, 7);
@@ -49,7 +70,7 @@ test('real selection and HTTP reflect candidate changes, not relevance expectati
         row.scopePass === null &&
         row.rubricPass === null &&
         row.citationDocumentIds.length === 0 &&
-        !row.tools.includes('graph-query'),
+        row.tools.includes('graph-query'),
     ),
   );
   assert.ok(
