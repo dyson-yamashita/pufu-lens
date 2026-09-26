@@ -39,4 +39,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   console.log(`Workers Core bundle: ${Buffer.byteLength(script)} bytes`);
   const d1 = await buildWorker('d1-worker');
   console.log(`Workers D1 bundle: ${Buffer.byteLength(d1.script)} bytes`);
+  const keyword = await buildWorker('keyword-worker');
+  console.log(`Workers keyword bundle: ${Buffer.byteLength(keyword.script)} bytes`);
 }

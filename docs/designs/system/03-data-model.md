@@ -11,6 +11,13 @@ PostgreSQL 18の共有関数でNFKC / Unicode lowercase / trimを行い、INSERT
 削除はchunk自体の削除・既存cascadeで整合し、履歴tableは対象外。PGroonga indexとruntime primaryは維持する。
 [backfill運用](../../operations/keyword-backfill.md)に再開・品質残件・本番未適用の境界を記載する。
 
+Step 6CのローカルD1索引は`packages/workers-spike/d1/0002_keyword.sql`で独立管理する。
+検索metadata projectionの`keyword_documents`、原文/正規化本文の`keyword_chunks`、code point postingの
+`keyword_characters`をproject複合PK/FK/cascadeで結ぶ。全chunk snapshotを4 statementの単一batchで
+置換し、削除はcascadeする。本文8 KB/snapshot 100 KB、prefilter 1000 chunkのspike制約、
+未実装のingestion/version arbitrationとremote gateは[ADR-008](../../adr/ADR-008-d1-keyword-adapter.md)に記録する。
+GCP schema・既存keyword primaryは変更しない。
+
 ### 1. マルチプロジェクト方針
 
 - `projects` テーブルで論理プロジェクトを定義する。`slug` から storage prefix と AGE graph name を生成する。

@@ -1,4 +1,8 @@
+import { keywordNgrams } from '@pufu-lens/retrieval';
 import type { TransactionSql } from 'postgres';
+
+export { keywordNgrams, normalizeKeyword } from '@pufu-lens/retrieval';
+
 import { keywordCorpus } from './keyword-eval-corpus.ts';
 
 export const portableProviders = [
@@ -15,23 +19,6 @@ export const portableProviders = [
   'bigram-word',
 ] as const;
 export type PortableProvider = (typeof portableProviders)[number];
-
-/** Evaluation-only symmetric NFKC/case normalization; original corpus and baseline stay unchanged. */
-export function normalizeKeyword(value: string): string {
-  return value.normalize('NFKC').toLowerCase().trim();
-}
-
-/** Produces distinct, unpadded code-point n-grams, retaining punctuation and short terms. */
-export function keywordNgrams(value: string, width: number): string[] {
-  const points = [...value];
-  if (!points.length) return [];
-  if (points.length < width) return [value];
-  return [
-    ...new Set(
-      points.slice(0, points.length - width + 1).map((_, i) => points.slice(i, i + width).join('')),
-    ),
-  ];
-}
 
 /** Escapes LIKE metacharacters so bound queries have literal substring semantics. */
 export function keywordLike(value: string): string {

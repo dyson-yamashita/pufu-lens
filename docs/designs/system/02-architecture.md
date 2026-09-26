@@ -96,6 +96,10 @@ D1 Graph adapterはStep 6Bで同workspace内に追加し、実D1 bindingでproje
 Cloudflare binding型はadapterと試験composition内に閉じる。認証・Vectorize・embedding移植は未完了であり、この入口はdeployしない。
 依存境界と後続条件は[ADR-006](../../adr/ADR-006-workers-core-package-spike.md)を参照する。
 D1のschema、batch原子性、quotaとremote未検証範囲は[ADR-007](../../adr/ADR-007-d1-graph-adapter.md)に記録する。
+Step 6CのD1 keyword adapterは同workspaceに閉じ、文字postingによる候補取得と共有term/typo規則・
+単語bigram Jaccardで判定する。query正規化と純粋な検索語解析はretrieval packageが所有する。
+既存GCP入口は共有termを従来のLIKE/POSIX表現に変換し、SQL/compositionは維持する。scope、原子的索引置換、
+候補予算超過時のunavailableと固定fixture評価は[ADR-008](../../adr/ADR-008-d1-keyword-adapter.md)を参照する。
 
 Plan 018 Step 1B では `@pufu-lens/graph` が provider-neutral な `GraphReadRepository`、related document / normalized
 node・edge DTO、preset / relation allowlist、runtime guard を所有する。Chat graph coverage、Graph Viewer preset、Synthetic

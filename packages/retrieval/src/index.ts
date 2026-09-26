@@ -1,6 +1,13 @@
 /** Reciprocal-rank offset shared by all Pufu Lens retrieval providers. */
 export const RECIPROCAL_RANK_FUSION_K = 60;
 
+export { keywordNgrams, normalizeKeyword } from './keyword-text.js';
+export {
+  type PortableKeywordTerm,
+  portableKeywordTerms,
+  portableKeywordTypoPattern,
+} from './portable-keyword-query.js';
+
 /** Provider-neutral display and provenance fields for one ranked document candidate. */
 export interface RankedChunkCandidate {
   readonly canonicalUri: string;
