@@ -1300,6 +1300,10 @@ CI では hermetic contract / metric testsを毎回実行し、remote GCP / Clou
     baseline欠損・未実測・契約不一致は不合格。詳細は[評価契約](../../operations/backend-parity-evaluation.md)。
     Step 6全完了・Step 7実評価開始gate達成とは扱わず、7B以降のrunner / 実測 / SLO / cost判断を残す。
 - 7B: backend runners / remote evaluation workflow
+  - 2026-09-26、Issue #804でChat 3入力を実candidate/既存selection/response整形/loopback HTTPへ接続。
+    各3行をsyntheticChatへ別保存し、自然planner/Graph/実回答/引用/HTTP認可は未測定とする。
+    共通use-case/clientの拒否/timeout/429とD1 stale faultを観測。staleはunavailableへ集約されv1不一致。
+    通常品質は各39/52行、13件欠損、qualityGate=false。7B全能力/7C、Step 6/7開始gateは未達を維持。
   - 2026-09-26、Issue #802でPR #801 merge後の最新mainからsemantic/hybridのローカル準備に着手。
     共通全37chunk/36documentを実pgvector/PGroongaと実D1/workerd＋fake Vectorizeへ投入し、各6行を
     Core RRF/既存selectionへ接続。SHA-256の独立synthetic vectorを用い、別local evidenceへ保存する。

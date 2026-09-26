@@ -4,7 +4,7 @@
 
 Plan 018 Step 7A / Issue #796は、共通synthetic fixtureと採点ライブラリのローカル準備である。
 Step 6全完了、Step 7の実評価開始gate達成、GCP / Cloudflareの品質同等性を意味しない。
-7B / Issue #798でkeyword、Issue #800でGraph、Issue #802でsemantic/hybridのsyntheticローカルrunnerを追加した。
+7B / Issue #798でkeyword、Issue #800でGraph、Issue #802でsemantic/hybrid、Issue #804でChat/failureの限定ローカル証拠を追加した。
 remote実行、実embedding生成、cloud resource作成、本番変更は含まない。
 
 Step 7B以降で、同一fixture・論理schema・ID mapping・embeddingを両backendへ投入する手順と、
@@ -144,14 +144,14 @@ beta専用seedのalpha検索が空であることを検査する。mutationを2�
 両adapterは空集合を返し不合格となる。hopを1に書き換えたりoracleで補完しない。
 fixture/hash/閾値・本番adapter契約は変更せず、将来のversioned fixture見直しの判断事項として残す。
 
-| 能力                    | 7Bローカル到達点                                          | 残件                                                 |
-| ----------------------- | --------------------------------------------------------- | ---------------------------------------------------- |
-| keyword                 | 両backend全22 queryを入力し順位・拒否・scopeを実測        | GCP remote baseline、remote性能                      |
-| scope                   | 返却chunk IDのproject所属とD1のdocument provenanceを確認  | HTTP認可・cross-project write全経路                  |
-| mutation / Graph        | read 3・mutation 14件を実測、全保存集合とretry/隔離を照合 | MENTIONS v1契約不一致、remoteと全経路検証            |
-| semantic / hybrid       | 別evidenceへsynthetic各3行、実adapter/RRF/selection接続   | 共通実embedding・実Vectorize・remote品質             |
-| Chat / expected failure | snapshot行を生成せず欠損                                  | 実Chat tool/source/citation/rubric・fault injection  |
-| latency                 | keyword queryとGraphケース全操作のローカルmsを記録        | 同一remote workload、warmup/repetition統一、CPU/請求 |
+| 能力                    | 7Bローカル到達点                                          | 残件                                                        |
+| ----------------------- | --------------------------------------------------------- | ----------------------------------------------------------- |
+| keyword                 | 両backend全22 queryを入力し順位・拒否・scopeを実測        | GCP remote baseline、remote性能                             |
+| scope                   | 返却chunk IDのproject所属とD1のdocument provenanceを確認  | HTTP認可・cross-project write全経路                         |
+| mutation / Graph        | read 3・mutation 14件を実測、全保存集合とretry/隔離を照合 | MENTIONS v1契約不一致、remoteと全経路検証                   |
+| semantic / hybrid       | 別evidenceへsynthetic各3行、実adapter/RRF/selection接続   | 共通実embedding・実Vectorize・remote品質                    |
+| Chat / expected failure | 別evidenceにChat 3行・限定4障害観測を保存                 | 全workflow・自然planner・実回答/引用・HTTP認可・stale正規化 |
+| latency                 | keyword queryとGraphケース全操作のローカルmsを記録        | 同一remote workload、warmup/repetition統一、CPU/請求        |
 
 `localEvidence` にcodeDirty（未コミット変更の有無）、能力欠損case ID・理由、未測定観測、latency、remoteMetrics=nullを付ける。
 keywordのmutationPass/rubricPassはnull。scopePassは返却ID集合の所属確認であり、認可全体の成功を意味しない。
@@ -205,6 +205,38 @@ Graph 17行は両側一致、mutation 14件は期待集合・retry・scope成功
 MENTIONSの欠損1 edgeを両側の実測不一致として保持する。semantic/hybrid/Chat/failureの13件は欠損。
 comparisonComplete=false / contractPass=false / qualityGate=false、step7Gate=not-evaluatedを維持する。
 orphanケースはv1入力内のdocument全削除を検査し、任意の孤立Actor/Topic回収まで成功とは扱わない。
+
+### Chat / expected-failureの限定接続試験
+
+2026-09-26、Issue #804で共通fixtureのChat 3質問とfailure 4入力をmappingした。
+`parityChatInputs`は入力ID/project/質問だけを読み、judgment/required/expectedFailureはrunnerへ渡さない。
+両backendの実candidate adapterとCore RRFから、既存のpreparing/retrieving/detail step、
+`privateChatSourcesForResponse`、既存loopback stubとworkflow HTTPクライアントへ接続する。
+本文/質問のhash vector、fixtureをproject/document IDで絞るdetail lookup、固定文のsynthesisだけをstubにする。
+Graph、retry、自然planner、実LLM回答/引用は実行せず、tool一覧には実呼出しだけを記録する。
+detail stepが生成するtool summaryと、実際のdocumentFetch呼出しは異なり得るため後者を観測する。
+
+`localEvidence.syntheticChat.{gcp,cloudflare}.snapshot`に各3行を保存する。
+今回の両側candidate順/final sourceは一致、各5資料、hybrid-search/document-fetchを実呼出しした。
+HTTP往復は各2回、内部source属性の除去を確認した。資料取得はfixture内lookupでありDB detail adapterではない。
+scope/mutation/rubric、planner/citation観測はnull。citation IDsの空配列とcriticalErrors=0は
+synthetic snapshot契約上の値であり、引用/事実誤り未測定（criticalErrorsMeasured=false）を明記する。
+通常品質snapshotは各39/52行、13ケース欠損のまま。qualityGate=false、step7Gate=not-evaluatedを維持する。
+
+障害は期待値を返すrunnerを作らず、実経路にfaultを入れた。共通のNode境界はprovider実測へ複製せず
+`localEvidence.sharedChatFailures`へ一度だけ保存する。
+
+| 入力                  | 注入境界                                                  | 実観測                                                          | 未測定・残差                                      |
+| --------------------- | --------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------- |
+| project_access_denied | legacy runPrivateChatのmembership lookupをundefinedにする | ProjectAccessDeniedErrorを正規化、lookup 1回・embedding/LLM 0回 | 実認可SQL/Next HTTP認可/現行workflow入口          |
+| timeout               | loopback stream応答を遅延し受信後deadlineでabort          | 実workflow clientのTimeoutError、2 HTTP要求                     | remote provider timeout                           |
+| overloaded            | loopback streamが429を返す                                | 実workflow clientのstatus=429を正規化、2 HTTP要求               | 実provider quota/adapter overload                 |
+| stale_read            | fake Vectorizeの返却revisionだけを+1                      | 実D1/workerd adapterが503 unavailable、前後controlは各10候補    | v1 expected stale_readと不一致、GCP stale検証なし |
+
+staleは`syntheticChat.cloudflare.staleRead`へ保存する。adapterはstaleを検出後unavailableへ集約し、
+local harnessもそれを保存する。期待値からstale_readへ改名せず、本番error契約も変更しない。
+専用Docker DBとD1/workerdで収集し、一時DB残存0を確認。remote/API/本番アクセスなし。
+7B全能力、7C実評価、Step 6/7開始gateは未達。既存MENTIONS残差と品質・restore・削除gateを保持する。
 
 ## Remote evaluation workflow（準備のみ・実行不可）
 

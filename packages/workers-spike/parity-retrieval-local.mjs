@@ -12,9 +12,13 @@ import { buildWorker } from './build.mjs';
  */
 export function createParityVectorizeFake() {
   const vectors = new Map();
+  let stale = false;
   const calls = { describe: 0, upsert: 0, delete: 0, query: 0 };
   return {
     calls,
+    setStale(value) {
+      stale = value;
+    },
     get size() {
       return vectors.size;
     },
@@ -42,7 +46,9 @@ export function createParityVectorizeFake() {
           .map((vector) => ({
             id: vector.id,
             namespace: vector.namespace,
-            metadata: vector.metadata,
+            metadata: stale
+              ? { ...vector.metadata, revision: vector.metadata.revision + 1 }
+              : vector.metadata,
             score: Math.max(
               -1,
               Math.min(
@@ -65,6 +71,11 @@ export function createParityVectorizeFake() {
  * Vectorize alone is a cosine fake. All other egress is denied, including embedding/LLM APIs.
  */
 export async function collectD1SyntheticRetrieval() {
+  return withD1ParityCandidates(collectSyntheticRetrieval);
+}
+
+/** Owns a disposable D1 fixture for local collectors and optional stale-revision fault injection. */
+export async function withD1ParityCandidates(collect) {
   const { script } = await buildWorker('parity-retrieval-worker');
   const fake = createParityVectorizeFake();
   const runtime = new Miniflare({
@@ -96,7 +107,10 @@ export async function collectD1SyntheticRetrieval() {
         method: 'POST',
         body: JSON.stringify({ operation, input, config: { model: syntheticEmbedding.model } }),
       });
-      if (!response.ok) throw new Error(`Local parity ${capability}/${operation} failed`);
+      if (!response.ok) {
+        const body = await response.json();
+        throw new Error(body.error === 'unavailable' ? 'unavailable' : 'local-adapter-failed');
+      }
       return (await response.json()).result;
     };
     for (const document of documents) {
@@ -123,10 +137,13 @@ export async function collectD1SyntheticRetrieval() {
       if (delivery !== 'submitted') throw new Error('Synthetic vector delivery failed');
     }
     if (fake.size !== 37) throw new Error('Incomplete synthetic vector coverage');
-    const result = await collectSyntheticRetrieval({
-      semanticCandidateRepository: { search: (input) => call('semantic', 'search', input) },
-      keywordCandidateRepository: { search: (input) => call('keyword', 'search', input) },
-    });
+    const result = await collect(
+      {
+        semanticCandidateRepository: { search: (input) => call('semantic', 'search', input) },
+        keywordCandidateRepository: { search: (input) => call('keyword', 'search', input) },
+      },
+      { setStale: (value) => fake.setStale(value) },
+    );
     return {
       ...result,
       vectorize: 'fake-exact-cosine',
