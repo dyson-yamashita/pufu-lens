@@ -189,6 +189,13 @@ export async function createStagingComposition(env: StagingEnv) {
       const ids = (values: readonly { documentId: string }[]) => values.map((v) => v.documentId);
       return {
         semantic: ids(semanticCandidates),
+        semanticDetails: semanticCandidates.map(
+          ({ documentId, rawDocumentId, cosineDistance }) => ({
+            documentId,
+            rawDocumentId,
+            cosineDistance,
+          }),
+        ),
         keyword: ids(keywordCandidates),
         hybrid: ids(fuseRankedChunkCandidates({ semanticCandidates, keywordCandidates, limit: 4 })),
         graph: related.candidates,

@@ -5,6 +5,7 @@ import {
   validateStagingEnv,
 } from './staging/composition.js';
 import { fixture, fixtureSnapshot } from './staging/fixture.js';
+import { measureBindings } from './staging/metrics.js';
 
 /** Compares a bounded bearer header with the configured operator secret without provider access. */
 async function authenticated(request: Request, token: string): Promise<boolean> {
@@ -88,8 +89,13 @@ export default {
     } catch {
       return reply({ error: 'invalid_control' }, 400);
     }
+    const measured = measureBindings(env.DB, env.VECTORIZE);
     try {
-      const composition = await createStagingComposition(env);
+      const composition = await createStagingComposition({
+        ...env,
+        DB: measured.db,
+        VECTORIZE: measured.index,
+      });
       const { projectId, document, revision } = input;
       let result: unknown = null;
       switch (input.operation) {
@@ -118,9 +124,10 @@ export default {
         model: fixture.model,
         dimensions: 1536,
         result,
+        usage: measured.usage,
       });
     } catch {
-      return reply({ error: 'unavailable' }, 503);
+      return reply({ error: 'unavailable', usage: measured.usage }, 503);
     }
   },
 };

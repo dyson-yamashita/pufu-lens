@@ -2,7 +2,7 @@
 
 - 日付: 2026-09-26
 - 対象: Plan 018 Step 6E / [Issue #792](https://github.com/dyson-yamashita/pufu-lens/issues/792)
-- 状態: ローカルcomposition/fixtureを実装。remote deploy・実Vectorize・Step 7は未実施
+- 状態: ローカルcomposition/remote固定fixture検証に成功、専用resource削除済み。全体のsemantic gate・Step 7は未達
 
 ## 判断と境界
 
@@ -31,7 +31,8 @@ Core/GCPの型・SQL・設定・アプリの認証/Chat APIは変更しない。
 設定とbinding methodの存在を検査した後、Bearer tokenをSHA-256の固定長比較で検証する。
 未認証は401で、D1/Vectorizeへのアクセスは0。認証後もmessageをstreamingで1,024 bytesまでに制限し、
 JSON不正、余分なfield、未知operation、fixture外project/document/revisionは400で拒否する。
-schema markerと全必要table/column、Vectorize describeの1536/cosineをrequest開始時に検査し、不一致は503。
+schema markerと全必要table/column、Vectorize describeの1536をrequest開始時に検査し、不一致は503。
+V2 describeにmetricはないため、変更不可のcosine設定は管理APIでdeploy前に独立確認する。
 起動検査をcacheしないのでschema/設定の劣化も後続requestで拒否する。エラー詳細・本文・tokenを返さず、応答はno-store。
 metadata index実在/model identityはdescribeでは証明できないため、remote preflightで独立した証跡を要する。
 schema検査はversion/column検査であり、手動で壊した全constraintの完全drift検知とは主張しない。
@@ -40,7 +41,8 @@ operatorは二つの合成projectを検証する権限を持つ。このtokenは
 requestは`operation`、`projectId`、`document`（0–3）、`revision`（1–3）のみ。
 全操作で同じscope検査を通し、本文、vector、SQL、任意URLを入力できない。
 `health`、`seed`、`graph`、`dispatch`、`repair`、`inspect`、`query`以外の入口は設けない。
-返す検索結果はID/順位/Graph DTOのみ。fixture本文・vectorはログやrunner reportへ含めない。
+返す検索結果はID/順位/Graph DTOとsynthetic raw revision ID/cosine distanceのみ。
+認証後はD1 rows/sizeとVectorize query/upsert利用量も返す。fixture本文・vectorはログやrunner reportへ含めない。
 
 ## 同一revisionの原子更新
 
@@ -118,31 +120,40 @@ JSON reportはversion/model/件数/aggregate latencyと`remoteGate: not-run`、`
   今回は利用しないのでWorkflow費用0。単なる無料のretry機構として採用しない。
 - [Vectorize pricing](https://developers.cloudflare.com/vectorize/platform/pricing/)、[Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/)、
   [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/)の超過単価はADR-009の計算と一致。
-  下記上限なら従量計画値$0.03未満。Paid新規変更の月額最低$5は別途。今回remote利用は0。
+  下記上限なら従量計画値$0.03未満。Paid新規変更の月額最低$5は別途。計画値であり請求額の実測ではない。
 
-## remote承認用の具体案（未承認・未実行）
+## remote承認範囲とrunner
 
-ADR-009案を本composition向けに具体化する。対象account ID、既存Free/Paidプラン、承認済み実施時刻が未確定。
-専用Worker/D1/Vectorize各1つ、名称案は`pufu-6e-composition-check`。indexはcosine/1536、
+2026-09-26、ユーザー指定account（末尾`cce0`）とFree申告を受け、作成・認証設定・公開・限定検証・削除が承認された。
+subscriptions APIは403でプランを独立確認できなかった。Paid変更・権限追加は行わない。
+専用Worker/D1/Vectorize各1つ、名称は`pufu-6e-composition-check`に必要に応じ数値suffix。indexはcosine/1536、
 metadata string indexをprojectId/modelで作り、投入前に一覧と照合する。本番/GCPは変更しない。
 `wrangler.staging.example.jsonc`は未確定ID・期限を持つ審査用templateで、自動deployや公開routeを持たない。
-承認後に専用tokenとHTTPS入口、選択account/resourceの証跡、remote計測runnerを準備・照合する。
-ローカルfakeをremoteへ接続しない。remote runnerのvisibility poll/利用量計測は未実装・未実行である。
+選択account/resourceの照合とremote計測runnerをIssue #794で追加した。
+ローカルfakeをremoteへ接続しない。手順・停止条件・実施結果は
+[remote検証記録](../operations/cloudflare-synthetic-validation.md)を参照する。
 
 - fixture最大48 vector、upsert合計144 vector、query/visibility poll合計300回、Worker 500 request以下。
 - CPU合計50,000 ms、D1 read 100,000/write 10,000 rows、保存5 MB、最長24時間。
 - 超過単価による計画値: Vectorize約$0.00686、Workers約$0.00115、D1約$0.01385、合計約$0.02186。
   無料枠を前提とせず保存は丸一か月で計算。請求保証ではなく、Paidへの新規変更は別承認。
-- remote runnerは上限到達時に失敗終了し、未反映を成功へ変更しない。CPU/rows実測が予算に達したら中断する。
+- remote runnerは上限到達時に失敗終了し、未反映を成功へ変更しない。rows/size/query/upsertを計測する。
+  CPU実測は未対応であり、CPU予算適合の証明は残件。request上限とFree制限をCPU実測の代用にしない。
 - mutation受付→query反映、旧vector/削除可視化、filter、score、repair収束を実測する。
   GCP snapshotとの同一実embedding/modelによる比較はStep 7であり、このsynthetic-v1結果で代用しない。
-- 終了時にWorker停止と専用resource削除を行う案。cleanupも承認対象であり、現在は実行しない。
+- 終了時にWorker停止と専用resource削除を実行する。失敗時もfinallyでcleanupする。
   期限切れguardはrequestを拒否するだけで、resourceを削除せず保管課金を止めない。
 
-承認はaccount/resource作成・deploy・専用secret設定・限定検証・保持・cleanupを一括で具体的に確認する。
-本番データコピー、実embedding API、GCP変更、権限追加、Paid変更はこの案に含めない。
+承認は今回の限定検証に適用する。本番データコピー、実embedding API、GCP変更、権限追加、Paid変更は含めない。
 
 ## 到達点と残件
+
+Issue #794ではremote runnerとD1利用量計測を追加。新規runner6件が成功し、既存59件と合わせ65件を検証した。
+metadata indexの実応答`String`と公式schemaの`string`の差を検出・修正し、Worker deployまで確認した。
+作成受付IDを取得しても可視化完了とは扱わない。最終remote試行は2 project/105 request/query 74回で成功し、
+更新・逆順・repair・削除不在を観測した。alphaの削除観測間には503があり、恒久収束の証明とはしない。
+専用Worker/D1/Vectorizeを削除し、API一覧で残存0を確認した。
+詳細な試行記録と未検証範囲は[remote検証記録](../operations/cloudflare-synthetic-validation.md)を参照する。
 
 ローカル59件（既存51＋composition8）成功、skip 0。固定fixture40往復成功。
 root `pnpm test` / `pnpm typecheck` / `pnpm format:check` / `pnpm lint`、workspace build、
@@ -152,7 +163,8 @@ drift初回はローカルimageのPGroonga不足で失敗し、拡張を備え�
 root testの既存条件付きskipは維持し、外部DB等の未実行検証を成功扱いしない。UI変更はなく画面capture/E2Eは対象外。
 認証・設定・schema拒否、shared revisionのrollback/逆順/並行/tombstone、dispatcher予算/due/dead/repair、
 stale/越境vectorとhybrid中のrevision変化を検証した。
-remote semantic gate、staging実測、Step 7全backend/Chat parity、CPU/容量/負荷、運用restoreは未確認。
+synthetic stagingの小規模実測は上記の通り。全体のremote semantic gate、Step 7全backend/Chat parity、
+CPU/負荷、運用restoreは未確認。
 大規模負荷はユーザー指定でスキップ。PGroonga primary/pgroonga-shadow、Graph relational-only、
 AGE/PGroonga資産保持、既存Chat品質未達、本番shadow観測、Step 4削除gateを維持する。
 Issue #779を前提条件にせず、親Issue #704はclosedのまま。Step 6全完了とは扱わない。

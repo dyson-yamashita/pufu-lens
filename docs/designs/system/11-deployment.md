@@ -2,7 +2,8 @@
 
 ## デプロイメント
 
-Plan 018 Step 6EのCloudflare検証compositionは本番GCP deployとは独立し、remote未承認・未実行である。
+Plan 018 Step 6EのCloudflare検証compositionは本番GCP deployとは独立する。
+Issue #794で限定remote検証・cleanupが承認され、preflightを実施した。remote semantic gateは未達。
 専用binding/認証/期限/schema guardとローカル再現、未確定account/resourceを持つ設定templateは
 [ADR-010](../../adr/ADR-010-cloudflare-staging-composition.md)を参照する。ローカルharnessはdeployしない。
 

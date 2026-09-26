@@ -30,7 +30,10 @@ export interface IndexContract {
   indexedMetadata: readonly string[];
 }
 
-/** Rejects missing filter configuration; remote metadata-index existence needs deployment evidence. */
+/** Rejects missing filter configuration and mismatched dimensions.
+ * V2 describe omits metric: the immutable cosine metric and metadata-index existence must be
+ * verified with the management API before deployment. If a metric is returned, it must agree.
+ */
 export async function verifyIndex(index: VectorizeBinding, config: IndexContract): Promise<void> {
   identity(config.model);
   if (
@@ -41,7 +44,10 @@ export async function verifyIndex(index: VectorizeBinding, config: IndexContract
   )
     throw new Error('Invalid Vectorize configuration');
   const description = record(await index.describe());
-  if (description.dimensions !== 1536 || description.metric !== 'cosine')
+  if (
+    description.dimensions !== 1536 ||
+    (description.metric !== undefined && description.metric !== 'cosine')
+  )
     throw new Error('Vectorize index mismatch');
 }
 
