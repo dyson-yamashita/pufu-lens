@@ -1,0 +1,30 @@
+{
+  // Review template only. No deploy command or real account/resource identifiers are supplied.
+  "name": "pufu-6e-composition-check",
+  "main": "dist/staging-worker.js",
+  "compatibility_date": "2026-07-30",
+  "compatibility_flags": [],
+  "workers_dev": false,
+  "preview_urls": false,
+  "account_id": "REQUIRES_APPROVED_STAGING_ACCOUNT",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pufu-6e-composition-check",
+      "database_id": "REQUIRES_APPROVED_DEDICATED_D1",
+      "migrations_dir": "d1"
+    }
+  ],
+  "vectorize": [{ "binding": "VECTORIZE", "index_name": "pufu-6e-composition-check" }],
+  "vars": {
+    "PUFU_LENS_DATA_PROFILE": "cloudflare",
+    "STAGE": "synthetic-staging",
+    "FIXTURE_VERSION": "cloudflare-composition-v1",
+    "SCHEMA_VERSION": "0004_composition",
+    "EMBEDDING_MODEL": "synthetic-v1",
+    "EMBEDDING_DIMENSIONS": "1536",
+    "INDEXED_METADATA": "projectId,model",
+    "EXPIRES_AT": "REQUIRES_APPROVED_WINDOW_AT_MOST_24_HOURS"
+  }
+  // EVAL_TOKEN must be a dedicated secret; never place it in this file. No automatic triggers.
+}

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "fixture:local": "node staging-fixture.mjs",
     "repair:local": "node repair.mjs",
     "build": "node build.mjs",
     "test": "node --experimental-strip-types --test test/*.test.mjs",

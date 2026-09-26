@@ -48,4 +48,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   console.log(`Workers keyword bundle: ${Buffer.byteLength(keyword.script)} bytes`);
   const semantic = await buildWorker('semantic-worker');
   console.log(`Workers semantic bundle: ${Buffer.byteLength(semantic.script)} bytes`);
+  const staging = await buildWorker('staging-worker');
+  console.log(`Workers staging bundle: ${Buffer.byteLength(staging.script)} bytes`);
 }

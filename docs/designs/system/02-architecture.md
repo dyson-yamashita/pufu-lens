@@ -103,6 +103,10 @@ Step 6CのD1 keyword adapterは同workspaceに閉じ、文字postingによる候
 Step 6DはVectorize semantic adapterを同workspace内に追加し、project namespace/indexed metadataとD1現行revisionを照合する。
 cosineDistanceへの変換、D1 outbox/repair、fetch-only embedding入口は[ADR-009](../../adr/ADR-009-vectorize-outbox-repair.md)を参照する。
 Vectorizeはfake契約試験のみで、実D1/workerdの成功をremote互換・品質の根拠にはしない。
+Step 6Eでは専用の認証付きsynthetic staging compositionを追加し、keywordとsemantic head/outboxを
+同一D1 batchで更新する。固定fixtureのGraph/semantic/keyword/Core RRFとbounded dispatcher/repairを
+ローカルで検証する。全アプリ移植・remote品質達成ではない。入口と制約は
+[ADR-010](../../adr/ADR-010-cloudflare-staging-composition.md)を参照する。
 
 Plan 018 Step 1B では `@pufu-lens/graph` が provider-neutral な `GraphReadRepository`、related document / normalized
 node・edge DTO、preset / relation allowlist、runtime guard を所有する。Chat graph coverage、Graph Viewer preset、Synthetic

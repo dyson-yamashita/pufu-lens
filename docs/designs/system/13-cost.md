@@ -2,6 +2,10 @@
 
 ## 運用コスト見積もり（月額）
 
+Plan 018 Step 6EのCloudflare合成検証はremote未実行。最大48 vector/300 query・poll/24時間等の
+上限で従量計画値$0.03未満、Paid新規変更なら月額最低$5は別途とする。account使用量と承認は未確認。
+計算、停止条件、保持とcleanup案は[ADR-010](../../adr/ADR-010-cloudflare-staging-composition.md)を参照する。
+
 ### 1. GCE VM + Firebase App Hosting + Cloud Run 構成（推奨）
 
 | コンポーネント                       | スペック                                                                   | 月額        |

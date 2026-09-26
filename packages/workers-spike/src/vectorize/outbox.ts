@@ -1,4 +1,4 @@
-import { type D1Binding, record, rows, text } from '../d1/binding.js';
+import { type D1Binding, type D1Statement, record, rows, text } from '../d1/binding.js';
 import { type IndexContract, identity, type VectorizeBinding, verifyIndex } from './binding.js';
 import { parseSnapshot, storedSnapshot } from './snapshot.js';
 
@@ -25,9 +25,17 @@ export function outboxKey(value: unknown): OutboxKey {
  * Older revisions cannot roll back the head. No Vectorize request occurs in this transaction.
  */
 export async function enqueueSnapshot(db: D1Binding, value: unknown): Promise<void> {
+  const result = await db.batch(await snapshotStatements(db, value));
+  result.forEach(rows);
+}
+
+/** Prepares immutable revision/head/outbox writes for a caller-owned single D1 batch.
+ * Must execute together; validation completes before any writes. No external IO occurs.
+ */
+export async function snapshotStatements(db: D1Binding, value: unknown): Promise<D1Statement[]> {
   const snapshot = await parseSnapshot(value);
   const key = [snapshot.projectId, snapshot.documentId, snapshot.revision];
-  const result = await db.batch([
+  return [
     db
       .prepare(`INSERT INTO semantic_versions VALUES (?1,?2,?3,?4)
       ON CONFLICT(project_id,document_id,revision) DO UPDATE SET payload=
@@ -47,8 +55,7 @@ export async function enqueueSnapshot(db: D1Binding, value: unknown): Promise<vo
       WHERE project_id=?1 AND document_id=?2 AND revision<?3
       AND ?3=(SELECT revision FROM semantic_heads WHERE project_id=?1 AND document_id=?2)`)
       .bind(...key),
-  ]);
-  result.forEach(rows);
+  ];
 }
 
 /** Delivers one bounded attempt; duplicate consumers can safely use the same immutable vector IDs.

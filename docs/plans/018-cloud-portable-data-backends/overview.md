@@ -1044,6 +1044,17 @@ GCP baseline（CPU / memory / connection / disk / bloat / vacuum / latency / err
 
 ## 13. Step 6: Cloudflare adapter を追加できる設計を具体化する
 
+### Step 6E 実施状況
+
+- 2026-09-26: [Issue #792](https://github.com/dyson-yamashita/pufu-lens/issues/792)で独立タスクとして着手。
+  Step 6D PR #791 merge後の最新main `12d36ae`から開始した。
+- 認証付きsynthetic staging composition、binding/schema/model/dimension/期限guard、同一D1 batchでの
+  keyword/semantic revision更新、bounded dispatcher/repair、固定fixture/runnerをローカル実装・検証した。
+  実D1/workerdは59件成功、固定2 project/8 documentの40 HTTP往復成功。Vectorizeはfake契約試験のみ。
+- ローカル到達点とremote承認案は[ADR-010](../../adr/ADR-010-cloudflare-staging-composition.md)を参照。
+  remote deploy/実Vectorize/品質gateは未承認・未実施。Step 6全完了、Step 7開始gate達成とは扱わない。
+  既存Chat品質・本番shadow/restore・Step 4削除gate・資産保持と大規模負荷スキップは維持する。
+
 ### Step 6C 実施状況
 
 - 2026-09-26: [Issue #788](https://github.com/dyson-yamashita/pufu-lens/issues/788) で着手。
@@ -1181,8 +1192,9 @@ Cloudflare metrics が固定されてから開始する。
 - 6D: Vectorize adapter / outbox / repair
   - 2026-09-26、Issue #790で独立タスクとして実装。Vectorize契約、実D1/workerdのrevision/outbox/repair、
     fetch-only embedding境界をローカル検証。詳細とremote承認対象は[ADR-009](../../adr/ADR-009-vectorize-outbox-repair.md)。
-    remote semantic gate、6E composition、keywordとのrevision統合、7 parityは未完了。
+    6Eでcompositionとkeywordとのrevision統合をローカル実装。remote semantic gateと7 parityは未完了。
 - 6E: Cloudflare composition / staging fixture
+  - Issue #792でローカルcompositionと固定fixtureを検証。remoteは未承認・未実行（ADR-010）。
 
 ## 14. Step 7: GCP / Cloudflare backend parity を評価する
 

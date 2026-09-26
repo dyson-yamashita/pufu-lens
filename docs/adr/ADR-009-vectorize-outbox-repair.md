@@ -71,10 +71,14 @@ D1とVectorize間にtransactionはない。重複consumerと外部の遅延反�
 今回はD1のdead-letter状態と一件単位のconsumer/repairを実装し、実Queues/Workflowsは採用・接続しない。
 queueへ接続する際はD1 intentを正本とし、戻り値がretryならdue時刻以降に再配信し、D1例外ではackしない。
 
-6C keyword snapshotとの共通ingestion transactionは未接続。6Dはsemantic revisionの順序を解決するが、
+6D時点では6C keyword snapshotとの共通ingestion transactionは未接続。6Dはsemantic revisionの順序を解決するが、
 既存keywordのlast-commit-winsを自動で変えない。6Eの入口統合時に同じsource revisionの採番と
 keyword更新/outboxの単一D1 batch化を検討し、Step 7のhybrid整合gateで確認する。
 モデル変更は専用indexの再構築・固定設定変更を要し、同一indexへの混在を許可する移行は未実装。
+
+後続6Eで認証付きcompositionのkeyword/shared revision原子更新とbounded dispatcherを実装した。
+6D単独harnessの契約は維持する。到達点とremote未実施の範囲は
+[ADR-010](ADR-010-cloudflare-staging-composition.md)を参照する。
 
 ## repair CLI
 
