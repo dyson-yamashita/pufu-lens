@@ -1044,6 +1044,17 @@ GCP baseline（CPU / memory / connection / disk / bloat / vacuum / latency / err
 
 ## 13. Step 6: Cloudflare adapter を追加できる設計を具体化する
 
+### Step 6A 実施状況
+
+- 2026-09-26: [Issue #784](https://github.com/dyson-yamashita/pufu-lens/issues/784) で着手。
+  最新 main `95ac34a` から独立タスクで Workers compatibility / package spike を実施する。
+- Step 1 / Step 2 schema / Step 3 contract を前提とし、Step 4 / 5 や GCP portable-primary 切替を待たない。
+- ローカル合成 fixture のみを使用。大規模負荷はユーザー指定でスキップし、既存品質未達・本番切替 gate は維持する。
+- 6A結果: Core の RRF / candidate guards / Graph DTO / project slug を、Node互換flagなしの
+  実 workerd で17件検証し成功。独立workspaceのbundleにはNode/provider依存を含めない。
+  [ADR-006](../../adr/ADR-006-workers-core-package-spike.md) に再現方法、公式制約、embeddingのNode依存と
+  6B以降の境界を記録。6Aのローカル互換性確認は完了し、6B–6E、remote品質・性能評価は未実施。
+
 ### 目的
 
 GCP profile の Core logic を変えず、Cloudflare non-production 環境で data / retrieval adapter を構成し、

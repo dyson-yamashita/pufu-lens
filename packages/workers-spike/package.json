@@ -1,0 +1,20 @@
+{
+  "name": "@pufu-lens/workers-spike",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test test/*.test.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@pufu-lens/graph": "workspace:*",
+    "@pufu-lens/project-tenancy": "workspace:*",
+    "@pufu-lens/retrieval": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.1",
+    "miniflare": "4.20260730.0"
+  }
+}

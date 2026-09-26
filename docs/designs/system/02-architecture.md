@@ -89,6 +89,12 @@ Chat API、tool 名、source response、schema、data は変更しない。
 
 #### Graph read capability 境界
 
+Plan 018 Step 6A の `@pufu-lens/workers-spike` は、Graph / retrieval / project-tenancy の公開入口を
+Node互換flagなしのローカルworkerdで利用するテスト専用workspaceである。RRF・candidate guard・Graph DTO・
+slug validationの互換性を確認し、provider bindingやGCP compositionは変更しない。
+D1 / Vectorize adapter、認証・project isolation、embedding移植は未完了であり、この入口はdeployしない。
+依存境界と後続条件は[ADR-006](../../adr/ADR-006-workers-core-package-spike.md)を参照する。
+
 Plan 018 Step 1B では `@pufu-lens/graph` が provider-neutral な `GraphReadRepository`、related document / normalized
 node・edge DTO、preset / relation allowlist、runtime guard を所有する。Chat graph coverage、Graph Viewer preset、Synthetic
 Monitor の node / relation count は検証済み `projectId` だけを同 contract へ渡す。access lookup、eligible document
