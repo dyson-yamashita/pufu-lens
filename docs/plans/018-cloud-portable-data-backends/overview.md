@@ -1300,6 +1300,9 @@ CI では hermetic contract / metric testsを毎回実行し、remote GCP / Clou
     baseline欠損・未実測・契約不一致は不合格。詳細は[評価契約](../../operations/backend-parity-evaluation.md)。
     Step 6全完了・Step 7実評価開始gate達成とは扱わず、7B以降のrunner / 実測 / SLO / cost判断を残す。
 - 7B: backend runners / remote evaluation workflow
+  - 2026-09-26、Issue #818で共通37chunk/36文書・3質問の認証付き実binding入口とoffline artifact bundle準備を追加。
+    実workerd/D1＋明示fakeで検証。remote、全52ケースmapping、品質各39/52行・13件欠損、既存gate未達を維持。
+    [本番移行までのcritical pathと承認対象](../../operations/cloudflare-parity-binding.md)を分離記録する。
   - 2026-09-26、Issue #816で分類stub付き独立synthetic計画を追加。
     実selection境界で上限2資料からGraph-only d02への置換と属性redactionを両DBで観測。
     relation quotaによる追加、単一vector保護による無変化、既取得d02の重複追加、retry後Graph不採用も保持。

@@ -25,15 +25,19 @@ export interface StagingEnv {
 
 /** Rejects implicit/production profiles and stale deployments before any provider access.
  * Token is a deployment secret with at least 32 URL-safe characters, never an application credential.
+ * The optional contract comes from the offline-validated bundle, never from HTTP input.
  */
-export function validateStagingEnv(env: StagingEnv): void {
+export function validateStagingEnv(
+  env: StagingEnv,
+  contract: { version: string; schema: string; model: string } = fixture,
+): void {
   const remaining = Date.parse(env.EXPIRES_AT) - Date.now();
   if (
     env.PUFU_LENS_DATA_PROFILE !== 'cloudflare' ||
     env.STAGE !== 'synthetic-staging' ||
-    env.FIXTURE_VERSION !== fixture.version ||
-    env.SCHEMA_VERSION !== fixture.schema ||
-    env.EMBEDDING_MODEL !== fixture.model ||
+    env.FIXTURE_VERSION !== contract.version ||
+    env.SCHEMA_VERSION !== contract.schema ||
+    env.EMBEDDING_MODEL !== contract.model ||
     env.EMBEDDING_DIMENSIONS !== '1536' ||
     env.INDEXED_METADATA !== 'projectId,model' ||
     !Number.isFinite(remaining) ||
@@ -58,6 +62,13 @@ export function validateStagingEnv(env: StagingEnv): void {
  */
 export async function createStagingComposition(env: StagingEnv) {
   validateStagingEnv(env);
+  await validateCompositionSchema(env.DB);
+  return composeStaging(env);
+}
+
+/** Checks the shared evaluation schema and required columns after operator authentication. */
+export async function validateCompositionSchema(db: D1Binding) {
+  const env = { DB: db };
   const schema = rows(await env.DB.prepare('SELECT version FROM spike_schema').all());
   if (schema.length !== 1 || record(schema[0]).version !== fixture.schema)
     throw new Error('Schema mismatch');
@@ -77,6 +88,9 @@ export async function createStagingComposition(env: StagingEnv) {
       ].map((sql) => env.DB.prepare(sql)),
     )
   ).forEach(rows);
+}
+
+async function composeStaging(env: StagingEnv) {
   const config: IndexContract = {
     model: fixture.model,
     dimensions: 1536,

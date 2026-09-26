@@ -1,5 +1,9 @@
 # Plan Status
 
+Plan 018 Step 7B（2026-09-26、Issue #818）: 共通retrieval fixtureの認証付きbinding入口と保存artifactの
+native bundle準備を追加。実workerd/D1＋明示fakeで検証。全52ケースremote mapping/7Cは未完了、
+品質各39/52行・13件欠損と既存gateを維持。本番移行critical pathは評価契約からリンクする。
+
 Plan 018 Step 7B（2026-09-26、Issue #814）: 保存Chat artifactの既存20入力を維持し、実DB detail取得後の
 明示欠損制御でGraph属性を保持した最終sourceのresponse除去を検証。通常hydrationでは属性消失。
 固定preparingはgeneral分類のためGraph優先枠置換は現行契約外・未検証と記録する。

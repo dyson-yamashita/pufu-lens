@@ -8,7 +8,8 @@
 
 `packages/workers-spike`に既存Graph、keyword、semantic、Core RRFを組み合わせる検証compositionを追加する。
 Core/GCPの型・SQL・設定・アプリの認証/Chat APIは変更しない。全アプリ移植や汎用DB abstractionは追加しない。
-`staging-worker.ts`だけが将来の承認済みremote検証用入口の候補である。
+`staging-worker.ts`と、Issue #818のoffline検証済みartifactから生成する`parity-binding-worker.ts`のnative bundleが
+将来の承認済みremote検証用入口の候補である。後者の契約・残件は[共通fixture binding評価](../operations/cloudflare-parity-binding.md)を参照。
 `worker.ts`、`d1-worker.ts`、`keyword-worker.ts`、`semantic-worker.ts`、`staging-local-worker.ts`はdeploy禁止。
 最後の入口は同じ認証付きWorkerへfake Vectorizeを注入するローカルharnessであり、実サービスではない。
 

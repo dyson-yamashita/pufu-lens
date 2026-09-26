@@ -8,7 +8,7 @@ import { fixture, fixtureSnapshot } from './staging/fixture.js';
 import { measureBindings } from './staging/metrics.js';
 
 /** Compares a bounded bearer header with the configured operator secret without provider access. */
-async function authenticated(request: Request, token: string): Promise<boolean> {
+export async function authenticated(request: Request, token: string): Promise<boolean> {
   const header = request.headers.get('authorization') ?? '';
   if (header.length > 256) return false;
   const digest = async (value: string) =>
