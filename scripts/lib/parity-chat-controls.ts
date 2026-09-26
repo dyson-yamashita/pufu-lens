@@ -25,3 +25,54 @@ export const chatFinalSourceBoundary = {
   boundary: 'detail-result-after-real-document-repository',
   omittedDocumentIds: ['d02'],
 } as const;
+
+/** Independent synthetic-only plan; classification is an explicit input stub, not an LLM result.
+ * Document limits are supported preparation inputs, not changed selection policies.
+ * Primary filters remove real results only; retry, coverage and detail reads are untouched.
+ */
+export const chatClassifiedPlan = {
+  version: 'chat-classified-priority-v1',
+  embedding: 'sha256-synthetic-only',
+  classification: {
+    confidence: 'high',
+    expectedEvidence: [],
+    figure: [],
+    ground: [],
+    primaryOperation: 'relation',
+    secondaryOperations: [],
+  },
+  scenarios: [
+    {
+      id: 'classified-full',
+      primaryOperation: 'cause',
+      primaryDocumentAllowlist: ['d01', 'd09'],
+      documentLimit: 2,
+    },
+    {
+      id: 'classified-quota',
+      primaryOperation: 'relation',
+      primaryDocumentAllowlist: ['d01', 'd09'],
+      documentLimit: 2,
+    },
+    {
+      id: 'classified-single',
+      primaryOperation: 'relation',
+      primaryDocumentAllowlist: ['d01'],
+      documentLimit: 1,
+    },
+    {
+      id: 'classified-room',
+      primaryOperation: 'relation',
+      primaryDocumentAllowlist: ['d01'],
+      documentLimit: 5,
+    },
+    {
+      id: 'classified-retry',
+      primaryOperation: 'relation',
+      primaryDocumentAllowlist: [],
+      documentLimit: 1,
+    },
+  ],
+  projectId: 'alpha',
+  question: '検索の仕様と移行について決まったことは？',
+} as const;

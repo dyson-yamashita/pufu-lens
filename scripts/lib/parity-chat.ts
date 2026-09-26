@@ -8,6 +8,7 @@ import {
 } from '../../apps/web/src/chat.ts';
 import { shouldPrioritizeGraphCoverageSupplement } from '../../apps/web/src/private-chat-graph-coverage.ts';
 import {
+  applyPrivateChatQuestionClassification,
   resolvePrivateChatRetryQueries,
   runPrivateChatDetailStep,
   runPrivateChatRelatingStep,
@@ -17,7 +18,11 @@ import {
 } from '../../apps/web/src/private-chat-search.ts';
 import { verifyQualityWorkflowHttp } from './keyword-quality-http.ts';
 import type { ParityChatArtifactInput } from './parity-chat-artifact.ts';
-import { chatControlledScenarios, chatFinalSourceBoundary } from './parity-chat-controls.ts';
+import {
+  chatClassifiedPlan,
+  chatControlledScenarios,
+  chatFinalSourceBoundary,
+} from './parity-chat-controls.ts';
 import { chatGraphConnectionFixture } from './parity-chat-graph.ts';
 import { parityChatInputs, prepareParityChat } from './parity-chat-inputs.ts';
 import type { ParityRow } from './parity-eval.ts';
@@ -43,12 +48,46 @@ export function localChatRepository(methods: Partial<ChatRepository>): ChatRepos
  * Hash embeddings and HTTP synthesis are explicit stubs. Natural
  * planner, citations, HTTP authorization and answer rubric are not measured; rows stay separate.
  * Includes a separate replay that drops d02 only after the real detail read to probe redaction.
+ * A separate versioned synthetic plan applies declared classification stubs and observes priority.
  */
 export async function collectSyntheticChat(
   repositories: CandidateRepositories,
   database: Pick<ChatRepository, 'documentFetch' | 'graphCoverageQuery'>,
 ) {
-  return collectLocalChat(repositories, database);
+  const result = await collectLocalChat(repositories, database);
+  const observations = [];
+  for (const scenario of chatClassifiedPlan.scenarios) {
+    const classified = await collectChatCases(
+      repositories,
+      database,
+      [
+        {
+          ...scenario,
+          projectId: chatClassifiedPlan.projectId,
+          question: chatClassifiedPlan.question,
+        },
+      ],
+      scenario.primaryDocumentAllowlist,
+      undefined,
+      undefined,
+      scenario,
+    );
+    observations.push(...classified.observations);
+  }
+  return {
+    ...result,
+    classifiedPriority: {
+      version: chatClassifiedPlan.version,
+      inputHash: hashText(JSON.stringify(chatClassifiedPlan)),
+      classificationStub: {
+        defaults: chatClassifiedPlan.classification,
+        scenarios: chatClassifiedPlan.scenarios,
+      },
+      stubs: ['sha256-embedding', 'fixed-classification', 'loopback-synthesis'],
+      observations,
+      qualityGate: false as const,
+    },
+  };
 }
 
 /** Connects validated saved vectors to real Chat steps; synthesis remains a loopback stub.
@@ -127,6 +166,17 @@ function hashText(text: string) {
   return createHash('sha256').update(text).digest('hex');
 }
 
+// Keep multiplicity: appending an already hydrated Graph ID is still an addition.
+function unmatchedIds(left: readonly string[], right: readonly string[]) {
+  const remaining = [...right];
+  return left.filter((id) => {
+    const index = remaining.indexOf(id);
+    if (index < 0) return true;
+    remaining.splice(index, 1);
+    return false;
+  });
+}
+
 /** Runs the same steps for natural and controlled inputs. An optional allowlist only filters
  * actual primary results after adapter/RRF execution; retry and coverage reads remain unmodified.
  * The separate missing-detail probe filters only real DB results and records both sides.
@@ -138,6 +188,7 @@ async function collectChatCases(
   primaryDocumentAllowlist?: readonly string[],
   artifact?: ParityChatArtifactInput,
   omittedDetailDocumentIds?: readonly string[],
+  classified?: { documentLimit: number; primaryOperation: 'relation' | 'cause' },
 ) {
   const rows: ParityRow[] = [];
   const observations = [];
@@ -247,7 +298,16 @@ async function collectChatCases(
         return result;
       },
     });
-    const prepared = prepareParityChat(input);
+    const initial = prepareParityChat({
+      ...input,
+      ...(classified ? { hybridSearchDocumentLimit: classified.documentLimit } : {}),
+    });
+    const prepared = classified
+      ? applyPrivateChatQuestionClassification(initial, {
+          ...chatClassifiedPlan.classification,
+          primaryOperation: classified.primaryOperation,
+        })
+      : initial;
     const embeddingReads: { phase: string; textHashes: string[] }[] = [];
     const embeddingProvider = {
       ...(artifact?.embedding ?? syntheticEmbedding),
@@ -269,7 +329,24 @@ async function collectChatCases(
       : retrieved;
     phase = 'coverage';
     const related = await runPrivateChatRelatingStep(retried, repository, embeddingProvider);
-    const final = await runPrivateChatDetailStep(related, repository);
+    const selectionObservations: {
+      beforeDocumentIds: string[];
+      afterDocumentIds: string[];
+      graphOnlyDocumentIds: string[];
+    }[] = [];
+    const final = await runPrivateChatDetailStep(related, repository, (observation) => {
+      selectionObservations.push(observation);
+    });
+    const selection = selectionObservations[0];
+    if (!selection) throw new Error('Missing actual Graph selection observation');
+    const removed = unmatchedIds(selection.beforeDocumentIds, selection.afterDocumentIds);
+    const added = unmatchedIds(selection.afterDocumentIds, selection.beforeDocumentIds);
+    const replaced =
+      shouldPrioritizeGraphCoverageSupplement(related.classification) &&
+      selection.beforeDocumentIds.length === related.hybridSearchDocumentLimit &&
+      selection.afterDocumentIds.length === selection.beforeDocumentIds.length &&
+      removed.length > 0 &&
+      added.some((id) => selection.graphOnlyDocumentIds.includes(id));
     const sources = privateChatSourcesForResponse(final.sources);
     await verifyQualityWorkflowHttp({
       projectId: input.projectId,
@@ -325,13 +402,21 @@ async function collectChatCases(
           }
         : null,
       finalSelectionBoundary: {
+        ...selection,
+        removedDocumentIds: removed,
+        addedDocumentIds: added,
+        outcome: replaced ? 'replacement' : added.length > 0 ? 'addition' : 'unchanged',
         classification: related.classification.primaryOperation,
         prioritizeGraphSupplement: shouldPrioritizeGraphCoverageSupplement(related.classification),
         documentLimit: related.hybridSearchDocumentLimit,
-        // The fixed preparation contract never executes the classifier. Do not fabricate a
-        // relation classification to claim the priority replacement branch was exercised.
-        priorityReplacementMeasured: false,
-        priorityReplacementLimitation: 'fixed-preparing-v1-general-classification',
+        // V1 never classifies. Only the independent declared-stub plan can measure replacement.
+        priorityReplacementMeasured: classified !== undefined && replaced,
+        priorityReplacementLimitation:
+          classified === undefined
+            ? 'fixed-preparing-v1-general-classification'
+            : replaced
+              ? null
+              : 'replacement-preconditions-not-observed',
         graphSources: related.graphSources.map((s) => ({
           documentId: s.documentId,
           internalKeys: Object.keys(s)

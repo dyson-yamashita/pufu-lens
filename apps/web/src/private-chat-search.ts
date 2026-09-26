@@ -1355,10 +1355,16 @@ export async function runPrivateChatTimelineStep(
 /**
  * Enriches ranked candidates and reserves the explicit GitHub reference within the final limit.
  * A selected reference without vector evidence supplies weak, never strong, confidence.
+ * An optional local observer receives copied IDs at the actual Graph reservation boundary.
  */
 export async function runPrivateChatDetailStep(
   state: PrivateChatSearchWorkflowState,
   repository: ChatRepository,
+  observeGraphSelection?: (observation: {
+    beforeDocumentIds: string[];
+    afterDocumentIds: string[];
+    graphOnlyDocumentIds: string[];
+  }) => void,
 ): Promise<PrivateChatSearchWorkflowState> {
   const detailDocumentIds = mergeChatSourcesDeterministically(
     state.mergedVectorSources,
@@ -1419,6 +1425,11 @@ export async function runPrivateChatDetailStep(
     selectedSources: diverseSources,
   });
   const sources = graphFinalSelection.selected;
+  observeGraphSelection?.({
+    beforeDocumentIds: diverseSources.map((source) => source.documentId),
+    afterDocumentIds: sources.map((source) => source.documentId),
+    graphOnlyDocumentIds: graphOnlySources.map((source) => source.documentId),
+  });
   const graphDiagnostics: GraphCoverageDiagnostics = {
     ...state.graphDiagnostics,
     sourceLimitExcluded:

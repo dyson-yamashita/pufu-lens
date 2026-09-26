@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { collectSyntheticChat } from './parity-chat.ts';
+import { assertClassifiedPriority } from './parity-chat-classified.fixture.ts';
 import { parityRetrievalDocuments } from './parity-retrieval.ts';
 import { withPostgresParityCandidates } from './parity-retrieval-postgres.ts';
 
@@ -45,6 +46,7 @@ test('PostgreSQL real candidates drive controlled retry and Graph final selectio
 }, async () => {
   assert.ok(url);
   const result = await withPostgresParityCandidates(url, collectSyntheticChat);
+  assertClassifiedPriority(result.classifiedPriority);
   assert.ok(result.observations.every((row) => !row.retry.decision && !row.retry.executed));
   const retry = result.controlled.observations.find((row) => row.id === 'primary-empty-retry');
   assert.equal(retry?.retry.executed, true);

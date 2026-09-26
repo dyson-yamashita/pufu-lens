@@ -20,8 +20,12 @@ export function parityChatInputs() {
     }));
 }
 
-/** Pins the local non-LLM preparation used by both the manifest and collector. */
-export function prepareParityChat(input: { projectId: string; question: string }) {
+/** Pins non-LLM preparation. V1 uses the default limit; independent synthetic plans may set it. */
+export function prepareParityChat(input: {
+  projectId: string;
+  question: string;
+  hybridSearchDocumentLimit?: number;
+}) {
   return runPrivateChatPreparingStep({
     ...input,
     graphName: null,
