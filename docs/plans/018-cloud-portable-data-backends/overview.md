@@ -1295,6 +1295,10 @@ CI では hermetic contract / metric testsを毎回実行し、remote GCP / Clou
 ### 想定 Issue / PR
 
 - 7A: fixture / judgments / metrics library
+  - 2026-09-26、Issue #796でローカル準備。versioned synthetic 52ケース、比較metadata / ID mapping /
+    embedding契約、既存rank採点再利用とGraph / scope / 必須source hard gateを追加。
+    baseline欠損・未実測・契約不一致は不合格。詳細は[評価契約](../../operations/backend-parity-evaluation.md)。
+    Step 6全完了・Step 7実評価開始gate達成とは扱わず、7B以降のrunner / 実測 / SLO / cost判断を残す。
 - 7B: backend runners / remote evaluation workflow
 - 7C: parity run / mismatch fixes
 - 7D: final result / architecture / operations / cost decision docs
