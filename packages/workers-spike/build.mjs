@@ -17,7 +17,12 @@ export async function buildWorker(entry = 'worker') {
   });
   // No external modules, Node polyfills, or GCP implementations belong in this spike.
   for (const [path, input] of Object.entries(result.metafile.inputs)) {
-    if (path.includes('node_modules') || /postgres-|\/ingestion\//.test(path)) {
+    const embeddingClient = /\/ingestion\/dist\/(embedding-client|http-retry)\.js$/.test(path);
+    if (
+      path.includes('node_modules') ||
+      /postgres-/.test(path) ||
+      (path.includes('/ingestion/') && !embeddingClient)
+    ) {
       throw new Error(`Unexpected Worker dependency: ${path}`);
     }
     if (input.imports.some((entry) => entry.external)) {
@@ -41,4 +46,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   console.log(`Workers D1 bundle: ${Buffer.byteLength(d1.script)} bytes`);
   const keyword = await buildWorker('keyword-worker');
   console.log(`Workers keyword bundle: ${Buffer.byteLength(keyword.script)} bytes`);
+  const semantic = await buildWorker('semantic-worker');
+  console.log(`Workers semantic bundle: ${Buffer.byteLength(semantic.script)} bytes`);
 }
