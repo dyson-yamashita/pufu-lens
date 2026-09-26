@@ -4,7 +4,7 @@
 
 Plan 018 Step 7A / Issue #796は、共通synthetic fixtureと採点ライブラリのローカル準備である。
 Step 6全完了、Step 7の実評価開始gate達成、GCP / Cloudflareの品質同等性を意味しない。
-backend runner、remote実行、実embedding生成、resource作成、本番変更は含まない。
+7B / Issue #798でkeywordのローカルrunnerを追加した。remote実行、実embedding生成、resource作成、本番変更は含まない。
 
 Step 7B以降で、同一fixture・論理schema・ID mapping・embeddingを両backendへ投入する手順と、
 Cloudflareのmetrics収集、absolute SLOを固定する。実GCP baseline、実embedding、CPU・請求・restore、
@@ -57,6 +57,8 @@ project IDだけの偽装で越境を隠せない。Actor mergeはaliasの統合
 - candidateはCloudflare、baselineはGCP。両者が固定契約に一致しなければ `contractPass: false`。
 - 欠損caseは `measured: false`、baseline欠損は `comparisonComplete: false` として不合格。
   不正型・未知ID・重複ID・未記入観測fieldは例外で拒否し、成功reportを作らない。
+  7Bで観測booleanに明示的なnull（未測定）を許容した。scope/mutation、Chatのrubricがnullならhard gateは不合格。
+  false（観測した失敗）と未測定を区別する最小契約拡張であり、fixture/hash/閾値は変更しない。
 - reportはmetadataとcase ID・分類・集計値・gateのみ。query / document本文、回答本文、raw error、
   secretを含めない。metadataはoperator用識別子だけを指定する。
 - `qualityGate` は入力snapshotの品質・hard gateだけを表す。`step7Gate` は常に `not-evaluated`。
@@ -99,4 +101,86 @@ pnpm test
 
 手計算可能なgraded ranking、K境界、overlap 0.80、空集合、欠損baseline、契約不一致、
 synthetic embedding、両側の越境、必須source / citation / tool欠落、Graph hop / relation / 重複、
-異常入力、意図的な順位劣化を検証する。DB schema / UI変更がないため追加DB / E2E試験は対象外。
+異常入力、意図的な順位劣化を検証する。UI変更がないためWeb E2E試験は対象外。
+
+## 7B ローカルrunner
+
+```bash
+pnpm --filter @pufu-lens/ingestion... build
+pnpm --filter @pufu-lens/retrieval build
+pnpm --filter @pufu-lens/workers-spike parity:local
+# PGroonga導入済みの専用loopback DB keyword_evalがある場合のみ両側を収集する。
+KEYWORD_EVAL_DATABASE_URL=postgres://postgres@127.0.0.1:55438/keyword_eval \
+  pnpm --filter @pufu-lens/workers-spike parity:local
+```
+
+出力は `packages/workers-spike/dist/parity-local/{gcp,cloudflare,report}.json` と `summary.md`。
+コマンド末尾のdirectory引数で保存先を変更できる。process成功は収集成功を示し、採用可否はJSONのgateで確認する。
+毎回共通fixtureから収集し、過去のkeyword baseline JSONを実測として読み込まない。
+GCP profileは**GCP相当のローカルPGroonga**であり、GCP環境での実測ではない（region=local）。
+既存 `collectPgroongaBaseline` の本番ranking policyを再現する隔離schema/transactionを再利用する。
+専用DB以外・remote URLを拒否し、DATABASE_URLやクラウドcredentialsは読まない。既存schemaとの衝突時は失敗する。
+D1は既存keyword-workerとadapterを使い、Miniflareの実workerd/D1を毎回作成・破棄する。outbound通信は禁止する。
+PGroonga URL未指定はGCP全52件欠損、指定したDBに接続できない場合はコマンド失敗とし、黙って欠損へ置き換えない。
+
+| 能力                    | 7Bローカル到達点                                         | 残件                                                 |
+| ----------------------- | -------------------------------------------------------- | ---------------------------------------------------- |
+| keyword                 | 両backend全22 queryを入力し順位・拒否・scopeを実測       | GCP remote baseline、remote性能                      |
+| scope                   | 返却chunk IDのproject所属とD1のdocument provenanceを確認 | HTTP認可・cross-project write全経路                  |
+| mutation / Graph        | snapshot行を生成せず欠損                                 | 共通fixtureの操作mapping、全snapshot照合             |
+| semantic / hybrid       | snapshot行を生成せず欠損                                 | 共通実embedding・pgvector / Vectorize・実selection   |
+| Chat / expected failure | snapshot行を生成せず欠損                                 | 実Chat tool/source/citation/rubric・fault injection  |
+| latency                 | keyword各queryのローカルmsを記録                         | 同一remote workload、warmup/repetition統一、CPU/請求 |
+
+`localEvidence` にcodeDirty（未コミット変更の有無）、能力欠損case ID・理由、未測定観測、latency、remoteMetrics=nullを付ける。
+keywordのmutationPass/rubricPassはnull。scopePassは返却ID集合の所属確認であり、認可全体の成功を意味しない。
+fixture/schema/mapping hashは7Aから維持する。embedding metadataはsynthetic/not-executedで意図的に契約不一致とする。
+synthetic vector自体もこのrunnerでは生成しない。既存のStep 6 composition / Vectorize fakeは別fixture専用のため、
+その成功を7Aのsemantic/hybrid/Chat行へ流用しない。既存keyword/chat eval資産も期待値と実測を分離する。
+
+2026-09-26、Issue #798: ローカルDocker PostgreSQL/PGroongaと実D1/workerdで各22件を収集。
+各30件欠損、comparisonComplete=false / contractPass=false / qualityGate=false、step7Gate=not-evaluatedを確認した。
+今回の結果でStep 6全完了・7B全能力完成・7C実評価開始を宣言しない。
+
+## Remote evaluation workflow（準備のみ・実行不可）
+
+現行CLIにはremote modeを設けない。以下は後続Issueで実装・承認する実行契約であり、
+GitHub Actionsの自動remote jobやresource作成を今回追加しない。PR/CIではローカル試験だけを実行する。
+
+1. 7Bの残り能力mappingを完成させ、Step 6次Step gateを再確認する。欠損があれば7Cを開始しない。
+2. 専用stagingのGCP project/region/DB/schema、Cloudflare account/Worker/D1/Vectorize名・ID、
+   resource TTLとcleanup責任者をmanifestへ固定する。本番resourceと実OAuth/本文は対象外。
+3. fixture/schema/mapping hash、code commitとclean checkout、両provider region/profile、
+   `text-embedding-3-small/1536/cosine/real`、embedding artifact hashをpinする。
+   同じ37 chunkと3つの質問のembeddingを両backendで共有し、生成回数・tokens・費用を記録する。
+4. approval Issue、budget owner、上限USD、期限、最大request/retry数、対象resource ID、
+   `allowRemote=true` の明示opt-inを承認manifestに必須とする。未指定・期限切れ・対象不一致なら停止する。
+   secretは実行環境からのみ渡し、snapshot/logへ記録しない。承認はresource作成/API課金/cleanup範囲ごとに明記する。
+5. 同一fixtureを投入し、index visibilityをpollする。上限時間/回数到達はstale_readとして記録する。
+   fault injectionは専用stagingのみ。成功するまで無制限にretryしたり、失敗試行を削除したりしない。
+6. 非負荷の固定52ケースをwarmup 1回、測定5回（各run保存）で実行する案を承認時に固定する。
+   query/ingestion/visibility/Chatの各latency、エラー率、approximate順位変動を分離する。
+   大規模負荷はユーザー指定でスキップし、この小規模反復から負荷耐性を推定しない。
+7. snapshotとreport、metrics取得時刻・集計window・単位・resource ID・取得元を保存する。
+   query/本文・raw error・secretは保存しない。未取得metricsはnull、推計はestimatedと明示する。
+8. 成功/失敗にかかわらず承認済みcleanupを実行し、不在確認を連続観測する。503を不在成功と数えない。
+   evidenceと請求確認に必要な識別子を保持し、restore結果・残差・採用判断は7C/7Dへ渡す。
+
+### Remote metrics / SLO / 費用の承認対象
+
+実行前manifestには数値のabsolute SLOが必須。提案値はkeyword/semantic/hybrid/Graph p95各2,000ms、
+Chat p95 60,000ms、write acknowledgement p95 5,000ms、index/delete visibility上限120,000msとする。
+これは**未承認の案**であり、既存閾値や本番SLOを変更しない。budget ownerと運用担当が実行前に値を承認・pinする。
+GCP replacementのbaseline p95 +25%条件は維持する。local timingはremote SLO合否へ使わない。
+
+必須metricsはD1 rows read/written・storage、Vectorize stored/queried dimensions・query件数、
+Workers request/CPU/error、Queue delivery/retry/dead-letter、Workflow実行/step、
+GCP DB CPU/接続/IO/storage/VM時間、embedding/LLM tokens/回数、各resourceの実請求と取得window。
+未使用Queue/Workflowはnot-usedと根拠を記録し、未取得を0にしない。月間想定workloadと単価取得日を添えて
+推定費用と実請求を分離し、上限USDを承認するまではremoteを開始しない。
+
+将来承認する具体的な影響は、専用staging resourceの一時作成、合成37 chunk/36 documentの保存、
+実embedding/LLM呼出し、上記の固定反復とmetrics取得、期限内cleanupである。
+現時点で対象resource ID・budget・SLOの承認は未取得であり、実行可能なremote環境は作成していない。
+Step 6の105 request成功は限定synthetic lifecycleのみ。CPU・実請求・restore・全semantic品質・GCP parity、
+削除不在成功間の503による連続成功/恒久削除収束の未証明を維持する。

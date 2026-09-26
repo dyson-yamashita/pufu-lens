@@ -16,10 +16,10 @@ export interface ParityRow {
   citationDocumentIds: string[];
   tools: string[];
   graph: [string, string, string, string, number][];
-  // Explicit observations, not inferred from successful HTTP status.
-  scopePass: boolean;
-  mutationPass: boolean;
-  rubricPass: boolean;
+  // Explicit observations, not inferred from HTTP status; null means unmeasured and fails gates.
+  scopePass: boolean | null;
+  mutationPass: boolean | null;
+  rubricPass: boolean | null;
   criticalErrors: number;
 }
 export interface ParityRun {
@@ -201,7 +201,7 @@ function hardGate(test: ParityCase, row: ParityRow): boolean {
   return (
     test.required.every((id) => selected.includes(id)) &&
     (test.kind !== 'chat' ||
-      (row.rubricPass &&
+      (row.rubricPass === true &&
         test.required.every((id) => row.citationDocumentIds.includes(id)) &&
         test.requiredTools.every((tool) => row.tools.includes(tool))))
   );
@@ -356,7 +356,8 @@ function integer(value: unknown): number {
     throw new Error('Invalid integer');
   return value;
 }
-function boolean(value: unknown): boolean {
+function boolean(value: unknown): boolean | null {
+  if (value === null) return null;
   if (typeof value !== 'boolean') throw new Error('Missing observation');
   return value;
 }
