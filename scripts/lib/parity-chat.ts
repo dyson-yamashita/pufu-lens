@@ -6,6 +6,7 @@ import {
   normalizeHybridKeywordQuery,
   privateChatSourcesForResponse,
 } from '../../apps/web/src/chat.ts';
+import { shouldPrioritizeGraphCoverageSupplement } from '../../apps/web/src/private-chat-graph-coverage.ts';
 import {
   resolvePrivateChatRetryQueries,
   runPrivateChatDetailStep,
@@ -16,7 +17,7 @@ import {
 } from '../../apps/web/src/private-chat-search.ts';
 import { verifyQualityWorkflowHttp } from './keyword-quality-http.ts';
 import type { ParityChatArtifactInput } from './parity-chat-artifact.ts';
-import { chatControlledScenarios } from './parity-chat-controls.ts';
+import { chatControlledScenarios, chatFinalSourceBoundary } from './parity-chat-controls.ts';
 import { chatGraphConnectionFixture } from './parity-chat-graph.ts';
 import { parityChatInputs, prepareParityChat } from './parity-chat-inputs.ts';
 import type { ParityRow } from './parity-eval.ts';
@@ -41,6 +42,7 @@ export function localChatRepository(methods: Partial<ChatRepository>): ChatRepos
 /** Exercises real preparation/retrieval/detail selection and response redaction using real candidates.
  * Hash embeddings and HTTP synthesis are explicit stubs. Natural
  * planner, citations, HTTP authorization and answer rubric are not measured; rows stay separate.
+ * Includes a separate replay that drops d02 only after the real detail read to probe redaction.
  */
 export async function collectSyntheticChat(
   repositories: CandidateRepositories,
@@ -51,6 +53,7 @@ export async function collectSyntheticChat(
 
 /** Connects validated saved vectors to real Chat steps; synthesis remains a loopback stub.
  * All conditional vectors are required up front, and unknown runtime queries abort collection.
+ * The missing-detail probe reuses its declared input identity without changing the saved plan.
  */
 export async function collectArtifactChat(
   repositories: CandidateRepositories,
@@ -78,6 +81,18 @@ async function collectLocalChat(
     );
     controlled.push(...result.observations);
   }
+  const boundaryInput = chatControlledScenarios.find(
+    (scenario) => scenario.id === chatFinalSourceBoundary.inputCaseId,
+  );
+  if (!boundaryInput) throw new Error('Missing final source boundary input');
+  const boundary = await collectChatCases(
+    repositories,
+    database,
+    [boundaryInput],
+    boundaryInput.primaryDocumentAllowlist,
+    artifact,
+    chatFinalSourceBoundary.omittedDocumentIds,
+  );
   return {
     ...natural,
     embedding: artifact?.embedding ?? syntheticEmbedding,
@@ -88,6 +103,12 @@ async function collectLocalChat(
       version: 'chat-controlled-connection-v1',
       inputHash: hashText(JSON.stringify(chatControlledScenarios)),
       observations: controlled,
+      qualityGate: false as const,
+    },
+    finalSourceBoundary: {
+      ...chatFinalSourceBoundary,
+      inputHash: hashText(JSON.stringify({ ...chatFinalSourceBoundary, input: boundaryInput })),
+      observations: boundary.observations,
       qualityGate: false as const,
     },
     stubs: [...(artifact ? [] : ['sha256-embedding']), 'loopback-synthesis'],
@@ -108,6 +129,7 @@ function hashText(text: string) {
 
 /** Runs the same steps for natural and controlled inputs. An optional allowlist only filters
  * actual primary results after adapter/RRF execution; retry and coverage reads remain unmodified.
+ * The separate missing-detail probe filters only real DB results and records both sides.
  */
 async function collectChatCases(
   repositories: CandidateRepositories,
@@ -115,6 +137,7 @@ async function collectChatCases(
   inputs: readonly { id: string; projectId: string; question: string }[],
   primaryDocumentAllowlist?: readonly string[],
   artifact?: ParityChatArtifactInput,
+  omittedDetailDocumentIds?: readonly string[],
 ) {
   const rows: ParityRow[] = [];
   const observations = [];
@@ -129,7 +152,8 @@ async function collectChatCases(
       adapterDocumentIds: string[];
       returnedDocumentIds: string[];
     }[] = [];
-    const documentReads: { requested: string[]; returned: string[] }[] = [];
+    const documentReads: { requested: string[]; databaseReturned: string[]; returned: string[] }[] =
+      [];
     const graphReads: {
       seeds: string[];
       returned: string[];
@@ -189,9 +213,11 @@ async function collectChatCases(
       async documentFetch(query) {
         calls.push('document-fetch');
         const sources = await database.documentFetch(query);
+        const returned = sources.filter((s) => !omittedDetailDocumentIds?.includes(s.documentId));
         documentReads.push({
           requested: [...query.documentIds],
-          returned: sources.map((s) => s.documentId),
+          databaseReturned: sources.map((s) => s.documentId),
+          returned: returned.map((s) => s.documentId),
         });
         for (const source of sources) {
           if (
@@ -202,7 +228,7 @@ async function collectChatCases(
           )
             throw new Error('Invalid Chat document provenance');
         }
-        return sources;
+        return returned;
       },
       async graphCoverageQuery(query) {
         calls.push('graph-query');
@@ -292,6 +318,33 @@ async function collectChatCases(
         afterDocumentIds: retried.mergedVectorSources.map((s) => s.documentId),
       },
       documentReads,
+      detailControl: omittedDetailDocumentIds
+        ? {
+            boundary: chatFinalSourceBoundary.boundary,
+            omittedDocumentIds: [...omittedDetailDocumentIds],
+          }
+        : null,
+      finalSelectionBoundary: {
+        classification: related.classification.primaryOperation,
+        prioritizeGraphSupplement: shouldPrioritizeGraphCoverageSupplement(related.classification),
+        documentLimit: related.hybridSearchDocumentLimit,
+        // The fixed preparation contract never executes the classifier. Do not fabricate a
+        // relation classification to claim the priority replacement branch was exercised.
+        priorityReplacementMeasured: false,
+        priorityReplacementLimitation: 'fixed-preparing-v1-general-classification',
+        graphSources: related.graphSources.map((s) => ({
+          documentId: s.documentId,
+          internalKeys: Object.keys(s)
+            .filter((key) => ['relationType', 'seedDocumentId', 'hopCount'].includes(key))
+            .sort(),
+        })),
+        finalSources: final.sources.map((s) => ({
+          documentId: s.documentId,
+          internalKeys: Object.keys(s)
+            .filter((key) => ['relationType', 'seedDocumentId', 'hopCount'].includes(key))
+            .sort(),
+        })),
+      },
       graphReads,
       graphStatus: related.graphStatus,
       graphDiagnostics: related.graphDiagnostics,

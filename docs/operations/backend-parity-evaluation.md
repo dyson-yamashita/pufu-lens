@@ -300,6 +300,48 @@ orphanケースはv1入力内のdocument全削除を検査し、任意の孤立A
 
 ### Chat / expected-failureの限定接続試験
 
+#### Issue #814: Graph属性を保持する最終sourceと優先枠の到達条件
+
+`localEvidence.{artifactChat,syntheticChat}.{gcp,cloudflare}.finalSourceBoundary` に独立した
+`chat-final-source-boundary-v1` を追加する。入力は既存 `single-seed-graph-final` の同じcase/project/query/
+phaseを明示的に再実行する。Chat artifact v1・固定20入力・manifest hash・classification・selection policyは
+変更しない。未知queryを補完せず、通常品質snapshotにも行を追加しない。
+
+制御は初回実adapter/RRF候補のd01 allowlistと、**実document repositoryが返した後**のd02除外のみ。
+DB自体の削除や欠損は発生させず、detail読取り欠損を模したfaultである。`documentReads` に要求ID、
+`databaseReturned`、制御後の `returned` を分けて保存する。Graph内部hydration、Graph relation、
+coverage、retryは実経路を維持する。`detailControl`、fixture inputHash、各段階のIDを記録し、
+質問・本文・回答・vector・pathはreportへ保存しない。
+
+専用PostgreSQLと実D1/workerdへ同じ明示synthetic保存artifact（default-text projection）を投入し、
+次を確認した。自然planner/実embedding品質/実LLM、実環境での欠損発生・削除整合性は未測定である。
+
+| detail経路      | 実観測                                                                                                                  |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 通常取得        | SAME_AS d02を採用、DBからd01/d02を取得、最終d01/d02。d02のGraph属性はdetail mergeで消える                               |
+| d02結果だけ除外 | DBはd01/d02を返すがstepへd01だけ渡す。Graph内部hydration済みd02が最終に残り、relationType/seedDocumentId/hopCountを保持 |
+
+両経路は実候補、embedding読取り、retry判定、Graph読取り、最終IDが一致する。欠損制御でも
+`privateChatSourcesForResponse` の6属性allowlistとloopback workflow HTTPの2往復を通して内部属性を除去する。
+別のartifact-test projectionでは初回実候補にd01が無く、retryへ進みGraph最終採用0件となる。
+このcontrol不成立を成功へ書き換えず、属性保持なしという観測を保存する。
+
+`finalSelectionBoundary` は分類、優先条件、上限、採用Graph/最終sourceの内部属性名だけを記録する。
+固定 `prepareParityChat` は分類stepを呼ばず、fallbackの **general / low** を使うため、全入力で
+`shouldPrioritizeGraphCoverageSupplement=false`。質問文を変更してもこの契約では分類は変わらない。
+したがって **Graph優先枠による置換は現行固定計画では到達不能** であり、
+`priorityReplacementMeasured=false` と理由を保存する。今回の属性保持は優先枠の証拠ではない。
+
+本番の優先枠処理はrelation/comparison/cause/process分類、Graph-only候補あり、非空selectionを要求する。
+既に属性付きGraph-onlyがあれば何もしない。上限未満なら追加、上限に達していて除去可能なsourceがある場合に
+置換する（上限1の明示GitHub参照は保護）。Graph元オブジェクトを使うため、この経路でも属性保持は可能だが、
+そのend-to-end接続は未検証。今後分類stepを加える場合は別の明示計画契約が必要であり、v1入力の黙った再解釈や
+分類の捏造で今回の到達点を拡大しない。本番実装・selection policyは変更していない。
+
+通常品質各39/52行・13件欠損、qualityGate=false / step7Gate=not-evaluated、MENTIONS残差、
+7B全能力/7C・Step 6/7開始gate未達、既存品質/restore/削除gateを維持する。
+D1はローカルChat bridgeとfake Vectorize、synthesisは固定loopback stubであり、本番E2Eではない。
+
 #### Issue #808: retry判定とGraph最終sourceの接続
 
 共通3質問を既存 `shouldRunPrivateChatRetryStep` / `resolvePrivateChatRetryQueries` で判定し、
