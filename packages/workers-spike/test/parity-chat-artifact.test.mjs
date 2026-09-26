@@ -32,6 +32,34 @@ test('explicit saved text-projection fixture exercises Graph final adoption with
     assert.deepEqual(graph.finalDocumentIds, ['d01', 'd02']);
     assert.equal(graph.sourceRedactionPass, true);
     assert.equal(graph.retry.executed, false);
+    assert.equal(graph.graphMetadataAtFinalSelection, false);
+    const boundary = result.finalSourceBoundary;
+    assert.equal(boundary.version, 'chat-final-source-boundary-v1');
+    assert.equal(boundary.qualityGate, false);
+    const missing = boundary.observations[0];
+    // The same saved query identity, actual ranking, Graph relation and retry decision are
+    // replayed; only the real document reader's d02 result is removed after it was observed.
+    assert.equal(missing.id, graph.id);
+    assert.deepEqual(missing.embeddingReads, graph.embeddingReads);
+    assert.deepEqual(missing.hybridReads, graph.hybridReads);
+    assert.deepEqual(missing.graphReads, graph.graphReads);
+    assert.deepEqual(missing.retry, graph.retry);
+    assert.deepEqual(missing.documentReads[0].databaseReturned.slice().sort(), ['d01', 'd02']);
+    assert.deepEqual(missing.documentReads[0].returned, ['d01']);
+    assert.deepEqual(missing.finalDocumentIds, graph.finalDocumentIds);
+    assert.deepEqual(missing.finalGraphDocumentIds, ['d02']);
+    assert.equal(missing.graphMetadataAtFinalSelection, true);
+    assert.deepEqual(
+      missing.finalSelectionBoundary.finalSources.find((s) => s.documentId === 'd02').internalKeys,
+      ['hopCount', 'relationType', 'seedDocumentId'],
+    );
+    assert.equal(missing.sourceRedactionPass, true);
+    assert.equal(missing.workflowHttpRequests, 2);
+    for (const row of [...result.observations, ...result.controlled.observations, missing]) {
+      assert.equal(row.finalSelectionBoundary.classification, 'general');
+      assert.equal(row.finalSelectionBoundary.prioritizeGraphSupplement, false);
+      assert.equal(row.finalSelectionBoundary.priorityReplacementMeasured, false);
+    }
     assert.deepEqual(result.stubs, ['loopback-synthesis']);
     const retry = result.controlled.observations.find((row) => row.id === 'primary-empty-retry');
     assert.equal(retry.retry.executed, true);
@@ -61,7 +89,11 @@ test('saved Chat vectors drive fixed steps on real DBs and remain separate from 
     assert.equal(artifact.provenance.originVerified, false);
     assert.equal(artifact.cloudflare.storedVectors, 37);
     const compact = (run) =>
-      [...run.observations, ...run.controlled.observations].map(({ latencyMs: _, ...row }) => row);
+      [
+        ...run.observations,
+        ...run.controlled.observations,
+        ...run.finalSourceBoundary.observations,
+      ].map(({ latencyMs: _, ...row }) => row);
     for (const run of [artifact.gcp, artifact.cloudflare].filter(Boolean)) {
       assert.equal(run.inputHash, artifact.provenance.checksum);
       assert.equal(run.rows.length, 3);
@@ -90,6 +122,13 @@ test('saved Chat vectors drive fixed steps on real DBs and remain separate from 
       assert.equal(retry.retry.executed, true);
       assert.ok(retry.retry.afterDocumentIds.length > 0);
       assert.equal(retry.hybridReads.filter((read) => read.phase === 'retry').length, 1);
+      const missing = run.finalSourceBoundary.observations[0];
+      // This projection does not retrieve d01 initially. Keep the failed control and real retry,
+      // rather than inserting a Graph source to satisfy the probe's name.
+      assert.equal(missing.retry.executed, true);
+      assert.deepEqual(missing.hybridReads[0].returnedDocumentIds, []);
+      assert.deepEqual(missing.finalGraphDocumentIds, []);
+      assert.equal(missing.graphMetadataAtFinalSelection, false);
     }
     if (process.env.KEYWORD_EVAL_DATABASE_URL) {
       assert.ok(artifact.gcp);

@@ -1300,6 +1300,10 @@ CI では hermetic contract / metric testsを毎回実行し、remote GCP / Clou
     baseline欠損・未実測・契約不一致は不合格。詳細は[評価契約](../../operations/backend-parity-evaluation.md)。
     Step 6全完了・Step 7実評価開始gate達成とは扱わず、7B以降のrunner / 実測 / SLO / cost判断を残す。
 - 7B: backend runners / remote evaluation workflow
+  - 2026-09-26、Issue #814でGraph最終source境界を独立ローカル検証。
+    保存artifactの既存入力を再利用し、実detail取得後の明示欠損制御でGraph属性保持とresponse除去を確認。
+    通常hydrationの属性消失と分離し、固定general分類では優先枠置換が到達不能であることを記録。
+    本番policy・入力契約は変更せず、実embedding/LLM/remote未測定と品質各39/52行・13件欠損、既存gateを維持。
   - 2026-09-26、Issue #812で最新mainから独立タスクとしてChat保存artifact入力を追加。
     retrieval v1を内包する別version/明示opt-inと固定preparing計画の20入力manifestを追加し、
     同じ検証済みvectorを両DBの実candidate/Chat stepへ接続。順位依存のretry/Graph採否を実測のまま保存する。

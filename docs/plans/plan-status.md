@@ -1,5 +1,10 @@
 # Plan Status
 
+Plan 018 Step 7B（2026-09-26、Issue #814）: 保存Chat artifactの既存20入力を維持し、実DB detail取得後の
+明示欠損制御でGraph属性を保持した最終sourceのresponse除去を検証。通常hydrationでは属性消失。
+固定preparingはgeneral分類のためGraph優先枠置換は現行契約外・未検証と記録する。
+品質各39/52行・13件欠損、7C・Step 6/7 gate未達を維持する。
+
 Plan 018 Step 7B（2026-09-26、Issue #812）: Chat用保存artifactを別versionで明示opt-inし、固定計画の
 20入力manifestと両DB collectorを接続。retrieval v1は維持。synthetic保存artifactでretry/Graph最終source/
 redactionを検証。生成元・実embedding品質・実LLMは未測定、品質各39/52行・13件欠損、7C・Step 6/7 gate未達を維持。

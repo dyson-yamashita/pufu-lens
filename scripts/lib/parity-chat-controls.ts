@@ -15,3 +15,13 @@ export const chatControlledScenarios = [
     primaryDocumentAllowlist: ['d01'],
   },
 ] as const;
+
+/** Replays an existing input identity with a missing-detail fault after the real DB read.
+ * This does not add or reinterpret embedding queries, classification, or selection policy.
+ */
+export const chatFinalSourceBoundary = {
+  version: 'chat-final-source-boundary-v1',
+  inputCaseId: 'single-seed-graph-final',
+  boundary: 'detail-result-after-real-document-repository',
+  omittedDocumentIds: ['d02'],
+} as const;
