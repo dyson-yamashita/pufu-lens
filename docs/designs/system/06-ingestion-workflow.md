@@ -2,6 +2,12 @@
 
 ## Ingestion ワークフロー
 
+Plan 018 Step 6DのローカルCloudflare spikeは、semantic snapshot/head/outboxをD1単一batchで保存し、
+Vectorizeへの非同期配信を別処理にする。immutable revision IDとD1照合で旧vectorの誤返却を防ぎ、
+retry/dead-letter/repairで再送・旧ID削除を行う。submittedは検索可視化を意味しない。
+既存GCP ingestionと6C keywordの更新入口は未接続のまま維持する。fetch-only embedding境界、
+version採番のcaller契約とremote残件は[ADR-009](../../adr/ADR-009-vectorize-outbox-repair.md)を参照する。
+
 Plan 018 Step 2F / Issue #742ではserver-only `relational-only`を追加する。graph mutationと既存Document /
 RELATED_TOの取り込み対象選別をrelationalへ一体で切り替え、AGEを参照・更新しない。全取り込み元の共通indexing、
 再parse、retry、lifecycle更新に同じ境界を適用し、1 documentのgraph / email_quotes / indexed status transactionを維持する。

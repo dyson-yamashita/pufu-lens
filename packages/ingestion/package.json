@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./embedding-client": {
+      "types": "./dist/embedding-client.d.ts",
+      "import": "./dist/embedding-client.js"
+    },
     "./github-lifecycle": {
       "types": "./dist/github-lifecycle.d.ts",
       "import": "./dist/github-lifecycle.js"

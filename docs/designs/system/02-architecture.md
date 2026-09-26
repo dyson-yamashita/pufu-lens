@@ -93,13 +93,16 @@ Plan 018 Step 6A の `@pufu-lens/workers-spike` は、Graph / retrieval / projec
 Node互換flagなしのローカルworkerdで利用するテスト専用workspaceである。RRF・candidate guard・Graph DTO・
 slug validationの互換性を確認し、provider bindingやGCP compositionは変更しない。
 D1 Graph adapterはStep 6Bで同workspace内に追加し、実D1 bindingでproject scope、read/mutation、rollbackを検証する。
-Cloudflare binding型はadapterと試験composition内に閉じる。認証・Vectorize・embedding移植は未完了であり、この入口はdeployしない。
+Cloudflare binding型はadapterと試験composition内に閉じる。認証・remote移植は未完了であり、この入口はdeployしない。
 依存境界と後続条件は[ADR-006](../../adr/ADR-006-workers-core-package-spike.md)を参照する。
 D1のschema、batch原子性、quotaとremote未検証範囲は[ADR-007](../../adr/ADR-007-d1-graph-adapter.md)に記録する。
 Step 6CのD1 keyword adapterは同workspaceに閉じ、文字postingによる候補取得と共有term/typo規則・
 単語bigram Jaccardで判定する。query正規化と純粋な検索語解析はretrieval packageが所有する。
 既存GCP入口は共有termを従来のLIKE/POSIX表現に変換し、SQL/compositionは維持する。scope、原子的索引置換、
 候補予算超過時のunavailableと固定fixture評価は[ADR-008](../../adr/ADR-008-d1-keyword-adapter.md)を参照する。
+Step 6DはVectorize semantic adapterを同workspace内に追加し、project namespace/indexed metadataとD1現行revisionを照合する。
+cosineDistanceへの変換、D1 outbox/repair、fetch-only embedding入口は[ADR-009](../../adr/ADR-009-vectorize-outbox-repair.md)を参照する。
+Vectorizeはfake契約試験のみで、実D1/workerdの成功をremote互換・品質の根拠にはしない。
 
 Plan 018 Step 1B では `@pufu-lens/graph` が provider-neutral な `GraphReadRepository`、related document / normalized
 node・edge DTO、preset / relation allowlist、runtime guard を所有する。Chat graph coverage、Graph Viewer preset、Synthetic

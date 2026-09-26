@@ -282,6 +282,9 @@ importers:
       '@pufu-lens/graph':
         specifier: workspace:*
         version: link:../graph
+      '@pufu-lens/ingestion':
+        specifier: workspace:*
+        version: link:../ingestion
       '@pufu-lens/project-tenancy':
         specifier: workspace:*
         version: link:../project-tenancy

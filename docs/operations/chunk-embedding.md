@@ -1,5 +1,10 @@
 # Chunk / Embedding 運用メモ
 
+Plan 018 Step 6Dはfetch-onlyな`@pufu-lens/ingestion/embedding-client`を公開し、既存`embedding`入口からも再exportする。
+GCPの設定・chunk処理・Gemini/OpenAI request契約は維持する。Workersではこの入口とHTTP retryだけをbundleし、
+Node依存のdeterministic providerやfixtureを持ち込まない。実workerd＋合成HTTP応答の検証範囲、
+ローカルD1 outboxのrepair CLI、remote未確認と承認対象は[ADR-009](../adr/ADR-009-vectorize-outbox-repair.md)を参照する。
+
 Step 7 では parsed JSON から `documents` を upsert し、本文を chunk 化して `document_chunks` に最新版だけを保存する。
 
 GitHub lifecycle-only refresh（`metadata.lifecycleOnly=true`）では chunk 本文が変わらない限り embedding を再生成せず、`documents.metadata.githubLifecycle` だけを更新する。

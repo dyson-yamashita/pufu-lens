@@ -1179,6 +1179,9 @@ Cloudflare metrics が固定されてから開始する。
 - 6B: D1 schema / Graph adapter
 - 6C: D1 keyword adapter
 - 6D: Vectorize adapter / outbox / repair
+  - 2026-09-26、Issue #790で独立タスクとして実装。Vectorize契約、実D1/workerdのrevision/outbox/repair、
+    fetch-only embedding境界をローカル検証。詳細とremote承認対象は[ADR-009](../../adr/ADR-009-vectorize-outbox-repair.md)。
+    remote semantic gate、6E composition、keywordとのrevision統合、7 parityは未完了。
 - 6E: Cloudflare composition / staging fixture
 
 ## 14. Step 7: GCP / Cloudflare backend parity を評価する

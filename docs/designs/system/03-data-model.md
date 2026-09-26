@@ -18,6 +18,12 @@ Step 6CのローカルD1索引は`packages/workers-spike/d1/0002_keyword.sql`で
 未実装のingestion/version arbitrationとremote gateは[ADR-008](../../adr/ADR-008-d1-keyword-adapter.md)に記録する。
 GCP schema・既存keyword primaryは変更しない。
 
+Step 6Dの`0003_semantic.sql`はimmutable snapshotの`semantic_versions`、単調増加revisionの
+`semantic_heads`、配信状態の`semantic_outbox`をproject/document/revision複合キーで結ぶ。
+snapshot/head/outbox/旧vector cleanup意図を単一D1 batchで保存する。Vectorizeとは別transactionであり、
+submittedは可視化完了を意味しない。tombstone・配信epoch・retry/repair・保持制約は
+[ADR-009](../../adr/ADR-009-vectorize-outbox-repair.md)を参照する。keywordとのversion統合は未接続である。
+
 ### 1. マルチプロジェクト方針
 
 - `projects` テーブルで論理プロジェクトを定義する。`slug` から storage prefix と AGE graph name を生成する。

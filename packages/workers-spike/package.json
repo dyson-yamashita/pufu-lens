@@ -4,11 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "repair:local": "node repair.mjs",
     "build": "node build.mjs",
     "test": "node --experimental-strip-types --test test/*.test.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@pufu-lens/ingestion": "workspace:*",
     "@pufu-lens/graph": "workspace:*",
     "@pufu-lens/project-tenancy": "workspace:*",
     "@pufu-lens/retrieval": "workspace:*"
