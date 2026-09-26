@@ -1,5 +1,5 @@
 import { keywordNgrams, normalizeKeyword, parseRankedChunkCandidate } from '@pufu-lens/retrieval';
-import { type D1Binding, ids, record, rows, text } from './binding.js';
+import { type D1Binding, type D1Statement, ids, record, rows, text } from './binding.js';
 
 /**
  * Atomically replaces one document's metadata and complete chunk set in the authorized project.
@@ -9,6 +9,14 @@ import { type D1Binding, ids, record, rows, text } from './binding.js';
  * This local spike bounds each content to 8 KB and the serialized snapshot to 100 KB.
  */
 export async function replaceD1KeywordDocument(db: D1Binding, value: unknown): Promise<void> {
+  const results = await db.batch(keywordStatements(db, value));
+  results.forEach(rows);
+}
+
+/** Prepares validated keyword writes for one atomic batch. If revision is supplied, the caller must
+ * put semantic head writes earlier in that same batch; only the current revision may replace keywords.
+ */
+export function keywordStatements(db: D1Binding, value: unknown, revision?: number): D1Statement[] {
   const input = record(value);
   const projectId = text(input.projectId);
   const documentId = text(input.documentId);
@@ -51,9 +59,15 @@ export async function replaceD1KeywordDocument(db: D1Binding, value: unknown): P
   const metadataBytes = JSON.stringify(metadata);
   if (new TextEncoder().encode(payload + metadataBytes).length > 100_000)
     throw new Error('Keyword snapshot too large');
-  const results = await db.batch([
+  if (revision !== undefined && (!Number.isSafeInteger(revision) || revision < 1))
+    throw new Error('Invalid keyword revision');
+  const current =
+    revision === undefined
+      ? '1'
+      : `EXISTS (SELECT 1 FROM semantic_heads WHERE project_id=?1 AND document_id=?2 AND revision=${revision})`;
+  return [
     db
-      .prepare(`INSERT INTO keyword_documents VALUES (?1,?2,?3,?4,?5,?6)
+      .prepare(`INSERT INTO keyword_documents SELECT ?1,?2,?3,?4,?5,?6 WHERE ${current}
       ON CONFLICT(project_id,document_id) DO UPDATE SET raw_document_id=excluded.raw_document_id,
       doc_type=excluded.doc_type,title=excluded.title,canonical_uri=excluded.canonical_uri`)
       .bind(
@@ -65,20 +79,19 @@ export async function replaceD1KeywordDocument(db: D1Binding, value: unknown): P
         metadata.canonicalUri,
       ),
     db
-      .prepare('DELETE FROM keyword_chunks WHERE project_id=?1 AND document_id=?2')
+      .prepare(`DELETE FROM keyword_chunks WHERE project_id=?1 AND document_id=?2 AND ${current}`)
       .bind(projectId, documentId),
     db
       .prepare(`INSERT INTO keyword_chunks
       SELECT ?1,json_extract(value,'$.chunkId'),?2,json_extract(value,'$.chunkIndex'),
-        json_extract(value,'$.content'),json_extract(value,'$.normalized') FROM json_each(?3)`)
+        json_extract(value,'$.content'),json_extract(value,'$.normalized') FROM json_each(?3) WHERE ${current}`)
       .bind(projectId, documentId, payload),
     db
       .prepare(`INSERT INTO keyword_characters
       SELECT ?1,t.value,json_extract(c.value,'$.chunkId')
-      FROM json_each(?2) c, json_each(c.value,'$.tokens') t`)
-      .bind(projectId, payload),
-  ]);
-  results.forEach(rows);
+      FROM json_each(?3) c, json_each(c.value,'$.tokens') t WHERE ${current}`)
+      .bind(projectId, documentId, payload),
+  ];
 }
 
 /** Deletes only the requested project's documents; FK cascades remove chunks and postings atomically. */

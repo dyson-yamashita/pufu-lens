@@ -2,6 +2,10 @@
 
 ## デプロイメント
 
+Plan 018 Step 6EのCloudflare検証compositionは本番GCP deployとは独立し、remote未承認・未実行である。
+専用binding/認証/期限/schema guardとローカル再現、未確定account/resourceを持つ設定templateは
+[ADR-010](../../adr/ADR-010-cloudflare-staging-composition.md)を参照する。ローカルharnessはdeployしない。
+
 > 2026-06-19 に GCP project `pufu-lens`（asia-east1）へ end-to-end でデプロイし、PostgreSQL(AGE) VM・Mastra Server (Cloud Run)・Cloud Run Jobs・Web (Firebase App Hosting) の稼働を確認した。本番ビルドに必要だったアプリ側の修正は [ADR-004](../../adr/ADR-004-storage-module-resolution-mastra-build.md) を参照。クラウド手順を変更する際は `scripts/deploy-dry-run.ts`、`scripts/deploy-smoke.ts`、`scripts/infra-check.ts`、CI、Secret Manager 設計を同時に確認する。
 >
 > 既知の落とし穴（再現デプロイ時に必須）:

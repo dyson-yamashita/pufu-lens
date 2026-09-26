@@ -2,6 +2,11 @@
 
 ## ネットワーク・セキュリティ
 
+Plan 018 Step 6EのCloudflare入口は専用Bearer tokenと固定合成projectのoperator検証だけを許可し、
+productionユーザーの認証・認可を代替しない。設定・期限・schemaが不正ならfail closedとし、未認証時は
+bindingへアクセスしない。任意本文/SQL/URL入力を禁止する。remoteは未承認・未実行で、
+制約と認証付き入口/ローカルharnessの区別は[ADR-010](../../adr/ADR-010-cloudflare-staging-composition.md)を参照する。
+
 API の一覧、エラー形式、サイズ上限、rate limit、監査ログの共通方針は [API デザイン](05-api-design.md) も参照する。
 
 ### 1. ネットワーク構成
