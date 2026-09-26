@@ -55,9 +55,7 @@ async function control(request: Request) {
   fixtureSnapshot(input.projectId, input.document, input.revision);
   if (
     typeof input.operation !== 'string' ||
-    !['health', 'seed', 'graph', 'dispatch', 'repair', 'inspect', 'query'].includes(
-      input.operation,
-    )
+    !['health', 'seed', 'graph', 'dispatch', 'repair', 'inspect', 'query'].includes(input.operation)
   )
     throw new Error('Unknown operation');
   return {
