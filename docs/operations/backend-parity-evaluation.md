@@ -4,7 +4,7 @@
 
 Plan 018 Step 7A / Issue #796は、共通synthetic fixtureと採点ライブラリのローカル準備である。
 Step 6全完了、Step 7の実評価開始gate達成、GCP / Cloudflareの品質同等性を意味しない。
-7B / Issue #798でkeyword、Issue #800でGraphのローカルrunnerを追加した。
+7B / Issue #798でkeyword、Issue #800でGraph、Issue #802でsemantic/hybridのsyntheticローカルrunnerを追加した。
 remote実行、実embedding生成、cloud resource作成、本番変更は含まない。
 
 Step 7B以降で、同一fixture・論理schema・ID mapping・embeddingを両backendへ投入する手順と、
@@ -149,15 +149,52 @@ fixture/hash/閾値・本番adapter契約は変更せず、将来のversioned fi
 | keyword                 | 両backend全22 queryを入力し順位・拒否・scopeを実測        | GCP remote baseline、remote性能                      |
 | scope                   | 返却chunk IDのproject所属とD1のdocument provenanceを確認  | HTTP認可・cross-project write全経路                  |
 | mutation / Graph        | read 3・mutation 14件を実測、全保存集合とretry/隔離を照合 | MENTIONS v1契約不一致、remoteと全経路検証            |
-| semantic / hybrid       | snapshot行を生成せず欠損                                  | 共通実embedding・pgvector / Vectorize・実selection   |
+| semantic / hybrid       | 別evidenceへsynthetic各3行、実adapter/RRF/selection接続   | 共通実embedding・実Vectorize・remote品質             |
 | Chat / expected failure | snapshot行を生成せず欠損                                  | 実Chat tool/source/citation/rubric・fault injection  |
 | latency                 | keyword queryとGraphケース全操作のローカルmsを記録        | 同一remote workload、warmup/repetition統一、CPU/請求 |
 
 `localEvidence` にcodeDirty（未コミット変更の有無）、能力欠損case ID・理由、未測定観測、latency、remoteMetrics=nullを付ける。
 keywordのmutationPass/rubricPassはnull。scopePassは返却ID集合の所属確認であり、認可全体の成功を意味しない。
-fixture/schema/mapping hashは7Aから維持する。embedding metadataはsynthetic/not-executedで意図的に契約不一致とする。
-synthetic vector自体もこのrunnerでは生成しない。既存のStep 6 composition / Vectorize fakeは別fixture専用のため、
-その成功を7Aのsemantic/hybrid/Chat行へ流用しない。既存keyword/chat eval資産も期待値と実測を分離する。
+fixture/schema/mapping hashは7Aから維持する。品質snapshotのembedding metadataはsynthetic/not-executedで
+意図的に契約不一致とする。既存のStep 6 compositionは別fixture専用のため、その成功を7Aの
+semantic/hybrid/Chat行へ流用しない。既存keyword/chat eval資産も期待値と実測を分離する。
+
+### Semantic / hybridのsynthetic接続試験
+
+Issue #802で `scripts/lib/parity-retrieval.ts` に全37 chunk/36 documentと各3質問の共通mappingを追加。
+本文/質問とblock番号のSHA-256を1536次元の単位vectorへ変換する。judgment、required source、oracle順位は
+生成に使わず、意味的類似度を表さない。実embedding APIや保存済みembedding artifactの入力機能は追加しない。
+
+`report.json` の `localEvidence.syntheticRetrieval.{gcp,cloudflare}` に、実際に呼んだadapterの候補から
+生成した6行の別snapshot、入力hash、embedding `synthetic/sha256-text-v1/1536/cosine`、adapter種別、
+latencyと選択policyを保存する。ここも `qualityGate=false` 固定。通常のgcp/cloudflare snapshotには混ぜず、
+採点器・fixture・閾値は変更しない。DB URL未指定ならsynthetic GCP evidenceもnull。
+quality側は引き続きsemantic/hybridを含む13ケース欠損であり、local evidenceを実semantic品質と誤認しない。
+
+PostgreSQLは専用loopback `keyword_eval` URLからランダム名 `parity_retrieval_*` DBを新規作成し、
+vector/PGroonga extension、fixture用の最小documents/document_chunks tableを用意する。
+既存Webのpgvector/PGroonga candidate adapterを直接呼ぶ。IDはfixtureのtextを使い、既存DB/tableを再利用しない。
+CREATEDBとextension作成権限が必要で、作成したDBのみfinallyで削除する。強制終了時は一時DBが残り得る。
+これは最小schema上の正確なcosine検索であり、本番schema全体・ANN index性能・GCP remoteは検証しない。
+
+Cloudflareは実D1/workerdと既存keyword/Vectorize adapter、semantic outboxのenqueue/deliverを使用する。
+新しいローカルrouting harnessから同一D1へ投入し、Vectorizeだけを保存vectorのexact cosineで並べるfakeにする。
+fakeはnamespace/project/modelで絞り、順位を固定応答しない。外部通信は全拒否する。
+全37 vectorの保存と36回upsert、6回queryを観測する。実VectorizeのANN、整合性待ち、quotaを証明しない。
+
+semanticはlimit=10/preDedupLimit=37、hybridのkeywordはlimit=20で候補を取得し、Core RRFのTop-10と
+既存 `selectChatSourcesByScoreProfile` / `selectDiverseChatSources` による最大5 sourceを保存する。
+2ランキングのRRF最大値で正規化し、固定policyはkMin=3/kMax=10/relativeWindow=0.15。
+Core RRFとselectionの実行場所は両側ともNodeローカルであり、自然planner・Chat workflow・LLMは通さない。
+返却chunk/document provenance、順位、document重複を検査し、project所属をscopePassに記録する。
+mutation/rubricはnull。HTTP成功から未測定能力をtrueにしない。
+
+2026-09-26、Issue #802: 専用Docker PostgreSQL/pgvector/PGroongaと実D1/workerd＋fake Vectorizeで
+各6行のsynthetic evidenceを収集。両側の候補順とfinal sourceは一致したが、意味的品質の証拠ではない。
+自然文をそのまま正規化した3質問では両側のkeyword候補が空で、今回のhybrid実観測はsemantic候補だけのRRFとなった。
+空結果も観測に保持し、検索語の捏造やoracle補完はしない。両ランキングが非空の接続はunit testで確認する。
+品質snapshotは各39/52行、MENTIONS不一致、qualityGate=false / step7Gate=not-evaluatedを維持。
+7B全能力・7C実評価・Step 6/7開始gateは未達。実Chat/failure 7ケース、実embeddingとremoteは未対応。
 
 2026-09-26、Issue #798: ローカルDocker PostgreSQL/PGroongaと実D1/workerdで各22件を収集。
 各30件欠損、comparisonComplete=false / contractPass=false / qualityGate=false、step7Gate=not-evaluatedを確認した。

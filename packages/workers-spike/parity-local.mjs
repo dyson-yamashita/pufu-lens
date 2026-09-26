@@ -5,12 +5,14 @@ import { fileURLToPath } from 'node:url';
 import { Miniflare } from 'miniflare';
 import { corpusHash } from '../../scripts/lib/keyword-eval.ts';
 import { collectPgroongaBaseline } from '../../scripts/lib/keyword-eval-pgroonga.ts';
-import { evaluateParity } from '../../scripts/lib/parity-eval.ts';
+import { evaluateParity, parseParityRun } from '../../scripts/lib/parity-eval.ts';
 import { parityFixture } from '../../scripts/lib/parity-fixture.ts';
 import { collectPostgresGraphParity } from '../../scripts/lib/parity-graph-postgres.ts';
+import { collectPostgresSyntheticRetrieval } from '../../scripts/lib/parity-retrieval-postgres.ts';
 import { localKeywordSnapshot } from '../../scripts/lib/parity-runner.ts';
 import { buildWorker } from './build.mjs';
 import { collectD1GraphParity } from './parity-graph-local.mjs';
+import { collectD1SyntheticRetrieval } from './parity-retrieval-local.mjs';
 
 /** Measures the fixed parity keyword inputs in disposable real D1/workerd with all egress denied.
  * Uses the existing D1 adapter harness, not the fixed Step 6 composition endpoint/Vectorize fake.
@@ -129,9 +131,43 @@ export async function runLocalParity(outputDirectory, databaseUrl) {
     await collectD1ParityKeywords(),
     await collectD1GraphParity(),
   );
+  // Separate snapshots prevent fake/synthetic rows being mistaken for quality measurements.
+  const syntheticEvidence = (base, run, adapters) =>
+    run === null
+      ? null
+      : {
+          ...run,
+          rows: undefined,
+          adapters,
+          snapshot: parseParityRun({
+            metadata: {
+              ...base.snapshot.metadata,
+              runId: `${base.snapshot.metadata.runId}-synthetic`,
+              embedding: run.embedding,
+            },
+            rows: run.rows,
+          }),
+        };
+  const syntheticRetrieval = {
+    gcp: syntheticEvidence(
+      baseline,
+      databaseUrl ? await collectPostgresSyntheticRetrieval(databaseUrl) : null,
+      'local-pgvector-pgroonga',
+    ),
+    cloudflare: syntheticEvidence(
+      candidate,
+      await collectD1SyntheticRetrieval(),
+      'real-d1-workerd-fake-vectorize',
+    ),
+  };
   const report = {
     ...evaluateParity(candidate.snapshot, baseline.snapshot),
-    localEvidence: { codeDirty, gcp: baseline.evidence, cloudflare: candidate.evidence },
+    localEvidence: {
+      codeDirty,
+      gcp: baseline.evidence,
+      cloudflare: candidate.evidence,
+      syntheticRetrieval,
+    },
   };
   await mkdir(outputDirectory, { recursive: true });
   for (const [name, value] of [
@@ -145,7 +181,7 @@ export async function runLocalParity(outputDirectory, databaseUrl) {
     );
   await writeFile(
     resolve(outputDirectory, 'summary.md'),
-    `# Local backend parity\n\nGCP: ${baseline.snapshot.rows.length}/52; Cloudflare: ${candidate.snapshot.rows.length}/52 measured rows.\n\nqualityGate: ${report.qualityGate}; Step 7: ${report.step7Gate}.\n\nGraph includes persisted before/after state, retry and tenant-sentinel checks. Keyword mutation, Chat rubric, real embedding and remote metrics remain unmeasured. MENTIONS v1 expects direct 1-hop; adapters support Topic-mediated 2-hop, so inspect its mismatch in report.json.\n`,
+    `# Local backend parity\n\nGCP: ${baseline.snapshot.rows.length}/52; Cloudflare: ${candidate.snapshot.rows.length}/52 measured rows.\n\nqualityGate: ${report.qualityGate}; Step 7: ${report.step7Gate}.\n\nSeparate synthetic retrieval evidence: GCP ${syntheticRetrieval.gcp?.snapshot.rows.length ?? 0}/6; Cloudflare ${syntheticRetrieval.cloudflare.snapshot.rows.length}/6. Hash vectors and fake Vectorize are connection tests, not semantic quality or remote parity. Quality snapshots keep these cases missing.\n\nGraph includes persisted before/after state, retry and tenant-sentinel checks. Keyword/retrieval mutation, Chat rubric, real embedding and remote metrics remain unmeasured. MENTIONS v1 expects direct 1-hop; adapters support Topic-mediated 2-hop, so inspect its mismatch in report.json.\n`,
   );
   return report;
 }

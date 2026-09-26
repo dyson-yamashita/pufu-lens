@@ -1300,6 +1300,11 @@ CI では hermetic contract / metric testsを毎回実行し、remote GCP / Clou
     baseline欠損・未実測・契約不一致は不合格。詳細は[評価契約](../../operations/backend-parity-evaluation.md)。
     Step 6全完了・Step 7実評価開始gate達成とは扱わず、7B以降のrunner / 実測 / SLO / cost判断を残す。
 - 7B: backend runners / remote evaluation workflow
+  - 2026-09-26、Issue #802でPR #801 merge後の最新mainからsemantic/hybridのローカル準備に着手。
+    共通全37chunk/36documentを実pgvector/PGroongaと実D1/workerd＋fake Vectorizeへ投入し、各6行を
+    Core RRF/既存selectionへ接続。SHA-256の独立synthetic vectorを用い、別local evidenceへ保存する。
+    品質snapshotは各39/52行と13件欠損を維持。実embedding/Vectorize・Chat/failure・remoteは未対応、
+    MENTIONS残差、qualityGate=false、7B全能力/7CとStep 6/7開始gate未達を保持する。
   - 2026-09-26、Issue #800で最新mainから独立タスクとしてGraph read/mutationのローカルmappingを追加。
     実PostgreSQL relational / D1-workerdで17ケースを共通入力から収集し、keywordと合わせ各39/52行。
     mutation 14件の期待集合・retry・他project不変性を確認。MENTIONS v1の直接1-hop期待と既存Topic経由

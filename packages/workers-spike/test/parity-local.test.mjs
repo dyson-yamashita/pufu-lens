@@ -18,6 +18,17 @@ test('real workerd keyword/Graph runner preserves observations and missing capab
     assert.equal(report.localEvidence.gcp.missing.length, 52);
     assert.equal(report.qualityGate, false);
     assert.equal(report.comparisonComplete, false);
+    const synthetic = report.localEvidence.syntheticRetrieval;
+    assert.equal(synthetic.gcp, null);
+    assert.equal(synthetic.cloudflare.snapshot.rows.length, 6);
+    assert.equal(synthetic.cloudflare.snapshot.metadata.embedding.mode, 'synthetic');
+    assert.equal(synthetic.cloudflare.qualityGate, false);
+    assert.equal(synthetic.cloudflare.vectorize, 'fake-exact-cosine');
+    assert.ok(
+      snapshot.rows.every(
+        (row) => !row.id.startsWith('semantic-') && !row.id.startsWith('hybrid-'),
+      ),
+    );
     assert.equal(snapshot.rows.find((row) => row.id === 'keyword-over-length')?.error, 'rejected');
     assert.ok(snapshot.rows.every((row) => row.scopePass));
     assert.ok(
