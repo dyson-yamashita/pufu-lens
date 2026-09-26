@@ -39,6 +39,10 @@
 
 ## 運用ルール
 
+Plan 018 Step 7B（2026-09-26、Issue #806）: Chat文書取得を実PostgreSQL repository / 実D1読取りへ接続。
+独立したGraph接続fixtureから既存relating/coverageを実行し、3質問の呼出し・取得・採用診断を保存する。
+自然planner/回答/引用/HTTP認可、7B全能力/7CとStep 6/7開始gateは未達。v1/hash/閾値と品質各39/52行を維持する。
+
 Plan 018 Step 7B（2026-09-26、Issue #804）: Chat 3質問の実candidate/selectionとloopback HTTP、
 membership拒否/timeout/429、D1 stale revision検出を限定ローカル観測した。synthetic証拠を別保存し、
 実planner/Graph/回答/引用/HTTP認可は未測定。staleはunavailableに集約され期待値不一致のまま。

@@ -1,5 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { Miniflare } from 'miniflare';
+import { parseChatSourceRow } from '../../apps/web/src/chat.ts';
+import {
+  localGraphCoverageQuery,
+  seedChatConnectionGraph,
+} from '../../scripts/lib/parity-chat-graph.ts';
 import {
   collectSyntheticRetrieval,
   parityRetrievalDocuments,
@@ -137,12 +142,37 @@ export async function withD1ParityCandidates(collect) {
       if (delivery !== 'submitted') throw new Error('Synthetic vector delivery failed');
     }
     if (fake.size !== 37) throw new Error('Incomplete synthetic vector coverage');
+    await seedChatConnectionGraph({
+      upsertNode: (input) => call('graph', 'upsertNode', input),
+      upsertEdge: (input) => call('graph', 'upsertEdge', input),
+    });
+    const documentFetch = async (input) =>
+      (await call('document', 'fetch', input)).map((value) => {
+        const row = parseChatSourceRow(value);
+        return {
+          documentId: row.document_id,
+          rawDocumentId: row.raw_document_id,
+          docType: row.doc_type,
+          title: row.title,
+          canonicalUri: row.canonical_uri,
+          occurredAt: row.occurred_at,
+          snippet: row.snippet?.trim() || undefined,
+        };
+      });
+    const database = {
+      documentFetch,
+      graphCoverageQuery: localGraphCoverageQuery(
+        { findRelatedDocuments: (input) => call('graph', 'findRelatedDocuments', input) },
+        documentFetch,
+      ),
+    };
     const result = await collect(
       {
         semanticCandidateRepository: { search: (input) => call('semantic', 'search', input) },
         keywordCandidateRepository: { search: (input) => call('keyword', 'search', input) },
       },
       { setStale: (value) => fake.setStale(value) },
+      database,
     );
     return {
       ...result,

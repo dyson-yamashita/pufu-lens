@@ -9,16 +9,14 @@ import {
 import {
   runPrivateChatDetailStep,
   runPrivateChatPreparingStep,
+  runPrivateChatRelatingStep,
   runPrivateChatRetrievingStep,
 } from '../../apps/web/src/private-chat-search.ts';
 import { verifyQualityWorkflowHttp } from './keyword-quality-http.ts';
+import { chatGraphConnectionFixture } from './parity-chat-graph.ts';
 import type { ParityRow } from './parity-eval.ts';
 import { parityFixture } from './parity-fixture.ts';
-import {
-  parityRetrievalDocuments,
-  syntheticEmbedding,
-  syntheticParityVector,
-} from './parity-retrieval.ts';
+import { syntheticEmbedding, syntheticParityVector } from './parity-retrieval.ts';
 
 /** Maps only input fields, never required tools, relevance labels or expected answers. */
 export function parityChatInputs() {
@@ -45,18 +43,27 @@ export function localChatRepository(methods: Partial<ChatRepository>): ChatRepos
 }
 
 /** Exercises real preparation/retrieval/detail selection and response redaction using real candidates.
- * Hash embeddings, fixture detail lookup and HTTP synthesis are explicit stubs. Graph, natural
+ * Hash embeddings and HTTP synthesis are explicit stubs. Natural
  * planner, citations, HTTP authorization and answer rubric are not measured; rows stay separate.
  */
-export async function collectSyntheticChat(repositories: CandidateRepositories) {
+export async function collectSyntheticChat(
+  repositories: CandidateRepositories,
+  database: Pick<ChatRepository, 'documentFetch' | 'graphCoverageQuery'>,
+) {
   const inputs = parityChatInputs();
-  const documents = parityRetrievalDocuments();
   const rows: ParityRow[] = [];
   const observations = [];
   for (const input of inputs.filter((test) => !test.id.startsWith('failure-'))) {
     const start = performance.now();
     const candidateIds: string[] = [];
     const calls: string[] = [];
+    const documentReads: { requested: string[]; returned: string[] }[] = [];
+    const graphReads: {
+      seeds: string[];
+      returned: string[];
+      relations: [string, string, string, number][];
+      queryFailed: boolean;
+    }[] = [];
     const repository = localChatRepository({
       async hybridSearch(query) {
         calls.push('hybrid-search');
@@ -96,17 +103,37 @@ export async function collectSyntheticChat(repositories: CandidateRepositories) 
       },
       async documentFetch(query) {
         calls.push('document-fetch');
-        return documents
-          .filter(
-            (document) =>
-              document.projectId === query.projectId &&
-              query.documentIds.includes(document.documentId),
+        const sources = await database.documentFetch(query);
+        documentReads.push({
+          requested: [...query.documentIds],
+          returned: sources.map((s) => s.documentId),
+        });
+        for (const source of sources) {
+          if (
+            !query.documentIds.includes(source.documentId) ||
+            !parityFixture.chunks.some(
+              (c) => c.documentId === source.documentId && c.projectId === query.projectId,
+            )
           )
-          .map((document) => {
-            const source = document.chunks[0]?.candidate;
-            if (!source) throw new Error('Empty Chat fixture document');
-            return source;
-          });
+            throw new Error('Invalid Chat document provenance');
+        }
+        return sources;
+      },
+      async graphCoverageQuery(query) {
+        calls.push('graph-query');
+        const result = await database.graphCoverageQuery(query);
+        graphReads.push({
+          seeds: [...query.seedDocumentIds],
+          returned: result.candidates.map((c) => c.documentId),
+          relations: result.candidates.map((c) => [
+            c.seedDocumentId,
+            c.relationType,
+            c.documentId,
+            c.hopCount,
+          ]),
+          queryFailed: result.queryFailed,
+        });
+        return result;
       },
     });
     const prepared = runPrivateChatPreparingStep({
@@ -115,13 +142,15 @@ export async function collectSyntheticChat(repositories: CandidateRepositories) 
       projectId: input.projectId,
       question: input.question,
     });
-    const retrieved = await runPrivateChatRetrievingStep(prepared, repository, {
+    const embeddingProvider = {
       ...syntheticEmbedding,
-      async embedTexts(texts) {
+      async embedTexts(texts: readonly string[]) {
         return texts.map(syntheticParityVector);
       },
-    });
-    const final = await runPrivateChatDetailStep(retrieved, repository);
+    };
+    const retrieved = await runPrivateChatRetrievingStep(prepared, repository, embeddingProvider);
+    const related = await runPrivateChatRelatingStep(retrieved, repository, embeddingProvider);
+    const final = await runPrivateChatDetailStep(related, repository);
     const sources = privateChatSourcesForResponse(final.sources);
     await verifyQualityWorkflowHttp({
       projectId: input.projectId,
@@ -152,6 +181,11 @@ export async function collectSyntheticChat(repositories: CandidateRepositories) 
       id: input.id,
       latencyMs: [performance.now() - start],
       calls,
+      documentReads,
+      graphReads,
+      graphStatus: related.graphStatus,
+      graphDiagnostics: related.graphDiagnostics,
+      graphAdoptedDocumentIds: related.graphSources.map((s) => s.documentId),
       candidateProvenancePass: true,
       workflowHttpRequests: 2,
       sourceRedactionPass: sources.every((source) =>
@@ -176,10 +210,10 @@ export async function collectSyntheticChat(repositories: CandidateRepositories) 
     embedding: syntheticEmbedding,
     inputHash: createHash('sha256').update(JSON.stringify(inputs)).digest('hex'),
     qualityGate: false as const,
-    stubs: ['sha256-embedding', 'fixture-document-fetch', 'loopback-synthesis'],
+    connectionFixture: chatGraphConnectionFixture,
+    stubs: ['sha256-embedding', 'loopback-synthesis'],
     unmeasured: [
       'natural-planner',
-      'graph-query',
       'retry',
       'HTTP-authz',
       'answer-rubric',
