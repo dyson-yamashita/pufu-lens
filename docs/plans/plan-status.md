@@ -39,6 +39,11 @@
 
 ## 運用ルール
 
+Plan 018 Step 7B（2026-09-26、Issue #798）: PR #797 merge後の最新mainから独立タスクでローカル準備。
+GCP相当PGroongaとCloudflare D1/workerdのkeyword 22ケースを共通snapshot/reportへ接続する。
+未対応30ケース・未測定観測は欠損として保持し、qualityGateを通さない。remote/API課金呼出しは実行しない。
+7B全能力・7C実評価・Step 6/7開始gate、既存品質/運用/削除gateを維持する。
+
 Plan 018 Step 7A（2026-09-26、Issue #796）: 最新mainから独立タスクでローカル評価資産を準備。
 52ケースのversioned synthetic fixture、固定比較契約、Recall / MRR / nDCG / overlap、Graph集合とhard gateを追加。
 baseline欠損・未実測・契約不一致・synthetic vectorは品質合格にしない。詳細は

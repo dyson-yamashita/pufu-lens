@@ -53,6 +53,17 @@ function row(run: ParityRun, id: string) {
   return result;
 }
 
+test('explicit unknown observations cannot pass even with complete oracle ranks', () => {
+  for (const profile of ['gcp', 'cloudflare'] as const) {
+    for (const field of ['scopePass', 'mutationPass', 'rubricPass'] as const) {
+      const candidate = oracle();
+      const baseline = oracle('gcp');
+      row(profile === 'gcp' ? baseline : candidate, 'chat-design')[field] = null;
+      assert.equal(evaluateParity(candidate, baseline).qualityGate, false);
+    }
+  }
+});
+
 test('hand-calculated graded ranking and truncated recall/MRR', () => {
   const metrics = rankMetrics(['noise', 'b', 'a', 'a'], { a: 3, b: 1, c: 2 }, 3);
   assert.equal(metrics.recall, 2 / 3);
