@@ -5,12 +5,18 @@ import { fileURLToPath } from 'node:url';
 import { Miniflare } from 'miniflare';
 import { corpusHash } from '../../scripts/lib/keyword-eval.ts';
 import { collectPgroongaBaseline } from '../../scripts/lib/keyword-eval-pgroonga.ts';
+import { collectSyntheticChat } from '../../scripts/lib/parity-chat.ts';
+import { collectLocalChatFailures } from '../../scripts/lib/parity-chat-failures.ts';
 import { evaluateParity, parseParityRun } from '../../scripts/lib/parity-eval.ts';
 import { parityFixture } from '../../scripts/lib/parity-fixture.ts';
 import { collectPostgresGraphParity } from '../../scripts/lib/parity-graph-postgres.ts';
-import { collectPostgresSyntheticRetrieval } from '../../scripts/lib/parity-retrieval-postgres.ts';
+import {
+  collectPostgresSyntheticRetrieval,
+  withPostgresParityCandidates,
+} from '../../scripts/lib/parity-retrieval-postgres.ts';
 import { localKeywordSnapshot } from '../../scripts/lib/parity-runner.ts';
 import { buildWorker } from './build.mjs';
+import { collectD1SyntheticChat } from './parity-chat-local.mjs';
 import { collectD1GraphParity } from './parity-graph-local.mjs';
 import { collectD1SyntheticRetrieval } from './parity-retrieval-local.mjs';
 
@@ -167,6 +173,21 @@ export async function runLocalParity(outputDirectory, databaseUrl) {
       gcp: baseline.evidence,
       cloudflare: candidate.evidence,
       syntheticRetrieval,
+      syntheticChat: {
+        gcp: syntheticEvidence(
+          baseline,
+          databaseUrl
+            ? await withPostgresParityCandidates(databaseUrl, collectSyntheticChat)
+            : null,
+          'local-pgvector-pgroonga',
+        ),
+        cloudflare: syntheticEvidence(
+          candidate,
+          await collectD1SyntheticChat(),
+          'real-d1-workerd-fake-vectorize',
+        ),
+      },
+      sharedChatFailures: await collectLocalChatFailures(),
     },
   };
   await mkdir(outputDirectory, { recursive: true });

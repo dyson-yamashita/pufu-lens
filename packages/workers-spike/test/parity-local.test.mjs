@@ -24,6 +24,14 @@ test('real workerd keyword/Graph runner preserves observations and missing capab
     assert.equal(synthetic.cloudflare.snapshot.metadata.embedding.mode, 'synthetic');
     assert.equal(synthetic.cloudflare.qualityGate, false);
     assert.equal(synthetic.cloudflare.vectorize, 'fake-exact-cosine');
+    assert.equal(report.localEvidence.syntheticChat.gcp, null);
+    assert.equal(report.localEvidence.syntheticChat.cloudflare.snapshot.rows.length, 3);
+    assert.equal(report.localEvidence.syntheticChat.cloudflare.qualityGate, false);
+    assert.equal(
+      report.localEvidence.syntheticChat.cloudflare.staleRead.actualError,
+      'unavailable',
+    );
+    assert.equal(report.localEvidence.sharedChatFailures.observations.length, 3);
     assert.ok(
       snapshot.rows.every(
         (row) => !row.id.startsWith('semantic-') && !row.id.startsWith('hybrid-'),

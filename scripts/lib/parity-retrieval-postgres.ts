@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { CandidateRepositories } from '@pufu-lens/retrieval';
 import postgres from 'postgres';
 import {
   createPostgresKeywordCandidateRepository,
@@ -12,6 +13,14 @@ import { collectSyntheticRetrieval, parityRetrievalDocuments } from './parity-re
  * Requires installed vector/PGroonga extensions and CREATEDB; only its own created DB is dropped.
  */
 export async function collectPostgresSyntheticRetrieval(databaseUrl: string) {
+  return withPostgresParityCandidates(databaseUrl, collectSyntheticRetrieval);
+}
+
+/** Runs a bounded local collector against the shared disposable fixture; always drops its own DB. */
+export async function withPostgresParityCandidates<T>(
+  databaseUrl: string,
+  collect: (repositories: CandidateRepositories) => Promise<T>,
+): Promise<T> {
   validateKeywordEvalUrl(databaseUrl);
   const admin = postgres(databaseUrl, { max: 1, connect_timeout: 10, onnotice: () => {} });
   const name = `parity_retrieval_${randomUUID().replaceAll('-', '')}`;
@@ -48,7 +57,7 @@ export async function collectPostgresSyntheticRetrieval(databaseUrl: string) {
     await sql`CREATE INDEX ON public.document_chunks USING pgroonga(content)`;
     await sql`ANALYZE public.document_chunks`;
     await sql`SET enable_seqscan = off`;
-    return await collectSyntheticRetrieval({
+    return await collect({
       semanticCandidateRepository: createPostgresSemanticCandidateRepository(sql),
       keywordCandidateRepository: createPostgresKeywordCandidateRepository(sql),
     });

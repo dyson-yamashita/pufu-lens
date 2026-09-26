@@ -39,6 +39,11 @@
 
 ## 運用ルール
 
+Plan 018 Step 7B（2026-09-26、Issue #804）: Chat 3質問の実candidate/selectionとloopback HTTP、
+membership拒否/timeout/429、D1 stale revision検出を限定ローカル観測した。synthetic証拠を別保存し、
+実planner/Graph/回答/引用/HTTP認可は未測定。staleはunavailableに集約され期待値不一致のまま。
+品質各39/52行・13件欠損、qualityGate=false、7B全能力/7CとStep 6/7開始gate未達を維持する。
+
 Plan 018 Step 7B（2026-09-26、Issue #802）: PR #801 merge後の最新mainから独立タスクでローカル準備。
 semantic/hybrid各3質問と全37chunk/36documentを実pgvector/PGroonga、実D1/workerd＋fake Vectorize、
 Core RRF/既存selectionへ接続した。独立synthetic vectorの6行は別local evidenceに保存し、品質snapshotは

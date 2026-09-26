@@ -68,7 +68,7 @@ export function localKeywordSnapshot(
             test.kind === 'semantic' || test.kind === 'hybrid'
               ? 'real-embedding-not-measured-synthetic-evidence-separate'
               : test.kind !== 'keyword' && test.kind !== 'graph' && test.kind !== 'mutation'
-                ? 'runner-not-implemented'
+                ? 'real-chat-failure-not-measured-local-evidence-separate'
                 : (test.kind === 'keyword' ? run : graphRun) === null
                   ? 'local-backend-not-configured'
                   : 'case-not-returned',
