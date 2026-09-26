@@ -321,6 +321,8 @@ pnpm chat:eval --project sample-a --fixture fixtures/chat/private-chat-raw-injec
 
 Private project chat は、Mastra `private-chat-search` Workflow による **制約付き LLM 検索計画と決定論的 retrieval**、既存 `project-chat-agent` による **ReAct 合成** のハイブリッドで回答する。
 
+合成時は質問と資料の機能・環境を照合し、別対象の設定を転用しない。現状・移行状況の回答では実装・評価・予定・本番反映を区別し、資料が確認した時点と範囲に限定する。過去の本番変更なしやPRのmergedを現在の稼働状態と同一視せず、同じ対象の後続反映記録を優先する。現状の根拠が足りなければ確認できた経緯と未確認事項を分け、履歴の質問では過去の状態も保持する（Issue #779）。検索対象・順位や回答のAPI契約は変更しない。
+
 1. **Workflow 登録:** `apps/mastra` に `private-chat-search` Workflow を登録する。preparing / classifying / expanding / retrieving / optional retrying / relating / optional timeline / detail / synthesis の explicit stage step で bounded retrieval を行い、最後に Agent 合成する。
 2. **編集操作分類:** tool を持たない `private-chat-query-planner-agent` が strict structured output で質問を `identification` / `cause` / `process` / `timeline` / `comparison` / `relation` / `evaluation` / `decision` / `general` の固定分類へ割り当てる。primary は 1 件、secondary は最大 2 件とし、figure / ground / expected evidence / confidence も上限付きで返す。質問は未信頼データとして扱い、本文内の命令や schema 変更要求には従わない。
 3. **検索語展開:** 同 Agent を別 step で呼び出し、分類結果から query / purpose / operation の候補を strict structured output で最大 5 件生成する。元の正規化質問は LLM 出力にかかわらず Workflow が必ず検索する。Workflow は全検索を合計最大 6 件、各 120 文字に制限し、空文字、制御文字、大小文字を無視した重複、元質問の保護対象識別子を欠く展開語を拒否する。LLM が追加した固有名詞を回答の必要事実として扱わない。展開語の embedding は 1 batch で生成し、各検索結果を RRF で統合する。元質問の順位 list は weight 2、展開語は weight 1 とし、元質問の焦点と複数検索語の合意を両立する。
