@@ -1300,10 +1300,15 @@ CI では hermetic contract / metric testsを毎回実行し、remote GCP / Clou
     baseline欠損・未実測・契約不一致は不合格。詳細は[評価契約](../../operations/backend-parity-evaluation.md)。
     Step 6全完了・Step 7実評価開始gate達成とは扱わず、7B以降のrunner / 実測 / SLO / cost判断を残す。
 - 7B: backend runners / remote evaluation workflow
+  - 2026-09-26、Issue #812で最新mainから独立タスクとしてChat保存artifact入力を追加。
+    retrieval v1を内包する別version/明示opt-inと固定preparing計画の20入力manifestを追加し、
+    同じ検証済みvectorを両DBの実candidate/Chat stepへ接続。順位依存のretry/Graph採否を実測のまま保存する。
+    synthetic保存artifactで検証し、生成元/実embedding品質/自然planner/実LLM/remoteは未測定。
+    品質各39/52行・13件欠損、7C・Step 6/7開始gateと既存品質/restore/削除gate未達を維持する。
   - 2026-09-26、Issue #810で共通保存済みembedding artifactのローカル入力を追加。
     固定v1契約・37chunk/共通3質問のhash/対応・vectorをfail closedで検証し、同じ入力を両DBへ接続。
     syntheticテストartifactで実candidate/RRF/selectionを確認する。自己申告realは生成元検証済みと扱わず、
-    Chat artifactは未対応としてskipする。実embedding品質/remote/7Cと既存gate未達を維持する。
+    retrieval v1単独ではChat artifactをskipする。実embedding品質/remote/7Cと既存gate未達を維持する。
   - 2026-09-26、Issue #808でPR #807 merge後の最新mainから独立タスクで着手。
     既存retry判定/stepとGraphの最終source/redactionを両DBへローカル接続した。自然3質問はretry未発火。
     独立controlled証拠でsimplified retry 1回・実候補10件とGraph d02の最終source残存を確認。

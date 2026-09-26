@@ -140,11 +140,60 @@ reportの `localEvidence.artifactRetrieval` にchecksum（読み込んだUTF-8 J
 Cloudflare側のVectorizeは引き続きexact-cosine fake、GCP側もlocal pgvector/PGroongaである。
 通常の品質snapshotへ6行を追加せず、各39/52行・13件欠損を維持する。
 
-artifactはChatの派生検索語用vectorを含まないため、artifact入力時は `syntheticChat=null` として
+retrieval v1 artifactはChatの派生検索語用vectorを含まないため、入力時は `syntheticChat=null` として
 Chatをskipする。`chatArtifactSupport` に未対応を明示し、synthetic fallbackを混在させない。
-共通Node障害試験は独立証拠として継続する。Chat artifact対応、実embedding品質、remoteは未測定。
+共通Node障害試験は独立証拠として継続する。Chat対応には下記の別契約を明示指定する。実embedding品質、remoteは未測定。
 テスト専用 `syntheticEmbeddingArtifactFixture()` は本文hashから独立合成vectorを作り、
 明示的にsyntheticと申告する。実embedding artifactは未提供であり生成APIは呼ばない。
+
+### Chat保存artifactと入力manifest（Issue #812）
+
+`parity:local --chat-embedding-manifest /absolute/path/manifest.json` はDB/APIを呼ばず、
+生成用入力manifestを新規ファイルへ書く（既存ファイルは上書きしない）。これは合成fixtureの本文・検索語を
+含む**入力専用**ファイルであり、本文を含めない評価reportとは分離する。
+`scripts/lib/parity-chat-inputs.ts` の固定 `chat-fixed-preparing-v1` が、既存preparingとcoverageのhelperから
+3質問＋独立controlled 2シナリオの全20入力（異なる本文6種）を列挙する。
+primary、条件付きsimplified retry、coverageのcase/project/phase/text/textHashを個別に固定する。
+自然LLM planner、expanded-query、任意質問を受け付ける契約ではない。
+
+実順位はretryの実行有無、seed、Graph採否、最終sourceを変えるが、この固定計画の検索語集合は変えない。
+retryはscore付き候補がない場合のみ、coverageはseedが非空かつGraph読取り成功時のみ実行される。
+未実行分岐もmanifestの必須入力であり、実行されなかった行を「余剰」として削除しない。
+未知派生queryは実行時に拒否し、manifest外の入力・欠損・余剰・重複・text/hash不一致はDB前に拒否する。
+
+`parity:local [output-directory] --chat-embedding-artifact /absolute/path/bundle.json` で明示opt-inする。
+`--embedding-artifact` との併用は拒否する。rootの必須fieldは次の5個のみ。
+
+- `version`: `parity-chat-embedding-artifact-v1`
+- `schemaHash`: `parityChatArtifactSchemaHash`
+- `planVersion`: `chat-fixed-preparing-v1`
+- `retrieval`: 既存 `parity-embedding-artifact-v1` JSON全体（37chunk/共通3質問）
+- `queries`: manifestの20行それぞれへ `values` を追加した配列（行順は任意）
+
+manifestの `retrievalContract` に既存v1の固定metadata、`retrievalInputs` に生成用本文付きidentityを置く。
+retrieval側は各入力の `text` を除いて `values` を付け、embeddingへ生成者の申告modeを設定する。
+Chat側は `text` を残す。全vectorの次元/有限/float32安全性/非ゼロを検証し、同じ本文hashには
+retrieval/Chat/case/phaseを跨いで完全に同じvectorを要求する。期待値・候補・結果からvectorを作らない。
+
+同じ検証済みchunk/vector入力を両DBのseedとChat collectorへ渡す。実candidate/RRF/selection、
+実PostgreSQL文書repository・D1/workerd読取り、Graph/retry、response redaction、loopback HTTPを接続する。
+`localEvidence.artifactChat` に限定して保存し、`syntheticChat` / `syntheticRetrieval` はnull。
+本文・質問・vector・path・回答はreportへ出さず、`embeddingReads` はphaseと入力hashだけを保存する。
+bundleのchecksumは元のUTF-8 JSON、`retrievalChecksum` は内包JSONの再serialize後のchecksumと区別する。
+`source=saved-artifact`、申告mode、checksumを生成元証明と混同せず、`originVerified=false` /
+`semanticQualityMeasured=false` を維持する。固定synthesis/loopback HTTPは実LLM評価ではない。
+D1側は引き続きfake VectorizeとローカルChat bridgeであり、remote/backend本番完成の証拠ではない。
+
+専用PostgreSQLと実D1/workerdで明示synthetic保存artifactを検証した。独立hash projectionでは両backendの
+候補/最終sourceが一致し、3質問はretryなし、controlled 2件はretryあり、Graph採用0件だった。
+`single-seed-graph-final` はd01が実primary候補にないため空になり、シナリオ名の期待を結果へ転記しない。
+別の明示的な本文SHA-256 projection保存artifactでは既存controlledのSAME_AS d02最終採用と
+simplified retry/RELATED_TO取得を確認した。これはテスト入力を明示して選ぶ独立回帰であり、
+入力不足時のfallbackではない。両projectionとも実embedding・意味品質・生成元は未測定。
+
+通常品質snapshotは各39/52行・13件欠損、qualityGate=false / step7Gate=not-evaluatedを維持する。
+scope/mutation/rubricはnull、criticalErrorsMeasured=false。実artifactは未提供で、自然planner/実LLM/引用/
+HTTP認可/remote/7C、Step 6/7開始gate、既存品質・restore・削除gateの未達を維持する。
 
 ### 実行方法
 

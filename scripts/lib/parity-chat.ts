@@ -9,29 +9,21 @@ import {
 import {
   resolvePrivateChatRetryQueries,
   runPrivateChatDetailStep,
-  runPrivateChatPreparingStep,
   runPrivateChatRelatingStep,
   runPrivateChatRetrievingStep,
   runPrivateChatRetryingStep,
   shouldRunPrivateChatRetryStep,
 } from '../../apps/web/src/private-chat-search.ts';
 import { verifyQualityWorkflowHttp } from './keyword-quality-http.ts';
+import type { ParityChatArtifactInput } from './parity-chat-artifact.ts';
 import { chatControlledScenarios } from './parity-chat-controls.ts';
 import { chatGraphConnectionFixture } from './parity-chat-graph.ts';
+import { parityChatInputs, prepareParityChat } from './parity-chat-inputs.ts';
 import type { ParityRow } from './parity-eval.ts';
 import { parityFixture } from './parity-fixture.ts';
 import { syntheticEmbedding, syntheticParityVector } from './parity-retrieval.ts';
 
-/** Maps only input fields, never required tools, relevance labels or expected answers. */
-export function parityChatInputs() {
-  return parityFixture.cases
-    .filter((test) => test.kind === 'chat')
-    .map((test) => ({
-      id: test.id,
-      projectId: test.projectId,
-      question: test.query,
-    }));
-}
+export { parityChatInputs } from './parity-chat-inputs.ts';
 
 /** Supplies only explicitly implemented local test methods; unexpected capabilities fail closed.
  * The cast is limited to this harness proxy, whose runtime guard rejects all missing methods.
@@ -54,8 +46,27 @@ export async function collectSyntheticChat(
   repositories: CandidateRepositories,
   database: Pick<ChatRepository, 'documentFetch' | 'graphCoverageQuery'>,
 ) {
+  return collectLocalChat(repositories, database);
+}
+
+/** Connects validated saved vectors to real Chat steps; synthesis remains a loopback stub.
+ * All conditional vectors are required up front, and unknown runtime queries abort collection.
+ */
+export async function collectArtifactChat(
+  repositories: CandidateRepositories,
+  database: Pick<ChatRepository, 'documentFetch' | 'graphCoverageQuery'>,
+  artifact: ParityChatArtifactInput,
+) {
+  return collectLocalChat(repositories, database, artifact);
+}
+
+async function collectLocalChat(
+  repositories: CandidateRepositories,
+  database: Pick<ChatRepository, 'documentFetch' | 'graphCoverageQuery'>,
+  artifact?: ParityChatArtifactInput,
+) {
   const inputs = parityChatInputs();
-  const natural = await collectChatCases(repositories, database, inputs);
+  const natural = await collectChatCases(repositories, database, inputs, undefined, artifact);
   const controlled = [];
   for (const scenario of chatControlledScenarios) {
     const result = await collectChatCases(
@@ -63,13 +74,14 @@ export async function collectSyntheticChat(
       database,
       [scenario],
       scenario.primaryDocumentAllowlist,
+      artifact,
     );
     controlled.push(...result.observations);
   }
   return {
     ...natural,
-    embedding: syntheticEmbedding,
-    inputHash: hashText(JSON.stringify(inputs)),
+    embedding: artifact?.embedding ?? syntheticEmbedding,
+    inputHash: artifact?.inputHash ?? hashText(JSON.stringify(inputs)),
     qualityGate: false as const,
     connectionFixture: chatGraphConnectionFixture,
     controlled: {
@@ -78,7 +90,7 @@ export async function collectSyntheticChat(
       observations: controlled,
       qualityGate: false as const,
     },
-    stubs: ['sha256-embedding', 'loopback-synthesis'],
+    stubs: [...(artifact ? [] : ['sha256-embedding']), 'loopback-synthesis'],
     unmeasured: [
       'natural-planner',
       'expanded-query-retry',
@@ -102,6 +114,7 @@ async function collectChatCases(
   database: Pick<ChatRepository, 'documentFetch' | 'graphCoverageQuery'>,
   inputs: readonly { id: string; projectId: string; question: string }[],
   primaryDocumentAllowlist?: readonly string[],
+  artifact?: ParityChatArtifactInput,
 ) {
   const rows: ParityRow[] = [];
   const observations = [];
@@ -208,16 +221,17 @@ async function collectChatCases(
         return result;
       },
     });
-    const prepared = runPrivateChatPreparingStep({
-      graphName: null,
-      nowIso: '2026-09-26T00:00:00Z',
-      projectId: input.projectId,
-      question: input.question,
-    });
+    const prepared = prepareParityChat(input);
+    const embeddingReads: { phase: string; textHashes: string[] }[] = [];
     const embeddingProvider = {
-      ...syntheticEmbedding,
+      ...(artifact?.embedding ?? syntheticEmbedding),
       async embedTexts(texts: readonly string[]) {
-        return texts.map(syntheticParityVector);
+        embeddingReads.push({ phase, textHashes: texts.map(hashText) });
+        return texts.map((text) =>
+          artifact
+            ? artifact.chatVector(input.id, input.projectId, phase, text)
+            : syntheticParityVector(text),
+        );
       },
     };
     const retrieved = await runPrivateChatRetrievingStep(prepared, repository, embeddingProvider);
@@ -269,6 +283,7 @@ async function collectChatCases(
               primaryDocumentAllowlist: [...primaryDocumentAllowlist],
             },
       hybridReads,
+      embeddingReads,
       retry: {
         decision: retryDecision,
         executed: retried.didRetry,

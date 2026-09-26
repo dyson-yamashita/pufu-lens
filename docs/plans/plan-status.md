@@ -1,8 +1,12 @@
 # Plan Status
 
+Plan 018 Step 7B（2026-09-26、Issue #812）: Chat用保存artifactを別versionで明示opt-inし、固定計画の
+20入力manifestと両DB collectorを接続。retrieval v1は維持。synthetic保存artifactでretry/Graph最終source/
+redactionを検証。生成元・実embedding品質・実LLMは未測定、品質各39/52行・13件欠損、7C・Step 6/7 gate未達を維持。
+
 Plan 018 Step 7B（2026-09-26、Issue #810）: 共通保存済みembedding artifactのローカル入力を追加。
 全37chunk/共通3質問の固定契約・hash・vectorをDB接続前に検証し、両backendの実candidateへ接続する。
-syntheticテストartifactで検証。生成元/実embedding品質は未検証、Chat artifactは未対応。
+syntheticテストartifactで検証。生成元/実embedding品質は未検証、retrieval v1単独のChat artifactは未対応。
 品質各39/52行・13件欠損、7C・Step 6/7開始gate未達を維持する。
 
 Plan 018 Step 7B（2026-09-26、Issue #808）: 最新mainから独立タスクでChat retryとGraph最終sourceの

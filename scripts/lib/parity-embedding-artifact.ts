@@ -54,6 +54,20 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+/** Rejects unsafe cosine vectors at the saved artifact boundary and returns a defensive copy. */
+export function parseParityEmbeddingVector(values: unknown): number[] {
+  if (
+    !Array.isArray(values) ||
+    values.length !== 1536 ||
+    values.some(
+      (v) => typeof v !== 'number' || !Number.isFinite(v) || !Number.isFinite(Math.fround(v)),
+    ) ||
+    Math.hypot(...values.map(Math.fround)) === 0
+  )
+    throw new Error('Invalid embedding artifact vector');
+  return [...values];
+}
+
 /** Validates the saved JSON before any DB work. Metadata is a declaration, never proof of origin.
  * Requires complete exact input coverage and float32-safe cosine vectors; errors never echo input.
  */
@@ -99,18 +113,10 @@ export function parseParityEmbeddingArtifact(json: string) {
       const index = remaining.findIndex((entry) => isDeepStrictEqual(entry, identity));
       if (index < 0) throw new Error('Invalid embedding artifact identity/duplicate');
       remaining.splice(index, 1);
-      if (
-        !Array.isArray(values) ||
-        values.length !== 1536 ||
-        values.some(
-          (v) => typeof v !== 'number' || !Number.isFinite(v) || !Number.isFinite(Math.fround(v)),
-        ) ||
-        Math.hypot(...values.map(Math.fround)) === 0
-      )
-        throw new Error('Invalid embedding artifact vector');
+      const vector = parseParityEmbeddingVector(values);
       const keys = kind === 'chunk' ? [identity.id] : identity.caseIds;
       if (!Array.isArray(keys)) throw new Error('Invalid embedding artifact keys');
-      for (const key of keys) vectors.set(`${kind}:${key}`, [...values]);
+      for (const key of keys) vectors.set(`${kind}:${key}`, vector);
     }
   }
   const checksum = hash(json);
