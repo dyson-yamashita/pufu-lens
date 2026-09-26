@@ -4,7 +4,8 @@
 
 Plan 018 Step 7A / Issue #796は、共通synthetic fixtureと採点ライブラリのローカル準備である。
 Step 6全完了、Step 7の実評価開始gate達成、GCP / Cloudflareの品質同等性を意味しない。
-7B / Issue #798でkeywordのローカルrunnerを追加した。remote実行、実embedding生成、resource作成、本番変更は含まない。
+7B / Issue #798でkeyword、Issue #800でGraphのローカルrunnerを追加した。
+remote実行、実embedding生成、cloud resource作成、本番変更は含まない。
 
 Step 7B以降で、同一fixture・論理schema・ID mapping・embeddingを両backendへ投入する手順と、
 Cloudflareのmetrics収集、absolute SLOを固定する。実GCP baseline、実embedding、CPU・請求・restore、
@@ -42,7 +43,7 @@ nodeはrelation `NODE`、source=target、hop=0で表現する。readはedge集�
 runnerはCoreのcanonical endpoint規約に正規化して渡す。nodeの所属は `graphNodes` とも照合し、
 project IDだけの偽装で越境を隠せない。Actor mergeはaliasの統合・AUTHOREDの付替え・self-edge削除を期待する。
 内部順序以外のhop・relation・重複・
-余剰・欠損は不合格。backend固有のnode生成・操作呼出しへのmappingは7Bで実装する。
+余剰・欠損は不合格。Issue #800でbackend固有のnode生成・操作呼出しへのmappingをローカル実装した。
 
 ## Snapshot / report境界
 
@@ -123,14 +124,34 @@ GCP profileは**GCP相当のローカルPGroonga**であり、GCP環境での実
 D1は既存keyword-workerとadapterを使い、Miniflareの実workerd/D1を毎回作成・破棄する。outbound通信は禁止する。
 PGroonga URL未指定はGCP全52件欠損、指定したDBに接続できない場合はコマンド失敗とし、黙って欠損へ置き換えない。
 
-| 能力                    | 7Bローカル到達点                                         | 残件                                                 |
-| ----------------------- | -------------------------------------------------------- | ---------------------------------------------------- |
-| keyword                 | 両backend全22 queryを入力し順位・拒否・scopeを実測       | GCP remote baseline、remote性能                      |
-| scope                   | 返却chunk IDのproject所属とD1のdocument provenanceを確認 | HTTP認可・cross-project write全経路                  |
-| mutation / Graph        | snapshot行を生成せず欠損                                 | 共通fixtureの操作mapping、全snapshot照合             |
-| semantic / hybrid       | snapshot行を生成せず欠損                                 | 共通実embedding・pgvector / Vectorize・実selection   |
-| Chat / expected failure | snapshot行を生成せず欠損                                 | 実Chat tool/source/citation/rubric・fault injection  |
-| latency                 | keyword各queryのローカルmsを記録                         | 同一remote workload、warmup/repetition統一、CPU/請求 |
+Graphは `scripts/lib/parity-graph.ts` で共通操作を実行する。D1は既存 `d1-worker` と実adapterを使用し、
+DBから全node/edgeを読み取る。PostgreSQLは同じloopback URLからランダム名 `parity_graph_*` の
+専用DBを新規作成し、既存migration 0026と実relational read/mutation adapterを使う。接続roleには
+CREATEDBが必要。既存DBは再利用・削除せず、作成成功したDBだけをfinallyで削除する。
+強制終了時は一時DBが残る可能性がある。元の `keyword_eval` 内のtableには触れない。
+alpha/betaのprovider内project UUID変換はrunner境界のみで行い、canonical ID/hashは維持する。
+
+Graph 17ケースごとに入力集合の保存を確認し、同名node keyを持つbetaの全保存フィールドが不変であること、
+beta専用seedのalpha検索が空であることを検査する。mutationを2回実行し、propertiesを含む全保存フィールドの
+再実行一致と、実測canonical集合の期待値一致を `mutationPass` に記録する。readのmutationPassは
+入力保存と読取前後の不変性を表す。rubricPassはnull。HTTP成功だけではtrueにしない。
+操作前後のcanonical集合、入力保存・sentinel存在/不変・foreign seed拒否・retry一致をreportへ保存する。
+これはfixture内のscope/操作確認であり、HTTP認可や全mutation経路・障害後repairを証明しない。
+
+`findRelatedDocuments` の既存契約はSAME_AS/RELATED_TOが1-hop、MENTIONSがTopic経由2-hopであり、
+汎用maxHops引数を持たない。read mappingはfixtureのrelation別limit=1と重複seedを渡し、
+実際のcandidateのrelation/hopをそのまま保存する。v1のMENTIONSは文書間の直接1-hopを期待するため、
+両adapterは空集合を返し不合格となる。hopを1に書き換えたりoracleで補完しない。
+fixture/hash/閾値・本番adapter契約は変更せず、将来のversioned fixture見直しの判断事項として残す。
+
+| 能力                    | 7Bローカル到達点                                          | 残件                                                 |
+| ----------------------- | --------------------------------------------------------- | ---------------------------------------------------- |
+| keyword                 | 両backend全22 queryを入力し順位・拒否・scopeを実測        | GCP remote baseline、remote性能                      |
+| scope                   | 返却chunk IDのproject所属とD1のdocument provenanceを確認  | HTTP認可・cross-project write全経路                  |
+| mutation / Graph        | read 3・mutation 14件を実測、全保存集合とretry/隔離を照合 | MENTIONS v1契約不一致、remoteと全経路検証            |
+| semantic / hybrid       | snapshot行を生成せず欠損                                  | 共通実embedding・pgvector / Vectorize・実selection   |
+| Chat / expected failure | snapshot行を生成せず欠損                                  | 実Chat tool/source/citation/rubric・fault injection  |
+| latency                 | keyword queryとGraphケース全操作のローカルmsを記録        | 同一remote workload、warmup/repetition統一、CPU/請求 |
 
 `localEvidence` にcodeDirty（未コミット変更の有無）、能力欠損case ID・理由、未測定観測、latency、remoteMetrics=nullを付ける。
 keywordのmutationPass/rubricPassはnull。scopePassは返却ID集合の所属確認であり、認可全体の成功を意味しない。
@@ -141,6 +162,12 @@ synthetic vector自体もこのrunnerでは生成しない。既存のStep 6 com
 2026-09-26、Issue #798: ローカルDocker PostgreSQL/PGroongaと実D1/workerdで各22件を収集。
 各30件欠損、comparisonComplete=false / contractPass=false / qualityGate=false、step7Gate=not-evaluatedを確認した。
 今回の結果でStep 6全完了・7B全能力完成・7C実評価開始を宣言しない。
+
+2026-09-26、Issue #800: 専用Docker PostgreSQL/PGroongaと実D1/workerdで各39/52行を収集。
+Graph 17行は両側一致、mutation 14件は期待集合・retry・scope成功、readは2/3件が期待集合一致。
+MENTIONSの欠損1 edgeを両側の実測不一致として保持する。semantic/hybrid/Chat/failureの13件は欠損。
+comparisonComplete=false / contractPass=false / qualityGate=false、step7Gate=not-evaluatedを維持する。
+orphanケースはv1入力内のdocument全削除を検査し、任意の孤立Actor/Topic回収まで成功とは扱わない。
 
 ## Remote evaluation workflow（準備のみ・実行不可）
 

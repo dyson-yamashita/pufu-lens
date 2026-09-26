@@ -1,8 +1,9 @@
 import { type KeywordRun, parseKeywordRun } from './keyword-eval.ts';
 import { type ParityRun, parseParityRun } from './parity-eval.ts';
 import { parityFixture, parityFixtureHash, parityMappingHash } from './parity-fixture.ts';
+import type { collectGraphParity } from './parity-graph.ts';
 
-/** Builds a local-only partial snapshot from fresh keyword adapter observations, never judgments.
+/** Builds a local-only partial snapshot from fresh keyword and optional Graph observations.
  * Null observations remain unknown and fail the hard gate; no embedding or Chat quality is claimed.
  */
 export function localKeywordSnapshot(
@@ -10,6 +11,7 @@ export function localKeywordSnapshot(
   codeCommit: string,
   runId: string,
   run: KeywordRun | null,
+  graphRun: Awaited<ReturnType<typeof collectGraphParity>> | null = null,
 ) {
   if (run) parseKeywordRun(run);
   const rows = (run?.cases ?? []).map((result) => {
@@ -45,26 +47,41 @@ export function localKeywordSnapshot(
       // No real embedding was generated. The deliberately incompatible label prevents quality claims.
       embedding: { mode: 'synthetic', model: 'not-executed', dimensions: 1536, metric: 'cosine' },
     },
-    rows,
+    rows: [...rows, ...(graphRun?.rows ?? [])],
   });
   return {
     snapshot,
     evidence: {
       environment: 'local-only',
       adapter: run?.provider ?? 'not-executed',
+      graphAdapter: graphRun
+        ? profile === 'gcp'
+          ? 'postgres-relational'
+          : 'd1-workerd'
+        : 'not-executed',
+      graphObservations: graphRun?.observations ?? [],
       missing: parityFixture.cases
         .filter((test) => !snapshot.rows.some((row) => row.id === test.id))
         .map((test) => ({
           id: test.id,
           reason:
-            test.kind !== 'keyword'
+            test.kind !== 'keyword' && test.kind !== 'graph' && test.kind !== 'mutation'
               ? 'runner-not-implemented'
-              : run === null
+              : (test.kind === 'keyword' ? run : graphRun) === null
                 ? 'local-backend-not-configured'
                 : 'case-not-returned',
         })),
-      unmeasuredObservations: ['mutation', 'chat-rubric', 'real-embedding', 'remote-authz'],
-      latency: (run?.cases ?? []).map(({ id, latencyMs }) => ({ id: `keyword-${id}`, latencyMs })),
+      unmeasuredObservations: [
+        'keyword-mutation',
+        'chat-rubric',
+        'real-embedding',
+        'remote-authz',
+        ...(graphRun ? [] : ['graph-mutation']),
+      ],
+      latency: [
+        ...(run?.cases ?? []).map(({ id, latencyMs }) => ({ id: `keyword-${id}`, latencyMs })),
+        ...(graphRun?.observations ?? []).map(({ id, latencyMs }) => ({ id, latencyMs })),
+      ],
       remoteMetrics: null,
     },
   };
