@@ -1044,6 +1044,16 @@ GCP baseline（CPU / memory / connection / disk / bloat / vacuum / latency / err
 
 ## 13. Step 6: Cloudflare adapter を追加できる設計を具体化する
 
+### Step 6B 実施状況
+
+- 2026-09-26: [Issue #786](https://github.com/dyson-yamashita/pufu-lens/issues/786) で着手。
+  Step 6A merge 後の最新 main `a732fa6` から独立タスクで D1 schema / Graph adapter を実装・検証する。
+  ローカル合成 fixture のみを使用し、6C–6E、remote、本番変更、大規模負荷は対象外とする。
+- 6B結果: D1 schema / Graph read・mutation adapterを追加。実D1/workerdで13件、既存Core17件の計30件が成功。
+  project複合FK、9 relation、1/2-hop、Viewer上限、JSON浅いmerge、Actor merge/並行retry、cleanup、rollbackを確認。
+  [ADR-007](../../adr/ADR-007-d1-graph-adapter.md)に公式制約、再現方法、remote/性能の未検証範囲を記録。
+  6Bのローカル到達点は完了。6C–6E、本番shadow/restore、既存品質gateは維持する。
+
 ### Step 6A 実施状況
 
 - 2026-09-26: [Issue #784](https://github.com/dyson-yamashita/pufu-lens/issues/784) で着手。
