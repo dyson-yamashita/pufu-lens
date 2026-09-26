@@ -15,6 +15,7 @@ const config: IndexContract = {
 };
 
 /** Local-only synthetic harness. The HTTP fake is deliberately NOT a Vectorize REST implementation.
+ * Optional test config applies equally to delivery and search for shared-fixture model labels.
  * No credentials, remote bindings or deploy configuration are provided; never publish this endpoint.
  */
 export default {
@@ -24,6 +25,7 @@ export default {
     try {
       const payload = record(await request.json());
       const input = record(payload.input);
+      const actualConfig = { ...config, ...(payload.config ? record(payload.config) : {}) };
       const fake = async (method: string, args: unknown) => {
         const response = await fetch(`https://vectorize-fake.invalid/${method}`, {
           method: 'POST',
@@ -48,7 +50,7 @@ export default {
             result: await deliverOutbox(
               env.DB,
               index,
-              config,
+              actualConfig,
               input,
               typeof input.now === 'number' ? input.now : undefined,
             ),
@@ -60,7 +62,6 @@ export default {
             result: await inspectOutbox(env.DB, text(input.projectId), text(input.documentId)),
           });
         case 'search': {
-          const actualConfig = { ...config, ...(payload.config ? record(payload.config) : {}) };
           const repository = await createVectorizeCandidateRepository(env.DB, index, actualConfig);
           if (
             typeof input.limit !== 'number' ||

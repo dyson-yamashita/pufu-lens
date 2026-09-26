@@ -65,11 +65,13 @@ export function localKeywordSnapshot(
         .map((test) => ({
           id: test.id,
           reason:
-            test.kind !== 'keyword' && test.kind !== 'graph' && test.kind !== 'mutation'
-              ? 'runner-not-implemented'
-              : (test.kind === 'keyword' ? run : graphRun) === null
-                ? 'local-backend-not-configured'
-                : 'case-not-returned',
+            test.kind === 'semantic' || test.kind === 'hybrid'
+              ? 'real-embedding-not-measured-synthetic-evidence-separate'
+              : test.kind !== 'keyword' && test.kind !== 'graph' && test.kind !== 'mutation'
+                ? 'runner-not-implemented'
+                : (test.kind === 'keyword' ? run : graphRun) === null
+                  ? 'local-backend-not-configured'
+                  : 'case-not-returned',
         })),
       unmeasuredObservations: [
         'keyword-mutation',
